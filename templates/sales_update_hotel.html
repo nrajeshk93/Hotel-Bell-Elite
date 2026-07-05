@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sales Update - Hotel | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=5">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+  {% with
+    page_title='Sales Update - Hotel',
+    page_subtitle='Upload reports and record daily hotel sales.',
+    filter_form_action=url_for('sales_update_hotel')
+  %}
+    {% include 'partials/sales_update_scope_header.html' %}
+  {% endwith %}
+
+  <section class="content se-content sr-kpi-canvas">
+    <section class="sr-kpi-section" aria-label="Hotel sales KPI summary">
+      {% with cash_card_action=false %}
+        {% include 'partials/sales_update_kpi_default_row.html' %}
+      {% endwith %}
+    </section>
+
+    <div id="se-entry-panel" class="se-bottom-panel">
+      <div class="se-layout-main">
+        <div id="sales-entry-widget" hidden
+          data-company="{{ selected_company }}"
+          data-location="{{ selected_location }}"
+          data-date="{{ selected_date }}"
+          data-sales-admin="{{ '1' if sales_update_is_admin else '0' }}"
+          data-save-url="{{ url_for('save_sales_update') }}"></div>
+        {% include 'partials/sales_update_petty_section.html' %}
+        {% include 'partials/sales_update_hotel_ledger.html' %}
+      </div>
+    </div>
+  </section>
+</div>
+{% include 'partials/sales_update_filter_scripts.html' %}
+{% include 'partials/sales_update_petty_scripts.html' %}
+{% include 'partials/sales_update_hotel_ledger_scripts.html' %}
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

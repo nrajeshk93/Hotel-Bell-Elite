@@ -1,0 +1,190 @@
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script>
+(function(){
+  const widget = document.getElementById('sales-entry-widget');
+  const uploadInput = document.getElementById('se-upload-hotel');
+  const statusEl = document.getElementById('se-upload-status-hotel');
+  const clearBtn = document.getElementById('se-clear-hotel-ledger');
+  const ledgerBody = document.getElementById('hotel-ledger-body');
+  const ledgerWrap = document.getElementById('hotel-ledger-wrap');
+  const paymentModes = {{ hotel_payment_modes|tojson }};
+  const salesEntryLocked = {{ 'true' if sales_entry_locked else 'false' }};
+  let saveTimer = null;
+
+  const formatInrKpi = (value) => formatInr(value, 0);
+
+  function rollupFromEntries(entries){
+    const totals = { total_sales: 0, cash: 0, card: 0, upi: 0, room_credit: 0 };
+    (entries || []).forEach((entry) => {
+      const amount = Number(entry.amount || 0);
+      totals.total_sales += amount;
+      const mode = String(entry.payment_mode || '');
+      if (Object.prototype.hasOwnProperty.call(totals, mode)) totals[mode] += amount;
+    });
+    return totals;
+  }
+
+  function updateSummary(rollup){
+    const assigned = rollup.cash + rollup.card + rollup.upi + rollup.room_credit;
+    const unassigned = Math.max(0, rollup.total_sales - assigned);
+    const totalSalesEl = document.getElementById('hotel-ledger-total-sales');
+    const assignedEl = document.getElementById('hotel-ledger-assigned');
+    const unassignedEl = document.getElementById('hotel-ledger-unassigned');
+    if (totalSalesEl) totalSalesEl.textContent = formatInrKpi(rollup.total_sales);
+    if (assignedEl) assignedEl.textContent = formatInrKpi(assigned);
+    if (unassignedEl) unassignedEl.textContent = formatInrKpi(unassigned);
+  }
+
+  function updateKpis(salesEntries){
+    const map = {
+      'actual-sales-kpi': salesEntries.total_sales,
+      'digital-transactions-kpi': (Number(salesEntries.card || 0) + Number(salesEntries.upi || 0)),
+      'cash-kpi': salesEntries.cash,
+      'expense-kpi': 0,
+      'sales-difference-kpi': Number(salesEntries.total_sales || 0)
+        - Number(salesEntries.cash || 0)
+        - Number(salesEntries.card || 0)
+        - Number(salesEntries.upi || 0)
+        - Number(salesEntries.room_credit || 0),
+    };
+    Object.keys(map).forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = formatInrKpi(map[id]);
+    });
+  }
+
+  function paymentOptionsHtml(selected){
+    return paymentModes.map(([value, label]) => {
+      const sel = value === selected ? ' selected' : '';
+      return `<option value="${value}"${sel}>${label}</option>`;
+    }).join('');
+  }
+
+  function renderLedger(entries){
+    const rollup = rollupFromEntries(entries);
+    updateSummary(rollup);
+    if (!ledgerWrap) return;
+    if (!entries || !entries.length){
+      ledgerWrap.innerHTML = '<div class="hotel-ledger-empty" id="hotel-ledger-empty">Upload an occupancy summary report to load room ledger lines. Set payment mode for each transaction after import.</div>';
+      return;
+    }
+    const rows = entries.map((entry) => {
+      const disabled = salesEntryLocked ? ' disabled' : '';
+      return `<tr data-ledger-id="${entry.id}">
+        <td class="hotel-ledger-room">${escapeHtml(entry.room)}</td>
+        <td class="hotel-ledger-guest">${escapeHtml(entry.guest_name || '—')}</td>
+        <td class="hotel-ledger-company">${escapeHtml(entry.company_name || '—')}</td>
+        <td class="hotel-ledger-plan">${escapeHtml(entry.room_plan || '—')}</td>
+        <td class="hotel-ledger-amount">${formatInrKpi(entry.amount)}</td>
+        <td class="hotel-ledger-payment">
+          <select class="hotel-ledger-payment-select" data-ledger-id="${entry.id}" aria-label="Payment mode for room ${escapeHtml(entry.room)}"${disabled}>
+            ${paymentOptionsHtml(entry.payment_mode || '')}
+          </select>
+        </td>
+      </tr>`;
+    }).join('');
+    ledgerWrap.innerHTML = `<table class="hotel-ledger-table" aria-label="Hotel sales ledger">
+      <thead><tr>
+        <th>Room</th><th>Guest</th><th>Company</th><th>Plan</th>
+        <th class="hotel-ledger-col-amount">Amount</th>
+        <th class="hotel-ledger-col-payment">Payment mode</th>
+      </tr></thead>
+      <tbody id="hotel-ledger-body">${rows}</tbody>
+    </table>`;
+    bindPaymentSelects();
+  }
+
+  function escapeHtml(value){
+    return String(value || '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[ch]));
+  }
+
+  async function saveLedgerPayment(entryId, paymentMode){
+    if (!widget || salesEntryLocked) return;
+    const resp = await fetch('{{ url_for("save_hotel_ledger") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: widget.dataset.company,
+        location: widget.dataset.location,
+        date: widget.dataset.date,
+        updates: [{ id: entryId, payment_mode: paymentMode }],
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save payment mode.');
+    if (data.sales_entries) updateKpis(data.sales_entries);
+    if (data.ledger_rollup) updateSummary(data.ledger_rollup);
+    if (statusEl) statusEl.textContent = 'Payment mode saved';
+  }
+
+  function scheduleSave(entryId, paymentMode){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        await saveLedgerPayment(entryId, paymentMode);
+      } catch (err) {
+        if (statusEl) statusEl.textContent = err.message || 'Save failed';
+      }
+    }, 350);
+  }
+
+  function bindPaymentSelects(){
+    document.querySelectorAll('.hotel-ledger-payment-select').forEach((select) => {
+      select.addEventListener('change', function(){
+        scheduleSave(Number(select.dataset.ledgerId), select.value);
+      });
+    });
+  }
+  bindPaymentSelects();
+
+  if (uploadInput) {
+    uploadInput.addEventListener('change', async function(){
+      if (!uploadInput.files || !uploadInput.files[0]) return;
+      if (statusEl) statusEl.textContent = 'Uploading report…';
+      const formData = new FormData();
+      formData.append('report_file', uploadInput.files[0]);
+      formData.append('company', widget?.dataset.company || '');
+      formData.append('location', widget?.dataset.location || 'Hotel');
+      formData.append('date', widget?.dataset.date || '');
+      try {
+        const resp = await fetch('{{ url_for("upload_hotel_occupancy_report") }}', { method: 'POST', body: formData });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'Upload failed');
+        renderLedger(data.ledger_entries || []);
+        if (data.sales_entries) updateKpis(data.sales_entries);
+        if (statusEl) statusEl.textContent = data.message || 'Report imported.';
+      } catch (err) {
+        if (statusEl) statusEl.textContent = err.message || 'Upload failed';
+      } finally {
+        uploadInput.value = '';
+      }
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', async function(){
+      if (!widget || salesEntryLocked) return;
+      if (!window.confirm('Clear all hotel sales ledger lines for this date?')) return;
+      if (statusEl) statusEl.textContent = 'Clearing…';
+      try {
+        const resp = await fetch('{{ url_for("clear_hotel_ledger") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            company: widget.dataset.company,
+            location: widget.dataset.location,
+            date: widget.dataset.date,
+          }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) throw new Error(data.error || 'Clear failed');
+        renderLedger([]);
+        if (data.sales_entries) updateKpis(data.sales_entries);
+        if (statusEl) statusEl.textContent = 'Ledger cleared';
+      } catch (err) {
+        if (statusEl) statusEl.textContent = err.message || 'Clear failed';
+      }
+    });
+  }
+})();
+</script>

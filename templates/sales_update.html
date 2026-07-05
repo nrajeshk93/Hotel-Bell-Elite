@@ -1,0 +1,1401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sales Update - Bar and Restaurant | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=5">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% macro se_field_icon(field_key) -%}
+{%- set cls = 'se-field-icon--slate' -%}
+{%- if field_key == 'total_sales' -%}{%- set cls = 'se-field-icon--blue' -%}
+{%- elif field_key == 'cancelled_bill' -%}{%- set cls = 'se-field-icon--rose' -%}
+{%- elif field_key == 'actual_sales' -%}{%- set cls = 'se-field-icon--emerald' -%}
+{%- elif field_key == 'card' -%}{%- set cls = 'se-field-icon--violet' -%}
+{%- elif field_key == 'room_credit' -%}{%- set cls = 'se-field-icon--amber' -%}
+{%- elif field_key == 'upi' -%}{%- set cls = 'se-field-icon--sky' -%}
+{%- elif field_key == 'cash' -%}{%- set cls = 'se-field-icon--emerald' -%}
+{%- endif -%}
+<span class="se-field-icon {{ cls }}" aria-hidden="true">
+{%- if field_key == 'total_sales' -%}
+<svg viewBox="0 0 24 24"><path d="M6 18V10"/><path d="M12 18V6"/><path d="M18 18v-5"/></svg>
+{%- elif field_key == 'cancelled_bill' -%}
+<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 8 8 8m0-8-8 8"/></svg>
+{%- elif field_key == 'actual_sales' -%}
+<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 8h5.5M9.5 11h5.5M13 8v8"/><path d="M9 16h4.5"/></svg>
+{%- elif field_key == 'cash' -%}
+<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><line x1="7" y1="10" x2="17" y2="10"/><line x1="7" y1="13" x2="17" y2="13"/><line x1="7" y1="16" x2="13" y2="16"/></svg>
+{%- elif field_key == 'card' -%}
+<svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l2-4h10l2 4v14"/><path d="M9 21v-4h6v4"/><rect x="8" y="9" width="3" height="3" rx=".5"/><rect x="13" y="9" width="3" height="3" rx=".5"/></svg>
+{%- elif field_key == 'room_credit' -%}
+<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M7 15h4M13 15h4"/></svg>
+{%- elif field_key == 'upi' -%}
+<svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M12 17h.01"/><path d="M9.5 7h5"/><path d="M10 10h4"/></svg>
+{%- else -%}
+<svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+{%- endif -%}
+</span>
+{%- endmacro %}
+
+{% macro se_row_more_icon() -%}
+<svg class="se-row-more-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="18" cy="12" r="2"/></svg>
+{%- endmacro %}
+
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+    {% with
+      page_title='Sales Update - Bar and Restaurant',
+      page_subtitle='Upload reports and record daily Bar & Restaurant sales.',
+      filter_form_action=url_for('sales_update_entry'),
+      include_cash_date_range=true
+    %}
+      {% include 'partials/sales_update_scope_header.html' %}
+    {% endwith %}
+
+
+    <section class="content se-content sr-kpi-canvas{% if sales_entry_locked %} se-content--locked{% endif %}">
+      {% if sales_entry_locked %}
+      <div class="se-lock-banner" role="status">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span>This date was already saved. Only administrators can change past sales entries.</span>
+      </div>
+      {% endif %}
+      <section class="sr-kpi-section" aria-label="Sales KPI summary">
+      {% with cash_card_action=true %}
+        {% include 'partials/sales_update_kpi_default_row.html' %}
+      {% endwith %}
+
+      <div class="sr-kpi-row sr-kpi-row--cash" id="sr-kpi-row-cash" hidden aria-label="Cash summary">
+        <article class="sr-kpi-card sr-kpi-card--emerald">
+          <div class="sr-kpi-top"><div class="sr-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="12" r="2"/></svg></div></div>
+          <div class="sr-kpi-main">
+            <div class="sr-kpi-label">Cash collected</div>
+            <div class="sr-kpi-value" id="cash-kpi-collected">{{ sales_record.cash_available | inr(0) }}</div>
+          </div>
+          <div class="sr-kpi-accent" aria-hidden="true"></div>
+        </article>
+        <article class="sr-kpi-card sr-kpi-card--blue">
+          <div class="sr-kpi-top"><div class="sr-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div></div>
+          <div class="sr-kpi-main">
+            <div class="sr-kpi-label">Transferred</div>
+            <div class="sr-kpi-value" id="cash-kpi-transferred">{{ sales_record.cash_transfer_total | inr(0) }}</div>
+          </div>
+          <div class="sr-kpi-accent" aria-hidden="true"></div>
+        </article>
+        <article class="sr-kpi-card sr-kpi-card--amber">
+          <div class="sr-kpi-top"><div class="sr-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M14 10h6M14 14h4"/></svg></div></div>
+          <div class="sr-kpi-main">
+            <div class="sr-kpi-label">Available Cash</div>
+            <div class="sr-kpi-value" id="cash-kpi-available">{{ sales_record.cash_unallocated | inr(0) }}</div>
+          </div>
+          <div class="sr-kpi-accent" aria-hidden="true"></div>
+        </article>
+      </div>
+
+      </section>
+
+      <div id="se-entry-panel" class="se-bottom-panel">
+      <div class="se-layout-main">
+      <div id="sales-entry-widget" hidden
+        data-company="{{ selected_company }}"
+        data-location="{{ selected_location }}"
+        data-date="{{ selected_date }}"
+        data-cash-collected="{{ cash_transfer_day_collected }}"
+        data-sales-admin="{{ '1' if sales_update_is_admin else '0' }}"
+        data-save-url="{{ url_for('save_sales_update') }}"
+        data-cash-transfer-add-url="{{ url_for('sales_update_add_cash_transfer') }}"
+        data-cash-transfer-delete-url="{{ url_for('sales_update_delete_cash_transfer') }}"
+        data-whatsapp-report-url="{{ url_for('sales_update_send_whatsapp_report') }}"
+        data-whatsapp-report-company="{{ whatsapp_sales_report_company }}"></div>
+      {% include 'partials/sales_update_petty_section.html' %}
+      <div class="se-sales-outlets-grid">
+      {% for outlet in selected_locations %}
+      {% set outlet_record = outlet_records[outlet] %}
+      {% set outlet_slug = outlet|lower|replace(' ', '-') %}
+      <article class="card se-panel se-sales-outlet-panel" data-sales-outlet="{{ outlet }}">
+        <div class="card-hdr se-panel-hdr">
+          <div class="card-title se-panel-title"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 14 3-3 3 2 5-6"/></svg>Sales Entry - {{ outlet }}</div>
+          <div class="se-panel-hdr-actions">
+            <label class="se-panel-upload-label" for="se-upload-{{ outlet_slug }}"{% if outlet_record.sales_entry_locked %} hidden{% endif %}>
+              <input type="file" id="se-upload-{{ outlet_slug }}" class="se-panel-upload-input" accept=".xlsx,.xls" data-upload-outlet="{{ outlet }}">
+              <span class="btn se-panel-upload-btn">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
+                Upload
+              </span>
+            </label>
+            <button type="button" class="btn se-clear-sales-entry-btn" id="se-clear-sales-entry-{{ outlet_slug }}" data-clear-outlet="{{ outlet }}" title="Clear all amounts in Sales Entry for {{ outlet }}" aria-label="Clear {{ outlet }} sales entry"{% if outlet_record.sales_entry_locked %} hidden{% endif %}>Clear</button>
+          </div>
+          <span class="se-panel-upload-status" id="se-upload-status-{{ outlet_slug }}" role="status" aria-live="polite"></span>
+        </div>
+        <div class="card-body se-panel-body">
+          <div class="entry-wrap">
+            <table class="entry-table" aria-label="Sales update entry table for {{ outlet }}">
+              <thead>
+                <tr>
+                  <th>Particulars</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for field_key, field_label in sales_entry_fields %}
+                <tr{% if field_key == 'bank_cheque' %} class="entry-row--bank"{% endif %}>
+                  <td class="entry-label se-entry-label-cell"><div class="se-entry-label-inner">{{ se_field_icon(field_key) }}<span>{{ field_label }}</span></div></td>
+                  <td class="entry-input-cell">
+                    <input type="number" min="0" step="0.01" value="{{ outlet_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="{{ outlet }}" data-entry-label="{{ field_label }}" aria-label="{{ outlet }} {{ field_label }} amount" class="se-entry-input--upload" readonly tabindex="-1">
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% if selected_company == whatsapp_sales_report_company and whatsapp_sales_report_configured and outlet == selected_location %}
+            <div class="sales-entry-whatsapp-actions">
+              <button type="button" class="sales-save-send-report-btn" id="save-send-whatsapp-report">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4z"/></svg>
+                Save and Send
+              </button>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+      </div>
+
+      </div>
+      </div>
+
+      <div id="se-cash-report-panel" class="se-bottom-panel" hidden>
+        <article class="card se-panel se-cash-report-card">
+          <div class="card-hdr se-panel-hdr">
+            <div class="card-title se-panel-title">
+              <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h6M14 14h4"/></svg>
+              Cash Report
+            </div>
+            <button type="button" class="btn se-btn-outline" id="se-cash-report-back">← Sales Entry</button>
+          </div>
+          <div class="card-body se-panel-body">
+            <p class="se-cash-report-copy">Record where cash collected for this day was sent — for example bank deposits or petty cash top-ups.</p>
+            <div class="se-cash-summary">
+              <div class="se-cash-summary-item">
+                <span class="se-cash-summary-label">Cash collected</span>
+                <span class="se-cash-summary-value" id="cash-report-collected">{{ sales_record.cash_available | inr(0) }}</span>
+              </div>
+              <div class="se-cash-summary-item">
+                <span class="se-cash-summary-label">Transferred</span>
+                <span class="se-cash-summary-value" id="cash-report-transferred">{{ sales_record.cash_transfer_total | inr(0) }}</span>
+              </div>
+              <div class="se-cash-summary-item se-cash-summary-item--highlight">
+                <span class="se-cash-summary-label">Available Cash</span>
+                <span class="se-cash-summary-value" id="cash-report-available">{{ sales_record.cash_unallocated | inr(0) }}</span>
+              </div>
+            </div>
+            <div class="se-cash-report-actions">
+              <button type="button" class="btn staff-primary" id="open-cash-transfer-form">+ Add cash transfer</button>
+            </div>
+            <div class="staff-credit-history se-cash-transfer-history">
+              <div class="staff-credit-history-head">
+                <div class="staff-credit-history-title">Transfers{% if cash_date_from != cash_date_to %} ({{ cash_date_from }} – {{ cash_date_to }}){% else %} for {{ selected_date }}{% endif %}</div>
+                <div class="staff-credit-history-total" id="cash-transfer-history-total">{{ sales_record.cash_transfer_total | inr(0) }}</div>
+              </div>
+              <div class="staff-credit-list" id="cash-transfer-list"></div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="modal-backdrop" id="cash-transfer-modal" aria-hidden="true">
+  <div class="staff-credit-box" role="dialog" aria-modal="true" aria-labelledby="cash-transfer-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M14 10h6M14 14h4"/></svg>
+      <span id="cash-transfer-title">Cash transfer</span>
+    </div>
+    <p class="staff-credit-copy">Record cash sent out of the till — bank deposit, petty cash, or other.</p>
+    <div id="cash-transfer-error" class="staff-credit-error"></div>
+    <div class="staff-field">
+      <label for="cash-transfer-destination">Where did the cash go? *</label>
+      <select id="cash-transfer-destination" class="staff-input">
+        {% for dest_key, dest_label in sales_cash_destinations.items() %}
+        <option value="{{ dest_key }}">{{ dest_label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="staff-field">
+      <label for="cash-transfer-description">Details</label>
+      <input id="cash-transfer-description" class="staff-input" type="text" placeholder="e.g. HDFC deposit, morning banking...">
+    </div>
+    <div class="staff-field">
+      <label for="cash-transfer-amount">Amount (₹) *</label>
+      <input id="cash-transfer-amount" class="staff-input" type="number" min="0.01" step="0.01" placeholder="e.g. 25000">
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn staff-primary" id="save-cash-transfer">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span id="cash-transfer-submit-label">Add transfer</span>
+      </button>
+      <button type="button" class="btn staff-secondary" id="cancel-cash-transfer">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=3"></script>
+<script>
+
+(function(){
+  var f = document.getElementById('sales-filter-form');
+  var co = document.getElementById('sales-company');
+  var loc = document.getElementById('sales-location');
+  if (!f || !co) return;
+  var panelInput = document.getElementById('se-filter-panel');
+  function submitScope(){
+    if (panelInput && panelInput.value === 'cash') {
+      var params = new URLSearchParams();
+      if (co) params.set('company', co.value);
+      if (loc) params.set('location', loc.value);
+      params.set('panel', 'cash');
+      var df = document.getElementById('se-filter-date-from');
+      var dt = document.getElementById('se-filter-date-to');
+      var day = document.getElementById('se-filter-date');
+      var fromVal = (df && df.value) || (day && day.value) || '';
+      var toVal = (dt && dt.value) || fromVal;
+      if (fromVal) params.set('date_from', fromVal);
+      if (toVal) params.set('date_to', toVal);
+      window.location.href = f.action + '?' + params.toString();
+      return;
+    }
+    if (panelInput) panelInput.value = '';
+    f.submit();
+  }
+  co.addEventListener('change', submitScope);
+  if (loc) loc.addEventListener('change', submitScope);
+})();
+
+(function(){
+  const wrap = document.getElementById('se-date-range-wrap');
+  const trigger = document.getElementById('se-date-range-trigger');
+  const backdrop = document.getElementById('se-date-range-backdrop');
+  const panel = document.getElementById('se-date-range-panel');
+  const display = document.getElementById('se-date-range-display');
+  const form = document.getElementById('sales-filter-form');
+  const dateInput = document.getElementById('se-filter-date');
+  const cancelBtn = document.getElementById('se-date-range-cancel');
+  const applyBtn = document.getElementById('se-date-range-apply');
+  const btnPrev = document.getElementById('se-cal-prev');
+  const btnNext = document.getElementById('se-cal-next');
+  const title0 = document.getElementById('se-cal-title0');
+  const grid0 = document.getElementById('se-cal-grid0');
+  if (!wrap || !trigger || !panel || !display || !form || !dateInput || !btnPrev || !btnNext || !title0 || !grid0) return;
+
+  const maxDateStr = (wrap.getAttribute('data-max-date') || '').trim();
+  const initial = (dateInput.value || wrap.getAttribute('data-initial-date') || '').trim();
+  const monthLong = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  function toIso(y, m0, d){ return y + '-' + pad(m0 + 1) + '-' + pad(d); }
+  function parseISO(s){
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const p = s.split('-').map(Number);
+    return { y: p[0], mo: p[1], d: p[2], t: new Date(p[0], p[1] - 1, p[2], 12, 0, 0) };
+  }
+  const maxParsed = parseISO(maxDateStr);
+  const maxDateObj = maxParsed ? maxParsed.t : null;
+
+  let selFrom = initial || '';
+  let selTo = initial || '';
+  const now = new Date();
+  let viewY = now.getFullYear();
+  let viewM = now.getMonth();
+  let openSnapshot = { from: '', to: '' };
+
+  const initAnchor = parseISO(initial || maxDateStr);
+  if (initAnchor) { viewY = initAnchor.y; viewM = initAnchor.mo - 1; }
+
+  const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmt(iso){
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—';
+    const p = parseISO(iso);
+    return p.d + ' ' + monthShort[p.mo - 1] + ', ' + p.y;
+  }
+  function compareIso(a, b){
+    if (!a || !b) return 0;
+    return a < b ? -1 : (a > b ? 1 : 0);
+  }
+  function refreshTriggerText(){
+    if (selFrom && selTo && selFrom !== selTo) display.textContent = fmt(selFrom) + ' – ' + fmt(selTo);
+    else if (selFrom) display.textContent = fmt(selFrom);
+    else display.textContent = 'Select date';
+  }
+
+  function addMonth(y, m0, delta){
+    const t = new Date(y, m0 + delta, 1);
+    return { y: t.getFullYear(), m: t.getMonth() };
+  }
+  function daysInMonth(y, m0){ return new Date(y, m0 + 1, 0).getDate(); }
+  function monthLabel(y, m0){ return monthLong[m0] + ' ' + y; }
+
+  function rangeLoHi(){
+    if (!selFrom) return { lo: null, hi: null };
+    if (!selTo) return { lo: selFrom, hi: selFrom };
+    return compareIso(selFrom, selTo) <= 0 ? { lo: selFrom, hi: selTo } : { lo: selTo, hi: selFrom };
+  }
+
+  function cellClassList(iso){
+    const cls = ['an-cal-cell'];
+    if (maxDateStr && compareIso(iso, maxDateStr) > 0) {
+      cls.push('an-cal-disabled');
+      return cls;
+    }
+    const { lo, hi } = rangeLoHi();
+    if (!lo) return cls;
+    if (lo === hi && iso === lo) {
+      cls.push('an-cal-range-start', 'an-cal-range-end');
+      return cls;
+    }
+    if (iso === lo) cls.push('an-cal-range-start');
+    else if (iso === hi) cls.push('an-cal-range-end');
+    else if (compareIso(iso, lo) > 0 && compareIso(iso, hi) < 0) cls.push('an-cal-inrange');
+    return cls;
+  }
+
+  function fillGrid(gridEl, y, m0){
+    gridEl.textContent = '';
+    const dim = daysInMonth(y, m0);
+    const firstDow = (new Date(y, m0, 1).getDay() + 6) % 7;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < firstDow; i++) {
+      const el = document.createElement('div');
+      el.className = 'an-cal-cell an-cal-pad';
+      frag.appendChild(el);
+    }
+    for (let d = 1; d <= dim; d++) {
+      const isoStr = toIso(y, m0, d);
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.dataset.iso = isoStr;
+      el.textContent = String(d);
+      const list = cellClassList(isoStr);
+      el.className = list.join(' ');
+      if (list.indexOf('an-cal-disabled') !== -1) el.disabled = true;
+      frag.appendChild(el);
+    }
+    const used = firstDow + dim;
+    const tail = (7 - (used % 7)) % 7;
+    for (let i = 0; i < tail; i++) {
+      const el = document.createElement('div');
+      el.className = 'an-cal-cell an-cal-pad';
+      frag.appendChild(el);
+    }
+    gridEl.appendChild(frag);
+  }
+
+  function updateNextDisabled(){
+    if (!maxDateObj) { btnNext.disabled = false; return; }
+    const nextLeft = new Date(viewY, viewM + 1, 1);
+    btnNext.disabled = nextLeft > maxDateObj;
+  }
+
+  function renderCalendars(){
+    title0.textContent = monthLabel(viewY, viewM);
+    fillGrid(grid0, viewY, viewM);
+    updateNextDisabled();
+  }
+
+  function onDayClick(iso){
+    if (maxDateStr && compareIso(iso, maxDateStr) > 0) return;
+    if (!selFrom || (selFrom && selTo)) {
+      selFrom = iso;
+      selTo = '';
+    } else {
+      if (compareIso(iso, selFrom) < 0) { selTo = selFrom; selFrom = iso; }
+      else selTo = iso;
+    }
+    renderCalendars();
+    refreshTriggerText();
+  }
+
+  function openPanel(){
+    openSnapshot = { from: dateInput.value, to: dateInput.value };
+    selFrom = openSnapshot.from;
+    selTo = openSnapshot.to;
+    const v = parseISO(selFrom || maxDateStr);
+    if (v) { viewY = v.y; viewM = v.mo - 1; }
+    wrap.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
+    panel.removeAttribute('hidden');
+    renderCalendars();
+    refreshTriggerText();
+    requestAnimationFrame(function(){
+      if (window.SalesDateRangePicker && SalesDateRangePicker.positionPanel) {
+        SalesDateRangePicker.positionPanel(trigger, panel);
+      }
+    });
+  }
+  function closePanel(){
+    selFrom = openSnapshot.from;
+    selTo = openSnapshot.to;
+    refreshTriggerText();
+    wrap.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+    panel.setAttribute('hidden', 'hidden');
+    if (window.SalesDateRangePicker && SalesDateRangePicker.clearPanelPosition) {
+      SalesDateRangePicker.clearPanelPosition(panel);
+    }
+  }
+
+  function repositionEntryDatePanel(){
+    if (wrap.classList.contains('open') && window.SalesDateRangePicker && SalesDateRangePicker.positionPanel) {
+      SalesDateRangePicker.positionPanel(trigger, panel);
+    }
+  }
+  window.addEventListener('resize', repositionEntryDatePanel);
+  window.addEventListener('scroll', repositionEntryDatePanel, true);
+
+  panel.addEventListener('click', function(e){
+    const btn = e.target.closest('button[data-iso]');
+    if (!btn || btn.disabled) return;
+    onDayClick(btn.getAttribute('data-iso'));
+  });
+  btnPrev.addEventListener('click', function(){
+    const p = addMonth(viewY, viewM, -1);
+    viewY = p.y;
+    viewM = p.m;
+    renderCalendars();
+  });
+  btnNext.addEventListener('click', function(){
+    if (btnNext.disabled) return;
+    const p = addMonth(viewY, viewM, 1);
+    viewY = p.y;
+    viewM = p.m;
+    renderCalendars();
+  });
+
+  trigger.addEventListener('click', function(e){
+    e.stopPropagation();
+    if (wrap.classList.contains('open')) closePanel();
+    else openPanel();
+  });
+  if (backdrop) backdrop.addEventListener('click', closePanel);
+  if (cancelBtn) cancelBtn.addEventListener('click', closePanel);
+  if (applyBtn) applyBtn.addEventListener('click', function(){
+    if (!selFrom) return;
+    if (!selTo) selTo = selFrom;
+    var lo = selFrom;
+    var hi = selTo;
+    if (compareIso(lo, hi) > 0) { lo = selTo; hi = selFrom; }
+    dateInput.value = hi;
+    var panelInput = document.getElementById('se-filter-panel');
+    var df = document.getElementById('se-filter-date-from');
+    var dt = document.getElementById('se-filter-date-to');
+    if (df) df.value = hi;
+    if (dt) dt.value = hi;
+    if (panelInput) panelInput.value = '';
+    closePanel();
+    form.submit();
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && wrap.classList.contains('open')) closePanel();
+  });
+
+  refreshTriggerText();
+})();
+</script>
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script>
+SalesDateRangePicker.init({
+  wrapId: 'se-cash-date-range-wrap',
+  triggerId: 'se-cash-date-trigger',
+  backdropId: 'se-cash-date-backdrop',
+  panelId: 'se-cash-date-panel',
+  displayId: 'se-cash-date-display',
+  formId: 'sales-filter-form',
+  fromInputId: 'se-filter-date-from',
+  toInputId: 'se-filter-date-to',
+  cancelId: 'se-cash-date-cancel',
+  applyId: 'se-cash-date-apply',
+  prevId: 'se-cash-cal-prev',
+  nextId: 'se-cash-cal-next',
+  title0Id: 'se-cash-cal-title0',
+  title1Id: 'se-cash-cal-title1',
+  grid0Id: 'se-cash-cal-grid0',
+  grid1Id: 'se-cash-cal-grid1',
+  onBeforeSubmit: function(form) {
+    var panelInput = document.getElementById('se-filter-panel');
+    if (panelInput) panelInput.value = 'cash';
+  }
+});
+</script>
+<script>
+(function(){
+  document.querySelectorAll('.se-petty-outlet-panel').forEach((pettyCard) => {
+    const outletSlug = pettyCard.id.replace('petty-cash-card-', '');
+    const pettyToggle = pettyCard.querySelector('.petty-cash-toggle');
+    const pettyBody = document.getElementById(`petty-cash-card-body-${outletSlug}`);
+    if (!pettyToggle || !pettyBody) return;
+    const storageKey = `sales-petty-cash-collapsed-${outletSlug}`;
+    function setPettyCollapsed(collapsed){
+      pettyCard.classList.toggle('petty-cash-collapsed', collapsed);
+      pettyToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      pettyToggle.title = collapsed ? 'Expand Petty Cash' : 'Collapse Petty Cash';
+      localStorage.setItem(storageKey, collapsed ? '1' : '0');
+    }
+    setPettyCollapsed(localStorage.getItem(storageKey) === '1');
+    pettyToggle.addEventListener('click', function(){
+      setPettyCollapsed(pettyCard.classList.contains('petty-cash-collapsed') ? false : true);
+    });
+  });
+})();
+
+(function(){
+  let cashTransferEntries = {{ sales_record.cash_transfer_entries|default([])|tojson }};
+  let cashCollectedAmount = Number({{ sales_record.cash_available|default(0)|tojson }} || 0);
+  let cashTransferDayAvailable = Number({{ cash_transfer_day_available|default(0)|tojson }} || 0);
+  const cashKpiOpenBtn = document.getElementById('sr-kpi-cash-open');
+  const entryPanel = document.getElementById('se-entry-panel');
+  const cashReportPanel = document.getElementById('se-cash-report-panel');
+  const cashReportPanelDefaultHidden = cashReportPanel ? cashReportPanel.hasAttribute('hidden') : true;
+  const cashReportBackBtn = document.getElementById('se-cash-report-back');
+  const kpiRowDefault = document.getElementById('sr-kpi-row-default');
+  const kpiRowCash = document.getElementById('sr-kpi-row-cash');
+  const kpiNoteDefault = document.getElementById('sr-kpi-note-default');
+  const cashKpiCollectedEl = document.getElementById('cash-kpi-collected');
+  const cashKpiTransferredEl = document.getElementById('cash-kpi-transferred');
+  const cashKpiAvailableEl = document.getElementById('cash-kpi-available');
+  const cashReportCollectedEl = document.getElementById('cash-report-collected');
+  const cashReportTransferredEl = document.getElementById('cash-report-transferred');
+  const cashReportAvailableEl = document.getElementById('cash-report-available');
+  const entryDateWrap = document.getElementById('se-date-entry-wrap');
+  const cashDateWrap = document.getElementById('se-cash-date-range-wrap');
+  const filterPanelInput = document.getElementById('se-filter-panel');
+  const cashTransferHistoryTotal = document.getElementById('cash-transfer-history-total');
+  const cashTransferList = document.getElementById('cash-transfer-list');
+  const openCashTransferFormBtn = document.getElementById('open-cash-transfer-form');
+  const cashTransferModal = document.getElementById('cash-transfer-modal');
+  const saveCashTransferBtn = document.getElementById('save-cash-transfer');
+  const cancelCashTransferBtn = document.getElementById('cancel-cash-transfer');
+  const cashTransferSubmitLabel = document.getElementById('cash-transfer-submit-label');
+  const cashTransferDestination = document.getElementById('cash-transfer-destination');
+  const cashTransferDescription = document.getElementById('cash-transfer-description');
+  const cashTransferAmount = document.getElementById('cash-transfer-amount');
+  const cashTransferError = document.getElementById('cash-transfer-error');
+  let editingCashTransferId = null;
+
+  function refreshCashReportSummary(transferTotal, unallocated) {
+    const transferred = transferTotal != null ? Number(transferTotal) : cashTransferEntries.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const available = unallocated != null ? Number(unallocated) : Math.max(0, cashCollectedAmount - transferred);
+    const collectedText = formatKpiInr(cashCollectedAmount);
+    const transferredText = formatKpiInr(transferred);
+    const availableText = formatKpiInr(available);
+    if (cashReportCollectedEl) cashReportCollectedEl.textContent = collectedText;
+    if (cashReportTransferredEl) cashReportTransferredEl.textContent = transferredText;
+    if (cashReportAvailableEl) cashReportAvailableEl.textContent = availableText;
+    if (cashKpiCollectedEl) cashKpiCollectedEl.textContent = collectedText;
+    if (cashKpiTransferredEl) cashKpiTransferredEl.textContent = transferredText;
+    if (cashKpiAvailableEl) cashKpiAvailableEl.textContent = availableText;
+    if (cashTransferHistoryTotal) cashTransferHistoryTotal.textContent = formatKpiInr(transferred);
+  }
+  function cashTransferMaxAmount() {
+    const transferred = cashTransferEntries.reduce((s, r) => s + Number(r.amount || 0), 0);
+    let editingAmount = 0;
+    if (editingCashTransferId) {
+      const row = cashTransferEntries.find((item) => String(item.id) === String(editingCashTransferId));
+      editingAmount = Number(row?.amount || 0);
+    }
+    return Math.max(0, cashTransferDayAvailable + editingAmount);
+  }
+  function showCashTransferError(message) {
+    if (!cashTransferError) return;
+    cashTransferError.textContent = message || '';
+    cashTransferError.style.display = message ? 'block' : 'none';
+  }
+  function renderCashTransferEntries(entries) {
+    cashTransferEntries = Array.isArray(entries) ? entries : [];
+    const total = cashTransferEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    refreshCashReportSummary(total, Math.max(0, cashCollectedAmount - total));
+    if (!cashTransferList) return;
+    if (!cashTransferEntries.length) {
+      cashTransferList.innerHTML = '<div class="staff-credit-empty">No cash transfers recorded for this date.</div>';
+      return;
+    }
+    cashTransferList.innerHTML = cashTransferEntries.map((row) => {
+      const id = escapeHtml(row.id);
+      const label = escapeHtml(row.destination_label || row.description || 'Transfer');
+      const desc = escapeHtml(row.description || '');
+      const dateLine = row.sales_date ? `<div class="staff-credit-desc">${escapeHtml(row.sales_date)}</div>` : '';
+      const detail = desc && label !== desc ? `<div class="staff-credit-desc">${desc}</div>` : dateLine;
+      const controls = isEntryLocked()
+        ? ''
+        : `<div class="staff-credit-controls"><button type="button" class="staff-credit-action" data-cash-transfer-action="edit" data-cash-transfer-id="${id}">Edit</button><button type="button" class="staff-credit-action danger" data-cash-transfer-action="delete" data-cash-transfer-id="${id}">Delete</button></div>`;
+      return `<div class="staff-credit-row" data-cash-transfer-id="${id}"><div class="staff-credit-info"><div class="staff-credit-name">${label}</div>${detail}</div><div class="staff-credit-amount">${formatKpiInr(row.amount)}</div>${controls}</div>`;
+    }).join('');
+  }
+
+  const salesEntryTotalKeys = new Set({{ sales_entry_total_keys|tojson }});
+  const salesDigitalKeys = new Set({{ sales_digital_transaction_keys|tojson }});
+  const salesCompanyLocations = {{ sales_company_locations|tojson }};
+  const widget = document.getElementById('sales-entry-widget');
+  const actualSalesKpi = document.getElementById('actual-sales-kpi');
+  const digitalKpi = document.getElementById('digital-transactions-kpi');
+  const cashKpi = document.getElementById('cash-kpi');
+  const expenseKpi = document.getElementById('expense-kpi');
+  const differenceKpi = document.getElementById('sales-difference-kpi');
+  const inputs = Array.from(document.querySelectorAll('[data-denomination]'));
+  const entryInputs = Array.from(document.querySelectorAll('[data-sales-entry]'));
+  const salesOutlets = {{ selected_locations|tojson }};
+  function outletSlug(location) {
+    return String(location || '').toLowerCase().replace(/\s+/g, '-');
+  }
+  const cashInputs = [];
+  function pettyTotalEl(location){
+    return document.getElementById(`petty-cash-total-${outletSlug(location)}`);
+  }
+  function pettyWrap(location){
+    return document.querySelector(`[data-petty-location="${location}"]`);
+  }
+  const openCashModalBtn = null;
+  const openStaffModalBtn = null;
+  const saveStaffCreditBtn = null;
+  let staffCreditEntries = [];
+  let staffRepaymentEntries = [];
+  const staffCreditError = null;
+  const staffCreditAmount = null;
+  const staffCreditDescription = null;
+  const staffCreditEmployee = null;
+  const staffCreditList = null;
+  const staffRepaymentList = null;
+  const staffCreditTypeCreditBtn = null;
+  const staffCreditTypeRepaymentBtn = null;
+  const staffCreditTxnInput = null;
+  const staffCreditTitle = null;
+  const staffCreditCopy = null;
+  const staffCreditCashNote = null;
+  const staffCreditHistoryTotal = null;
+  const staffRepaymentHistoryTotal = null;
+  const staffCreditSubmitLabel = null;
+  const closeStaffModalBtn = null;
+  const cancelStaffModalBtn = null;
+  const staffModal = null;
+  const staffSdTrigger = null;
+  const staffSdPanel = null;
+  const staffSdSearch = null;
+  const staffSdItems = [];
+  const staffSdEmpty = null;
+  function renderStaffCreditEntries() {}
+  function renderStaffRepaymentEntries() {}
+  function applyStaffCreditApiData() {}
+  function updateStaffAccount() {}
+  function showStaffCreditError() {}
+  function staffLedgerRowHtml() { return ''; }
+  function setStaffCreditTxnType() {}
+  function closeStaffEmployeePanel() {}
+  function openStaffEmployeePanel() {}
+  function filterStaffEmployees() {}
+  function selectStaffEmployee() {}
+  function openStaffCreditModal() {}
+  function closeStaffCreditModal() {}
+  function resetStaffCreditForm() {}
+  function editStaffCredit() {}
+  async function performStaffCreditDelete() {}
+  async function deleteStaffCredit() {}
+  async function submitStaffCredit() {}
+  const openExpenseModalBtn = null;
+  function renderExpenseEntries() {}
+  function updateExpenseTotal() {}
+  function closeExpenseModal() {}
+  function resetExpenseForm() {}
+  async function performExpenseDelete() {}
+  async function deleteExpense() {}
+  async function submitExpense() {}
+  const openUnpaidBillBtn = null;
+  function renderUnpaidBillEntries() {}
+  function updateUnpaidBillTotal() {}
+  function closeUnpaidBillModal() {}
+  function resetUnpaidBillForm() {}
+  async function performUnpaidBillDelete() {}
+  const openBillPaymentBtn = null;
+  function renderBillPaymentEntries() {}
+  function renderBillPaymentPicker() {}
+  function updateBillPaymentTotal() {}
+  function closeBillPaymentModal() {}
+  async function performBillPaymentDelete() {}
+  async function deleteBillPayment() {}
+  async function submitBillPayment() {}
+  function closeBillPaymentPickerPanel() {}
+  const saveState = document.getElementById('petty-save-state');
+  const clearSalesEntryBtn = document.getElementById('se-clear-sales-entry');
+  const saveSendWhatsappReportBtn = document.getElementById('save-send-whatsapp-report');
+  const salesUpdateIsAdmin = widget?.dataset.salesAdmin === '1';
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const entryLockedMessage = 'This date was already saved. Only administrators can change past sales entries.';
+  let saveTimer = null;
+  let editingStaffCreditId = null;
+  let editingStaffRepaymentId = null;
+  let staffCreditTxnType = 'credit';
+  function isEntryLocked(location){
+    if (location) {
+      const wrap = pettyWrap(location);
+      return wrap?.dataset.entryLocked === '1';
+    }
+    return salesOutlets.some((loc) => isEntryLocked(loc));
+  }
+  function applyEntryLock(){
+    salesOutlets.forEach((location) => {
+      if (!isEntryLocked(location)) return;
+      inputs
+        .filter((input) => input.dataset.pettyLocation === location)
+        .forEach((input) => { input.readOnly = true; input.disabled = true; });
+      entryInputs
+        .filter((input) => input.dataset.salesLocation === location)
+        .forEach((input) => { input.readOnly = true; input.disabled = true; });
+      const clearBtn = document.querySelector(`[data-clear-outlet="${location}"]`);
+      if (clearBtn) {
+        clearBtn.disabled = true;
+        clearBtn.hidden = true;
+      }
+    });
+    if (salesOutlets.some((loc) => isEntryLocked(loc))) {
+      [openStaffModalBtn, openUnpaidBillBtn].forEach((btn) => {
+        if (btn) {
+          btn.disabled = true;
+          btn.setAttribute('aria-disabled', 'true');
+        }
+      });
+      if (saveStaffCreditBtn) saveStaffCreditBtn.disabled = true;
+      if (staffCreditAmount) staffCreditAmount.disabled = true;
+      if (staffCreditDescription) staffCreditDescription.disabled = true;
+      if (staffSdTrigger) staffSdTrigger.disabled = true;
+      if (saveState && !saveState.classList.contains('err')) {
+        setSaveState('View only — past date already saved', 'ok');
+      }
+    }
+  }
+  function lockEntryAfterPastSave(){
+    if (!widget || salesUpdateIsAdmin) return;
+    if (widget.dataset.date >= todayIso) return;
+    salesOutlets.forEach((location) => {
+      const wrap = pettyWrap(location);
+      if (wrap) wrap.dataset.entryLocked = '1';
+    });
+    applyEntryLock();
+    renderStaffCreditEntries(staffCreditEntries);
+    renderStaffRepaymentEntries(staffRepaymentEntries);
+  }
+  function guardEntryEditable(location){
+    if (!isEntryLocked(location)) return true;
+    setSaveState(entryLockedMessage, 'err');
+    return false;
+  }
+  function formatAmount(value){
+    const amount = Number(value || 0);
+    return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+  }
+  const formatKpiInr = (value, dec) => formatInr(value, dec ?? 0);
+  const formatKpiNum = (value) => formatNum(value, 0);
+  function escapeHtml(value){
+    return String(value || '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[ch]));
+  }
+  function setSaveState(text, className){
+    if (!saveState) return;
+    saveState.textContent = text;
+    saveState.className = `save-state ${className || ''}`.trim();
+  }
+  function buildCounts(location){
+    const counts = {};
+    inputs
+      .filter((input) => input.dataset.pettyLocation === location)
+      .forEach((input) => {
+        const denomination = String(input.dataset.denomination || '');
+        counts[denomination] = Math.max(0, Math.trunc(Number(input.value || 0)));
+      });
+    return counts;
+  }
+  function salesEntryAmount(input){
+    const key = String(input.dataset.salesEntry || '');
+    const raw = Math.round(Number(input.value || 0) * 100) / 100;
+    return Math.max(0, raw);
+  }
+  function buildSalesEntries(location){
+    const entries = {};
+    entryInputs
+      .filter((input) => input.dataset.salesLocation === location)
+      .forEach((input) => {
+        const key = String(input.dataset.salesEntry || '');
+        entries[key] = salesEntryAmount(input);
+      });
+    return entries;
+  }
+  function buildCashDenominations(){
+    const counts = {};
+    cashInputs.forEach((input) => {
+      const denomination = String(input.dataset.cashDenomination || '');
+      counts[denomination] = Math.max(0, Math.trunc(Number(input.value || 0)));
+    });
+    return counts;
+  }
+  function entryInput(key, location){
+    const loc = location || (widget && widget.dataset.location) || '';
+    return entryInputs.find((input) =>
+      input.dataset.salesEntry === key && (!loc || input.dataset.salesLocation === loc)
+    );
+  }
+  function sumAcrossOutlets(fieldKey){
+    return salesOutlets.reduce((sum, loc) => {
+      const inp = entryInput(fieldKey, loc);
+      return sum + Math.max(0, Math.round(Number(inp?.value || 0) * 100) / 100);
+    }, 0);
+  }
+  function syncSelectedLocationCash(){
+    const total = sumAcrossOutlets('cash');
+    cashCollectedAmount = total;
+    if (widget) widget.dataset.cashCollected = String(cashCollectedAmount);
+    return total;
+  }
+  function enforceCancelledBillLimit(){
+    const quantoInput = entryInput('total_sales_from_quanto');
+    const cancelledInput = entryInput('cancelled_bill');
+    if (!cancelledInput) return false;
+    const quanto = Math.max(0, Math.round(Number(quantoInput?.value || 0) * 100) / 100);
+    const cancelled = Math.max(0, Math.round(Number(cancelledInput.value || 0) * 100) / 100);
+    const maxCancelled = quanto > 0 ? Math.max(0, Math.round((quanto - 0.01) * 100) / 100) : 0;
+    if (cancelled > maxCancelled) {
+      cancelledInput.value = formatAmount(maxCancelled);
+      return true;
+    }
+    return false;
+  }
+  function calculateActualSales(){
+    const actual = sumAcrossOutlets('total_sales');
+    if (actualSalesKpi) actualSalesKpi.textContent = formatKpiInr(actual);
+    return actual;
+  }
+  function salesEntryValidationMessage(){
+    return '';
+  }
+  function updateCashDenominations(){
+    syncSelectedLocationCash();
+    const totalCash = sumAcrossOutlets('cash');
+    if (cashKpi) cashKpi.textContent = formatKpiInr(totalCash);
+    return totalCash;
+  }
+  function formatRepaymentInr(amount){
+    const value = Math.max(0, Number(amount) || 0);
+    if (!value) return formatKpiInr(0);
+    const formatted = formatKpiInr(value);
+    return formatted.startsWith('−') || formatted.startsWith('-')
+      ? formatted
+      : `−${formatted}`;
+  }
+  function updatePettyCash(){
+    salesOutlets.forEach((location) => {
+      let total = 0;
+      inputs
+        .filter((input) => input.dataset.pettyLocation === location)
+        .forEach((input) => {
+          const denomination = Number(input.dataset.denomination || 0);
+          const count = Math.max(0, Math.trunc(Number(input.value || 0)));
+          if (String(count) !== input.value && input.value !== '') input.value = count;
+          const rowTotal = denomination * count;
+          total += rowTotal;
+          const rowTotalEl = input.closest('tr').querySelector('[data-row-total]');
+          if (rowTotalEl) rowTotalEl.textContent = formatKpiNum(rowTotal);
+        });
+      const totalEl = pettyTotalEl(location);
+      if (totalEl) totalEl.textContent = formatKpiNum(total);
+    });
+  }
+  function updateSalesEntries(){
+    updateCashDenominations();
+    calculateActualSales();
+    let digital = 0;
+    salesOutlets.forEach((loc) => {
+      entryInputs
+        .filter((input) => input.dataset.salesLocation === loc)
+        .forEach((input) => {
+          const key = String(input.dataset.salesEntry || '');
+          if (salesDigitalKeys.has(key)) digital += salesEntryAmount(input);
+        });
+    });
+    if (digitalKpi) digitalKpi.textContent = formatKpiInr(digital, 0);
+    let paymentTotal = 0;
+    salesOutlets.forEach((loc) => {
+      entryInputs
+        .filter((input) => input.dataset.salesLocation === loc)
+        .forEach((input) => {
+          const key = String(input.dataset.salesEntry || '');
+          if (salesEntryTotalKeys.has(key)) paymentTotal += salesEntryAmount(input);
+        });
+    });
+    const actual = sumAcrossOutlets('total_sales');
+    const diff = Math.round((actual - paymentTotal) * 100) / 100;
+    if (differenceKpi) differenceKpi.textContent = formatKpiInr(diff);
+  }
+  function attachZeroClearBehavior(input){
+    if (input.readOnly) return;
+    input.addEventListener('focus', () => {
+      if (Number(input.value || 0) === 0) input.value = '';
+    });
+    input.addEventListener('blur', () => {
+      if (input.value === '') input.value = '0';
+      updateSalesEntries();
+    });
+  }
+  function attachCountZeroClearBehavior(input){
+    function clearZeroCount(){
+      if (Number(input.value || 0) === 0) input.value = '';
+    }
+    input.addEventListener('focus', clearZeroCount);
+    input.addEventListener('click', clearZeroCount);
+    input.addEventListener('blur', () => {
+      if (input.value === '') input.value = '0';
+      updateCashDenominations();
+      updateSalesEntries();
+    });
+  }
+  async function savePettyCash(){
+    if (!widget) return;
+    const editableOutlets = salesOutlets.filter((loc) => !isEntryLocked(loc));
+    if (!editableOutlets.length) {
+      guardEntryEditable(salesOutlets[0]);
+      return;
+    }
+    updatePettyCash();
+    updateSalesEntries();
+    const validationMessage = salesEntryValidationMessage();
+    if (validationMessage) {
+      setSaveState(validationMessage, 'err');
+      return;
+    }
+    setSaveState('Saving...', '');
+    try {
+      let data = {};
+      for (const location of editableOutlets) {
+        const payload = {
+          company: widget.dataset.company,
+          location,
+          date: widget.dataset.date,
+          sales_entries: buildSalesEntries(location),
+          petty_cash_counts: buildCounts(location),
+        };
+        const resp = await fetch(widget.dataset.saveUrl, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || 'Could not save petty cash.');
+        }
+        const totalEl = pettyTotalEl(location);
+        if (totalEl && data.petty_cash_total != null) {
+          totalEl.textContent = formatKpiNum(data.petty_cash_total);
+        }
+      }
+      updateSalesEntries();
+      syncSelectedLocationCash();
+      refreshCashReportSummary();
+      lockEntryAfterPastSave();
+      setSaveState(
+        salesOutlets.every((loc) => isEntryLocked(loc))
+          ? 'Saved. This date is now locked for editing.'
+          : `Saved for ${data.date || widget.dataset.date}`,
+        'ok'
+      );
+    } catch (err) {
+      setSaveState(`Save failed: ${err.message}`, 'err');
+    }
+  }
+  function scheduleSave(location){
+    if (!guardEntryEditable(location)) return;
+    clearTimeout(saveTimer);
+    const validationMessage = salesEntryValidationMessage();
+    if (validationMessage) {
+      setSaveState(validationMessage, 'err');
+      return;
+    }
+    setSaveState('Unsaved changes...', '');
+    saveTimer = setTimeout(savePettyCash, 450);
+  }
+  async function clearSalesEntryPanel(outlet){
+    if (!widget) return;
+    if (!guardEntryEditable(outlet)) return;
+    const outletLabel = outlet || 'this outlet';
+    if (!window.confirm(`Clear all amounts in Sales Entry for ${outletLabel}? This resets uploaded amounts. Petty Cash is not changed.`)) return;
+    const clearBtn = document.querySelector(`[data-clear-outlet="${outlet}"]`);
+    clearTimeout(saveTimer);
+    if (clearBtn) clearBtn.disabled = true;
+    try {
+      entryInputs
+        .filter((input) => input.dataset.salesLocation === outlet)
+        .forEach((input) => { input.value = '0'; });
+      closeStaffCreditModal();
+      resetStaffCreditForm();
+      updateCashDenominations();
+      updateSalesEntries();
+      await savePettyCash();
+    } catch (err) {
+      setSaveState(`Clear failed: ${err.message}`, 'err');
+    } finally {
+      if (clearBtn) clearBtn.disabled = false;
+    }
+  }
+  document.querySelectorAll('[data-clear-outlet]').forEach((btn) => {
+    btn.addEventListener('click', () => clearSalesEntryPanel(btn.dataset.clearOutlet));
+  });
+  inputs.forEach((input) => {
+    if (!input.readOnly) {
+      input.addEventListener('focus', () => {
+        if (Number(input.value || 0) === 0) input.value = '';
+      });
+      input.addEventListener('click', () => {
+        if (Number(input.value || 0) === 0) input.value = '';
+      });
+      input.addEventListener('blur', () => {
+        if (input.value === '') input.value = '0';
+        updatePettyCash();
+        scheduleSave(input.dataset.pettyLocation);
+      });
+    }
+    input.addEventListener('input', () => {
+      updatePettyCash();
+      scheduleSave(input.dataset.pettyLocation);
+    });
+  });
+  document.addEventListener('click', (event) => {
+    const staffPicker = document.getElementById('staff-sd-wrap');
+    if (staffPicker && !staffPicker.contains(event.target)) closeStaffEmployeePanel();
+  });
+  updatePettyCash();
+  updateCashDenominations();
+  updateSalesEntries();
+
+  async function handleReportUpload(fileInput, statusEl){
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
+    const outlet = fileInput.dataset.uploadOutlet || '';
+    if (statusEl) statusEl.textContent = 'Uploading report…';
+    const formData = new FormData();
+    formData.append('report_file', fileInput.files[0]);
+    formData.append('date', (widget && widget.dataset.date) || '');
+    formData.append('location', outlet || (widget && widget.dataset.location) || '');
+    try {
+      const resp = await fetch('/sales_update/upload_report', { method: 'POST', body: formData });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Upload failed');
+      salesOutlets.forEach((loc) => {
+        const active = data[loc.toLowerCase()];
+        if (!active) return;
+        Object.keys(active).forEach((key) => {
+          const inp = entryInput(key, loc);
+          if (inp) inp.value = formatAmount(active[key]);
+        });
+      });
+      updateSalesEntries();
+      const message = data.message || 'Report imported.';
+      if (statusEl) statusEl.textContent = message;
+      scheduleSave();
+    } catch (err) {
+      const message = err.message || 'Upload failed.';
+      if (statusEl) statusEl.textContent = message;
+    }
+  }
+
+  document.querySelectorAll('.se-panel-upload-input').forEach((input) => {
+    input.addEventListener('change', async function(){
+      const slug = outletSlug(input.dataset.uploadOutlet || '');
+      const statusEl = document.getElementById(`se-upload-status-${slug}`);
+      await handleReportUpload(input, statusEl);
+      input.value = '';
+    });
+  });
+
+  function syncCashDateRangeDisplay() {
+    const df = document.getElementById('se-filter-date-from');
+    const dt = document.getElementById('se-filter-date-to');
+    const disp = document.getElementById('se-cash-date-display');
+    if (!disp || !df || !dt) return;
+    const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    function fmt(iso) {
+      if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—';
+      const p = iso.split('-').map(Number);
+      return p[2] + ' ' + monthShort[p[1] - 1] + ', ' + p[0];
+    }
+    if (df.value && dt.value && df.value !== dt.value) disp.textContent = fmt(df.value) + ' – ' + fmt(dt.value);
+    else if (df.value) disp.textContent = fmt(df.value);
+    else disp.textContent = 'Select date range';
+  }
+  function setBottomPanel(mode) {
+    const cashOpen = mode === 'cash';
+    document.body.classList.toggle('se-cash-mode', cashOpen);
+    if (entryPanel) entryPanel.hidden = cashOpen;
+    if (cashReportPanel) cashReportPanel.hidden = !cashOpen;
+    if (kpiRowDefault) kpiRowDefault.hidden = cashOpen;
+    if (kpiRowCash) kpiRowCash.hidden = !cashOpen;
+    if (kpiRowCash && cashOpen) kpiRowCash.removeAttribute('hidden');
+    if (kpiRowCash && !cashOpen) kpiRowCash.setAttribute('hidden', '');
+    if (kpiNoteDefault) kpiNoteDefault.hidden = cashOpen;
+    if (entryDateWrap) entryDateWrap.hidden = cashOpen;
+    const cashDateHost = document.getElementById('se-cash-date-range-host');
+    if (cashDateHost) {
+      if (cashOpen) cashDateHost.removeAttribute('hidden');
+      else cashDateHost.setAttribute('hidden', '');
+    }
+    if (cashDateWrap) {
+      if (cashOpen) cashDateWrap.removeAttribute('hidden');
+      else cashDateWrap.setAttribute('hidden', '');
+    }
+    if (filterPanelInput) filterPanelInput.value = cashOpen ? 'cash' : '';
+    if (cashKpiOpenBtn) {
+      cashKpiOpenBtn.setAttribute('aria-pressed', cashOpen ? 'true' : 'false');
+      cashKpiOpenBtn.classList.toggle('sr-kpi-card--active', cashOpen);
+    }
+    if (cashOpen) {
+      const day = document.getElementById('se-filter-date')?.value || '';
+      const df = document.getElementById('se-filter-date-from');
+      const dt = document.getElementById('se-filter-date-to');
+      if (df && day) df.value = day;
+      if (dt && day) dt.value = day;
+      syncCashDateRangeDisplay();
+      refreshCashReportSummary();
+      renderCashTransferEntries(cashTransferEntries);
+    }
+  }
+  function buildEntryUrl() {
+    const form = document.getElementById('sales-filter-form');
+    if (!form) return window.location.pathname;
+    const params = new URLSearchParams();
+    const co = document.getElementById('sales-company');
+    const loc = document.getElementById('sales-location');
+    const dateEl = document.getElementById('se-filter-date');
+    if (co) params.set('company', co.value);
+    if (loc) params.set('location', loc.value);
+    if (dateEl && dateEl.value) params.set('date', dateEl.value);
+    const qs = params.toString();
+    return form.action + (qs ? '?' + qs : '');
+  }
+  function buildCashUrl() {
+    const form = document.getElementById('sales-filter-form');
+    if (!form) return window.location.pathname;
+    const params = new URLSearchParams();
+    const co = document.getElementById('sales-company');
+    const loc = document.getElementById('sales-location');
+    const df = document.getElementById('se-filter-date-from');
+    const dt = document.getElementById('se-filter-date-to');
+    const day = document.getElementById('se-filter-date');
+    if (co) params.set('company', co.value);
+    if (loc) params.set('location', loc.value);
+    params.set('panel', 'cash');
+    const fromVal = (df && df.value) || (day && day.value) || '';
+    const toVal = (dt && dt.value) || fromVal;
+    if (fromVal) params.set('date_from', fromVal);
+    if (toVal) params.set('date_to', toVal);
+    return form.action + '?' + params.toString();
+  }
+  if (cashKpiOpenBtn) cashKpiOpenBtn.addEventListener('click', () => setBottomPanel('cash'));
+  if (cashReportBackBtn) cashReportBackBtn.addEventListener('click', () => setBottomPanel('entry'));
+  if ({{ 'true' if cash_panel else 'false' }}) {
+    setBottomPanel('cash');
+  } else {
+    document.body.classList.remove('se-cash-mode');
+  }
+  function resetCashTransferForm() {
+    editingCashTransferId = null;
+    showCashTransferError('');
+    if (cashTransferDestination) cashTransferDestination.value = 'bank';
+    if (cashTransferDescription) cashTransferDescription.value = '';
+    if (cashTransferAmount) cashTransferAmount.value = '';
+    if (cashTransferSubmitLabel) cashTransferSubmitLabel.textContent = 'Add transfer';
+  }
+  function openCashTransferModal() {
+    if (!guardEntryEditable()) return;
+    resetCashTransferForm();
+    const maxXfer = cashTransferMaxAmount();
+    if (cashTransferAmount) {
+      cashTransferAmount.max = maxXfer > 0 ? String(maxXfer) : '';
+      cashTransferAmount.placeholder = maxXfer > 0 ? ('Max ' + formatKpiInr(maxXfer)) : 'e.g. 25000';
+    }
+    if (cashTransferModal) {
+      cashTransferModal.classList.add('open');
+      cashTransferModal.setAttribute('aria-hidden', 'false');
+    }
+  }
+  function closeCashTransferModal() {
+    if (!cashTransferModal) return;
+    cashTransferModal.classList.remove('open');
+    cashTransferModal.setAttribute('aria-hidden', 'true');
+  }
+  function editCashTransfer(transferId) {
+    if (!guardEntryEditable()) return;
+    const row = cashTransferEntries.find((item) => String(item.id) === String(transferId));
+    if (!row || !cashTransferModal) return;
+    editingCashTransferId = row.id;
+    showCashTransferError('');
+    if (cashTransferDestination) cashTransferDestination.value = row.destination || 'bank';
+    if (cashTransferDescription) cashTransferDescription.value = row.description || '';
+    if (cashTransferAmount) cashTransferAmount.value = formatAmount(row.amount);
+    if (cashTransferSubmitLabel) cashTransferSubmitLabel.textContent = 'Update transfer';
+    cashTransferModal.classList.add('open');
+    cashTransferModal.setAttribute('aria-hidden', 'false');
+  }
+  async function performCashTransferDelete(transferId) {
+    if (!guardEntryEditable()) throw new Error('This date is locked.');
+    if (!widget || !transferId) throw new Error('Missing transfer id.');
+    const resp = await fetch(widget.dataset.cashTransferDeleteUrl, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        company: widget.dataset.company,
+        location: widget.dataset.location,
+        date: widget.dataset.date,
+        transfer_id: transferId,
+        cash_available: Number(widget.dataset.cashCollected || 0)
+      })
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not delete cash transfer.');
+    if (filterPanelInput && filterPanelInput.value === 'cash') {
+      window.location.reload();
+      return;
+    }
+    if (data.cash_unallocated != null) cashTransferDayAvailable = Number(data.cash_unallocated) || 0;
+    renderCashTransferEntries(data.cash_transfer_entries || []);
+  }
+  async function deleteCashTransfer(transferId) {
+    if (!guardEntryEditable() || !transferId) return;
+    if (!window.confirm('Delete this cash transfer?')) return;
+    try {
+      await performCashTransferDelete(transferId);
+    } catch (err) {
+      showCashTransferError(err.message);
+    }
+  }
+  async function submitCashTransfer() {
+    if (!widget || !guardEntryEditable()) return;
+    const destination = cashTransferDestination ? cashTransferDestination.value : 'bank';
+    const description = cashTransferDescription ? cashTransferDescription.value.trim() : '';
+    const amount = cashTransferAmount ? cashTransferAmount.value : '';
+    if (!amount || Number(amount) <= 0) {
+      showCashTransferError('Please enter an amount greater than 0.');
+      return;
+    }
+    if (destination === 'other' && !description) {
+      showCashTransferError('Please enter details for this transfer.');
+      return;
+    }
+    const amountNum = Number(amount);
+    const maxXfer = cashTransferMaxAmount();
+    if (amountNum > maxXfer + 0.005) {
+      showCashTransferError('Amount cannot exceed available cash (' + formatKpiInr(maxXfer) + ').');
+      return;
+    }
+    if (saveCashTransferBtn) saveCashTransferBtn.disabled = true;
+    try {
+      const resp = await fetch(editingCashTransferId ? widget.dataset.cashTransferEditUrl : widget.dataset.cashTransferAddUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          company: widget.dataset.company,
+          location: widget.dataset.location,
+          date: widget.dataset.date,
+          transfer_id: editingCashTransferId,
+          destination,
+          description,
+          amount,
+          cash_available: Number(widget.dataset.cashCollected || 0)
+        })
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save cash transfer.');
+      if (filterPanelInput && filterPanelInput.value === 'cash') {
+        window.location.reload();
+        return;
+      }
+      if (data.cash_unallocated != null) cashTransferDayAvailable = Number(data.cash_unallocated) || 0;
+      renderCashTransferEntries(data.cash_transfer_entries || []);
+      closeCashTransferModal();
+    } catch (err) {
+      showCashTransferError(err.message);
+    } finally {
+      if (saveCashTransferBtn) saveCashTransferBtn.disabled = false;
+    }
+  }
+  async function saveAndSendWhatsappReport(){
+    if (!widget?.dataset.whatsappReportUrl) return;
+    if (widget.dataset.company !== widget.dataset.whatsappReportCompany) return;
+    if (saveSendWhatsappReportBtn) saveSendWhatsappReportBtn.disabled = true;
+    try {
+      if (!isEntryLocked()) {
+        const validationMessage = salesEntryValidationMessage();
+        if (validationMessage) {
+          setSaveState(validationMessage, 'err');
+          return;
+        }
+        setSaveState('Saving...', '');
+        await savePettyCash();
+      }
+      setSaveState('Sending WhatsApp report...', '');
+      const resp = await fetch(widget.dataset.whatsappReportUrl, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          company: widget.dataset.company,
+          location: widget.dataset.location,
+          date: widget.dataset.date,
+          force_resend: true,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) {
+        throw new Error(data.error || 'Could not send WhatsApp report.');
+      }
+      const wa = data.whatsapp_report || {};
+      setSaveState(wa.reason || 'Saved. WhatsApp report and image sent.', 'ok');
+    } catch (err) {
+      setSaveState(`Report failed: ${err.message}`, 'err');
+    } finally {
+      if (saveSendWhatsappReportBtn) saveSendWhatsappReportBtn.disabled = false;
+    }
+  }
+  if (saveSendWhatsappReportBtn) {
+    saveSendWhatsappReportBtn.addEventListener('click', saveAndSendWhatsappReport);
+  }
+  if (openCashTransferFormBtn) openCashTransferFormBtn.addEventListener('click', openCashTransferModal);
+  if (cancelCashTransferBtn) cancelCashTransferBtn.addEventListener('click', closeCashTransferModal);
+  if (saveCashTransferBtn) saveCashTransferBtn.addEventListener('click', submitCashTransfer);
+  if (cashTransferList) {
+    cashTransferList.addEventListener('click', (event) => {
+      const action = event.target.closest('[data-cash-transfer-action]');
+      if (!action) return;
+      const transferId = action.dataset.cashTransferId;
+      if (action.dataset.cashTransferAction === 'edit') editCashTransfer(transferId);
+      if (action.dataset.cashTransferAction === 'delete') deleteCashTransfer(transferId);
+    });
+  }
+  if (cashTransferModal) {
+    cashTransferModal.addEventListener('click', (event) => {
+      if (event.target === cashTransferModal) closeCashTransferModal();
+    });
+  }
+
+  renderCashTransferEntries(cashTransferEntries);
+  applyEntryLock();
+})();
+</script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

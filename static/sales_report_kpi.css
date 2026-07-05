@@ -1,0 +1,366 @@
+/* Sales Report KPI — matches reference mockup (5 themed cards + footer pill) */
+.sr-kpi-section {
+  margin: 0 0 28px;
+}
+
+.sr-kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.sr-kpi-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 168px;
+  padding: 20px 20px 22px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #E8ECF1;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 4px 14px rgba(15, 23, 42, 0.05);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.sr-kpi-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.05), 0 8px 22px rgba(15, 23, 42, 0.07);
+}
+
+button.sr-kpi-card {
+  width: 100%;
+  margin: 0;
+  padding: 20px 20px 22px;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+button.sr-kpi-card:focus-visible {
+  outline: 2px solid #2563EB;
+  outline-offset: 2px;
+}
+
+button.sr-kpi-card.sr-kpi-card--active {
+  border-color: #F59E0B;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22), 0 8px 22px rgba(15, 23, 42, 0.08);
+}
+
+.sr-kpi-open-hint {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #D97706;
+}
+
+.sr-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sr-kpi-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+}
+
+.sr-kpi-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sr-kpi-icon--sparkle svg {
+  width: 19px;
+  height: 19px;
+  fill: currentColor;
+  stroke: none;
+}
+
+.sr-kpi-menu {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: -4px -6px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #CBD5E1;
+  cursor: pointer;
+}
+
+.sr-kpi-menu:hover {
+  background: #F8FAFC;
+  color: #94A3B8;
+}
+
+.sr-kpi-menu:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+a.sr-kpi-menu {
+  color: #CBD5E1;
+  text-decoration: none;
+}
+
+.sr-kpi-menu svg {
+  width: 16px;
+  height: 16px;
+  stroke: none;
+  fill: currentColor;
+}
+
+.sr-kpi-menu svg circle {
+  fill: currentColor;
+  stroke: none;
+}
+
+.sr-kpi-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sr-kpi-label {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #94A3B8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sr-kpi-value {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.05;
+  color: #0F172A;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.sr-kpi-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.sr-kpi-trend {
+  display: inline-flex;
+  gap: 2px;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.sr-kpi-vs {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #94A3B8;
+}
+
+.sr-kpi-accent {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  pointer-events: none;
+  border-radius: 0 0 16px 16px;
+}
+
+/* Emerald — Actual Sales */
+.sr-kpi-card--emerald .sr-kpi-icon {
+  color: #16A34A;
+  background: #ECFDF5;
+}
+
+.sr-kpi-card--emerald .sr-kpi-trend {
+  color: #16A34A;
+  background: #ECFDF5;
+}
+
+.sr-kpi-card--emerald .sr-kpi-accent {
+  background: #16A34A;
+}
+
+/* Blue — Digital */
+.sr-kpi-card--blue .sr-kpi-icon {
+  color: #2563EB;
+  background: #EFF6FF;
+}
+
+.sr-kpi-card--blue .sr-kpi-trend {
+  color: #2563EB;
+  background: #EFF6FF;
+}
+
+.sr-kpi-card--blue .sr-kpi-accent {
+  background: #2563EB;
+}
+
+/* Amber — Cash */
+.sr-kpi-card--amber .sr-kpi-icon {
+  color: #D97706;
+  background: #FFFBEB;
+}
+
+.sr-kpi-card--amber .sr-kpi-trend {
+  color: #D97706;
+  background: #FFFBEB;
+}
+
+.sr-kpi-card--amber .sr-kpi-accent {
+  background: #D97706;
+}
+
+/* Red — Expense */
+.sr-kpi-card--red .sr-kpi-icon {
+  color: #DC2626;
+  background: #FEF2F2;
+}
+
+.sr-kpi-card--red .sr-kpi-trend {
+  color: #DC2626;
+  background: #FEF2F2;
+}
+
+.sr-kpi-card--red .sr-kpi-accent {
+  background: #DC2626;
+}
+
+/* Violet — Difference */
+.sr-kpi-card--violet .sr-kpi-icon {
+  color: #7C3AED;
+  background: #F5F3FF;
+}
+
+.sr-kpi-card--violet .sr-kpi-trend {
+  color: #7C3AED;
+  background: #F5F3FF;
+}
+
+.sr-kpi-card--violet .sr-kpi-accent {
+  background: #7C3AED;
+}
+
+/* Footer pill */
+.sr-kpi-note {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 8px;
+}
+
+.sr-kpi-note-pill {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #94A3B8;
+  background: #fff;
+  border: 1px solid #E8ECF1;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.sr-kpi-note-pill svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  color: #94A3B8;
+}
+
+/* Page canvas behind KPI row */
+.content.sr-report-content,
+.content.se-content.sr-kpi-canvas {
+  background: #F0F2F5;
+}
+
+@media (max-width: 1280px) and (min-width: 901px) {
+  .sr-kpi-row {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .sr-kpi-card:nth-child(-n + 3) {
+    grid-column: span 2;
+  }
+
+  .sr-kpi-card:nth-child(4),
+  .sr-kpi-card:nth-child(5) {
+    grid-column: span 3;
+  }
+}
+
+@media (max-width: 900px) {
+  .sr-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .sr-kpi-card {
+    grid-column: auto;
+    padding: 18px 16px 20px;
+  }
+
+  .sr-kpi-value {
+    font-size: 28px;
+  }
+
+  .sr-kpi-card:nth-child(5):last-child {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: 100%;
+    max-width: 440px;
+  }
+}
+
+@media (max-width: 560px) {
+  .sr-kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sr-kpi-card:nth-child(5):last-child {
+    width: auto;
+    max-width: none;
+  }
+
+  .sr-kpi-value {
+    font-size: 26px;
+  }
+}

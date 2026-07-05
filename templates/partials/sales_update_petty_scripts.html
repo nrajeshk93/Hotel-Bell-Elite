@@ -1,0 +1,196 @@
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script>
+(function(){
+  document.querySelectorAll('.se-petty-outlet-panel').forEach((pettyCard) => {
+    const outletSlug = pettyCard.id.replace('petty-cash-card-', '');
+    const pettyToggle = pettyCard.querySelector('.petty-cash-toggle');
+    const pettyBody = document.getElementById(`petty-cash-card-body-${outletSlug}`);
+    if (!pettyToggle || !pettyBody) return;
+    const storageKey = `sales-petty-cash-collapsed-${outletSlug}`;
+    function setPettyCollapsed(collapsed){
+      pettyCard.classList.toggle('petty-cash-collapsed', collapsed);
+      pettyToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      pettyToggle.title = collapsed ? 'Expand Petty Cash' : 'Collapse Petty Cash';
+      localStorage.setItem(storageKey, collapsed ? '1' : '0');
+    }
+    setPettyCollapsed(localStorage.getItem(storageKey) === '1');
+    pettyToggle.addEventListener('click', function(){
+      setPettyCollapsed(pettyCard.classList.contains('petty-cash-collapsed') ? false : true);
+    });
+  });
+})();
+
+(function(){
+  const widget = document.getElementById('sales-entry-widget');
+  const saveState = document.getElementById('petty-save-state');
+  const inputs = Array.from(document.querySelectorAll('[data-denomination]'));
+  const entryInputs = Array.from(document.querySelectorAll('[data-sales-entry]'));
+  const salesOutlets = {{ selected_locations|tojson }};
+  const salesUpdateIsAdmin = widget?.dataset.salesAdmin === '1';
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const entryLockedMessage = 'This date was already saved. Only administrators can change past sales entries.';
+  let saveTimer = null;
+
+  function outletSlug(location) {
+    return String(location || '').toLowerCase().replace(/\s+/g, '-');
+  }
+  function pettyTotalEl(location){
+    return document.getElementById(`petty-cash-total-${outletSlug(location)}`);
+  }
+  function pettyWrap(location){
+    return document.querySelector(`[data-petty-location="${location}"]`);
+  }
+  const formatKpiInr = (value, dec) => formatInr(value, dec ?? 0);
+  const formatKpiNum = (value) => formatNum(value, 0);
+
+  function isEntryLocked(location){
+    if (location) {
+      const wrap = pettyWrap(location);
+      return wrap?.dataset.entryLocked === '1';
+    }
+    return salesOutlets.some((loc) => isEntryLocked(loc));
+  }
+  function setSaveState(text, className){
+    if (!saveState) return;
+    saveState.textContent = text;
+    saveState.className = `save-state ${className || ''}`.trim();
+  }
+  function guardEntryEditable(location){
+    if (!isEntryLocked(location)) return true;
+    setSaveState(entryLockedMessage, 'err');
+    return false;
+  }
+  function applyEntryLock(){
+    salesOutlets.forEach((location) => {
+      if (!isEntryLocked(location)) return;
+      inputs
+        .filter((input) => input.dataset.pettyLocation === location)
+        .forEach((input) => { input.readOnly = true; input.disabled = true; });
+    });
+    if (salesOutlets.some((loc) => isEntryLocked(loc)) && saveState && !saveState.classList.contains('err')) {
+      setSaveState('View only — past date already saved', 'ok');
+    }
+  }
+  function lockEntryAfterPastSave(){
+    if (!widget || salesUpdateIsAdmin) return;
+    if (widget.dataset.date >= todayIso) return;
+    salesOutlets.forEach((location) => {
+      const wrap = pettyWrap(location);
+      if (wrap) wrap.dataset.entryLocked = '1';
+    });
+    applyEntryLock();
+  }
+  function buildCounts(location){
+    const counts = {};
+    inputs
+      .filter((input) => input.dataset.pettyLocation === location)
+      .forEach((input) => {
+        const denomination = String(input.dataset.denomination || '');
+        counts[denomination] = Math.max(0, Math.trunc(Number(input.value || 0)));
+      });
+    return counts;
+  }
+  function buildSalesEntries(location){
+    const entries = {};
+    entryInputs
+      .filter((input) => input.dataset.salesLocation === location)
+      .forEach((input) => {
+        const key = String(input.dataset.salesEntry || '');
+        const raw = Math.round(Number(input.value || 0) * 100) / 100;
+        entries[key] = Math.max(0, raw);
+      });
+    return entries;
+  }
+  function updatePettyCash(){
+    salesOutlets.forEach((location) => {
+      let total = 0;
+      inputs
+        .filter((input) => input.dataset.pettyLocation === location)
+        .forEach((input) => {
+          const denomination = Number(input.dataset.denomination || 0);
+          const count = Math.max(0, Math.trunc(Number(input.value || 0)));
+          if (String(count) !== input.value && input.value !== '') input.value = count;
+          const rowTotal = denomination * count;
+          total += rowTotal;
+          const rowTotalEl = input.closest('tr').querySelector('[data-row-total]');
+          if (rowTotalEl) rowTotalEl.textContent = formatKpiNum(rowTotal);
+        });
+      const totalEl = pettyTotalEl(location);
+      if (totalEl) totalEl.textContent = formatKpiNum(total);
+    });
+  }
+  async function savePettyCash(){
+    if (!widget) return;
+    const editableOutlets = salesOutlets.filter((loc) => !isEntryLocked(loc));
+    if (!editableOutlets.length) {
+      guardEntryEditable(salesOutlets[0]);
+      return;
+    }
+    updatePettyCash();
+    setSaveState('Saving...', '');
+    try {
+      let data = {};
+      for (const location of editableOutlets) {
+        const payload = {
+          company: widget.dataset.company,
+          location,
+          date: widget.dataset.date,
+          sales_entries: buildSalesEntries(location),
+          petty_cash_counts: buildCounts(location),
+        };
+        const resp = await fetch(widget.dataset.saveUrl, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.ok) {
+          throw new Error(data.error || 'Could not save petty cash.');
+        }
+        const totalEl = pettyTotalEl(location);
+        if (totalEl && data.petty_cash_total != null) {
+          totalEl.textContent = formatKpiNum(data.petty_cash_total);
+        }
+      }
+      lockEntryAfterPastSave();
+      setSaveState(
+        salesOutlets.every((loc) => isEntryLocked(loc))
+          ? 'Saved. This date is now locked for editing.'
+          : `Saved for ${data.date || widget.dataset.date}`,
+        'ok'
+      );
+    } catch (err) {
+      setSaveState(`Save failed: ${err.message}`, 'err');
+    }
+  }
+  function scheduleSave(location){
+    if (!guardEntryEditable(location)) return;
+    clearTimeout(saveTimer);
+    setSaveState('Unsaved changes...', '');
+    saveTimer = setTimeout(savePettyCash, 450);
+  }
+
+  inputs.forEach((input) => {
+    if (!input.readOnly) {
+      input.addEventListener('focus', () => {
+        if (Number(input.value || 0) === 0) input.value = '';
+      });
+      input.addEventListener('click', () => {
+        if (Number(input.value || 0) === 0) input.value = '';
+      });
+      input.addEventListener('blur', () => {
+        if (input.value === '') input.value = '0';
+        updatePettyCash();
+        scheduleSave(input.dataset.pettyLocation);
+      });
+    }
+    input.addEventListener('input', () => {
+      updatePettyCash();
+      scheduleSave(input.dataset.pettyLocation);
+    });
+  });
+
+  updatePettyCash();
+  applyEntryLock();
+})();
+</script>

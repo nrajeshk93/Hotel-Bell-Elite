@@ -1,0 +1,368 @@
+/* Hotel Bell Elite — premium home launcher (from Neeraj Textile) */
+body.home-module{
+  --acc:#2563EB;
+  --acc-bg:rgba(59,130,246,.08);
+  background:#F8FAFC;
+  color:#111827;
+  font-family:'Inter','Segoe UI',system-ui,sans-serif;
+}
+body.home-module .de-main-inner{
+  max-width:1200px;
+  margin:0 auto;
+  padding:40px 48px 48px;
+  min-height:100vh;
+  box-sizing:border-box;
+}
+@media(max-width:640px){
+  body.home-module .de-main-inner{padding:24px 20px 32px}
+}
+.db-home .db-profile-trigger{
+  border:none;background:transparent;padding:0;cursor:default;display:inline-flex;
+}
+.db-home .db-avatar{
+  width:46px;height:46px;border-radius:50%;background:#EFF6FF;color:#2563EB;
+  font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;
+}
+.db-home{
+    --home-muted:#6B7280;
+    --home-title:#111827;
+    --home-border:#EEF2F7;
+    --home-shadow:0 8px 30px rgba(15,23,42,.04);
+    --home-shadow-hover:0 14px 40px rgba(15,23,42,.08);
+  }
+  .db-home .db-home-header{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:32px;
+    margin-bottom:48px;
+    position:relative;
+    z-index:30;
+  }
+  .db-home .db-home-header-left{
+    display:flex;
+    align-items:flex-start;
+    gap:16px;
+    min-width:0;
+  }
+  .db-home .db-home-title h1{
+    font-size:34px;
+    line-height:1.15;
+    font-weight:700;
+    color:var(--home-title);
+    letter-spacing:-.03em;
+  }
+  .db-home .db-home-title p{
+    margin-top:8px;
+    font-size:16px;
+    font-weight:400;
+    color:var(--home-muted);
+    line-height:1.5;
+  }
+  .db-home .db-home-tools{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-shrink:0;
+    position:relative;
+    z-index:40;
+  }
+  .db-home .db-profile{z-index:50}
+  .db-home .db-notifications{z-index:50}
+  .db-home .db-profile-menu{
+    top:calc(100% + 10px);
+    z-index:100;
+    border-radius:16px;
+    border:1px solid #EEF2F7;
+    background:#FFFFFF;
+    box-shadow:0 12px 40px rgba(15,23,42,.12);
+  }
+  .db-home .db-profile-name{
+    font-size:14px;
+    font-weight:600;
+    color:#111827;
+  }
+  .db-home .db-profile-role{
+    margin-top:4px;
+    font-size:13px;
+    color:#6B7280;
+  }
+  .db-home .db-profile-logout{
+    margin-top:14px;
+    border:1px solid #E5E7EB;
+    background:#F9FAFB;
+    color:#111827;
+    font-weight:600;
+    text-decoration:none;
+  }
+  .db-home .db-profile-logout:hover{
+    background:#F3F4F6;
+    border-color:#D1D5DB;
+  }
+  .db-home .db-notification-menu{
+    top:calc(100% + 10px);
+    right:0;
+    z-index:100;
+    border-radius:16px;
+    border:1px solid #EEF2F7;
+    background:#FFFFFF;
+    box-shadow:0 12px 40px rgba(15,23,42,.12);
+  }
+  .db-home .db-home-grid{
+    position:relative;
+    z-index:1;
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:32px;
+    justify-items:center;
+  }
+  .db-home .db-home-search{
+    position:relative;
+    width:320px;
+    max-width:100%;
+  }
+  .db-home .db-home-search input{
+    width:100%;
+    height:46px;
+    border:1px solid var(--home-border);
+    outline:none;
+    border-radius:999px;
+    background:#FFFFFF;
+    box-shadow:none;
+    padding:0 18px 0 44px;
+    font:500 14px 'Inter','Segoe UI',system-ui,sans-serif;
+    color:#111827;
+    transition:border-color .2s ease,box-shadow .2s ease;
+  }
+  .db-home .db-home-search input::placeholder{color:#9CA3AF}
+  .db-home .db-home-search input:focus{
+    border-color:#BFDBFE;
+    box-shadow:0 0 0 3px rgba(59,130,246,.12);
+  }
+  .db-home .db-home-search svg{
+    position:absolute;
+    left:16px;
+    top:50%;
+    transform:translateY(-50%);
+    width:18px;
+    height:18px;
+    stroke:#9CA3AF;
+    fill:none;
+    stroke-width:2;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+    pointer-events:none;
+  }
+  .db-home .db-home-bell{
+    position:relative;
+    width:40px;
+    height:40px;
+    border:1px solid var(--home-border);
+    background:#FFFFFF;
+    color:#6B7280;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:999px;
+    cursor:pointer;
+    transition:background .2s ease,color .2s ease,border-color .2s ease;
+  }
+  .db-home .db-home-bell:hover{background:#F8FAFC;color:#111827}
+  .db-home .db-home-bell:focus-visible{
+    outline:2px solid #2563EB;
+    outline-offset:2px;
+  }
+  .db-home .db-home-bell svg,
+  .db-home .db-home-bell i svg{
+    width:18px;
+    height:18px;
+    stroke:currentColor;
+    fill:none;
+    stroke-width:1.75;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+  }
+  .db-home .db-home-bell-dot{
+    position:absolute;
+    top:9px;
+    right:10px;
+    width:7px;
+    height:7px;
+    min-width:0;
+    padding:0;
+    border-radius:50%;
+    background:#2563EB;
+    box-shadow:0 0 0 2px #FFFFFF;
+    pointer-events:none;
+  }
+  .db-home .db-profile-trigger .db-avatar{
+    width:40px;
+    height:40px;
+    font-size:12px;
+    font-weight:600;
+    background:#EFF6FF;
+    color:#2563EB;
+  }
+  .db-home .db-profile-trigger .db-avatar::after{display:none}
+  .db-home .db-profile-trigger svg{display:none}
+  .db-home .db-alert{
+    margin-top:16px;
+    display:inline-flex;
+    align-items:center;
+    min-height:40px;
+    padding:0 14px;
+    border-radius:12px;
+    border:1px solid #E5E7EB;
+    background:#FFFFFF;
+    box-shadow:none;
+    color:#4B5563;
+    font-size:13px;
+    font-weight:500;
+  }
+  @keyframes db-home-fade-up{
+    from{opacity:0;transform:translateY(20px)}
+    to{opacity:1;transform:translateY(0)}
+  }
+  .db-home .db-home-card{
+    width:100%;
+    max-width:360px;
+    min-height:210px;
+    display:flex;
+    flex-direction:column;
+    padding:28px 28px 24px;
+    border-radius:24px;
+    background:#FFFFFF;
+    border:1px solid var(--home-border);
+    box-shadow:var(--home-shadow);
+    text-decoration:none;
+    color:inherit;
+    cursor:pointer;
+    position:relative;
+    opacity:0;
+    animation:db-home-fade-up .4s ease-out forwards;
+    transition:transform .3s ease-out,box-shadow .3s ease-out,border-color .3s ease-out;
+  }
+  .db-home .db-home-card:nth-child(1){animation-delay:80ms}
+  .db-home .db-home-card:nth-child(2){animation-delay:160ms}
+  .db-home .db-home-card:nth-child(3){animation-delay:240ms}
+  .db-home .db-home-card:nth-child(4){animation-delay:320ms}
+  .db-home .db-home-card:nth-child(5){animation-delay:400ms}
+  .db-home .db-home-card:nth-child(6){animation-delay:480ms}
+  .db-home .db-home-card:hover{
+    transform:translateY(-6px);
+    box-shadow:var(--home-shadow-hover);
+    border-color:rgba(59,130,246,.28);
+  }
+  .db-home .db-home-card:active{
+    transform:translateY(-6px) scale(.98);
+  }
+  .db-home .db-home-card:focus-visible{
+    outline:2px solid #2563EB;
+    outline-offset:3px;
+  }
+  .db-home .db-home-card[hidden]{display:none}
+  .db-home .db-home-card-icon{
+    width:60px;
+    height:60px;
+    border-radius:18px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-shrink:0;
+    transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .db-home .db-home-card:hover .db-home-card-icon{transform:scale(1.05)}
+  .db-home .db-home-card-icon svg,
+  .db-home .db-home-card-icon i svg{
+    width:48px;
+    height:48px;
+    stroke:currentColor;
+    fill:none;
+    stroke-width:1.75;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+  }
+  .db-home .db-home-card--blue .db-home-card-icon{background:rgba(59,130,246,.08);color:#2563EB}
+  .db-home .db-home-card--emerald .db-home-card-icon{background:rgba(16,185,129,.08);color:#059669}
+  .db-home .db-home-card--orange .db-home-card-icon{background:rgba(249,115,22,.08);color:#EA580C}
+  .db-home .db-home-card--indigo .db-home-card-icon{background:rgba(99,102,241,.08);color:#4F46E5}
+  .db-home .db-home-card--purple .db-home-card-icon{background:rgba(168,85,247,.08);color:#9333EA}
+  .db-home .db-home-card--cyan .db-home-card-icon{background:rgba(6,182,212,.08);color:#0891B2}
+  .db-home .db-kpi-section{margin:0 0 28px;padding:0}
+  .db-home .db-home-card h2{
+    margin-top:20px;
+    font-size:24px;
+    line-height:1.25;
+    font-weight:600;
+    color:var(--home-title);
+    letter-spacing:-.02em;
+  }
+  .db-home .db-home-card-arrow{
+    margin-top:auto;
+    align-self:flex-end;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:36px;
+    height:36px;
+    border-radius:999px;
+    color:#9CA3AF;
+    font-size:20px;
+    line-height:1;
+    transition:transform .3s ease-out,color .3s ease-out;
+  }
+  .db-home .db-home-card:hover .db-home-card-arrow{
+    transform:translateX(6px);
+    color:#2563EB;
+  }
+  .db-home .db-home-card-desc{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0,0,0,0);
+    white-space:nowrap;
+    border:0;
+  }
+  .db-home .db-home-empty{
+    grid-column:1/-1;
+    width:100%;
+    max-width:560px;
+    margin:0 auto;
+    padding:40px;
+    border-radius:24px;
+    background:#FFFFFF;
+    border:1px solid var(--home-border);
+    box-shadow:var(--home-shadow);
+  }
+  .db-home .db-notifications.is-read .db-home-bell-dot{display:none}
+  .db-home .db-home-empty h2{font-size:22px;font-weight:600;color:#111827}
+  .db-home .db-home-empty p{margin-top:10px;font-size:15px;line-height:1.7;color:#6B7280}
+  @media (prefers-reduced-motion:reduce){
+    .db-home .db-home-card{
+      animation:none;
+      opacity:1;
+      transition:none;
+    }
+    .db-home .db-home-card:hover{transform:none}
+    .db-home .db-home-card:active{transform:none}
+    .db-home .db-home-card:hover .db-home-card-icon{transform:none}
+    .db-home .db-home-card:hover .db-home-card-arrow{transform:none}
+  }
+  @media (max-width:1024px){
+    .db-home .db-home-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  }
+  @media (max-width:900px){
+    .db-home .db-home-header{flex-direction:column;align-items:stretch;gap:24px;margin-bottom:36px}
+    .db-home .db-home-tools{justify-content:flex-end;flex-wrap:wrap}
+    .db-home .db-home-search{width:100%;max-width:none;flex:1 1 100%}
+  }
+  @media (max-width:640px){
+    
+    .db-home .db-home-title h1{font-size:28px}
+    .db-home .db-home-grid{grid-template-columns:1fr;gap:20px}
+    .db-home .db-home-card{max-width:none;min-height:190px}
+    .db-home .db-home-card h2{font-size:20px}
+  }

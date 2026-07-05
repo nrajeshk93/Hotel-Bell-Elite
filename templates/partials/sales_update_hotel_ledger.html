@@ -1,0 +1,74 @@
+<article class="card se-panel se-sales-outlet-panel se-hotel-sales-panel" id="hotel-sales-entry-panel" data-sales-outlet="Hotel">
+  <div class="card-hdr se-panel-hdr">
+    <div class="card-title se-panel-title">
+      <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 14 3-3 3 2 5-6"/></svg>
+      Sales Entry - Hotel
+    </div>
+    <div class="se-panel-hdr-actions">
+      <label class="se-panel-upload-label" for="se-upload-hotel"{% if sales_entry_locked %} hidden{% endif %}>
+        <input type="file" id="se-upload-hotel" class="se-panel-upload-input se-hotel-upload-input" accept=".xlsx,.xls" data-upload-outlet="Hotel">
+        <span class="btn se-panel-upload-btn">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
+          Upload
+        </span>
+      </label>
+      <button type="button" class="btn se-clear-sales-entry-btn" id="se-clear-hotel-ledger" data-clear-hotel-ledger{% if sales_entry_locked %} hidden{% endif %}>Clear</button>
+    </div>
+    <span class="se-panel-upload-status" id="se-upload-status-hotel" role="status" aria-live="polite"></span>
+  </div>
+  <div class="card-body se-panel-body">
+    <div class="hotel-ledger-summary" id="hotel-ledger-summary">
+      <div class="hotel-ledger-summary-item">
+        <span class="hotel-ledger-summary-label">Total sales</span>
+        <span class="hotel-ledger-summary-value" id="hotel-ledger-total-sales">{{ ledger_rollup.total_sales|inr }}</span>
+      </div>
+      <div class="hotel-ledger-summary-item">
+        <span class="hotel-ledger-summary-label">Assigned</span>
+        <span class="hotel-ledger-summary-value" id="hotel-ledger-assigned">{{ (ledger_rollup.cash + ledger_rollup.card + ledger_rollup.upi + ledger_rollup.room_credit)|inr }}</span>
+      </div>
+      <div class="hotel-ledger-summary-item hotel-ledger-summary-item--warn">
+        <span class="hotel-ledger-summary-label">Unassigned</span>
+        <span class="hotel-ledger-summary-value" id="hotel-ledger-unassigned">{{ (ledger_rollup.total_sales - ledger_rollup.cash - ledger_rollup.card - ledger_rollup.upi - ledger_rollup.room_credit)|inr }}</span>
+      </div>
+    </div>
+
+    <div class="hotel-ledger-wrap" id="hotel-ledger-wrap">
+      {% if ledger_entries %}
+      <table class="hotel-ledger-table" aria-label="Hotel sales ledger">
+        <thead>
+          <tr>
+            <th>Room</th>
+            <th>Guest</th>
+            <th>Company</th>
+            <th>Plan</th>
+            <th class="hotel-ledger-col-amount">Amount</th>
+            <th class="hotel-ledger-col-payment">Payment mode</th>
+          </tr>
+        </thead>
+        <tbody id="hotel-ledger-body">
+          {% for entry in ledger_entries %}
+          <tr data-ledger-id="{{ entry.id }}">
+            <td class="hotel-ledger-room">{{ entry.room }}</td>
+            <td class="hotel-ledger-guest">{{ entry.guest_name or '—' }}</td>
+            <td class="hotel-ledger-company">{{ entry.company_name or '—' }}</td>
+            <td class="hotel-ledger-plan">{{ entry.room_plan or '—' }}</td>
+            <td class="hotel-ledger-amount">{{ entry.amount|inr }}</td>
+            <td class="hotel-ledger-payment">
+              <select class="hotel-ledger-payment-select" data-ledger-id="{{ entry.id }}" aria-label="Payment mode for room {{ entry.room }}"{% if sales_entry_locked %} disabled{% endif %}>
+                {% for mode_key, mode_label in hotel_payment_modes %}
+                <option value="{{ mode_key }}"{% if entry.payment_mode == mode_key %} selected{% endif %}>{{ mode_label }}</option>
+                {% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="hotel-ledger-empty" id="hotel-ledger-empty">
+        Upload an occupancy summary report to load room ledger lines. Set payment mode for each transaction after import.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</article>

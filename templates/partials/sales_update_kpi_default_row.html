@@ -1,0 +1,132 @@
+{% macro sr_kpi_trend(key) -%}
+{%- set t = kpi_trends[key] -%}
+{%- if t is not none -%}
+<span class="sr-kpi-trend{%- if t < 0 %} sr-kpi-trend--down{%- endif -%}">
+  {%- if t > 0 %}↑{% elif t < 0 %}↓{% else %}—{% endif %} {{ (t * -1 if t < 0 else t)|round(1) }}%
+</span>
+{%- endif -%}
+{%- endmacro %}
+
+<div class="sr-kpi-row" id="sr-kpi-row-default">
+  <article class="sr-kpi-card sr-kpi-card--emerald">
+    <div class="sr-kpi-top">
+      <div class="sr-kpi-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6 18V10"/><path d="M12 18V4"/><path d="M18 18v-6"/><path d="m16 7 2-2"/><path d="m18 5 2 2"/></svg>
+      </div>
+      <button type="button" class="sr-kpi-menu" aria-label="Actual sales options" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+    <div class="sr-kpi-main">
+      <div class="sr-kpi-label">Actual Sales</div>
+      <div class="sr-kpi-value" id="actual-sales-kpi">{{ kpi.actual_sales | inr(0) }}</div>
+      <div class="sr-kpi-foot">
+        {{ sr_kpi_trend('actual_sales') }}
+        <span class="sr-kpi-vs">vs {{ kpi_vs_label }}</span>
+      </div>
+    </div>
+    <div class="sr-kpi-accent" aria-hidden="true"></div>
+  </article>
+  <article class="sr-kpi-card sr-kpi-card--blue">
+    <div class="sr-kpi-top">
+      <div class="sr-kpi-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h.01M10 15h4"/></svg>
+      </div>
+      <button type="button" class="sr-kpi-menu" aria-label="Digital transactions options" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+    <div class="sr-kpi-main">
+      <div class="sr-kpi-label">Digital Transactions</div>
+      <div class="sr-kpi-value" id="digital-transactions-kpi">{{ kpi.digital_transactions | inr(0) }}</div>
+      <div class="sr-kpi-foot">
+        {{ sr_kpi_trend('digital_transactions') }}
+        <span class="sr-kpi-vs">vs {{ kpi_vs_label }}</span>
+      </div>
+    </div>
+    <div class="sr-kpi-accent" aria-hidden="true"></div>
+  </article>
+  {% if cash_card_action %}
+  <button type="button" class="sr-kpi-card sr-kpi-card--amber sr-kpi-card--action" id="sr-kpi-cash-open" aria-pressed="false" aria-label="Open cash report">
+    <div class="sr-kpi-top">
+      <div class="sr-kpi-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h6M14 14h4"/></svg>
+      </div>
+    </div>
+    <div class="sr-kpi-main">
+      <div class="sr-kpi-label">Cash</div>
+      <div class="sr-kpi-value" id="cash-kpi">{{ kpi.cash | inr(0) }}</div>
+      <div class="sr-kpi-foot">
+        {{ sr_kpi_trend('cash') }}
+        <span class="sr-kpi-vs">vs {{ kpi_vs_label }}</span>
+      </div>
+    </div>
+    <div class="sr-kpi-accent" aria-hidden="true"></div>
+  </button>
+  {% else %}
+  <article class="sr-kpi-card sr-kpi-card--amber">
+    <div class="sr-kpi-top">
+      <div class="sr-kpi-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="12" r="2"/><path d="M14 10h6M14 14h4"/></svg>
+      </div>
+      <button type="button" class="sr-kpi-menu" aria-label="Cash options" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+    <div class="sr-kpi-main">
+      <div class="sr-kpi-label">Cash</div>
+      <div class="sr-kpi-value" id="cash-kpi">{{ kpi.cash | inr(0) }}</div>
+      <div class="sr-kpi-foot">
+        {{ sr_kpi_trend('cash') }}
+        <span class="sr-kpi-vs">vs {{ kpi_vs_label }}</span>
+      </div>
+    </div>
+    <div class="sr-kpi-accent" aria-hidden="true"></div>
+  </article>
+  {% endif %}
+  <article class="sr-kpi-card sr-kpi-card--red">
+    <div class="sr-kpi-top">
+      <div class="sr-kpi-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>
+      </div>
+      <button type="button" class="sr-kpi-menu" aria-label="Expense options" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+    <div class="sr-kpi-main">
+      <div class="sr-kpi-label">Expense</div>
+      <div class="sr-kpi-value" id="expense-kpi">{{ kpi.expense | inr(0) }}</div>
+      <div class="sr-kpi-foot">
+        {{ sr_kpi_trend('expense') }}
+        <span class="sr-kpi-vs">vs {{ kpi_vs_label }}</span>
+      </div>
+    </div>
+    <div class="sr-kpi-accent" aria-hidden="true"></div>
+  </article>
+  <article class="sr-kpi-card sr-kpi-card--violet">
+    <div class="sr-kpi-top">
+      <div class="sr-kpi-icon sr-kpi-icon--sparkle" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 2.5l1.8 5.5 5.7.1-4.6 3.4 1.8 5.5L12 14.8 7.3 17 9.1 11.5 4.5 8.1l5.7-.1L12 2.5z"/></svg>
+      </div>
+      <button type="button" class="sr-kpi-menu" aria-label="Difference options" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>
+      </button>
+    </div>
+    <div class="sr-kpi-main">
+      <div class="sr-kpi-label">Difference</div>
+      <div class="sr-kpi-value" id="sales-difference-kpi">{{ kpi.difference | inr(0) }}</div>
+      <div class="sr-kpi-foot">
+        {{ sr_kpi_trend('difference') }}
+        <span class="sr-kpi-vs">vs {{ kpi_vs_label }}</span>
+      </div>
+    </div>
+    <div class="sr-kpi-accent" aria-hidden="true"></div>
+  </article>
+</div>
+
+<p class="sr-kpi-note" id="sr-kpi-note-default">
+  <span class="sr-kpi-note-pill">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+    All values are for today
+  </span>
+</p>

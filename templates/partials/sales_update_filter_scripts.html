@@ -1,0 +1,245 @@
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=3"></script>
+<script>
+(function(){
+  var f = document.getElementById('sales-filter-form');
+  var co = document.getElementById('sales-company');
+  var loc = document.getElementById('sales-location');
+  if (!f || !co) return;
+  var panelInput = document.getElementById('se-filter-panel');
+  function submitScope(){
+    if (panelInput) panelInput.value = '';
+    f.submit();
+  }
+  co.addEventListener('change', submitScope);
+  if (loc) loc.addEventListener('change', submitScope);
+})();
+
+(function(){
+  const wrap = document.getElementById('se-date-range-wrap');
+  const trigger = document.getElementById('se-date-range-trigger');
+  const backdrop = document.getElementById('se-date-range-backdrop');
+  const panel = document.getElementById('se-date-range-panel');
+  const display = document.getElementById('se-date-range-display');
+  const form = document.getElementById('sales-filter-form');
+  const dateInput = document.getElementById('se-filter-date');
+  const cancelBtn = document.getElementById('se-date-range-cancel');
+  const applyBtn = document.getElementById('se-date-range-apply');
+  const btnPrev = document.getElementById('se-cal-prev');
+  const btnNext = document.getElementById('se-cal-next');
+  const title0 = document.getElementById('se-cal-title0');
+  const grid0 = document.getElementById('se-cal-grid0');
+  if (!wrap || !trigger || !panel || !display || !form || !dateInput || !btnPrev || !btnNext || !title0 || !grid0) return;
+
+  const maxDateStr = (wrap.getAttribute('data-max-date') || '').trim();
+  const initial = (dateInput.value || wrap.getAttribute('data-initial-date') || '').trim();
+  const monthLong = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  function pad(n){ return n < 10 ? '0' + n : '' + n; }
+  function toIso(y, m0, d){ return y + '-' + pad(m0 + 1) + '-' + pad(d); }
+  function parseISO(s){
+    if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+    const p = s.split('-').map(Number);
+    return { y: p[0], mo: p[1], d: p[2], t: new Date(p[0], p[1] - 1, p[2], 12, 0, 0) };
+  }
+  const maxParsed = parseISO(maxDateStr);
+  const maxDateObj = maxParsed ? maxParsed.t : null;
+
+  let selFrom = initial || '';
+  let selTo = initial || '';
+  const now = new Date();
+  let viewY = now.getFullYear();
+  let viewM = now.getMonth();
+  let openSnapshot = { from: '', to: '' };
+
+  const initAnchor = parseISO(initial || maxDateStr);
+  if (initAnchor) { viewY = initAnchor.y; viewM = initAnchor.mo - 1; }
+
+  const monthShort = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function fmt(iso){
+    if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—';
+    const p = parseISO(iso);
+    return p.d + ' ' + monthShort[p.mo - 1] + ', ' + p.y;
+  }
+  function compareIso(a, b){
+    if (!a || !b) return 0;
+    return a < b ? -1 : (a > b ? 1 : 0);
+  }
+  function refreshTriggerText(){
+    if (selFrom && selTo && selFrom !== selTo) display.textContent = fmt(selFrom) + ' – ' + fmt(selTo);
+    else if (selFrom) display.textContent = fmt(selFrom);
+    else display.textContent = 'Select date';
+  }
+
+  function addMonth(y, m0, delta){
+    const t = new Date(y, m0 + delta, 1);
+    return { y: t.getFullYear(), m: t.getMonth() };
+  }
+  function daysInMonth(y, m0){ return new Date(y, m0 + 1, 0).getDate(); }
+  function monthLabel(y, m0){ return monthLong[m0] + ' ' + y; }
+
+  function rangeLoHi(){
+    if (!selFrom) return { lo: null, hi: null };
+    if (!selTo) return { lo: selFrom, hi: selFrom };
+    return compareIso(selFrom, selTo) <= 0 ? { lo: selFrom, hi: selTo } : { lo: selTo, hi: selFrom };
+  }
+
+  function cellClassList(iso){
+    const cls = ['an-cal-cell'];
+    if (maxDateStr && compareIso(iso, maxDateStr) > 0) {
+      cls.push('an-cal-disabled');
+      return cls;
+    }
+    const { lo, hi } = rangeLoHi();
+    if (!lo) return cls;
+    if (lo === hi && iso === lo) {
+      cls.push('an-cal-range-start', 'an-cal-range-end');
+      return cls;
+    }
+    if (iso === lo) cls.push('an-cal-range-start');
+    else if (iso === hi) cls.push('an-cal-range-end');
+    else if (compareIso(iso, lo) > 0 && compareIso(iso, hi) < 0) cls.push('an-cal-inrange');
+    return cls;
+  }
+
+  function fillGrid(gridEl, y, m0){
+    gridEl.textContent = '';
+    const dim = daysInMonth(y, m0);
+    const firstDow = (new Date(y, m0, 1).getDay() + 6) % 7;
+    const frag = document.createDocumentFragment();
+    for (let i = 0; i < firstDow; i++) {
+      const el = document.createElement('div');
+      el.className = 'an-cal-cell an-cal-pad';
+      frag.appendChild(el);
+    }
+    for (let d = 1; d <= dim; d++) {
+      const isoStr = toIso(y, m0, d);
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.dataset.iso = isoStr;
+      el.textContent = String(d);
+      const list = cellClassList(isoStr);
+      el.className = list.join(' ');
+      if (list.indexOf('an-cal-disabled') !== -1) el.disabled = true;
+      frag.appendChild(el);
+    }
+    const used = firstDow + dim;
+    const tail = (7 - (used % 7)) % 7;
+    for (let i = 0; i < tail; i++) {
+      const el = document.createElement('div');
+      el.className = 'an-cal-cell an-cal-pad';
+      frag.appendChild(el);
+    }
+    gridEl.appendChild(frag);
+  }
+
+  function updateNextDisabled(){
+    if (!maxDateObj) { btnNext.disabled = false; return; }
+    const nextLeft = new Date(viewY, viewM + 1, 1);
+    btnNext.disabled = nextLeft > maxDateObj;
+  }
+
+  function renderCalendars(){
+    title0.textContent = monthLabel(viewY, viewM);
+    fillGrid(grid0, viewY, viewM);
+    updateNextDisabled();
+  }
+
+  function onDayClick(iso){
+    if (maxDateStr && compareIso(iso, maxDateStr) > 0) return;
+    if (!selFrom || (selFrom && selTo)) {
+      selFrom = iso;
+      selTo = '';
+    } else {
+      if (compareIso(iso, selFrom) < 0) { selTo = selFrom; selFrom = iso; }
+      else selTo = iso;
+    }
+    renderCalendars();
+    refreshTriggerText();
+  }
+
+  function openPanel(){
+    openSnapshot = { from: dateInput.value, to: dateInput.value };
+    selFrom = openSnapshot.from;
+    selTo = openSnapshot.to;
+    const v = parseISO(selFrom || maxDateStr);
+    if (v) { viewY = v.y; viewM = v.mo - 1; }
+    wrap.classList.add('open');
+    trigger.setAttribute('aria-expanded', 'true');
+    panel.removeAttribute('hidden');
+    renderCalendars();
+    refreshTriggerText();
+    requestAnimationFrame(function(){
+      if (window.SalesDateRangePicker && SalesDateRangePicker.positionPanel) {
+        SalesDateRangePicker.positionPanel(trigger, panel);
+      }
+    });
+  }
+  function closePanel(){
+    selFrom = openSnapshot.from;
+    selTo = openSnapshot.to;
+    refreshTriggerText();
+    wrap.classList.remove('open');
+    trigger.setAttribute('aria-expanded', 'false');
+    panel.setAttribute('hidden', 'hidden');
+    if (window.SalesDateRangePicker && SalesDateRangePicker.clearPanelPosition) {
+      SalesDateRangePicker.clearPanelPosition(panel);
+    }
+  }
+
+  function repositionEntryDatePanel(){
+    if (wrap.classList.contains('open') && window.SalesDateRangePicker && SalesDateRangePicker.positionPanel) {
+      SalesDateRangePicker.positionPanel(trigger, panel);
+    }
+  }
+  window.addEventListener('resize', repositionEntryDatePanel);
+  window.addEventListener('scroll', repositionEntryDatePanel, true);
+
+  panel.addEventListener('click', function(e){
+    const btn = e.target.closest('button[data-iso]');
+    if (!btn || btn.disabled) return;
+    onDayClick(btn.getAttribute('data-iso'));
+  });
+  btnPrev.addEventListener('click', function(){
+    const p = addMonth(viewY, viewM, -1);
+    viewY = p.y;
+    viewM = p.m;
+    renderCalendars();
+  });
+  btnNext.addEventListener('click', function(){
+    if (btnNext.disabled) return;
+    const p = addMonth(viewY, viewM, 1);
+    viewY = p.y;
+    viewM = p.m;
+    renderCalendars();
+  });
+
+  trigger.addEventListener('click', function(e){
+    e.stopPropagation();
+    if (wrap.classList.contains('open')) closePanel();
+    else openPanel();
+  });
+  if (backdrop) backdrop.addEventListener('click', closePanel);
+  if (cancelBtn) cancelBtn.addEventListener('click', closePanel);
+  if (applyBtn) applyBtn.addEventListener('click', function(){
+    if (!selFrom) return;
+    if (!selTo) selTo = selFrom;
+    var lo = selFrom;
+    var hi = selTo;
+    if (compareIso(lo, hi) > 0) { lo = selTo; hi = selFrom; }
+    dateInput.value = hi;
+    var panelInput = document.getElementById('se-filter-panel');
+    var df = document.getElementById('se-filter-date-from');
+    var dt = document.getElementById('se-filter-date-to');
+    if (df) df.value = hi;
+    if (dt) dt.value = hi;
+    if (panelInput) panelInput.value = '';
+    closePanel();
+    form.submit();
+  });
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && wrap.classList.contains('open')) closePanel();
+  });
+
+  refreshTriggerText();
+})();
+</script>

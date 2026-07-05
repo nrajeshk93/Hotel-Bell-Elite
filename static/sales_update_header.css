@@ -1,0 +1,532 @@
+/* Sales Update page header — matches design mockup */
+.se-sales-header {
+  padding: 16px 20px 0;
+  background: var(--bg, #f4f6f9);
+}
+
+.se-sales-header-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.06);
+  overflow: visible;
+}
+
+.se-sales-header-hero {
+  position: relative;
+  padding: 22px 24px 20px;
+  background: linear-gradient(135deg, #eef5ff 0%, #f0f3ff 42%, #f6f4ff 100%);
+  overflow: hidden;
+}
+
+.se-sales-header-hero::before,
+.se-sales-header-hero::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.se-sales-header-hero::before {
+  width: 200px;
+  height: 200px;
+  right: 120px;
+  top: -60px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.se-sales-header-hero::after {
+  width: 120px;
+  height: 120px;
+  right: 40px;
+  bottom: -40px;
+  background: rgba(186, 210, 255, 0.25);
+}
+
+.se-sales-header-hero-inner {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.se-sales-header-hero-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.se-sales-header-hero .menu-btn.se-hero-back {
+  display: inline-flex !important;
+}
+
+.se-hero-back,
+.se-sales-header-hero .menu-btn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  cursor: pointer;
+  padding: 0;
+}
+
+.se-hero-back:hover,
+.se-sales-header-hero .menu-btn:hover {
+  background: #f8fafc;
+}
+
+.se-hero-back svg,
+.se-sales-header-hero .menu-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.25s ease;
+}
+
+body.sb-off .se-hero-back svg {
+  transform: rotate(180deg);
+}
+
+.se-sales-header-hero-text {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.se-sales-header-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: #0f2b5c;
+}
+
+.se-sales-header-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.se-sales-header-art {
+  width: min(200px, 38vw);
+  height: auto;
+  max-height: 120px;
+  object-fit: contain;
+  flex-shrink: 0;
+  align-self: center;
+  pointer-events: none;
+}
+
+.se-sales-header-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 18px 20px 20px;
+  flex-wrap: wrap;
+}
+
+.sr-topbar-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.se-sales-header-filters .sr-topbar-filters {
+  flex: 1 1 auto;
+}
+
+.se-filter-chip {
+  flex: 1 1 0;
+  min-width: min(160px, 100%);
+}
+
+.se-filter-chip-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+
+.se-filter-chip--company .se-filter-chip-label { color: #7c3aed; }
+.se-filter-chip--location .se-filter-chip-label { color: #2563eb; }
+
+.se-filter-chip-control {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  overflow: hidden;
+}
+
+.se-filter-chip--company .se-filter-chip-control {
+  background: #faf8ff;
+  border-color: #e9e0ff;
+}
+
+.se-filter-chip--location .se-filter-chip-control {
+  background: #f5f9ff;
+  border-color: #dbeafe;
+}
+
+.se-filter-chip--date .se-filter-chip-control {
+  background: #f2fcf6;
+  border-color: #bbf7d0;
+}
+
+.se-filter-chip-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  align-self: stretch;
+}
+
+.se-filter-chip--company .se-filter-chip-icon { color: #7c3aed; }
+.se-filter-chip--location .se-filter-chip-icon { color: #2563eb; }
+.se-filter-chip--date .se-filter-chip-icon { color: #16a34a; }
+
+.se-filter-chip-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.se-filter-chip select {
+  background-image: none;
+}
+
+.se-filter-chip select,
+.se-filter-chip .se-filter-chip-trigger {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 48px;
+  border: none;
+  background: transparent;
+  font: 600 14px Inter, system-ui, sans-serif;
+  color: #1e293b;
+  padding: 0 36px 0 4px;
+  appearance: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.se-filter-chip select:focus,
+.se-filter-chip .se-filter-chip-trigger:focus {
+  outline: none;
+}
+
+.se-filter-chip-control:focus-within {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.se-filter-chip-chev {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.se-filter-chip-chev svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+}
+
+.se-filter-chip--date {
+  flex: 0 1 min(200px, 32vw);
+}
+
+.se-filter-chip--date-range,
+.se-filter-chip-date-host:has(.se-filter-chip--date-range) {
+  flex: 1 1 280px;
+  min-width: min(280px, 100%);
+  max-width: none;
+}
+
+.se-filter-chip--date .se-filter-chip-trigger {
+  padding: 0 12px 0 6px;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+}
+
+.se-filter-chip--date-range .se-filter-chip-trigger {
+  padding: 0 14px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.se-filter-chip--date .an-range-trigger-label {
+  display: block;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.se-filter-chip--date .an-range-trigger-label svg {
+  display: none;
+}
+
+.se-filter-chip--date .an-range-trigger-label span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.se-filter-chip--date-range .an-range-trigger-label span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.se-filter-chip--date .an-range-chev {
+  display: none;
+}
+
+.topbar-date-host,
+.se-filter-chip-date-host {
+  flex: 0 1 min(200px, 32vw);
+  min-width: 160px;
+}
+
+.se-filter-chip-date-host:has(.se-filter-chip--date-range) {
+  flex: 1 1 280px;
+  min-width: min(280px, 100%);
+}
+
+#sr-report-header .sr-topbar-filters {
+  flex: 1 1 100%;
+  min-width: 0;
+  flex-wrap: nowrap;
+  width: 100%;
+}
+
+#sr-report-header .se-filter-chip--company,
+#sr-report-header .se-filter-chip--location {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+#sr-report-header .se-filter-chip-date-host {
+  flex: 0 1 220px;
+  min-width: 200px;
+  max-width: 280px;
+}
+
+#sr-report-header .se-filter-chip--date-range {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+#sa-analytics-header .sr-topbar-filters {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+#sa-analytics-header .se-filter-chip-date-host {
+  flex: 0 1 min(320px, 100%);
+  min-width: 220px;
+  max-width: 100%;
+}
+
+#sa-analytics-header .se-filter-chip--date-range {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Calendar popups — fixed, outside card flow */
+.se-sales-header .an-range-panel[hidden] {
+  display: none !important;
+}
+
+.se-sales-header .an-range-wrap:not(.open) .an-range-panel {
+  display: none !important;
+}
+
+.se-sales-header .an-range-wrap.open .an-range-panel {
+  position: fixed;
+  z-index: 200;
+  top: auto;
+  right: auto;
+  left: auto;
+  bottom: auto;
+  width: min(640px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+}
+
+.se-sales-header #se-date-range-panel {
+  width: min(308px, calc(100vw - 36px));
+}
+
+body:not(.se-cash-mode) #se-cash-date-range-host {
+  display: none !important;
+}
+
+body.se-cash-mode #se-date-entry-wrap {
+  display: none !important;
+}
+
+body.se-cash-mode #se-cash-date-range-host {
+  display: block !important;
+}
+
+.se-sales-header .an-range-wrap.an-range-wrap--sales,
+.se-sales-header .an-range-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: static;
+}
+
+.se-sales-header .an-range-wrap .an-range-trigger {
+  min-width: 0;
+  width: 100%;
+  height: 48px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.se-sales-header .an-range-wrap .an-range-trigger:hover,
+.se-sales-header .an-range-wrap .an-range-trigger:focus {
+  border: none;
+  box-shadow: none;
+}
+
+.se-sales-header .sr-topbar-filters {
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 900px) {
+  .se-sales-header .sr-topbar-filters {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 900px) {
+  .se-sales-header-art {
+    width: 140px;
+    max-height: 90px;
+  }
+
+  .se-sales-header-title {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 720px) {
+  .se-sales-header {
+    padding: 12px 14px 0;
+  }
+
+  .se-sales-header-hero {
+    padding: 18px 16px 16px;
+  }
+
+  .se-sales-header-hero-inner {
+    flex-direction: column;
+  }
+
+  .se-sales-header-art {
+    align-self: flex-end;
+    width: 120px;
+    max-height: 72px;
+  }
+
+  .se-sales-header-filters {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px;
+  }
+
+  .se-sales-header-filters .sr-topbar-filters {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .se-filter-chip,
+  .se-filter-chip--date,
+  .topbar-date-host,
+  .se-filter-chip-date-host {
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: none;
+  }
+
+  #sr-report-header .se-sales-header-filters {
+    flex-wrap: wrap;
+  }
+}
+
+.se-filter-chip--upload {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.se-upload-form {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.se-upload-label {
+  cursor: pointer;
+  margin: 0;
+}
+
+.se-upload-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  overflow: hidden;
+}
+
+.se-upload-status {
+  font-size: 12px;
+  color: #047857;
+  max-width: 280px;
+  text-align: right;
+}

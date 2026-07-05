@@ -1,0 +1,93 @@
+/**
+ * Global date field styling — aligned with Sales Analytics (.an-range-trigger) look:
+ * compact height, white/off-white field, soft border, blue focus ring, calendar icon polish.
+ * Load this stylesheet last in <head> so it wins over page-local form defaults.
+ */
+
+:root {
+  --app-date-border: #e2e8f0;
+  --app-date-border-hover: #b9d7ff;
+  --app-date-acc: #1877f2;
+  --app-date-ring: rgba(24, 119, 242, 0.12);
+  --app-date-bg: #f8fafc;
+  --app-date-bg-focus: #ffffff;
+  --app-date-radius: 6px;
+  --app-date-h: 36px;
+}
+
+input[type="date"] {
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-block;
+  vertical-align: middle;
+  min-height: var(--app-date-h);
+  height: var(--app-date-h);
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--app-date-border);
+  border-radius: var(--app-date-radius);
+  background: var(--app-date-bg);
+  color: #0f172a;
+  font: 600 13px Inter, "Segoe UI", system-ui, sans-serif;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+input[type="date"]:hover:not(:disabled) {
+  border-color: var(--app-date-border-hover);
+  background: var(--app-date-bg-focus);
+}
+
+input[type="date"]:focus {
+  border-color: var(--app-date-acc);
+  background: var(--app-date-bg-focus);
+  box-shadow: 0 0 0 3px var(--app-date-ring);
+}
+
+input[type="date"]:disabled,
+input[type="date"][readonly] {
+  opacity: 0.85;
+  cursor: default;
+  background: #f1f5f9;
+}
+
+/* WebKit / Blink calendar icon */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+  padding: 2px;
+  margin-left: 4px;
+}
+
+input[type="date"]:hover::-webkit-calendar-picker-indicator {
+  opacity: 0.85;
+}
+
+/* Firefox */
+input[type="date"]::-moz-focus-inner {
+  border: 0;
+}
+
+/* Modals / staff credit: class co-exists with global date rules */
+input[type="date"].staff-input {
+  width: 100%;
+  min-height: var(--app-date-h);
+  height: var(--app-date-h);
+}
+
+/* Table edit row: compact width */
+input[type="date"].app-date-inline {
+  width: 140px;
+  max-width: 100%;
+}
+
+/* Optional: label beside date in horizontal toolbars (Sales Entry header) */
+.se-date-form label,
+.date-form label {
+  font-size: 11px;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+}

@@ -1,0 +1,168 @@
+{# Shared sales update page header: title row + company/location/date filters #}
+<header class="se-sales-header su-header" id="se-sales-header">
+  <div class="su-header-top">
+    <div class="su-header-left">
+      <div class="su-header-nav">
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
+      <div class="su-title">
+        <div class="su-title-row">
+          <div class="su-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg></div>
+          <h1>{{ page_title }}</h1>
+        </div>
+        <p>{{ page_subtitle }}</p>
+      </div>
+    </div>
+  </div>
+  <div class="se-sales-header-card">
+    <div class="se-sales-header-filters">
+      <form id="sales-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Store filters">
+        <input type="hidden" name="date" id="se-filter-date" value="{{ selected_date }}">
+        <input type="hidden" name="date_from" id="se-filter-date-from" value="{{ cash_date_from }}">
+        <input type="hidden" name="date_to" id="se-filter-date-to" value="{{ cash_date_to }}">
+        <input type="hidden" name="panel" id="se-filter-panel" value="{{ 'cash' if cash_panel else '' }}">
+        <div class="se-filter-chip se-filter-chip--company">
+          <label class="se-filter-chip-label" for="sales-company">Company</label>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l2-4h10l2 4v14"/><path d="M9 21v-4h6v4"/><rect x="8" y="9" width="3" height="3" rx=".5"/><rect x="13" y="9" width="3" height="3" rx=".5"/></svg>
+            </span>
+            <select id="sales-company" name="company">
+              {% for company_code, company_info in sales_company_locations.items() %}
+              <option value="{{ company_code }}" {% if selected_company == company_code %}selected{% endif %}>{{ company_info.label }} ({{ company_code }})</option>
+              {% endfor %}
+            </select>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+        </div>
+        <div class="se-filter-chip se-filter-chip--location">
+          <label class="se-filter-chip-label" for="sales-location">Location</label>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 21s7-4.35 7-10a7 7 0 1 0-14 0c0 5.65 7 10 7 10z"/><circle cx="12" cy="11" r="2.5"/></svg>
+            </span>
+            <select id="sales-location" name="location">
+              {% for location in selected_locations %}
+              <option value="{{ location }}" {% if selected_location == location %}selected{% endif %}>{{ location }}</option>
+              {% endfor %}
+            </select>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+        </div>
+      </form>
+      <div class="se-filter-chip-date-host" id="se-date-entry-wrap">
+        <div class="se-filter-chip se-filter-chip--date">
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+            </span>
+            <div class="an-range-wrap an-range-wrap--sales" id="se-date-range-wrap" data-max-date="{{ max_sales_date }}" data-initial-date="{{ selected_date }}">
+              <button type="button" class="an-range-trigger se-filter-chip-trigger" id="se-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="se-date-range-panel">
+                <span class="an-range-trigger-label">
+                  <span id="se-date-range-display"></span>
+                </span>
+              </button>
+              <div class="an-range-backdrop" id="se-date-range-backdrop" aria-hidden="true"></div>
+              <div class="an-range-panel" id="se-date-range-panel" role="dialog" aria-labelledby="se-date-range-panel-title" hidden>
+                <div class="an-range-panel-inner">
+                  <div class="an-range-panel-h" id="se-date-range-panel-title">Select date</div>
+                  <p class="an-range-hint">Pick the sales day. Use arrows to change month.</p>
+                  <div class="an-cal-dual an-cal-dual--single">
+                    <div class="an-cal-pane">
+                      <div class="an-cal-pane-hdr">
+                        <button type="button" class="an-cal-nav-btn" id="se-cal-prev" aria-label="Previous month">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <h4 class="an-cal-month-title" id="se-cal-title0">—</h4>
+                        <button type="button" class="an-cal-nav-btn" id="se-cal-next" aria-label="Next month">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                      </div>
+                      <div class="an-cal-dow" aria-hidden="true">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                      </div>
+                      <div class="an-cal-grid" id="se-cal-grid0"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="an-range-actions">
+                  <button type="button" class="btn" id="se-date-range-cancel">Cancel</button>
+                  <button type="button" class="btn btn-primary" id="se-date-range-apply">Apply</button>
+                </div>
+              </div>
+            </div>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+      {% if include_cash_date_range %}
+      <div class="se-filter-chip-date-host" id="se-cash-date-range-host" hidden>
+        <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range">
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+            </span>
+            <div class="an-range-wrap" id="se-cash-date-range-wrap" data-max-date="{{ max_sales_date }}" hidden>
+              <button type="button" class="an-range-trigger se-filter-chip-trigger" id="se-cash-date-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="se-cash-date-panel">
+                <span class="an-range-trigger-label">
+                  <span id="se-cash-date-display"></span>
+                </span>
+              </button>
+              <div class="an-range-backdrop" id="se-cash-date-backdrop" aria-hidden="true"></div>
+              <div class="an-range-panel" id="se-cash-date-panel" role="dialog" aria-labelledby="se-cash-date-panel-title" hidden>
+                <div class="an-range-panel-inner">
+                  <div class="an-range-panel-h" id="se-cash-date-panel-title">Date range</div>
+                  <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+                  <div class="an-cal-dual">
+                    <div class="an-cal-pane">
+                      <div class="an-cal-pane-hdr">
+                        <button type="button" class="an-cal-nav-btn" id="se-cash-cal-prev" aria-label="Previous months">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <h4 class="an-cal-month-title" id="se-cash-cal-title0">—</h4>
+                        <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                      </div>
+                      <div class="an-cal-dow" aria-hidden="true">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                      </div>
+                      <div class="an-cal-grid" id="se-cash-cal-grid0"></div>
+                    </div>
+                    <div class="an-cal-pane">
+                      <div class="an-cal-pane-hdr">
+                        <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                        <h4 class="an-cal-month-title" id="se-cash-cal-title1">—</h4>
+                        <button type="button" class="an-cal-nav-btn" id="se-cash-cal-next" aria-label="Next months">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                      </div>
+                      <div class="an-cal-dow" aria-hidden="true">
+                        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                      </div>
+                      <div class="an-cal-grid" id="se-cash-cal-grid1"></div>
+                    </div>
+                  </div>
+                </div>
+                <div class="an-range-actions">
+                  <button type="button" class="btn" id="se-cash-date-cancel">Cancel</button>
+                  <button type="button" class="btn btn-primary" id="se-cash-date-apply">Apply</button>
+                </div>
+              </div>
+            </div>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</header>

@@ -1,0 +1,57 @@
+{% set nav_section = de_nav_section|default('analytics') %}
+{% set sales_view = de_nav_sales_view|default('') %}
+{% set analytics_open = nav_section == 'analytics' or sales_view %}
+<aside class="de-sidebar" id="de-sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">HBE</div>
+    <div class="sb-brand-text">
+      <div class="sb-brand-name">Hotel Bell Elite</div>
+      <div class="sb-brand-sub">Bar &amp; Restaurant</div>
+    </div>
+  </div>
+
+  <nav class="de-sb-nav" aria-label="Workspace">
+    {% if user_can_access_dashboard(current_user, 'sales_update') %}
+    <div class="de-nav-group{% if analytics_open %} is-open is-child-active{% endif %}" id="de-nav-sales-analytics-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-sales-analytics-toggle" aria-expanded="{{ 'true' if analytics_open else 'false' }}" aria-controls="de-nav-sales-analytics-sub" onclick="toggleDeNavGroup(event, 'de-nav-sales-analytics-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
+        <span>Sales Analytics</span>
+        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      <div class="de-nav-sub" id="de-nav-sales-analytics-sub">
+        <a class="de-nav-subitem{% if sales_view == 'dashboard' %} is-active{% endif %}" href="{{ url_for('dashboard') }}"{% if sales_view == 'dashboard' %} aria-current="page"{% endif %}>Dashboard</a>
+        <a class="de-nav-subitem{% if sales_view == 'hotel' %} is-active{% endif %}" href="{{ url_for('sales_update_hotel') }}"{% if sales_view == 'hotel' %} aria-current="page"{% endif %}>Sales Update - Hotel</a>
+        <a class="de-nav-subitem{% if sales_view == 'outlets' %} is-active{% endif %}" href="{{ url_for('sales_update_entry') }}"{% if sales_view == 'outlets' %} aria-current="page"{% endif %}>Sales Update - Bar and Restaurant</a>
+      </div>
+    </div>
+    {% endif %}
+  </nav>
+
+  <button type="button" class="de-sidebar-pin-btn" id="de-sidebar-pin-btn" onclick="toggleDeSidebarExpandedPin()" aria-pressed="false" aria-label="Pin sidebar expanded" title="Pin sidebar expanded">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3.76"/></svg>
+    <span>Pin sidebar</span>
+  </button>
+
+  <div class="de-sidebar-spacer"></div>
+
+  <div class="de-help">
+    <a class="de-help-compact" href="{{ url_for('logout') }}" aria-label="Log out">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+    </a>
+    <div class="de-help-expanded">
+      <div class="de-help-head">
+        <div class="de-help-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </div>
+        <div class="de-help-copy">
+          <h3>Sign out</h3>
+          <p>End your session securely</p>
+        </div>
+      </div>
+      <a class="de-help-link" href="{{ url_for('logout') }}">
+        <span>Logout</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg>
+      </a>
+    </div>
+  </div>
+</aside>
