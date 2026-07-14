@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Home | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=6">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open home-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="de-main-inner db-main-inner--home">
+  <div id="dashboard-home-panel" class="db-home">
+    <header class="db-home-header">
+      <div class="db-home-header-left">
+        <div class="db-home-title">
+          <h1>Applications</h1>
+          <p>Choose a module to continue</p>
+        </div>
+      </div>
+
+      <div class="db-home-tools">
+        <label class="db-home-search" aria-label="Search applications">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="dashboard-search" type="search" placeholder="Search applications..." autocomplete="off">
+        </label>
+
+        <div class="db-notifications" id="dashboard-notifications">
+          <button class="db-home-bell" type="button" id="dashboard-notifications-trigger" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+            <span class="db-home-bell-dot" aria-hidden="true"></span>
+          </button>
+          <div class="db-notification-menu" role="menu" aria-label="Notifications">
+            <div class="db-notification-title">Notifications</div>
+            <div class="db-notification-item">
+              <strong>All caught up</strong>
+              <span>No new notifications right now.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="db-profile" id="dashboard-profile">
+          <button class="db-profile-trigger" type="button" id="dashboard-profile-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Account menu for {{ display_name }}">
+            <div class="db-avatar">{{ avatar_text }}</div>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="db-profile-menu" role="menu" aria-label="Profile menu">
+            <div class="db-profile-meta">
+              <div class="db-profile-name">{{ display_name }}</div>
+              <div class="db-profile-role">{% if current_user and current_user.is_admin %}Administrator{% else %}User{% endif %}</div>
+            </div>
+            <a class="db-profile-logout" href="{{ url_for('logout') }}">Logout</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="db-home-grid" id="dashboard-grid" role="list" aria-label="Applications">
+      {% if has_dashboard_access('sales_analytics') %}
+      <a class="db-home-card db-home-card--indigo" role="listitem" href="{{ url_for('dashboard') }}" data-search="sales analytics dashboard hotel bar restaurant room transfer sales update" aria-label="Open Sales Analytics">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
+        </div>
+        <h2>Sales Analytics</h2>
+        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <p class="db-home-card-desc">Sales updates, room transfers, and analytics for Hotel Bell Elite.</p>
+      </a>
+      {% endif %}
+
+      {% if has_dashboard_access('access_management') %}
+      <a class="db-home-card db-home-card--cyan" role="listitem" href="{{ url_for('access_management') }}" data-search="users access management permissions roles admin accounts" aria-label="Open User and Access">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 2.5-5 6-5s6 2 6 5"/><path d="M18 8h3"/><path d="M19.5 6.5v3"/></svg>
+        </div>
+        <h2>User &amp; Access</h2>
+        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <p class="db-home-card-desc">Manage user accounts, roles, and module permissions.</p>
+      </a>
+      {% endif %}
+
+      {% if has_dashboard_access('accounts') %}
+      <a class="db-home-card db-home-card--emerald" role="listitem" href="{{ url_for('accounts') }}" data-search="accounts ledger payments finance accounting" aria-label="Open Accounts">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
+        </div>
+        <h2>Accounts</h2>
+        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <p class="db-home-card-desc">Ledger, payments, and financial records.</p>
+      </a>
+      {% endif %}
+
+      {% if has_dashboard_access('employee_payroll') %}
+      <a class="db-home-card db-home-card--orange" role="listitem" href="{{ url_for('employees') }}" data-search="employee payroll salaries epf esic records" aria-label="Open Employee Payroll">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg>
+        </div>
+        <h2>Employee Payroll</h2>
+        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <p class="db-home-card-desc">Manage employee salaries, EPF, ESIC and payroll records.</p>
+      </a>
+      {% endif %}
+
+      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') %}
+      <div class="db-home-empty" role="status">
+        <h2>No modules assigned yet</h2>
+        <p>This account is active, but no dashboard modules have been assigned. Ask an administrator to grant access so your modules appear here.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% include 'partials/home_scripts.html' %}
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

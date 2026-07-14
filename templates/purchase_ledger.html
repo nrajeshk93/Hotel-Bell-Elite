@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Purchase Ledger | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
+            </div>
+            <h1>{{ page_title }}</h1>
+          </div>
+          <p>{{ page_subtitle }}</p>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <button type="button" class="btn btn-primary" id="pl-open-add-purchase">Add Purchase</button>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="purchase-ledger-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Purchase ledger filters">
+          <div class="se-filter-chip se-filter-chip--date">
+            <label class="se-filter-chip-label" for="purchase-ledger-date-from">From</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              </span>
+              <input type="date" id="purchase-ledger-date-from" name="date_from" class="pl-date-input" value="{{ date_from }}" max="{{ date_to }}">
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--date">
+            <label class="se-filter-chip-label" for="purchase-ledger-date-to">To</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              </span>
+              <input type="date" id="purchase-ledger-date-to" name="date_to" class="pl-date-input" value="{{ date_to }}" min="{{ date_from }}">
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable>
+            <span class="se-filter-chip-label" id="purchase-ledger-supplier-label">Supplier</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              </span>
+              <input type="hidden" id="purchase-ledger-supplier" name="supplier" value="{{ selected_supplier }}">
+              <button type="button" class="se-filter-chip-trigger" id="purchase-ledger-supplier-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="purchase-ledger-supplier-list" aria-labelledby="purchase-ledger-supplier-label purchase-ledger-supplier-value">
+                <span class="se-filter-chip-value" id="purchase-ledger-supplier-value">{{ selected_supplier_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox pl-supplier-listbox" id="purchase-ledger-supplier-list" role="listbox" aria-labelledby="purchase-ledger-supplier-label" hidden>
+              <div class="pl-supplier-search-wrap">
+                <input type="search" class="pl-supplier-search" id="purchase-ledger-supplier-search" placeholder="Search by name or GST..." autocomplete="off" aria-label="Search suppliers">
+              </div>
+              <div class="pl-supplier-options" id="purchase-ledger-supplier-options">
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all suppliers" data-gst="" aria-selected="{{ 'true' if selected_supplier == 'all' else 'false' }}">All suppliers</button>
+                {% for supplier in suppliers %}
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == (supplier.id|string) %} is-selected{% endif %}" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }}" data-gst="{{ supplier.gst|lower }}" aria-selected="{{ 'true' if selected_supplier == (supplier.id|string) else 'false' }}">
+                  <span class="pl-supplier-option-name">{{ supplier.name }}</span>
+                  <span class="pl-supplier-option-gst">{{ supplier.gst }}</span>
+                </button>
+                {% endfor %}
+              </div>
+              <div class="pl-supplier-empty" id="purchase-ledger-supplier-empty" hidden>No suppliers match your search.</div>
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable>
+            <span class="se-filter-chip-label" id="purchase-ledger-category-label">Category</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+              </span>
+              <input type="hidden" id="purchase-ledger-category" name="category" value="{{ selected_category }}">
+              <button type="button" class="se-filter-chip-trigger" id="purchase-ledger-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="purchase-ledger-category-list" aria-labelledby="purchase-ledger-category-label purchase-ledger-category-value">
+                <span class="se-filter-chip-value" id="purchase-ledger-category-value">{{ selected_category_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox pl-supplier-listbox" id="purchase-ledger-category-list" role="listbox" aria-labelledby="purchase-ledger-category-label" hidden>
+              <div class="pl-supplier-search-wrap">
+                <input type="search" class="pl-supplier-search" id="purchase-ledger-category-search" placeholder="Search category..." autocomplete="off" aria-label="Search categories">
+              </div>
+              <div class="pl-category-options" id="purchase-ledger-category-options">
+                <button type="button" class="se-filter-listbox-option pl-filter-option{% if selected_category == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all categories" aria-selected="{{ 'true' if selected_category == 'all' else 'false' }}">All categories</button>
+                {% for category_key, category_label in expense_categories %}
+                <button type="button" class="se-filter-listbox-option pl-filter-option{% if selected_category == category_key %} is-selected{% endif %}" role="option" data-value="{{ category_key }}" data-name="{{ category_label|lower }}" aria-selected="{{ 'true' if selected_category == category_key else 'false' }}">{{ category_label }}</button>
+                {% endfor %}
+              </div>
+              <div class="pl-supplier-empty" id="purchase-ledger-category-empty" hidden>No categories match your search.</div>
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox" data-se-listbox>
+            <span class="se-filter-chip-label" id="purchase-ledger-payment-label">Payment</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+              </span>
+              <input type="hidden" id="purchase-ledger-payment" name="payment" value="{{ selected_payment }}">
+              <button type="button" class="se-filter-chip-trigger" id="purchase-ledger-payment-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="purchase-ledger-payment-list" aria-labelledby="purchase-ledger-payment-label purchase-ledger-payment-value">
+                <span class="se-filter-chip-value" id="purchase-ledger-payment-value">{{ selected_payment_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="purchase-ledger-payment-list" role="listbox" aria-labelledby="purchase-ledger-payment-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if selected_payment == 'all' %} is-selected{% endif %}" role="option" data-value="all" aria-selected="{{ 'true' if selected_payment == 'all' else 'false' }}">All payments</button>
+              {% for payment_key, payment_label in expense_payment_types %}
+              <button type="button" class="se-filter-listbox-option{% if selected_payment == payment_key %} is-selected{% endif %}" role="option" data-value="{{ payment_key }}" aria-selected="{{ 'true' if selected_payment == payment_key else 'false' }}">{{ payment_label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <div class="pl-summary-row">
+      <article class="card pl-summary-card" aria-label="Purchase summary">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Total purchases</div>
+          <div class="pl-summary-value" id="pl-total-amount" data-amount="{{ purchase_total }}">{{ purchase_total }}</div>
+          <div class="pl-summary-meta">{{ purchase_entries|length }} expense{{ '' if purchase_entries|length == 1 else 's' }}{% if date_from != date_to %} · {{ date_from }} to {{ date_to }}{% else %} · {{ date_from }}{% endif %}</div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel" aria-label="Purchase entries">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+          <span>Purchases</span>
+        </div>
+        <span class="pl-count">{{ purchase_entries|length }} entries</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if purchase_entries %}
+        <div class="pl-table-wrap">
+          <table class="pl-table" aria-label="Purchase ledger entries">
+            <thead>
+              <tr>
+                <th>Expense ID</th>
+                <th>Date</th>
+                <th>Expense</th>
+                <th>Category</th>
+                <th>Invoice</th>
+                <th>Supplier</th>
+                <th>Payment</th>
+                <th>Status</th>
+                <th class="pl-col-amount">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in purchase_entries %}
+              <tr>
+                <td class="pl-col-code"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
+                <td class="pl-col-date">{{ entry.sales_date }}</td>
+                <td>
+                  <div class="pl-name">{{ entry.description or '—' }}</div>
+                </td>
+                <td>{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
+                <td>{{ entry.invoice_number or '—' }}</td>
+                <td>
+                  {% if entry.supplier_name %}
+                  <div class="pl-name">{{ entry.supplier_name }}</div>
+                  {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                <td>{{ purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) }}</td>
+                <td>
+                  {% if entry.settlement_status %}
+                  <span class="cp-status-pill cp-status-pill--{{ entry.settlement_status }}">{{ credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status) }}</span>
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}">{{ entry.amount }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">No hotel expenses found for the selected filters.</div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+{% include 'partials/purchase_ledger_add_modal.html' %}
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+{% include 'partials/purchase_ledger_filter_scripts.html' %}
+{% include 'partials/purchase_ledger_add_scripts.html' %}
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

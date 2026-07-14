@@ -31,10 +31,17 @@ body.su-module .sb-brand{border-bottom:none;padding:20px 12px 8px;justify-conten
 body.su-module .sidebar.is-expanded .sb-brand,
 body.su-module .sidebar:hover .sb-brand{justify-content:flex-start;padding:20px 14px 8px}
 body.su-module .sb-logo{
-  background:var(--acc-bg);color:var(--acc);border-radius:12px;
+  background:transparent;color:var(--acc);border-radius:12px;
   width:36px;height:36px;min-width:36px;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;letter-spacing:-.3px;line-height:1;
+  overflow:hidden;
+}
+body.su-module .sb-logo img{
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  display:block;
+  border-radius:inherit;
 }
 body.su-module .sb-brand-text{opacity:0;max-width:0;overflow:hidden;white-space:nowrap;transition:opacity .2s ease,max-width .25s ease}
 body.su-module .sidebar.is-expanded .sb-brand-text,
@@ -57,7 +64,15 @@ body.su-module .nav-item.active::before{display:none}
 body.su-module .menu-btn{display:none!important}
 body.su-module .sb-pin-btn{display:flex}
 body.su-module.sb-off .sb-pin-btn svg{transform:rotate(180deg)}
-body.su-module .su-header{background:var(--bg);padding:40px 48px 0;position:relative;z-index:1}
+body.su-module header.se-sales-header.su-header{
+  padding:40px 48px 0;
+  background:transparent;
+  max-width:1600px;
+  margin-left:auto;
+  margin-right:auto;
+  width:100%;
+  box-sizing:border-box;
+}
 body.su-module .su-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}
 body.su-module .su-header-left{display:flex;align-items:flex-start;gap:16px;min-width:0}
 body.su-module .su-header-nav{display:flex;align-items:center;gap:10px;flex-shrink:0}
@@ -88,13 +103,39 @@ body.su-module .su-home-btn{
 }
 body.su-module .su-home-btn:hover{background:#F9FAFB;color:#111827;border-color:#E5E7EB}
 body.su-module .su-home-btn svg{width:16px;height:16px}
-body.su-module .se-sales-header{padding:0;background:transparent}
+body.su-module header.se-sales-header.su-header{
+  padding:40px 48px 0;
+  background:transparent;
+  max-width:1600px;
+  margin-left:auto;
+  margin-right:auto;
+  width:100%;
+  box-sizing:border-box;
+}
 body.su-module .se-sales-header-hero{display:none}
 body.su-module .se-sales-header-card{
   background:#fff;border:1px solid #EEF2F7;border-radius:20px;
   box-shadow:0 8px 30px rgba(15,23,42,.04);overflow:visible;
+  width:100%;
 }
-body.su-module .se-sales-header-filters{padding:20px 24px 24px}
+body.su-module .se-filter-listbox-option.is-selected{background:var(--acc-bg);color:var(--acc)}
+body.su-module .se-filter-listbox-option.is-selected:hover,
+body.su-module .se-filter-listbox-option.is-selected:focus{background:rgba(37,99,235,.12)}
+body.su-module .se-filter-chip--listbox.is-open .se-filter-chip-control{border-color:#93C5FD}
+body.su-module .se-sales-header-filters{padding:20px 24px 24px;width:100%;box-sizing:border-box}
+body.su-module .se-sales-header-filters:has(#se-date-entry-wrap, #se-cash-date-range-host){
+  justify-content:flex-end;
+}
+body.su-module .se-sales-header-filters:has(#se-date-entry-wrap, #se-cash-date-range-host) .sr-topbar-filters{
+  width:auto;
+  flex:0 0 auto;
+}
+body.su-module .se-sales-header-filters #se-date-entry-wrap,
+body.su-module .se-sales-header-filters #se-cash-date-range-host{
+  margin-left:auto;
+  flex:0 0 auto;
+}
+body.su-module .sr-topbar-filters{width:100%}
 body.su-module .se-filter-chip-label{text-transform:none;letter-spacing:0;font-size:12px;font-weight:500;color:#6B7280}
 body.su-module .se-filter-chip--company .se-filter-chip-label,
 body.su-module .se-filter-chip--location .se-filter-chip-label{color:#6B7280}
@@ -108,7 +149,10 @@ body.su-module .se-filter-chip--company .se-filter-chip-icon{color:var(--acc)!im
 body.su-module .staff-credit-head svg{stroke:var(--acc)}
 body.su-module .se-filter-chip select,
 body.su-module .se-filter-chip .se-filter-chip-trigger{font-weight:500;color:#111827}
-body.su-module .content.se-content{padding:24px 48px 48px}
+body.su-module .content.se-content{
+  max-width:1600px;margin-left:auto;margin-right:auto;
+  padding:24px 48px 48px;width:100%;box-sizing:border-box;
+}
 body.su-module .card{border-radius:20px;border:1px solid #EEF2F7;box-shadow:0 8px 30px rgba(15,23,42,.04)}
 body.su-module .btn-primary{background:var(--acc);border-color:var(--acc)}
 body.su-module .btn-primary:hover:not(:disabled){background:var(--acc-h);border-color:var(--acc-h)}
@@ -120,6 +164,294 @@ body.su-module .se-summary-icon--violet{background:var(--acc-bg);color:var(--acc
 body.su-module .se-summary-value--diff{color:var(--acc)}
 body.su-module .staff-credit-head-rupee{color:var(--acc)}
 body.su-module .staff-credit-home{color:var(--acc)}
+body.su-module .sales-expense-modal-box{width:min(720px,96vw)}
+body.su-module .pl-add-category-row{margin-bottom:14px}
+body.su-module .pl-add-category-row .staff-field--inline{margin-bottom:0;min-width:0}
+body.su-module .pl-add-category-row .se-filter-chip{width:100%}
+body.su-module #sales-expense-modal .se-filter-listbox{left:0;right:0;min-width:100%}
+
+/* Petty Cash — Neeraj Textile premium design (per-outlet cards) */
+body.su-module .se-petty-outlet-panel{
+  --pc-accent:#3B5BDB;
+  --pc-accent-soft:rgba(59,91,219,.1);
+  width:100%;
+  max-width:none;
+  margin:0;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-hdr{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:16px 20px;
+  border-bottom:1px solid #E5E7EB;
+  background:#fff;
+  flex-wrap:wrap;
+}
+body.su-module .se-petty-outlet-panel.petty-cash-collapsed .petty-cash-hdr{border-bottom:0}
+body.su-module .se-petty-outlet-panel .petty-cash-hdr-left{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-title-icon{
+  width:18px;height:18px;border-radius:0;
+  background:transparent;color:#6B7280;
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-title-icon svg{
+  width:18px;height:18px;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-title-copy{
+  display:flex;align-items:center;min-width:0;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-title{
+  margin:0;
+  font-family:inherit;
+  font-size:13px;line-height:1.2;font-weight:800;
+  color:#111827;letter-spacing:0;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-subtitle{
+  display:none;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-hdr-right{
+  display:flex;align-items:center;gap:10px;flex-shrink:0;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-hdr .save-state-wrap{
+  margin-top:0;
+}
+body.su-module .se-petty-outlet-panel .petty-save-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  min-height:28px;padding:4px 10px;
+  background:#fff;border:1px solid #E5E7EB;
+  border-radius:999px;color:#111827;
+}
+body.su-module .se-petty-outlet-panel .petty-save-badge-icon{
+  display:inline-flex;color:#6B7280;
+}
+body.su-module .se-petty-outlet-panel .petty-save-badge-icon svg{
+  width:14px;height:14px;
+}
+body.su-module .se-petty-outlet-panel .petty-save-badge .save-state{
+  margin:0;font-size:12px;font-weight:500;color:#111827;line-height:1.2;
+}
+body.su-module .se-petty-outlet-panel .petty-save-badge .save-state.ok{color:#16A34A}
+body.su-module .se-petty-outlet-panel .petty-save-badge .save-state.err{color:#DC2626}
+body.su-module .se-petty-outlet-panel .petty-cash-toggle{
+  width:28px;height:28px;border-radius:8px;
+  border:1px solid #E5E7EB;background:#fff;color:#6B7280;
+  transition:background .2s ease,border-color .2s ease,color .2s ease,transform .2s ease;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-toggle:hover{
+  background:#F3F4F6;color:#111827;border-color:#E5E7EB;
+}
+body.su-module .se-petty-outlet-panel .petty-cash-toggle svg{
+  width:16px;height:16px;transition:transform .2s ease;
+  transform:rotate(180deg);
+}
+body.su-module .se-petty-outlet-panel.petty-cash-collapsed .petty-cash-toggle svg{
+  transform:rotate(0deg);
+}
+body.su-module .se-petty-outlet-panel .card-body{
+  padding:18px 20px;
+  background:#fff;
+}
+body.su-module .se-petty-outlets-grid--single .se-petty-outlet-panel:not(.petty-cash-collapsed) .card-body{
+  display:block;
+}
+body.su-module .se-petty-outlet-panel.petty-cash-collapsed .card-body{
+  display:none;
+}
+body.su-module .se-petty-outlet-panel .petty-wrap{
+  max-width:none;width:100%;
+}
+body.su-module .se-petty-outlets-grid--single .petty-wrap{
+  max-width:none;width:100%;margin:0;
+}
+body.su-module .se-petty-outlet-panel .petty-table{
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+  table-layout:fixed;
+  background:#fff;
+  border:1px solid #E5E7EB;
+  border-radius:16px;
+  overflow:hidden;
+  box-shadow:none;
+  font-size:13px;
+}
+body.su-module .se-petty-outlet-panel .petty-table thead th{
+  height:64px;
+  padding:0 24px;
+  background:#F8FAFC;
+  color:#6B7280;
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  border-bottom:1px solid #E5E7EB;
+  border-right:0;
+  vertical-align:middle;
+  text-align:center;
+}
+body.su-module .se-petty-outlet-panel .petty-table tbody td{
+  height:72px;
+  padding:12px 24px;
+  background:#fff;
+  border-bottom:1px solid #F3F4F6;
+  border-right:0;
+  vertical-align:middle;
+  transition:background .2s ease;
+}
+body.su-module .se-petty-outlet-panel .petty-table tbody tr:hover td{
+  background:#F9FAFB;
+}
+body.su-module .se-petty-outlet-panel .petty-table tbody tr.petty-total-row:hover td{
+  background:#F8FAFC;
+}
+body.su-module .se-petty-outlet-panel .petty-denom{text-align:center}
+body.su-module .se-petty-outlet-panel .petty-denom-inner{
+  display:inline-flex;align-items:center;gap:14px;
+  margin-left:auto;margin-right:auto;
+}
+body.su-module .se-petty-outlet-panel .petty-denom-icon{
+  width:40px;height:40px;border-radius:12px;
+  background:var(--pc-accent-soft);color:var(--pc-accent);
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+body.su-module .se-petty-outlet-panel .petty-denom-icon svg{
+  width:18px;height:18px;
+}
+body.su-module .se-petty-outlet-panel .petty-denom-value{
+  font-size:14px;font-weight:600;color:#111827;letter-spacing:0;
+  font-variant-numeric:tabular-nums;
+}
+body.su-module .se-petty-outlet-panel .petty-count{text-align:center}
+body.su-module .se-petty-outlet-panel .petty-count input{
+  width:min(220px,100%);
+  max-width:220px;
+  height:46px;
+  margin:0 auto;
+  display:block;
+  border:1px solid #E5E7EB;
+  border-radius:12px;
+  background:#fff;
+  color:#111827;
+  font:700 14px Inter,system-ui,sans-serif;
+  text-align:center;
+  font-variant-numeric:tabular-nums;
+  outline:none;
+  transition:border-color .2s ease,box-shadow .2s ease,background .2s ease;
+}
+body.su-module .se-petty-outlet-panel .petty-count input:hover{border-color:#D1D5DB}
+body.su-module .se-petty-outlet-panel .petty-count input:focus{
+  border-color:var(--pc-accent);
+  background:#fff;
+  box-shadow:0 0 0 4px rgba(59,91,219,.14);
+}
+body.su-module .se-petty-outlet-panel .petty-amount{text-align:center}
+body.su-module .se-petty-outlet-panel .petty-amount-field{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:min(220px,100%);width:min(220px,100%);height:46px;
+  padding:0 16px;box-sizing:border-box;
+  border-radius:12px;background:#F3F4F6;border:1px solid transparent;
+  color:#111827;font:700 14px Inter,system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;
+}
+body.su-module .se-petty-outlet-panel .petty-total-row td{
+  height:auto;
+  min-height:88px;
+  padding:20px 24px;
+  background:#F8FAFC;
+  border-bottom:0;
+}
+body.su-module .se-petty-outlet-panel .petty-total-label{
+  text-align:center;
+  background:#F8FAFC;
+  text-transform:none;
+  letter-spacing:0;
+}
+body.su-module .se-petty-outlet-panel .petty-total-label-inner{
+  display:inline-flex;align-items:center;gap:12px;
+  margin-left:auto;margin-right:auto;
+  font-size:13px;font-weight:800;color:#111827;
+  text-transform:uppercase;letter-spacing:.04em;
+}
+body.su-module .se-petty-outlet-panel .petty-total-icon{
+  width:40px;height:40px;border-radius:12px;
+  background:#E5E7EB;color:#374151;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+body.su-module .se-petty-outlet-panel .petty-total-icon svg{
+  width:18px;height:18px;
+}
+body.su-module .se-petty-outlet-panel .petty-total{
+  text-align:center;
+  background:#F8FAFC;
+}
+body.su-module .se-petty-outlet-panel .petty-total-card{
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  min-width:160px;height:52px;padding:0 24px;
+  border-radius:14px;background:var(--pc-accent);color:#fff;
+  font-size:18px;font-weight:800;letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums;line-height:1;
+  box-shadow:0 8px 20px rgba(59,91,219,.22);
+}
+body.su-module .se-petty-outlet-panel .petty-total-currency{
+  font-weight:700;
+}
+
+/* Sales Entry table — header row matches Neeraj Textile / Petty Cash */
+body.su-module .se-sales-outlet-panel .entry-table thead th{
+  height:64px;
+  min-height:64px;
+  padding:0 24px !important;
+  background:#F8FAFC;
+  color:#6B7280;
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  border-bottom:1px solid #E5E7EB;
+  vertical-align:middle;
+  text-align:center;
+}
+body.su-module .se-sales-outlet-panel .entry-table thead th:first-child{
+  padding-left:24px !important;
+}
+body.su-module .se-sales-outlet-panel .entry-table thead th .se-particulars-head{
+  display:block;
+  width:100%;
+  margin:0;
+  box-sizing:border-box;
+  text-align:center;
+}
+
+@media(max-width:900px){
+  body.su-module .se-petty-outlet-panel .petty-cash-hdr,
+  body.su-module .se-petty-outlet-panel .card-body{padding-left:20px;padding-right:20px}
+  body.su-module .se-petty-outlet-panel .petty-table thead th,
+  body.su-module .se-petty-outlet-panel .petty-table tbody td{padding-left:16px;padding-right:16px}
+  body.su-module .se-petty-outlet-panel .petty-count input,
+  body.su-module .se-petty-outlet-panel .petty-amount-field{width:min(160px,100%);max-width:160px;min-width:0}
+  body.su-module .se-petty-outlet-panel .petty-total-card{font-size:18px;min-width:132px;height:48px}
+}
+@media(max-width:640px){
+  body.su-module .se-petty-outlet-panel .petty-cash-hdr{padding:16px;gap:10px}
+  body.su-module .se-petty-outlet-panel .card-body{padding:16px}
+  body.su-module .se-petty-outlet-panel .petty-table thead th{height:52px;font-size:10px;padding:0 12px}
+  body.su-module .se-petty-outlet-panel .petty-table tbody td{height:64px;padding:10px 12px}
+  body.su-module .se-petty-outlet-panel .petty-denom-value{font-size:14px}
+  body.su-module .se-petty-outlet-panel .petty-denom-icon{width:32px;height:32px;border-radius:10px}
+  body.su-module .se-petty-outlet-panel .petty-count input,
+  body.su-module .se-petty-outlet-panel .petty-amount-field{height:46px;width:100%;max-width:120px;font:700 14px Inter,system-ui,sans-serif}
+  body.su-module .se-petty-outlet-panel .petty-total-label-inner{font-size:13px}
+  body.su-module .se-petty-outlet-panel .petty-total-card{width:100%;min-width:0;height:48px;font-size:18px;padding:0 16px}
+  body.su-module .se-petty-outlet-panel .petty-total{text-align:center}
+  body.su-module .se-sales-outlet-panel .entry-table thead th{height:52px;min-height:52px;padding:0 12px;font-size:10px}
+}
+
 @media(max-width:760px){
   body.su-module .sidebar{
     position:fixed!important;top:0;left:0;bottom:0;width:var(--ba-sidebar-open);min-width:var(--ba-sidebar-open);
@@ -134,7 +466,7 @@ body.su-module .staff-credit-home{color:var(--acc)}
   body.su-module .menu-btn{display:flex!important}
   body.su-module .sb-pin-btn{display:none!important}
   body.su-module.sb-off .sidebar{transform:translateX(calc(-1 * var(--ba-sidebar-open) - 12px))!important}
-  body.su-module .su-header{padding:24px 20px 0}
+  body.su-module header.se-sales-header.su-header{padding:24px 20px 0}
   body.su-module .su-header-top{flex-direction:column;gap:20px}
   body.su-module .su-header-tools{align-self:flex-end}
   body.su-module .su-title h1{font-size:28px}
@@ -144,4 +476,44 @@ body.su-module .staff-credit-home{color:var(--acc)}
 @media(max-width:640px){
   body.su-module .su-title-icon{display:none}
   body.su-module .su-title h1{font-size:24px}
+}
+
+body.su-module .db-coming-soon-card{
+  max-width:640px;
+  margin:0 auto;
+}
+body.su-module .db-coming-soon-body{
+  padding:48px 40px;
+  text-align:center;
+}
+body.su-module .db-coming-soon-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:0 14px;
+  border-radius:999px;
+  background:var(--acc-bg);
+  color:var(--acc);
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+body.su-module .db-coming-soon-title{
+  margin:20px 0 0;
+  font-size:28px;
+  line-height:1.2;
+  font-weight:700;
+  color:#111827;
+  letter-spacing:-.02em;
+}
+body.su-module .db-coming-soon-copy{
+  margin:12px 0 0;
+  font-size:16px;
+  line-height:1.6;
+  color:#6B7280;
+}
+@media(max-width:640px){
+  body.su-module .db-coming-soon-body{padding:36px 24px}
+  body.su-module .db-coming-soon-title{font-size:24px}
 }

@@ -224,54 +224,66 @@
     }
   }
 
+  function bindDeSidebarInteractions(deSidebar){
+    if(!deSidebar || deSidebar.__deSidebarBound) return;
+    deSidebar.__deSidebarBound = true;
+
+    deSidebar.addEventListener('mouseenter', function(){
+      clearDeSidebarCollapseTimer();
+      setDeSidebarExpanded(true, deSidebar);
+      if(!isDeSidebarPinned(deSidebar)){
+        deSidebar.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(group){
+          group.classList.remove('is-flyout-active');
+        });
+      }
+    });
+
+    deSidebar.addEventListener('mouseleave', function(event){
+      if(isDeSidebarPinned(deSidebar)) return;
+      var related = event.relatedTarget;
+      if(related && deSidebar.contains(related)) return;
+      scheduleDeSidebarCollapse(deSidebar);
+    });
+
+    deSidebar.addEventListener('focusin', function(){
+      clearDeSidebarCollapseTimer();
+      setDeSidebarExpanded(true, deSidebar);
+    });
+
+    deSidebar.addEventListener('focusout', function(event){
+      if(isDeSidebarPinned(deSidebar)) return;
+      if(deSidebar.contains(event.relatedTarget)) return;
+      if(hasActiveDeFlyout(deSidebar)) return;
+      scheduleDeSidebarCollapse(deSidebar);
+    });
+
+    deSidebar.addEventListener('click', function(){
+      clearDeSidebarCollapseTimer();
+      setDeSidebarExpanded(true, deSidebar);
+    });
+  }
+
   function initDeWorkspaceSidebar(){
     applyDeSidebarBootState();
+    getAllSidebars().forEach(bindDeSidebarInteractions);
 
-    getAllSidebars().forEach(function(deSidebar){
-      deSidebar.addEventListener('mouseenter', function(){
-        clearDeSidebarCollapseTimer();
-        setDeSidebarExpanded(true, deSidebar);
-        if(!isDeSidebarPinned(deSidebar)){
-          deSidebar.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(group){
-            group.classList.remove('is-flyout-active');
-          });
+    if(!document.__deSidebarDocClickBound){
+      document.__deSidebarDocClickBound = true;
+      document.addEventListener('click', function(event){
+        if(event.target && event.target.closest && event.target.closest('.de-nav-group-toggle')){
+          return;
         }
+        getAllSidebars().forEach(function(sidebar){
+          if(sidebar.contains(event.target)) return;
+          closeDeNavFlyouts(sidebar);
+        });
       });
+    }
+  }
 
-      deSidebar.addEventListener('mouseleave', function(event){
-        if(isDeSidebarPinned(deSidebar)) return;
-        var related = event.relatedTarget;
-        if(related && deSidebar.contains(related)) return;
-        scheduleDeSidebarCollapse(deSidebar);
-      });
-
-      deSidebar.addEventListener('focusin', function(){
-        clearDeSidebarCollapseTimer();
-        setDeSidebarExpanded(true, deSidebar);
-      });
-
-      deSidebar.addEventListener('focusout', function(event){
-        if(isDeSidebarPinned(deSidebar)) return;
-        if(deSidebar.contains(event.relatedTarget)) return;
-        if(hasActiveDeFlyout(deSidebar)) return;
-        scheduleDeSidebarCollapse(deSidebar);
-      });
-
-      deSidebar.addEventListener('click', function(){
-        clearDeSidebarCollapseTimer();
-        setDeSidebarExpanded(true, deSidebar);
-      });
-    });
-
-    document.addEventListener('click', function(event){
-      if(event.target && event.target.closest && event.target.closest('.de-nav-group-toggle')){
-        return;
-      }
-      getAllSidebars().forEach(function(sidebar){
-        if(sidebar.contains(event.target)) return;
-        closeDeNavFlyouts(sidebar);
-      });
-    });
+  function reinitDeWorkspaceSidebar(){
+    applyDeSidebarBootState();
+    getAllSidebars().forEach(bindDeSidebarInteractions);
   }
 
   window.toggleDeNavGroup = toggleDeNavGroup;
@@ -281,6 +293,8 @@
   window.toggleDeSidebarPin = toggleDeSidebarPin;
   window.toggleDeSidebarExpandedPin = toggleDeSidebarExpandedPin;
   window.setDeSidebarExpanded = setDeSidebarExpanded;
+  window.applyDeSidebarBootState = applyDeSidebarBootState;
+  window.reinitDeWorkspaceSidebar = reinitDeWorkspaceSidebar;
 
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', initDeWorkspaceSidebar);

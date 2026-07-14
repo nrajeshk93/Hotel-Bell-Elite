@@ -1,0 +1,79 @@
+{% macro ep_listbox_payment_icon() %}
+<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+{% endmacro %}
+
+{% macro ep_listbox(name, label, options, selected='', placeholder='Select...', searchable=false, field_id='', submit_form='', change_handler='', extra_class='', inline=false, data_emp='', data_date='', data_year='', data_month='') %}
+{% set fid = field_id or name %}
+{% set ns = namespace(display=placeholder, has_value=false) %}
+{% for value, opt_label in options %}
+  {% if selected|string == value|string %}
+    {% set ns.display = opt_label %}
+    {% set ns.has_value = true %}
+  {% endif %}
+{% endfor %}
+<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox{% if inline %} ep-inline-listbox{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}" data-se-listbox{% if searchable %} data-se-listbox-searchable{% endif %}{% if submit_form %} data-se-listbox-submit="{{ submit_form }}"{% endif %}{% if change_handler %} data-se-listbox-change="{{ change_handler }}"{% endif %}{% if data_emp %} data-emp-id="{{ data_emp }}"{% endif %}{% if data_date %} data-date="{{ data_date }}"{% endif %}{% if data_year %} data-year="{{ data_year }}"{% endif %}{% if data_month %} data-month="{{ data_month }}"{% endif %} id="{{ fid }}-listbox">
+  <label class="se-filter-chip-label" id="{{ fid }}-label" for="{{ fid }}-trigger">{{ label }}</label>
+  <div class="se-filter-chip-control">
+    <span class="se-filter-chip-icon" aria-hidden="true">{{ ep_listbox_payment_icon() }}</span>
+    <input type="hidden" id="{{ fid }}" name="{{ name }}" value="{{ selected }}">
+    <button type="button" class="se-filter-chip-trigger" id="{{ fid }}-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ fid }}-list" aria-labelledby="{{ fid }}-label {{ fid }}-value">
+      <span class="se-filter-chip-value{% if not ns.has_value %} is-placeholder{% endif %}" id="{{ fid }}-value">{{ ns.display }}</span>
+    </button>
+    <span class="se-filter-chip-chev" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+    </span>
+  </div>
+  <div class="se-filter-listbox" id="{{ fid }}-list" role="listbox" aria-labelledby="{{ fid }}-label" hidden>
+    {% if searchable %}
+    <div class="ep-listbox-search-wrap">
+      <input type="search" class="ep-listbox-search" placeholder="Search..." autocomplete="off" aria-label="Search {{ label }}">
+    </div>
+    <div class="ep-listbox-options">
+    {% endif %}
+    {% for value, opt_label in options %}
+    <button type="button" class="se-filter-listbox-option{% if selected|string == value|string %} is-selected{% endif %}" role="option" data-value="{{ value }}" data-name="{{ opt_label|lower }}" data-label="{{ opt_label }}" aria-selected="{{ 'true' if selected|string == value|string else 'false' }}">{{ opt_label }}</button>
+    {% endfor %}
+    {% if searchable %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% macro ep_toolbar_listbox(name, label, options, selected='', placeholder='Select...', form_id='', extra_class='', searchable=false, field_id='', hide_label=false, change_handler='') %}
+{% set fid = field_id or (name ~ '-' ~ (form_id or 'toolbar')) %}
+{% set ns = namespace(display=placeholder, has_value=false) %}
+{% for value, opt_label in options %}
+  {% if selected|string == value|string %}
+    {% set ns.display = opt_label %}
+    {% set ns.has_value = true %}
+  {% endif %}
+{% endfor %}
+<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-toolbar-listbox{% if extra_class %} {{ extra_class }}{% endif %}" data-se-listbox{% if searchable %} data-se-listbox-searchable{% endif %}{% if form_id %} data-se-listbox-submit="{{ form_id }}"{% endif %}{% if change_handler %} data-se-listbox-change="{{ change_handler }}"{% endif %} id="{{ fid }}-listbox">
+  {% if not hide_label %}<span class="se-filter-chip-label" id="{{ fid }}-label">{{ label }}</span>{% endif %}
+  <div class="se-filter-chip-control">
+    <span class="se-filter-chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>
+    <input type="hidden" id="{{ fid }}" name="{{ name }}" value="{{ selected }}">
+    <button type="button" class="se-filter-chip-trigger" id="{{ fid }}-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ fid }}-list"{% if not hide_label %} aria-labelledby="{{ fid }}-label {{ fid }}-value"{% else %} aria-label="{{ label }}" aria-labelledby="{{ fid }}-value"{% endif %}>
+      <span class="se-filter-chip-value{% if not ns.has_value %} is-placeholder{% endif %}" id="{{ fid }}-value">{{ ns.display }}</span>
+    </button>
+    <span class="se-filter-chip-chev" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+    </span>
+  </div>
+  <div class="se-filter-listbox" id="{{ fid }}-list" role="listbox"{% if not hide_label %} aria-labelledby="{{ fid }}-label"{% endif %} hidden>
+    {% if searchable %}
+    <div class="ep-listbox-search-wrap">
+      <input type="search" class="ep-listbox-search" placeholder="Search..." autocomplete="off" aria-label="Search {{ label }}">
+    </div>
+    <div class="ep-listbox-options">
+    {% endif %}
+    {% for value, opt_label in options %}
+    <button type="button" class="se-filter-listbox-option{% if selected|string == value|string %} is-selected{% endif %}" role="option" data-value="{{ value }}" data-name="{{ opt_label|lower }}" data-label="{{ opt_label }}" aria-selected="{{ 'true' if selected|string == value|string else 'false' }}">{{ opt_label }}</button>
+    {% endfor %}
+    {% if searchable %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}

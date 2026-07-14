@@ -1,0 +1,93 @@
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script>
+(function(){
+  const widget = document.getElementById('room-transfer-widget');
+  const statusEl = document.getElementById('room-transfer-save-status');
+  const paidEl = document.getElementById('room-transfer-paid');
+  const unpaidEl = document.getElementById('room-transfer-unpaid');
+  const wrapEl = document.getElementById('room-transfer-wrap');
+  const statusFilter = widget ? String(widget.dataset.status || 'all') : 'all';
+  const locationFilter = widget ? String(widget.dataset.location || 'All') : 'All';
+  let saveTimer = null;
+
+  const formatInrKpi = (value) => formatInr(value, 0);
+
+  function updateSummary(summaryRollup){
+    const rollup = summaryRollup || {};
+    if (paidEl) paidEl.textContent = formatInrKpi(rollup.paid_amount || 0);
+    if (unpaidEl) unpaidEl.textContent = formatInrKpi(rollup.unpaid_amount || 0);
+  }
+
+  function emptyStateMessage(){
+    const locationSuffix = locationFilter === 'All' ? '' : ` for ${locationFilter}`;
+    if (statusFilter === 'paid') {
+      return `No paid room transfers found${locationSuffix}. Mark pending lines as Paid when settled.`;
+    }
+    if (statusFilter === 'unpaid') {
+      return `No pending room transfers${locationSuffix}. Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.`;
+    }
+    return `No room transfers found${locationSuffix}. Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.`;
+  }
+
+  function showEmptyState(){
+    if (!wrapEl) return;
+    wrapEl.innerHTML = `<div class="room-transfer-empty" id="room-transfer-empty">${emptyStateMessage()}</div>`;
+  }
+
+  function rowMatchesFilter(paymentStatus){
+    if (statusFilter === 'all') return true;
+    return paymentStatus === statusFilter;
+  }
+
+  function updateRowStatus(row, paymentStatus){
+    if (!row) return;
+    row.classList.remove('room-transfer-row--paid', 'room-transfer-row--unpaid');
+    row.classList.add(`room-transfer-row--${paymentStatus}`);
+  }
+
+  async function saveStatus(entryId, paymentStatus){
+    if (!widget) return;
+    const resp = await fetch('{{ url_for("save_room_transfer_status") }}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: widget.dataset.company,
+        status: statusFilter,
+        location: locationFilter,
+        updates: [{ id: entryId, payment_status: paymentStatus }],
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save status.');
+    if (data.summary_rollup) updateSummary(data.summary_rollup);
+    else if (data.rollup) updateSummary(data.rollup);
+
+    const row = document.querySelector(`tr[data-entry-id="${entryId}"]`);
+    if (!rowMatchesFilter(paymentStatus)) {
+      if (row) row.remove();
+      if (!document.querySelector('#room-transfer-body tr')) showEmptyState();
+    } else {
+      updateRowStatus(row, paymentStatus);
+    }
+    if (statusEl) statusEl.textContent = 'Status saved';
+  }
+
+  function scheduleSave(entryId, paymentStatus, selectEl){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        await saveStatus(entryId, paymentStatus);
+      } catch (err) {
+        if (statusEl) statusEl.textContent = err.message || 'Save failed';
+        if (selectEl) selectEl.focus();
+      }
+    }, 350);
+  }
+
+  document.querySelectorAll('.room-transfer-status-select').forEach((select) => {
+    select.addEventListener('change', function(){
+      scheduleSave(Number(select.dataset.entryId), select.value, select);
+    });
+  });
+})();
+</script>

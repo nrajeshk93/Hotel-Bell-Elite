@@ -1,0 +1,392 @@
+<script>
+(function(){
+  var page = document.querySelector('.main-wrapper');
+  if (!page) return;
+
+  var addUrl = {{ purchase_add_url|tojson }};
+  var supplierCreateUrl = {{ supplier_create_url|tojson }};
+  var defaultCompany = {{ default_company|tojson }};
+  var defaultLocation = {{ default_location|tojson }};
+  var todayIso = {{ today_iso|tojson }};
+  var paymentLabels = {{ expense_payment_labels|tojson }};
+
+  var modal = document.getElementById('pl-add-purchase-modal');
+  var openBtn = document.getElementById('pl-open-add-purchase');
+  var cancelBtn = document.getElementById('pl-add-purchase-cancel');
+  var saveBtn = document.getElementById('pl-add-purchase-save');
+  var errorEl = document.getElementById('pl-add-purchase-error');
+  var dateEl = document.getElementById('pl-add-purchase-date');
+  var descriptionEl = document.getElementById('pl-add-description');
+  var amountEl = document.getElementById('pl-add-amount');
+  var invoiceEl = document.getElementById('pl-add-invoice-number');
+  var transactionWrap = document.getElementById('pl-add-transaction-wrap');
+  var transactionEl = document.getElementById('pl-add-transaction-id');
+
+  function setError(msg){
+    if (!errorEl) return;
+    if (msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    } else {
+      errorEl.textContent = '';
+      errorEl.style.display = 'none';
+    }
+  }
+
+  function openModal(el){
+    if (!el) return;
+    el.classList.add('open');
+    el.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeModal(el){
+    if (!el) return;
+    el.classList.remove('open');
+    el.setAttribute('aria-hidden', 'true');
+  }
+
+  function closeAllListboxes(except){
+    document.querySelectorAll('#pl-add-purchase-modal [data-se-listbox].is-open').forEach(function(root){
+      if (root !== except) closeListbox(root);
+    });
+  }
+
+  function closeListbox(root){
+    if (!root) return;
+    var trigger = root.querySelector('.se-filter-chip-trigger');
+    var list = root.querySelector('.se-filter-listbox');
+    var search = root.querySelector('.staff-supplier-search, .pl-supplier-search');
+    root.classList.remove('is-open');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    if (list) list.hidden = true;
+    if (search) search.value = '';
+    if (root.hasAttribute('data-se-listbox-searchable')) filterSearchableOptions(root, '');
+  }
+
+  function scoreSearchOption(option, needle){
+    if (!needle) return 0;
+    var name = (option.getAttribute('data-name') || '').toLowerCase();
+    var gst = (option.getAttribute('data-gst') || '').toLowerCase();
+    var terms = needle.split(/\s+/).filter(Boolean);
+    var score = 0;
+    for (var i = 0; i < terms.length; i++) {
+      var term = terms[i];
+      if (name === term || (gst && gst === term)) score += 120;
+      else if (name.indexOf(term) === 0) score += 90;
+      else if (gst && gst.indexOf(term) === 0) score += 80;
+      else if (name.indexOf(term) !== -1) score += 60;
+      else if (gst && gst.indexOf(term) !== -1) score += 50;
+      else return -1;
+    }
+    return score;
+  }
+
+  function filterSearchableOptions(root, query){
+    var optionsWrap = root.querySelector('.staff-supplier-options');
+    var emptyEl = root.querySelector('.staff-supplier-empty');
+    if (!optionsWrap) return;
+    var needle = String(query || '').trim().toLowerCase();
+    var options = Array.from(optionsWrap.querySelectorAll('.staff-supplier-option, .staff-category-option'));
+    if (!needle) {
+      options.forEach(function(option){ option.classList.remove('is-filtered-out'); });
+      if (emptyEl) emptyEl.hidden = options.length > 0;
+      return;
+    }
+    var ranked = options.map(function(option){
+      return { option: option, score: scoreSearchOption(option, needle) };
+    }).filter(function(entry){
+      return entry.score >= 0 && (entry.option.getAttribute('data-value') || '') !== 'all';
+    });
+    ranked.sort(function(a, b){
+      return b.score - a.score || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
+    });
+    var best = ranked.length ? [ranked[0]] : [];
+    options.forEach(function(option){ option.classList.add('is-filtered-out'); });
+    best.forEach(function(entry){ entry.option.classList.remove('is-filtered-out'); });
+    if (emptyEl) emptyEl.hidden = true;
+  }
+
+  function bindListbox(root){
+    var trigger = root.querySelector('.se-filter-chip-trigger');
+    var list = root.querySelector('.se-filter-listbox');
+    var hidden = root.querySelector('input[type="hidden"]');
+    var valueEl = root.querySelector('.se-filter-chip-value');
+    var search = root.querySelector('.staff-supplier-search');
+    if (!trigger || !list || !hidden) return;
+
+    trigger.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      var open = root.classList.contains('is-open');
+      closeAllListboxes();
+      if (open) return;
+      root.classList.add('is-open');
+      trigger.setAttribute('aria-expanded', 'true');
+      list.hidden = false;
+      if (search) {
+        search.focus();
+        filterSearchableOptions(root, search.value);
+      }
+    });
+
+    list.addEventListener('click', function(e){
+      var option = e.target.closest('.se-filter-listbox-option');
+      if (!option || option.classList.contains('is-filtered-out')) return;
+      list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+        opt.classList.remove('is-selected');
+        opt.setAttribute('aria-selected', 'false');
+      });
+      option.classList.add('is-selected');
+      option.setAttribute('aria-selected', 'true');
+      hidden.value = option.getAttribute('data-value') || '';
+      if (valueEl) {
+        var nameEl = option.querySelector('.staff-supplier-option-name');
+        valueEl.textContent = nameEl ? nameEl.textContent : option.textContent.trim();
+        valueEl.classList.remove('staff-supplier-placeholder');
+      }
+      closeListbox(root);
+      if (root.id === 'pl-add-payment-listbox') syncTransactionVisibility();
+    });
+
+    if (search) {
+      search.addEventListener('input', function(){ filterSearchableOptions(root, search.value); });
+      search.addEventListener('keydown', function(e){ e.stopPropagation(); });
+    }
+  }
+
+  document.querySelectorAll('#pl-add-purchase-modal [data-se-listbox]').forEach(bindListbox);
+
+  function syncTransactionVisibility(){
+    var paymentInput = document.getElementById('pl-add-payment-input');
+    var method = paymentInput ? paymentInput.value : 'cash';
+    if (transactionWrap) transactionWrap.hidden = method !== 'bank_transfer';
+    if (method !== 'bank_transfer' && transactionEl) transactionEl.value = '';
+  }
+
+  function resetForm(){
+    setError('');
+    if (dateEl) dateEl.value = todayIso;
+    if (descriptionEl) descriptionEl.value = '';
+    if (amountEl) amountEl.value = '';
+    if (invoiceEl) invoiceEl.value = '';
+    if (transactionEl) transactionEl.value = '';
+    ['pl-add-supplier', 'pl-add-category'].forEach(function(prefix){
+      var hidden = document.getElementById(prefix + '-input');
+      var valueEl = document.getElementById(prefix + '-value');
+      if (hidden) hidden.value = '';
+      if (valueEl) {
+        valueEl.textContent = prefix.indexOf('supplier') >= 0 ? 'Select supplier' : 'Select category';
+        valueEl.classList.add('staff-supplier-placeholder');
+      }
+      var list = document.getElementById(prefix + '-list');
+      if (list) {
+        list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+          opt.classList.remove('is-selected');
+          opt.setAttribute('aria-selected', 'false');
+        });
+      }
+    });
+    var paymentHidden = document.getElementById('pl-add-payment-input');
+    var paymentValue = document.getElementById('pl-add-payment-value');
+    if (paymentHidden) paymentHidden.value = 'cash';
+    if (paymentValue) paymentValue.textContent = paymentLabels.cash || 'Cash';
+    var paymentList = document.getElementById('pl-add-payment-list');
+    if (paymentList) {
+      paymentList.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+        var selected = opt.getAttribute('data-value') === 'cash';
+        opt.classList.toggle('is-selected', selected);
+        opt.setAttribute('aria-selected', selected ? 'true' : 'false');
+      });
+    }
+    syncTransactionVisibility();
+    closeAllListboxes();
+  }
+
+  function openPurchaseModal(){
+    resetForm();
+    openModal(modal);
+    if (descriptionEl) descriptionEl.focus();
+  }
+
+  if (openBtn) openBtn.addEventListener('click', openPurchaseModal);
+  if (cancelBtn) cancelBtn.addEventListener('click', function(){ closeModal(modal); });
+  if (modal) {
+    modal.addEventListener('click', function(e){
+      if (e.target === modal) closeModal(modal);
+    });
+  }
+
+  document.addEventListener('click', function(e){
+    if (!e.target.closest('#pl-add-purchase-modal [data-se-listbox]')) closeAllListboxes();
+  });
+
+  async function submitPurchase(){
+    var purchaseDate = dateEl ? dateEl.value : todayIso;
+    var description = descriptionEl ? descriptionEl.value.trim() : '';
+    var amountRaw = amountEl ? amountEl.value : '';
+    var supplierId = document.getElementById('pl-add-supplier-input') ? document.getElementById('pl-add-supplier-input').value : '';
+    var category = document.getElementById('pl-add-category-input') ? document.getElementById('pl-add-category-input').value : '';
+    var paymentType = document.getElementById('pl-add-payment-input') ? document.getElementById('pl-add-payment-input').value : 'cash';
+    var transactionId = transactionEl ? transactionEl.value.trim() : '';
+    var invoiceNumber = invoiceEl ? invoiceEl.value.trim() : '';
+
+    if (!purchaseDate) {
+      setError('Please select a purchase date.');
+      return;
+    }
+    if (!supplierId) {
+      setError('Please select a supplier.');
+      return;
+    }
+    if (!category) {
+      setError('Please select a category.');
+      return;
+    }
+    if (!description) {
+      setError('Please enter an expense description.');
+      return;
+    }
+    if (!amountRaw || Number(amountRaw) <= 0) {
+      setError('Please enter a value greater than 0.');
+      return;
+    }
+    if (paymentType === 'bank_transfer' && !transactionId) {
+      setError('Please enter the bank transaction ID.');
+      return;
+    }
+
+    setError('');
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+      var res = await fetch(addUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: defaultCompany,
+          location: defaultLocation,
+          date: purchaseDate,
+          description: description,
+          amount: amountRaw,
+          payment_type: paymentType,
+          category: category,
+          transaction_id: paymentType === 'bank_transfer' ? transactionId : '',
+          invoice_number: invoiceNumber,
+          supplier_id: supplierId
+        })
+      });
+      var data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Could not save purchase.');
+      closeModal(modal);
+      var url = new URL(window.location.href);
+      var savedDate = data.sales_date || purchaseDate;
+      if (savedDate) {
+        url.searchParams.set('date_from', savedDate);
+        url.searchParams.set('date_to', savedDate);
+      }
+      window.location.href = url.toString();
+    } catch (err) {
+      setError(err.message || 'Could not save purchase.');
+    } finally {
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  }
+
+  if (saveBtn) saveBtn.addEventListener('click', submitPurchase);
+
+  /* Inline supplier add */
+  var supplierModal = document.getElementById('pl-add-supplier-modal');
+  var supplierOpenBtn = document.getElementById('pl-add-supplier-btn');
+  var supplierCancelBtn = document.getElementById('pl-add-supplier-cancel');
+  var supplierSaveBtn = document.getElementById('pl-add-supplier-save');
+  var supplierErrorEl = document.getElementById('pl-add-supplier-add-error');
+  var supplierOptions = document.getElementById('pl-add-supplier-options');
+
+  function setSupplierError(msg){
+    if (!supplierErrorEl) return;
+    if (msg) {
+      supplierErrorEl.textContent = msg;
+      supplierErrorEl.style.display = 'block';
+    } else {
+      supplierErrorEl.textContent = '';
+      supplierErrorEl.style.display = 'none';
+    }
+  }
+
+  function appendSupplierOption(supplier){
+    if (!supplierOptions || !supplier) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'se-filter-listbox-option staff-supplier-option is-selected';
+    btn.setAttribute('role', 'option');
+    btn.setAttribute('data-value', String(supplier.id));
+    btn.setAttribute('data-name', String(supplier.name || '').toLowerCase());
+    btn.setAttribute('data-gst', String(supplier.gst || '').toLowerCase());
+    btn.setAttribute('aria-selected', 'true');
+    btn.innerHTML =
+      '<span class="staff-supplier-option-name">' + (supplier.name || '') + '</span>' +
+      '<span class="staff-supplier-option-gst">' + (supplier.gst || '') + '</span>';
+    supplierOptions.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+      opt.classList.remove('is-selected');
+      opt.setAttribute('aria-selected', 'false');
+    });
+    supplierOptions.appendChild(btn);
+    var hidden = document.getElementById('pl-add-supplier-input');
+    var valueEl = document.getElementById('pl-add-supplier-value');
+    if (hidden) hidden.value = String(supplier.id);
+    if (valueEl) {
+      valueEl.textContent = supplier.name || '';
+      valueEl.classList.remove('staff-supplier-placeholder');
+    }
+    var emptyEl = document.getElementById('pl-add-supplier-empty');
+    if (emptyEl) emptyEl.hidden = true;
+  }
+
+  async function saveSupplier(){
+    var payload = {
+      name: document.getElementById('pl-add-supplier-name') ? document.getElementById('pl-add-supplier-name').value.trim() : '',
+      gst: document.getElementById('pl-add-supplier-gst') ? document.getElementById('pl-add-supplier-gst').value.trim() : '',
+      phone: document.getElementById('pl-add-supplier-phone') ? document.getElementById('pl-add-supplier-phone').value.trim() : '',
+      address: document.getElementById('pl-add-supplier-address') ? document.getElementById('pl-add-supplier-address').value.trim() : ''
+    };
+    if (!payload.name || !payload.gst) {
+      setSupplierError('Supplier name and GST are required.');
+      return;
+    }
+    setSupplierError('');
+    if (supplierSaveBtn) supplierSaveBtn.disabled = true;
+    try {
+      var res = await fetch(supplierCreateUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      var data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Could not save supplier.');
+      appendSupplierOption(data.supplier);
+      closeModal(supplierModal);
+    } catch (err) {
+      setSupplierError(err.message || 'Could not save supplier.');
+    } finally {
+      if (supplierSaveBtn) supplierSaveBtn.disabled = false;
+    }
+  }
+
+  if (supplierOpenBtn) {
+    supplierOpenBtn.addEventListener('click', function(){
+      setSupplierError('');
+      ['pl-add-supplier-name', 'pl-add-supplier-gst', 'pl-add-supplier-phone', 'pl-add-supplier-address'].forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      openModal(supplierModal);
+    });
+  }
+  if (supplierCancelBtn) supplierCancelBtn.addEventListener('click', function(){ closeModal(supplierModal); });
+  if (supplierSaveBtn) supplierSaveBtn.addEventListener('click', saveSupplier);
+  if (supplierModal) {
+    supplierModal.addEventListener('click', function(e){
+      if (e.target === supplierModal) closeModal(supplierModal);
+    });
+  }
+})();
+</script>

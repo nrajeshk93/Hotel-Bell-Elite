@@ -1,13 +1,14 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Dashboard | Sales Analytics | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=5">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
 <script>
 (function(){
   try{
@@ -18,80 +19,42 @@
 })();
 </script>
 </head>
-<body class="de-open home-module">
-{% set display_name = (current_user.full_name or current_user.username) if current_user else 'Admin' %}
-{% set avatar_text = (display_name|replace(' ', ''))[:2]|upper %}
+<body class="de-open su-module">
 {% include 'partials/de_workspace_shell_open.html' %}
-<div class="de-main-inner">
-  <div id="dashboard-home-panel" class="db-home">
-    <header class="db-home-header">
-      <div class="db-home-header-left">
-        <div class="db-home-title">
-          <h1>Dashboard</h1>
-          <p>Sales analytics overview for {{ selected_date }}</p>
+<div class="main-wrapper">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
         </div>
-      </div>
-      <div class="db-home-tools">
-        <div class="db-profile">
-          <div class="db-profile-trigger" aria-label="Signed in as {{ display_name }}">
-            <div class="db-avatar">{{ avatar_text }}</div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
+            </div>
+            <h1>Dashboard</h1>
           </div>
+          <p>Sales analytics overview for Hotel Bell Elite.</p>
         </div>
       </div>
-    </header>
-
-    <section class="sr-kpi-section db-kpi-section" aria-label="Sales KPI summary">
-      <div class="sr-kpi-row">
-        <article class="sr-kpi-card">
-          <div class="sr-kpi-label">Actual Sales</div>
-          <div class="sr-kpi-value">{{ kpi.actual_sales|inr }}</div>
-        </article>
-        <article class="sr-kpi-card">
-          <div class="sr-kpi-label">Digital Transactions</div>
-          <div class="sr-kpi-value">{{ kpi.digital_transactions|inr }}</div>
-        </article>
-        <article class="sr-kpi-card">
-          <div class="sr-kpi-label">Cash</div>
-          <div class="sr-kpi-value">{{ kpi.cash|inr }}</div>
-        </article>
-        <article class="sr-kpi-card">
-          <div class="sr-kpi-label">Expense</div>
-          <div class="sr-kpi-value">{{ kpi.expense|inr }}</div>
-        </article>
-        <article class="sr-kpi-card">
-          <div class="sr-kpi-label">Difference</div>
-          <div class="sr-kpi-value">{{ kpi.difference|inr }}</div>
-        </article>
-      </div>
-      <p class="sr-kpi-note">Combined Bar + Restaurant vs {{ kpi_vs_label }}</p>
-    </section>
-
-    <div class="db-home-grid" role="list">
-      {% if user_can_access_dashboard(current_user, 'sales_update') %}
-      <a class="db-home-card db-home-card--emerald" role="listitem" href="{{ url_for('sales_update_hotel') }}" aria-label="Open Sales Update - Hotel">
-        <div class="db-home-card-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg>
-        </div>
-        <h2>Sales Update - Hotel</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
-        <p class="db-home-card-desc">Hotel-wide sales entry and reporting.</p>
-      </a>
-      <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('sales_update_entry') }}" aria-label="Open Sales Update - Bar and Restaurant">
-        <div class="db-home-card-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
-        </div>
-        <h2>Sales Update - Bar and Restaurant</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
-        <p class="db-home-card-desc">Upload order-invoice reports and record daily Bar &amp; Restaurant sales.</p>
-      </a>
-      {% else %}
-      <div class="db-home-empty">
-        <h2>No modules available</h2>
-        <p>Contact your administrator for access.</p>
-      </div>
-      {% endif %}
     </div>
-  </div>
+  </header>
+
+  <section class="content se-content">
+    <article class="card db-coming-soon-card" aria-labelledby="dashboard-coming-soon-title">
+      <div class="card-body db-coming-soon-body">
+        <div class="db-coming-soon-badge">Sales Analytics</div>
+        <h2 id="dashboard-coming-soon-title" class="db-coming-soon-title">Coming soon</h2>
+        <p class="db-coming-soon-copy">
+          We are building a full sales analytics overview for Hotel Bell Elite.
+          Use the sidebar to open Sales Update pages in the meantime.
+        </p>
+      </div>
+    </article>
+  </section>
 </div>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>

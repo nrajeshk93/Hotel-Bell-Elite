@@ -1,0 +1,56 @@
+<script>
+(function(){
+  const searchInput = document.getElementById('dashboard-search');
+  const cards = Array.from(document.querySelectorAll('#dashboard-home-panel .db-home-card'));
+  if (searchInput) {
+    searchInput.addEventListener('input', function(){
+      const query = this.value.trim().toLowerCase();
+      cards.forEach((card) => {
+        const haystack = (card.getAttribute('data-search') || '').toLowerCase();
+        card.hidden = query && !haystack.includes(query);
+      });
+    });
+  }
+
+  const profile = document.getElementById('dashboard-profile');
+  const trigger = document.getElementById('dashboard-profile-trigger');
+  const notifications = document.getElementById('dashboard-notifications');
+  const notificationsTrigger = document.getElementById('dashboard-notifications-trigger');
+
+  if (notifications && notificationsTrigger) {
+    notificationsTrigger.addEventListener('click', function(event){
+      event.stopPropagation();
+      const isOpen = notifications.classList.toggle('is-open');
+      notificationsTrigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      if (isOpen) notifications.classList.add('is-read');
+      if (isOpen && profile) {
+        profile.classList.remove('is-open');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  if (profile && trigger) {
+    trigger.addEventListener('click', function(event){
+      event.stopPropagation();
+      const isOpen = profile.classList.toggle('is-open');
+      trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      if (isOpen && notifications && notificationsTrigger) {
+        notifications.classList.remove('is-open');
+        notificationsTrigger.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  document.addEventListener('click', function(event){
+    if (notifications && !notifications.contains(event.target)) {
+      notifications.classList.remove('is-open');
+      if (notificationsTrigger) notificationsTrigger.setAttribute('aria-expanded', 'false');
+    }
+    if (profile && !profile.contains(event.target)) {
+      profile.classList.remove('is-open');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    }
+  });
+})();
+</script>

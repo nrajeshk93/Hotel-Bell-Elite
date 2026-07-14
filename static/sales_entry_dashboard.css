@@ -205,7 +205,7 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .se-layout-main{display:flex;flex-direction:column;gap:18px;min-width:0;width:100%}
 .se-petty-outlets-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;min-width:0;width:100%}
 .se-petty-outlets-grid--single{grid-template-columns:minmax(0,1fr);max-width:100%}
-.se-petty-outlets-grid--single .card-body{display:flex;justify-content:center}
+.se-petty-outlets-grid--single .se-petty-outlet-panel:not(.petty-cash-collapsed) .card-body{display:flex;justify-content:center}
 .se-petty-outlets-grid--single .petty-wrap{width:100%;max-width:680px;margin:0 auto}
 .petty-count{text-align:center}
 .petty-count input{display:block;margin-left:auto;margin-right:auto}
@@ -214,29 +214,65 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .se-petty-save-row .save-state-wrap{margin:0}
 @media(max-width:1100px){.se-petty-outlets-grid{grid-template-columns:1fr}}
 .se-sales-outlets-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;min-width:0;width:100%}
+.se-sales-outlets-grid--single{grid-template-columns:minmax(0,1fr)}
+.se-sales-outlets-grid--single .se-sales-outlet-panel{display:flex;flex-direction:column;min-height:420px}
+.se-sales-outlets-grid--single .se-sales-outlet-panel .se-panel-body{
+  flex:1;display:flex;flex-direction:column;min-height:0;padding:0;
+}
+.se-sales-outlets-grid--single .se-sales-outlet-panel .entry-wrap{
+  width:100%;max-width:none;flex:1;display:flex;flex-direction:column;min-height:0;
+}
+.se-sales-outlets-grid--single .se-sales-outlet-panel .entry-table{
+  flex:1;height:100%;border:0;border-radius:0;box-shadow:none;
+}
+.se-sales-outlets-grid--single .se-sales-outlet-panel .entry-table tbody{
+  height:auto;
+}
+.se-sales-outlets-grid--single .se-sales-outlet-panel .entry-table tbody tr{
+  height:auto;
+}
+.se-sales-outlets-grid--single .se-sales-outlet-panel .entry-table tbody td{
+  height:auto;min-height:56px;
+}
+.se-sales-outlets-grid--single .se-sales-outlet-panel .entry-table .entry-input-cell input{
+  width:100%;min-height:44px;font-size:15px;
+}
 @media(max-width:1100px){.se-sales-outlets-grid{grid-template-columns:1fr}}
 .se-sales-outlet-panel .entry-table{
   --se-particulars-inset:0;
-  --se-particulars-rail:100%;
+  --se-particulars-rail:min(100%,220px);
 }
-.se-sales-outlet-panel .entry-table thead th:first-child,
 .se-sales-outlet-panel .se-entry-label-cell{
+  text-align:center!important;
   padding-left:14px!important;
-  padding-right:10px!important;
+  padding-right:14px!important;
 }
 .se-sales-outlet-panel .entry-table .se-entry-label-inner{
-  width:100%;
+  display:grid;
+  grid-template-columns:32px minmax(0,1fr);
+  align-items:center;
+  justify-items:start;
+  column-gap:10px;
+  width:var(--se-particulars-rail);
   max-width:100%;
-  margin:0;
+  margin-left:auto;
+  margin-right:auto;
   font-size:13px;
   font-weight:600;
   line-height:1.25;
+  text-align:left;
+  box-sizing:border-box;
+}
+.se-sales-outlet-panel .entry-table .se-entry-label-inner .se-field-icon{
+  grid-column:1;
+  justify-self:center;
 }
 .se-sales-outlet-panel .entry-table td.entry-label.se-entry-label-cell,
 .se-sales-outlet-panel .entry-table td.entry-total-label.se-entry-label-cell{
   overflow:hidden;
 }
 .se-sales-outlet-panel .entry-table .se-entry-label-inner>span{
+  grid-column:2;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -250,8 +286,13 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
   display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;
   border-bottom:1px solid var(--border-s);flex-wrap:wrap;
 }
-.se-panel-title{font-size:13px;font-weight:800;color:var(--txt);display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto}
+.se-panel-title{font-size:13px;font-weight:800;color:var(--txt);display:flex;align-items:center;gap:8px;min-width:0;flex:1 1 auto;flex-wrap:wrap}
 .se-panel-title svg{width:18px;height:18px;color:var(--txt3);flex-shrink:0}
+.se-panel-report-tag{
+  display:inline-flex;align-items:center;min-height:22px;padding:2px 10px;border-radius:999px;
+  background:#EFF6FF;color:#2563EB;border:1px solid #BFDBFE;
+  font-size:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap;
+}
 .se-panel-hdr-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto}
 .se-panel-upload-label{cursor:pointer;margin:0;display:inline-flex}
 .se-panel-upload-input{
@@ -280,6 +321,12 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 
 .entry-table .entry-input-cell input.se-entry-input--upload{
   background:#f8fafc;border-color:#e2e8f0;color:var(--txt);cursor:default;
+}
+.entry-table .entry-input-cell input.se-entry-input--manual{
+  background:#fff;border-color:#c7d2fe;color:var(--txt);cursor:text;
+}
+.entry-table .entry-input-cell input.se-entry-input--manual:focus{
+  border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-ring);outline:none;
 }
 .entry-table .entry-input-cell input.se-entry-input--upload:focus{
   outline:none;box-shadow:none;border-color:#e2e8f0;
@@ -510,6 +557,7 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
   .bill-payment-sd-col--amount,.bill-payment-sd-list-head span:nth-child(2){text-align:left}
 }
 .staff-credit-home{font-size:11px;font-weight:600;color:#7c3aed;line-height:1.3;margin-top:2px}
+.staff-grid .staff-field--inline{margin-bottom:0}
 .staff-credit-type-toggle{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
 .staff-credit-type-toggle--single{grid-template-columns:1fr}
 .staff-credit-type-btn{height:40px;border:1px solid var(--border);border-radius:var(--rs);background:#fff;color:var(--txt2);font:700 12px 'Inter','Segoe UI',system-ui,sans-serif;cursor:pointer}
@@ -522,6 +570,39 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .staff-credit-row--repayment{background:#F0FDF4;border-color:rgba(22,163,74,.2)}
 .staff-credit-amount--repayment{color:#15803D}
 .staff-credit-badge{display:inline-block;margin-left:6px;padding:2px 6px;border-radius:4px;background:#DCFCE7;color:#15803D;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.35px;vertical-align:middle}
+.staff-expense-payment-listbox{width:100%}
+.staff-expense-payment-listbox .se-filter-chip-label{display:block;margin-bottom:5px;font-size:11px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.4px}
+.staff-expense-payment-listbox .se-filter-chip-control{width:100%;min-height:44px;background:#fff;border:1px solid var(--border);border-radius:var(--rs)}
+.staff-expense-payment-listbox .se-filter-chip-icon svg{stroke:#64748B}
+.staff-expense-payment-listbox.is-open{z-index:60}
+#sales-expense-modal .se-filter-listbox{z-index:70}
+.staff-supplier-field-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
+.staff-supplier-field-label{font-size:11px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.4px}
+.staff-supplier-add-btn{height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--acc);font:700 11px Inter,system-ui,sans-serif;cursor:pointer}
+.staff-supplier-add-btn:hover{border-color:#93C5FD;background:var(--acc-bg)}
+.staff-expense-supplier-listbox{width:100%}
+.staff-expense-supplier-listbox .se-filter-chip-control{width:100%;min-height:48px;border-radius:12px}
+.staff-expense-supplier-listbox.is-open{z-index:60}
+.staff-supplier-placeholder{color:#94A3B8;font-weight:600}
+#sales-expense-modal .staff-expense-supplier-listbox .se-filter-listbox{z-index:70;left:0;right:0;padding:6px}
+.staff-expense-supplier-listbox .staff-supplier-search-wrap{padding:0 0 6px;margin:0 0 6px;border-bottom:1px solid #EEF2F7;background:#fff;position:sticky;top:0;z-index:1}
+.staff-expense-supplier-listbox .staff-supplier-search{width:100%;height:40px;border:1px solid #E5E7EB;border-radius:10px;padding:0 12px;font:500 14px Inter,system-ui,sans-serif;color:#111827;background:#F8FAFC;outline:none}
+.staff-expense-supplier-listbox .staff-supplier-search:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12);background:#fff}
+.staff-expense-supplier-listbox .staff-supplier-options{max-height:min(240px,40vh);overflow-y:auto;overflow-x:hidden}
+.staff-expense-supplier-listbox .se-filter-listbox-option.staff-supplier-option{display:flex!important;flex-direction:column;align-items:flex-start;gap:2px;padding:10px 12px;text-align:left;white-space:normal}
+.staff-expense-supplier-listbox .se-filter-listbox-option.staff-supplier-option.is-filtered-out,
+.staff-expense-supplier-listbox .se-filter-listbox-option.staff-category-option.is-filtered-out{display:none!important}
+.staff-expense-supplier-listbox .staff-supplier-option-name{display:block;width:100%;font:600 14px Inter,system-ui,sans-serif;color:#111827;line-height:1.35}
+.staff-expense-supplier-listbox .staff-supplier-option-gst{display:block;width:100%;font:500 12px Inter,system-ui,sans-serif;color:#64748B;line-height:1.3;margin-top:1px}
+.staff-expense-supplier-listbox .staff-supplier-option.is-filtered-out{display:none!important}
+.staff-expense-supplier-listbox .staff-category-option.is-filtered-out{display:none!important}
+.staff-expense-supplier-listbox .staff-supplier-empty{padding:10px 12px;font:600 13px Inter,system-ui,sans-serif;color:#94A3B8;text-align:center}
+.staff-supplier-modal-backdrop{z-index:120}
+.staff-supplier-modal-box{width:560px;max-width:92vw;max-height:calc(100vh - 48px);overflow:auto}
+.staff-supplier-modal-grid{margin-bottom:0}
+.staff-supplier-modal-actions{margin-top:18px;padding-top:16px;border-top:1px solid var(--border-s)}
+.staff-field--full{grid-column:1/-1}
+.visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .se-cash-report-copy{font-size:13px;color:#64748B;line-height:1.55;margin:0 0 16px}
 .se-cash-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .se-cash-summary-item{background:#F8FAFC;border:1px solid var(--border);border-radius:12px;padding:12px 14px}
@@ -620,3 +701,21 @@ body.se-cash-mode .sr-kpi-section{
 .hotel-ledger-payment-select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-ring);outline:none}
 .hotel-ledger-empty{padding:28px 20px;text-align:center;color:var(--txt3);font-size:14px;line-height:1.55;background:#F8FAFD;border:1px dashed var(--border);border-radius:var(--r)}
 .se-hotel-sales-panel{margin-top:18px}
+.se-room-transfer-panel{margin-top:0}
+.room-transfer-summary{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}
+.room-transfer-summary-item{flex:1;min-width:140px;padding:12px 14px;border:1px solid var(--border);border-radius:var(--r);background:#F8FAFD}
+.room-transfer-summary-label{display:block;font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.45px;margin-bottom:4px}
+.room-transfer-summary-value{font-size:18px;font-weight:800;color:var(--txt);font-variant-numeric:tabular-nums}
+.room-transfer-summary-item--paid .room-transfer-summary-value{color:#059669}
+.room-transfer-summary-item--warn .room-transfer-summary-value{color:#D97706}
+.room-transfer-wrap{overflow:auto;border:1px solid var(--border);border-radius:var(--r);background:#fff;box-shadow:var(--sh)}
+.room-transfer-table{width:100%;border-collapse:collapse;font-size:13px;min-width:760px}
+.room-transfer-table th,.room-transfer-table td{padding:10px 12px;border-bottom:1px solid var(--border-s);text-align:left;vertical-align:middle}
+.room-transfer-table th{background:#F8FAFD;color:var(--txt3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.45px}
+.room-transfer-table tbody tr:last-child td{border-bottom:0}
+.room-transfer-row--unpaid td{background:#FFFBEB}
+.room-transfer-col-amount,.room-transfer-amount{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.room-transfer-col-status,.room-transfer-status{text-align:center}
+.room-transfer-status-select{min-width:120px;height:36px;border:1px solid var(--border);border-radius:var(--rs);background:#fff;padding:0 10px;font:600 12px Inter,system-ui,sans-serif;color:var(--txt)}
+.room-transfer-status-select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-ring);outline:none}
+.room-transfer-empty{padding:28px 20px;text-align:center;color:var(--txt3);font-size:14px;line-height:1.55;background:#F8FAFD;border:1px dashed var(--border);border-radius:var(--r)}

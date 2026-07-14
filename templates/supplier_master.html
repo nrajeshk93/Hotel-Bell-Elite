@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Supplier Master | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=3">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h1>Supplier Master</h1>
+          </div>
+          <p>Maintain supplier details used when recording hotel expenses. Supplier name and GST are mandatory; GST must be unique.</p>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <a class="btn btn-primary" href="{{ url_for('supplier_master', focus='form') }}">Add supplier</a>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    {% if auth_notice %}
+    <div class="sm-flash sm-flash--ok">{{ auth_notice }}</div>
+    {% endif %}
+    {% if success_message %}
+    <div class="sm-flash sm-flash--ok">{{ success_message }}</div>
+    {% endif %}
+
+    <div class="sm-layout{% if show_form %} sm-layout--form-focus{% endif %}">
+      <article class="card sm-list-panel{% if show_form %} hidden{% endif %}" aria-label="Supplier list">
+        <div class="card-hdr">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            <span>Suppliers</span>
+          </div>
+          <span class="sm-count">{{ suppliers|length }} total</span>
+        </div>
+        <div class="card-body sm-card-body--flush">
+          {% if suppliers %}
+          <div class="sm-table-wrap">
+            <table class="sm-table" aria-label="Supplier list">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>GST</th>
+                  <th>Phone</th>
+                  <th>Bank</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for supplier in suppliers %}
+                <tr>
+                  <td>
+                    <div class="sm-name">{{ supplier.name }}</div>
+                    {% if supplier.address %}<div class="sm-meta">{{ supplier.address }}</div>{% endif %}
+                  </td>
+                  <td>{{ supplier.gst }}</td>
+                  <td>{{ supplier.phone or '—' }}</td>
+                  <td>
+                    {% if supplier.bank_name %}
+                    <div class="sm-name">{{ supplier.bank_name }}</div>
+                    <div class="sm-meta">{{ supplier.bank_account_number }}{% if supplier.ifsc_code %} · {{ supplier.ifsc_code }}{% endif %}</div>
+                    {% else %}
+                    —
+                    {% endif %}
+                  </td>
+                  <td class="sm-col-actions">
+                    <a class="sm-link" href="{{ url_for('supplier_master', supplier_id=supplier.id) }}">Edit</a>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="sm-empty">No suppliers added yet. Use Add supplier to create the first one.</div>
+          {% endif %}
+        </div>
+      </article>
+
+      {% if show_form %}
+      <article class="card" aria-label="Supplier form">
+        <div class="card-hdr">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            <span>{% if form.id %}Edit supplier{% else %}Add supplier{% endif %}</span>
+          </div>
+          {% if form_focus %}
+          <a class="btn" href="{{ url_for('supplier_master') }}">Back to list</a>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <form method="post" action="{{ url_for('save_supplier') }}">
+            <input type="hidden" name="supplier_id" value="{{ form.id or '' }}">
+            {% if errors %}
+            <div class="sm-errors">
+              {% for error in errors %}
+              <div class="sm-error-item">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+            <div class="staff-grid sm-form-grid">
+              <div class="staff-field staff-field--inline staff-field--full">
+                <label for="supplier-name">Supplier name *</label>
+                <input id="supplier-name" class="staff-input" name="name" type="text" value="{{ form.name or '' }}" placeholder="e.g. ABC Supplies Pvt Ltd" required>
+              </div>
+              <div class="staff-field staff-field--inline staff-field--full">
+                <label for="supplier-gst">GST *</label>
+                <input id="supplier-gst" class="staff-input" name="gst" type="text" value="{{ form.gst or '' }}" placeholder="e.g. 29ABCDE1234F1Z5" required>
+              </div>
+              <div class="staff-field staff-field--inline staff-field--full">
+                <label for="supplier-address">Address</label>
+                <textarea id="supplier-address" class="staff-input sm-textarea" name="address" placeholder="Street, city, state">{{ form.address or '' }}</textarea>
+              </div>
+              <div class="staff-field staff-field--inline">
+                <label for="supplier-phone">Phone number</label>
+                <input id="supplier-phone" class="staff-input" name="phone" type="text" value="{{ form.phone or '' }}" placeholder="e.g. 9876543210">
+              </div>
+              <div class="staff-field staff-field--inline">
+                <label for="supplier-bank-name">Bank name</label>
+                <input id="supplier-bank-name" class="staff-input" name="bank_name" type="text" value="{{ form.bank_name or '' }}" placeholder="e.g. HDFC Bank">
+              </div>
+              <div class="staff-field staff-field--inline">
+                <label for="supplier-bank-account">Bank account number</label>
+                <input id="supplier-bank-account" class="staff-input" name="bank_account_number" type="text" value="{{ form.bank_account_number or '' }}" placeholder="e.g. 1234567890">
+              </div>
+              <div class="staff-field staff-field--inline staff-field--full">
+                <label for="supplier-ifsc">IFSC code</label>
+                <input id="supplier-ifsc" class="staff-input" name="ifsc_code" type="text" value="{{ form.ifsc_code or '' }}" placeholder="e.g. HDFC0001234">
+              </div>
+            </div>
+            <div class="sm-actions">
+              <button type="submit" class="btn btn-primary staff-primary">{% if form.id %}Update supplier{% else %}Save supplier{% endif %}</button>
+              <a class="btn staff-secondary" href="{{ url_for('supplier_master') }}">Cancel</a>
+            </div>
+          </form>
+          {% if form.id %}
+          <form method="post" action="{{ url_for('delete_supplier') }}" class="sm-delete-form" onsubmit="return confirm('Delete this supplier? This cannot be undone.');">
+            <input type="hidden" name="supplier_id" value="{{ form.id }}">
+            <button type="submit" class="btn sm-btn-danger">Delete supplier</button>
+          </form>
+          {% endif %}
+        </div>
+      </article>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

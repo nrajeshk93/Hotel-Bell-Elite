@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ page_title }} | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=3">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper" id="credit-payment-page"
+  data-create-url="{{ create_credit_payment_url }}"
+  data-delete-url="{{ delete_credit_payment_url }}"
+  data-detail-url-template="{{ settlement_detail_url_template }}"
+  data-today="{{ today_iso }}">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
+            </div>
+            <h1>{{ page_title }}</h1>
+          </div>
+          <p>{{ page_subtitle }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="credit-payment-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="{{ settlement_labels.filter_aria_label }}">
+          <input type="hidden" name="view" id="credit-payment-view" value="{{ selected_view }}">
+          <div class="cp-view-tabs" role="tablist" aria-label="{{ settlement_labels.view_aria_label }}">
+            {% for view_key, view_label in credit_payment_views %}
+            <a class="cp-view-tab{% if selected_view == view_key %} is-active{% endif %}"
+               href="{{ url_for(settlement_route_endpoint, view=view_key, date_from=date_from, date_to=date_to, payment_date_from=payment_date_from, payment_date_to=payment_date_to, supplier=selected_supplier) }}"
+               role="tab"
+               aria-selected="{{ 'true' if selected_view == view_key else 'false' }}">{{ view_label }}</a>
+            {% endfor %}
+          </div>
+          {% if selected_view == 'outstanding' %}
+          <div class="se-filter-chip se-filter-chip--date">
+            <label class="se-filter-chip-label" for="credit-payment-date-from">From</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              </span>
+              <input type="date" id="credit-payment-date-from" name="date_from" class="pl-date-input" value="{{ date_from }}" max="{{ date_to }}">
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--date">
+            <label class="se-filter-chip-label" for="credit-payment-date-to">To</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              </span>
+              <input type="date" id="credit-payment-date-to" name="date_to" class="pl-date-input" value="{{ date_to }}" min="{{ date_from }}">
+            </div>
+          </div>
+          {% else %}
+          <div class="se-filter-chip se-filter-chip--date">
+            <label class="se-filter-chip-label" for="credit-payment-pay-from">From</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              </span>
+              <input type="date" id="credit-payment-pay-from" name="payment_date_from" class="pl-date-input" value="{{ payment_date_from }}" max="{{ payment_date_to }}">
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--date">
+            <label class="se-filter-chip-label" for="credit-payment-pay-to">To</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              </span>
+              <input type="date" id="credit-payment-pay-to" name="payment_date_to" class="pl-date-input" value="{{ payment_date_to }}" min="{{ payment_date_from }}">
+            </div>
+          </div>
+          <input type="hidden" name="date_from" value="{{ date_from }}">
+          <input type="hidden" name="date_to" value="{{ date_to }}">
+          {% endif %}
+          {% if selected_view == 'history' %}
+          {% else %}
+          <input type="hidden" name="payment_date_from" value="{{ payment_date_from }}">
+          <input type="hidden" name="payment_date_to" value="{{ payment_date_to }}">
+          {% endif %}
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable>
+            <span class="se-filter-chip-label" id="credit-payment-supplier-label">Supplier</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              </span>
+              <input type="hidden" id="credit-payment-supplier" name="supplier" value="{{ selected_supplier }}">
+              <button type="button" class="se-filter-chip-trigger" id="credit-payment-supplier-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="credit-payment-supplier-list" aria-labelledby="credit-payment-supplier-label credit-payment-supplier-value">
+                <span class="se-filter-chip-value" id="credit-payment-supplier-value">{{ selected_supplier_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox pl-supplier-listbox" id="credit-payment-supplier-list" role="listbox" aria-labelledby="credit-payment-supplier-label" hidden>
+              <div class="pl-supplier-search-wrap">
+                <input type="search" class="pl-supplier-search" id="credit-payment-supplier-search" placeholder="Search by name or GST..." autocomplete="off" aria-label="Search suppliers">
+              </div>
+              <div class="pl-supplier-options" id="credit-payment-supplier-options">
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all suppliers" data-gst="" aria-selected="{{ 'true' if selected_supplier == 'all' else 'false' }}">All suppliers</button>
+                {% for supplier in suppliers %}
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == (supplier.id|string) %} is-selected{% endif %}" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }}" data-gst="{{ supplier.gst|lower }}" aria-selected="{{ 'true' if selected_supplier == (supplier.id|string) else 'false' }}">
+                  <span class="pl-supplier-option-name">{{ supplier.name }}</span>
+                  <span class="pl-supplier-option-gst">{{ supplier.gst }}</span>
+                </button>
+                {% endfor %}
+              </div>
+              <div class="pl-supplier-empty" id="credit-payment-supplier-empty" hidden>No suppliers match your search.</div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    {% if selected_view == 'outstanding' %}
+    <div class="pl-summary-row">
+      <article class="card pl-summary-card" aria-label="{{ settlement_labels.outstanding_panel_aria }} summary">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">{{ settlement_labels.outstanding_summary_label }}</div>
+          <div class="pl-summary-value" id="cp-outstanding-total" data-amount="{{ outstanding_total }}">{{ outstanding_total }}</div>
+          <div class="pl-summary-meta">{{ outstanding_entries|length }} expense{{ '' if outstanding_entries|length == 1 else 's' }}{% if date_from != date_to %} · {{ date_from }} to {{ date_to }}{% else %} · {{ date_from }}{% endif %}</div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel" aria-label="{{ settlement_labels.outstanding_panel_aria }}">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+          <span>{{ settlement_labels.outstanding_panel_title }}</span>
+        </div>
+        <div class="cp-panel-actions">
+          <span class="pl-count">{{ outstanding_entries|length }} entries</span>
+          {% if outstanding_entries %}
+          <div class="cp-selection-bar" id="cp-selection-bar" hidden>
+            <span id="cp-table-select-count">0 selected</span>
+            <span class="cp-action-bar-sep" aria-hidden="true">·</span>
+            <span>Balance <strong id="cp-table-select-total" data-amount="0">0</strong></span>
+            <span class="cp-select-supplier" id="cp-table-select-supplier"></span>
+            <button type="button" class="cp-link-btn" id="cp-clear-selection-btn">Clear selection</button>
+          </div>
+          <button type="button" class="btn btn-primary" id="cp-open-select-btn" disabled>{{ settlement_labels.action_button }}</button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if outstanding_entries %}
+        <div class="pl-table-wrap">
+          <table class="pl-table cp-outstanding-table" id="cp-outstanding-table" aria-label="{{ settlement_labels.outstanding_table_aria }}">
+            <thead>
+              <tr>
+                <th class="cp-col-check">
+                  <input type="checkbox" class="cp-expense-check" id="cp-select-all" aria-label="Select all line items for the same supplier">
+                </th>
+                <th>Expense ID</th>
+                <th>Date</th>
+                <th>Expense</th>
+                <th>Category</th>
+                <th>Supplier</th>
+                <th class="pl-col-amount">Amount</th>
+                <th class="pl-col-amount">Paid</th>
+                <th class="pl-col-amount">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in outstanding_entries %}
+              <tr class="cp-expense-row"
+                  data-expense-id="{{ entry.id }}"
+                  data-supplier-id="{{ entry.supplier_id or '' }}"
+                  data-supplier-name="{{ entry.supplier_name or '' }}"
+                  data-expense-code="{{ entry.expense_code or '' }}"
+                  data-description="{{ entry.description or '' }}"
+                  data-balance="{{ entry.balance }}"
+                  data-category="{{ entry.category or '' }}">
+                <td class="cp-col-check">
+                  <input type="checkbox" class="cp-expense-check cp-row-check" aria-label="Select {{ entry.expense_code or entry.id }}">
+                </td>
+                <td class="pl-col-code"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
+                <td class="pl-col-date">{{ entry.sales_date }}</td>
+                <td><div class="pl-name">{{ entry.description or '—' }}</div></td>
+                <td>{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
+                <td>
+                  {% if entry.supplier_name %}
+                  <div class="pl-name">{{ entry.supplier_name }}</div>
+                  {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}">{{ entry.amount }}</td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.paid_amount }}">{{ entry.paid_amount }}</td>
+                <td class="pl-col-amount pl-amount cp-balance" data-amount="{{ entry.balance }}">{{ entry.balance }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">{{ settlement_labels.outstanding_empty }}</div>
+        {% endif %}
+      </div>
+    </article>
+
+    {% else %}
+    <div class="pl-summary-row">
+      <article class="card pl-summary-card" aria-label="{{ settlement_labels.history_panel_aria }} summary">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">{{ settlement_labels.history_summary_label }}</div>
+          <div class="pl-summary-value" id="cp-payment-total" data-amount="{{ payment_total }}">{{ payment_total }}</div>
+          <div class="pl-summary-meta">{{ payment_entries|length }} {{ settlement_labels.history_summary_unit }}{{ '' if payment_entries|length == 1 else 's' }}{% if payment_date_from != payment_date_to %} · {{ payment_date_from }} to {{ payment_date_to }}{% else %} · {{ payment_date_from }}{% endif %}</div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel" aria-label="{{ settlement_labels.history_panel_aria }}">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
+          <span>{{ settlement_labels.history_panel_title }}</span>
+        </div>
+        <span class="pl-count">{{ payment_entries|length }} entries</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if payment_entries %}
+        <div class="pl-table-wrap">
+          <table class="pl-table cp-table" aria-label="{{ settlement_labels.history_table_aria }}">
+            <thead>
+              <tr>
+                <th>{{ settlement_labels.history_date_column }}</th>
+                <th>Supplier</th>
+                {% if settlement_labels.show_payment_mode %}
+                <th>Method</th>
+                <th>Transaction ID</th>
+                {% endif %}
+                {% if settlement_labels.show_verification_account %}
+                <th>Account</th>
+                {% endif %}
+                {% if settlement_labels.show_history_expense_ids %}
+                <th>Expense ID</th>
+                {% endif %}
+                <th class="pl-col-amount">Total</th>
+                <th>Expenses</th>
+                <th class="cp-col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in payment_entries %}
+              <tr data-payment-id="{{ entry.id }}">
+                <td class="pl-col-date">{{ entry.payment_date }}</td>
+                <td>
+                  {% if entry.supplier_name %}
+                  <div class="pl-name">{{ entry.supplier_name }}</div>
+                  {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                {% if settlement_labels.show_payment_mode %}
+                <td>{{ credit_payment_method_labels.get(entry.payment_method, entry.payment_method) }}</td>
+                <td>{{ entry.transaction_id or '—' }}</td>
+                {% endif %}
+                {% if settlement_labels.show_verification_account %}
+                <td>{{ entry.verification_account or '—' }}</td>
+                {% endif %}
+                {% if settlement_labels.show_history_expense_ids %}
+                <td class="pl-col-code">
+                  {% if entry.expense_codes %}
+                  <span class="pl-expense-code">{{ entry.expense_codes }}</span>
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                {% endif %}
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.total_amount }}">{{ entry.total_amount }}</td>
+                <td>{{ entry.allocation_count }}</td>
+                <td class="cp-col-actions">
+                  <button type="button" class="cp-link-btn cp-view-payment" data-payment-id="{{ entry.id }}">View</button>
+                  <button type="button" class="cp-link-btn cp-link-btn--danger cp-delete-payment" data-payment-id="{{ entry.id }}">Delete</button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">{{ settlement_labels.history_empty }}</div>
+        {% endif %}
+      </div>
+    </article>
+    {% endif %}
+  </section>
+</div>
+
+<div class="modal-backdrop" id="cp-select-modal" aria-hidden="true">
+  <div class="staff-credit-box cp-modal-box cp-select-modal-box" role="dialog" aria-modal="true" aria-labelledby="cp-select-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+      <span id="cp-select-title">{{ settlement_labels.select_modal_title }}</span>
+    </div>
+    <p class="staff-credit-copy">{{ settlement_labels.select_modal_copy }}</p>
+    <div id="cp-select-error" class="staff-credit-error"></div>
+    <div class="cp-select-summary">
+      <span id="cp-select-count">0 selected</span>
+      <span class="cp-action-bar-sep" aria-hidden="true">·</span>
+      <span>Balance <strong id="cp-select-total" data-amount="0">0</strong></span>
+      <span class="cp-select-supplier" id="cp-select-supplier"></span>
+    </div>
+    <div class="cp-select-list-wrap">
+      <table class="cp-select-table" aria-label="{{ settlement_labels.select_table_aria }}">
+        <thead>
+          <tr>
+            <th class="cp-col-check"><span class="visually-hidden">Select</span></th>
+            <th>Expense</th>
+            <th>Date</th>
+            <th>Supplier</th>
+            <th class="pl-col-amount">Balance</th>
+            <th class="pl-col-amount">{{ settlement_labels.pay_now_column }}</th>
+          </tr>
+        </thead>
+        <tbody id="cp-select-body"></tbody>
+      </table>
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn" id="cp-select-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="cp-select-continue">{{ settlement_labels.select_continue }}</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cp-clearance-modal" aria-hidden="true">
+  <div class="staff-credit-box cp-modal-box" role="dialog" aria-modal="true" aria-labelledby="cp-clearance-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+      <span id="cp-clearance-title">{{ settlement_labels.clearance_modal_title }}</span>
+    </div>
+    <p class="staff-credit-copy">{{ settlement_labels.clearance_modal_copy }}</p>
+    <div id="cp-clearance-error" class="staff-credit-error"></div>
+    <div class="staff-field">
+      <label for="cp-payment-date">{{ settlement_labels.clearance_date_label }}</label>
+      <input id="cp-payment-date" class="staff-input" type="date" value="{{ today_iso }}">
+    </div>
+    {% if settlement_labels.show_payment_mode %}
+    <div class="staff-field">
+      <label>{{ settlement_labels.clearance_mode_label }}</label>
+      <div class="staff-credit-type-toggle" id="cp-method-toggle">
+        {% for method_key, method_label in credit_payment_methods %}
+        <button type="button" class="staff-credit-type-btn{% if method_key == 'cash' %} active{% endif %}" data-value="{{ method_key }}">{{ method_label }}</button>
+        {% endfor %}
+      </div>
+      <input type="hidden" id="cp-payment-method" value="cash">
+    </div>
+    <div class="staff-field" id="cp-transaction-wrap" hidden>
+      <label for="cp-transaction-id">Transaction ID *</label>
+      <input id="cp-transaction-id" class="staff-input" type="text" placeholder="Card transaction reference" autocomplete="off">
+    </div>
+    {% else %}
+    <input type="hidden" id="cp-payment-method" value="cash">
+    {% endif %}
+    <div class="staff-field">
+      <label for="cp-notes">Notes</label>
+      <input id="cp-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
+    </div>
+    <div class="cp-alloc-wrap">
+      <div class="cp-alloc-head">
+        <span>Selected expenses</span>
+        <span id="cp-alloc-supplier"></span>
+      </div>
+      <div class="cp-alloc-table-wrap">
+        <table class="cp-alloc-table" aria-label="Payment allocations">
+          <thead>
+            <tr>
+              <th>Expense</th>
+              <th class="pl-col-amount">Balance</th>
+              <th class="pl-col-amount">{{ settlement_labels.pay_now_column }}</th>
+            </tr>
+          </thead>
+          <tbody id="cp-alloc-body"></tbody>
+        </table>
+      </div>
+      <div class="cp-alloc-total">
+        <span>{{ settlement_labels.clearance_total_label }}</span>
+        <strong id="cp-alloc-total" data-amount="0">0</strong>
+      </div>
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn" id="cp-clearance-back">Back</button>
+      <button type="button" class="btn btn-primary" id="cp-clearance-submit">{{ settlement_labels.clearance_submit }}</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cp-detail-modal" aria-hidden="true">
+  <div class="staff-credit-box cp-modal-box" role="dialog" aria-modal="true" aria-labelledby="cp-detail-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3"/></svg>
+      <span id="cp-detail-title">{{ settlement_labels.detail_modal_title }}</span>
+    </div>
+    <div id="cp-detail-error" class="staff-credit-error"></div>
+    <div id="cp-detail-body" class="cp-detail-body"></div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn" id="cp-detail-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script id="cp-outstanding-data" type="application/json">{{ outstanding_entries|tojson }}</script>
+{% include 'partials/credit_payment_scripts.html' %}
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

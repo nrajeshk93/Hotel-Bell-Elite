@@ -51,9 +51,10 @@
     return salesOutlets.some((loc) => isEntryLocked(loc));
   }
   function setSaveState(text, className){
-    if (!saveState) return;
-    saveState.textContent = text;
-    saveState.className = `save-state ${className || ''}`.trim();
+    document.querySelectorAll('.petty-save-state').forEach((el) => {
+      el.textContent = text;
+      el.className = `save-state petty-save-state ${className || ''}`.trim();
+    });
   }
   function guardEntryEditable(location){
     if (!isEntryLocked(location)) return true;
@@ -67,7 +68,7 @@
         .filter((input) => input.dataset.pettyLocation === location)
         .forEach((input) => { input.readOnly = true; input.disabled = true; });
     });
-    if (salesOutlets.some((loc) => isEntryLocked(loc)) && saveState && !saveState.classList.contains('err')) {
+    if (salesOutlets.some((loc) => isEntryLocked(loc)) && !document.querySelector('.petty-save-state.err')) {
       setSaveState('View only — past date already saved', 'ok');
     }
   }

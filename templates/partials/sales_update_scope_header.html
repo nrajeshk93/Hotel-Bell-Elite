@@ -19,26 +19,21 @@
   <div class="se-sales-header-card">
     <div class="se-sales-header-filters">
       <form id="sales-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Store filters">
+        {% if not hide_date_filter|default(false) %}
         <input type="hidden" name="date" id="se-filter-date" value="{{ selected_date }}">
+        <script>
+        (function(){
+          try { sessionStorage.setItem('hbe.salesUpdate.date', {{ selected_date|tojson }}); } catch (e) {}
+        })();
+        </script>
         <input type="hidden" name="date_from" id="se-filter-date-from" value="{{ cash_date_from }}">
         <input type="hidden" name="date_to" id="se-filter-date-to" value="{{ cash_date_to }}">
         <input type="hidden" name="panel" id="se-filter-panel" value="{{ 'cash' if cash_panel else '' }}">
-        <div class="se-filter-chip se-filter-chip--company">
-          <label class="se-filter-chip-label" for="sales-company">Company</label>
-          <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l2-4h10l2 4v14"/><path d="M9 21v-4h6v4"/><rect x="8" y="9" width="3" height="3" rx=".5"/><rect x="13" y="9" width="3" height="3" rx=".5"/></svg>
-            </span>
-            <select id="sales-company" name="company">
-              {% for company_code, company_info in sales_company_locations.items() %}
-              <option value="{{ company_code }}" {% if selected_company == company_code %}selected{% endif %}>{{ company_info.label }} ({{ company_code }})</option>
-              {% endfor %}
-            </select>
-            <span class="se-filter-chip-chev" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-            </span>
-          </div>
-        </div>
+        {% endif %}
+        <input type="hidden" name="company" id="sales-company" value="{{ selected_company }}">
+        {% if hide_location_filter|default(false) %}
+        <input type="hidden" name="location" id="sales-location" value="{{ selected_location }}">
+        {% else %}
         <div class="se-filter-chip se-filter-chip--location">
           <label class="se-filter-chip-label" for="sales-location">Location</label>
           <div class="se-filter-chip-control">
@@ -55,7 +50,9 @@
             </span>
           </div>
         </div>
+        {% endif %}
       </form>
+      {% if not hide_date_filter|default(false) %}
       <div class="se-filter-chip-date-host" id="se-date-entry-wrap">
         <div class="se-filter-chip se-filter-chip--date">
           <div class="se-filter-chip-control">
@@ -103,6 +100,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
       {% if include_cash_date_range %}
       <div class="se-filter-chip-date-host" id="se-cash-date-range-host" hidden>
         <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range">

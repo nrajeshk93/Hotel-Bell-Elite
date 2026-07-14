@@ -63,15 +63,71 @@ def init_db():
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales_update_expenses (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            company     TEXT    NOT NULL,
-            location    TEXT    NOT NULL,
-            sales_date  TEXT    NOT NULL,
-            description TEXT    NOT NULL DEFAULT '',
-            amount      REAL    NOT NULL DEFAULT 0,
-            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            company         TEXT    NOT NULL,
+            location        TEXT    NOT NULL,
+            sales_date      TEXT    NOT NULL,
+            description     TEXT    NOT NULL DEFAULT '',
+            amount          REAL    NOT NULL DEFAULT 0,
+            payment_type    TEXT    NOT NULL DEFAULT 'cash',
+            transaction_id  TEXT    NOT NULL DEFAULT '',
+            expense_code    TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         )
+    """)
+    existing_expense_cols = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(sales_update_expenses)").fetchall()
+    }
+    if "payment_type" not in existing_expense_cols:
+        cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN payment_type TEXT NOT NULL DEFAULT 'cash'")
+    if "transaction_id" not in existing_expense_cols:
+        cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN transaction_id TEXT NOT NULL DEFAULT ''")
+    if "supplier_id" not in existing_expense_cols:
+        cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN supplier_id INTEGER")
+    if "category" not in existing_expense_cols:
+        cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN category TEXT NOT NULL DEFAULT ''")
+    if "expense_code" not in existing_expense_cols:
+        cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN expense_code TEXT NOT NULL DEFAULT ''")
+        rows = cursor.execute(
+            """SELECT id, company FROM sales_update_expenses
+               WHERE expense_code IS NULL OR expense_code = ''
+               ORDER BY id"""
+        ).fetchall()
+        company_counters = {}
+        for row in rows:
+            company = (row["company"] or "HBE").strip() or "HBE"
+            company_counters[company] = company_counters.get(company, 0) + 1
+            code = f"{company}-EX-{company_counters[company]}"
+            cursor.execute(
+                "UPDATE sales_update_expenses SET expense_code = ? WHERE id = ?",
+                (code, row["id"]),
+            )
+    if "invoice_number" not in existing_expense_cols:
+        cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN invoice_number TEXT NOT NULL DEFAULT ''")
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_update_expenses_code
+        ON sales_update_expenses(expense_code)
+        WHERE expense_code != ''
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS suppliers (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                TEXT    NOT NULL,
+            gst                 TEXT    NOT NULL UNIQUE,
+            address             TEXT    NOT NULL DEFAULT '',
+            phone               TEXT    NOT NULL DEFAULT '',
+            bank_name           TEXT    NOT NULL DEFAULT '',
+            bank_account_number TEXT    NOT NULL DEFAULT '',
+            ifsc_code           TEXT    NOT NULL DEFAULT '',
+            created_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_suppliers_name
+        ON suppliers(LOWER(name))
     """)
 
     cursor.execute("""
@@ -138,11 +194,92 @@ def init_db():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS credit_payments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            company         TEXT    NOT NULL,
+            supplier_id     INTEGER NOT NULL,
+            payment_date    TEXT    NOT NULL,
+            payment_method  TEXT    NOT NULL DEFAULT 'cash',
+            transaction_id  TEXT    NOT NULL DEFAULT '',
+            total_amount    REAL    NOT NULL DEFAULT 0,
+            notes           TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS credit_payment_allocations (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            credit_payment_id   INTEGER NOT NULL,
+            expense_id          INTEGER NOT NULL,
+            amount              REAL    NOT NULL DEFAULT 0,
+            created_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_credit_payments_scope
+        ON credit_payments(company, supplier_id, payment_date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_credit_payment_allocations_payment
+        ON credit_payment_allocations(credit_payment_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_credit_payment_allocations_expense
+        ON credit_payment_allocations(expense_id)
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS purchase_verifications (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            company             TEXT    NOT NULL,
+            supplier_id         INTEGER NOT NULL,
+            verification_date   TEXT    NOT NULL,
+            verification_method TEXT    NOT NULL DEFAULT 'cash',
+            verification_account TEXT   NOT NULL DEFAULT '',
+            transaction_id      TEXT    NOT NULL DEFAULT '',
+            total_amount        REAL    NOT NULL DEFAULT 0,
+            notes               TEXT    NOT NULL DEFAULT '',
+            created_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS purchase_verification_allocations (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            purchase_verification_id INTEGER NOT NULL,
+            expense_id              INTEGER NOT NULL,
+            amount                  REAL    NOT NULL DEFAULT 0,
+            created_at              TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_purchase_verifications_scope
+        ON purchase_verifications(company, supplier_id, verification_date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_purchase_verification_allocations_verification
+        ON purchase_verification_allocations(purchase_verification_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_purchase_verification_allocations_expense
+        ON purchase_verification_allocations(expense_id)
+    """)
+    existing_pv_cols = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(purchase_verifications)").fetchall()
+    }
+    if "verification_account" not in existing_pv_cols:
+        cursor.execute(
+            "ALTER TABLE purchase_verifications ADD COLUMN verification_account TEXT NOT NULL DEFAULT ''"
+        )
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS hotel_sales_ledger_entries (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             company         TEXT    NOT NULL,
             location        TEXT    NOT NULL,
             sales_date      TEXT    NOT NULL,
+            invoice_number  TEXT    NOT NULL DEFAULT '',
             room            TEXT    NOT NULL DEFAULT '',
             room_type       TEXT    NOT NULL DEFAULT '',
             reserve_number  TEXT    NOT NULL DEFAULT '',
@@ -166,6 +303,154 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_hotel_sales_ledger_scope
         ON hotel_sales_ledger_entries(company, location, sales_date, sort_order)
     """)
+    existing_hotel_cols = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(hotel_sales_ledger_entries)").fetchall()
+    }
+    if "invoice_number" not in existing_hotel_cols:
+        cursor.execute("ALTER TABLE hotel_sales_ledger_entries ADD COLUMN invoice_number TEXT NOT NULL DEFAULT ''")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS room_transfer_entries (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            company         TEXT    NOT NULL,
+            location        TEXT    NOT NULL,
+            sales_date      TEXT    NOT NULL,
+            invoice_number  TEXT    NOT NULL DEFAULT '',
+            outlet_name     TEXT    NOT NULL DEFAULT '',
+            table_room      TEXT    NOT NULL DEFAULT '',
+            guest_name      TEXT    NOT NULL DEFAULT '',
+            ledger_detail   TEXT    NOT NULL DEFAULT '',
+            amount          REAL    NOT NULL DEFAULT 0,
+            payment_status  TEXT    NOT NULL DEFAULT 'unpaid',
+            sort_order      INTEGER NOT NULL DEFAULT 0,
+            source_row      INTEGER,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_room_transfer_scope
+        ON room_transfer_entries(company, sales_date, location, sort_order)
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS employees (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            emp_code     TEXT    NOT NULL DEFAULT '',
+            name         TEXT    NOT NULL,
+            company      TEXT    NOT NULL DEFAULT '',
+            location     TEXT    NOT NULL DEFAULT '',
+            mobile           TEXT    NOT NULL DEFAULT '',
+            guardian_mobile  TEXT    NOT NULL DEFAULT '',
+            sex          TEXT    NOT NULL DEFAULT '',
+            address      TEXT    NOT NULL DEFAULT '',
+            aadhar       TEXT    NOT NULL DEFAULT '',
+            pan          TEXT    NOT NULL DEFAULT '',
+            epf_number   TEXT    NOT NULL DEFAULT '',
+            esic_number  TEXT    NOT NULL DEFAULT '',
+            gross_salary REAL    NOT NULL DEFAULT 0,
+            basic_salary REAL    NOT NULL DEFAULT 0,
+            epf_amount   REAL    NOT NULL DEFAULT 0,
+            esic_amount  REAL    NOT NULL DEFAULT 0,
+            credit_repayment REAL    NOT NULL DEFAULT 0,
+            epf_exempt   INTEGER NOT NULL DEFAULT 0,
+            esic_exempt  INTEGER NOT NULL DEFAULT 0,
+            weekday_shift TEXT    NOT NULL DEFAULT '',
+            sunday_shift  TEXT    NOT NULL DEFAULT '',
+            bank_name         TEXT    NOT NULL DEFAULT '',
+            account_holder_name TEXT  NOT NULL DEFAULT '',
+            account_number    TEXT    NOT NULL DEFAULT '',
+            ifsc_code         TEXT    NOT NULL DEFAULT '',
+            total_off         INTEGER NOT NULL DEFAULT 0,
+            status       TEXT    NOT NULL DEFAULT 'active',
+            created_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS attendance (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            date        TEXT    NOT NULL,
+            status      TEXT    NOT NULL DEFAULT 'present',
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE,
+            UNIQUE(employee_id, date)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS credits (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            employee_id INTEGER NOT NULL,
+            date        TEXT    NOT NULL,
+            description TEXT    NOT NULL DEFAULT '',
+            amount      REAL    NOT NULL DEFAULT 0,
+            entry_type  TEXT    NOT NULL DEFAULT 'manual',
+            payroll_year INTEGER,
+            payroll_month INTEGER,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS payroll_month_locks (
+            year      INTEGER NOT NULL,
+            month     INTEGER NOT NULL,
+            locked_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            PRIMARY KEY (year, month)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS companies (
+            id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS locations (
+            id   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_att_emp_date ON attendance(employee_id, date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_credits_emp ON credits(employee_id)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_credits_emp_period "
+        "ON credits(employee_id, entry_type, payroll_year, payroll_month)"
+    )
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_emp_status ON employees(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_emp_company ON employees(company)")
+    cursor.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_emp_code_unique "
+        "ON employees(emp_code) WHERE emp_code <> ''"
+    )
+    existing_employee_cols = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(employees)").fetchall()
+    }
+    if "total_off" not in existing_employee_cols:
+        cursor.execute("ALTER TABLE employees ADD COLUMN total_off INTEGER NOT NULL DEFAULT 0")
+    for company_name in ("Hotel Bell Elite", "HBE"):
+        cursor.execute(
+            "INSERT OR IGNORE INTO companies (name) VALUES (?)",
+            (company_name,),
+        )
+    payroll_departments = (
+        "OM",
+        "FO",
+        "F&B",
+        "KITCHEN",
+        "UTILITY",
+        "BAR",
+        "HK",
+        "MAINTENANCE",
+        "SECURITY",
+    )
+    for location_name in payroll_departments:
+        cursor.execute(
+            "INSERT OR IGNORE INTO locations (name) VALUES (?)",
+            (location_name,),
+        )
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     row = cursor.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()

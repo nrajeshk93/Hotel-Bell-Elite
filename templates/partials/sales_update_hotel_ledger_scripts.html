@@ -5,34 +5,75 @@
   const uploadInput = document.getElementById('se-upload-hotel');
   const statusEl = document.getElementById('se-upload-status-hotel');
   const clearBtn = document.getElementById('se-clear-hotel-ledger');
-  const ledgerBody = document.getElementById('hotel-ledger-body');
-  const ledgerWrap = document.getElementById('hotel-ledger-wrap');
-  const paymentModes = {{ hotel_payment_modes|tojson }};
+  const entryInputs = Array.from(document.querySelectorAll('[data-sales-entry][data-sales-location="Hotel"]'));
+  const manualSalesEntryKeys = new Set({{ hotel_manual_sales_entry_keys|tojson }});
   const salesEntryLocked = {{ 'true' if sales_entry_locked else 'false' }};
+  let expenseEntries = {{ outlet_records['Hotel'].expense_entries|default([])|tojson }};
+  let editingExpenseId = null;
   let saveTimer = null;
 
-  const formatInrKpi = (value) => formatInr(value, 0);
+  const expenseModal = document.getElementById('sales-expense-modal');
+  const openExpenseModalBtn = document.getElementById('open-sales-expense');
+  const cancelExpenseModalBtn = document.getElementById('cancel-sales-expense');
+  const saveExpenseBtn = document.getElementById('save-sales-expense');
+  const salesExpenseSubmitLabel = document.getElementById('sales-expense-submit-label');
+  const salesExpenseDescription = document.getElementById('sales-expense-description');
+  const salesExpenseValue = document.getElementById('sales-expense-value');
+  const salesExpensePaymentListbox = document.getElementById('sales-expense-payment-listbox');
+  const salesExpensePaymentInput = document.getElementById('sales-expense-payment-input');
+  const salesExpensePaymentValue = document.getElementById('sales-expense-payment-value');
+  const salesExpensePaymentTrigger = document.getElementById('sales-expense-payment-trigger');
+  const salesExpensePaymentList = document.getElementById('sales-expense-payment-list');
+  const salesExpenseCategoryListbox = document.getElementById('sales-expense-category-listbox');
+  const salesExpenseCategoryInput = document.getElementById('sales-expense-category-input');
+  const salesExpenseCategoryValue = document.getElementById('sales-expense-category-value');
+  const salesExpenseCategoryTrigger = document.getElementById('sales-expense-category-trigger');
+  const salesExpenseCategoryList = document.getElementById('sales-expense-category-list');
+  const salesExpenseCategorySearch = document.getElementById('sales-expense-category-search');
+  const salesExpenseCategoryOptions = document.getElementById('sales-expense-category-options');
+  const salesExpenseCategoryEmpty = document.getElementById('sales-expense-category-empty');
+  const salesExpenseTransactionWrap = document.getElementById('sales-expense-transaction-wrap');
+  const salesExpenseTransactionId = document.getElementById('sales-expense-transaction-id');
+  const salesExpenseInvoiceNumber = document.getElementById('sales-expense-invoice-number');
+  const salesExpenseError = document.getElementById('sales-expense-error');
+  const salesExpenseList = document.getElementById('sales-expense-list');
+  const salesExpenseHistoryTotal = document.getElementById('sales-expense-history-total');
+  const expensePaymentLabels = Object.fromEntries({{ expense_payment_types|tojson }}.map(([key, label]) => [key, label]));
+  const expenseCategoryLabels = Object.fromEntries({{ expense_categories|default([])|tojson }}.map(([key, label]) => [key, label]));
+  const salesExpenseSupplierListbox = document.getElementById('sales-expense-supplier-listbox');
+  const salesExpenseSupplierInput = document.getElementById('sales-expense-supplier-input');
+  const salesExpenseSupplierValue = document.getElementById('sales-expense-supplier-value');
+  const salesExpenseSupplierTrigger = document.getElementById('sales-expense-supplier-trigger');
+  const salesExpenseSupplierList = document.getElementById('sales-expense-supplier-list');
+  const salesExpenseSupplierSearch = document.getElementById('sales-expense-supplier-search');
+  const salesExpenseSupplierOptions = document.getElementById('sales-expense-supplier-options');
+  const salesExpenseSupplierEmpty = document.getElementById('sales-expense-supplier-empty');
+  const salesExpenseSupplierAddBtn = document.getElementById('sales-expense-supplier-add-btn');
+  const salesExpenseSupplierAddModal = document.getElementById('sales-expense-supplier-modal');
+  const salesExpenseSupplierAddError = document.getElementById('sales-expense-supplier-add-error');
+  const salesExpenseSupplierName = document.getElementById('sales-expense-supplier-name');
+  const salesExpenseSupplierGst = document.getElementById('sales-expense-supplier-gst');
+  const salesExpenseSupplierAddress = document.getElementById('sales-expense-supplier-address');
+  const salesExpenseSupplierPhone = document.getElementById('sales-expense-supplier-phone');
+  const salesExpenseSupplierBankName = document.getElementById('sales-expense-supplier-bank-name');
+  const salesExpenseSupplierBankAccount = document.getElementById('sales-expense-supplier-bank-account');
+  const salesExpenseSupplierIfsc = document.getElementById('sales-expense-supplier-ifsc');
+  const salesExpenseSupplierSaveBtn = document.getElementById('sales-expense-supplier-save-btn');
+  const salesExpenseSupplierCancelBtn = document.getElementById('sales-expense-supplier-cancel-btn');
+  let supplierCatalog = {{ suppliers|default([])|tojson }};
 
-  function rollupFromEntries(entries){
-    const totals = { total_sales: 0, cash: 0, card: 0, upi: 0, room_credit: 0 };
-    (entries || []).forEach((entry) => {
-      const amount = Number(entry.amount || 0);
-      totals.total_sales += amount;
-      const mode = String(entry.payment_mode || '');
-      if (Object.prototype.hasOwnProperty.call(totals, mode)) totals[mode] += amount;
-    });
-    return totals;
+  const formatInrKpi = (value) => formatInr(value, 0);
+  const formatAmount = (value) => {
+    const amount = Number(value || 0);
+    return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+  };
+
+  function entryInput(key){
+    return entryInputs.find((input) => String(input.dataset.salesEntry || '') === key) || null;
   }
 
-  function updateSummary(rollup){
-    const assigned = rollup.cash + rollup.card + rollup.upi + rollup.room_credit;
-    const unassigned = Math.max(0, rollup.total_sales - assigned);
-    const totalSalesEl = document.getElementById('hotel-ledger-total-sales');
-    const assignedEl = document.getElementById('hotel-ledger-assigned');
-    const unassignedEl = document.getElementById('hotel-ledger-unassigned');
-    if (totalSalesEl) totalSalesEl.textContent = formatInrKpi(rollup.total_sales);
-    if (assignedEl) assignedEl.textContent = formatInrKpi(assigned);
-    if (unassignedEl) unassignedEl.textContent = formatInrKpi(unassigned);
+  function escapeHtml(value){
+    return String(value || '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[ch]));
   }
 
   function updateKpis(salesEntries){
@@ -40,7 +81,7 @@
       'actual-sales-kpi': salesEntries.total_sales,
       'digital-transactions-kpi': (Number(salesEntries.card || 0) + Number(salesEntries.upi || 0)),
       'cash-kpi': salesEntries.cash,
-      'expense-kpi': 0,
+      'expense-kpi': salesEntries.expense || 0,
       'sales-difference-kpi': Number(salesEntries.total_sales || 0)
         - Number(salesEntries.cash || 0)
         - Number(salesEntries.card || 0)
@@ -53,89 +94,873 @@
     });
   }
 
-  function paymentOptionsHtml(selected){
-    return paymentModes.map(([value, label]) => {
-      const sel = value === selected ? ' selected' : '';
-      return `<option value="${value}"${sel}>${label}</option>`;
-    }).join('');
+  function applySalesEntries(salesEntries){
+    entryInputs.forEach((input) => {
+      const key = String(input.dataset.salesEntry || '');
+      if (!Object.prototype.hasOwnProperty.call(salesEntries || {}, key)) return;
+      const value = Number(salesEntries[key] || 0);
+      input.value = Number.isInteger(value) ? String(value) : value.toFixed(1);
+    });
   }
 
-  function renderLedger(entries){
-    const rollup = rollupFromEntries(entries);
-    updateSummary(rollup);
-    if (!ledgerWrap) return;
-    if (!entries || !entries.length){
-      ledgerWrap.innerHTML = '<div class="hotel-ledger-empty" id="hotel-ledger-empty">Upload an occupancy summary report to load room ledger lines. Set payment mode for each transaction after import.</div>';
+  function buildSalesEntries(){
+    const entries = {};
+    entryInputs.forEach((input) => {
+      const key = String(input.dataset.salesEntry || '');
+      const raw = Math.round(Number(input.value || 0) * 100) / 100;
+      entries[key] = Math.max(0, raw);
+    });
+    return entries;
+  }
+
+  function getSelectedExpensePaymentType(){
+    return salesExpensePaymentInput ? salesExpensePaymentInput.value || 'cash' : 'cash';
+  }
+
+  function closeExpensePaymentListbox(){
+    if (!salesExpensePaymentListbox) return;
+    salesExpensePaymentListbox.classList.remove('is-open');
+    if (salesExpensePaymentTrigger) salesExpensePaymentTrigger.setAttribute('aria-expanded', 'false');
+    if (salesExpensePaymentList) salesExpensePaymentList.hidden = true;
+  }
+
+  function openExpensePaymentListbox(){
+    if (!salesExpensePaymentListbox) return;
+    closeExpenseSupplierListbox();
+    closeExpenseCategoryListbox();
+    closeExpenseSupplierAddPanel();
+    salesExpensePaymentListbox.classList.add('is-open');
+    if (salesExpensePaymentTrigger) salesExpensePaymentTrigger.setAttribute('aria-expanded', 'true');
+    if (salesExpensePaymentList) {
+      salesExpensePaymentList.hidden = false;
+      const selected = salesExpensePaymentList.querySelector('[aria-selected="true"]')
+        || salesExpensePaymentList.querySelector('.se-filter-listbox-option');
+      if (selected) selected.focus();
+    }
+  }
+
+  function toggleExpensePaymentListbox(){
+    if (!salesExpensePaymentListbox) return;
+    if (salesExpensePaymentListbox.classList.contains('is-open')) closeExpensePaymentListbox();
+    else openExpensePaymentListbox();
+  }
+
+  function selectExpensePaymentOption(option){
+    if (!salesExpensePaymentListbox || !option) return;
+    const value = option.getAttribute('data-value') || 'cash';
+    const label = (option.textContent || '').trim() || expensePaymentLabels[value] || 'Cash';
+    if (salesExpensePaymentInput) salesExpensePaymentInput.value = value;
+    if (salesExpensePaymentValue) salesExpensePaymentValue.textContent = label;
+    if (salesExpensePaymentList) {
+      salesExpensePaymentList.querySelectorAll('.se-filter-listbox-option').forEach((opt) => {
+        const on = opt === option;
+        opt.classList.toggle('is-selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    closeExpensePaymentListbox();
+    setExpensePaymentType(value, { skipListbox: true });
+  }
+
+  function setExpensePaymentType(paymentType, options){
+    const opts = options || {};
+    const normalized = Object.prototype.hasOwnProperty.call(expensePaymentLabels, paymentType)
+      ? paymentType
+      : 'cash';
+    if (!opts.skipListbox && salesExpensePaymentList) {
+      const option = salesExpensePaymentList.querySelector(`.se-filter-listbox-option[data-value="${normalized}"]`);
+      if (option) {
+        const label = (option.textContent || '').trim() || expensePaymentLabels[normalized] || 'Cash';
+        if (salesExpensePaymentInput) salesExpensePaymentInput.value = normalized;
+        if (salesExpensePaymentValue) salesExpensePaymentValue.textContent = label;
+        salesExpensePaymentList.querySelectorAll('.se-filter-listbox-option').forEach((opt) => {
+          const on = opt === option;
+          opt.classList.toggle('is-selected', on);
+          opt.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+      }
+    }
+    const isBank = normalized === 'bank_transfer';
+    if (salesExpenseTransactionWrap) salesExpenseTransactionWrap.hidden = !isBank;
+    if (!isBank && salesExpenseTransactionId) salesExpenseTransactionId.value = '';
+  }
+
+  function expensePaymentLine(row){
+    const paymentType = row.payment_type || 'cash';
+    const label = expensePaymentLabels[paymentType] || 'Cash';
+    if (paymentType === 'bank_transfer') {
+      return `${label}${row.transaction_id ? ` · ${escapeHtml(row.transaction_id)}` : ''}`;
+    }
+    return label;
+  }
+
+  function getSelectedExpenseCategory(){
+    return salesExpenseCategoryInput ? (salesExpenseCategoryInput.value || '') : '';
+  }
+
+  function closeExpenseCategoryListbox(){
+    if (!salesExpenseCategoryListbox) return;
+    salesExpenseCategoryListbox.classList.remove('is-open');
+    if (salesExpenseCategoryTrigger) salesExpenseCategoryTrigger.setAttribute('aria-expanded', 'false');
+    if (salesExpenseCategoryList) salesExpenseCategoryList.hidden = true;
+  }
+
+  function scoreCategoryOption(option, needle){
+    if (!needle) return 0;
+    const name = (option.getAttribute('data-name') || '').toLowerCase();
+    const terms = needle.split(/\s+/).filter(Boolean);
+    let score = 0;
+    for (const term of terms) {
+      if (name === term) score += 120;
+      else if (name.startsWith(term)) score += 90;
+      else if (name.includes(term)) score += 60;
+      else return -1;
+    }
+    return score;
+  }
+
+  function filterExpenseCategoryOptions(query){
+    if (!salesExpenseCategoryOptions) return;
+    const needle = String(query || '').trim().toLowerCase();
+    const options = Array.from(salesExpenseCategoryOptions.querySelectorAll('.staff-category-option'));
+
+    if (!needle) {
+      options.forEach((option) => option.classList.remove('is-filtered-out'));
+      if (salesExpenseCategoryEmpty) salesExpenseCategoryEmpty.hidden = true;
       return;
     }
-    const rows = entries.map((entry) => {
-      const disabled = salesEntryLocked ? ' disabled' : '';
-      return `<tr data-ledger-id="${entry.id}">
-        <td class="hotel-ledger-room">${escapeHtml(entry.room)}</td>
-        <td class="hotel-ledger-guest">${escapeHtml(entry.guest_name || '—')}</td>
-        <td class="hotel-ledger-company">${escapeHtml(entry.company_name || '—')}</td>
-        <td class="hotel-ledger-plan">${escapeHtml(entry.room_plan || '—')}</td>
-        <td class="hotel-ledger-amount">${formatInrKpi(entry.amount)}</td>
-        <td class="hotel-ledger-payment">
-          <select class="hotel-ledger-payment-select" data-ledger-id="${entry.id}" aria-label="Payment mode for room ${escapeHtml(entry.room)}"${disabled}>
-            ${paymentOptionsHtml(entry.payment_mode || '')}
-          </select>
-        </td>
-      </tr>`;
+
+    const ranked = options.map((option) => ({
+      option,
+      score: scoreCategoryOption(option, needle),
+    })).filter((entry) => entry.score >= 0);
+
+    ranked.sort((a, b) => b.score - a.score
+      || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || ''));
+
+    const best = ranked.length ? [ranked[0]] : [];
+
+    options.forEach((option) => option.classList.add('is-filtered-out'));
+    best.forEach((entry) => {
+      entry.option.classList.remove('is-filtered-out');
+      salesExpenseCategoryOptions.appendChild(entry.option);
+    });
+
+    if (salesExpenseCategoryEmpty) salesExpenseCategoryEmpty.hidden = true;
+  }
+
+  function openExpenseCategoryListbox(){
+    if (!salesExpenseCategoryListbox) return;
+    closeExpenseSupplierListbox();
+    closeExpensePaymentListbox();
+    closeExpenseSupplierAddPanel();
+    salesExpenseCategoryListbox.classList.add('is-open');
+    if (salesExpenseCategoryTrigger) salesExpenseCategoryTrigger.setAttribute('aria-expanded', 'true');
+    if (salesExpenseCategoryList) {
+      salesExpenseCategoryList.hidden = false;
+      filterExpenseCategoryOptions('');
+      if (salesExpenseCategorySearch) {
+        salesExpenseCategorySearch.value = '';
+        salesExpenseCategorySearch.focus();
+      }
+    }
+  }
+
+  function toggleExpenseCategoryListbox(){
+    if (!salesExpenseCategoryListbox) return;
+    if (salesExpenseCategoryListbox.classList.contains('is-open')) closeExpenseCategoryListbox();
+    else openExpenseCategoryListbox();
+  }
+
+  function setExpenseCategory(category, options){
+    const opts = options || {};
+    const normalized = Object.prototype.hasOwnProperty.call(expenseCategoryLabels, category)
+      ? category
+      : '';
+    if (salesExpenseCategoryInput) salesExpenseCategoryInput.value = normalized;
+    if (salesExpenseCategoryValue) {
+      salesExpenseCategoryValue.textContent = normalized
+        ? (expenseCategoryLabels[normalized] || 'Select category')
+        : 'Select category';
+      salesExpenseCategoryValue.classList.toggle('staff-supplier-placeholder', !normalized);
+    }
+    if (!opts.skipListbox && salesExpenseCategoryList) {
+      salesExpenseCategoryList.querySelectorAll('.se-filter-listbox-option').forEach((opt) => {
+        const on = String(opt.getAttribute('data-value') || '') === normalized;
+        opt.classList.toggle('is-selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+  }
+
+  function selectExpenseCategoryOption(option){
+    if (!salesExpenseCategoryListbox || !option) return;
+    const value = option.getAttribute('data-value') || '';
+    const label = (option.textContent || '').trim() || expenseCategoryLabels[value] || 'Select category';
+    if (salesExpenseCategoryInput) salesExpenseCategoryInput.value = value;
+    if (salesExpenseCategoryValue) {
+      salesExpenseCategoryValue.textContent = label;
+      salesExpenseCategoryValue.classList.toggle('staff-supplier-placeholder', !value);
+    }
+    if (salesExpenseCategoryList) {
+      salesExpenseCategoryList.querySelectorAll('.se-filter-listbox-option').forEach((opt) => {
+        const on = opt === option;
+        opt.classList.toggle('is-selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    closeExpenseCategoryListbox();
+  }
+
+  function visibleCategoryOptions(){
+    if (!salesExpenseCategoryOptions) return [];
+    return Array.from(salesExpenseCategoryOptions.querySelectorAll('.staff-category-option:not(.is-filtered-out)'));
+  }
+
+  function bindExpenseCategoryListbox(){
+    if (!salesExpenseCategoryListbox || !salesExpenseCategoryTrigger || !salesExpenseCategoryList) return;
+    salesExpenseCategoryTrigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleExpenseCategoryListbox();
+    });
+    salesExpenseCategoryTrigger.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openExpenseCategoryListbox();
+      } else if (event.key === 'Escape') {
+        closeExpenseCategoryListbox();
+      }
+    });
+    if (salesExpenseCategorySearch) {
+      salesExpenseCategorySearch.addEventListener('input', () => {
+        filterExpenseCategoryOptions(salesExpenseCategorySearch.value);
+      });
+      salesExpenseCategorySearch.addEventListener('click', (event) => event.stopPropagation());
+      salesExpenseCategorySearch.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeExpenseCategoryListbox();
+          salesExpenseCategoryTrigger.focus();
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          const firstMatch = visibleCategoryOptions()[0];
+          if (firstMatch) {
+            selectExpenseCategoryOption(firstMatch);
+            showSalesExpenseError('');
+          }
+        } else if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          const first = visibleCategoryOptions()[0];
+          if (first) first.focus();
+        }
+      });
+    }
+    const categoryClickTarget = salesExpenseCategoryOptions || salesExpenseCategoryList;
+    categoryClickTarget.addEventListener('click', (event) => {
+      const option = event.target.closest('.staff-category-option');
+      if (!option || !categoryClickTarget.contains(option) || option.classList.contains('is-filtered-out')) return;
+      event.preventDefault();
+      selectExpenseCategoryOption(option);
+      showSalesExpenseError('');
+    });
+    const categoryKeyTarget = salesExpenseCategoryOptions || salesExpenseCategoryList;
+    categoryKeyTarget.addEventListener('keydown', (event) => {
+      const options = visibleCategoryOptions();
+      if (!options.length) return;
+      const idx = options.indexOf(document.activeElement);
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        options[Math.min(options.length - 1, Math.max(0, idx) + 1)].focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        options[Math.max(0, (idx < 0 ? 0 : idx) - 1)].focus();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (idx >= 0) selectExpenseCategoryOption(options[idx]);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeExpenseCategoryListbox();
+        salesExpenseCategoryTrigger.focus();
+      }
+    });
+  }
+
+  function bindExpensePaymentListbox(){
+    if (!salesExpensePaymentListbox || !salesExpensePaymentTrigger || !salesExpensePaymentList) return;
+    salesExpensePaymentTrigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleExpensePaymentListbox();
+    });
+    salesExpensePaymentTrigger.addEventListener('keydown', (event) => {
+      if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openExpensePaymentListbox();
+      } else if (event.key === 'Escape') {
+        closeExpensePaymentListbox();
+      }
+    });
+    salesExpensePaymentList.addEventListener('click', (event) => {
+      const option = event.target.closest('.se-filter-listbox-option');
+      if (!option || !salesExpensePaymentList.contains(option)) return;
+      event.preventDefault();
+      selectExpensePaymentOption(option);
+      showSalesExpenseError('');
+    });
+    salesExpensePaymentList.addEventListener('keydown', (event) => {
+      const options = Array.from(salesExpensePaymentList.querySelectorAll('.se-filter-listbox-option'));
+      if (!options.length) return;
+      const idx = options.indexOf(document.activeElement);
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        options[Math.min(options.length - 1, Math.max(0, idx) + 1)].focus();
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        options[Math.max(0, (idx < 0 ? 0 : idx) - 1)].focus();
+      } else if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        if (idx >= 0) selectExpensePaymentOption(options[idx]);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        closeExpensePaymentListbox();
+        salesExpensePaymentTrigger.focus();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        options[0].focus();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        options[options.length - 1].focus();
+      }
+    });
+  }
+
+  function getSelectedExpenseSupplierId(){
+    return salesExpenseSupplierInput ? String(salesExpenseSupplierInput.value || '').trim() : '';
+  }
+
+  function closeExpenseSupplierListbox(){
+    if (!salesExpenseSupplierListbox) return;
+    salesExpenseSupplierListbox.classList.remove('is-open');
+    if (salesExpenseSupplierTrigger) salesExpenseSupplierTrigger.setAttribute('aria-expanded', 'false');
+    if (salesExpenseSupplierList) salesExpenseSupplierList.hidden = true;
+  }
+
+  function openExpenseSupplierListbox(){
+    if (!salesExpenseSupplierListbox) return;
+    closeExpensePaymentListbox();
+    closeExpenseCategoryListbox();
+    closeExpenseSupplierAddPanel();
+    salesExpenseSupplierListbox.classList.add('is-open');
+    if (salesExpenseSupplierTrigger) salesExpenseSupplierTrigger.setAttribute('aria-expanded', 'true');
+    if (salesExpenseSupplierList) {
+      salesExpenseSupplierList.hidden = false;
+      filterExpenseSupplierOptions('');
+      if (salesExpenseSupplierSearch) {
+        salesExpenseSupplierSearch.value = '';
+        salesExpenseSupplierSearch.focus();
+      }
+    }
+  }
+
+  function toggleExpenseSupplierListbox(){
+    if (!salesExpenseSupplierListbox) return;
+    if (salesExpenseSupplierListbox.classList.contains('is-open')) closeExpenseSupplierListbox();
+    else openExpenseSupplierListbox();
+  }
+
+  function supplierLabelById(supplierId){
+    const match = supplierCatalog.find((item) => String(item.id) === String(supplierId));
+    return match ? match.name : '';
+  }
+
+  function scoreSupplierOption(option, needle){
+    if (!needle) return 0;
+    const name = (option.getAttribute('data-name') || '').toLowerCase();
+    const gst = (option.getAttribute('data-gst') || '').toLowerCase();
+    const terms = needle.split(/\s+/).filter(Boolean);
+    let score = 0;
+    for (const term of terms) {
+      if (name === term || gst === term) score += 120;
+      else if (name.startsWith(term)) score += 90;
+      else if (gst.startsWith(term)) score += 80;
+      else if (name.includes(term)) score += 60;
+      else if (gst.includes(term)) score += 50;
+      else return -1;
+    }
+    return score;
+  }
+
+  function renderSupplierOptions(){
+    if (!salesExpenseSupplierOptions) return;
+    if (!supplierCatalog.length) {
+      salesExpenseSupplierOptions.innerHTML = '';
+      if (salesExpenseSupplierEmpty) {
+        salesExpenseSupplierEmpty.hidden = false;
+        salesExpenseSupplierEmpty.textContent = 'No suppliers yet. Use + Add to create one.';
+      }
+      return;
+    }
+    salesExpenseSupplierOptions.innerHTML = supplierCatalog.map((supplier) => {
+      const name = supplier.name || '';
+      const gst = supplier.gst || '';
+      return `<button type="button" class="se-filter-listbox-option staff-supplier-option" role="option" data-value="${escapeHtml(supplier.id)}" data-name="${escapeHtml(name.toLowerCase())}" data-gst="${escapeHtml(gst.toLowerCase())}" aria-selected="false"><span class="staff-supplier-option-name">${escapeHtml(name)}</span><span class="staff-supplier-option-gst">${escapeHtml(gst)}</span></button>`;
     }).join('');
-    ledgerWrap.innerHTML = `<table class="hotel-ledger-table" aria-label="Hotel sales ledger">
-      <thead><tr>
-        <th>Room</th><th>Guest</th><th>Company</th><th>Plan</th>
-        <th class="hotel-ledger-col-amount">Amount</th>
-        <th class="hotel-ledger-col-payment">Payment mode</th>
-      </tr></thead>
-      <tbody id="hotel-ledger-body">${rows}</tbody>
-    </table>`;
-    bindPaymentSelects();
+    filterExpenseSupplierOptions(salesExpenseSupplierSearch ? salesExpenseSupplierSearch.value : '');
   }
 
-  function escapeHtml(value){
-    return String(value || '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[ch]));
+  function filterExpenseSupplierOptions(query){
+    if (!salesExpenseSupplierOptions) return;
+    const needle = String(query || '').trim().toLowerCase();
+    const options = Array.from(salesExpenseSupplierOptions.querySelectorAll('.staff-supplier-option'));
+    const ranked = options.map((option) => ({
+      option,
+      score: scoreSupplierOption(option, needle),
+    })).filter((entry) => !needle || entry.score >= 0);
+
+    ranked.sort((a, b) => {
+      if (needle) return b.score - a.score || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
+      return (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
+    });
+
+    const best = needle && ranked.length ? [ranked[0]] : ranked;
+
+    options.forEach((option) => option.classList.add('is-filtered-out'));
+    best.forEach(({ option }) => {
+      option.classList.remove('is-filtered-out');
+      salesExpenseSupplierOptions.appendChild(option);
+    });
+
+    if (salesExpenseSupplierEmpty) {
+      salesExpenseSupplierEmpty.hidden = true;
+      salesExpenseSupplierEmpty.textContent = supplierCatalog.length
+        ? 'No suppliers match your search.'
+        : 'No suppliers yet. Use + Add to create one.';
+    }
   }
 
-  async function saveLedgerPayment(entryId, paymentMode){
+  function setExpenseSupplier(supplierId, options){
+    const opts = options || {};
+    const normalizedId = supplierId ? String(supplierId) : '';
+    const label = normalizedId ? supplierLabelById(normalizedId) : '';
+    if (salesExpenseSupplierInput) salesExpenseSupplierInput.value = normalizedId;
+    if (salesExpenseSupplierValue) {
+      salesExpenseSupplierValue.textContent = label || 'Select supplier';
+      salesExpenseSupplierValue.classList.toggle('staff-supplier-placeholder', !label);
+    }
+    if (!opts.skipOptions && salesExpenseSupplierOptions) {
+      salesExpenseSupplierOptions.querySelectorAll('.staff-supplier-option').forEach((option) => {
+        const on = String(option.getAttribute('data-value') || '') === normalizedId;
+        option.classList.toggle('is-selected', on);
+        option.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+  }
+
+  function selectExpenseSupplierOption(option){
+    if (!option) return;
+    setExpenseSupplier(option.getAttribute('data-value') || '');
+    closeExpenseSupplierListbox();
+    showSalesExpenseError('');
+  }
+
+  function showExpenseSupplierAddError(message){
+    if (!salesExpenseSupplierAddError) return;
+    salesExpenseSupplierAddError.textContent = message || '';
+    salesExpenseSupplierAddError.style.display = message ? 'block' : 'none';
+  }
+
+  function resetExpenseSupplierAddForm(){
+    [
+      salesExpenseSupplierName,
+      salesExpenseSupplierGst,
+      salesExpenseSupplierAddress,
+      salesExpenseSupplierPhone,
+      salesExpenseSupplierBankName,
+      salesExpenseSupplierBankAccount,
+      salesExpenseSupplierIfsc,
+    ].forEach((input) => {
+      if (input) input.value = '';
+    });
+    showExpenseSupplierAddError('');
+  }
+
+  function openExpenseSupplierAddPanel(){
+    closeExpenseSupplierListbox();
+    closeExpensePaymentListbox();
+    closeExpenseCategoryListbox();
+    resetExpenseSupplierAddForm();
+    if (salesExpenseSupplierAddModal) {
+      salesExpenseSupplierAddModal.classList.add('open');
+      salesExpenseSupplierAddModal.setAttribute('aria-hidden', 'false');
+      if (salesExpenseSupplierName) {
+        window.setTimeout(() => salesExpenseSupplierName.focus(), 0);
+      }
+    }
+  }
+
+  function closeExpenseSupplierAddPanel(){
+    if (salesExpenseSupplierAddModal) {
+      salesExpenseSupplierAddModal.classList.remove('open');
+      salesExpenseSupplierAddModal.setAttribute('aria-hidden', 'true');
+    }
+    resetExpenseSupplierAddForm();
+  }
+
+  async function saveInlineSupplier(){
+    if (!widget || !widget.dataset.supplierCreateUrl) return;
+    const payload = {
+      name: salesExpenseSupplierName ? salesExpenseSupplierName.value.trim() : '',
+      gst: salesExpenseSupplierGst ? salesExpenseSupplierGst.value.trim() : '',
+      address: salesExpenseSupplierAddress ? salesExpenseSupplierAddress.value.trim() : '',
+      phone: salesExpenseSupplierPhone ? salesExpenseSupplierPhone.value.trim() : '',
+      bank_name: salesExpenseSupplierBankName ? salesExpenseSupplierBankName.value.trim() : '',
+      bank_account_number: salesExpenseSupplierBankAccount ? salesExpenseSupplierBankAccount.value.trim() : '',
+      ifsc_code: salesExpenseSupplierIfsc ? salesExpenseSupplierIfsc.value.trim() : '',
+    };
+    if (!payload.name || !payload.gst) {
+      showExpenseSupplierAddError('Supplier name and GST are required.');
+      return;
+    }
+    showExpenseSupplierAddError('');
+    if (salesExpenseSupplierSaveBtn) salesExpenseSupplierSaveBtn.disabled = true;
+    try {
+      const resp = await fetch(widget.dataset.supplierCreateUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save supplier.');
+      supplierCatalog = Array.isArray(data.suppliers) ? data.suppliers : supplierCatalog;
+      renderSupplierOptions();
+      setExpenseSupplier(data.supplier ? data.supplier.id : '');
+      closeExpenseSupplierAddPanel();
+      showSalesExpenseError('');
+    } catch (err) {
+      showExpenseSupplierAddError(err.message);
+    } finally {
+      if (salesExpenseSupplierSaveBtn) salesExpenseSupplierSaveBtn.disabled = false;
+    }
+  }
+
+  function bindExpenseSupplierListbox(){
+    renderSupplierOptions();
+    if (!salesExpenseSupplierListbox || !salesExpenseSupplierTrigger || !salesExpenseSupplierList) return;
+    salesExpenseSupplierTrigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleExpenseSupplierListbox();
+    });
+    if (salesExpenseSupplierSearch) {
+      salesExpenseSupplierSearch.addEventListener('input', () => {
+        filterExpenseSupplierOptions(salesExpenseSupplierSearch.value);
+      });
+      salesExpenseSupplierSearch.addEventListener('click', (event) => event.stopPropagation());
+      salesExpenseSupplierSearch.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeExpenseSupplierListbox();
+          if (salesExpenseSupplierTrigger) salesExpenseSupplierTrigger.focus();
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          const firstMatch = salesExpenseSupplierOptions
+            ? salesExpenseSupplierOptions.querySelector('.staff-supplier-option:not(.is-filtered-out)')
+            : null;
+          if (firstMatch) selectExpenseSupplierOption(firstMatch);
+        }
+      });
+    }
+    if (salesExpenseSupplierOptions) {
+      salesExpenseSupplierOptions.addEventListener('click', (event) => {
+        const option = event.target.closest('.staff-supplier-option');
+        if (!option || option.classList.contains('is-filtered-out')) return;
+        event.preventDefault();
+        selectExpenseSupplierOption(option);
+      });
+    }
+    if (salesExpenseSupplierAddBtn) {
+      salesExpenseSupplierAddBtn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openExpenseSupplierAddPanel();
+      });
+    }
+    if (salesExpenseSupplierCancelBtn) salesExpenseSupplierCancelBtn.addEventListener('click', closeExpenseSupplierAddPanel);
+    if (salesExpenseSupplierSaveBtn) salesExpenseSupplierSaveBtn.addEventListener('click', saveInlineSupplier);
+    if (salesExpenseSupplierAddModal) {
+      salesExpenseSupplierAddModal.addEventListener('click', (event) => {
+        if (event.target === salesExpenseSupplierAddModal) closeExpenseSupplierAddPanel();
+      });
+    }
+  }
+
+  function updateExpenseTotal(value){
+    const expenseInput = entryInput('expense');
+    if (expenseInput) expenseInput.value = formatAmount(value);
+    const entries = buildSalesEntries();
+    entries.expense = Math.max(0, Number(value || 0));
+    updateKpis(entries);
+  }
+
+  function renderExpenseEntries(entries){
+    expenseEntries = Array.isArray(entries) ? entries : [];
+    const total = expenseEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    if (salesExpenseHistoryTotal) salesExpenseHistoryTotal.textContent = formatInrKpi(total);
+    updateExpenseTotal(total);
+    if (!salesExpenseList) return;
+    if (!expenseEntries.length) {
+      salesExpenseList.innerHTML = '<div class="staff-credit-empty">No expenses added for this date.</div>';
+      return;
+    }
+    salesExpenseList.innerHTML = expenseEntries.map((row) => {
+      const id = escapeHtml(row.id);
+      const expenseCode = escapeHtml(row.expense_code || '');
+      const desc = escapeHtml(row.description || 'Expense');
+      const categoryLine = expenseCategoryLabels[row.category] || '';
+      const supplierLine = row.supplier_name ? escapeHtml(row.supplier_name) : 'No supplier';
+      const invoiceLine = row.invoice_number ? `Inv ${escapeHtml(row.invoice_number)}` : '';
+      const paymentLine = expensePaymentLine(row);
+      const meta = [categoryLine ? escapeHtml(categoryLine) : '', supplierLine, invoiceLine, paymentLine].filter(Boolean).join(' · ');
+      const title = expenseCode ? `${expenseCode} · ${desc}` : desc;
+      return `<div class="staff-credit-row" data-expense-id="${id}"><div class="staff-credit-info"><div class="staff-credit-name">${title}</div><div class="staff-credit-desc">${meta}</div></div><div class="staff-credit-amount">${formatInrKpi(row.amount)}</div><div class="staff-credit-controls"><button type="button" class="staff-credit-action" data-expense-action="edit" data-expense-id="${id}">Edit</button><button type="button" class="staff-credit-action danger" data-expense-action="delete" data-expense-id="${id}">Delete</button></div></div>`;
+    }).join('');
+  }
+
+  function showSalesExpenseError(message){
+    if (!salesExpenseError) return;
+    salesExpenseError.textContent = message || '';
+    salesExpenseError.style.display = message ? 'block' : 'none';
+  }
+
+  function resetExpenseForm(){
+    editingExpenseId = null;
+    if (salesExpenseDescription) salesExpenseDescription.value = '';
+    if (salesExpenseValue) salesExpenseValue.value = '';
+    if (salesExpenseTransactionId) salesExpenseTransactionId.value = '';
+    if (salesExpenseInvoiceNumber) salesExpenseInvoiceNumber.value = '';
+    setExpensePaymentType('cash');
+    setExpenseCategory('');
+    setExpenseSupplier('');
+    closeExpenseSupplierAddPanel();
+    if (salesExpenseSubmitLabel) salesExpenseSubmitLabel.textContent = 'Add expense';
+    showSalesExpenseError('');
+  }
+
+  function openExpenseModal(){
+    if (!expenseModal || salesEntryLocked) return;
+    resetExpenseForm();
+    renderExpenseEntries(expenseEntries);
+    expenseModal.classList.add('open');
+    expenseModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeExpenseModal(){
+    if (!expenseModal) return;
+    closeExpensePaymentListbox();
+    closeExpenseCategoryListbox();
+    closeExpenseSupplierListbox();
+    closeExpenseSupplierAddPanel();
+    expenseModal.classList.remove('open');
+    expenseModal.setAttribute('aria-hidden', 'true');
+    resetExpenseForm();
+  }
+
+  function editExpense(expenseId){
+    if (salesEntryLocked) return;
+    const row = expenseEntries.find((item) => String(item.id) === String(expenseId));
+    if (!row || !expenseModal) return;
+    editingExpenseId = row.id;
+    if (salesExpenseDescription) salesExpenseDescription.value = row.description || '';
+    if (salesExpenseValue) salesExpenseValue.value = formatAmount(row.amount);
+    setExpensePaymentType(row.payment_type || 'cash');
+    setExpenseCategory(row.category || '');
+    setExpenseSupplier(row.supplier_id || '');
+    if (salesExpenseTransactionId) salesExpenseTransactionId.value = row.transaction_id || '';
+    if (salesExpenseInvoiceNumber) salesExpenseInvoiceNumber.value = row.invoice_number || '';
+    if (salesExpenseSubmitLabel) salesExpenseSubmitLabel.textContent = 'Update expense';
+    expenseModal.classList.add('open');
+    expenseModal.setAttribute('aria-hidden', 'false');
+  }
+
+  async function saveSalesEntry(){
     if (!widget || salesEntryLocked) return;
-    const resp = await fetch('{{ url_for("save_hotel_ledger") }}', {
+    const resp = await fetch(widget.dataset.saveUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         company: widget.dataset.company,
         location: widget.dataset.location,
         date: widget.dataset.date,
-        updates: [{ id: entryId, payment_mode: paymentMode }],
+        sales_entries: buildSalesEntries(),
+        sales_only: true,
       }),
     });
     const data = await resp.json().catch(() => ({}));
-    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save payment mode.');
-    if (data.sales_entries) updateKpis(data.sales_entries);
-    if (data.ledger_rollup) updateSummary(data.ledger_rollup);
-    if (statusEl) statusEl.textContent = 'Payment mode saved';
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save sales entry.');
+    if (data.sales_entries) {
+      applySalesEntries(data.sales_entries);
+      updateKpis(data.sales_entries);
+    }
+    if (statusEl) statusEl.textContent = `Saved for ${data.date || widget.dataset.date}`;
   }
 
-  function scheduleSave(entryId, paymentMode){
+  function scheduleSave(){
     clearTimeout(saveTimer);
+    if (statusEl) statusEl.textContent = 'Unsaved changes...';
     saveTimer = setTimeout(async () => {
       try {
-        await saveLedgerPayment(entryId, paymentMode);
+        await saveSalesEntry();
       } catch (err) {
         if (statusEl) statusEl.textContent = err.message || 'Save failed';
       }
-    }, 350);
+    }, 450);
   }
 
-  function bindPaymentSelects(){
-    document.querySelectorAll('.hotel-ledger-payment-select').forEach((select) => {
-      select.addEventListener('change', function(){
-        scheduleSave(Number(select.dataset.ledgerId), select.value);
+  async function performExpenseDelete(expenseId){
+    if (!widget || !expenseId) throw new Error('Missing expense id.');
+    const resp = await fetch(widget.dataset.expenseDeleteUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: widget.dataset.company,
+        location: widget.dataset.location,
+        date: widget.dataset.date,
+        id: expenseId,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not delete expense.');
+    renderExpenseEntries(data.expense_entries || []);
+    await saveSalesEntry();
+  }
+
+  async function deleteExpense(expenseId){
+    if (!widget || salesEntryLocked || !expenseId) return;
+    if (!window.confirm('Delete this expense line?')) return;
+    try {
+      await performExpenseDelete(expenseId);
+    } catch (err) {
+      showSalesExpenseError(err.message);
+      openExpenseModal();
+    }
+  }
+
+  async function submitExpense(){
+    if (!widget || salesEntryLocked) return;
+    const description = salesExpenseDescription ? salesExpenseDescription.value.trim() : '';
+    const amountRaw = salesExpenseValue ? salesExpenseValue.value : '';
+    const paymentType = getSelectedExpensePaymentType();
+    const category = getSelectedExpenseCategory();
+    const transactionId = salesExpenseTransactionId ? salesExpenseTransactionId.value.trim() : '';
+    const invoiceNumber = salesExpenseInvoiceNumber ? salesExpenseInvoiceNumber.value.trim() : '';
+    const supplierId = getSelectedExpenseSupplierId();
+    if (!description) {
+      showSalesExpenseError('Please enter an expense description.');
+      return;
+    }
+    if (!amountRaw || Number(amountRaw) <= 0) {
+      showSalesExpenseError('Please enter a value greater than 0.');
+      return;
+    }
+    if (!supplierId) {
+      showSalesExpenseError('Please select a supplier.');
+      return;
+    }
+    if (!category) {
+      showSalesExpenseError('Please select a category.');
+      return;
+    }
+    if (paymentType === 'bank_transfer' && !transactionId) {
+      showSalesExpenseError('Please enter the bank transaction ID.');
+      return;
+    }
+    showSalesExpenseError('');
+    if (saveExpenseBtn) saveExpenseBtn.disabled = true;
+    try {
+      const resp = await fetch(editingExpenseId ? widget.dataset.expenseEditUrl : widget.dataset.expenseAddUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: widget.dataset.company,
+          location: widget.dataset.location,
+          date: widget.dataset.date,
+          id: editingExpenseId,
+          description,
+          amount: amountRaw,
+          payment_type: paymentType,
+          category,
+          transaction_id: paymentType === 'bank_transfer' ? transactionId : '',
+          invoice_number: invoiceNumber,
+          supplier_id: supplierId,
+        }),
       });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save expense.');
+      renderExpenseEntries(data.expense_entries || []);
+      resetExpenseForm();
+      await saveSalesEntry();
+    } catch (err) {
+      showSalesExpenseError(err.message);
+    } finally {
+      if (saveExpenseBtn) saveExpenseBtn.disabled = false;
+    }
+  }
+
+  function attachZeroClearBehavior(input){
+    if (input.readOnly) return;
+    input.addEventListener('focus', () => {
+      if (Number(input.value || 0) === 0) input.value = '';
+    });
+    input.addEventListener('blur', () => {
+      if (input.value === '') input.value = '0';
+      scheduleSave();
+    });
+    input.addEventListener('input', scheduleSave);
+  }
+
+  entryInputs.filter((input) => manualSalesEntryKeys.has(String(input.dataset.salesEntry || ''))).forEach(attachZeroClearBehavior);
+
+  if (openExpenseModalBtn) openExpenseModalBtn.addEventListener('click', openExpenseModal);
+  if (cancelExpenseModalBtn) cancelExpenseModalBtn.addEventListener('click', closeExpenseModal);
+  if (saveExpenseBtn) saveExpenseBtn.addEventListener('click', submitExpense);
+  bindExpensePaymentListbox();
+  bindExpenseCategoryListbox();
+  bindExpenseSupplierListbox();
+  document.addEventListener('click', (event) => {
+    if (salesExpensePaymentListbox && salesExpensePaymentListbox.classList.contains('is-open') && !salesExpensePaymentListbox.contains(event.target)) {
+      closeExpensePaymentListbox();
+    }
+    if (salesExpenseCategoryListbox && salesExpenseCategoryListbox.classList.contains('is-open') && !salesExpenseCategoryListbox.contains(event.target)) {
+      closeExpenseCategoryListbox();
+    }
+    if (salesExpenseSupplierListbox && salesExpenseSupplierListbox.classList.contains('is-open') && !salesExpenseSupplierListbox.contains(event.target)) {
+      closeExpenseSupplierListbox();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    closeExpensePaymentListbox();
+    closeExpenseCategoryListbox();
+    closeExpenseSupplierListbox();
+    closeExpenseSupplierAddPanel();
+  });
+  if (expenseModal) {
+    expenseModal.addEventListener('click', (event) => {
+      if (event.target === expenseModal) closeExpenseModal();
     });
   }
-  bindPaymentSelects();
+  if (salesExpenseList) {
+    salesExpenseList.addEventListener('click', (event) => {
+      const action = event.target.closest('[data-expense-action]');
+      if (!action) return;
+      const expenseId = action.dataset.expenseId;
+      if (action.dataset.expenseAction === 'edit') editExpense(expenseId);
+      if (action.dataset.expenseAction === 'delete') deleteExpense(expenseId);
+    });
+  }
 
   if (uploadInput) {
     uploadInput.addEventListener('change', async function(){
@@ -150,8 +975,17 @@
         const resp = await fetch('{{ url_for("upload_hotel_occupancy_report") }}', { method: 'POST', body: formData });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok || !data.ok) throw new Error(data.error || 'Upload failed');
-        renderLedger(data.ledger_entries || []);
-        if (data.sales_entries) updateKpis(data.sales_entries);
+        if (data.date && widget?.dataset.date && data.date !== widget.dataset.date) {
+          const url = new URL(window.location.href);
+          url.searchParams.set('date', data.date);
+          if (statusEl) statusEl.textContent = `${data.message || 'Report imported.'} Opening ${data.date}…`;
+          window.location.href = url.toString();
+          return;
+        }
+        if (data.sales_entries) {
+          applySalesEntries(data.sales_entries);
+          updateKpis(data.sales_entries);
+        }
         if (statusEl) statusEl.textContent = data.message || 'Report imported.';
       } catch (err) {
         if (statusEl) statusEl.textContent = err.message || 'Upload failed';
@@ -164,9 +998,16 @@
   if (clearBtn) {
     clearBtn.addEventListener('click', async function(){
       if (!widget || salesEntryLocked) return;
-      if (!window.confirm('Clear all hotel sales ledger lines for this date?')) return;
+      if (!window.confirm('Clear uploaded hotel sales amounts for this date? Actual Cash and Expense lines will be kept.')) return;
       if (statusEl) statusEl.textContent = 'Clearing…';
+      clearBtn.disabled = true;
       try {
+        entryInputs
+          .filter((input) => {
+            const key = String(input.dataset.salesEntry || '');
+            return !manualSalesEntryKeys.has(key) && key !== 'expense';
+          })
+          .forEach((input) => { input.value = '0'; });
         const resp = await fetch('{{ url_for("clear_hotel_ledger") }}', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -178,13 +1019,19 @@
         });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok || !data.ok) throw new Error(data.error || 'Clear failed');
-        renderLedger([]);
-        if (data.sales_entries) updateKpis(data.sales_entries);
-        if (statusEl) statusEl.textContent = 'Ledger cleared';
+        if (data.sales_entries) {
+          applySalesEntries(data.sales_entries);
+          updateKpis(data.sales_entries);
+        }
+        if (statusEl) statusEl.textContent = 'Uploaded amounts cleared';
       } catch (err) {
         if (statusEl) statusEl.textContent = err.message || 'Clear failed';
+      } finally {
+        clearBtn.disabled = false;
       }
     });
   }
+
+  renderExpenseEntries(expenseEntries);
 })();
 </script>

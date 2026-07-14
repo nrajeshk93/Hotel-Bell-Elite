@@ -1,0 +1,68 @@
+<script>
+(function(){
+  var KEY='de-fullscreen-active';
+  var NAV_KEY='de-fullscreen-nav-ts';
+  function isActive(){
+    try{return sessionStorage.getItem(KEY)==='1';}catch(e){return false;}
+  }
+  function recentNav(){
+    try{
+      var ts=parseInt(sessionStorage.getItem(NAV_KEY)||'0',10);
+      return ts && (Date.now()-ts)<8000;
+    }catch(e){return false;}
+  }
+  function isFsActive(){
+    return !!(
+      document.fullscreenElement
+      || document.webkitFullscreenElement
+      || document.mozFullScreenElement
+      || document.msFullscreenElement
+    );
+  }
+  function enter(){
+    if(!isActive())return;
+    if(isFsActive())return;
+    if(window.deFullscreen){
+      if(typeof window.deFullscreen.ensureRoot==='function'){
+        window.deFullscreen.ensureRoot();
+      }
+      if(typeof window.deFullscreen.restoreIfNeeded==='function'){
+        window.deFullscreen.restoreIfNeeded();
+        return;
+      }
+    }
+    var nodes=[
+      document.getElementById('de-fs-app'),
+      document.documentElement,
+      document.body
+    ];
+    for(var i=0;i<nodes.length;i++){
+      var node=nodes[i];
+      if(!node)continue;
+      var fn=node.requestFullscreen||node.webkitRequestFullscreen||node.mozRequestFullScreen||node.msRequestFullscreen;
+      if(!fn)continue;
+      try{
+        var result=fn.call(node);
+        if(result&&typeof result.then==='function'){result.catch(function(){});}
+        return;
+      }catch(e){}
+    }
+  }
+  function schedule(){
+    enter();
+    var delays=isActive()&&recentNav()
+      ? [16,32,60,100,150,220,320,480,700,1000,1400,2000,2800]
+      : [50,120,250,500,900,1500];
+    for(var d=0;d<delays.length;d++){
+      setTimeout(enter,delays[d]);
+    }
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',schedule);
+  }else{
+    schedule();
+  }
+  window.addEventListener('pageshow',schedule);
+  window.addEventListener('load',schedule);
+})();
+</script>

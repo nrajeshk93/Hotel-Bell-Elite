@@ -1,16 +1,44 @@
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=3"></script>
 <script>
 (function(){
+  var STORAGE_KEY = 'hbe.salesUpdate.date';
+  var params = new URLSearchParams(window.location.search);
+  var urlDate = (params.get('date') || '').trim();
+
+  function isIsoDate(value){
+    return /^\d{4}-\d{2}-\d{2}$/.test(value || '');
+  }
+
+  if (isIsoDate(urlDate)) {
+    try { sessionStorage.setItem(STORAGE_KEY, urlDate); } catch (e) {}
+    return;
+  }
+
+  var saved = '';
+  try { saved = sessionStorage.getItem(STORAGE_KEY) || ''; } catch (e) {}
+  if (!isIsoDate(saved)) return;
+
+  var today = new Date().toISOString().slice(0, 10);
+  if (saved > today) saved = today;
+
+  params.set('date', saved);
+  if (!params.get('date_from')) params.set('date_from', saved);
+  if (!params.get('date_to')) params.set('date_to', saved);
+  var qs = params.toString();
+  window.location.replace(window.location.pathname + (qs ? '?' + qs : ''));
+})();
+</script>
+<script>
+(function(){
   var f = document.getElementById('sales-filter-form');
   var co = document.getElementById('sales-company');
   var loc = document.getElementById('sales-location');
-  if (!f || !co) return;
+  if (!f) return;
   var panelInput = document.getElementById('se-filter-panel');
   function submitScope(){
     if (panelInput) panelInput.value = '';
     f.submit();
   }
-  co.addEventListener('change', submitScope);
   if (loc) loc.addEventListener('change', submitScope);
 })();
 
@@ -227,6 +255,7 @@
     var hi = selTo;
     if (compareIso(lo, hi) > 0) { lo = selTo; hi = selFrom; }
     dateInput.value = hi;
+    try { sessionStorage.setItem('hbe.salesUpdate.date', hi); } catch (e) {}
     var panelInput = document.getElementById('se-filter-panel');
     var df = document.getElementById('se-filter-date-from');
     var dt = document.getElementById('se-filter-date-to');
@@ -241,5 +270,22 @@
   });
 
   refreshTriggerText();
+})();
+
+(function(){
+  var STORAGE_KEY = 'hbe.salesUpdate.date';
+  var saved = '';
+  try { saved = sessionStorage.getItem(STORAGE_KEY) || ''; } catch (e) {}
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(saved)) return;
+
+  document.querySelectorAll('.de-nav-subitem[href*="sales_update"]').forEach(function(link){
+    try {
+      var url = new URL(link.href, window.location.origin);
+      if (!url.searchParams.get('date')) {
+        url.searchParams.set('date', saved);
+        link.href = url.pathname + '?' + url.searchParams.toString();
+      }
+    } catch (e) {}
+  });
 })();
 </script>

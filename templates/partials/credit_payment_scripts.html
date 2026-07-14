@@ -1,0 +1,746 @@
+<script>
+(function(){
+  var page = document.getElementById('credit-payment-page');
+  if (!page) return;
+
+  var createUrl = page.getAttribute('data-create-url') || '';
+  var deleteUrl = page.getAttribute('data-delete-url') || '';
+  var detailUrlTemplate = page.getAttribute('data-detail-url-template') || '';
+  var todayIso = page.getAttribute('data-today') || '';
+  var methodLabels = {{ credit_payment_method_labels|tojson }};
+  var categoryLabels = {{ expense_category_labels|tojson }};
+  var labels = {{ settlement_labels|tojson }};
+  var showPaymentMode = labels.show_payment_mode !== false;
+  var showVerificationAccount = labels.show_verification_account === true;
+
+  var outstandingData = [];
+  try {
+    var dataEl = document.getElementById('cp-outstanding-data');
+    outstandingData = dataEl ? JSON.parse(dataEl.textContent || '[]') : [];
+  } catch (e) {
+    outstandingData = [];
+  }
+
+  var lockedSupplierId = null;
+  var pendingSelections = [];
+  var selectionSource = 'table'; // 'table' | 'modal'
+
+  function formatInr(amount){
+    if (typeof window.formatINR === 'function') return window.formatINR(amount);
+    var n = Number(amount || 0);
+    return isFinite(n) ? n.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0';
+  }
+
+  function formatMoneyNodes(root){
+    (root || document).querySelectorAll('[data-amount]').forEach(function(el){
+      el.textContent = formatInr(el.getAttribute('data-amount'));
+    });
+  }
+
+  formatMoneyNodes(document);
+
+  function openModal(el){
+    if (!el) return;
+    el.classList.add('open');
+    el.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeModal(el){
+    if (!el) return;
+    el.classList.remove('open');
+    el.setAttribute('aria-hidden', 'true');
+  }
+
+  function setError(el, msg){
+    if (!el) return;
+    if (msg) {
+      el.textContent = msg;
+      el.style.display = 'block';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+    }
+  }
+
+  function escapeHtml(value){
+    return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function selectionFromRow(row, amount){
+    var balance = Number(row.getAttribute('data-balance') || 0);
+    var payAmount = amount == null ? balance : Number(amount);
+    return {
+      expense_id: Number(row.getAttribute('data-expense-id')),
+      amount: payAmount,
+      balance: balance,
+      expense_code: row.getAttribute('data-expense-code') || '',
+      description: row.getAttribute('data-description') || '',
+      supplier_id: Number(row.getAttribute('data-supplier-id') || 0),
+      supplier_name: row.getAttribute('data-supplier-name') || '',
+      category: row.getAttribute('data-category') || ''
+    };
+  }
+
+  /* ---------- Filters ---------- */
+  var filterForm = document.getElementById('credit-payment-filter-form');
+  if (filterForm) {
+    function submitScope(){ filterForm.submit(); }
+
+    function closeListbox(root){
+      if (!root) return;
+      var trigger = root.querySelector('.se-filter-chip-trigger');
+      var list = root.querySelector('.se-filter-listbox');
+      var search = root.querySelector('.pl-supplier-search');
+      root.classList.remove('is-open');
+      if (trigger) trigger.setAttribute('aria-expanded', 'false');
+      if (list) list.hidden = true;
+      if (search) search.value = '';
+      if (root.hasAttribute('data-se-listbox-searchable')) filterSearchableOptions(root, '');
+    }
+
+    function closeAllListboxes(except){
+      filterForm.querySelectorAll('[data-se-listbox].is-open').forEach(function(root){
+        if (root !== except) closeListbox(root);
+      });
+    }
+
+    function scoreSearchOption(option, needle){
+      if (!needle) return 0;
+      var name = (option.getAttribute('data-name') || '').toLowerCase();
+      var gst = (option.getAttribute('data-gst') || '').toLowerCase();
+      var terms = needle.split(/\s+/).filter(Boolean);
+      var score = 0;
+      for (var i = 0; i < terms.length; i++) {
+        var term = terms[i];
+        if (name === term || (gst && gst === term)) score += 120;
+        else if (name.indexOf(term) === 0) score += 90;
+        else if (gst && gst.indexOf(term) === 0) score += 80;
+        else if (name.indexOf(term) !== -1) score += 60;
+        else if (gst && gst.indexOf(term) !== -1) score += 50;
+        else return -1;
+      }
+      return score;
+    }
+
+    function filterSearchableOptions(root, query){
+      var optionsWrap = root.querySelector('.pl-supplier-options');
+      var emptyEl = root.querySelector('.pl-supplier-empty');
+      if (!optionsWrap) return;
+      var needle = String(query || '').trim().toLowerCase();
+      var options = Array.from(optionsWrap.querySelectorAll('.pl-supplier-option'));
+      if (!needle) {
+        options.forEach(function(option){ option.classList.remove('is-filtered-out'); });
+        if (emptyEl) emptyEl.hidden = true;
+        return;
+      }
+      var ranked = options.map(function(option){
+        return { option: option, score: scoreSearchOption(option, needle) };
+      }).filter(function(entry){
+        return entry.score >= 0 && (entry.option.getAttribute('data-value') || '') !== 'all';
+      });
+      ranked.sort(function(a, b){
+        return b.score - a.score || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
+      });
+      var best = ranked.length ? [ranked[0]] : [];
+      options.forEach(function(option){ option.classList.add('is-filtered-out'); });
+      best.forEach(function(entry){ entry.option.classList.remove('is-filtered-out'); });
+      if (emptyEl) emptyEl.hidden = true;
+    }
+
+    function bindListbox(root){
+      var trigger = root.querySelector('.se-filter-chip-trigger');
+      var list = root.querySelector('.se-filter-listbox');
+      var hidden = root.querySelector('input[type="hidden"]');
+      var valueEl = root.querySelector('.se-filter-chip-value');
+      var search = root.querySelector('.pl-supplier-search');
+      if (!trigger || !list || !hidden) return;
+
+      trigger.addEventListener('click', function(e){
+        e.preventDefault();
+        var open = root.classList.contains('is-open');
+        closeAllListboxes();
+        if (open) return;
+        root.classList.add('is-open');
+        trigger.setAttribute('aria-expanded', 'true');
+        list.hidden = false;
+        if (search) {
+          search.focus();
+          filterSearchableOptions(root, search.value);
+        }
+      });
+
+      list.addEventListener('click', function(e){
+        var option = e.target.closest('.se-filter-listbox-option');
+        if (!option || option.classList.contains('is-filtered-out')) return;
+        list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+          opt.classList.remove('is-selected');
+          opt.setAttribute('aria-selected', 'false');
+        });
+        option.classList.add('is-selected');
+        option.setAttribute('aria-selected', 'true');
+        hidden.value = option.getAttribute('data-value') || 'all';
+        if (valueEl) {
+          var nameEl = option.querySelector('.pl-supplier-option-name');
+          valueEl.textContent = nameEl ? nameEl.textContent : option.textContent.trim();
+        }
+        closeListbox(root);
+        submitScope();
+      });
+
+      if (search) {
+        search.addEventListener('input', function(){ filterSearchableOptions(root, search.value); });
+        search.addEventListener('keydown', function(e){ e.stopPropagation(); });
+      }
+    }
+
+    filterForm.querySelectorAll('[data-se-listbox]').forEach(bindListbox);
+    document.addEventListener('click', function(e){
+      if (!e.target.closest('#credit-payment-filter-form [data-se-listbox]')) closeAllListboxes();
+    });
+
+    ['credit-payment-date-from', 'credit-payment-date-to', 'credit-payment-pay-from', 'credit-payment-pay-to'].forEach(function(id){
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('change', submitScope);
+    });
+  }
+
+  /* ---------- Outstanding table multi-select ---------- */
+  var outstandingTable = document.getElementById('cp-outstanding-table');
+  var selectAllCheck = document.getElementById('cp-select-all');
+  var selectionBar = document.getElementById('cp-selection-bar');
+  var tableSelectCountEl = document.getElementById('cp-table-select-count');
+  var tableSelectTotalEl = document.getElementById('cp-table-select-total');
+  var tableSelectSupplierEl = document.getElementById('cp-table-select-supplier');
+  var clearSelectionBtn = document.getElementById('cp-clear-selection-btn');
+  var openSelectBtn = document.getElementById('cp-open-select-btn');
+
+  function expenseRows(){
+    return Array.from(document.querySelectorAll('.cp-expense-row'));
+  }
+
+  function selectedExpenseRows(){
+    return expenseRows().filter(function(row){
+      var check = row.querySelector('.cp-row-check');
+      return check && check.checked && !check.disabled;
+    });
+  }
+
+  function updateTableSelectionUi(){
+    var selected = selectedExpenseRows();
+    var total = 0;
+    var supplierName = '';
+    selected.forEach(function(row){
+      total += Number(row.getAttribute('data-balance') || 0);
+      supplierName = row.getAttribute('data-supplier-name') || supplierName;
+    });
+    lockedSupplierId = selected.length ? String(selected[0].getAttribute('data-supplier-id') || '') : null;
+
+    expenseRows().forEach(function(row){
+      var check = row.querySelector('.cp-row-check');
+      var supplierId = String(row.getAttribute('data-supplier-id') || '');
+      var lockedOut = !!(lockedSupplierId && supplierId !== lockedSupplierId);
+      row.classList.toggle('is-selected', !!(check && check.checked));
+      row.classList.toggle('is-locked-out', lockedOut);
+      if (check) {
+        check.disabled = lockedOut;
+        if (lockedOut) check.checked = false;
+      }
+    });
+
+    var selectable = expenseRows().filter(function(row){
+      var check = row.querySelector('.cp-row-check');
+      return check && !check.disabled;
+    });
+    var allSelectableChecked = selectable.length > 0 && selectable.every(function(row){
+      return row.querySelector('.cp-row-check').checked;
+    });
+    if (selectAllCheck) {
+      selectAllCheck.checked = allSelectableChecked;
+      selectAllCheck.indeterminate = selected.length > 0 && !allSelectableChecked;
+      selectAllCheck.disabled = !selectable.length && !selected.length;
+    }
+
+    if (tableSelectCountEl) {
+      tableSelectCountEl.textContent = selected.length + ' selected';
+    }
+    if (tableSelectTotalEl) {
+      tableSelectTotalEl.setAttribute('data-amount', String(total));
+      tableSelectTotalEl.textContent = formatInr(total);
+    }
+    if (tableSelectSupplierEl) {
+      tableSelectSupplierEl.textContent = supplierName ? ('· ' + supplierName) : '';
+    }
+    if (selectionBar) selectionBar.hidden = selected.length === 0;
+    if (openSelectBtn) openSelectBtn.disabled = selected.length === 0;
+  }
+
+  function clearTableSelection(){
+    expenseRows().forEach(function(row){
+      var check = row.querySelector('.cp-row-check');
+      if (check) {
+        check.checked = false;
+        check.disabled = false;
+      }
+    });
+    lockedSupplierId = null;
+    updateTableSelectionUi();
+  }
+
+  function collectSelectionsFromTable(){
+    return selectedExpenseRows().map(function(row){ return selectionFromRow(row); });
+  }
+
+  if (outstandingTable) {
+    outstandingTable.addEventListener('change', function(e){
+      var target = e.target;
+      if (!target) return;
+      if (target.id === 'cp-select-all') {
+        var checked = !!target.checked;
+        if (!checked) {
+          clearTableSelection();
+          return;
+        }
+        var anchorSupplier = lockedSupplierId;
+        if (!anchorSupplier) {
+          var firstRow = expenseRows()[0];
+          anchorSupplier = firstRow ? String(firstRow.getAttribute('data-supplier-id') || '') : null;
+        }
+        expenseRows().forEach(function(row){
+          var check = row.querySelector('.cp-row-check');
+          if (!check) return;
+          check.checked = String(row.getAttribute('data-supplier-id') || '') === String(anchorSupplier || '');
+        });
+        updateTableSelectionUi();
+        return;
+      }
+      if (target.classList.contains('cp-row-check')) {
+        updateTableSelectionUi();
+      }
+    });
+
+    outstandingTable.addEventListener('click', function(e){
+      var row = e.target.closest('.cp-expense-row');
+      if (!row || e.target.closest('a, button, input, label')) return;
+      var check = row.querySelector('.cp-row-check');
+      if (!check || check.disabled) return;
+      check.checked = !check.checked;
+      updateTableSelectionUi();
+    });
+  }
+
+  if (clearSelectionBtn) {
+    clearSelectionBtn.addEventListener('click', function(e){
+      e.preventDefault();
+      clearTableSelection();
+    });
+  }
+
+  updateTableSelectionUi();
+
+  /* ---------- Step 1: Select credit items (modal fallback) ---------- */
+  var selectModal = document.getElementById('cp-select-modal');
+  var selectBody = document.getElementById('cp-select-body');
+  var selectError = document.getElementById('cp-select-error');
+  var selectCountEl = document.getElementById('cp-select-count');
+  var selectTotalEl = document.getElementById('cp-select-total');
+  var selectSupplierEl = document.getElementById('cp-select-supplier');
+
+  function renderSelectRows(preselectedIds){
+    if (!selectBody) return;
+    var preselected = {};
+    (preselectedIds || []).forEach(function(id){ preselected[String(id)] = true; });
+    selectBody.innerHTML = '';
+    outstandingData.forEach(function(entry){
+      var tr = document.createElement('tr');
+      tr.className = 'cp-select-row';
+      tr.setAttribute('data-expense-id', entry.id);
+      tr.setAttribute('data-supplier-id', entry.supplier_id || '');
+      tr.setAttribute('data-supplier-name', entry.supplier_name || '');
+      tr.setAttribute('data-expense-code', entry.expense_code || '');
+      tr.setAttribute('data-description', entry.description || '');
+      tr.setAttribute('data-balance', entry.balance);
+      var initiallyChecked = !!preselected[String(entry.id)];
+      tr.innerHTML =
+        '<td class="cp-col-check"><input type="checkbox" class="cp-select-check" aria-label="Select ' + escapeHtml(entry.expense_code || entry.id) + '"' + (initiallyChecked ? ' checked' : '') + '></td>' +
+        '<td><span class="cp-alloc-code">' + escapeHtml(entry.expense_code || '—') + '</span><div class="pl-name">' + escapeHtml(entry.description || '—') + '</div></td>' +
+        '<td class="pl-col-date">' + escapeHtml(entry.sales_date || '—') + '</td>' +
+        '<td><div class="pl-name">' + escapeHtml(entry.supplier_name || '—') + '</div></td>' +
+        '<td class="pl-col-amount">' + formatInr(entry.balance) + '</td>' +
+        '<td class="pl-col-amount"><input class="cp-alloc-input cp-select-amount" type="number" min="0.01" step="0.01" max="' + entry.balance + '" value="' + entry.balance + '"' + (initiallyChecked ? '' : ' disabled') + '></td>';
+      selectBody.appendChild(tr);
+      var check = tr.querySelector('.cp-select-check');
+      var amountInput = tr.querySelector('.cp-select-amount');
+      check.addEventListener('change', function(){
+        updateSelectUi();
+        amountInput.disabled = !check.checked;
+        if (!check.checked) amountInput.value = entry.balance;
+      });
+      amountInput.addEventListener('input', updateSelectUi);
+    });
+    updateSelectUi();
+  }
+
+  function selectedSelectRows(){
+    return Array.from(document.querySelectorAll('.cp-select-row')).filter(function(row){
+      var check = row.querySelector('.cp-select-check');
+      return check && check.checked;
+    });
+  }
+
+  function updateSelectUi(){
+    var selected = selectedSelectRows();
+    var total = 0;
+    var supplierName = '';
+    var modalLockedSupplierId = selected.length ? String(selected[0].getAttribute('data-supplier-id') || '') : null;
+    selected.forEach(function(row){
+      var input = row.querySelector('.cp-select-amount');
+      total += Number(input && input.value || 0);
+      supplierName = row.getAttribute('data-supplier-name') || supplierName;
+    });
+
+    document.querySelectorAll('.cp-select-row').forEach(function(row){
+      var check = row.querySelector('.cp-select-check');
+      var supplierId = String(row.getAttribute('data-supplier-id') || '');
+      var lockedOut = modalLockedSupplierId && supplierId !== modalLockedSupplierId;
+      row.classList.toggle('is-selected', !!(check && check.checked));
+      row.classList.toggle('is-locked-out', !!lockedOut);
+      if (check) {
+        check.disabled = !!lockedOut;
+        if (lockedOut) {
+          check.checked = false;
+          var amountInput = row.querySelector('.cp-select-amount');
+          if (amountInput) {
+            amountInput.disabled = true;
+            amountInput.value = row.getAttribute('data-balance');
+          }
+        }
+      }
+    });
+
+    if (selectCountEl) selectCountEl.textContent = selected.length + ' selected';
+    if (selectTotalEl) {
+      selectTotalEl.setAttribute('data-amount', String(total));
+      selectTotalEl.textContent = formatInr(total);
+    }
+    if (selectSupplierEl) {
+      selectSupplierEl.textContent = supplierName ? ('· ' + supplierName) : '';
+    }
+  }
+
+  function openSelectModal(preselectedIds){
+    selectionSource = 'modal';
+    setError(selectError, '');
+    renderSelectRows(preselectedIds || []);
+    openModal(selectModal);
+  }
+
+  if (openSelectBtn) {
+    openSelectBtn.addEventListener('click', function(){
+      var selections = collectSelectionsFromTable();
+      if (!selections.length) {
+        openSelectModal();
+        return;
+      }
+      beginPaymentFromSelections(selections, 'table');
+    });
+  }
+  var selectCancel = document.getElementById('cp-select-cancel');
+  if (selectCancel) selectCancel.addEventListener('click', function(){ closeModal(selectModal); });
+  if (selectModal) {
+    selectModal.addEventListener('click', function(e){
+      if (e.target === selectModal) closeModal(selectModal);
+    });
+  }
+
+  /* ---------- Step 2: Payment details ---------- */
+  var clearanceModal = document.getElementById('cp-clearance-modal');
+  var clearanceError = document.getElementById('cp-clearance-error');
+  var allocBody = document.getElementById('cp-alloc-body');
+  var allocTotalEl = document.getElementById('cp-alloc-total');
+  var allocSupplierEl = document.getElementById('cp-alloc-supplier');
+  var paymentDateEl = document.getElementById('cp-payment-date');
+  var paymentMethodEl = document.getElementById('cp-payment-method');
+  var transactionWrap = document.getElementById('cp-transaction-wrap');
+  var transactionEl = document.getElementById('cp-transaction-id');
+  var notesEl = document.getElementById('cp-notes');
+  var methodToggle = document.getElementById('cp-method-toggle');
+
+  function syncTransactionVisibility(){
+    if (!showPaymentMode) {
+      if (transactionWrap) transactionWrap.hidden = true;
+      if (transactionEl) transactionEl.value = '';
+      return;
+    }
+    var method = paymentMethodEl ? paymentMethodEl.value : 'cash';
+    if (transactionWrap) transactionWrap.hidden = method !== 'card';
+    if (method !== 'card' && transactionEl) transactionEl.value = '';
+  }
+
+  if (methodToggle) {
+    methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(other){
+          other.classList.remove('active');
+        });
+        btn.classList.add('active');
+        if (paymentMethodEl) paymentMethodEl.value = btn.getAttribute('data-value') || 'cash';
+        syncTransactionVisibility();
+      });
+    });
+  }
+
+  function refreshAllocTotal(){
+    if (!allocBody || !allocTotalEl) return;
+    var total = 0;
+    allocBody.querySelectorAll('.cp-alloc-input').forEach(function(input){
+      total += Number(input.value || 0);
+    });
+    allocTotalEl.setAttribute('data-amount', String(total));
+    allocTotalEl.textContent = formatInr(total);
+  }
+
+  function populatePaymentModal(selections){
+    if (!allocBody) return;
+    allocBody.innerHTML = '';
+    var supplierName = selections.length ? (selections[0].supplier_name || '') : '';
+    if (allocSupplierEl) allocSupplierEl.textContent = supplierName;
+    selections.forEach(function(item){
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-expense-id', item.expense_id);
+      tr.innerHTML =
+        '<td><span class="cp-alloc-code">' + escapeHtml(item.expense_code || '—') + '</span>' +
+        '<span>' + escapeHtml(item.description || '—') + '</span></td>' +
+        '<td class="pl-col-amount">' + formatInr(item.balance) + '</td>' +
+        '<td class="pl-col-amount"><input class="cp-alloc-input" type="number" min="0.01" step="0.01" max="' + item.balance + '" value="' + item.amount + '"></td>';
+      allocBody.appendChild(tr);
+      tr.querySelector('.cp-alloc-input').addEventListener('input', refreshAllocTotal);
+    });
+    refreshAllocTotal();
+  }
+
+  function collectSelectionsFromSelectModal(){
+    var selections = [];
+    var invalid = false;
+    selectedSelectRows().forEach(function(row){
+      var input = row.querySelector('.cp-select-amount');
+      var amount = Number(input && input.value);
+      var balance = Number(row.getAttribute('data-balance') || 0);
+      if (!amount || amount <= 0 || amount > balance + 0.001) {
+        invalid = true;
+        return;
+      }
+      selections.push(selectionFromRow(row, amount));
+    });
+    return { selections: selections, invalid: invalid };
+  }
+
+  function beginPaymentFromSelections(selections, source){
+    if (!selections.length) return;
+    selectionSource = source || 'table';
+    pendingSelections = selections;
+    setError(selectError, '');
+    setError(clearanceError, '');
+    if (paymentDateEl) paymentDateEl.value = todayIso;
+    if (paymentMethodEl) paymentMethodEl.value = 'cash';
+    if (methodToggle) {
+      methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(btn){
+        var active = btn.getAttribute('data-value') === 'cash';
+        btn.classList.toggle('active', active);
+      });
+    }
+    if (transactionEl) transactionEl.value = '';
+    if (notesEl) notesEl.value = '';
+    syncTransactionVisibility();
+    populatePaymentModal(pendingSelections);
+    closeModal(selectModal);
+    openModal(clearanceModal);
+  }
+
+  function openPaymentModal(){
+    var result = collectSelectionsFromSelectModal();
+    if (!result.selections.length) {
+      setError(selectError, labels.select_error_none || 'Select at least one expense.');
+      return;
+    }
+    if (result.invalid) {
+      setError(selectError, 'Enter a valid pay amount for each selected expense.');
+      return;
+    }
+    beginPaymentFromSelections(result.selections, 'modal');
+  }
+
+  var selectContinue = document.getElementById('cp-select-continue');
+  if (selectContinue) selectContinue.addEventListener('click', openPaymentModal);
+
+  var clearanceBack = document.getElementById('cp-clearance-back');
+  if (clearanceBack) clearanceBack.addEventListener('click', function(){
+    closeModal(clearanceModal);
+    if (selectionSource === 'modal') {
+      openModal(selectModal);
+    }
+  });
+  if (clearanceModal) {
+    clearanceModal.addEventListener('click', function(e){
+      if (e.target === clearanceModal) closeModal(clearanceModal);
+    });
+  }
+
+  async function submitClearance(){
+    if (!pendingSelections.length) {
+      setError(clearanceError, 'Select at least one expense.');
+      return;
+    }
+    var method = showPaymentMode && paymentMethodEl ? paymentMethodEl.value : 'cash';
+    var transactionId = showPaymentMode && transactionEl ? transactionEl.value.trim() : '';
+    if (showPaymentMode && method === 'card' && !transactionId) {
+      setError(clearanceError, 'Transaction ID is required for card payment.');
+      return;
+    }
+    var allocations = [];
+    var invalid = false;
+    allocBody.querySelectorAll('tr').forEach(function(tr, index){
+      var input = tr.querySelector('.cp-alloc-input');
+      var amount = Number(input && input.value);
+      var pending = pendingSelections[index];
+      var max = pending ? pending.balance : Number(input && input.getAttribute('max'));
+      if (!amount || amount <= 0 || amount > max + 0.001) {
+        invalid = true;
+        return;
+      }
+      allocations.push({
+        expense_id: Number(tr.getAttribute('data-expense-id')),
+        amount: amount
+      });
+    });
+    if (invalid || !allocations.length) {
+      setError(clearanceError, 'Enter a valid pay amount for each expense.');
+      return;
+    }
+
+    var submitBtn = document.getElementById('cp-clearance-submit');
+    if (submitBtn) submitBtn.disabled = true;
+    setError(clearanceError, '');
+    try {
+      var res = await fetch(createUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier_id: pendingSelections[0].supplier_id,
+          payment_date: paymentDateEl ? paymentDateEl.value : todayIso,
+          payment_method: method,
+          transaction_id: transactionId,
+          notes: notesEl ? notesEl.value.trim() : '',
+          allocations: allocations
+        })
+      });
+      var data = await res.json();
+      if (!data.ok) {
+        setError(clearanceError, data.error || labels.submit_error_record || 'Unable to record payment.');
+        return;
+      }
+      window.location.reload();
+    } catch (err) {
+      setError(clearanceError, labels.submit_error_network || 'Network error while recording payment.');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  var submitBtn = document.getElementById('cp-clearance-submit');
+  if (submitBtn) submitBtn.addEventListener('click', submitClearance);
+
+  /* ---------- History view / delete ---------- */
+  var detailModal = document.getElementById('cp-detail-modal');
+  var detailBody = document.getElementById('cp-detail-body');
+  var detailError = document.getElementById('cp-detail-error');
+  var detailClose = document.getElementById('cp-detail-close');
+
+  function detailUrl(paymentId){
+    return detailUrlTemplate.replace('/0', '/' + paymentId);
+  }
+
+  function renderPaymentDetail(payment){
+    if (!detailBody) return;
+    var methodLabel = methodLabels[payment.payment_method] || payment.payment_method;
+    var accountLabel = payment.verification_account || '—';
+    var rows = (payment.allocations || []).map(function(item){
+      var cat = categoryLabels[item.category] || item.category || '—';
+      return '<tr>' +
+        '<td><span class="cp-alloc-code">' + escapeHtml(item.expense_code || '—') + '</span>' + escapeHtml(item.description || '—') +
+        '<div class="pl-meta">' + escapeHtml(item.sales_date || '') + (cat && cat !== '—' ? ' · ' + cat : '') + '</div></td>' +
+        '<td class="pl-col-amount">' + formatInr(item.amount) + '</td>' +
+        '</tr>';
+    }).join('');
+    detailBody.innerHTML =
+      '<div class="cp-detail-meta">' +
+        '<div><span class="cp-detail-label">' + escapeHtml(labels.detail_date_label || 'Payment date') + '</span><span class="cp-detail-value">' + escapeHtml(payment.payment_date || '—') + '</span></div>' +
+        '<div><span class="cp-detail-label">Supplier</span><span class="cp-detail-value">' + escapeHtml(payment.supplier_name || '—') + '</span></div>' +
+        (showPaymentMode
+          ? '<div><span class="cp-detail-label">' + escapeHtml((labels.clearance_mode_label || 'Payment mode *').replace(' *', '')) + '</span><span class="cp-detail-value">' + escapeHtml(methodLabel) + '</span></div>' +
+            '<div><span class="cp-detail-label">Transaction ID</span><span class="cp-detail-value">' + escapeHtml(payment.transaction_id || '—') + '</span></div>'
+          : '') +
+        (showVerificationAccount
+          ? '<div><span class="cp-detail-label">' + escapeHtml(labels.clearance_account_label || 'Account') + '</span><span class="cp-detail-value">' + escapeHtml(accountLabel) + '</span></div>'
+          : '') +
+        '<div><span class="cp-detail-label">Total</span><span class="cp-detail-value">' + formatInr(payment.total_amount) + '</span></div>' +
+        '<div><span class="cp-detail-label">Notes</span><span class="cp-detail-value">' + escapeHtml(payment.notes || '—') + '</span></div>' +
+      '</div>' +
+      '<div class="cp-alloc-wrap">' +
+        '<div class="cp-alloc-head"><span>Allocated expenses</span><span>' + ((payment.allocations || []).length) + '</span></div>' +
+        '<div class="cp-alloc-table-wrap"><table class="cp-alloc-table"><thead><tr><th>Expense</th><th class="pl-col-amount">Paid</th></tr></thead><tbody>' +
+        (rows || '<tr><td colspan="2">No allocations</td></tr>') +
+        '</tbody></table></div>' +
+      '</div>';
+  }
+
+  async function viewPayment(paymentId){
+    setError(detailError, '');
+    if (detailBody) detailBody.innerHTML = '<p>Loading…</p>';
+    openModal(detailModal);
+    try {
+      var res = await fetch(detailUrl(paymentId));
+      var data = await res.json();
+      if (!data.ok) {
+        setError(detailError, data.error || labels.detail_error_load || 'Unable to load payment.');
+        return;
+      }
+      renderPaymentDetail(data.payment);
+    } catch (err) {
+      setError(detailError, labels.detail_error_network || 'Network error while loading payment.');
+    }
+  }
+
+  async function deletePayment(paymentId){
+    if (!window.confirm(labels.delete_confirm || 'Delete this payment? Outstanding balances will be restored.')) return;
+    try {
+      var res = await fetch(deleteUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payment_id: paymentId })
+      });
+      var data = await res.json();
+      if (!data.ok) {
+        window.alert(data.error || labels.delete_error || 'Unable to delete payment.');
+        return;
+      }
+      window.location.reload();
+    } catch (err) {
+      window.alert(labels.delete_error_network || 'Network error while deleting payment.');
+    }
+  }
+
+  document.querySelectorAll('.cp-view-payment').forEach(function(btn){
+    btn.addEventListener('click', function(){ viewPayment(btn.getAttribute('data-payment-id')); });
+  });
+  document.querySelectorAll('.cp-delete-payment').forEach(function(btn){
+    btn.addEventListener('click', function(){ deletePayment(btn.getAttribute('data-payment-id')); });
+  });
+  if (detailClose) detailClose.addEventListener('click', function(){ closeModal(detailModal); });
+  if (detailModal) {
+    detailModal.addEventListener('click', function(e){
+      if (e.target === detailModal) closeModal(detailModal);
+    });
+  }
+})();
+</script>

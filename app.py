@@ -7,6 +7,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from flask import (
     Flask,
+    g,
     jsonify,
     redirect,
     render_template,
@@ -17,8 +18,38 @@ from flask import (
 from werkzeug.security import check_password_hash
 
 from db import SQL_NOW, get_db, init_db
-from occupancy_summary_parser import parse_occupancy_summary_report
-from sales_report_parser import OUTLET_BAR, OUTLET_RESTAURANT, parse_order_invoice_report
+from fo_invoice_tax_parser import parse_fo_invoice_tax_report
+from sales_report_parser import OUTLET_BAR, OUTLET_RESTAURANT, parse_sales_report
+from workspace_access import (
+    _DASHBOARD_MODULE_LABELS,
+    _DASHBOARD_MODULES,
+    _PUBLIC_ENDPOINTS,
+    _PAYROLL_SUBMODULE_LABELS,
+    _SALES_ANALYTICS_SUBMODULE_LABELS,
+    _USER_ACCESS_SUBMODULE_LABELS,
+    access_module_tree,
+    access_module_tree_ui,
+    build_user_context,
+    dashboard_access_list,
+    fetch_access_management_users,
+    get_endpoint_dashboard_module,
+    get_endpoint_payroll_submodule,
+    get_endpoint_user_access_submodule,
+    is_system_administrator,
+    normalize_username,
+    payroll_access_list,
+    sales_analytics_access_list,
+    save_access_user_record,
+    user_access_submodule_list,
+    user_can_access_dashboard,
+    user_can_access_endpoint_sales_analytics,
+    user_can_access_payroll_submodule,
+    user_can_access_sales_analytics_submodule,
+    user_can_access_supplier_master,
+    user_can_access_user_access_submodule,
+    validate_access_user_form,
+)
+from employee_payroll import register_employee_payroll
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "hotel-bell-elite-dev-key-change-in-production")
@@ -26,6 +57,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "hotel-bell-elite-dev-key-change-i
 init_db()
 
 AUTH_USER_SESSION_KEY = "user_id"
+AUTH_NOTICE_SESSION_KEY = "auth_notice"
 
 SALES_COMPANY_LOCATIONS = {
     "HBE": {
@@ -40,6 +72,8 @@ SALES_ENTRY_FIELDS = (
     ("card", "Card"),
     ("upi", "UPI"),
     ("room_credit", "Room Transfer"),
+    ("tips", "Tips"),
+    ("actual_cash", "Actual Cash"),
 )
 
 SALES_ENTRY_TOTAL_KEYS = (
@@ -48,6 +82,8 @@ SALES_ENTRY_TOTAL_KEYS = (
     "upi",
     "room_credit",
 )
+
+MANUAL_SALES_ENTRY_KEYS = ("tips", "actual_cash")
 
 SALES_DIGITAL_TRANSACTION_KEYS = ("card", "upi")
 
@@ -64,12 +100,62 @@ DEFAULT_LOCATION = OUTLET_BAR
 OUTLET_HOTEL = "Hotel"
 HOTEL_LOCATIONS = [OUTLET_HOTEL]
 HOTEL_PAYMENT_MODES = (
-    ("", "Unassigned"),
     ("cash", "Cash"),
     ("card", "Card"),
     ("upi", "UPI"),
-    ("room_credit", "Room Transfer"),
+    ("room_credit", "Credit"),
 )
+
+HOTEL_SALES_ENTRY_FIELDS = (
+    ("total_sales", "Total Sales"),
+    ("cash", "Cash"),
+    ("card", "Card"),
+    ("upi", "UPI"),
+    ("room_credit", "Credit"),
+    ("actual_cash", "Actual Cash"),
+    ("expense", "Expense"),
+)
+
+HOTEL_MANUAL_SALES_ENTRY_KEYS = ("actual_cash",)
+
+EXPENSE_PAYMENT_CASH = "cash"
+EXPENSE_PAYMENT_BANK = "bank_transfer"
+EXPENSE_PAYMENT_CREDIT = "credit"
+EXPENSE_PAYMENT_TYPES = (
+    (EXPENSE_PAYMENT_CASH, "Cash"),
+    (EXPENSE_PAYMENT_BANK, "Bank Transfer"),
+    (EXPENSE_PAYMENT_CREDIT, "Credit"),
+)
+EXPENSE_CATEGORIES = (
+    ("grocery", "Grocery"),
+    ("vegetables", "Vegetables"),
+    ("travel", "Travel"),
+    ("hardware", "Hardware"),
+    ("tac", "TAC (Travel Agent commission)"),
+    ("fruits", "Fruits"),
+    ("snacks", "Snacks"),
+    ("meat", "Meat"),
+    ("sea_food", "Sea Food"),
+    ("labour", "Labour"),
+    ("water_tank", "Water Tank"),
+    ("other", "Other"),
+)
+EXPENSE_CATEGORY_LABELS = dict(EXPENSE_CATEGORIES)
+
+HOTEL_IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit")
+ROOM_TRANSFER_PAYMENT_STATUSES = (
+    ("unpaid", "Un Paid"),
+    ("paid", "Paid"),
+)
+ROOM_TRANSFER_FILTER_ALL = "All"
+ROOM_TRANSFER_FILTER_STATUSES = (
+    ("all", "All"),
+    ("paid", "Paid"),
+    ("unpaid", "Un Paid"),
+)
+ROOM_TRANSFER_FILTER_LOCATIONS = (ROOM_TRANSFER_FILTER_ALL, OUTLET_BAR, OUTLET_RESTAURANT)
+PURCHASE_LEDGER_FILTER_ALL = "all"
+EXPENSE_PAYMENT_LABELS = dict(EXPENSE_PAYMENT_TYPES)
 
 IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit")
 
@@ -90,31 +176,142 @@ def parse_money(value):
 
 
 def get_current_user():
+    if getattr(g, "_auth_loaded", False):
+        return getattr(g, "current_user", None)
+    g._auth_loaded = True
     user_id = session.get(AUTH_USER_SESSION_KEY)
     if not user_id:
+        g.current_user = None
         return None
     conn = get_db()
     try:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
-        return dict(row) if row else None
+        user = build_user_context(conn, row) if row else None
     finally:
         conn.close()
+    if user and not user.get("is_active"):
+        session.pop(AUTH_USER_SESSION_KEY, None)
+        user = None
+    g.current_user = user
+    return user
 
 
-def user_can_access_dashboard(user, module_key):
+def _pop_auth_notice():
+    return session.pop(AUTH_NOTICE_SESSION_KEY, "")
+
+
+def _queue_auth_notice(message):
+    session[AUTH_NOTICE_SESSION_KEY] = str(message or "").strip()
+
+
+def _permission_denied_response(message):
+    message = str(message or "You do not have access to this module.")
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+        return jsonify({"error": message}), 403
+    _queue_auth_notice(message)
+    return redirect(url_for("home"))
+
+
+register_employee_payroll(
+    app,
+    pop_auth_notice=_pop_auth_notice,
+    permission_denied_response=_permission_denied_response,
+    get_user=get_current_user,
+)
+
+
+def _access_nav_view():
+    user = get_current_user()
+    if user_can_access_user_access_submodule(user, "users"):
+        return "users"
+    if user_can_access_user_access_submodule(user, "add"):
+        return "add"
+    return "users"
+
+
+def _am_page_render(template, **kwargs):
+    kwargs.setdefault("auth_notice", _pop_auth_notice())
+    kwargs.setdefault("de_nav_section", "access")
+    if "de_nav_access_view" not in kwargs:
+        kwargs["de_nav_access_view"] = (
+            "add" if kwargs.get("form_focus") else _access_nav_view()
+        )
+    return render_template(template, **kwargs)
+
+
+def _user_display_name(user):
     if not user:
-        return False
-    if user.get("is_admin"):
-        return True
-    conn = get_db()
-    try:
-        rows = conn.execute(
-            "SELECT item_key FROM user_permissions WHERE user_id = ? AND scope = ?",
-            (user["id"], "dashboard"),
-        ).fetchall()
-        return module_key in {r["item_key"] for r in rows}
-    finally:
-        conn.close()
+        return "User"
+    return (user.get("full_name") or user.get("username") or "User").strip()
+
+
+def _user_avatar_text(user):
+    name = _user_display_name(user)
+    parts = [part for part in name.split() if part]
+    if len(parts) >= 2:
+        return (parts[0][0] + parts[1][0]).upper()
+    return name[:2].upper() or "U"
+
+
+@app.before_request
+def enforce_access():
+    endpoint = request.endpoint or ""
+    if (
+        endpoint in _PUBLIC_ENDPOINTS
+        or request.path.startswith("/static/")
+    ):
+        return None
+
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("index"))
+
+    required_dashboard = get_endpoint_dashboard_module(endpoint)
+    if required_dashboard and not user_can_access_dashboard(user, required_dashboard):
+        label = _DASHBOARD_MODULE_LABELS.get(required_dashboard, "requested")
+        return _permission_denied_response(f"You do not have access to {label}.")
+
+    if not user_can_access_endpoint_sales_analytics(user, endpoint):
+        return _permission_denied_response("You do not have access to this Sales Analytics section.")
+
+    required_user_access = get_endpoint_user_access_submodule(endpoint)
+    if required_user_access and not user_can_access_user_access_submodule(user, required_user_access):
+        label = _USER_ACCESS_SUBMODULE_LABELS.get(required_user_access, "requested User & Access section")
+        return _permission_denied_response(f"You do not have access to {label}.")
+
+    required_payroll = get_endpoint_payroll_submodule(endpoint)
+    if required_payroll and not user_can_access_payroll_submodule(user, required_payroll):
+        label = _PAYROLL_SUBMODULE_LABELS.get(required_payroll, "requested payroll section")
+        return _permission_denied_response(f"You do not have access to the {label} payroll section.")
+
+    return None
+
+
+@app.context_processor
+def inject_auth_context():
+    user = get_current_user()
+    return {
+        "current_user": user,
+        "user_can_access_dashboard": user_can_access_dashboard,
+        "display_name": _user_display_name(user),
+        "avatar_text": _user_avatar_text(user),
+        "dashboard_modules_meta": _DASHBOARD_MODULES,
+        "access_module_tree": access_module_tree(),
+        "access_module_tree_ui": access_module_tree_ui(),
+        "accessible_dashboard_modules": dashboard_access_list(user),
+        "accessible_sales_analytics_modules": sales_analytics_access_list(user),
+        "accessible_user_access_modules": user_access_submodule_list(user),
+        "accessible_payroll_modules": payroll_access_list(user),
+        "has_dashboard_access": lambda key: user_can_access_dashboard(user, key),
+        "has_sales_analytics_access": lambda key: user_can_access_sales_analytics_submodule(user, key),
+        "has_payroll_access": lambda key: user_can_access_payroll_submodule(user, key),
+        "has_supplier_master_access": lambda: user_can_access_supplier_master(user),
+        "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
+        "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
+        "sales_analytics_submodule_labels": _SALES_ANALYTICS_SUBMODULE_LABELS,
+        "payroll_module_labels": _PAYROLL_SUBMODULE_LABELS,
+        "user_access_submodule_labels": _USER_ACCESS_SUBMODULE_LABELS,
+    }
 
 
 def get_sales_entry_total(entries):
@@ -145,17 +342,22 @@ def get_difference(entries):
     return round_half_up(parse_money(entries.get("total_sales")) - get_sales_entry_total(entries), 2)
 
 
+def get_cash_actual_difference(entries):
+    return round_half_up(parse_money(entries.get("cash")) - parse_money(entries.get("actual_cash")), 2)
+
+
 def _ledger_entry_to_dict(row):
     item = dict(row)
     for key in ("tariff", "discount", "extra_amount", "amount"):
         item[key] = round_half_up(item.get(key), 2)
-    item["payment_mode"] = item.get("payment_mode") or ""
+    item["payment_mode"] = item.get("payment_mode") or "room_credit"
+    item["invoice_number"] = item.get("invoice_number") or item.get("room") or ""
     return item
 
 
 def load_hotel_ledger_entries(conn, company, location, sales_date):
     rows = conn.execute(
-        """SELECT id, room, room_type, reserve_number, guest_name, company_name,
+        """SELECT id, invoice_number, room, room_type, reserve_number, guest_name, company_name,
                   travel_agent, pax, room_plan, tariff, discount, extra_amount, amount,
                   payment_mode, sort_order, source_row
            FROM hotel_sales_ledger_entries
@@ -187,14 +389,15 @@ def replace_hotel_ledger_entries(conn, company, location, sales_date, lines):
     for line in lines:
         conn.execute(
             """INSERT INTO hotel_sales_ledger_entries
-               (company, location, sales_date, room, room_type, reserve_number, guest_name,
+               (company, location, sales_date, invoice_number, room, room_type, reserve_number, guest_name,
                 company_name, travel_agent, pax, room_plan, tariff, discount, extra_amount,
                 amount, payment_mode, sort_order, source_row, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 company,
                 location,
                 sales_date,
+                line.get("invoice_number", ""),
                 line.get("room", ""),
                 line.get("room_type", ""),
                 line.get("reserve_number", ""),
@@ -219,7 +422,13 @@ def replace_hotel_ledger_entries(conn, company, location, sales_date, lines):
 def sync_hotel_sales_from_ledger(conn, user, company, location, sales_date):
     entries = load_hotel_ledger_entries(conn, company, location, sales_date)
     sales_entries = rollup_hotel_ledger_entries(entries)
-    sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
+    existing_row = load_sales_row(company, location, sales_date)
+    if existing_row:
+        existing_values = existing_row.get("sales_entry_values") or {}
+        for key in HOTEL_MANUAL_SALES_ENTRY_KEYS:
+            sales_entries[key] = parse_money(existing_values.get(key))
+    sales_entries = build_hotel_sales_entry_values(sales_entries)
+    sales_entries["expense"] = _sales_expense_total(conn, company, location, sales_date)
     existing_row = load_sales_row(company, location, sales_date)
     petty = (existing_row or {}).get("petty_cash_counts", {})
     cash_denoms = (existing_row or {}).get("cash_denomination_counts", {})
@@ -232,6 +441,123 @@ def sync_hotel_sales_from_ledger(conn, user, company, location, sales_date):
     }
 
 
+def _room_transfer_entry_to_dict(row):
+    item = dict(row)
+    item["amount"] = round_half_up(item.get("amount"), 2)
+    status = (item.get("payment_status") or "unpaid").strip().lower()
+    item["payment_status"] = status if status in {"paid", "unpaid"} else "unpaid"
+    sales_date = item.get("sales_date") or ""
+    try:
+        parsed = date.fromisoformat(str(sales_date))
+        item["sales_date_label"] = f"{parsed.day} {parsed.strftime('%b')}, {parsed.year}"
+    except (TypeError, ValueError):
+        item["sales_date_label"] = sales_date
+    return item
+
+
+def load_room_transfer_entries(conn, company, sales_date):
+    rows = conn.execute(
+        """SELECT id, sales_date, location, invoice_number, outlet_name, table_room, guest_name,
+                  ledger_detail, amount, payment_status, sort_order, source_row
+           FROM room_transfer_entries
+           WHERE company = ? AND sales_date = ?
+           ORDER BY sort_order, id""",
+        (company, sales_date),
+    ).fetchall()
+    return [_room_transfer_entry_to_dict(r) for r in rows]
+
+
+def load_pending_room_transfer_entries(conn, company, location=None):
+    return load_room_transfer_entries_by_status(conn, company, "unpaid", location)
+
+
+def _normalize_room_transfer_filter_status(status):
+    value = (status or "all").strip().lower()
+    if value in {"paid", "unpaid"}:
+        return value
+    return "all"
+
+
+def load_room_transfer_entries_by_status(conn, company, status="all", location=None):
+    params = [company]
+    status_clause = ""
+    normalized = _normalize_room_transfer_filter_status(status)
+    if normalized == "paid":
+        status_clause = " AND payment_status = 'paid'"
+    elif normalized == "unpaid":
+        status_clause = " AND payment_status = 'unpaid'"
+    location_clause = ""
+    if location and location != ROOM_TRANSFER_FILTER_ALL:
+        location_clause = " AND location = ?"
+        params.append(location)
+    rows = conn.execute(
+        f"""SELECT id, sales_date, location, invoice_number, outlet_name, table_room, guest_name,
+                  ledger_detail, amount, payment_status, sort_order, source_row
+           FROM room_transfer_entries
+           WHERE company = ?{status_clause}{location_clause}
+           ORDER BY sales_date DESC, location, sort_order, id""",
+        params,
+    ).fetchall()
+    return [_room_transfer_entry_to_dict(r) for r in rows]
+
+
+def rollup_room_transfer_entries(entries):
+    rollup = {
+        "total_amount": 0.0,
+        "paid_amount": 0.0,
+        "unpaid_amount": 0.0,
+        "total_count": 0,
+        "paid_count": 0,
+        "unpaid_count": 0,
+    }
+    for entry in entries or []:
+        amount = parse_money(entry.get("amount"))
+        rollup["total_amount"] = round_half_up(rollup["total_amount"] + amount, 2)
+        rollup["total_count"] += 1
+        if entry.get("payment_status") == "paid":
+            rollup["paid_amount"] = round_half_up(rollup["paid_amount"] + amount, 2)
+            rollup["paid_count"] += 1
+        else:
+            rollup["unpaid_amount"] = round_half_up(rollup["unpaid_amount"] + amount, 2)
+            rollup["unpaid_count"] += 1
+    return rollup
+
+
+def sync_room_transfer_entries(conn, company, sales_date, lines):
+    conn.execute(
+        "DELETE FROM room_transfer_entries WHERE company = ? AND sales_date = ?",
+        (company, sales_date),
+    )
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for line in lines or []:
+        payment_status = (line.get("payment_status") or "unpaid").strip().lower()
+        if payment_status not in {"paid", "unpaid"}:
+            payment_status = "unpaid"
+        conn.execute(
+            """INSERT INTO room_transfer_entries
+               (company, location, sales_date, invoice_number, outlet_name, table_room,
+                guest_name, ledger_detail, amount, payment_status, sort_order, source_row,
+                created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                company,
+                line.get("location", ""),
+                sales_date,
+                line.get("invoice_number", ""),
+                line.get("outlet_name", ""),
+                line.get("table_room", ""),
+                line.get("guest_name", ""),
+                line.get("ledger_detail", ""),
+                parse_money(line.get("amount")),
+                payment_status,
+                int(line.get("sort_order") or 0),
+                line.get("source_row"),
+                now,
+                now,
+            ),
+        )
+
+
 def _sales_expense_total(conn, company, location, sales_date):
     row = conn.execute(
         "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses WHERE company=? AND location=? AND sales_date=?",
@@ -240,12 +566,1096 @@ def _sales_expense_total(conn, company, location, sales_date):
     return round_half_up(row["total"] if row else 0, 2)
 
 
+def _next_expense_code(conn, company):
+    company = (company or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+    prefix = f"{company}-EX-"
+    rows = conn.execute(
+        """SELECT expense_code FROM sales_update_expenses
+           WHERE company = ? AND expense_code IS NOT NULL AND expense_code != ''""",
+        (company,),
+    ).fetchall()
+    max_num = 0
+    for row in rows:
+        code = row["expense_code"] or ""
+        if not code.startswith(prefix):
+            continue
+        try:
+            max_num = max(max_num, int(code[len(prefix):]))
+        except (TypeError, ValueError):
+            continue
+    return f"{prefix}{max_num + 1}"
+
+
 def _sales_expense_entries(conn, company, location, sales_date):
     rows = conn.execute(
-        "SELECT id, description, amount FROM sales_update_expenses WHERE company=? AND location=? AND sales_date=? ORDER BY created_at, id",
+        """SELECT e.id, e.expense_code, e.description, e.amount, e.payment_type, e.transaction_id,
+                  e.category, e.invoice_number, e.supplier_id, s.name AS supplier_name
+           FROM sales_update_expenses e
+           LEFT JOIN suppliers s ON s.id = e.supplier_id
+           WHERE e.company=? AND e.location=? AND e.sales_date=?
+           ORDER BY e.created_at, e.id""",
         (company, location, sales_date),
     ).fetchall()
-    return [dict(r) for r in rows]
+    entries = []
+    for row in rows:
+        item = dict(row)
+        item["category"] = _normalize_expense_category(item.get("category"))
+        entries.append(item)
+    return entries
+
+
+def _credit_expense_paid_total(conn, expense_id):
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM credit_payment_allocations WHERE expense_id = ?",
+        (expense_id,),
+    ).fetchone()
+    return round_half_up(row["total"] if row else 0, 2)
+
+
+def _credit_expense_balance(amount, paid_total):
+    return round_half_up(max(round_half_up(amount, 2) - round_half_up(paid_total, 2), 0), 2)
+
+
+def _credit_settlement_status(payment_type, amount, paid_total):
+    amount = round_half_up(amount, 2)
+    paid_total = round_half_up(paid_total, 2)
+    normalized = _normalize_expense_payment_type(payment_type)
+    if normalized != EXPENSE_PAYMENT_CREDIT:
+        return "cleared"
+    if paid_total <= 0:
+        return "outstanding"
+    if paid_total + 0.001 < amount:
+        return "partial"
+    return "cleared"
+
+
+def _expense_clearance_payment_method(conn, expense_id):
+    row = conn.execute(
+        """SELECT p.payment_method
+           FROM credit_payment_allocations a
+           JOIN credit_payments p ON p.id = a.credit_payment_id
+           WHERE a.expense_id = ?
+           ORDER BY p.payment_date DESC, p.id DESC, a.id DESC
+           LIMIT 1""",
+        (expense_id,),
+    ).fetchone()
+    if not row:
+        return None
+    return _normalize_credit_payment_method(row["payment_method"])
+
+
+def _clearance_method_to_expense_payment_type(payment_method):
+    method = _normalize_credit_payment_method(payment_method)
+    if method == CREDIT_PAYMENT_METHOD_CARD:
+        return CREDIT_PAYMENT_METHOD_CARD
+    return EXPENSE_PAYMENT_CASH
+
+
+def _purchase_ledger_display_payment_type(payment_type, amount, paid_total, clearance_method=None):
+    normalized = _normalize_expense_payment_type(payment_type)
+    if normalized == EXPENSE_PAYMENT_CREDIT and clearance_method:
+        if _credit_expense_balance(amount, paid_total) <= 0:
+            return _clearance_method_to_expense_payment_type(clearance_method)
+    return normalized
+
+
+def _sync_expense_payment_after_clearance(conn, expense_id):
+    expense = conn.execute(
+        "SELECT id, amount, payment_type FROM sales_update_expenses WHERE id = ?",
+        (expense_id,),
+    ).fetchone()
+    if not expense:
+        return
+    expense = dict(expense)
+    if _normalize_expense_payment_type(expense.get("payment_type")) != EXPENSE_PAYMENT_CREDIT:
+        return
+    paid_total = _credit_expense_paid_total(conn, expense_id)
+    if _credit_expense_balance(expense["amount"], paid_total) > 0:
+        return
+    clearance_method = _expense_clearance_payment_method(conn, expense_id)
+    if not clearance_method:
+        return
+    clearance_type = _clearance_method_to_expense_payment_type(clearance_method)
+    transaction_id = ""
+    if clearance_type == CREDIT_PAYMENT_METHOD_CARD:
+        row = conn.execute(
+            """SELECT p.transaction_id
+               FROM credit_payment_allocations a
+               JOIN credit_payments p ON p.id = a.credit_payment_id
+               WHERE a.expense_id = ?
+               ORDER BY p.payment_date DESC, p.id DESC, a.id DESC
+               LIMIT 1""",
+            (expense_id,),
+        ).fetchone()
+        transaction_id = str(row["transaction_id"] or "").strip() if row else ""
+    conn.execute(
+        """UPDATE sales_update_expenses
+           SET payment_type = ?, transaction_id = ?
+           WHERE id = ?""",
+        (clearance_type, transaction_id, expense_id),
+    )
+
+
+def _restore_expense_credit_on_payment_delete(conn, expense_id):
+    expense = conn.execute(
+        "SELECT amount, payment_type FROM sales_update_expenses WHERE id = ?",
+        (expense_id,),
+    ).fetchone()
+    if not expense:
+        return
+    expense = dict(expense)
+    paid_total = _credit_expense_paid_total(conn, expense_id)
+    balance = _credit_expense_balance(expense["amount"], paid_total)
+    current = _normalize_expense_payment_type(expense.get("payment_type"))
+    if balance > 0 and current != EXPENSE_PAYMENT_CREDIT:
+        conn.execute(
+            """UPDATE sales_update_expenses
+               SET payment_type = ?, transaction_id = ''
+               WHERE id = ?""",
+            (EXPENSE_PAYMENT_CREDIT, expense_id),
+        )
+
+
+CREDIT_SETTLEMENT_STATUS_LABELS = {
+    "outstanding": "Outstanding",
+    "partial": "Partial",
+    "cleared": "Cleared",
+}
+
+CREDIT_PAYMENT_METHOD_CASH = EXPENSE_PAYMENT_CASH
+CREDIT_PAYMENT_METHOD_CARD = "card"
+CREDIT_PAYMENT_METHODS = (
+    (CREDIT_PAYMENT_METHOD_CASH, "Cash"),
+    (CREDIT_PAYMENT_METHOD_CARD, "Card"),
+)
+CREDIT_PAYMENT_METHOD_LABELS = dict(CREDIT_PAYMENT_METHODS)
+PURCHASE_LEDGER_PAYMENT_LABELS = {
+    **EXPENSE_PAYMENT_LABELS,
+    CREDIT_PAYMENT_METHOD_CARD: "Card",
+}
+CREDIT_PAYMENT_VIEW_OUTSTANDING = "outstanding"
+CREDIT_PAYMENT_VIEW_HISTORY = "history"
+CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT = "credit_payment"
+CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION = "purchase_verification"
+CREDIT_PAYMENT_VIEWS = (
+    (CREDIT_PAYMENT_VIEW_OUTSTANDING, "Outstanding Credit"),
+    (CREDIT_PAYMENT_VIEW_HISTORY, "Payment History"),
+)
+PURCHASE_VERIFICATION_VIEWS = (
+    (CREDIT_PAYMENT_VIEW_OUTSTANDING, "Pending Verification"),
+    (CREDIT_PAYMENT_VIEW_HISTORY, "Verified Purchase"),
+)
+CREDIT_SETTLEMENT_PAGE_MODES = {
+    CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT: {
+        "page_title": "Credit Payment",
+        "page_subtitle": "Clear outstanding credit purchases by combining expenses into a single supplier payment.",
+        "filter_aria_label": "Credit payment filters",
+        "view_aria_label": "Credit payment views",
+        "nav_accounts_view": "credit_payment",
+        "route_endpoint": "credit_payment",
+        "views": CREDIT_PAYMENT_VIEWS,
+        "outstanding_summary_label": "Outstanding balance",
+        "outstanding_panel_title": "Outstanding Credit",
+        "outstanding_panel_aria": "Outstanding credit expenses",
+        "outstanding_table_aria": "Outstanding credit expenses",
+        "outstanding_empty": "No outstanding credit expenses found for the selected filters.",
+        "history_summary_label": "Payments cleared",
+        "history_summary_unit": "clearance",
+        "history_panel_title": "Payment History",
+        "history_panel_aria": "Credit payment history",
+        "history_table_aria": "Credit payment history",
+        "history_date_column": "Payment date",
+        "history_empty": "No credit payments found for the selected filters.",
+        "action_button": "Clear Payment",
+        "select_modal_title": "Select Credit Items",
+        "select_modal_copy": "Choose outstanding credit expenses from one supplier to combine into a single payment clearance.",
+        "select_table_aria": "Select credit line items",
+        "select_continue": "Clear Payment",
+        "clearance_modal_title": "Payment Details",
+        "clearance_modal_copy": "Enter how this supplier credit payment was made.",
+        "clearance_date_label": "Payment date *",
+        "clearance_mode_label": "Payment mode *",
+        "show_payment_mode": True,
+        "show_verification_account": False,
+        "show_history_expense_ids": False,
+        "clearance_submit": "Record Payment",
+        "clearance_total_label": "Payment total",
+        "detail_modal_title": "Payment Detail",
+        "detail_date_label": "Payment date",
+        "pay_now_column": "Pay now",
+        "select_error_none": "Select at least one credit expense.",
+        "submit_error_record": "Unable to record payment.",
+        "submit_error_network": "Network error while recording payment.",
+        "delete_confirm": "Delete this credit payment? Outstanding balances will be restored.",
+        "delete_error": "Unable to delete payment.",
+        "delete_error_network": "Network error while deleting payment.",
+        "detail_error_load": "Unable to load payment.",
+        "detail_error_network": "Network error while loading payment.",
+    },
+    CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION: {
+        "page_title": "Purchase Verification",
+        "page_subtitle": "Verify hotel purchases by combining expenses into a single supplier verification.",
+        "filter_aria_label": "Purchase verification filters",
+        "view_aria_label": "Purchase verification views",
+        "nav_accounts_view": "purchase_verification",
+        "route_endpoint": "purchase_verification",
+        "views": PURCHASE_VERIFICATION_VIEWS,
+        "outstanding_summary_label": "Pending balance",
+        "outstanding_panel_title": "Pending Verification",
+        "outstanding_panel_aria": "Purchases pending verification",
+        "outstanding_table_aria": "Purchases pending verification",
+        "outstanding_empty": "No purchases pending verification found for the selected filters.",
+        "history_summary_label": "Purchases verified",
+        "history_summary_unit": "verification",
+        "history_panel_title": "Verified Purchase",
+        "history_panel_aria": "Verified purchase history",
+        "history_table_aria": "Verified purchase history",
+        "history_date_column": "Verification date",
+        "history_empty": "No verified purchases found for the selected filters.",
+        "action_button": "Verify",
+        "select_modal_title": "Select Items to Verify",
+        "select_modal_copy": "Choose pending purchases from one supplier to combine into a single verification.",
+        "select_table_aria": "Select purchases to verify",
+        "select_continue": "Verify",
+        "clearance_modal_title": "Verification Details",
+        "clearance_modal_copy": "Confirm the purchases you are verifying.",
+        "clearance_date_label": "Verification date *",
+        "clearance_mode_label": "Verification mode *",
+        "show_payment_mode": False,
+        "show_verification_account": True,
+        "show_history_expense_ids": True,
+        "clearance_account_label": "Account",
+        "clearance_submit": "Record Verification",
+        "clearance_total_label": "Verification total",
+        "detail_modal_title": "Verification Detail",
+        "detail_date_label": "Verification date",
+        "pay_now_column": "Verify now",
+        "select_error_none": "Select at least one purchase to verify.",
+        "submit_error_record": "Unable to record verification.",
+        "submit_error_network": "Network error while recording verification.",
+        "delete_confirm": "Delete this verification? Outstanding balances will be restored.",
+        "delete_error": "Unable to delete verification.",
+        "delete_error_network": "Network error while deleting verification.",
+        "detail_error_load": "Unable to load verification.",
+        "detail_error_network": "Network error while loading verification.",
+    },
+}
+
+
+def _credit_settlement_page_mode(value):
+    if value == CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION:
+        return CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION
+    return CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT
+
+
+def _render_credit_settlement_page(mode):
+    labels = CREDIT_SETTLEMENT_PAGE_MODES[_credit_settlement_page_mode(mode)]
+    today = date.today()
+    default_from = today.replace(day=1)
+    selected_view = _normalize_credit_payment_view(request.args.get("view"))
+    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
+    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    payment_date_from = _parse_sales_date(
+        request.args.get("payment_date_from") or default_from.isoformat()
+    )
+    payment_date_to = _parse_sales_date(
+        request.args.get("payment_date_to") or today.isoformat()
+    )
+    if payment_date_from > payment_date_to:
+        payment_date_from, payment_date_to = payment_date_to, payment_date_from
+
+    selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
+        request.args.get("supplier")
+    )
+
+    conn = get_db()
+    try:
+        suppliers = _all_suppliers(conn)
+        supplier_lookup = {str(s["id"]): s for s in suppliers}
+        if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
+            selected_supplier = PURCHASE_LEDGER_FILTER_ALL
+            supplier_id = None
+        page_mode = _credit_settlement_page_mode(mode)
+        if page_mode == CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION:
+            outstanding_entries = _pending_purchase_verifications(
+                conn, date_from, date_to, supplier_id=supplier_id
+            )
+            payment_entries = _purchase_verification_entries(
+                conn,
+                verification_date_from=payment_date_from,
+                verification_date_to=payment_date_to,
+                supplier_id=supplier_id,
+            )
+            create_url = url_for("create_purchase_verification")
+            delete_url = url_for("delete_purchase_verification")
+            detail_url_template = url_for("purchase_verification_detail", verification_id=0)
+        else:
+            outstanding_entries = _outstanding_credit_expenses(
+                conn, date_from, date_to, supplier_id=supplier_id
+            )
+            payment_entries = _credit_payment_entries(
+                conn,
+                payment_date_from=payment_date_from,
+                payment_date_to=payment_date_to,
+                supplier_id=supplier_id,
+            )
+            create_url = url_for("create_credit_payment")
+            delete_url = url_for("delete_credit_payment")
+            detail_url_template = url_for("credit_payment_detail", payment_id=0)
+    finally:
+        conn.close()
+
+    outstanding_total = round_half_up(
+        sum(entry["balance"] for entry in outstanding_entries), 2
+    )
+    payment_total = round_half_up(
+        sum(entry["total_amount"] for entry in payment_entries), 2
+    )
+    selected_supplier_label = "All suppliers"
+    if selected_supplier != PURCHASE_LEDGER_FILTER_ALL:
+        match = supplier_lookup.get(selected_supplier)
+        if match:
+            selected_supplier_label = match["name"]
+
+    route_endpoint = labels["route_endpoint"]
+    return render_template(
+        "credit_settlement_page.html",
+        settlement_labels=labels,
+        settlement_route_endpoint=route_endpoint,
+        page_title=labels["page_title"],
+        page_subtitle=labels["page_subtitle"],
+        filter_form_action=url_for(route_endpoint),
+        selected_view=selected_view,
+        credit_payment_views=labels["views"],
+        date_from=date_from.isoformat(),
+        date_to=date_to.isoformat(),
+        payment_date_from=payment_date_from.isoformat(),
+        payment_date_to=payment_date_to.isoformat(),
+        selected_supplier=selected_supplier,
+        selected_supplier_label=selected_supplier_label,
+        suppliers=suppliers,
+        outstanding_entries=outstanding_entries,
+        outstanding_total=outstanding_total,
+        payment_entries=payment_entries,
+        payment_total=payment_total,
+        credit_payment_methods=CREDIT_PAYMENT_METHODS,
+        credit_payment_method_labels=CREDIT_PAYMENT_METHOD_LABELS,
+        expense_category_labels=EXPENSE_CATEGORY_LABELS,
+        credit_settlement_status_labels=CREDIT_SETTLEMENT_STATUS_LABELS,
+        create_credit_payment_url=create_url,
+        delete_credit_payment_url=delete_url,
+        settlement_detail_url_template=detail_url_template,
+        today_iso=today.isoformat(),
+        de_nav_section="accounts",
+        de_nav_accounts_view=labels["nav_accounts_view"],
+    )
+
+
+def _normalize_credit_payment_method(payment_method):
+    value = (payment_method or CREDIT_PAYMENT_METHOD_CASH).strip().lower()
+    if value in (CREDIT_PAYMENT_METHOD_CARD, "card", "credit card", "debit card"):
+        return CREDIT_PAYMENT_METHOD_CARD
+    if value in (EXPENSE_PAYMENT_BANK, "bank", "bank transfer", "bank_transfer"):
+        return CREDIT_PAYMENT_METHOD_CARD
+    return CREDIT_PAYMENT_METHOD_CASH
+
+
+def _normalize_credit_payment_view(value):
+    raw = (value or CREDIT_PAYMENT_VIEW_OUTSTANDING).strip().lower()
+    if raw == CREDIT_PAYMENT_VIEW_HISTORY:
+        return CREDIT_PAYMENT_VIEW_HISTORY
+    return CREDIT_PAYMENT_VIEW_OUTSTANDING
+
+
+def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company=None, category=None, payment_type=None):
+    sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
+                    e.transaction_id, e.category, e.invoice_number, e.supplier_id,
+                    s.name AS supplier_name, s.gst AS supplier_gst,
+                    COALESCE((
+                        SELECT SUM(a.amount) FROM credit_payment_allocations a WHERE a.expense_id = e.id
+                    ), 0) AS paid_amount
+             FROM sales_update_expenses e
+             LEFT JOIN suppliers s ON s.id = e.supplier_id
+             WHERE e.location = ? AND e.sales_date >= ? AND e.sales_date <= ?"""
+    params = [OUTLET_HOTEL, date_from.isoformat(), date_to.isoformat()]
+    if company:
+        sql += " AND e.company = ?"
+        params.append(company)
+    if supplier_id:
+        sql += " AND e.supplier_id = ?"
+        params.append(supplier_id)
+    if category:
+        sql += " AND e.category = ?"
+        params.append(category)
+    if payment_type:
+        sql += " AND e.payment_type = ?"
+        params.append(payment_type)
+    sql += " ORDER BY e.sales_date DESC, e.created_at DESC, e.id DESC"
+    rows = conn.execute(sql, params).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        item["paid_amount"] = round_half_up(item.get("paid_amount"), 2)
+        item["payment_type"] = _normalize_expense_payment_type(item.get("payment_type"))
+        item["category"] = _normalize_expense_category(item.get("category"))
+        item["balance"] = _credit_expense_balance(item["amount"], item["paid_amount"])
+        clearance_method = None
+        if item["payment_type"] == EXPENSE_PAYMENT_CREDIT:
+            clearance_method = _expense_clearance_payment_method(conn, item["id"])
+        item["display_payment_type"] = _purchase_ledger_display_payment_type(
+            item["payment_type"], item["amount"], item["paid_amount"], clearance_method
+        )
+        item["settlement_status"] = _credit_settlement_status(
+            item["payment_type"], item["amount"], item["paid_amount"]
+        )
+        entries.append(item)
+    return entries
+
+
+def _outstanding_credit_expenses(conn, date_from, date_to, supplier_id=None, company=None):
+    sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
+                    e.category, e.supplier_id,
+                    s.name AS supplier_name, s.gst AS supplier_gst,
+                    COALESCE((
+                        SELECT SUM(a.amount) FROM credit_payment_allocations a WHERE a.expense_id = e.id
+                    ), 0) AS paid_amount
+             FROM sales_update_expenses e
+             LEFT JOIN suppliers s ON s.id = e.supplier_id
+             WHERE e.location = ? AND e.payment_type = ? AND e.sales_date >= ? AND e.sales_date <= ?"""
+    params = [OUTLET_HOTEL, EXPENSE_PAYMENT_CREDIT, date_from.isoformat(), date_to.isoformat()]
+    if company:
+        sql += " AND e.company = ?"
+        params.append(company)
+    if supplier_id:
+        sql += " AND e.supplier_id = ?"
+        params.append(supplier_id)
+    sql += " ORDER BY e.sales_date DESC, e.created_at DESC, e.id DESC"
+    rows = conn.execute(sql, params).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        item["paid_amount"] = round_half_up(item.get("paid_amount"), 2)
+        item["payment_type"] = EXPENSE_PAYMENT_CREDIT
+        item["category"] = _normalize_expense_category(item.get("category"))
+        item["balance"] = _credit_expense_balance(item["amount"], item["paid_amount"])
+        item["settlement_status"] = _credit_settlement_status(
+            EXPENSE_PAYMENT_CREDIT, item["amount"], item["paid_amount"]
+        )
+        if item["balance"] <= 0:
+            continue
+        entries.append(item)
+    return entries
+
+
+def _purchase_verification_verified_total(conn, expense_id):
+    row = conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM purchase_verification_allocations WHERE expense_id = ?",
+        (expense_id,),
+    ).fetchone()
+    return round_half_up(row["total"] if row else 0, 2)
+
+
+def _verification_user_account(user):
+    if not user:
+        return ""
+    return (user.get("username") or user.get("full_name") or "").strip()
+
+
+def _purchase_verification_balance(amount, verified_total):
+    return _credit_expense_balance(amount, verified_total)
+
+
+def _pending_purchase_verifications(conn, date_from, date_to, supplier_id=None, company=None):
+    sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
+                    e.category, e.supplier_id,
+                    s.name AS supplier_name, s.gst AS supplier_gst,
+                    COALESCE((
+                        SELECT SUM(a.amount) FROM purchase_verification_allocations a WHERE a.expense_id = e.id
+                    ), 0) AS paid_amount
+             FROM sales_update_expenses e
+             LEFT JOIN suppliers s ON s.id = e.supplier_id
+             WHERE e.location = ? AND e.sales_date >= ? AND e.sales_date <= ?"""
+    params = [OUTLET_HOTEL, date_from.isoformat(), date_to.isoformat()]
+    if company:
+        sql += " AND e.company = ?"
+        params.append(company)
+    if supplier_id:
+        sql += " AND e.supplier_id = ?"
+        params.append(supplier_id)
+    sql += " ORDER BY e.sales_date DESC, e.created_at DESC, e.id DESC"
+    rows = conn.execute(sql, params).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        item["paid_amount"] = round_half_up(item.get("paid_amount"), 2)
+        item["payment_type"] = _normalize_expense_payment_type(item.get("payment_type"))
+        item["category"] = _normalize_expense_category(item.get("category"))
+        item["balance"] = _purchase_verification_balance(item["amount"], item["paid_amount"])
+        if item["balance"] <= 0:
+            continue
+        entries.append(item)
+    return entries
+
+
+def _purchase_verification_entries(conn, verification_date_from=None, verification_date_to=None, supplier_id=None, company=None):
+    sql = """SELECT v.id, v.company, v.supplier_id, v.verification_date AS payment_date,
+                    v.verification_method AS payment_method, v.transaction_id,
+                    v.verification_account, v.total_amount, v.notes, v.created_at,
+                    s.name AS supplier_name, s.gst AS supplier_gst,
+                    (
+                        SELECT COUNT(*) FROM purchase_verification_allocations a
+                        WHERE a.purchase_verification_id = v.id
+                    ) AS allocation_count,
+                    (
+                        SELECT GROUP_CONCAT(
+                            COALESCE(NULLIF(TRIM(e.expense_code), ''), '#' || e.id),
+                            ', '
+                        )
+                        FROM purchase_verification_allocations a
+                        LEFT JOIN sales_update_expenses e ON e.id = a.expense_id
+                        WHERE a.purchase_verification_id = v.id
+                    ) AS expense_codes
+             FROM purchase_verifications v
+             LEFT JOIN suppliers s ON s.id = v.supplier_id
+             WHERE 1 = 1"""
+    params = []
+    if company:
+        sql += " AND v.company = ?"
+        params.append(company)
+    if supplier_id:
+        sql += " AND v.supplier_id = ?"
+        params.append(supplier_id)
+    if verification_date_from:
+        sql += " AND v.verification_date >= ?"
+        params.append(
+            verification_date_from.isoformat()
+            if hasattr(verification_date_from, "isoformat")
+            else verification_date_from
+        )
+    if verification_date_to:
+        sql += " AND v.verification_date <= ?"
+        params.append(
+            verification_date_to.isoformat()
+            if hasattr(verification_date_to, "isoformat")
+            else verification_date_to
+        )
+    sql += " ORDER BY v.verification_date DESC, v.created_at DESC, v.id DESC"
+    rows = conn.execute(sql, params).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        item["total_amount"] = round_half_up(item.get("total_amount"), 2)
+        item["payment_method"] = _normalize_credit_payment_method(item.get("payment_method"))
+        item["verification_account"] = str(item.get("verification_account") or "").strip()
+        item["allocation_count"] = int(item.get("allocation_count") or 0)
+        item["expense_codes"] = str(item.get("expense_codes") or "").strip()
+        entries.append(item)
+    return entries
+
+
+def _purchase_verification_detail(conn, verification_id, company=None):
+    sql = """SELECT v.id, v.company, v.supplier_id, v.verification_date AS payment_date,
+                    v.verification_method AS payment_method, v.transaction_id,
+                    v.verification_account, v.total_amount, v.notes, v.created_at,
+                    s.name AS supplier_name, s.gst AS supplier_gst
+             FROM purchase_verifications v
+             LEFT JOIN suppliers s ON s.id = v.supplier_id
+             WHERE v.id = ?"""
+    params = [verification_id]
+    if company:
+        sql += " AND v.company = ?"
+        params.append(company)
+    row = conn.execute(sql, params).fetchone()
+    if not row:
+        return None
+    verification = dict(row)
+    verification["total_amount"] = round_half_up(verification.get("total_amount"), 2)
+    verification["payment_method"] = _normalize_credit_payment_method(verification.get("payment_method"))
+    verification["verification_account"] = str(verification.get("verification_account") or "").strip()
+    alloc_rows = conn.execute(
+        """SELECT a.id, a.expense_id, a.amount,
+                  e.expense_code, e.sales_date, e.description, e.amount AS expense_amount, e.category
+           FROM purchase_verification_allocations a
+           LEFT JOIN sales_update_expenses e ON e.id = a.expense_id
+           WHERE a.purchase_verification_id = ?
+           ORDER BY a.id""",
+        (verification_id,),
+    ).fetchall()
+    allocations = []
+    for alloc in alloc_rows:
+        item = dict(alloc)
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        item["expense_amount"] = round_half_up(item.get("expense_amount"), 2)
+        item["category"] = _normalize_expense_category(item.get("category"))
+        allocations.append(item)
+    verification["allocations"] = allocations
+    return verification
+
+
+def _validate_purchase_verification_payload(conn, data, user=None):
+    errors = []
+    try:
+        supplier_id = int(data.get("supplier_id"))
+    except (TypeError, ValueError):
+        supplier_id = None
+    if not supplier_id:
+        errors.append("Supplier is required.")
+
+    verification_date = _parse_sales_date(data.get("payment_date") or date.today().isoformat())
+    verification_method = CREDIT_PAYMENT_METHOD_CASH
+    transaction_id = ""
+    verification_account = _verification_user_account(user)
+    notes = str(data.get("notes") or "").strip()
+    company = str(data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+
+    if not verification_account:
+        errors.append("You must be logged in to record a verification.")
+
+    raw_allocations = data.get("allocations") or []
+    if not isinstance(raw_allocations, list) or not raw_allocations:
+        errors.append("Select at least one purchase to verify.")
+        return None, errors
+
+    if supplier_id:
+        supplier = _get_supplier(conn, supplier_id)
+        if not supplier:
+            errors.append("Selected supplier was not found.")
+
+    parsed_allocations = []
+    seen_expense_ids = set()
+    for raw in raw_allocations:
+        try:
+            expense_id = int(raw.get("expense_id"))
+        except (TypeError, ValueError, AttributeError):
+            errors.append("Invalid expense selection.")
+            continue
+        if expense_id in seen_expense_ids:
+            errors.append("Duplicate expense in the same verification.")
+            continue
+        seen_expense_ids.add(expense_id)
+        amount = parse_money(raw.get("amount") if isinstance(raw, dict) else None)
+        if amount <= 0:
+            errors.append("Each allocation amount must be greater than zero.")
+            continue
+        expense = conn.execute(
+            """SELECT id, company, location, payment_type, amount, supplier_id, expense_code, description
+               FROM sales_update_expenses WHERE id = ?""",
+            (expense_id,),
+        ).fetchone()
+        if not expense:
+            errors.append("One or more selected expenses were not found.")
+            continue
+        expense = dict(expense)
+        if expense.get("location") != OUTLET_HOTEL:
+            errors.append("Only hotel purchases can be verified.")
+            continue
+        if supplier_id and int(expense.get("supplier_id") or 0) != supplier_id:
+            errors.append("All selected expenses must belong to the same supplier.")
+            continue
+        verified_total = _purchase_verification_verified_total(conn, expense_id)
+        balance = _purchase_verification_balance(expense.get("amount"), verified_total)
+        if amount > balance + 0.001:
+            code = expense.get("expense_code") or f"#{expense_id}"
+            errors.append(f"Allocation for {code} exceeds pending verification balance.")
+            continue
+        parsed_allocations.append({
+            "expense_id": expense_id,
+            "amount": round_half_up(amount, 2),
+            "expense": expense,
+        })
+
+    if errors:
+        return None, errors
+    if not parsed_allocations:
+        return None, ["Select at least one purchase to verify."]
+
+    total_amount = round_half_up(sum(item["amount"] for item in parsed_allocations), 2)
+    return {
+        "company": company,
+        "supplier_id": supplier_id,
+        "verification_date": verification_date.isoformat(),
+        "verification_method": verification_method,
+        "verification_account": verification_account,
+        "transaction_id": transaction_id,
+        "notes": notes,
+        "total_amount": total_amount,
+        "allocations": parsed_allocations,
+    }, []
+
+
+def _credit_payment_entries(conn, payment_date_from=None, payment_date_to=None, supplier_id=None, company=None):
+    sql = """SELECT p.id, p.company, p.supplier_id, p.payment_date, p.payment_method, p.transaction_id,
+                    p.total_amount, p.notes, p.created_at,
+                    s.name AS supplier_name, s.gst AS supplier_gst,
+                    (
+                        SELECT COUNT(*) FROM credit_payment_allocations a WHERE a.credit_payment_id = p.id
+                    ) AS allocation_count
+             FROM credit_payments p
+             LEFT JOIN suppliers s ON s.id = p.supplier_id
+             WHERE 1 = 1"""
+    params = []
+    if company:
+        sql += " AND p.company = ?"
+        params.append(company)
+    if supplier_id:
+        sql += " AND p.supplier_id = ?"
+        params.append(supplier_id)
+    if payment_date_from:
+        sql += " AND p.payment_date >= ?"
+        params.append(
+            payment_date_from.isoformat() if hasattr(payment_date_from, "isoformat") else payment_date_from
+        )
+    if payment_date_to:
+        sql += " AND p.payment_date <= ?"
+        params.append(
+            payment_date_to.isoformat() if hasattr(payment_date_to, "isoformat") else payment_date_to
+        )
+    sql += " ORDER BY p.payment_date DESC, p.created_at DESC, p.id DESC"
+    rows = conn.execute(sql, params).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        item["total_amount"] = round_half_up(item.get("total_amount"), 2)
+        item["payment_method"] = _normalize_credit_payment_method(item.get("payment_method"))
+        item["allocation_count"] = int(item.get("allocation_count") or 0)
+        entries.append(item)
+    return entries
+
+
+def _credit_payment_detail(conn, payment_id, company=None):
+    sql = """SELECT p.id, p.company, p.supplier_id, p.payment_date, p.payment_method, p.transaction_id,
+                    p.total_amount, p.notes, p.created_at,
+                    s.name AS supplier_name, s.gst AS supplier_gst
+             FROM credit_payments p
+             LEFT JOIN suppliers s ON s.id = p.supplier_id
+             WHERE p.id = ?"""
+    params = [payment_id]
+    if company:
+        sql += " AND p.company = ?"
+        params.append(company)
+    row = conn.execute(sql, params).fetchone()
+    if not row:
+        return None
+    payment = dict(row)
+    payment["total_amount"] = round_half_up(payment.get("total_amount"), 2)
+    payment["payment_method"] = _normalize_credit_payment_method(payment.get("payment_method"))
+    alloc_rows = conn.execute(
+        """SELECT a.id, a.expense_id, a.amount,
+                  e.expense_code, e.sales_date, e.description, e.amount AS expense_amount, e.category
+           FROM credit_payment_allocations a
+           LEFT JOIN sales_update_expenses e ON e.id = a.expense_id
+           WHERE a.credit_payment_id = ?
+           ORDER BY a.id""",
+        (payment_id,),
+    ).fetchall()
+    allocations = []
+    for alloc in alloc_rows:
+        item = dict(alloc)
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        item["expense_amount"] = round_half_up(item.get("expense_amount"), 2)
+        item["category"] = _normalize_expense_category(item.get("category"))
+        allocations.append(item)
+    payment["allocations"] = allocations
+    return payment
+
+
+def _validate_credit_payment_payload(conn, data):
+    errors = []
+    try:
+        supplier_id = int(data.get("supplier_id"))
+    except (TypeError, ValueError):
+        supplier_id = None
+    if not supplier_id:
+        errors.append("Supplier is required.")
+
+    payment_date = _parse_sales_date(data.get("payment_date") or date.today().isoformat())
+    payment_method = _normalize_credit_payment_method(data.get("payment_method"))
+    transaction_id = str(data.get("transaction_id") or "").strip()
+    notes = str(data.get("notes") or "").strip()
+    company = str(data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+
+    if payment_method == CREDIT_PAYMENT_METHOD_CARD and not transaction_id:
+        errors.append("Transaction ID is required for card payment.")
+    if payment_method != CREDIT_PAYMENT_METHOD_CARD:
+        transaction_id = ""
+
+    raw_allocations = data.get("allocations") or []
+    if not isinstance(raw_allocations, list) or not raw_allocations:
+        errors.append("Select at least one expense to clear.")
+        return None, errors
+
+    if supplier_id:
+        supplier = _get_supplier(conn, supplier_id)
+        if not supplier:
+            errors.append("Selected supplier was not found.")
+
+    parsed_allocations = []
+    seen_expense_ids = set()
+    for raw in raw_allocations:
+        try:
+            expense_id = int(raw.get("expense_id"))
+        except (TypeError, ValueError, AttributeError):
+            errors.append("Invalid expense selection.")
+            continue
+        if expense_id in seen_expense_ids:
+            errors.append("Duplicate expense in the same clearance.")
+            continue
+        seen_expense_ids.add(expense_id)
+        amount = parse_money(raw.get("amount") if isinstance(raw, dict) else None)
+        if amount <= 0:
+            errors.append("Each allocation amount must be greater than zero.")
+            continue
+        expense = conn.execute(
+            """SELECT id, company, location, payment_type, amount, supplier_id, expense_code, description
+               FROM sales_update_expenses WHERE id = ?""",
+            (expense_id,),
+        ).fetchone()
+        if not expense:
+            errors.append("One or more selected expenses were not found.")
+            continue
+        expense = dict(expense)
+        if expense.get("location") != OUTLET_HOTEL:
+            errors.append("Only hotel credit expenses can be cleared.")
+            continue
+        if _normalize_expense_payment_type(expense.get("payment_type")) != EXPENSE_PAYMENT_CREDIT:
+            errors.append("Only credit expenses can be cleared.")
+            continue
+        if supplier_id and int(expense.get("supplier_id") or 0) != supplier_id:
+            errors.append("All selected expenses must belong to the same supplier.")
+            continue
+        paid_total = _credit_expense_paid_total(conn, expense_id)
+        balance = _credit_expense_balance(expense.get("amount"), paid_total)
+        if amount > balance + 0.001:
+            code = expense.get("expense_code") or f"#{expense_id}"
+            errors.append(f"Allocation for {code} exceeds outstanding balance.")
+            continue
+        parsed_allocations.append({
+            "expense_id": expense_id,
+            "amount": round_half_up(amount, 2),
+            "expense": expense,
+        })
+
+    if errors:
+        return None, errors
+    if not parsed_allocations:
+        return None, ["Select at least one expense to clear."]
+
+    total_amount = round_half_up(sum(item["amount"] for item in parsed_allocations), 2)
+    return {
+        "company": company,
+        "supplier_id": supplier_id,
+        "payment_date": payment_date.isoformat(),
+        "payment_method": payment_method,
+        "transaction_id": transaction_id,
+        "notes": notes,
+        "total_amount": total_amount,
+        "allocations": parsed_allocations,
+    }, []
+
+
+def _parse_purchase_ledger_supplier(value):
+    raw = (value or PURCHASE_LEDGER_FILTER_ALL).strip()
+    if not raw or raw == PURCHASE_LEDGER_FILTER_ALL:
+        return PURCHASE_LEDGER_FILTER_ALL, None
+    try:
+        supplier_id = int(raw)
+    except (TypeError, ValueError):
+        return PURCHASE_LEDGER_FILTER_ALL, None
+    return str(supplier_id), supplier_id if supplier_id > 0 else None
+
+
+def _parse_purchase_ledger_category(value):
+    raw = (value or PURCHASE_LEDGER_FILTER_ALL).strip()
+    if not raw or raw == PURCHASE_LEDGER_FILTER_ALL:
+        return PURCHASE_LEDGER_FILTER_ALL, None
+    normalized = _normalize_expense_category(raw)
+    if normalized in EXPENSE_CATEGORY_LABELS:
+        return normalized, normalized
+    return PURCHASE_LEDGER_FILTER_ALL, None
+
+
+def _parse_purchase_ledger_payment(value):
+    raw = (value or PURCHASE_LEDGER_FILTER_ALL).strip()
+    if not raw or raw == PURCHASE_LEDGER_FILTER_ALL:
+        return PURCHASE_LEDGER_FILTER_ALL, None
+    normalized = _normalize_expense_payment_type(raw)
+    if normalized in EXPENSE_PAYMENT_LABELS:
+        return normalized, normalized
+    return PURCHASE_LEDGER_FILTER_ALL, None
+
+
+def _normalize_expense_payment_type(payment_type):
+    value = (payment_type or EXPENSE_PAYMENT_CASH).strip().lower()
+    if value in (EXPENSE_PAYMENT_BANK, "bank", "bank transfer", "bank_transfer"):
+        return EXPENSE_PAYMENT_BANK
+    if value in (EXPENSE_PAYMENT_CREDIT, "credit", "room credit", "room_credit"):
+        return EXPENSE_PAYMENT_CREDIT
+    return EXPENSE_PAYMENT_CASH
+
+
+def _normalize_expense_category(category):
+    value = (category or "").strip().lower().replace(" ", "_").replace("-", "_")
+    aliases = {
+        "grocery": "grocery",
+        "vegetables": "vegetables",
+        "vegetable": "vegetables",
+        "travel": "travel",
+        "hardware": "hardware",
+        "tac": "tac",
+        "travel_agent_commission": "tac",
+        "tac_travel_agent_commission": "tac",
+        "fruits": "fruits",
+        "fruit": "fruits",
+        "snacks": "snacks",
+        "snack": "snacks",
+        "meat": "meat",
+        "sea_food": "sea_food",
+        "seafood": "sea_food",
+        "labour": "labour",
+        "labor": "labour",
+        "water_tank": "water_tank",
+        "watertank": "water_tank",
+        "other": "other",
+    }
+    return aliases.get(value, "")
+
+
+def _normalize_invoice_number(value):
+    return (value or "").strip()
+
+
+def _duplicate_expense_invoice(conn, supplier_id, invoice_number, exclude_expense_id=None):
+    invoice_number = _normalize_invoice_number(invoice_number)
+    if not invoice_number or not supplier_id:
+        return None
+    sql = """SELECT id, expense_code FROM sales_update_expenses
+             WHERE supplier_id = ? AND LOWER(TRIM(invoice_number)) = LOWER(?)
+               AND TRIM(invoice_number) != ''"""
+    params = [supplier_id, invoice_number]
+    if exclude_expense_id:
+        sql += " AND id != ?"
+        params.append(exclude_expense_id)
+    return conn.execute(sql, params).fetchone()
+
+
+def _normalize_gst(value):
+    return "".join((value or "").upper().split())
+
+
+def _supplier_row_to_dict(row):
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "name": row["name"] or "",
+        "gst": row["gst"] or "",
+        "address": row["address"] or "",
+        "phone": row["phone"] or "",
+        "bank_name": row["bank_name"] or "",
+        "bank_account_number": row["bank_account_number"] or "",
+        "ifsc_code": row["ifsc_code"] or "",
+    }
+
+
+def _all_suppliers(conn):
+    rows = conn.execute(
+        """SELECT id, name, gst, address, phone, bank_name, bank_account_number, ifsc_code
+           FROM suppliers
+           ORDER BY LOWER(name), id"""
+    ).fetchall()
+    return [_supplier_row_to_dict(row) for row in rows]
+
+
+def _get_supplier(conn, supplier_id):
+    if not supplier_id:
+        return None
+    row = conn.execute(
+        """SELECT id, name, gst, address, phone, bank_name, bank_account_number, ifsc_code
+           FROM suppliers WHERE id = ?""",
+        (supplier_id,),
+    ).fetchone()
+    return _supplier_row_to_dict(row)
+
+
+def _validate_supplier(conn, name, gst, supplier_id=None):
+    errors = []
+    name = (name or "").strip()
+    gst = _normalize_gst(gst)
+    if not name:
+        errors.append("Supplier name is required.")
+    if not gst:
+        errors.append("GST is required.")
+    if gst:
+        existing = conn.execute(
+            "SELECT id FROM suppliers WHERE gst = ?",
+            (gst,),
+        ).fetchone()
+        if existing and (supplier_id is None or int(existing["id"]) != int(supplier_id)):
+            errors.append("A supplier with this GST number already exists.")
+    return errors, name, gst
+
+
+def _supplier_form_payload(source=None):
+    source = source or {}
+    return {
+        "name": (source.get("name") or "").strip(),
+        "gst": _normalize_gst(source.get("gst")),
+        "address": (source.get("address") or "").strip(),
+        "phone": (source.get("phone") or "").strip(),
+        "bank_name": (source.get("bank_name") or "").strip(),
+        "bank_account_number": (source.get("bank_account_number") or "").strip(),
+        "ifsc_code": (source.get("ifsc_code") or "").strip(),
+    }
+
+
+def _save_supplier_record(conn, payload, supplier_id=None):
+    errors, name, gst = _validate_supplier(
+        conn, payload.get("name"), payload.get("gst"), supplier_id=supplier_id
+    )
+    if errors:
+        return None, errors
+    fields = _supplier_form_payload(payload)
+    if supplier_id:
+        conn.execute(
+            f"""UPDATE suppliers
+                SET name = ?, gst = ?, address = ?, phone = ?, bank_name = ?,
+                    bank_account_number = ?, ifsc_code = ?, updated_at = {SQL_NOW}
+                WHERE id = ?""",
+            (
+                fields["name"],
+                gst,
+                fields["address"],
+                fields["phone"],
+                fields["bank_name"],
+                fields["bank_account_number"],
+                fields["ifsc_code"],
+                supplier_id,
+            ),
+        )
+        saved_id = supplier_id
+    else:
+        conn.execute(
+            f"""INSERT INTO suppliers
+                (name, gst, address, phone, bank_name, bank_account_number, ifsc_code, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, {SQL_NOW}, {SQL_NOW})""",
+            (
+                fields["name"],
+                gst,
+                fields["address"],
+                fields["phone"],
+                fields["bank_name"],
+                fields["bank_account_number"],
+                fields["ifsc_code"],
+            ),
+        )
+        saved_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+    return saved_id, []
 
 
 def _sales_unpaid_bill_total(conn, company, location, sales_date):
@@ -317,6 +1727,14 @@ def _sales_cash_transfer_entries(conn, company, location, sales_date):
 def build_sales_entry_values(conn, company, location, sales_date, submitted_values=None):
     values = dict(submitted_values or {})
     for key, _label in SALES_ENTRY_FIELDS:
+        values.setdefault(key, 0.0)
+        values[key] = parse_money(values.get(key))
+    return values
+
+
+def build_hotel_sales_entry_values(submitted_values=None):
+    values = dict(submitted_values or {})
+    for key, _label in HOTEL_SALES_ENTRY_FIELDS:
         values.setdefault(key, 0.0)
         values[key] = parse_money(values.get(key))
     return values
@@ -417,7 +1835,7 @@ def _pct_change_vs_previous(current, previous):
     return round((cur - prev) / abs(prev) * 100, 1)
 
 
-def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None):
+def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None, difference_mode=None):
     sql = "SELECT sales_entry_values FROM sales_updates WHERE sales_date >= ? AND sales_date <= ?"
     params = [date_from.isoformat(), date_to.isoformat()]
     if company:
@@ -428,13 +1846,20 @@ def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None)
         params.append(location)
     rows = conn.execute(sql, params).fetchall()
 
-    actual = digital = cash = difference = 0.0
+    actual = digital = cash = room_credit = tips = actual_cash = difference = 0.0
     for row in rows:
         vals = json.loads(row["sales_entry_values"] or "{}")
         actual += parse_money(vals.get("total_sales"))
         digital += get_digital_transactions(vals)
         cash += parse_money(vals.get("cash"))
-        difference += get_difference(vals)
+        room_credit += parse_money(vals.get("room_credit"))
+        tips += parse_money(vals.get("tips"))
+        actual_cash += parse_money(vals.get("actual_cash"))
+        if difference_mode != "cash_actual":
+            difference += get_difference(vals)
+
+    if difference_mode == "cash_actual":
+        difference = round_half_up(cash - actual_cash, 2)
 
     expense_sql = "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses WHERE sales_date >= ? AND sales_date <= ?"
     expense_params = [date_from.isoformat(), date_to.isoformat()]
@@ -451,13 +1876,15 @@ def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None)
         "actual_sales": round_half_up(actual, 2),
         "digital_transactions": round_half_up(digital, 2),
         "cash": round_half_up(cash, 2),
+        "room_credit": round_half_up(room_credit, 2),
+        "tips": round_half_up(tips, 2),
         "expense": expense,
         "difference": round_half_up(difference, 2),
     }
 
 
-def _sales_report_kpi_bundle(conn, date_from, date_to, company=None, location=None):
-    current = _aggregate_sales_kpis(conn, date_from, date_to, company, location)
+def _sales_report_kpi_bundle(conn, date_from, date_to, company=None, location=None, difference_mode=None):
+    current = _aggregate_sales_kpis(conn, date_from, date_to, company, location, difference_mode)
     if date_from == date_to:
         prev_to = date_from - timedelta(days=1)
         prev_from = prev_to
@@ -467,10 +1894,10 @@ def _sales_report_kpi_bundle(conn, date_from, date_to, company=None, location=No
         prev_to = date_from - timedelta(days=1)
         prev_from = prev_to - timedelta(days=span_days - 1)
         vs_label = "previous period"
-    previous = _aggregate_sales_kpis(conn, prev_from, prev_to, company, location)
+    previous = _aggregate_sales_kpis(conn, prev_from, prev_to, company, location, difference_mode)
     trends = {
         key: _pct_change_vs_previous(current[key], previous[key])
-        for key in ("actual_sales", "digital_transactions", "cash", "expense", "difference")
+        for key in ("actual_sales", "digital_transactions", "cash", "room_credit", "tips", "expense", "difference")
     }
     return {
         "current": current,
@@ -489,23 +1916,6 @@ def _check_sales_date_lock(user, company, location, sales_date):
             return "This date was already saved. Only administrators can change past sales entries."
     return None
 
-
-@app.before_request
-def require_login():
-    public = {"index", "login", "static"}
-    if not request.endpoint or request.endpoint in public:
-        return None
-    if get_current_user() is None:
-        return redirect(url_for("index"))
-
-
-@app.context_processor
-def inject_auth_context():
-    user = get_current_user()
-    return {
-        "current_user": user,
-        "user_can_access_dashboard": user_can_access_dashboard,
-    }
 
 
 @app.template_filter("inr")
@@ -541,7 +1951,7 @@ def inr_format(value, dec=0):
 @app.route("/")
 def index():
     if get_current_user():
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("home"))
     return render_template("index.html")
 
 
@@ -557,7 +1967,7 @@ def login():
     if not row or not check_password_hash(row["password_hash"], password):
         return render_template("index.html", error="Invalid username or password.")
     session[AUTH_USER_SESSION_KEY] = row["id"]
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("home"))
 
 
 @app.route("/logout")
@@ -566,24 +1976,319 @@ def logout():
     return redirect(url_for("index"))
 
 
+@app.route("/home")
+def home():
+    user = get_current_user()
+    return render_template(
+        "home.html",
+        de_nav_section="home",
+    )
+
+
 @app.route("/dashboard")
 def dashboard():
-    today = date.today()
-    conn = get_db()
-    try:
-        kpi_bundle = _sales_report_kpi_bundle(conn, today, today, DEFAULT_COMPANY, None)
-    finally:
-        conn.close()
     return render_template(
         "dashboard.html",
         current_user=get_current_user(),
         de_nav_section="analytics",
         de_nav_sales_view="dashboard",
-        kpi=kpi_bundle["current"],
-        kpi_trends=kpi_bundle["trends"],
-        kpi_vs_label=kpi_bundle["vs_label"],
-        selected_date=today.isoformat(),
     )
+
+
+@app.route("/accounts")
+def accounts():
+    return render_template(
+        "accounts.html",
+        current_user=get_current_user(),
+        de_nav_section="accounts",
+        de_nav_accounts_view="overview",
+    )
+
+
+@app.route("/accounts/purchase-ledger")
+def purchase_ledger():
+    today = date.today()
+    default_from = today.replace(day=1)
+    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
+    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
+        request.args.get("supplier")
+    )
+    selected_category, category = _parse_purchase_ledger_category(
+        request.args.get("category")
+    )
+    selected_payment, payment_type = _parse_purchase_ledger_payment(
+        request.args.get("payment")
+    )
+
+    conn = get_db()
+    try:
+        suppliers = _all_suppliers(conn)
+        supplier_lookup = {str(s["id"]): s for s in suppliers}
+        if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
+            selected_supplier = PURCHASE_LEDGER_FILTER_ALL
+            supplier_id = None
+        if selected_category != PURCHASE_LEDGER_FILTER_ALL and selected_category not in EXPENSE_CATEGORY_LABELS:
+            selected_category = PURCHASE_LEDGER_FILTER_ALL
+            category = None
+        if selected_payment != PURCHASE_LEDGER_FILTER_ALL and selected_payment not in EXPENSE_PAYMENT_LABELS:
+            selected_payment = PURCHASE_LEDGER_FILTER_ALL
+            payment_type = None
+        entries = _purchase_ledger_entries(
+            conn, date_from, date_to, supplier_id, category=category, payment_type=payment_type
+        )
+    finally:
+        conn.close()
+
+    total_amount = round_half_up(sum(entry["amount"] for entry in entries), 2)
+    selected_supplier_label = "All suppliers"
+    if selected_supplier != PURCHASE_LEDGER_FILTER_ALL:
+        match = supplier_lookup.get(selected_supplier)
+        if match:
+            selected_supplier_label = match["name"]
+    selected_category_label = "All categories"
+    if selected_category != PURCHASE_LEDGER_FILTER_ALL:
+        selected_category_label = EXPENSE_CATEGORY_LABELS.get(selected_category, selected_category_label)
+    selected_payment_label = "All payments"
+    if selected_payment != PURCHASE_LEDGER_FILTER_ALL:
+        selected_payment_label = EXPENSE_PAYMENT_LABELS.get(selected_payment, selected_payment_label)
+
+    return render_template(
+        "purchase_ledger.html",
+        page_title="Purchase Ledger",
+        page_subtitle="Hotel expenses recorded in Sales Update — Hotel, with date, supplier, category, and payment filters.",
+        filter_form_action=url_for("purchase_ledger"),
+        date_from=date_from.isoformat(),
+        date_to=date_to.isoformat(),
+        selected_supplier=selected_supplier,
+        selected_supplier_label=selected_supplier_label,
+        selected_category=selected_category,
+        selected_category_label=selected_category_label,
+        selected_payment=selected_payment,
+        selected_payment_label=selected_payment_label,
+        suppliers=suppliers,
+        purchase_entries=entries,
+        purchase_total=total_amount,
+        expense_payment_types=EXPENSE_PAYMENT_TYPES,
+        expense_payment_labels=EXPENSE_PAYMENT_LABELS,
+        purchase_ledger_payment_labels=PURCHASE_LEDGER_PAYMENT_LABELS,
+        expense_categories=EXPENSE_CATEGORIES,
+        expense_category_labels=EXPENSE_CATEGORY_LABELS,
+        credit_settlement_status_labels=CREDIT_SETTLEMENT_STATUS_LABELS,
+        purchase_add_url=url_for("purchase_ledger_add"),
+        supplier_create_url=url_for("create_supplier"),
+        default_company=DEFAULT_COMPANY,
+        default_location=OUTLET_HOTEL,
+        today_iso=today.isoformat(),
+        de_nav_section="accounts",
+        de_nav_accounts_view="purchase_ledger",
+    )
+
+
+@app.route("/accounts/purchase-ledger/add", methods=["POST"])
+def purchase_ledger_add():
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        result, error = _create_sales_expense(
+            conn,
+            user,
+            data,
+            default_location=OUTLET_HOTEL,
+            include_sales_totals=False,
+        )
+        if error:
+            status = 403 if "Cannot save" in error or "already saved" in error else 400
+            return jsonify({"ok": False, "error": error}), status
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, **result})
+
+
+@app.route("/accounts/credit-payment")
+def credit_payment():
+    return _render_credit_settlement_page(CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT)
+
+
+@app.route("/accounts/purchase-verification")
+def purchase_verification():
+    return _render_credit_settlement_page(CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION)
+
+
+@app.route("/accounts/purchase-verification/create", methods=["POST"])
+def create_purchase_verification():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in to record a verification."}), 401
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        payload, errors = _validate_purchase_verification_payload(conn, data, user=user)
+        if errors:
+            return jsonify({"ok": False, "error": errors[0], "errors": errors}), 400
+        cursor = conn.execute(
+            """INSERT INTO purchase_verifications
+               (company, supplier_id, verification_date, verification_method, verification_account,
+                transaction_id, total_amount, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                payload["company"],
+                payload["supplier_id"],
+                payload["verification_date"],
+                payload["verification_method"],
+                payload["verification_account"],
+                payload["transaction_id"],
+                payload["total_amount"],
+                payload["notes"],
+            ),
+        )
+        verification_id = cursor.lastrowid
+        for allocation in payload["allocations"]:
+            conn.execute(
+                """INSERT INTO purchase_verification_allocations
+                   (purchase_verification_id, expense_id, amount)
+                   VALUES (?, ?, ?)""",
+                (verification_id, allocation["expense_id"], allocation["amount"]),
+            )
+        conn.commit()
+        verification = _purchase_verification_detail(conn, verification_id)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "payment": verification})
+
+
+@app.route("/accounts/purchase-verification/delete", methods=["POST"])
+def delete_purchase_verification():
+    data = request.get_json(silent=True) or {}
+    try:
+        verification_id = int(data.get("payment_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Verification id is required."}), 400
+
+    conn = get_db()
+    try:
+        verification = conn.execute(
+            "SELECT id FROM purchase_verifications WHERE id = ?",
+            (verification_id,),
+        ).fetchone()
+        if not verification:
+            return jsonify({"ok": False, "error": "Verification was not found."}), 404
+        conn.execute(
+            "DELETE FROM purchase_verification_allocations WHERE purchase_verification_id = ?",
+            (verification_id,),
+        )
+        conn.execute("DELETE FROM purchase_verifications WHERE id = ?", (verification_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True})
+
+
+@app.route("/accounts/purchase-verification/<int:verification_id>")
+def purchase_verification_detail(verification_id):
+    conn = get_db()
+    try:
+        verification = _purchase_verification_detail(conn, verification_id)
+    finally:
+        conn.close()
+    if not verification:
+        return jsonify({"ok": False, "error": "Verification was not found."}), 404
+    return jsonify({"ok": True, "payment": verification})
+
+
+@app.route("/accounts/credit-payment/create", methods=["POST"])
+def create_credit_payment():
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        payload, errors = _validate_credit_payment_payload(conn, data)
+        if errors:
+            return jsonify({"ok": False, "error": errors[0], "errors": errors}), 400
+        cursor = conn.execute(
+            """INSERT INTO credit_payments
+               (company, supplier_id, payment_date, payment_method, transaction_id, total_amount, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                payload["company"],
+                payload["supplier_id"],
+                payload["payment_date"],
+                payload["payment_method"],
+                payload["transaction_id"],
+                payload["total_amount"],
+                payload["notes"],
+            ),
+        )
+        payment_id = cursor.lastrowid
+        affected_expense_ids = []
+        for allocation in payload["allocations"]:
+            conn.execute(
+                """INSERT INTO credit_payment_allocations (credit_payment_id, expense_id, amount)
+                   VALUES (?, ?, ?)""",
+                (payment_id, allocation["expense_id"], allocation["amount"]),
+            )
+            affected_expense_ids.append(allocation["expense_id"])
+        for expense_id in affected_expense_ids:
+            _sync_expense_payment_after_clearance(conn, expense_id)
+        conn.commit()
+        payment = _credit_payment_detail(conn, payment_id)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "payment": payment})
+
+
+@app.route("/accounts/credit-payment/delete", methods=["POST"])
+def delete_credit_payment():
+    data = request.get_json(silent=True) or {}
+    try:
+        payment_id = int(data.get("payment_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Payment id is required."}), 400
+
+    conn = get_db()
+    try:
+        payment = conn.execute(
+            "SELECT id FROM credit_payments WHERE id = ?",
+            (payment_id,),
+        ).fetchone()
+        if not payment:
+            return jsonify({"ok": False, "error": "Payment was not found."}), 404
+        allocation_rows = conn.execute(
+            "SELECT expense_id FROM credit_payment_allocations WHERE credit_payment_id = ?",
+            (payment_id,),
+        ).fetchall()
+        affected_expense_ids = [row["expense_id"] for row in allocation_rows]
+        conn.execute(
+            "DELETE FROM credit_payment_allocations WHERE credit_payment_id = ?",
+            (payment_id,),
+        )
+        conn.execute("DELETE FROM credit_payments WHERE id = ?", (payment_id,))
+        for expense_id in affected_expense_ids:
+            _restore_expense_credit_on_payment_delete(conn, expense_id)
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True})
+
+
+@app.route("/accounts/credit-payment/<int:payment_id>")
+def credit_payment_detail(payment_id):
+    conn = get_db()
+    try:
+        payment = _credit_payment_detail(conn, payment_id)
+    finally:
+        conn.close()
+    if not payment:
+        return jsonify({"ok": False, "error": "Payment was not found."}), 404
+    return jsonify({"ok": True, "payment": payment})
 
 
 @app.route("/sales_update/hotel")
@@ -608,8 +2313,7 @@ def sales_update_hotel():
             )
         }
         kpi_bundle = _sales_report_kpi_bundle(conn, entry_date, entry_date, selected_company, selected_location)
-        ledger_entries = load_hotel_ledger_entries(conn, selected_company, selected_location, selected_date)
-        ledger_rollup = rollup_hotel_ledger_entries(ledger_entries)
+        suppliers = _all_suppliers(conn)
     finally:
         conn.close()
 
@@ -627,9 +2331,11 @@ def sales_update_hotel():
         outlet_records=outlet_records,
         sales_entry_locked=hotel_outlet["sales_entry_locked"],
         sales_update_is_admin=user.get("is_admin", False),
-        hotel_payment_modes=HOTEL_PAYMENT_MODES,
-        ledger_entries=ledger_entries,
-        ledger_rollup=ledger_rollup,
+        hotel_sales_entry_fields=HOTEL_SALES_ENTRY_FIELDS,
+        hotel_manual_sales_entry_keys=HOTEL_MANUAL_SALES_ENTRY_KEYS,
+        expense_payment_types=EXPENSE_PAYMENT_TYPES,
+        expense_categories=EXPENSE_CATEGORIES,
+        suppliers=suppliers,
         cash_date_from=selected_date,
         cash_date_to=selected_date,
         cash_panel=False,
@@ -653,36 +2359,43 @@ def upload_hotel_occupancy_report():
     if location not in HOTEL_LOCATIONS:
         location = OUTLET_HOTEL
 
-    lock_error = _check_sales_date_lock(user, company, location, sales_date_str)
-    if lock_error:
-        return jsonify({"ok": False, "error": lock_error}), 403
-
     upload = request.files.get("report_file")
     if not upload or not upload.filename:
-        return jsonify({"ok": False, "error": "Please choose an occupancy summary file."}), 400
+        return jsonify({"ok": False, "error": "Please choose an FO Invoice Tax report."}), 400
 
     try:
-        parsed = parse_occupancy_summary_report(upload.stream)
+        parsed = parse_fo_invoice_tax_report(upload.stream)
     except Exception as exc:
         return jsonify({"ok": False, "error": f"Could not read report: {exc}"}), 400
 
-    if not parsed.get("lines"):
-        return jsonify({"ok": False, "error": "No room lines found in the report."}), 400
+    lines_by_date = parsed.get("lines_by_date") or {}
+    if not lines_by_date:
+        return jsonify({"ok": False, "error": "No invoice lines found in the FO Invoice Tax report."}), 400
+
+    for report_date in sorted(lines_by_date):
+        lock_error = _check_sales_date_lock(user, company, location, report_date)
+        if lock_error:
+            return jsonify({"ok": False, "error": f"{report_date}: {lock_error}"}), 403
 
     conn = get_db()
+    results_by_date = {}
     try:
-        replace_hotel_ledger_entries(conn, company, location, sales_date_str, parsed["lines"])
-        conn.commit()
-        result = sync_hotel_sales_from_ledger(conn, user, company, location, sales_date_str)
+        for report_date, lines in sorted(lines_by_date.items()):
+            replace_hotel_ledger_entries(conn, company, location, report_date, lines)
+            conn.commit()
+            results_by_date[report_date] = sync_hotel_sales_from_ledger(conn, user, company, location, report_date)
     finally:
         conn.close()
 
     meta = parsed.get("meta", {})
+    imported_dates = meta.get("imported_dates") or sorted(lines_by_date)
+    response_date = sales_date_str if sales_date_str in results_by_date else imported_dates[0]
+    result = results_by_date[response_date]
     return jsonify({
         "ok": True,
-        "date": sales_date_str,
-        "message": f"Imported {meta.get('line_count', 0)} room lines for {sales_date_str}",
-        "ledger_entries": result["entries"],
+        "date": response_date,
+        "imported_dates": imported_dates,
+        "message": f"Imported {meta.get('line_count', 0)} invoice lines for {', '.join(imported_dates)}",
         "sales_entries": result["sales_entries"],
         "ledger_rollup": rollup_hotel_ledger_entries(result["entries"]),
         "meta": meta,
@@ -732,7 +2445,6 @@ def save_hotel_ledger():
     return jsonify({
         "ok": True,
         "date": sales_date,
-        "ledger_entries": result["entries"],
         "sales_entries": result["sales_entries"],
         "ledger_rollup": rollup_hotel_ledger_entries(result["entries"]),
         "difference": result["difference"],
@@ -770,7 +2482,6 @@ def clear_hotel_ledger():
     return jsonify({
         "ok": True,
         "date": sales_date,
-        "ledger_entries": [],
         "sales_entries": result["sales_entries"],
         "ledger_rollup": rollup_hotel_ledger_entries([]),
     })
@@ -781,44 +2492,55 @@ def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_i
     row = None if is_future else load_sales_row(company, location, sales_date)
     sales_entry_locked = bool(row and sales_date < today_iso and not user.get("is_admin"))
     sales_entries = row.get("sales_entry_values", {}) if row else {}
-    sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
+    if location in HOTEL_LOCATIONS:
+        sales_entries = build_hotel_sales_entry_values(sales_entries)
+        expense_total = _sales_expense_total(conn, company, location, sales_date)
+        sales_entries["expense"] = expense_total
+        expense_entries = _sales_expense_entries(conn, company, location, sales_date)
+    else:
+        sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
+        expense_entries = []
     petty_cash_counts = row.get("petty_cash_counts", {}) if row else {}
-    return {
+    bundle = {
         "sales_entry_values": sales_entries,
         "sales_entry_total": get_sales_entry_total(sales_entries),
         "sales_entry_locked": sales_entry_locked,
         "petty_cash_counts": petty_cash_counts,
         "petty_cash_total": get_denomination_total(petty_cash_counts),
     }
+    if location in HOTEL_LOCATIONS:
+        bundle["expense_entries"] = expense_entries
+        bundle["expense_total"] = expense_total
+    return bundle
 
 
-@app.route("/sales_update")
-@app.route("/sales_update/entry")
-def sales_update_entry():
-    user = get_current_user()
+def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
     selected_company = request.args.get("company", DEFAULT_COMPANY)
-    selected_location = request.args.get("location", DEFAULT_LOCATION)
     selected_date = request.args.get("date", date.today().isoformat())
     today_iso = date.today().isoformat()
 
     if selected_company not in SALES_COMPANY_LOCATIONS:
         selected_company = DEFAULT_COMPANY
     locations = SALES_COMPANY_LOCATIONS[selected_company]["locations"]
-    if selected_location not in locations:
-        selected_location = locations[0]
+    if outlet not in locations:
+        outlet = locations[0]
+
+    selected_location = outlet
+    selected_locations = [outlet]
 
     conn = get_db()
     try:
         outlet_records = {
-            location: _load_outlet_entry_bundle(
-                conn, user, selected_company, location, selected_date, today_iso
+            outlet: _load_outlet_entry_bundle(
+                conn, user, selected_company, outlet, selected_date, today_iso
             )
-            for location in locations
         }
         cash_transfer_entries = _sales_cash_transfer_entries(conn, selected_company, selected_location, selected_date)
         cash_transfer_total = _sales_cash_transfer_total(conn, selected_company, selected_location, selected_date)
         entry_date = _parse_sales_date(selected_date)
-        kpi_bundle = _sales_report_kpi_bundle(conn, entry_date, entry_date, selected_company, None)
+        kpi_bundle = _sales_report_kpi_bundle(
+            conn, entry_date, entry_date, selected_company, selected_location, difference_mode="cash_actual"
+        )
     finally:
         conn.close()
 
@@ -846,11 +2568,15 @@ def sales_update_entry():
 
     return render_template(
         "sales_update.html",
+        page_title=f"Sales Update - {outlet}",
+        page_subtitle=f"Upload reports and record daily {outlet} sales.",
+        filter_form_action=url_for(filter_endpoint),
+        hide_location_filter=True,
         selected_company=selected_company,
         selected_company_label=SALES_COMPANY_LOCATIONS[selected_company]["label"],
         selected_location=selected_location,
         selected_date=selected_date,
-        selected_locations=locations,
+        selected_locations=selected_locations,
         max_sales_date=today_iso,
         sales_company_locations=SALES_COMPANY_LOCATIONS,
         sales_entry_fields=SALES_ENTRY_FIELDS,
@@ -876,8 +2602,123 @@ def sales_update_entry():
         whatsapp_sales_report_company=None,
         sales_entry_total=sales_entry_total,
         de_nav_section="analytics",
-        de_nav_sales_view="outlets",
+        de_nav_sales_view=sales_view,
+        kpi_fourth_metric="room_transfer",
+        manual_sales_entry_keys=MANUAL_SALES_ENTRY_KEYS,
     )
+
+
+@app.route("/sales_update")
+@app.route("/sales_update/entry")
+def sales_update_entry():
+    return redirect(url_for("sales_update_bar", **request.args))
+
+
+@app.route("/sales_update/bar")
+def sales_update_bar():
+    user = get_current_user()
+    return _render_sales_update_outlet(user, OUTLET_BAR, "bar", "sales_update_bar")
+
+
+@app.route("/sales_update/restaurant")
+def sales_update_restaurant():
+    user = get_current_user()
+    return _render_sales_update_outlet(user, OUTLET_RESTAURANT, "restaurant", "sales_update_restaurant")
+
+
+@app.route("/sales_update/room_transfer")
+def sales_update_room_transfer():
+    user = get_current_user()
+    selected_company = request.args.get("company", DEFAULT_COMPANY)
+    selected_payment_status = _normalize_room_transfer_filter_status(request.args.get("status"))
+    selected_location = request.args.get("location", ROOM_TRANSFER_FILTER_ALL)
+
+    if selected_company not in SALES_COMPANY_LOCATIONS:
+        selected_company = DEFAULT_COMPANY
+    if selected_location not in ROOM_TRANSFER_FILTER_LOCATIONS:
+        selected_location = ROOM_TRANSFER_FILTER_ALL
+
+    conn = get_db()
+    try:
+        entries = load_room_transfer_entries_by_status(
+            conn, selected_company, selected_payment_status, selected_location
+        )
+        rollup = rollup_room_transfer_entries(entries)
+        summary_entries = load_room_transfer_entries_by_status(
+            conn, selected_company, "all", selected_location
+        )
+        summary_rollup = rollup_room_transfer_entries(summary_entries)
+    finally:
+        conn.close()
+
+    return render_template(
+        "sales_update_room_transfer.html",
+        page_title="Room Transfer",
+        page_subtitle="Room credit lines from Collections reports. Mark each as Paid when settled.",
+        filter_form_action=url_for("sales_update_room_transfer"),
+        selected_company=selected_company,
+        selected_company_label=SALES_COMPANY_LOCATIONS[selected_company]["label"],
+        selected_payment_status=selected_payment_status,
+        selected_location=selected_location,
+        room_transfer_filter_statuses=ROOM_TRANSFER_FILTER_STATUSES,
+        room_transfer_filter_locations=ROOM_TRANSFER_FILTER_LOCATIONS,
+        room_transfer_entries=entries,
+        room_transfer_rollup=rollup,
+        room_transfer_summary_rollup=summary_rollup,
+        room_transfer_payment_statuses=ROOM_TRANSFER_PAYMENT_STATUSES,
+        sales_update_is_admin=user.get("is_admin", False),
+        de_nav_section="analytics",
+        de_nav_sales_view="room_transfer",
+    )
+
+
+@app.route("/sales_update/room_transfer/save_status", methods=["POST"])
+def save_room_transfer_status():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+
+    data = request.get_json(silent=True) or {}
+    company = data.get("company", DEFAULT_COMPANY)
+    status_filter = _normalize_room_transfer_filter_status(data.get("status"))
+    location_filter = data.get("location", ROOM_TRANSFER_FILTER_ALL)
+    if location_filter not in ROOM_TRANSFER_FILTER_LOCATIONS:
+        location_filter = ROOM_TRANSFER_FILTER_ALL
+    updates = data.get("updates") or []
+    allowed = {status for status, _ in ROOM_TRANSFER_PAYMENT_STATUSES}
+
+    conn = get_db()
+    try:
+        for item in updates:
+            entry_id = item.get("id")
+            if not entry_id:
+                continue
+            payment_status = (item.get("payment_status") or "unpaid").strip().lower()
+            if payment_status not in allowed:
+                return jsonify({"ok": False, "error": "Invalid payment status."}), 400
+            conn.execute(
+                """UPDATE room_transfer_entries
+                   SET payment_status = ?, updated_at = datetime('now','localtime')
+                   WHERE id = ? AND company = ?""",
+                (payment_status, entry_id, company),
+            )
+        conn.commit()
+        entries = load_room_transfer_entries_by_status(conn, company, status_filter, location_filter)
+        rollup = rollup_room_transfer_entries(entries)
+        summary_rollup = rollup_room_transfer_entries(
+            load_room_transfer_entries_by_status(conn, company, "all", location_filter)
+        )
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "entries": entries,
+        "rollup": rollup,
+        "summary_rollup": summary_rollup,
+        "status": status_filter,
+        "location": location_filter,
+    })
 
 
 @app.route("/sales_update/save", methods=["POST"])
@@ -901,7 +2742,10 @@ def save_sales_update():
 
     conn = get_db()
     try:
-        sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
+        if location in HOTEL_LOCATIONS:
+            sales_entries = build_hotel_sales_entry_values(sales_entries)
+        else:
+            sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
     finally:
         conn.close()
 
@@ -945,9 +2789,20 @@ def upload_sales_report():
         return jsonify({"ok": False, "error": "Please choose an Excel report file."}), 400
 
     try:
-        parsed = parse_order_invoice_report(upload.stream, sales_date)
+        parsed = parse_sales_report(upload.stream, sales_date)
     except Exception as exc:
         return jsonify({"ok": False, "error": f"Could not read report: {exc}"}), 400
+
+    meta = parsed.get("meta", {})
+    imported_rows = int(meta.get("rows_bar") or 0) + int(meta.get("rows_restaurant") or 0)
+    if imported_rows == 0:
+        available = meta.get("available_dates") or []
+        error = f"No sales rows found in the report for {sales_date.isoformat()}."
+        if available:
+            error += f" Report contains data for: {', '.join(available)}."
+        else:
+            error += " Check that the file is a Collections report with invoice lines."
+        return jsonify({"ok": False, "error": error, "meta": meta}), 400
 
     company = DEFAULT_COMPANY
     results = {}
@@ -968,6 +2823,15 @@ def upload_sales_report():
         upsert_sales_row(user, company, outlet, sales_date.isoformat(), merged, petty, cash_denoms)
         results[outlet.lower()] = merged
 
+    room_lines = parsed.get("room_transfer_lines") or []
+    if room_lines:
+        conn = get_db()
+        try:
+            sync_room_transfer_entries(conn, company, sales_date.isoformat(), room_lines)
+            conn.commit()
+        finally:
+            conn.close()
+
     return jsonify({
         "ok": True,
         "date": sales_date.isoformat(),
@@ -983,11 +2847,93 @@ def upload_sales_report():
 def sales_update_add_expense():
     user = get_current_user()
     data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        result, error = _create_sales_expense(
+            conn,
+            user,
+            data,
+            include_sales_totals=True,
+        )
+        if error:
+            status = 403 if "Cannot save" in error or "already saved" in error else 400
+            return jsonify({"ok": False, "error": error}), status
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, **result})
+
+
+def _create_sales_expense(conn, user, data, *, default_location=None, include_sales_totals=False):
+    company = data.get("company", DEFAULT_COMPANY)
+    location = data.get("location", default_location or DEFAULT_LOCATION)
+    sales_date = data.get("date", "")
+    description = (data.get("description") or "").strip()
+    amount = parse_money(data.get("amount"))
+    payment_type = _normalize_expense_payment_type(data.get("payment_type"))
+    category = _normalize_expense_category(data.get("category"))
+    transaction_id = (data.get("transaction_id") or "").strip()
+    invoice_number = (data.get("invoice_number") or "").strip()
+    supplier_id = data.get("supplier_id")
+
+    lock_error = _check_sales_date_lock(user, company, location, sales_date)
+    if lock_error:
+        return None, lock_error
+
+    if not description or amount <= 0:
+        return None, "Description and positive amount are required."
+    if not supplier_id:
+        return None, "Please select a supplier."
+    if not category:
+        return None, "Please select a category."
+    if payment_type == EXPENSE_PAYMENT_BANK and not transaction_id:
+        return None, "Transaction ID is required for bank transfer."
+    if payment_type != EXPENSE_PAYMENT_BANK:
+        transaction_id = ""
+
+    supplier = _get_supplier(conn, supplier_id)
+    if not supplier:
+        return None, "Selected supplier was not found."
+
+    duplicate = _duplicate_expense_invoice(conn, supplier_id, invoice_number)
+    if duplicate:
+        code = duplicate["expense_code"] or f"#{duplicate['id']}"
+        return None, f"An expense with this supplier and invoice number already exists ({code})."
+
+    expense_code = _next_expense_code(conn, company)
+    cursor = conn.execute(
+        """INSERT INTO sales_update_expenses
+           (company, location, sales_date, description, amount, payment_type, transaction_id, supplier_id, category, expense_code, invoice_number)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (company, location, sales_date, description, amount, payment_type, transaction_id, supplier_id, category, expense_code, invoice_number),
+    )
+    expense_id = cursor.lastrowid
+    result = {
+        "expense_id": expense_id,
+        "expense_code": expense_code,
+        "sales_date": sales_date,
+    }
+    if include_sales_totals:
+        result["expense_total"] = _sales_expense_total(conn, company, location, sales_date)
+        result["expense_entries"] = _sales_expense_entries(conn, company, location, sales_date)
+    return result, None
+
+
+@app.route("/sales_update/edit_expense", methods=["POST"])
+def sales_update_edit_expense():
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    expense_id = data.get("id") or data.get("expense_id")
     company = data.get("company", DEFAULT_COMPANY)
     location = data.get("location", DEFAULT_LOCATION)
     sales_date = data.get("date", "")
     description = (data.get("description") or "").strip()
     amount = parse_money(data.get("amount"))
+    payment_type = _normalize_expense_payment_type(data.get("payment_type"))
+    category = _normalize_expense_category(data.get("category"))
+    transaction_id = (data.get("transaction_id") or "").strip()
+    invoice_number = (data.get("invoice_number") or "").strip()
+    supplier_id = data.get("supplier_id")
 
     lock_error = _check_sales_date_lock(user, company, location, sales_date)
     if lock_error:
@@ -995,42 +2941,38 @@ def sales_update_add_expense():
 
     if not description or amount <= 0:
         return jsonify({"ok": False, "error": "Description and positive amount are required."}), 400
+    if not supplier_id:
+        return jsonify({"ok": False, "error": "Please select a supplier."}), 400
+    if not category:
+        return jsonify({"ok": False, "error": "Please select a category."}), 400
+    if payment_type == EXPENSE_PAYMENT_BANK and not transaction_id:
+        return jsonify({"ok": False, "error": "Transaction ID is required for bank transfer."}), 400
+    if payment_type != EXPENSE_PAYMENT_BANK:
+        transaction_id = ""
 
     conn = get_db()
     try:
-        conn.execute(
-            "INSERT INTO sales_update_expenses (company, location, sales_date, description, amount) VALUES (?, ?, ?, ?, ?)",
-            (company, location, sales_date, description, amount),
+        supplier = _get_supplier(conn, supplier_id)
+        if not supplier:
+            return jsonify({"ok": False, "error": "Selected supplier was not found."}), 400
+        duplicate = _duplicate_expense_invoice(
+            conn, supplier_id, invoice_number, exclude_expense_id=expense_id
         )
-        conn.commit()
-        expense_total = _sales_expense_total(conn, company, location, sales_date)
-        expense_entries = _sales_expense_entries(conn, company, location, sales_date)
-    finally:
-        conn.close()
-
-    return jsonify({"ok": True, "expense_total": expense_total, "expense_entries": expense_entries})
-
-
-@app.route("/sales_update/edit_expense", methods=["POST"])
-def sales_update_edit_expense():
-    user = get_current_user()
-    data = request.get_json(silent=True) or {}
-    expense_id = data.get("id")
-    company = data.get("company", DEFAULT_COMPANY)
-    location = data.get("location", DEFAULT_LOCATION)
-    sales_date = data.get("date", "")
-    description = (data.get("description") or "").strip()
-    amount = parse_money(data.get("amount"))
-
-    lock_error = _check_sales_date_lock(user, company, location, sales_date)
-    if lock_error:
-        return jsonify({"ok": False, "error": lock_error}), 403
-
-    conn = get_db()
-    try:
+        if duplicate:
+            code = duplicate["expense_code"] or f"#{duplicate['id']}"
+            return jsonify({
+                "ok": False,
+                "error": f"An expense with this supplier and invoice number already exists ({code}).",
+            }), 400
         conn.execute(
-            "UPDATE sales_update_expenses SET description=?, amount=?, updated_at=datetime('now','localtime') WHERE id=? AND company=? AND location=? AND sales_date=?",
-            (description, amount, expense_id, company, location, sales_date),
+            """UPDATE sales_update_expenses
+               SET description=?, amount=?, payment_type=?, transaction_id=?, supplier_id=?, category=?,
+                   invoice_number=?, updated_at=datetime('now','localtime')
+               WHERE id=? AND company=? AND location=? AND sales_date=?""",
+            (
+                description, amount, payment_type, transaction_id, supplier_id, category,
+                invoice_number, expense_id, company, location, sales_date,
+            ),
         )
         conn.commit()
         expense_total = _sales_expense_total(conn, company, location, sales_date)
@@ -1045,7 +2987,7 @@ def sales_update_edit_expense():
 def sales_update_delete_expense():
     user = get_current_user()
     data = request.get_json(silent=True) or {}
-    expense_id = data.get("id")
+    expense_id = data.get("id") or data.get("expense_id")
     company = data.get("company", DEFAULT_COMPANY)
     location = data.get("location", DEFAULT_LOCATION)
     sales_date = data.get("date", "")
@@ -1255,6 +3197,328 @@ def sales_update_delete_bill_payment():
 @app.route("/sales_update/send_whatsapp_report", methods=["POST"])
 def sales_update_send_whatsapp_report():
     return jsonify({"ok": False, "error": "WhatsApp report is not configured."}), 501
+
+
+def _supplier_page_render(template, **kwargs):
+    kwargs.setdefault("auth_notice", _pop_auth_notice())
+    kwargs.setdefault("de_nav_section", "accounts")
+    kwargs.setdefault("de_nav_accounts_view", "supplier_master")
+    return render_template(template, **kwargs)
+
+
+@app.route("/suppliers")
+def supplier_master():
+    user = get_current_user()
+    if not user_can_access_supplier_master(user):
+        return _permission_denied_response("You do not have access to Supplier Master.")
+
+    selected_supplier_id = request.args.get("supplier_id", "").strip()
+    saved_flag = request.args.get("saved", "").strip()
+    form_focus = request.args.get("focus", "").strip() == "form"
+
+    conn = get_db()
+    try:
+        suppliers = _all_suppliers(conn)
+        selected_supplier = None
+        if selected_supplier_id:
+            selected_supplier = _get_supplier(conn, selected_supplier_id)
+    finally:
+        conn.close()
+
+    form = selected_supplier or _supplier_form_payload()
+    if selected_supplier:
+        form = dict(form)
+        form["id"] = selected_supplier["id"]
+    else:
+        form = {"id": "", **_supplier_form_payload()}
+
+    success_message = ""
+    if saved_flag == "created":
+        success_message = "Supplier created successfully."
+    elif saved_flag == "updated":
+        success_message = "Supplier updated successfully."
+    elif saved_flag == "deleted":
+        success_message = "Supplier deleted successfully."
+
+    return _supplier_page_render(
+        "supplier_master.html",
+        suppliers=suppliers,
+        form=form,
+        selected_supplier=selected_supplier,
+        errors=[],
+        success_message=success_message,
+        form_focus=form_focus or bool(selected_supplier),
+        show_form=form_focus or bool(selected_supplier),
+    )
+
+
+@app.route("/suppliers/save", methods=["POST"])
+def save_supplier():
+    user = get_current_user()
+    if not user_can_access_supplier_master(user):
+        return _permission_denied_response("You do not have access to Supplier Master.")
+
+    supplier_id_raw = request.form.get("supplier_id", "").strip()
+    supplier_id = int(supplier_id_raw) if supplier_id_raw else None
+    payload = _supplier_form_payload(request.form)
+
+    conn = get_db()
+    try:
+        saved_id, errors = _save_supplier_record(conn, payload, supplier_id=supplier_id)
+        if errors:
+            suppliers = _all_suppliers(conn)
+            selected_supplier = _get_supplier(conn, supplier_id) if supplier_id else None
+            form = dict(payload)
+            form["id"] = supplier_id or ""
+            return _supplier_page_render(
+                "supplier_master.html",
+                suppliers=suppliers,
+                form=form,
+                selected_supplier=selected_supplier,
+                errors=errors,
+                success_message="",
+                form_focus=True,
+                show_form=True,
+            ), 400
+        conn.commit()
+    finally:
+        conn.close()
+
+    result_flag = "updated" if supplier_id else "created"
+    return redirect(url_for("supplier_master", saved=result_flag))
+
+
+@app.route("/suppliers/delete", methods=["POST"])
+def delete_supplier():
+    user = get_current_user()
+    if not user_can_access_supplier_master(user):
+        return _permission_denied_response("You do not have access to Supplier Master.")
+
+    supplier_id = request.form.get("supplier_id", "").strip()
+    if not supplier_id:
+        _queue_auth_notice("Supplier not found.")
+        return redirect(url_for("supplier_master"))
+
+    conn = get_db()
+    try:
+        in_use = conn.execute(
+            "SELECT COUNT(*) AS total FROM sales_update_expenses WHERE supplier_id = ?",
+            (supplier_id,),
+        ).fetchone()["total"]
+        if in_use:
+            _queue_auth_notice("This supplier cannot be deleted because it is linked to existing expenses.")
+            return redirect(url_for("supplier_master", supplier_id=supplier_id))
+        conn.execute("DELETE FROM suppliers WHERE id = ?", (supplier_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return redirect(url_for("supplier_master", saved="deleted"))
+
+
+@app.route("/suppliers/create", methods=["POST"])
+def create_supplier():
+    user = get_current_user()
+    can_add = (
+        user_can_access_supplier_master(user)
+        or user_can_access_sales_analytics_submodule(user, "hotel")
+        or user_can_access_dashboard(user, "accounts")
+    )
+    if not can_add:
+        return jsonify({"ok": False, "error": "You do not have access to add suppliers."}), 403
+
+    data = request.get_json(silent=True) or {}
+    payload = _supplier_form_payload(data)
+
+    conn = get_db()
+    try:
+        saved_id, errors = _save_supplier_record(conn, payload)
+        if errors:
+            return jsonify({"ok": False, "error": errors[0], "errors": errors}), 400
+        conn.commit()
+        supplier = _get_supplier(conn, saved_id)
+        suppliers = _all_suppliers(conn)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "supplier": supplier, "suppliers": suppliers})
+
+
+@app.route("/access-management")
+def access_management():
+    user = get_current_user()
+    selected_user_id = request.args.get("user_id", "").strip()
+    saved_flag = request.args.get("saved", "").strip()
+    form_focus = request.args.get("focus", "").strip() == "form"
+    can_users = user_can_access_user_access_submodule(user, "users")
+    can_add = user_can_access_user_access_submodule(user, "add")
+
+    if form_focus:
+        if not can_add and not (selected_user_id and can_users):
+            if can_users:
+                return redirect(url_for("access_management"))
+            return _permission_denied_response("You do not have access to Add User.")
+    elif not can_users:
+        if can_add:
+            return redirect(url_for("access_management", focus="form"))
+        return _permission_denied_response("You do not have access to Users.")
+
+    conn = get_db()
+    try:
+        users, selected_user = fetch_access_management_users(conn, selected_user_id or None)
+    finally:
+        conn.close()
+
+    form = {
+        "id": selected_user["id"] if selected_user else "",
+        "username": selected_user["username"] if selected_user else "",
+        "full_name": selected_user.get("full_name", "") if selected_user else "",
+        "is_admin": bool(selected_user["is_admin"]) if selected_user else False,
+        "dashboard_modules": dashboard_access_list(selected_user) if selected_user else [],
+        "sales_analytics_modules": sales_analytics_access_list(selected_user) if selected_user else [],
+        "user_access_modules": user_access_submodule_list(selected_user) if selected_user else [],
+        "payroll_modules": payroll_access_list(selected_user) if selected_user else [],
+    }
+    success_message = ""
+    if saved_flag == "created":
+        success_message = "User created successfully."
+    elif saved_flag == "updated":
+        success_message = "User access updated successfully."
+
+    return _am_page_render(
+        "access_management.html",
+        users=users,
+        form=form,
+        selected_user=selected_user,
+        errors=[],
+        success_message=success_message,
+        form_focus=form_focus,
+    )
+
+
+@app.route("/access-management/save", methods=["POST"])
+def save_access_user():
+    actor = get_current_user()
+    user_id_raw = request.form.get("user_id", "").strip()
+    username = normalize_username(request.form.get("username"))
+    full_name = (request.form.get("full_name") or "").strip()
+    password = request.form.get("password", "")
+    is_admin = bool(request.form.get("is_admin"))
+    dashboard_modules = request.form.getlist("dashboard_modules")
+    sales_analytics_modules = request.form.getlist("sales_analytics_modules")
+    user_access_modules = request.form.getlist("user_access_modules")
+    payroll_modules = request.form.getlist("payroll_modules")
+
+    if sales_analytics_modules and not is_admin and "sales_analytics" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["sales_analytics"]
+    if user_access_modules and not is_admin and "access_management" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["access_management"]
+    if payroll_modules and not is_admin and "employee_payroll" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["employee_payroll"]
+
+    try:
+        user_id = int(user_id_raw) if user_id_raw else None
+    except (TypeError, ValueError):
+        user_id = None
+
+    conn = get_db()
+    try:
+        errors, _original = validate_access_user_form(
+            conn,
+            actor=actor,
+            user_id=user_id,
+            username=username,
+            password=password,
+            is_admin=is_admin,
+            dashboard_modules=dashboard_modules,
+            sales_analytics_modules=sales_analytics_modules,
+            user_access_modules=user_access_modules,
+            payroll_modules=payroll_modules,
+        )
+        if errors:
+            users, selected_user = fetch_access_management_users(conn, user_id)
+            form = {
+                "id": user_id or "",
+                "username": username,
+                "full_name": full_name,
+                "is_admin": is_admin,
+                "dashboard_modules": dashboard_modules,
+                "sales_analytics_modules": sales_analytics_modules,
+                "user_access_modules": user_access_modules,
+                "payroll_modules": payroll_modules,
+            }
+            return _am_page_render(
+                "access_management.html",
+                users=users,
+                form=form,
+                selected_user=selected_user,
+                errors=errors,
+                success_message="",
+                form_focus=True,
+            ), 400
+
+        saved_user_id, result_flag = save_access_user_record(
+            conn,
+            user_id=user_id,
+            username=username,
+            full_name=full_name,
+            password=password,
+            is_admin=is_admin,
+            dashboard_modules=dashboard_modules,
+            sales_analytics_modules=sales_analytics_modules,
+            user_access_modules=user_access_modules,
+            payroll_modules=payroll_modules,
+            sql_now=SQL_NOW,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    if user_id and actor and int(actor["id"]) == int(saved_user_id):
+        g._auth_loaded = False
+        get_current_user()
+
+    return redirect(url_for("access_management", user_id=saved_user_id, saved=result_flag))
+
+
+@app.route("/access-management/delete/<int:user_id>", methods=["POST"])
+def delete_access_user(user_id):
+    actor = get_current_user()
+    if not user_can_access_user_access_submodule(actor, "users"):
+        return _permission_denied_response("You do not have access to delete users.")
+
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            _queue_auth_notice("User not found.")
+            return redirect(url_for("access_management"))
+
+        user = build_user_context(conn, row)
+        if is_system_administrator(user):
+            _queue_auth_notice("The default administrator account cannot be deleted.")
+            return redirect(url_for("access_management"))
+
+        if actor and int(actor["id"]) == int(user_id):
+            _queue_auth_notice("You cannot delete the account you are currently using.")
+            return redirect(url_for("access_management"))
+
+        active_admin_count = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM users WHERE is_admin = 1 AND is_active = 1"
+            ).fetchone()[0]
+        )
+        if user.get("is_admin") and user.get("is_active") and active_admin_count <= 1:
+            _queue_auth_notice("At least one active administrator must remain in the system.")
+            return redirect(url_for("access_management"))
+
+        conn.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
+        conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return redirect(url_for("access_management"))
 
 
 if __name__ == "__main__":

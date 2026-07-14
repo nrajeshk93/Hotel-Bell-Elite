@@ -1,0 +1,2916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Employee Payroll | Hotel Bell Elite</title>
+<meta name="description" content="Employee payroll, attendance, reports and credit management for Hotel Bell Elite.">
+<meta name="robots" content="noindex,nofollow,noarchive">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){
+      document.documentElement.classList.add('de-sidebar-wide-boot');
+    }
+  }catch(e){}
+})();
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=19">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --sw:230px;--th:60px;
+  --bg:#F4F6F9;--card:#FFFFFF;--border:#E2E8F0;--border-s:#EEF2F7;
+  --acc:#1877F2;--acc-h:#1560D4;--acc-bg:#EEF5FF;
+  --sb-bg:#FFFFFF;--sb-txt:#64748B;--sb-act:#1877F2;
+  --txt:#1A202C;--txt2:#4A5568;--txt3:#94A3B8;--entry:#FFFFFF;
+  --ok:#16A34A;--ok-bg:#F0FDF4;--err:#DC2626;--err-bg:#FEF2F2;
+  --warn:#D97706;--warn-bg:#FFFBEB;--pur:#7C3AED;--pur-bg:#F5F3FF;
+  --aim-blue:rgba(66,133,244,.92);--aim-green:rgba(52,168,83,.9);
+  --aim-yellow:rgba(251,188,5,.92);--aim-red:rgba(234,67,53,.9);
+  --aim-blur:5px;--aim-ring:2px;
+  --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --sh2:0 4px 16px rgba(0,0,0,.06);--r:10px;--rs:6px;
+}
+html,body{min-height:100vh;background:var(--bg);color:var(--txt);font-family:'Inter','Segoe UI',system-ui,sans-serif;font-size:14px;line-height:1.5;}
+
+@property --aim-angle{
+  syntax:"<angle>";
+  inherits:false;
+  initial-value:0deg;
+}
+
+@keyframes ai-hover-border-sweep{
+  to{--aim-angle:360deg;}
+}
+
+/* ── App shell ── */
+.app-shell{display:flex;min-height:100vh;}
+
+/* Legacy sidebar styles replaced by de_workspace_shell.css on payroll pages */
+/* ── Main wrapper ── */
+.main-wrapper{flex:1;min-width:0;display:flex;flex-direction:column;min-height:100vh;}
+
+/* ── Sidebar collapsed state ── */
+body.sb-off #ep-workspace.de-module .de-sidebar{transform:translateX(calc(-202px - 12px));}
+
+/* ── Topbar ── */
+.topbar{background:var(--card);border-bottom:1px solid var(--border);height:var(--th);display:flex;align-items:center;padding:0 22px;gap:14px;position:sticky;top:0;z-index:30;box-shadow:var(--sh);}
+.menu-btn{display:none;background:none;border:1px solid var(--border);border-radius:var(--rs);padding:6px 8px;cursor:pointer;color:var(--txt2);align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
+.menu-btn:hover{background:var(--acc-bg);color:var(--acc);border-color:var(--acc);}
+.menu-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;}
+.topbar-title{font-size:15px;font-weight:700;color:var(--txt);white-space:nowrap;}
+.topbar-sep{width:1px;height:20px;background:var(--border);flex-shrink:0;}
+.topbar-sub{font-size:12px;color:var(--txt3);white-space:nowrap;}
+.topbar-sp{flex:1;}
+.topbar-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+
+/* ── Content ── */
+.content{padding:22px 24px 48px;flex:1;}
+
+/* ── KPI grid ── */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh);display:flex;align-items:flex-start;gap:14px;}
+.kpi-icon{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.kpi-icon svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.kpi-icon.blue{background:var(--acc-bg);color:var(--acc);}
+.kpi-icon.green{background:var(--ok-bg);color:var(--ok);}
+.kpi-icon.orange{background:var(--warn-bg);color:var(--warn);}
+.kpi-icon.purple{background:var(--pur-bg);color:var(--pur);}
+.kpi-icon.red{background:var(--err-bg);color:var(--err);}
+.kpi-body{flex:1;min-width:0;}
+.kpi-lbl{font-size:10px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
+.kpi-val{font-size:22px;font-weight:800;color:var(--txt);line-height:1.1;}
+.kpi-meta{font-size:11px;color:var(--txt3);margin-top:3px;}
+
+/* ── Card ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;margin-bottom:18px;}
+.card:last-child{margin-bottom:0;}
+.card-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border-s);gap:12px;flex-wrap:wrap;}
+.card-title{font-size:13px;font-weight:700;color:var(--txt);display:flex;align-items:center;gap:7px;}
+.card-title svg{width:15px;height:15px;stroke:var(--txt3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.card-body{padding:18px;}
+.card-body.no-pad{padding:0;}
+
+/* ── Form ── */
+label{display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;}
+input[type="text"],input[type="number"],textarea,select{width:100%;background:var(--entry);border:1px solid var(--border);color:var(--txt);font-family:inherit;font-size:13px;padding:9px 12px;border-radius:var(--rs);outline:none;transition:border-color .15s,box-shadow .15s;}
+input:focus,textarea:focus,select:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(24,119,242,.08);}
+textarea{resize:vertical;min-height:60px;}
+select{cursor:pointer;}
+input::placeholder,textarea::placeholder{color:var(--txt3);}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;}
+.form-grid.three{grid-template-columns:1fr 1fr 1fr;}
+.form-full{grid-column:1/-1;}
+.form-sec-title{font-size:10px;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border-s);}
+.form-actions{display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-s);}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 14px;min-height:32px;border:none;border-radius:var(--rs);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1;white-space:nowrap;}
+.btn-primary{background:var(--acc);color:#fff;}
+.btn-primary:hover{background:var(--acc-h);box-shadow:0 4px 12px rgba(24,119,242,.3);}
+.btn-secondary{background:var(--entry);color:var(--txt2);border:1px solid var(--border);}
+.btn-secondary:hover{background:#F1F5F9;color:var(--txt);}
+.btn-danger{background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);}
+.btn-danger:hover{background:rgba(220,38,38,.15);}
+.btn-success{background:var(--ok-bg);color:var(--ok);border:1px solid rgba(22,163,74,.2);}
+.btn-success:hover{background:rgba(22,163,74,.15);}
+.btn-warn{background:var(--warn-bg);color:var(--warn);border:1px solid rgba(217,119,6,.2);}
+.btn-warn:hover{background:rgba(217,119,6,.15);}
+.btn-purple{background:var(--pur-bg);color:var(--pur);border:1px solid rgba(124,58,237,.2);}
+.btn-purple:hover{background:rgba(124,58,237,.15);}
+.btn-sm{padding:4px 9px;min-height:26px;font-size:11px;}
+.btn:disabled{opacity:.55;cursor:not-allowed;box-shadow:none;}
+
+/* ── Google AI Mode style hover border glow ── */
+.nav-item,.sb-pin-btn,.menu-btn,.btn,.ftab,.mnav-btn,.cal-day,.att-opt,.sd-trigger,.file-input-wrap,.btn-clear,.report-month-chip,.report-type-card,.rtc-dl,.act-btn{
+  position:relative;
+  isolation:isolate;
+}
+.nav-item::after,.sb-pin-btn::after,.menu-btn::after,.btn::after,.ftab::after,.mnav-btn::after,.cal-day::after,.att-opt::after,.sd-trigger::after,.file-input-wrap::after,.btn-clear::after,.report-month-chip::after,.report-type-card::after,.rtc-dl::after{
+  content:'';
+  position:absolute;
+  inset:-1.4px;
+  border-radius:inherit;
+  padding:var(--aim-ring);
+  background:conic-gradient(from var(--aim-angle),
+    transparent 0deg 202deg,
+    rgba(66,133,244,0) 214deg,
+    rgba(66,133,244,.9) 228deg,
+    var(--aim-blue) 242deg,
+    var(--aim-green) 262deg,
+    var(--aim-yellow) 286deg,
+    var(--aim-red) 310deg,
+    rgba(66,133,244,.82) 332deg,
+    transparent 350deg 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask-composite:exclude;
+  filter:blur(var(--aim-blur)) saturate(1.18);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s ease;
+}
+.act-btn::before{
+  content:'';
+  position:absolute;
+  inset:-1.25px;
+  border-radius:inherit;
+  padding:1.8px;
+  background:conic-gradient(from var(--aim-angle),
+    transparent 0deg 202deg,
+    rgba(66,133,244,0) 214deg,
+    rgba(66,133,244,.9) 228deg,
+    var(--aim-blue) 242deg,
+    var(--aim-green) 262deg,
+    var(--aim-yellow) 286deg,
+    var(--aim-red) 310deg,
+    rgba(66,133,244,.82) 332deg,
+    transparent 350deg 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  mask-composite:exclude;
+  filter:blur(4px) saturate(1.18);
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .18s ease;
+}
+.nav-item:hover::after,.nav-item:focus-visible::after,.sb-pin-btn:hover::after,.sb-pin-btn:focus-visible::after,.menu-btn:hover::after,.menu-btn:focus-visible::after,.btn:hover::after,.btn:focus-visible::after,.ftab:hover::after,.ftab:focus-visible::after,.mnav-btn:hover::after,.mnav-btn:focus-visible::after,.cal-day:hover::after,.cal-day:focus-visible::after,.att-opt:hover::after,.att-opt:focus-visible::after,.sd-trigger:hover::after,.sd-trigger:focus-visible::after,.sd-trigger.open::after,.file-input-wrap:hover::after,.file-input-wrap:focus-within::after,.btn-clear:hover::after,.btn-clear:focus-visible::after,.report-month-chip:hover::after,.report-type-card:hover::after,.report-type-card:focus-within::after,.rtc-dl:hover::after,.rtc-dl:focus-visible::after,.act-btn:hover::before,.act-btn:focus-visible::before{
+  opacity:1;
+  animation:ai-hover-border-sweep 1.55s linear infinite;
+}
+.btn:disabled::after,.btn[disabled]::after,.cal-day.empty::after,.cal-day.future::after{
+  display:none;
+}
+
+@media (prefers-reduced-motion:reduce){
+  .nav-item:hover::after,.nav-item:focus-visible::after,.sb-pin-btn:hover::after,.sb-pin-btn:focus-visible::after,.menu-btn:hover::after,.menu-btn:focus-visible::after,.btn:hover::after,.btn:focus-visible::after,.ftab:hover::after,.ftab:focus-visible::after,.mnav-btn:hover::after,.mnav-btn:focus-visible::after,.cal-day:hover::after,.cal-day:focus-visible::after,.att-opt:hover::after,.att-opt:focus-visible::after,.sd-trigger:hover::after,.sd-trigger:focus-visible::after,.sd-trigger.open::after,.file-input-wrap:hover::after,.file-input-wrap:focus-within::after,.btn-clear:hover::after,.btn-clear:focus-visible::after,.report-month-chip:hover::after,.report-type-card:hover::after,.report-type-card:focus-within::after,.rtc-dl:hover::after,.rtc-dl:focus-visible::after,.act-btn:hover::before,.act-btn:focus-visible::before{
+    animation:none;
+  }
+}
+
+/* ── Search ── */
+.search-wrap{position:relative;flex:1;min-width:160px;max-width:300px;}
+.search-wrap svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:13px;height:13px;stroke:var(--txt3);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.search-wrap input{padding-left:30px;height:32px;font-size:12px;}
+
+/* ── Filter tabs ── */
+.filter-tabs{display:flex;gap:4px;}
+.ftab{padding:4px 11px;border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;border:1px solid var(--border);color:var(--txt2);background:var(--card);transition:all .15s;}
+.ftab:hover{border-color:var(--acc);color:var(--acc);}
+.ftab.ft-all{background:var(--acc);color:#fff;border-color:var(--acc);}
+.ftab.ft-active{background:var(--ok-bg);color:var(--ok);border-color:rgba(22,163,74,.3);}
+.ftab.ft-inactive{background:var(--err-bg);color:var(--err);border-color:rgba(220,38,38,.3);}
+
+/* ── Table ── */
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead th{background:#F8FAFD;color:var(--txt3);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:10px 14px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;}
+tbody td{padding:9px 14px;border-bottom:1px solid var(--border-s);color:var(--txt);vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:rgba(24,119,242,.025);}
+tfoot td{padding:9px 14px;background:#F8FAFD;border-top:1px solid var(--border);}
+.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;}
+.num.blue{color:#3B82F6;}.num.orange{color:var(--warn);}.num.purple{color:var(--pur);}.num.green{color:var(--ok);}.num.red{color:var(--err);}
+thead th.num{text-align:right;font-variant-numeric:tabular-nums;}
+tbody td.center{text-align:center;}
+thead th.center{text-align:center;}
+.emp-id-cell{color:var(--txt3);font-size:11px;font-weight:600;}
+.emp-name{font-weight:600;color:var(--txt);}
+.emp-co{font-size:10px;font-weight:700;background:var(--acc-bg);color:var(--acc);padding:2px 6px;border-radius:4px;display:inline-block;}
+.actions{white-space:nowrap;display:flex;gap:4px;}
+.empty-state{text-align:center;padding:48px 24px;color:var(--txt3);}
+.empty-state p{font-size:13px;margin-top:6px;}
+
+/* ── Badge ── */
+.badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.3px;line-height:1.5;}
+.bg-green{background:var(--ok-bg);color:var(--ok);}
+.bg-red{background:var(--err-bg);color:var(--err);}
+.bg-orange{background:var(--warn-bg);color:var(--warn);}
+.bg-blue{background:var(--acc-bg);color:var(--acc);}
+.bg-gray{background:#F1F5F9;color:var(--txt3);}
+
+/* ── Month nav ── */
+.month-nav{display:flex;align-items:center;gap:6px;}
+.mnav-btn{width:28px;height:28px;background:var(--entry);border:1px solid var(--border);border-radius:var(--rs);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--txt2);text-decoration:none;transition:all .15s;font-size:13px;}
+.mnav-btn:hover{background:var(--acc-bg);border-color:var(--acc);color:var(--acc);}
+.mnav-lbl{font-size:13px;font-weight:700;color:var(--txt);min-width:126px;text-align:center;}
+
+/* ── Salary strip ── */
+.sal-strip{display:grid;grid-template-columns:repeat(4,1fr);}
+.sal-item{padding:14px 16px;border-right:1px solid var(--border-s);text-align:center;}
+.sal-item:last-child{border-right:none;}
+.sal-lbl{font-size:9px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
+.sal-val{font-size:18px;font-weight:800;color:var(--txt);}
+.sal-val.blue{color:#3B82F6;}.sal-val.orange{color:var(--warn);}.sal-val.purple{color:var(--pur);}.sal-val.green{color:var(--ok);}.sal-val.red{color:var(--err);}
+
+/* ── Attendance strip (8 cols) ── */
+.att-strip{display:grid;grid-template-columns:repeat(8,1fr);border-bottom:1px solid var(--border-s);}
+.att-si{padding:11px 8px;border-right:1px solid var(--border-s);text-align:center;}
+.att-si:last-child{border-right:none;}
+.att-slbl{font-size:9px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;}
+.att-sval{font-size:15px;font-weight:800;color:var(--txt);}
+
+/* ── Calendar ── */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;padding:16px;}
+.cal-hdr{font-size:9px;font-weight:700;color:var(--txt3);text-transform:uppercase;text-align:center;padding:6px 0;letter-spacing:.3px;}
+.cal-day{background:var(--entry);border:1px solid var(--border);border-radius:8px;padding:7px 4px;text-align:center;min-height:54px;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:3px;}
+.cal-day:hover{border-color:var(--acc);background:var(--acc-bg);}
+.cal-day.empty{background:transparent;border-color:transparent;cursor:default;}
+.cal-day.empty:hover{background:transparent;border-color:transparent;}
+.day-num{font-size:12px;font-weight:700;color:var(--txt);}
+.day-st{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;padding:2px 5px;border-radius:3px;line-height:1.4;}
+.cal-day.status-present{border-color:rgba(22,163,74,.35);background:rgba(22,163,74,.06);}
+.cal-day.status-present .day-st{background:rgba(22,163,74,.18);color:var(--ok);}
+.cal-day.status-absent{border-color:rgba(220,38,38,.35);background:rgba(220,38,38,.06);}
+.cal-day.status-absent .day-st{background:rgba(220,38,38,.18);color:var(--err);}
+.cal-day.status-half_day{border-color:rgba(217,119,6,.35);background:rgba(217,119,6,.06);}
+.cal-day.status-half_day .day-st{background:rgba(217,119,6,.18);color:var(--warn);}
+.cal-day.status-holiday{border-color:rgba(24,119,242,.3);background:rgba(24,119,242,.06);}
+.cal-day.status-holiday .day-st{background:rgba(24,119,242,.18);color:var(--acc);}
+.cal-day.today{box-shadow:0 0 0 2px var(--acc);}
+.cal-day.future{opacity:.38;cursor:not-allowed;pointer-events:none;}
+.cal-day.future:hover{border-color:var(--border);background:var(--entry);}
+
+/* ── Att popup ── */
+.att-popup{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;}
+.att-popup.active{display:flex;}
+.att-popup-inner{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:22px 24px;width:290px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.18);}
+.att-popup-inner h3{font-size:14px;font-weight:700;margin-bottom:14px;color:var(--txt);}
+.att-options{display:flex;flex-direction:column;gap:6px;}
+.att-opt{padding:10px 14px;border-radius:7px;border:1px solid var(--border);background:var(--entry);cursor:pointer;font-size:13px;font-weight:600;text-align:center;transition:all .15s;font-family:inherit;color:var(--txt);}
+.att-opt:hover{border-color:var(--acc);}
+.att-opt.present{color:var(--ok);border-color:rgba(22,163,74,.3);}
+.att-opt.present:hover{background:var(--ok-bg);}
+.att-opt.absent{color:var(--err);border-color:rgba(220,38,38,.3);}
+.att-opt.absent:hover{background:var(--err-bg);}
+.att-opt.half_day{color:var(--warn);border-color:rgba(217,119,6,.3);}
+.att-opt.half_day:hover{background:var(--warn-bg);}
+.att-opt.clear{color:var(--txt3);}
+.att-cancel{margin-top:10px;text-align:center;}
+
+/* ── Inline salary ── */
+.inline-sal{width:86px;background:var(--entry);border:1px solid var(--border);color:var(--txt);font-family:inherit;font-size:12px;padding:5px 7px;border-radius:var(--rs);text-align:right;font-weight:600;font-variant-numeric:tabular-nums;transition:border-color .15s;}
+.inline-sal:focus{border-color:var(--acc);outline:none;}
+.inline-sal.saving{border-color:var(--warn);}
+.inline-sal.saved{border-color:var(--ok);}
+.inline-sal.error{border-color:var(--err);}
+
+/* ── Searchable dropdown ── */
+.sd-wrap{position:relative;}
+.sd-trigger{width:100%;background:var(--entry);border:1px solid var(--border);color:var(--txt);font-family:inherit;font-size:13px;padding:9px 12px;border-radius:var(--rs);cursor:pointer;display:flex;align-items:center;justify-content:space-between;transition:border-color .15s;user-select:none;gap:8px;}
+.sd-trigger:hover{border-color:var(--acc);}
+.sd-trigger.open{border-color:var(--acc);border-radius:var(--rs) var(--rs) 0 0;}
+.sd-arrow{flex-shrink:0;transition:transform .18s;color:var(--txt3);}
+.sd-trigger.open .sd-arrow{transform:rotate(180deg);}
+.sd-panel{position:absolute;top:100%;left:0;right:0;z-index:300;background:var(--card);border:1px solid var(--acc);border-top:none;border-radius:0 0 8px 8px;box-shadow:var(--sh2);overflow:hidden;display:none;}
+.sd-search-wrap{padding:7px 7px 4px;}
+.sd-search{width:100%;background:var(--entry);border:1px solid var(--border);color:var(--txt);font-family:inherit;font-size:12px;padding:7px 10px;border-radius:5px;outline:none;}
+.sd-search:focus{border-color:var(--acc);}
+.sd-list{max-height:190px;overflow-y:auto;padding:4px 6px 7px;}
+.sd-item{padding:8px 10px;border-radius:5px;cursor:pointer;font-size:13px;color:var(--txt);transition:background .1s;}
+.sd-item:hover{background:var(--acc-bg);color:var(--acc);}
+.sd-item.active{background:var(--acc-bg);color:var(--acc);}
+.sd-item.selected{font-weight:700;color:var(--acc);}
+.sd-empty{padding:9px 12px;font-size:12px;color:var(--txt3);text-align:center;}
+
+/* ── Import modal ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;align-items:center;justify-content:center;}
+.modal-overlay.active{display:flex;}
+.modal-box{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px 26px;width:440px;max-width:92vw;box-shadow:0 20px 60px rgba(0,0,0,.18);}
+.modal-box h3{font-size:15px;font-weight:700;color:var(--txt);margin-bottom:6px;}
+.modal-box p{font-size:12px;color:var(--txt3);margin-bottom:16px;line-height:1.6;}
+.modal-box .modal-cols{font-size:11px;background:#F8FAFD;border:1px solid var(--border-s);border-radius:var(--rs);padding:10px 14px;margin-bottom:16px;color:var(--txt2);font-family:monospace;}
+.modal-actions{display:flex;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid var(--border-s);}
+.file-input-wrap{border:2px dashed var(--border);border-radius:var(--rs);padding:18px;text-align:center;cursor:pointer;transition:border-color .15s;}
+.file-input-wrap:hover{border-color:var(--acc);}
+.file-input-wrap input[type="file"]{display:none;}
+.file-input-wrap .fi-label{font-size:13px;color:var(--txt2);font-weight:500;}
+.file-input-wrap .fi-hint{font-size:11px;color:var(--txt3);margin-top:4px;}
+.file-chosen{font-size:12px;color:var(--ok);font-weight:600;margin-top:8px;display:none;}
+
+/* ── Import result banner ── */
+.import-banner{padding:10px 16px;border-radius:var(--rs);font-size:12px;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.import-banner.ok{background:var(--ok-bg);border:1px solid rgba(22,163,74,.25);color:var(--ok);}
+.import-banner.err{background:var(--err-bg);border:1px solid rgba(220,38,38,.25);color:var(--err);}
+
+/* ── Alert ── */
+.alert-error{background:var(--err-bg);border:1px solid rgba(220,38,38,.25);color:var(--err);padding:12px 16px;border-radius:var(--rs);font-size:12px;margin-bottom:14px;}
+.alert-error ul{margin:4px 0 0 16px;list-style:disc;}
+
+/* ── Salary preview in form ── */
+.sal-preview{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:14px;background:#F8FAFD;border-radius:var(--rs);border:1px solid var(--border-s);margin-top:14px;}
+.sp-item{text-align:center;}
+.sp-lbl{font-size:9px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;}
+.sp-val{font-size:14px;font-weight:800;color:var(--txt);}
+.sp-val.blue{color:#3B82F6;}.sp-val.orange{color:var(--warn);}.sp-val.purple{color:var(--pur);}.sp-val.green{color:var(--ok);}.sp-val.red{color:var(--err);}
+
+/* ── Report layout ── */
+.report-2col{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.report-list-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border-s);}
+.report-list-item:last-child{border-bottom:none;}
+.rli-label{font-size:12px;color:var(--txt2);font-weight:500;}
+.rli-value{font-size:13px;font-weight:700;color:var(--txt);}
+
+/* ── Filter bar (department dropdown) ── */
+.filter-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.filter-bar select{height:30px;padding:0 8px;font-size:12px;width:auto;border:1px solid var(--border);border-radius:var(--rs);background:var(--entry);color:var(--txt);cursor:pointer;}
+.filter-bar select:focus{border-color:var(--acc);}
+.btn-clear{padding:3px 10px;min-height:26px;font-size:11px;background:var(--err-bg);color:var(--err);border:1px solid rgba(220,38,38,.2);border-radius:var(--rs);cursor:pointer;font-family:inherit;font-weight:600;text-decoration:none;display:inline-flex;align-items:center;}
+.btn-clear:hover{background:rgba(220,38,38,.15);}
+
+/* ── Sticky Actions column ── */
+.tbl-sticky{position:sticky;right:0;z-index:2;background:var(--card);overflow:visible;}
+thead .tbl-sticky{background:#F8FAFD;z-index:3;}
+.tbl-sticky::before{content:'';position:absolute;left:0;top:0;bottom:0;width:1px;background:var(--border);pointer-events:none;}
+.table-wrap{position:relative;}
+.card.card-emp-table{overflow:visible;}
+.card.card-emp-table > .table-wrap{overflow-x:auto;padding-bottom:6px;}
+#emp-main-table tbody tr:hover .tbl-sticky{z-index:5;}
+
+/* ── Compact employee table ── */
+#emp-main-table{table-layout:fixed;width:100%;min-width:1108px;}
+#emp-main-table thead th{padding:8px 9px;font-size:9.5px;}
+#emp-main-table tbody td{padding:8px 9px;font-size:11.5px;}
+#emp-main-table tfoot td{padding:8px 9px;}
+#emp-main-table .num{white-space:nowrap;}
+#emp-main-table .emp-name{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#emp-main-table .tbl-sticky{width:136px;min-width:136px;}
+
+/* ── Compact icon action group ── */
+.act-grp{display:inline-flex;align-items:center;gap:2px;background:#F8FAFD;border:1px solid var(--border);border-radius:8px;padding:3px;position:relative;overflow:visible;}
+.act-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:none;cursor:pointer;background:transparent;color:var(--txt3);text-decoration:none;transition:background .12s,color .12s;position:relative;flex-shrink:0;}
+.act-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;}
+.act-btn:hover{color:var(--txt);}
+.act-btn.att:hover{background:var(--warn-bg);color:var(--warn);}
+.act-btn.cred:hover{background:var(--pur-bg);color:var(--pur);}
+.act-btn.edit:hover{background:var(--acc-bg);color:var(--acc);}
+.act-btn.del:hover{background:var(--err-bg);color:var(--err);}
+.act-sep{width:1px;height:18px;background:var(--border);margin:0 2px;flex-shrink:0;}
+/* tooltip — below icon so sticky header / card overflow do not clip */
+.act-btn[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1A202C;color:#fff;font-size:10px;font-weight:600;white-space:nowrap;padding:4px 8px;border-radius:4px;pointer-events:none;opacity:0;visibility:hidden;z-index:30;box-shadow:0 4px 12px rgba(15,23,42,.18);transition:opacity .12s,visibility .12s;}
+.act-btn[data-tip]:hover::after,.act-btn[data-tip]:focus-visible::after{opacity:1;visibility:visible;}
+/* keep old btn-xs for any other small buttons */
+.btn-xs{padding:3px 7px;min-height:22px;font-size:10px;font-weight:600;border-radius:4px;}
+
+/* ── Report type cards ── */
+.report-type-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(188px,1fr));gap:12px;padding:18px;}
+.report-type-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:16px;display:flex;flex-direction:column;gap:8px;transition:box-shadow .15s,border-color .15s;}
+.report-type-card:hover{box-shadow:var(--sh2);border-color:var(--acc);}
+.rtc-icon{width:34px;height:34px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.rtc-icon svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.rtc-title{font-size:12px;font-weight:700;color:var(--txt);}
+.rtc-desc{font-size:11px;color:var(--txt3);flex:1;line-height:1.4;}
+.rtc-dl{display:inline-flex;align-items:center;gap:5px;padding:5px 10px;border-radius:var(--rs);font-size:11px;font-weight:600;border:1px solid;text-decoration:none;transition:all .15s;align-self:flex-start;}
+
+/* ── Credit dashboard ── */
+.credit-emp-row{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--border-s);}
+.credit-emp-row:last-child{border-bottom:none;}
+.credit-emp-row:hover{background:rgba(24,119,242,.025);}
+.cer-name{font-size:13px;font-weight:600;color:var(--txt);}
+.cer-meta{font-size:11px;color:var(--txt3);}
+.cer-bal{font-size:13px;font-weight:800;color:var(--warn);font-variant-numeric:tabular-nums;margin-left:auto;}
+.cer-entries{font-size:10px;color:var(--txt3);margin-left:6px;}
+
+/* ── Employee context bar (for attendance/credit views) ── */
+.emp-ctx{display:flex;align-items:center;gap:10px;padding:9px 18px;background:#FAFBFD;border-bottom:1px solid var(--border-s);}
+.emp-ctx-name{font-size:13px;font-weight:700;color:var(--txt);}
+.emp-ctx-meta{font-size:11px;color:var(--txt3);}
+
+/* ── Misc ── */
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+.topbar-breadcrumb{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--txt3);}
+.topbar-breadcrumb a{color:var(--txt3);text-decoration:none;font-weight:500;}
+.topbar-breadcrumb a:hover{color:var(--acc);}
+.topbar-breadcrumb .bc-sep{opacity:.5;}
+.topbar-breadcrumb .bc-cur{color:var(--txt);font-weight:700;}
+
+/* ── Responsive ── */
+@media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:900px){.att-strip{grid-template-columns:repeat(4,1fr);}}
+@media(max-width:768px){
+  :root{--sw:0px;}
+  .menu-btn{display:flex;}
+  .sb-pin-btn.de-sb-pin-btn{display:none;}
+  .content{padding:14px 14px 40px;}
+  .kpi-grid{grid-template-columns:repeat(2,1fr);gap:10px;}
+  .form-grid,.form-grid.three{grid-template-columns:1fr;}
+  .sal-strip{grid-template-columns:repeat(2,1fr);}
+  .sal-item:nth-child(2){border-right:none;}
+  .sal-item:nth-child(3){border-top:1px solid var(--border-s);}
+  .sal-preview{grid-template-columns:repeat(3,1fr);}
+  .report-2col{grid-template-columns:1fr;}
+  .topbar-sub{display:none;}
+  .att-strip{grid-template-columns:repeat(2,1fr);}
+  .att-si:nth-child(2n){border-right:none;}
+}
+@media(max-width:480px){
+  .kpi-grid{grid-template-columns:1fr;}
+  .sal-preview{grid-template-columns:repeat(2,1fr);}
+  .filter-tabs{flex-wrap:wrap;}
+}
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+</head>
+<body class="de-open ep-module">
+
+<div id="page-transition"></div>
+{% include 'partials/de_fullscreen_script.html' %}
+{% include 'partials/de_fullscreen_bootstrap.html' %}
+<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=6"></script>
+<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=7"></script>
+
+<div id="ep-workspace" class="de-module">
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox, ep_toolbar_listbox %}
+{% set ep_month_names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+{% set ep_month_opts = namespace(options=[]) %}
+{% for m in range(1,13) %}{% set ep_month_opts.options = ep_month_opts.options + [(m|string, ep_month_names[m])] %}{% endfor %}
+{% set ep_year_opts = namespace(options=[]) %}
+{% if sel_year is defined %}{% for y in range(sel_year - 2, sel_year + 3) %}{% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}{% endfor %}{% endif %}
+{% set ep_location_opts = namespace(options=[('', 'All Departments')]) %}
+{% if locations is defined %}{% for l in locations %}{% set ep_location_opts.options = ep_location_opts.options + [(l, l)] %}{% endfor %}{% endif %}
+{% set ep_sort_opts = namespace(options=[('id', 'ID'), ('name', 'Name'), ('department', 'Department')]) %}
+{% set ep_sort_labels = {'id': 'ID', 'name': 'Name', 'department': 'Department'} %}
+{% set sel_sort = sel_sort|default('id') %}
+<div class="de-sb-overlay" id="de-sb-overlay" onclick="closeDeSidebar()"></div>
+<div class="de-app-shell">
+{% include 'partials/de_workspace_sidebar.html' %}
+<div class="de-main-wrapper">
+<div class="main-wrapper">
+
+<!-- ── Top bar ── -->
+<header class="ep-header topbar">
+  <div class="ep-header-main">
+
+  {% if mode is defined and mode == 'attendance_list' %}
+    <div class="ep-topbar-head">
+      <div class="topbar-title">Attendance</div>
+      <span class="topbar-sub">{{ month_name }} {{ sel_year }}</span>
+    </div>
+    <div class="topbar-actions ep-topbar-toolbar">
+      <div class="search-wrap" style="position:relative;">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <form method="GET" action="{{ url_for('attendance_overview') }}" id="attendance-search-form">
+          <input type="hidden" name="year" value="{{ sel_year }}">
+          <input type="hidden" name="month" value="{{ sel_month }}">
+          <input type="hidden" name="location" value="{{ sel_location|default('') }}">
+          <input type="text" name="q" id="attendance-search-input" value="{{ search|default('') }}" placeholder="Search employee…"
+                 autocomplete="off"
+                 oninput="attendanceAcFilter(this.value)"
+                 onkeydown="attendanceAcKeyNav(event)"
+                 onblur="setTimeout(attendanceAcHide,180)">
+        </form>
+        <ul id="attendance-ac-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:500;background:var(--card);border:1px solid var(--acc);border-radius:var(--rs);box-shadow:var(--sh2);margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;"></ul>
+      </div>
+      {% if attendance_autocomplete_emps is defined %}
+      <script>
+      var _attendanceAcData = {{ attendance_autocomplete_emps | tojson }};
+      var _attendanceAcIdx = -1;
+
+      function attendanceAcEscape(value) {
+        return String(value || '').replace(/[&<>"']/g, function(ch) {
+          return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];
+        });
+      }
+
+      function attendanceAcFilter(q) {
+        var list = document.getElementById('attendance-ac-list');
+        _attendanceAcIdx = -1;
+        q = q.trim().toLowerCase();
+        if (!q) { list.style.display = 'none'; return; }
+        var matches = _attendanceAcData.filter(function(e) {
+          return e.name.toLowerCase().includes(q)
+              || (e.emp_code && e.emp_code.toLowerCase().includes(q))
+              || (e.location && e.location.toLowerCase().includes(q));
+        }).slice(0, 10);
+        if (!matches.length) { list.style.display = 'none'; return; }
+        list.innerHTML = matches.map(function(e, i) {
+          var name = attendanceAcEscape(e.name);
+          var code = attendanceAcEscape(e.emp_code);
+          var location = attendanceAcEscape(e.location);
+          return '<li data-name="' + name + '" data-idx="' + i + '"'
+            + ' style="padding:8px 12px;cursor:pointer;display:flex;flex-direction:column;gap:1px;"'
+            + ' onmousedown="attendanceAcSelect(this.dataset.name)"'
+            + ' onmouseenter="attendanceAcHighlight(' + i + ')">'
+            + '<span style="font-size:12px;font-weight:600;color:var(--txt);">' + name + '</span>'
+            + '<span style="font-size:10px;color:var(--txt3);">'
+            + (code ? code + ' &nbsp;·&nbsp; ' : '')
+            + (location || '')
+            + '</span></li>';
+        }).join('');
+        list.style.display = 'block';
+      }
+
+      function attendanceAcSelect(name) {
+        document.getElementById('attendance-search-input').value = name;
+        document.getElementById('attendance-ac-list').style.display = 'none';
+        document.getElementById('attendance-search-form').submit();
+      }
+
+      function attendanceAcHide() {
+        var list = document.getElementById('attendance-ac-list');
+        if (list) list.style.display = 'none';
+      }
+
+      function attendanceAcHighlight(idx) {
+        _attendanceAcIdx = idx;
+        document.querySelectorAll('#attendance-ac-list li').forEach(function(li, i) {
+          li.style.background = (i === idx) ? 'var(--acc-bg)' : '';
+          li.style.color = (i === idx) ? 'var(--acc)' : '';
+        });
+      }
+
+      function attendanceAcKeyNav(e) {
+        var list = document.getElementById('attendance-ac-list');
+        var items = list.querySelectorAll('li');
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          _attendanceAcIdx = Math.min(_attendanceAcIdx + 1, items.length - 1);
+          attendanceAcHighlight(_attendanceAcIdx);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          _attendanceAcIdx = Math.max(_attendanceAcIdx - 1, 0);
+          attendanceAcHighlight(_attendanceAcIdx);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (_attendanceAcIdx >= 0 && items[_attendanceAcIdx]) {
+            attendanceAcSelect(items[_attendanceAcIdx].dataset.name);
+          } else {
+            document.getElementById('attendance-search-form').submit();
+          }
+        } else if (e.key === 'Escape') {
+          attendanceAcHide();
+        }
+      }
+      </script>
+      {% endif %}
+      <form method="GET" action="{{ url_for('attendance_overview') }}" id="attendance-overview-form" class="ep-topbar-filter-form">
+        <input type="hidden" name="q" value="{{ search|default('') }}">
+        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'attendance-overview-form', searchable=true) }}
+        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'attendance-overview-form') }}
+        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'attendance-overview-form') }}
+      </form>
+      <a href="{{ url_for('attendance_date_view', date=date_view_date, location=sel_location|default('')) }}" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:5px;white-space:nowrap;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
+        Date View
+      </a>
+      <a href="{{ url_for('export_attendance_register', year=sel_year, month=sel_month, location=sel_location|default('')) }}" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:5px;white-space:nowrap;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Register
+      </a>
+    </div>
+
+  {% elif mode is defined and mode == 'attendance_date' %}
+    <div class="topbar-breadcrumb">
+      <a href="{{ url_for('attendance_overview', year=sel_year, month=sel_month, location=sel_location|default('')) }}">Attendance</a>
+      <span class="bc-sep">›</span>
+      <span class="bc-cur">Date View — {{ day_name }}, {{ sel_date }}</span>
+    </div>
+    <div class="topbar-sp"></div>
+    <div class="topbar-actions">
+      <form method="GET" action="{{ url_for('attendance_date_view') }}" id="attendance-date-filter-form" class="ep-topbar-filter-form">
+        <input type="hidden" name="date" value="{{ sel_date }}">
+        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'attendance-date-filter-form', searchable=true) }}
+      </form>
+      <a class="mnav-btn" href="{{ url_for('attendance_date_view', date=prev_date, location=sel_location|default('')) }}" title="Previous day">‹</a>
+      <input type="date" id="dav-date-picker" value="{{ sel_date }}" max="{{ today }}"
+             onchange="if(this.value) window.location='{{ url_for('attendance_date_view') }}?date='+this.value+'&location={{ sel_location|default('') }}'">
+      <a class="mnav-btn" href="{{ url_for('attendance_date_view', date=next_date, location=sel_location|default('')) }}"
+         {% if next_date > today %}style="opacity:.35;pointer-events:none;" title="Future date"{% else %}title="Next day"{% endif %}>›</a>
+      <a href="{{ url_for('attendance_overview', year=sel_year, month=sel_month, location=sel_location|default('')) }}" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:5px;white-space:nowrap;">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+        Month View
+      </a>
+    </div>
+
+  {% elif mode is defined and mode == 'attendance' %}
+    <div class="topbar-breadcrumb">
+      <a href="{{ url_for('attendance_overview', year=sel_year, month=sel_month) }}">Attendance</a>
+      <span class="bc-sep">›</span>
+      <a href="{{ url_for('edit_employee', emp_id=emp.id) }}">{{ emp.name }}</a>
+      <span class="bc-sep">›</span>
+      <span class="bc-cur">Attendance</span>
+    </div>
+    <div class="topbar-sp"></div>
+    <div class="topbar-actions">
+      <div class="month-nav">
+        <a class="mnav-btn" href="{{ url_for('attendance', emp_id=emp.id, year=prev_y, month=prev_m) }}" title="Previous month">‹</a>
+        <span class="mnav-lbl">{{ month_name }} {{ sel_year }}</span>
+        <a class="mnav-btn" href="{{ url_for('attendance', emp_id=emp.id, year=next_y, month=next_m) }}" title="Next month">›</a>
+      </div>
+      {% if current_user and current_user.is_admin %}
+      <form method="POST" action="{{ url_for('bulk_attendance', emp_id=emp.id) }}" style="display:inline;">
+        <input type="hidden" name="year" value="{{ sel_year }}">
+        <input type="hidden" name="month" value="{{ sel_month }}">
+        <input type="hidden" name="action" value="mark_all_present">
+        <button type="submit" class="btn btn-success btn-sm">✓ All Present</button>
+      </form>
+      <form method="POST" action="{{ url_for('bulk_attendance', emp_id=emp.id) }}" style="display:inline;" onsubmit="return confirm('Clear all attendance for this month?')">
+        <input type="hidden" name="year" value="{{ sel_year }}">
+        <input type="hidden" name="month" value="{{ sel_month }}">
+        <input type="hidden" name="action" value="clear_all">
+        <button type="submit" class="btn btn-danger btn-sm">✕ Clear All</button>
+      </form>
+      {% endif %}
+    </div>
+
+  {% elif mode is defined and mode == 'credits' %}
+    <div class="topbar-breadcrumb">
+      {% if has_payroll_access('employee') %}
+      <a href="{{ url_for('employees', year=sel_year, month=sel_month) }}">Employees</a>
+      {% else %}
+      <span>Payroll</span>
+      {% endif %}
+      <span class="bc-sep">›</span>
+      {% if has_payroll_access('employee') %}
+      <a href="{{ url_for('edit_employee', emp_id=emp.id) }}">{{ emp.name }}</a>
+      {% else %}
+      <span>{{ emp.name }}</span>
+      {% endif %}
+      <span class="bc-sep">›</span>
+      <span class="bc-cur">Credits &amp; Advances</span>
+    </div>
+    <div class="topbar-sep"></div>
+    <span class="topbar-sub">{{ month_name }} {{ sel_year }}</span>
+    <div class="topbar-sp"></div>
+    <div class="topbar-actions">
+      <form method="GET" action="{{ url_for('employee_credits', emp_id=emp.id) }}" id="emp-credits-month-form" class="ep-topbar-filter-form">
+        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'emp-credits-month-form') }}
+        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'emp-credits-month-form') }}
+      </form>
+    </div>
+
+  {% elif mode is defined and mode == 'add' %}
+    <div class="topbar-breadcrumb">
+      <a href="{{ url_for('employees') }}">Employees</a>
+      <span class="bc-sep">›</span>
+      <span class="bc-cur">Add Employee</span>
+    </div>
+    <div class="topbar-sp"></div>
+
+  {% elif mode is defined and mode == 'edit' %}
+    <div class="topbar-breadcrumb">
+      <a href="{{ url_for('employees') }}">Employees</a>
+      <span class="bc-sep">›</span>
+      <span class="bc-cur">Edit Employee{% if form.get('id') %} #{{ form['id'] }}{% endif %}</span>
+    </div>
+    <div class="topbar-sp"></div>
+
+  {% elif mode is defined and mode == 'credits_dashboard' %}
+    <div class="topbar-title">Credit Dashboard</div>
+    <div class="topbar-sep"></div>
+    <span class="topbar-sub">{{ month_name }} {{ sel_year }}</span>
+    <div class="topbar-sp"></div>
+    <div class="topbar-actions">
+      <form method="GET" action="{{ url_for('credits_dashboard') }}" id="credits-dashboard-form" class="ep-topbar-filter-form">
+        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'credits-dashboard-form') }}
+        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'credits-dashboard-form') }}
+      </form>
+      <button class="btn btn-primary btn-sm" onclick="openAddCreditModal('credit')">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Credit
+      </button>
+      <button class="btn btn-warn btn-sm" onclick="openAddCreditModal('repayment')">
+        Repayment
+      </button>
+      <a href="{{ url_for('export_credits_report', year=sel_year, month=sel_month) }}" class="btn btn-success btn-sm">↓ Export Credits</a>
+    </div>
+
+  {% elif mode is defined and mode == 'report' %}
+    <div class="topbar-title">Payroll Report</div>
+    <div class="topbar-sep"></div>
+    <span class="topbar-sub">{{ month_name }} {{ sel_year }}</span>
+    <div class="topbar-sp"></div>
+    <div class="topbar-actions">
+      <form method="GET" action="{{ url_for('report') }}" id="report-month-form" class="ep-topbar-filter-form">
+        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'report-month-form') }}
+        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'report-month-form') }}
+      </form>
+    </div>
+
+  {% else %}
+    <!-- Employee list topbar -->
+    <div class="ep-title">
+      <div class="ep-title-row">
+        <div class="ep-title-icon" aria-hidden="true"><i data-lucide="users"></i></div>
+        <div>
+          <h1 class="ep-page-title">Employees</h1>
+          <p class="ep-page-sub">{{ month_name }} {{ sel_year }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="topbar-sp"></div>
+    <div class="topbar-actions">
+      <div class="search-wrap" style="position:relative;">
+        <form method="GET" action="{{ url_for('employees') }}" id="search-form" style="display:flex;align-items:center;width:100%;">
+          <input type="hidden" name="year" value="{{ sel_year }}">
+          <input type="hidden" name="month" value="{{ sel_month }}">
+          <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
+          <input type="hidden" name="location" value="{{ sel_location|default('') }}">
+          <input type="hidden" name="sort" value="{{ sel_sort|default('id') }}">
+          <svg viewBox="0 0 24 24" style="position:absolute;left:9px;pointer-events:none;z-index:1;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" name="q" id="emp-search-input" value="{{ search }}" placeholder="Search employees..."
+                 autocomplete="off"
+                 oninput="empAcFilter(this.value)"
+                 onkeydown="empAcKeyNav(event)"
+                 onblur="setTimeout(empAcHide,180)">
+        </form>
+        <!-- Autocomplete dropdown -->
+        <ul id="emp-ac-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:500;background:var(--card);border:1px solid var(--acc);border-radius:var(--rs);box-shadow:var(--sh2);margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;"></ul>
+      </div>
+      {% if autocomplete_emps is defined %}
+      <script>
+      var _empAcData = {{ autocomplete_emps | tojson }};
+      var _empAcIdx  = -1;
+
+      function empAcFilter(q) {
+        var list = document.getElementById('emp-ac-list');
+        _empAcIdx = -1;
+        q = q.trim().toLowerCase();
+        if (!q) { list.style.display = 'none'; return; }
+        var matches = _empAcData.filter(function(e) {
+          return e.name.toLowerCase().includes(q)
+              || (e.emp_code && e.emp_code.toLowerCase().includes(q));
+        }).slice(0, 10);
+        if (!matches.length) { list.style.display = 'none'; return; }
+        list.innerHTML = matches.map(function(e, i) {
+          // Check if name is shared by more than one employee
+          var dupes = _empAcData.filter(function(x){ return x.name.toLowerCase() === e.name.toLowerCase(); });
+          var sub = dupes.length > 1
+            ? '<span style="color:var(--err);font-weight:600;font-size:9px;"> (duplicate)</span>'
+            : '';
+          return '<li data-name="' + e.name.replace(/"/g,'&quot;') + '" data-idx="'+i+'"'
+            + ' style="padding:8px 12px;cursor:pointer;display:flex;flex-direction:column;gap:1px;" '
+            + ' onmousedown="empAcSelect(\'' + e.name.replace(/'/g,"\\'") + '\')"'
+            + ' onmouseenter="empAcHighlight('+i+')">'
+            + '<span style="font-size:12px;font-weight:600;color:var(--txt);">' + e.name + sub + '</span>'
+            + '<span style="font-size:10px;color:var(--txt3);">'
+            + (e.emp_code ? e.emp_code + ' &nbsp;·&nbsp; ' : '')
+            + (e.location || '')
+            + '</span></li>';
+        }).join('');
+        list.style.display = 'block';
+      }
+
+      function empAcSelect(name) {
+        document.getElementById('emp-search-input').value = name;
+        document.getElementById('emp-ac-list').style.display = 'none';
+        document.getElementById('search-form').submit();
+      }
+
+      function empAcHide() {
+        var list = document.getElementById('emp-ac-list');
+        if (list) list.style.display = 'none';
+      }
+
+      function empAcHighlight(idx) {
+        _empAcIdx = idx;
+        document.querySelectorAll('#emp-ac-list li').forEach(function(li, i) {
+          li.style.background = (i === idx) ? 'var(--acc-bg)' : '';
+          li.style.color      = (i === idx) ? 'var(--acc)'    : '';
+        });
+      }
+
+      function empAcKeyNav(e) {
+        var list  = document.getElementById('emp-ac-list');
+        var items = list.querySelectorAll('li');
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          _empAcIdx = Math.min(_empAcIdx + 1, items.length - 1);
+          empAcHighlight(_empAcIdx);
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          _empAcIdx = Math.max(_empAcIdx - 1, 0);
+          empAcHighlight(_empAcIdx);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (_empAcIdx >= 0 && items[_empAcIdx]) {
+            empAcSelect(items[_empAcIdx].dataset.name);
+          } else {
+            document.getElementById('search-form').submit();
+          }
+        } else if (e.key === 'Escape') {
+          empAcHide();
+        }
+      }
+      </script>
+      {% endif %}
+      <form method="GET" action="{{ url_for('employees') }}" id="month-form" class="ep-topbar-filter-form">
+        <input type="hidden" name="q" value="{{ search }}">
+        <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
+        <input type="hidden" name="location" value="{{ sel_location|default('') }}">
+        <input type="hidden" name="sort" value="{{ sel_sort|default('id') }}">
+        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'month-form') }}
+        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'month-form') }}
+      </form>
+      <div class="filter-tabs">
+        <a href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default(''), sort=sel_sort|default('id')) }}"
+           class="ftab {% if sel_status|default('active') == 'active' %}ft-active{% endif %}">Active</a>
+        <a href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default(''), sort=sel_sort|default('id')) }}"
+           class="ftab {% if sel_status|default('active') == 'inactive' %}ft-inactive{% endif %}">Inactive</a>
+        <a href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='all', location=sel_location|default(''), sort=sel_sort|default('id')) }}"
+           class="ftab {% if sel_status|default('active') == 'all' %}ft-all{% endif %}">All</a>
+      </div>
+      {% if has_payroll_access('employee') %}
+      <a href="{{ url_for('add_employee') }}" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Employee
+      </a>
+      <button class="btn btn-secondary btn-sm" onclick="openImportModal()" title="Import from Excel">↑ Import</button>
+      {% endif %}
+      {% if employees is defined and employees %}
+      <a href="{{ url_for('export_employees', year=sel_year, month=sel_month) }}" class="btn btn-success btn-sm" title="Export to Excel">↓ Excel</a>
+      {% endif %}
+    </div>
+  {% endif %}
+  </div>
+</header>
+
+<!-- ── Content area ── -->
+<main class="content">
+{% if auth_notice %}
+  <div class="card" style="margin-bottom:14px;background:#EFF6FF;border-color:rgba(24,119,242,.18);">
+    <div class="card-body" style="padding:12px 18px;color:var(--acc);font-weight:700;">{{ auth_notice }}</div>
+  </div>
+{% endif %}
+
+{% set _show_payroll_state = (mode is defined and mode in ('report','credits_dashboard','credits')) or (mode is not defined) %}
+{% if payroll_state is defined and _show_payroll_state %}
+  <div class="card" style="margin-bottom:18px;">
+    <div class="card-body" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:260px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span style="font-size:12px;font-weight:700;color:var(--txt);">Payroll Month</span>
+          <span class="badge bg-blue">{{ payroll_state.label }}</span>
+          <span class="badge {{ payroll_state.status_badge }}">{{ payroll_state.status_label }}</span>
+        </div>
+        <div style="font-size:12px;color:var(--txt3);">{{ payroll_state.message }}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        {% if payroll_state.can_lock %}
+        <button type="button" class="btn btn-secondary btn-sm"
+                onclick='submitPayrollLock({{ sel_year|tojson }}, {{ sel_month|tojson }}, {{ payroll_state.label|tojson }})'>
+          {{ payroll_state.button_label }}
+        </button>
+        {% else %}
+        <button type="button" class="btn btn-secondary btn-sm" disabled title="{{ payroll_state.reason }}">{{ payroll_state.button_label }}</button>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════
+   ATTENDANCE OVERVIEW (all employees)
+══════════════════════════════════════════════════════ #}
+{% if mode is defined and mode == 'attendance_list' %}
+
+  <!-- KPI summary -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
+    <div class="kpi-card">
+      <div class="kpi-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Employees</div>
+        <div class="kpi-val">{{ employees|length }}</div>
+        <div class="kpi-meta">Active — {{ month_name }}</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon green">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Attendance Tracked</div>
+        <div class="kpi-val">{{ tracked_count }}</div>
+        <div class="kpi-meta">of {{ employees|length }} employees</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon orange">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Present Days</div>
+        <div class="kpi-val">{{ total_present }}</div>
+        <div class="kpi-meta">Across all employees</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon red">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Absent Days</div>
+        <div class="kpi-val">{{ total_absent }}</div>
+        <div class="kpi-meta">{% if total_half %}Half days marked: {{ total_half }} · {% endif %}After Total Off</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attendance table -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        Employee Attendance — {{ month_name }} {{ sel_year }}
+      </div>
+      {% if employees %}<span class="badge bg-blue">{{ employees|length }} employees</span>{% endif %}
+    </div>
+    {% if employees %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Department</th>
+            <th style="text-align:center;">Present</th>
+            <th style="text-align:center;">Half Day</th>
+            <th style="text-align:center;">Absent</th>
+            <th style="text-align:center;">Paid Days</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in employees %}
+          {% set att = emp.att %}
+          {% set badge_num = att.display_badge_num|default(att.badge_num) %}
+          {% set pct = (badge_num / att.badge_den * 100) if att.badge_den > 0 else 0 %}
+          <tr>
+            <td>
+              <div class="emp-name">{{ emp.name }}</div>
+              <div style="font-size:10px;color:var(--txt3);">{{ emp.emp_code }}</div>
+            </td>
+            <td style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
+            <td style="text-align:center;font-weight:700;color:var(--ok);">{{ att.present_effective if att.tracked else '—' }}</td>
+            <td style="text-align:center;font-weight:700;color:var(--warn);">{{ att.half_day if att.tracked else '—' }}</td>
+            <td style="text-align:center;font-weight:700;color:var(--err);">{{ att.absent if att.tracked else '—' }}</td>
+            <td style="text-align:center;">
+              {% if att.tracked %}
+              <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
+                    title="{{ badge_num }} paid day{{ 's' if badge_num != 1 else '' }} out of {{ att.badge_den }} in the month{% if att.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(att.weekday_leave_days) }} leave{% if att.total_off|default(0) %} ({{ att.total_off }} allowed){% endif %}{% endif %}{% if att.lop_days|default(0) > 0 %} · {{ '%g'|format(att.lop_days) }} LOP{% endif %}">
+                {{ badge_num }}/{{ att.badge_den }}
+              </span>
+              {% else %}
+              <span class="badge bg-gray">Not tracked</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if att.tracked %}
+              <span class="badge bg-green">Tracked</span>
+              {% else %}
+              <span class="badge bg-gray">Pending</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
+                 class="btn btn-warn btn-sm btn-xs">
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Mark
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div style="font-size:32px;opacity:.25;margin-bottom:10px;">📅</div>
+      <p>No employees found.{% if has_payroll_access('employee') %} <a href="{{ url_for('add_employee') }}" style="color:var(--acc);">Add an employee</a> to start tracking attendance.{% endif %}</p>
+    </div>
+    {% endif %}
+  </div>
+
+
+{# ══════════════════════════════════════════════════════
+   ATTENDANCE DATE VIEW (all employees for a single date)
+══════════════════════════════════════════════════════ #}
+{% elif mode is defined and mode == 'attendance_date' %}
+
+  <!-- Date header card -->
+  <div class="card" style="margin-bottom:16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px 20px;">
+      <div style="display:flex;align-items:center;gap:16px;">
+        <div style="width:56px;height:56px;background:{% if is_future %}var(--txt3){% else %}var(--ok){% endif %};border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;flex-shrink:0;">
+          <div style="font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;opacity:.85;">{{ day_name[:3]|upper }}</div>
+          <div style="font-size:24px;font-weight:800;line-height:1;">{{ sel_date[-2:] }}</div>
+        </div>
+        <div>
+          <div style="font-size:17px;font-weight:700;color:var(--txt);">{{ day_name }}, {{ sel_date[8:10] }} {{ month_name }} {{ sel_year }}</div>
+          <div style="font-size:12px;color:var(--txt3);margin-top:2px;">
+            {% if is_future %}<span style="color:var(--warn);font-weight:600;">⚠ Future date — read only</span>
+            {% elif not can_modify_attendance_date %}<span style="color:var(--warn);font-weight:600;">{{ attendance_date_lock_message }}</span>
+            {% else %}Click a status to auto-save. Changes take effect immediately.{% endif %}
+          </div>
+        </div>
+      </div>
+      <!-- Summary chips -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <div class="dav-chip" style="background:var(--ok-bg);color:var(--ok);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;">
+          ✓ {{ present_count }} Present
+        </div>
+        <div class="dav-chip" style="background:var(--warn-bg);color:var(--warn);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;">
+          ½ {{ half_count }} Half Day
+        </div>
+        <div class="dav-chip" style="background:var(--err-bg);color:var(--err);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;">
+          ✗ {{ absent_count }} Absent
+        </div>
+        <div class="dav-chip" style="background:var(--bg);color:var(--txt3);padding:6px 14px;border-radius:20px;font-size:12px;font-weight:700;border:1px solid var(--border);">
+          — {{ unmarked_count }} Unmarked
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attendance table -->
+  <div class="card">
+    <div class="card-hdr" style="flex-wrap:wrap;gap:8px;">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        All Employees — {{ sel_date }}
+      </div>
+      {% if can_modify_attendance_date %}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;">
+        <button class="btn btn-success btn-sm" onclick="davMarkAll('present')" style="font-size:11px;">✓ All Present</button>
+        <button class="btn btn-sm" style="font-size:11px;background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn);" onclick="davMarkAll('half_day')">½ All Half Day</button>
+        <button class="btn btn-danger btn-sm" onclick="davMarkAll('absent')" style="font-size:11px;">✗ All Absent</button>
+        <button class="btn btn-secondary btn-sm" onclick="davMarkAll('')" style="font-size:11px;">✕ Clear All</button>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if employees %}
+    <div class="table-wrap">
+      <table id="dav-table">
+        <thead>
+          <tr>
+            <th style="width:40px;text-align:center;">#</th>
+            <th>Employee</th>
+            <th>Department</th>
+            <th style="min-width:160px;">Status</th>
+            <th style="width:60px;text-align:center;">Save</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in employees %}
+          <tr id="dav-row-{{ emp.id }}">
+            <td style="text-align:center;color:var(--txt3);font-size:11px;">{{ loop.index }}</td>
+            <td>
+              <div class="emp-name">{{ emp.name }}</div>
+              <div style="font-size:10px;color:var(--txt3);">{{ emp.emp_code }}</div>
+            </td>
+            <td style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
+            <td>
+              {% if is_future %}
+                <!-- Read-only for future dates -->
+                <span class="badge bg-gray" style="font-size:11px;">Future date</span>
+              {% elif not emp.can_modify_date_status %}
+                {% if emp.date_status == 'present' %}
+                  <span class="badge bg-green" style="font-size:11px;">✓ Present</span>
+                {% elif emp.date_status == 'half_day' %}
+                  <span class="badge bg-orange" style="font-size:11px;">½ Half Day</span>
+                {% elif emp.date_status == 'absent' %}
+                  <span class="badge bg-red" style="font-size:11px;">✗ Absent</span>
+                {% else %}
+                  <span class="badge bg-gray" style="font-size:11px;">Not Marked</span>
+                {% endif %}
+              {% else %}
+                {% set dav_ns = namespace(options=[('', '— Not Marked —'), ('present', '✓ Present'), ('half_day', '½ Half Day'), ('absent', '✗ Absent')]) %}
+                {{ ep_listbox('dav_status', 'Status', dav_ns.options, emp.date_status, placeholder='— Not Marked —', field_id='dav-sel-' ~ emp.id, change_handler='davSaveFromListbox', inline=true, extra_class='ep-table-listbox dav-status-listbox', data_emp=emp.id, data_date=sel_date, data_year=sel_year, data_month=sel_month) }}
+              {% endif %}
+            </td>
+            <td style="text-align:center;">
+              <span id="dav-ind-{{ emp.id }}" style="font-size:11px;font-weight:600;transition:opacity .3s;">
+                {% if emp.date_status %}
+                <span style="color:var(--ok);">✓</span>
+                {% endif %}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div style="font-size:32px;opacity:.25;margin-bottom:10px;">📅</div>
+      <p>No active employees found.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <script>
+  // ── Date-view attendance (DAV) ──────────────────────────────────────────────
+  function davDavControl(empId) {
+    var root = document.getElementById('dav-sel-' + empId + '-listbox');
+    return root ? root.querySelector('.se-filter-chip-control') : null;
+  }
+
+  function davSaveFromListbox(root, value) {
+    var empId = root.getAttribute('data-emp-id');
+    if (empId) davSave(empId, value);
+  }
+
+  function davSave(empId, statusOverride) {
+    var hidden = document.getElementById('dav-sel-' + empId);
+    var root = document.getElementById('dav-sel-' + empId + '-listbox');
+    var control = davDavControl(empId);
+    var ind = document.getElementById('dav-ind-' + empId);
+    var row = document.getElementById('dav-row-' + empId);
+    if (!hidden || !root) return;
+    var status  = statusOverride !== undefined ? statusOverride : hidden.value;
+    var dateStr = root.getAttribute('data-date');
+    var year    = root.getAttribute('data-year');
+    var month   = root.getAttribute('data-month');
+
+    // Visual: saving state
+    if (control) control.style.borderColor = 'var(--warn)';
+    ind.innerHTML = '<span style="color:var(--warn);font-size:10px;">…</span>';
+
+    var fd = new FormData();
+    fd.append('employee_id', empId);
+    fd.append('date', dateStr);
+    fd.append('status', status);
+    fd.append('year', year);
+    fd.append('month', month);
+
+    fetch('/mark_attendance', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest' },
+      body: fd
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.ok) {
+        if (control) control.style.borderColor = 'var(--ok)';
+        ind.innerHTML = '<span style="color:var(--ok);">✓</span>';
+        // Row background flash
+        row.style.background = 'var(--ok-bg)';
+        // Update listbox color based on status
+        davStyleSelect(root, status);
+        // Refresh summary counters
+        davRefreshCounters();
+        setTimeout(function(){
+          if (control) control.style.borderColor = 'var(--border)';
+          row.style.background = '';
+        }, 1500);
+      } else {
+        if (control) control.style.borderColor = 'var(--err)';
+        ind.innerHTML = '<span style="color:var(--err);">✗</span>';
+      }
+    })
+    .catch(function(){
+      if (control) control.style.borderColor = 'var(--err)';
+      ind.innerHTML = '<span style="color:var(--err);">✗</span>';
+    });
+  }
+
+  function davStyleSelect(root, status) {
+    var valueEl = root ? root.querySelector('.se-filter-chip-value') : null;
+    if (!valueEl) return;
+    if (status === 'present') {
+      valueEl.style.color = 'var(--ok)'; valueEl.style.fontWeight = '700';
+    } else if (status === 'half_day') {
+      valueEl.style.color = 'var(--warn)'; valueEl.style.fontWeight = '700';
+    } else if (status === 'absent') {
+      valueEl.style.color = 'var(--err)'; valueEl.style.fontWeight = '700';
+    } else {
+      valueEl.style.color = 'var(--txt3)'; valueEl.style.fontWeight = '400';
+    }
+  }
+
+  function davMarkAll(status) {
+    document.querySelectorAll('.dav-status-listbox').forEach(function(root){
+      var empId = root.getAttribute('data-emp-id');
+      var hidden = document.getElementById('dav-sel-' + empId);
+      var labelMap = { present: '✓ Present', half_day: '½ Half Day', absent: '✗ Absent', '': '— Not Marked —' };
+      if (hidden) hidden.value = status;
+      if (typeof resetEpListbox === 'function') {
+        resetEpListbox('dav-sel-' + empId, status, labelMap[status] || '— Not Marked —');
+      }
+      davStyleSelect(root, status);
+      davSave(parseInt(empId, 10), status);
+    });
+  }
+
+  function davRefreshCounters() {
+    var present = 0, half = 0, absent = 0, unmarked = 0;
+    document.querySelectorAll('.dav-status-listbox').forEach(function(root){
+      var empId = root.getAttribute('data-emp-id');
+      var hidden = document.getElementById('dav-sel-' + empId);
+      var v = hidden ? hidden.value : '';
+      if (v === 'present')   present++;
+      else if (v === 'half_day') half++;
+      else if (v === 'absent')   absent++;
+      else                       unmarked++;
+    });
+    // Update summary chips if they exist
+    var chips = document.querySelectorAll('.dav-chip');
+    if (chips.length === 4) {
+      chips[0].textContent = '✓ ' + present + ' Present';
+      chips[1].textContent = '½ ' + half    + ' Half Day';
+      chips[2].textContent = '✗ ' + absent  + ' Absent';
+      chips[3].textContent = '— ' + unmarked + ' Unmarked';
+    }
+  }
+
+  // On load: style existing listboxes by their current value
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('.dav-status-listbox').forEach(function(root){
+      var empId = root.getAttribute('data-emp-id');
+      var hidden = document.getElementById('dav-sel-' + empId);
+      davStyleSelect(root, hidden ? hidden.value : '');
+    });
+    if (typeof initEpListboxes === 'function') initEpListboxes();
+  });
+  </script>
+
+
+{# ══════════════════════════════════════════════════════
+   ATTENDANCE VIEW (single employee calendar)
+══════════════════════════════════════════════════════ #}
+{% elif mode is defined and mode == 'attendance' %}
+
+  <!-- Employee context strip -->
+  <div class="card">
+    <div class="emp-ctx">
+      <div class="emp-ctx-name">{{ emp.name }}</div>
+      <div class="emp-ctx-meta">#{{ emp.id }} · {{ emp.location }}</div>
+      <div style="flex:1;"></div>
+      {% if has_payroll_access('credit') %}
+      <a href="{{ url_for('employee_credits', emp_id=emp.id, year=sel_year, month=sel_month) }}" class="btn btn-purple btn-sm">Credits</a>
+      {% endif %}
+      {% if has_payroll_access('employee') %}
+      <a href="{{ url_for('edit_employee', emp_id=emp.id) }}" class="btn btn-secondary btn-sm">Edit Employee</a>
+      {% endif %}
+    </div>
+
+    <!-- Attendance summary strip -->
+    <div class="att-strip">
+      <div class="att-si">
+        <div class="att-slbl">Present</div>
+        <div class="att-sval" style="color:var(--ok);">{{ emp.att.present }}</div>
+      </div>
+      <div class="att-si">
+        <div class="att-slbl">Half Day</div>
+        <div class="att-sval" style="color:var(--warn);">{{ emp.att.half_day }}</div>
+      </div>
+      <div class="att-si">
+        <div class="att-slbl">Absent</div>
+        <div class="att-sval" style="color:var(--err);"{% if emp.att.leave_covered_by_off|default(0) %} title="{{ emp.att.absent_marked|default(emp.att.absent) }} marked · {{ emp.att.leave_covered_by_off }} covered by Total Off ({{ emp.att.total_off }})"{% endif %}>{{ emp.att.absent }}</div>
+      </div>
+      <div class="att-si">
+        <div class="att-slbl">Attendance</div>
+        <div class="att-sval" style="color:#3B82F6;">{{ emp.att.display_badge_num|default(emp.att.badge_num) }}/{{ emp.att.badge_den }}
+          {% if emp.lop_days|default(0) > 0 %}
+          <span style="display:block;font-size:9px;color:var(--err);font-weight:600;margin-top:1px;">{{ '%g'|format(emp.lop_days) }} LOP day{{ 's' if emp.lop_days != 1 else '' }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="att-si">
+        <div class="att-slbl">Gross (Monthly)</div>
+        <div class="att-sval" style="color:var(--warn);">{{ emp.gross_salary | inr }}</div>
+      </div>
+      <div class="att-si">
+        <div class="att-slbl">Net Salary</div>
+        <div class="att-sval" style="color:var(--ok);">{{ emp.net | inr }}</div>
+      </div>
+    </div>
+
+    <!-- Calendar -->
+    <div class="cal-grid">
+      <div class="cal-hdr">Mon</div>
+      <div class="cal-hdr">Tue</div>
+      <div class="cal-hdr">Wed</div>
+      <div class="cal-hdr">Thu</div>
+      <div class="cal-hdr">Fri</div>
+      <div class="cal-hdr">Sat</div>
+      <div class="cal-hdr">Sun</div>
+      {% for week in cal_weeks %}
+        {% for cell in week %}
+          {% if cell %}
+          <div class="cal-day {% if cell.status %}status-{{ cell.status }}{% endif %}{% if cell.date == today %} today{% endif %}{% if cell.date > today %} future{% endif %}"
+               {% if cell.can_edit %}onclick="openAttPopup('{{ emp.id }}','{{ cell.date }}','{{ cell.day }}','{{ cell.status }}')"{% endif %}>
+            <div class="day-num">{{ cell.day }}</div>
+            {% if cell.status == 'present' %}<div class="day-st">P</div>
+            {% elif cell.status == 'absent' %}<div class="day-st">A</div>
+            {% elif cell.status == 'half_day' %}<div class="day-st">HD</div>
+            {% elif cell.status == 'holiday' %}<div class="day-st">H</div>
+            {% else %}<div class="day-st" style="color:var(--txt3);">--</div>
+            {% endif %}
+          </div>
+          {% else %}
+          <div class="cal-day empty"></div>
+          {% endif %}
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Salary breakdown card -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12M6 9h12M9 4a5 5 0 0 1 0 10M9 9l9 11"/></svg>
+        Salary Breakdown — {{ month_name }} {{ sel_year }}
+      </div>
+    </div>
+    <div class="sal-strip" style="{% if emp.sunday_incentive|default(0) > 0 or emp.credit_repayment|default(0) > 0 or emp.lop_deduction|default(0) > 0 %}grid-template-columns:repeat(6,1fr){% else %}grid-template-columns:repeat(4,1fr){% endif %}">
+      <div class="sal-item">
+        <div class="sal-lbl">Actual Gross</div>
+        <div class="sal-val">{{ emp.gross_actual | inr }}</div>
+      </div>
+      <div class="sal-item">
+        <div class="sal-lbl">Basic Pay</div>
+        <div class="sal-val blue">{{ emp.basic | inr }}</div>
+      </div>
+      <div class="sal-item">
+        <div class="sal-lbl">EPF</div>
+        <div class="sal-val orange">{{ emp.epf | inr }}</div>
+      </div>
+      <div class="sal-item">
+        <div class="sal-lbl">ESIC</div>
+        {% if emp.esic_applicable|default(false) %}
+        <div class="sal-val purple">{{ emp.esic | inr }}</div>
+        {% elif emp.esic_exempt|default(0) %}
+        <div class="sal-val" style="color:var(--txt3);font-size:12px;font-weight:600;">Exempt</div>
+        {% else %}
+        <div class="sal-val" style="color:var(--txt3);font-size:12px;font-weight:600;line-height:1.35;" title="ESI not applicable, because your gross monthly wages exceed the ESI eligibility limit of ₹21,000.">Not applicable</div>
+        <div style="font-size:9px;color:var(--txt3);margin-top:4px;line-height:1.35;">Gross monthly wages exceed the ESI eligibility limit of ₹21,000</div>
+        {% endif %}
+      </div>
+      {% if emp.sunday_incentive|default(0) > 0 %}
+      <div class="sal-item">
+        <div class="sal-lbl">Overtime</div>
+        <div class="sal-val green">+{{ emp.sunday_incentive | inr }}</div>
+      </div>
+      {% endif %}
+      {% if emp.credit_repayment|default(0) > 0 %}
+      <div class="sal-item">
+        <div class="sal-lbl">Credit Repayment</div>
+        <div class="sal-val red">−{{ emp.credit_repayment | inr }}</div>
+      </div>
+      {% endif %}
+      {% if emp.lop_deduction|default(0) > 0 %}
+      <div class="sal-item">
+        <div class="sal-lbl">
+          LOP Deduction
+          <span style="display:block;font-size:8px;color:var(--err);font-weight:600;margin-top:1px;">{{ '%g'|format(emp.weekday_leave_days|default(emp.att.weekday_leave_days)) }} leave − {{ emp.total_off }} allowed = {{ '%g'|format(emp.lop_days) }} LOP</span>
+        </div>
+        <div class="sal-val red">−{{ emp.lop_deduction | inr }}</div>
+      </div>
+      {% endif %}
+      <div class="sal-item">
+        <div class="sal-lbl">Net Salary</div>
+        <div class="sal-val green">{{ emp.net | inr }}</div>
+      </div>
+    </div>
+    <div style="padding:10px 18px 14px;font-size:11px;color:var(--txt3);">
+      Up to {{ emp.total_off|default(0) }} weekday leave day{{ 's' if emp.total_off|default(0) != 1 else '' }} are paid each month. Extra leave is Loss of Pay at gross ÷ days in month. Half day = 0.5 leave.
+      {% if emp.lop_days|default(0) > 0 %}
+      <strong style="color:var(--err);"> {{ '%g'|format(emp.weekday_leave_days|default(emp.att.weekday_leave_days)) }} weekday leave this month — {{ '%g'|format(emp.lop_days) }} LOP day{{ 's' if emp.lop_days != 1 else '' }} (₹{{ emp.lop_deduction | inr }} deducted).</strong>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Attendance popup modal -->
+  <div class="att-popup" id="att-popup">
+    <div class="att-popup-inner">
+      <h3 id="att-popup-title">Mark Attendance</h3>
+      <div class="att-options">
+        <button class="att-opt present" onclick="markAtt('present')">✓ Present</button>
+        <button class="att-opt half_day" onclick="markAtt('half_day')">⬡ Half Day</button>
+        <button class="att-opt absent" id="att-absent-btn" onclick="markAtt('absent')">✕ Absent</button>
+        <button class="att-opt clear" onclick="markAtt('')">— Clear</button>
+      </div>
+      <div class="att-cancel">
+        <button class="btn btn-secondary btn-sm" onclick="closeAttPopup()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+
+{# ══════════════════════════════════════════════════════
+   CREDITS VIEW
+══════════════════════════════════════════════════════ #}
+{% elif mode is defined and mode == 'credits' %}
+
+  <!-- Employee context -->
+  <div class="card">
+    <div class="emp-ctx">
+      <div class="emp-ctx-name">{{ emp.name }}</div>
+      <div class="emp-ctx-meta">#{{ emp.id }} · {{ emp.location }}</div>
+      <div style="flex:1;"></div>
+      {% if has_payroll_access('attendance') %}
+      <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}" class="btn btn-warn btn-sm">Attendance</a>
+      {% endif %}
+      {% if has_payroll_access('employee') %}
+      <a href="{{ url_for('edit_employee', emp_id=emp.id) }}" class="btn btn-secondary btn-sm">Edit Employee</a>
+      {% endif %}
+    </div>
+
+    <!-- Summary cards -->
+    <div class="sal-strip" style="grid-template-columns:repeat(3,1fr);">
+      <div class="sal-item">
+        <div class="sal-lbl">Total Credit Amount</div>
+        <div class="sal-val green">{{ overall_credit | inr(2) }}</div>
+      </div>
+      <div class="sal-item">
+        <div class="sal-lbl">Ledger Entries</div>
+        <div class="sal-val orange">{{ credit_items|length }}</div>
+      </div>
+      <div class="sal-item">
+        <div class="sal-lbl">Repayment for {{ month_name }} {{ sel_year }}</div>
+        <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:2px;">
+          <input type="number" class="inline-sal" id="cr-{{ emp.id }}"
+                 value="{{ emp.credit_repayment or '' }}"
+                 placeholder="0" min="0" step="0.01" max="{{ emp.repayment_max }}"
+                 {% if not emp.repayment_input_enabled %}disabled{% endif %}
+                 onchange="saveSalary({{ emp.id }})"
+                 title="Repayment for {{ payroll_state.label }} only">
+          <span style="font-size:10px;color:var(--txt3);">/mo</span>
+        </div>
+        <div style="font-size:9px;color:var(--txt3);text-align:center;margin-top:3px;">
+          {% if emp.repayment_input_enabled %}
+          Max {{ emp.repayment_max | inr }} for {{ payroll_state.label }}
+          {% else %}
+          {{ payroll_state.message }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add credit form -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Credit / Repayment
+      </div>
+    </div>
+    <div class="card-body">
+      <div id="credit-msg" style="display:none;padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:12px;"></div>
+      <form id="credit-form" onsubmit="return addCredit(event)">
+        <input type="hidden" name="year" value="{{ sel_year }}">
+        <input type="hidden" name="month" value="{{ sel_month }}">
+        <input type="hidden" id="cr_type" name="transaction_type" value="credit">
+        <div class="form-grid three">
+          <div>
+            <label for="cr_date">Date *</label>
+            <input type="date" id="cr_date" name="date" required value="{{ '%04d-%02d-%02d'|format(sel_year, sel_month, 1) }}">
+          </div>
+          <div>
+            <label for="cr_desc">Description</label>
+            <input type="text" id="cr_desc" name="description" placeholder="e.g. Advance, Loan...">
+          </div>
+          <div>
+            <label for="cr_amount">Amount *</label>
+            <input type="number" id="cr_amount" name="amount" required placeholder="e.g. 5000" min="0.01" step="0.01">
+          </div>
+        </div>
+        <div class="form-actions" style="border:none;padding:0;margin-top:14px;">
+          <button type="submit" class="btn btn-primary" id="cr-submit-btn" onclick="setCreditType('credit')">Add Credit</button>
+          <button type="submit" class="btn btn-warn" onclick="setCreditType('repayment')">Repayment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Credit history -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Credit History
+      </div>
+    </div>
+    {% if credit_items %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Description</th>
+            <th class="num">Amount</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cr in credit_items %}
+          <tr id="cr-row-{{ cr.id }}">
+            <td>{{ cr.date }}</td>
+            <td>{{ cr.description or '—' }}</td>
+            <td class="num {% if cr.amount < 0 %}red{% else %}green{% endif %}">{{ cr.amount | inr(2) }}</td>
+            <td class="actions">
+              <button class="btn btn-secondary btn-sm" onclick="showEditCredit({{ cr.id }})">Edit</button>
+              <a href="{{ url_for('delete_credit', credit_id=cr.id, year=sel_year, month=sel_month) }}" class="btn btn-danger btn-sm" onclick="return confirm('Delete this credit entry?')">Delete</a>
+            </td>
+          </tr>
+          <tr id="cr-edit-{{ cr.id }}" style="display:none;">
+            <td><input type="date" id="cr-date-{{ cr.id }}" value="{{ cr.date }}" class="app-date-inline"></td>
+            <td><input type="text" id="cr-desc-{{ cr.id }}" value="{{ cr.description }}" placeholder="Description" style="width:100%;padding:5px 7px;font-size:12px;"></td>
+            <td><input type="number" id="cr-amt-{{ cr.id }}" value="{{ cr.amount }}" step="0.01" style="width:100px;padding:5px 7px;font-size:12px;"></td>
+            <td class="actions">
+              <button type="button" class="btn btn-success btn-sm" onclick="submitEditCredit({{ cr.id }})">Save</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="hideEditCredit({{ cr.id }})">Cancel</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="2" style="text-align:right;font-weight:700;color:var(--txt2);">Ledger Balance</td>
+            <td class="num {% if credit_total < 0 %}red{% else %}green{% endif %}" style="font-size:13px;font-weight:800;">{{ credit_total | inr(2) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div style="font-size:28px;opacity:.3;margin-bottom:8px;">💳</div>
+      <p>No credit entries yet. Use the form above to add one.</p>
+    </div>
+    {% endif %}
+  </div>
+
+
+{# ══════════════════════════════════════════════════════
+   ADD / EDIT FORM
+══════════════════════════════════════════════════════ #}
+{% elif mode is defined and mode in ('add', 'edit') %}
+
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title">
+        {% if mode == 'add' %}
+          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+          Add New Employee
+        {% else %}
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit Employee{% if form.get('id') %} <span style="color:var(--txt3);font-weight:400;">#{{ form['id'] }}</span>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+    <div class="card-body">
+      {% if errors is defined and errors %}
+      <div class="alert-error">
+        <strong>Please fix the following:</strong>
+        <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+
+      <form method="POST" id="employee-form" action="{% if mode == 'edit' %}{{ url_for('edit_employee', emp_id=form['id']) }}{% else %}{{ url_for('add_employee') }}{% endif %}">
+
+        <div class="form-sec-title">Basic Information</div>
+        <input type="hidden" name="company" value="{{ form.get('company', 'Hotel Bell Elite') or 'Hotel Bell Elite' }}">
+        <div class="form-grid three" style="margin-bottom:16px;">
+          <div>
+            <label for="emp_code">Employee ID</label>
+            <input type="text" id="emp_code" name="emp_code" value="{{ form.get('emp_code', '') }}" readonly
+                   style="background:var(--bg2,#f3f4f6);color:var(--txt2,#4b5563);cursor:default;"
+                   title="Auto-generated unique ID">
+            <div style="margin-top:5px;font-size:10.5px;color:var(--txt3);">
+              {% if mode == 'add' %}Auto-generated next ID — assigned uniquely on save.{% else %}System-assigned — cannot be changed.{% endif %}
+            </div>
+          </div>
+          <div>
+            <label for="name">Full Name *</label>
+            <input type="text" id="name" name="name" value="{{ form.get('name', '') }}" required placeholder="Employee full name">
+          </div>
+          <div>
+            <label for="mobile">Mobile Number *</label>
+            <input type="text" id="mobile" name="mobile" value="{{ form.get('mobile', '') }}" required placeholder="10-digit number" maxlength="10" pattern="\d{10}">
+          </div>
+          <div>
+            <label for="guardian_mobile">Guardian Mobile Number</label>
+            <input type="text" id="guardian_mobile" name="guardian_mobile" value="{{ form.get('guardian_mobile', '') }}" placeholder="10-digit number (optional)" maxlength="10" pattern="\d{10}">
+          </div>
+          <div>
+            {% set sex_options = [('', '— Select —'), ('Male', 'Male'), ('Female', 'Female')] %}
+            {{ ep_listbox('sex', 'Sex', sex_options, form.get('sex', '')) }}
+          </div>
+          <div>
+            {% set location_ns = namespace(options=[('', 'Select department...')]) %}
+            {% for l in locations %}{% set location_ns.options = location_ns.options + [(l, l)] %}{% endfor %}
+            {{ ep_listbox('location', 'Department', location_ns.options, form.get('location', ''), searchable=true) }}
+          </div>
+          <div>
+            <label for="total_off">Total Off</label>
+            <input type="number" id="total_off" name="total_off" value="{{ form.get('total_off', 0) }}" placeholder="e.g. 4" min="0" max="31" step="1">
+            <div style="margin-top:5px;font-size:10.5px;color:var(--txt3);">Paid weekday leave days per month. Extra leave is deducted at daily gross rate.</div>
+          </div>
+          <div>
+            {% set status_options = [('active', 'Active'), ('inactive', 'Inactive')] %}
+            {{ ep_listbox('status', 'Status', status_options, form.get('status', 'active')) }}
+          </div>
+        </div>
+
+        <div class="form-sec-title">Salary Details</div>
+        <div class="form-grid three" style="margin-bottom:16px;">
+          <div>
+            <label for="gross_salary">Gross Salary (Monthly) *</label>
+            <input type="number" id="gross_salary" name="gross_salary" value="{{ form.get('gross_salary', '') }}" required placeholder="e.g. 25000" min="0" step="0.01" oninput="calcPreview()">
+          </div>
+          <div>
+            <label for="basic_salary">Basic Pay (0 = auto from Gross)</label>
+            <input type="number" id="basic_salary" name="basic_salary" value="{{ form.get('basic_salary', 0) or '' }}" placeholder="Auto-derived" min="0" step="0.01" oninput="calcPreview()">
+          </div>
+          <div>
+            <label for="epf_amount" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>EPF Amount (0 = auto 12%, max ₹1,800)</span>
+              <label style="font-weight:400;font-size:11px;color:var(--err);cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" id="epf_exempt" name="epf_exempt" value="1"
+                       {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}checked{% endif %}
+                       onchange="toggleExempt('epf')">
+                No EPF (exempt)
+              </label>
+            </label>
+            <input type="number" id="epf_amount" name="epf_amount"
+                   value="{{ form.get('epf_amount', 0) or '' }}"
+                   placeholder="Auto: 12% of Basic (max ₹1,800)" min="0" max="1800" step="0.01" oninput="calcPreview()"
+                   {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
+          </div>
+          <div>
+            <label for="esic_amount" style="display:flex;justify-content:space-between;align-items:center;">
+              <span>ESIC Amount (0 = auto 0.75%)</span>
+              <label style="font-weight:400;font-size:11px;color:var(--err);cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" id="esic_exempt" name="esic_exempt" value="1"
+                       {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}checked{% endif %}
+                       onchange="toggleExempt('esic')">
+                No ESIC (exempt)
+              </label>
+            </label>
+            <input type="number" id="esic_amount" name="esic_amount"
+                   value="{{ form.get('esic_amount', 0) or '' }}"
+                   placeholder="Auto: 0.75% of Gross" min="0" step="0.01" oninput="calcPreview()"
+                   {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
+          </div>
+        </div>
+
+        <!-- Live preview -->
+        <div id="salary-preview" class="sal-preview" style="display:none;">
+          <div class="sp-item"><div class="sp-lbl">Gross</div><div class="sp-val" id="pv-gross">0</div></div>
+          <div class="sp-item"><div class="sp-lbl" id="pv-basic-label">Basic Pay</div><div class="sp-val blue" id="pv-basic">0</div></div>
+          <div class="sp-item"><div class="sp-lbl" id="pv-epf-label">EPF</div><div class="sp-val orange" id="pv-epf">0</div></div>
+          <div class="sp-item"><div class="sp-lbl" id="pv-esic-label">ESIC</div><div class="sp-val purple" id="pv-esic">0</div></div>
+          <div class="sp-item" id="pv-cr-item"><div class="sp-lbl" id="pv-cr-label">Credit Repay</div><div class="sp-val red" id="pv-cr">0</div></div>
+          <div class="sp-item"><div class="sp-lbl">Net Salary</div><div class="sp-val green" id="pv-net">0</div></div>
+        </div>
+        <div id="salary-warning" style="display:none;margin-top:10px;padding:10px 14px;background:var(--err-bg);border:1px solid rgba(220,38,38,.3);color:var(--err);border-radius:var(--rs);font-size:12px;"></div>
+        <div style="margin-top:8px;font-size:11px;color:var(--txt3);">Gross = Basic + EPF + ESIC. Net = Gross − EPF − ESIC.</div>
+
+        <div class="form-sec-title" style="margin-top:20px;">Identity Documents</div>
+        <div class="form-grid three" style="margin-bottom:16px;">
+          <div>
+            <label for="aadhar">Aadhar Number</label>
+            <input type="text" id="aadhar" name="aadhar" value="{{ form.get('aadhar', '') }}" placeholder="12-digit Aadhar" maxlength="12" pattern="\d{12}">
+          </div>
+          <div>
+            <label for="pan">PAN Card</label>
+            <input type="text" id="pan" name="pan" value="{{ form.get('pan', '') }}" placeholder="e.g. ABCDE1234F" maxlength="10" style="text-transform:uppercase;">
+          </div>
+          <div>
+            <label for="epf_number">EPF Account Number</label>
+            <input type="text" id="epf_number" name="epf_number" value="{{ form.get('epf_number', '') }}" placeholder="EPF number">
+          </div>
+          <div>
+            <label for="esic_number">ESIC Number</label>
+            <input type="text" id="esic_number" name="esic_number" value="{{ form.get('esic_number', '') }}" placeholder="ESIC number">
+          </div>
+          <div class="form-full">
+            <label for="address">Address</label>
+            <textarea id="address" name="address" placeholder="Full address">{{ form.get('address', '') }}</textarea>
+          </div>
+        </div>
+
+        <div class="form-sec-title" style="margin-top:20px;">Bank Details</div>
+        <div class="form-grid two" style="margin-bottom:16px;">
+          <div>
+            <label for="bank_name">Bank Name</label>
+            <input type="text" id="bank_name" name="bank_name" value="{{ form.get('bank_name', '') }}" placeholder="e.g. State Bank of India">
+          </div>
+          <div>
+            <label for="account_holder_name">Account Holder Name</label>
+            <input type="text" id="account_holder_name" name="account_holder_name" value="{{ form.get('account_holder_name', '') }}" placeholder="As per bank records">
+          </div>
+          <div>
+            <label for="account_number">Account Number</label>
+            <input type="text" id="account_number" name="account_number" value="{{ form.get('account_number', '') }}" placeholder="Bank account number" inputmode="numeric">
+          </div>
+          <div>
+            <label for="ifsc_code">IFSC Code</label>
+            <input type="text" id="ifsc_code" name="ifsc_code" value="{{ form.get('ifsc_code', '') }}" placeholder="e.g. SBIN0001234" maxlength="11" style="text-transform:uppercase;">
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">{{ 'Update Employee' if mode == 'edit' else 'Add Employee' }}</button>
+          <a href="{{ url_for('employees') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+{# ══════════════════════════════════════════════════════
+   REPORT VIEW
+══════════════════════════════════════════════════════ #}
+{% elif mode is defined and mode == 'report' %}
+
+  <!-- KPI row -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+    <div class="kpi-card">
+      <div class="kpi-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Employees</div>
+        <div class="kpi-val">{{ report.total_count }}</div>
+        <div class="kpi-meta">{{ report.active_count }} active · {{ report.inactive_count }} inactive</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon green">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12M6 9h12M9 4a5 5 0 0 1 0 10M9 9l9 11"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Gross Payroll</div>
+        <div class="kpi-val">{{ report.total_gross | inr }}</div>
+        <div class="kpi-meta">{{ month_name }} {{ sel_year }}</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon purple">
+        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Credits Outstanding</div>
+        <div class="kpi-val">{{ report.total_credits | inr }}</div>
+        <div class="kpi-meta">{{ report.credit_count }} entries</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report type download cards -->
+  <div class="card" style="margin-bottom:18px;">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Reports
+      </div>
+      <span class="badge bg-blue report-month-chip">{{ month_name }} {{ sel_year }}</span>
+    </div>
+    <div class="report-type-grid">
+
+      <!-- Employee Master -->
+      <div class="report-type-card">
+        <div class="rtc-icon" style="background:var(--acc-bg);color:var(--acc);">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        </div>
+        <div class="rtc-title">Employee Master</div>
+        <div class="rtc-desc">All employee details — ID, contact, salary, EPF, ESIC</div>
+        <a href="{{ url_for('export_employee_master') }}" class="rtc-dl btn-primary" style="background:var(--acc);color:#fff;border-color:var(--acc);">↓ All Employees</a>
+      </div>
+
+      <!-- Monthly Payroll -->
+      <div class="report-type-card">
+        <div class="rtc-icon" style="background:var(--warn-bg);color:var(--warn);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12M6 9h12M9 4a5 5 0 0 1 0 10M9 9l9 11"/></svg>
+        </div>
+        <div class="rtc-title">Monthly Payroll</div>
+        <div class="rtc-desc">Attendance-based salary — gross, EPF, ESIC, net per employee</div>
+        <a href="{{ url_for('export_employees', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:var(--warn-bg);color:var(--warn);border-color:rgba(217,119,6,.3);">↓ {{ month_name }} {{ sel_year }}</a>
+      </div>
+
+      <!-- Attendance Register -->
+      <div class="report-type-card">
+        <div class="rtc-icon" style="background:#EFF6FF;color:#1F4E79;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/><line x1="15" y1="9" x2="15" y2="21"/></svg>
+        </div>
+        <div class="rtc-title">Attendance Register</div>
+        <div class="rtc-desc">Day-wise grid (Sheet 1) + attendance summary counts (Sheet 2)</div>
+        <a href="{{ url_for('export_attendance_register', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:#EFF6FF;color:#1F4E79;border-color:rgba(31,78,121,.3);">↓ {{ month_name }} {{ sel_year }}</a>
+      </div>
+
+      <!-- Wage Register -->
+      <div class="report-type-card">
+        <div class="rtc-icon" style="background:#F0FDF4;color:#166534;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+        </div>
+        <div class="rtc-title">Wage Register</div>
+        <div class="rtc-desc">Form XII [Rule 28(1)] — wages, deductions & net pay per employee</div>
+        <a href="{{ url_for('export_wage_register', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:#F0FDF4;color:#166534;border-color:rgba(22,101,52,.3);">↓ {{ month_name }} {{ sel_year }}</a>
+      </div>
+
+      <!-- Credit / Advance -->
+      <div class="report-type-card">
+        <div class="rtc-icon" style="background:var(--err-bg);color:var(--err);">
+          <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        </div>
+        <div class="rtc-title">Credit / Advance</div>
+        <div class="rtc-desc">All credit entries + per-employee balance summary (2 sheets)</div>
+        <a href="{{ url_for('export_credits_report', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:var(--err-bg);color:var(--err);border-color:rgba(220,38,38,.3);">↓ Credits Report</a>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Summary cards row -->
+  <div class="report-2col">
+    <!-- Salary summary -->
+    <div class="card">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12M6 9h12M9 4a5 5 0 0 1 0 10M9 9l9 11"/></svg>
+          Salary Summary
+        </div>
+        <span class="badge bg-blue">{{ month_name }} {{ sel_year }}</span>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <div class="report-list-item" style="padding:12px 18px;">
+          <span class="rli-label">Total Gross Payroll</span>
+          <span class="rli-value" style="color:var(--acc);">{{ report.total_gross | inr }}</span>
+        </div>
+        <div class="report-list-item" style="padding:12px 18px;">
+          <span class="rli-label">Total Net Payroll</span>
+          <span class="rli-value" style="color:var(--ok);">{{ report.total_net | inr }}</span>
+        </div>
+        <div class="report-list-item" style="padding:12px 18px;">
+          <span class="rli-label">Total EPF Deductions</span>
+          <span class="rli-value" style="color:var(--warn);">{{ report.total_epf | inr }}</span>
+        </div>
+        <div class="report-list-item" style="padding:12px 18px;">
+          <span class="rli-label">Total ESIC Deductions</span>
+          <span class="rli-value" style="color:var(--pur);">{{ report.total_esic | inr }}</span>
+        </div>
+        <div class="report-list-item" style="padding:12px 18px;border:none;">
+          <span class="rli-label">Total Deductions (EPF + ESIC)</span>
+          <span class="rli-value" style="color:var(--warn);">{{ (report.total_epf + report.total_esic) | inr }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Attendance summary -->
+    <div class="card">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          Attendance Summary
+        </div>
+        <span class="badge bg-blue">{{ month_name }} {{ sel_year }}</span>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <div class="report-list-item" style="padding:12px 18px;">
+          <span class="rli-label">Total Present Days</span>
+          <span class="rli-value" style="color:var(--ok);">{{ report.total_present }}</span>
+        </div>
+        <div class="report-list-item" style="padding:12px 18px;">
+          <span class="rli-label">Total Half Days</span>
+          <span class="rli-value" style="color:var(--warn);">{{ report.total_half }}</span>
+        </div>
+        <div class="report-list-item" style="padding:12px 18px;">
+          <span class="rli-label">Total Absent Days</span>
+          <span class="rli-value" style="color:var(--err);">{{ report.total_absent }}</span>
+        </div>
+        <div class="report-list-item" style="padding:12px 18px;">
+          <span class="rli-label">Employees Tracked</span>
+          <span class="rli-value">{{ report.tracked_count }}</span>
+        </div>
+        <div class="report-list-item" style="padding:12px 18px;border:none;">
+          <span class="rli-label">Employees Not Tracked</span>
+          <span class="rli-value" style="color:var(--txt3);">{{ report.active_count - report.tracked_count }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Employee breakdown table -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Employee Salary Breakdown — {{ month_name }} {{ sel_year }}
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Department</th>
+            <th class="center">Attendance</th>
+            <th class="num">Gross</th>
+            <th class="num">EPF</th>
+            <th class="num">ESIC</th>
+            <th class="num">Net Salary</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in report.employees %}
+          <tr>
+            <td>
+              <div class="emp-name">{{ emp.name }}</div>
+              <div style="font-size:10px;color:var(--txt3);">{{ emp.emp_code }}</div>
+            </td>
+            <td style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
+            <td class="center">
+              {% if emp.att.tracked %}
+              {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
+              {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.badge_den > 0 else 0 %}
+              <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
+                    title="{{ badge_num }} paid day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
+                {{ badge_num }}/{{ emp.att.badge_den }}
+              </span>
+              {% else %}
+              <span class="badge bg-gray">Not tracked</span>
+              {% endif %}
+            </td>
+            <td class="num">{{ emp.gross_salary | inr }}</td>
+            <td class="num orange">{{ emp.epf | inr }}</td>
+            <td class="num purple">{{ emp.esic | inr }}</td>
+            <td class="num green">{{ emp.net | inr }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="empty-state"><p>No active employees found.</p></td></tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3" style="text-align:right;font-weight:700;color:var(--txt2);">Total</td>
+            <td class="num" style="font-weight:800;">{{ report.total_gross | inr }}</td>
+            <td class="num orange" style="font-weight:800;">{{ report.total_epf | inr }}</td>
+            <td class="num purple" style="font-weight:800;">{{ report.total_esic | inr }}</td>
+            <td class="num green" style="font-weight:800;">{{ report.total_net | inr }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+
+{# ══════════════════════════════════════════════════════
+   CREDITS DASHBOARD
+══════════════════════════════════════════════════════ #}
+{% elif mode is defined and mode == 'credits_dashboard' %}
+
+  <!-- KPI cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-icon orange">
+        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Credit Balance</div>
+        <div class="kpi-val">{{ total_credit_amount | inr(2) }}</div>
+        <div class="kpi-meta">Across all employees</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Employees with History</div>
+        <div class="kpi-val">{{ employees_with_credit }}</div>
+        <div class="kpi-meta">Employees with credit records</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon purple">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Credit Entries</div>
+        <div class="kpi-val">{{ total_credit_entries }}</div>
+        <div class="kpi-meta">All-time records</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon green">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Export Credits</div>
+        <div class="kpi-val" style="font-size:14px;">
+          <a href="{{ url_for('export_credits_report', year=sel_year, month=sel_month) }}" class="btn btn-success btn-sm" style="margin-top:4px;">↓ Download Excel</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Employees with outstanding balance -->
+  <div class="card" style="margin-bottom:18px;">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        Employees with Credit History
+      </div>
+      <div class="filter-bar">
+        <div class="filter-bar" style="align-items:flex-end;">
+        <div class="search-wrap" style="max-width:220px;">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" id="cd-search" placeholder="Search employee…" oninput="filterCreditTable()" style="height:30px;font-size:12px;">
+        </div>
+        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, '', 'All Departments', '', searchable=true, field_id='cd-location', hide_label=true, change_handler='filterCreditTable') }}
+        <button onclick="clearCreditFilters()" class="btn-clear" id="cd-clear-btn" style="display:none;">✕ Clear</button>
+        {% if credit_emps %}<span class="badge bg-orange" id="cd-count-badge">{{ credit_emps|length }} employees</span>{% endif %}
+      </div>
+    </div>
+    {% if credit_emps %}
+    <div class="table-wrap">
+      <table id="credit-emp-table">
+        <thead>
+          <tr>
+            <th>Employee</th>
+            <th>Department</th>
+            <th class="center">Entries</th>
+            <th class="num">Credit Balance</th>
+            <th class="num">{{ ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][sel_month] }} Repay</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in credit_emps %}
+          <tr data-name="{{ e.name|lower }} {{ e.emp_code|lower }}" data-location="{{ e.location|lower }}">
+            <td>
+              <div class="emp-name">{{ e.name }}</div>
+              <div style="font-size:10px;color:var(--txt3);">{{ e.emp_code }}</div>
+            </td>
+            <td style="font-size:11px;color:var(--txt3);">{{ e.location }}</td>
+            <td style="text-align:center;color:var(--txt3);">{{ e.credit_entries }}</td>
+            <td class="num orange" style="font-weight:800;">{{ e.credit_balance | inr(2) }}</td>
+            <td class="num">
+              <input type="number" class="inline-sal" id="cr-{{ e.id }}"
+                     value="{{ e.credit_repayment or '' }}"
+                     placeholder="0" min="0" step="0.01" max="{{ e.repayment_max }}"
+                     {% if not e.repayment_input_enabled %}disabled{% endif %}
+                     onchange="saveSalary({{ e.id }})"
+                     title="Repayment for {{ payroll_state.label }} — change and press Tab or Enter">
+            </td>
+            <td>
+              <a href="{{ url_for('employee_credits', emp_id=e.id, year=sel_year, month=sel_month) }}" class="btn btn-purple btn-sm btn-xs">Manage</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div id="cd-no-results" style="display:none;" class="empty-state" style="padding:24px;">
+        <p>No employees match the current filters.</p>
+      </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div style="font-size:28px;opacity:.3;margin-bottom:8px;">💳</div>
+      <p>No credit history found yet.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Recent credit entries -->
+  <div class="card">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Recent Credit Entries
+      </div>
+      <span class="badge bg-gray">Last 15</span>
+    </div>
+    {% if recent_credits %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Employee</th>
+            <th>Description</th>
+            <th class="num">Amount</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cr in recent_credits %}
+          <tr>
+            <td style="font-size:11px;color:var(--txt3);white-space:nowrap;">{{ cr.date }}</td>
+            <td>
+              <div class="emp-name">{{ cr.emp_name }}</div>
+            </td>
+            <td style="color:var(--txt2);">{{ cr.description or '—' }}</td>
+            <td class="num {% if cr.amount < 0 %}red{% else %}green{% endif %}">{{ cr.amount | inr(2) }}</td>
+            <td>
+              <a href="{{ url_for('employee_credits', emp_id=cr.emp_id, year=sel_year, month=sel_month) }}" class="btn btn-secondary btn-sm btn-xs">View</a>
+              <a href="{{ url_for('delete_credit', credit_id=cr.id, year=sel_year, month=sel_month) }}" class="btn btn-danger btn-sm btn-xs" onclick="return confirm('Delete this entry?')">Delete</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state"><p>No credit entries yet.</p></div>
+    {% endif %}
+  </div>
+
+
+{# ══════════════════════════════════════════════════════
+   EMPLOYEE LIST (default)
+══════════════════════════════════════════════════════ #}
+{% else %}
+
+  {% if 'import_ok' in request.args %}
+  {% set _imp_ok = request.args.get('import_ok')|int %}
+  {% set _imp_err = request.args.get('import_err', 0)|int %}
+  <div class="import-banner {% if _imp_ok > 0 %}ok{% else %}err{% endif %}">
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+      {% if _imp_ok > 0 %}<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+      {% else %}<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>{% endif %}
+    </svg>
+    {% if _imp_ok > 0 %}
+      <strong>{{ _imp_ok }} employee{{ 's' if _imp_ok != 1 else '' }} imported successfully.</strong>
+      {% if _imp_err > 0 %}&nbsp;{{ _imp_err }} row{{ 's' if _imp_err != 1 else '' }} skipped.{% endif %}
+    {% else %}
+      <strong>Import failed.</strong>&nbsp;{{ _imp_err }} row{{ 's' if _imp_err != 1 else '' }} could not be processed. Check the file format and required columns.
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- KPI Summary cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card">
+      <div class="kpi-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Active Employees</div>
+        <div class="kpi-val">{{ total_employees }}</div>
+        <div class="kpi-meta">{{ employees|length }} shown with current filters</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon green">
+        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Attendance Tracked</div>
+        <div class="kpi-val">{{ kpi_att_pct }}%</div>
+        <div class="kpi-meta">{{ kpi_att_tracked }} of {{ total_employees }} active — {{ month_name }}</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon orange">
+        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Credit Balance</div>
+        <div class="kpi-val">{{ kpi_credits | inr }}</div>
+        <div class="kpi-meta">Outstanding advance / credit</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon purple">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12M6 9h12M9 4a5 5 0 0 1 0 10M9 9l9 11"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Net Payable</div>
+        <div class="kpi-val">{{ kpi_net | inr }}</div>
+        <div class="kpi-meta">Net salary — {{ month_name }} {{ sel_year }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Employee table -->
+  <div class="card card-emp-table">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        Employee Records
+      </div>
+      <div class="filter-bar" style="align-items:flex-end;">
+        <form method="GET" action="{{ url_for('employees') }}" id="filter-form" style="display:flex;align-items:flex-end;gap:6px;">
+          <input type="hidden" name="q" value="{{ search }}">
+          <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
+          <input type="hidden" name="year" value="{{ sel_year }}">
+          <input type="hidden" name="month" value="{{ sel_month }}">
+          {{ ep_toolbar_listbox('sort', 'Sort by', ep_sort_opts.options, sel_sort|default('id'), ep_sort_labels.get(sel_sort|default('id'), 'ID'), 'filter-form') }}
+          {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'filter-form', searchable=true) }}
+        </form>
+        {% if sel_location %}
+        <a href="{{ url_for('employees', q=search, status=sel_status, year=sel_year, month=sel_month, sort=sel_sort|default('id')) }}" class="btn-clear">✕ Clear Filters</a>
+        {% endif %}
+        {% if employees %}
+        <span class="badge bg-blue">{{ employees|length }} shown</span>
+        {% endif %}
+      </div>
+    </div>
+    {% if employees %}
+    <div class="table-wrap">
+      <table id="emp-main-table">
+        <thead>
+          <tr>
+            <th style="width:46px;">ID</th>
+            <th style="width:140px;">Name</th>
+            <th style="width:90px;">Department</th>
+            <th class="num" style="width:95px;">Gross</th>
+            <th style="width:66px;text-align:center;">Attend.</th>
+            <th class="num" style="width:88px;">Deductions</th>
+            <th class="num" style="width:105px;">Net Salary</th>
+            <th class="num" style="width:108px;">Repay</th>
+            <th class="num" style="width:100px;">Cr. Balance</th>
+            <th class="tbl-sticky" style="text-align:center;width:136px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in employees %}
+          {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
+          {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.badge_den > 0 else 0 %}
+          <tr id="emp-row-{{ emp.id }}">
+            <td style="font-size:11px;color:var(--txt3);">{{ emp.emp_code }}</td>
+            <td>
+              <div class="emp-name">{{ emp.name }}</div>
+            </td>
+            <td style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
+            <td class="num">{{ emp.gross_salary | inr }}</td>
+            <td>
+              {% if emp.att.tracked %}
+              <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
+                    title="{{ badge_num }} paid day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
+                {{ badge_num }}/{{ emp.att.badge_den }}
+              </span>
+              {% else %}
+              <span class="badge bg-gray">—</span>
+              {% endif %}
+            </td>
+            <td class="num orange" title="EPF: {{ emp.epf | inr }} + ESIC: {{ emp.esic | inr }}{% if emp.lop_deduction|default(0) > 0 %} + LOP: {{ emp.lop_deduction | inr }}{% endif %}">
+              {{ (emp.epf + emp.esic + emp.lop_deduction|default(0)) | inr }}
+            </td>
+            <td class="num green" id="net-{{ emp.id }}">
+              {{ emp.net | inr }}
+            </td>
+            <td class="num">
+              {% if emp.repayment_input_visible %}
+              <input type="number" class="inline-sal" id="cr-{{ emp.id }}"
+                     value="{{ emp.credit_repayment or '' }}"
+                     placeholder="0"
+                     data-emp="{{ emp.id }}" data-field="credit_repayment" max="{{ emp.repayment_max }}"
+                     {% if not emp.repayment_input_enabled %}disabled{% endif %}
+                     onchange="saveSalary({{ emp.id }})"
+                     min="0" step="0.01">
+              {% else %}
+              <span style="color:var(--txt3);font-size:11px;">—</span>
+              {% endif %}
+            </td>
+            <td id="cb-{{ emp.id }}" class="num {% if emp.credit_total > 0 %}orange{% endif %}" style="{% if emp.credit_total <= 0 %}color:var(--txt3);{% endif %}">
+              {{ emp.credit_total | inr(2) }}
+            </td>
+            <td class="tbl-sticky" style="text-align:center;padding:8px 9px;">
+              <div class="act-grp">
+                {% if has_payroll_access('attendance') %}
+                <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
+                   class="act-btn att" data-tip="Attendance">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                </a>
+                {% endif %}
+                {% if has_payroll_access('credit') %}
+                <a href="{{ url_for('employee_credits', emp_id=emp.id, year=sel_year, month=sel_month) }}"
+                   class="act-btn cred" data-tip="Credits">
+                  <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                </a>
+                {% endif %}
+                {% if has_payroll_access('employee') and (has_payroll_access('attendance') or has_payroll_access('credit')) %}
+                <div class="act-sep"></div>
+                {% endif %}
+                {% if has_payroll_access('employee') %}
+                <a href="{{ url_for('edit_employee', emp_id=emp.id) }}"
+                   class="act-btn edit" data-tip="Edit">
+                  <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </a>
+                <a href="{{ url_for('delete_employee', emp_id=emp.id) }}"
+                   class="act-btn del" data-tip="Delete"
+                   onclick="return confirm('Delete {{ emp.name }}? This cannot be undone.')">
+                  <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </a>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <div style="font-size:32px;opacity:.25;margin-bottom:10px;">👥</div>
+      {% if search %}
+        <p>No employees found matching <strong>"{{ search }}"</strong>.</p>
+      {% else %}
+        <p>No employees yet. Click <strong>+ Add Employee</strong> to get started.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+{% endif %}
+
+</main>
+</div><!-- /main-wrapper -->
+</div><!-- /de-main-wrapper -->
+</div><!-- /de-app-shell -->
+</div><!-- /ep-workspace -->
+
+<!-- ═══════════════════════════════════════════════════
+     ADD CREDIT MODAL (Credit Dashboard)
+══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="add-credit-modal">
+  <div class="modal-box" style="width:480px;">
+    <h3 style="display:flex;align-items:center;gap:8px;">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pur)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      <span id="acm-title">Add Credit / Advance</span>
+    </h3>
+    <p id="acm-copy">Select an employee and enter the credit details. The entry will be added to their credit history.</p>
+
+    <div id="acm-err" style="display:none;background:var(--err-bg);border:1px solid rgba(220,38,38,.25);color:var(--err);padding:9px 13px;border-radius:var(--rs);font-size:12px;margin-bottom:12px;"></div>
+
+    <form id="add-credit-form" method="POST" action="{{ url_for('add_credit_global') }}">
+      <input type="hidden" name="year" value="{{ sel_year }}">
+      <input type="hidden" name="month" value="{{ sel_month }}">
+      <input type="hidden" id="acm-type" name="transaction_type" value="credit">
+      <!-- Employee selector -->
+      {% set acm_emp_ns = namespace(options=[('', 'Select employee…')]) %}
+      {% for e in all_employees|default([]) %}
+        {% set acm_lbl = e.name ~ ((' (' ~ e.emp_code ~ ')') if e.emp_code else '') ~ ((' — ' ~ e.location) if e.location else '') %}
+        {% set acm_emp_ns.options = acm_emp_ns.options + [(e.id|string, acm_lbl)] %}
+      {% endfor %}
+      <div style="margin-bottom:14px;">
+        {{ ep_listbox('employee_id', 'Employee', acm_emp_ns.options, '', placeholder='Select employee…', searchable=true, field_id='acm-emp-hidden') }}
+      </div>
+
+      <!-- Date + Amount row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;">Date *</label>
+          <input type="date" id="acm-date" name="date" required>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;">Amount (₹) *</label>
+          <input type="number" id="acm-amount" name="amount" required min="0.01" step="0.01" placeholder="e.g. 5000" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;font-size:13px;color:var(--txt);background:var(--entry);outline:none;">
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div style="margin-bottom:18px;">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;">Description</label>
+        <input type="text" id="acm-desc" name="description" placeholder="e.g. Advance, Loan, Emergency…" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;font-size:13px;color:var(--txt);background:var(--entry);outline:none;">
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-primary" id="acm-submit" onclick="submitAddCredit()">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span id="acm-submit-label">Add Credit</span>
+        </button>
+        <button type="button" class="btn btn-secondary" onclick="closeAddCreditModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     EXCEL IMPORT MODAL
+══════════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="import-modal">
+  <div class="modal-box" style="max-width:480px;">
+
+    <!-- Header -->
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;">
+      <div style="width:40px;height:40px;background:var(--ok-bg);border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <div>
+        <h3 style="margin:0;font-size:16px;">Import Employees from Excel</h3>
+        <p style="margin:2px 0 0;color:var(--txt3);font-size:12px;">New employees are added · Duplicate Emp ID rows are skipped</p>
+      </div>
+    </div>
+
+    <!-- Step 1: Download template -->
+    <div style="background:var(--acc-bg);border:1.5px solid var(--acc);border-radius:var(--r);padding:14px 16px;margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--acc);margin-bottom:3px;">
+            <span style="display:inline-block;background:var(--acc);color:#fff;border-radius:50%;width:17px;height:17px;font-size:10px;text-align:center;line-height:17px;margin-right:5px;font-weight:800;">1</span>
+            Download the template first
+          </div>
+          <div style="font-size:11px;color:var(--txt2);line-height:1.5;">
+            Pre-built .xlsx with all <strong>16 columns</strong>, descriptions &amp; sample rows.<br>
+            Fill your data from <strong>Row 7</strong> onwards — do not change headers.
+          </div>
+        </div>
+        <a href="{{ url_for('download_employee_template') }}"
+           style="flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;background:var(--acc);color:#fff;border-radius:var(--rs);padding:10px 16px;text-decoration:none;font-size:11px;font-weight:700;transition:background .15s;white-space:nowrap;"
+           onmouseover="this.style.background='var(--acc-h)'" onmouseout="this.style.background='var(--acc)'">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download<br>Template
+        </a>
+      </div>
+    </div>
+
+    <!-- Step 2: Upload -->
+    <div style="margin-bottom:4px;">
+      <div style="font-size:12px;font-weight:700;color:var(--txt2);margin-bottom:8px;">
+        <span style="display:inline-block;background:var(--txt2);color:#fff;border-radius:50%;width:17px;height:17px;font-size:10px;text-align:center;line-height:17px;margin-right:5px;font-weight:800;">2</span>
+        Upload the filled file
+      </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('upload_employees') }}" enctype="multipart/form-data" id="import-form">
+      <div class="file-input-wrap" onclick="document.getElementById('import-file').click()">
+        <input type="file" id="import-file" name="file" accept=".xlsx,.xls" onchange="onFileChosen(this)">
+        <div class="fi-label">Click to select Excel file</div>
+        <div class="fi-hint">.xlsx or .xls — max 10 MB</div>
+        <div class="file-chosen" id="file-chosen-label"></div>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary" id="import-submit-btn" disabled>↑ Import</button>
+        <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+// ── Import modal ──
+function openImportModal(){
+  document.getElementById('import-modal').classList.add('active');
+}
+function closeImportModal(){
+  document.getElementById('import-modal').classList.remove('active');
+}
+function onFileChosen(input){
+  var lbl = document.getElementById('file-chosen-label');
+  var btn = document.getElementById('import-submit-btn');
+  if(input.files && input.files[0]){
+    lbl.textContent = input.files[0].name;
+    lbl.style.display = 'block';
+    btn.disabled = false;
+  } else {
+    lbl.style.display = 'none';
+    btn.disabled = true;
+  }
+}
+document.getElementById('import-modal').addEventListener('click', function(e){
+  if(e.target === this) closeImportModal();
+});
+
+(function(){
+  if(window.lucide && typeof window.lucide.createIcons === 'function'){
+    window.lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
+  }
+})();
+
+// ── Live salary calc preview ──
+function toggleExempt(type){
+  var cb  = document.getElementById(type + '_exempt');
+  var inp = document.getElementById(type + '_amount');
+  if(cb.checked){
+    inp.disabled = true;
+    inp.value = '';
+    inp.style.opacity = '0.45';
+    inp.style.background = 'var(--bg)';
+    inp.placeholder = 'No ' + type.toUpperCase() + ' — full amount to Basic';
+  } else {
+    inp.disabled = false;
+    inp.style.opacity = '';
+    inp.style.background = '';
+    inp.placeholder = type === 'epf' ? 'Auto: 12% of Basic (max ₹1,800)' : 'Auto: 0.75% of Gross';
+  }
+  calcPreview();
+}
+function calcPreview(){
+  var inp = document.getElementById('gross_salary');
+  if(!inp) return;
+  var gross = parseFloat(inp.value) || 0;
+  var preview = document.getElementById('salary-preview');
+  var warn = document.getElementById('salary-warning');
+  if(gross <= 0){ preview.style.display='none'; if(warn) warn.style.display='none'; return; }
+  preview.style.display='grid';
+  var customBasic = parseFloat(document.getElementById('basic_salary').value) || 0;
+  var customEpf   = parseFloat(document.getElementById('epf_amount').value) || 0;
+  var customEsic  = parseFloat(document.getElementById('esic_amount').value) || 0;
+  var crEl = document.getElementById('credit_repayment');
+  var creditRepay = crEl ? (parseFloat(crEl.value) || 0) : 0;
+  var crItem = document.getElementById('pv-cr-item');
+  if (crItem) crItem.style.display = crEl ? '' : 'none';
+  var epfExempt  = document.getElementById('epf_exempt')  && document.getElementById('epf_exempt').checked;
+  var esicExempt = document.getElementById('esic_exempt') && document.getElementById('esic_exempt').checked;
+  var esicApplicable = false;
+  var esic = 0;
+  if(esicExempt){
+    esic = 0;
+  } else if(customEsic > 0){
+    esic = customEsic;
+    esicApplicable = true;
+  } else if(gross <= 21000){
+    esic = Math.round(gross * 0.0075 * 100) / 100;
+    esicApplicable = true;
+  }
+  var basicRaw = 0, epf = 0;
+  if(epfExempt){
+    epf = 0;
+    basicRaw = gross - esic;
+  } else if(customBasic > 0){
+    basicRaw = customBasic;
+    epf = customEpf > 0 ? customEpf : Math.round(customBasic * 0.12 * 100) / 100;
+  } else if(customEpf > 0){
+    epf = customEpf;
+    basicRaw = Math.round((gross - epf - esic) * 100) / 100;
+  } else {
+    basicRaw = Math.round(((gross - esic) / 1.12) * 100) / 100;
+    epf = Math.round((gross - basicRaw - esic) * 100) / 100;
+  }
+  var basic = Math.max(0, Math.min(basicRaw, gross));
+  epf = Math.max(0, epf);
+  if(!epfExempt && epf > 1800){
+    var surplus = Math.round((epf - 1800) * 100) / 100;
+    epf = 1800;
+    basic = Math.round((basic + surplus) * 100) / 100;
+  }
+  var netRaw = Math.round((gross - epf - esic - creditRepay) * 100) / 100;
+  var net = Math.max(0, netRaw);
+  document.getElementById('pv-gross').textContent = fmtInr(gross, 0);
+  document.getElementById('pv-basic').textContent = fmtInr(basic, 0);
+  document.getElementById('pv-epf').textContent   = fmtInr(epf, 0);
+  document.getElementById('pv-esic').textContent  = esicExempt ? fmtInr(0, 0) : (esicApplicable ? fmtInr(esic, 0) : 'N/A');
+  document.getElementById('pv-cr').textContent    = fmtInr(creditRepay, 0);
+  document.getElementById('pv-net').textContent   = fmtInr(net, 0);
+  document.getElementById('pv-basic-label').textContent = epfExempt ? 'Basic (EPF exempt)' : (customBasic > 0 ? 'Basic (custom)' : 'Basic (auto)');
+  document.getElementById('pv-epf-label').textContent   = epfExempt ? 'EPF (exempt ₹0)' : (customEpf > 0 ? 'EPF (custom, max ₹1,800)' : 'EPF (auto 12%, max ₹1,800)');
+  document.getElementById('pv-esic-label').textContent  = esicExempt ? 'ESIC (exempt ₹0)' : (customEsic > 0 ? 'ESIC (custom)' : (esicApplicable ? 'ESIC (auto .75%)' : 'ESIC (N/A > ₹21,000)'));
+  document.getElementById('pv-cr-label').textContent = creditRepay > 0 ? 'Credit Repay' : 'Credit Repay (0)';
+  var warnings = [];
+  if(customBasic > 0 && customBasic > gross) warnings.push('Basic Pay exceeds Gross Salary');
+  if(!esicExempt && !esicApplicable && customEsic <= 0 && gross > 21000){
+    warnings.push('ESI not applicable — gross monthly wages exceed the ESI eligibility limit of ₹21,000');
+  }
+  if(!epfExempt && esicApplicable){
+    var comp = Math.round((basic + epf + esic) * 100) / 100;
+    if(Math.abs(comp - gross) > 0.01) warnings.push('Gross mismatch: Basic+EPF+ESIC = '+comp.toFixed(2)+', Gross = '+gross.toFixed(2));
+  }
+  if(!epfExempt && !esicExempt && !esicApplicable){
+    var compNoEsic = Math.round((basic + epf) * 100) / 100;
+    if(Math.abs(compNoEsic - gross) > 0.01) warnings.push('Gross mismatch: Basic+EPF = '+compNoEsic.toFixed(2)+', Gross = '+gross.toFixed(2));
+  }
+  if(epf + esic + creditRepay > gross) warnings.push('Total deductions exceed Gross Salary');
+  if(netRaw < 0) warnings.push('Net is 0 — deductions exceed Gross');
+  if(warn){ if(warnings.length){ warn.style.display='block'; warn.textContent=warnings.join('. '); } else warn.style.display='none'; }
+}
+if(document.getElementById('gross_salary') && document.getElementById('gross_salary').value) calcPreview();
+
+// ── Searchable dropdown ──
+var _openSd = null;
+function toggleSd(trigger){
+  var wrap = trigger.closest('.sd-wrap');
+  var panel = wrap.querySelector('.sd-panel');
+  var isOpen = panel.style.display === 'block';
+  closeAllSd();
+  if(!isOpen){
+    panel.style.display = 'block';
+    trigger.classList.add('open');
+    _openSd = wrap;
+    var srch = panel.querySelector('.sd-search');
+    srch.value = ''; filterSd(srch);
+    setTimeout(function(){ srch.focus(); }, 30);
+  }
+}
+function closeAllSd(){
+  document.querySelectorAll('.sd-wrap').forEach(function(w){
+    w.querySelector('.sd-panel').style.display = 'none';
+    w.querySelector('.sd-trigger').classList.remove('open');
+  });
+  _openSd = null;
+}
+function filterSd(searchInput){
+  var list = searchInput.closest('.sd-panel').querySelector('.sd-list');
+  var q = searchInput.value.toLowerCase();
+  var items = list.querySelectorAll('.sd-item');
+  var any = false;
+  items.forEach(function(item){
+    var m = item.dataset.value.toLowerCase().includes(q);
+    item.style.display = m ? '' : 'none';
+    if(m) any = true;
+  });
+  var empty = list.querySelector('.sd-empty');
+  if(!any){
+    if(!empty){ empty = document.createElement('div'); empty.className='sd-empty'; empty.textContent='No matches'; list.appendChild(empty); }
+    empty.style.display = '';
+  } else if(empty) empty.style.display = 'none';
+}
+function selectSd(el){
+  var wrap = el.closest('.sd-wrap');
+  var field = wrap.dataset.field;
+  document.getElementById(field).value = el.dataset.value;
+  wrap.querySelector('.sd-display').textContent = el.dataset.value;
+  wrap.querySelectorAll('.sd-item').forEach(function(i){ i.classList.remove('selected','active'); });
+  el.classList.add('selected');
+  closeAllSd();
+}
+function sdNav(e, searchInput){
+  var list = searchInput.closest('.sd-panel').querySelector('.sd-list');
+  var visible = Array.from(list.querySelectorAll('.sd-item')).filter(function(i){ return i.style.display!=='none'; });
+  var active = list.querySelector('.sd-item.active');
+  var idx = visible.indexOf(active);
+  if(e.key==='ArrowDown'){ e.preventDefault(); idx=Math.min(idx+1,visible.length-1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); idx=Math.max(idx-1,0); }
+  else if(e.key==='Enter'&&active){ e.preventDefault(); selectSd(active); return; }
+  else if(e.key==='Escape'){ closeAllSd(); return; }
+  else return;
+  if(active) active.classList.remove('active');
+  if(visible[idx]){ visible[idx].classList.add('active'); visible[idx].scrollIntoView({block:'nearest'}); }
+}
+document.addEventListener('click', function(e){
+  if(_openSd && !_openSd.contains(e.target)) closeAllSd();
+});
+
+// ── Attendance popup ──
+var attEmpId='', attDate='';
+function openAttPopup(empId, dateStr, dayNum, currentStatus){
+  var todayStr = new Date().toISOString().split('T')[0];
+  if(dateStr > todayStr) return; // block future dates
+  attEmpId = empId; attDate = dateStr;
+  var isSunday = (new Date(dateStr + 'T12:00:00')).getDay() === 0;
+  document.getElementById('att-popup-title').textContent = 'Day '+dayNum+' — '+dateStr+(isSunday?' (Sunday)':'');
+  var ab = document.getElementById('att-absent-btn');
+  if(ab) ab.style.display = '';
+  document.getElementById('att-popup').classList.add('active');
+}
+function closeAttPopup(){
+  document.getElementById('att-popup').classList.remove('active');
+}
+function markAtt(status){
+  var form = document.createElement('form');
+  form.method='POST'; form.action='/mark_attendance';
+  var fields = {employee_id:attEmpId, date:attDate, status:status, year:'{{ sel_year }}', month:'{{ sel_month }}'};
+  for(var k in fields){
+    var inp = document.createElement('input');
+    inp.type='hidden'; inp.name=k; inp.value=fields[k];
+    form.appendChild(inp);
+  }
+  document.body.appendChild(form); form.submit();
+}
+var popup = document.getElementById('att-popup');
+if(popup) popup.addEventListener('click', function(e){ if(e.target===popup) closeAttPopup(); });
+
+// ── Credit inline edit ──
+function showEditCredit(id){
+  document.getElementById('cr-row-'+id).style.display='none';
+  document.getElementById('cr-edit-'+id).style.display='';
+}
+function hideEditCredit(id){
+  document.getElementById('cr-row-'+id).style.display='';
+  document.getElementById('cr-edit-'+id).style.display='none';
+}
+function submitEditCredit(id){
+  var form = document.createElement('form');
+  form.method='POST'; form.action='/edit_credit/'+id;
+  var fields = {
+    date: document.getElementById('cr-date-'+id).value,
+    description: document.getElementById('cr-desc-'+id).value,
+    amount: document.getElementById('cr-amt-'+id).value,
+    year: '{{ sel_year }}',
+    month: '{{ sel_month }}'
+  };
+  for(var k in fields){
+    var inp = document.createElement('input');
+    inp.type='hidden'; inp.name=k; inp.value=fields[k];
+    form.appendChild(inp);
+  }
+  document.body.appendChild(form); form.submit();
+}
+
+function submitPayrollLock(year, month, label){
+  if(!window.confirm('Lock ' + label + '? After locking, repayment changes for this month will become read-only.')) return;
+  var form = document.createElement('form');
+  form.method = 'POST';
+  form.action = '{{ url_for('lock_payroll_month') }}';
+  var fields = {year: year, month: month, lock_action: 'manual_lock'};
+  for(var k in fields){
+    var inp = document.createElement('input');
+    inp.type = 'hidden';
+    inp.name = k;
+    inp.value = fields[k];
+    form.appendChild(inp);
+  }
+  document.body.appendChild(form);
+  form.submit();
+}
+
+// ── Add credit / repayment ──
+function setCreditType(type){
+  var el = document.getElementById('cr_type');
+  if(el) el.value = type === 'repayment' ? 'repayment' : 'credit';
+}
+function addCredit(e){
+  e.preventDefault();
+  var dateVal=document.getElementById('cr_date').value;
+  var amtVal=document.getElementById('cr_amount').value;
+  var descVal=document.getElementById('cr_desc').value;
+  var typeVal=(document.getElementById('cr_type')||{value:'credit'}).value;
+  var msgEl=document.getElementById('credit-msg');
+  if(!dateVal||!amtVal||parseFloat(amtVal)<=0){
+    if(msgEl){ msgEl.style.display='block'; msgEl.style.background='var(--err-bg)'; msgEl.style.border='1px solid rgba(220,38,38,.3)'; msgEl.style.color='var(--err)'; msgEl.textContent='Please enter a valid date and amount.'; }
+    return false;
+  }
+  var form=document.createElement('form');
+  form.method='POST'; form.action='/add_credit/{{ emp.id if emp is defined else 0 }}';
+  var fields={date:dateVal,description:descVal,amount:amtVal,transaction_type:typeVal,year:'{{ sel_year }}',month:'{{ sel_month }}'};
+  for(var k in fields){
+    var inp=document.createElement('input');
+    inp.type='hidden'; inp.name=k; inp.value=fields[k];
+    form.appendChild(inp);
+  }
+  document.body.appendChild(form); form.submit();
+  return false;
+}
+
+// ── Credit Dashboard table filter ──
+function filterCreditTable(){
+  var q       = (document.getElementById('cd-search')   || {value:''}).value.toLowerCase().trim();
+  var location= (document.getElementById('cd-location') || {value:''}).value.toLowerCase();
+  var rows    = document.querySelectorAll('#credit-emp-table tbody tr');
+  var visible = 0;
+  rows.forEach(function(row){
+    var name   = (row.dataset.name     || '');
+    var loc    = (row.dataset.location || '');
+    var show = (!q || name.includes(q))
+            && (!location || loc === location);
+    row.style.display = show ? '' : 'none';
+    if(show) visible++;
+  });
+  var noRes = document.getElementById('cd-no-results');
+  if(noRes) noRes.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
+  var badge = document.getElementById('cd-count-badge');
+  if(badge) badge.textContent = visible + ' employee' + (visible !== 1 ? 's' : '');
+  var clearBtn = document.getElementById('cd-clear-btn');
+  if(clearBtn) clearBtn.style.display = (q || location) ? 'inline-flex' : 'none';
+}
+function clearCreditFilters(){
+  var s = document.getElementById('cd-search');   if(s) s.value = '';
+  if (typeof resetEpListbox === 'function') {
+    resetEpListbox('cd-location', '', 'All Departments');
+  }
+  filterCreditTable();
+}
+
+// ── Add Credit / Repayment Modal (Credit Dashboard) ──
+function openAddCreditModal(type){
+  type = type === 'repayment' ? 'repayment' : 'credit';
+  // Set default date to today
+  var today = new Date().toISOString().split('T')[0];
+  document.getElementById('acm-type').value = type;
+  document.getElementById('acm-date').value = today;
+  document.getElementById('acm-amount').value = '';
+  document.getElementById('acm-desc').value = type === 'repayment' ? 'Repayment' : '';
+  if (typeof resetEpListbox === 'function') resetEpListbox('acm-emp-hidden', '', 'Select employee…');
+  document.getElementById('acm-err').style.display = 'none';
+  document.getElementById('acm-title').textContent = type === 'repayment' ? 'Add Repayment' : 'Add Credit / Advance';
+  document.getElementById('acm-copy').textContent = type === 'repayment'
+    ? 'Select an employee and enter repayment details. The amount will reduce their credit balance.'
+    : 'Select an employee and enter the credit details. The entry will be added to their credit history.';
+  document.getElementById('acm-submit-label').textContent = type === 'repayment' ? 'Repayment' : 'Add Credit';
+  document.getElementById('add-credit-modal').classList.add('active');
+}
+function closeAddCreditModal(){
+  document.getElementById('add-credit-modal').classList.remove('active');
+}
+document.addEventListener('DOMContentLoaded', function(){
+  var m = document.getElementById('add-credit-modal');
+  if(m) m.addEventListener('click', function(e){ if(e.target===m) closeAddCreditModal(); });
+});
+
+function submitAddCredit(){
+  var empId  = document.getElementById('acm-emp-hidden').value;
+  var date   = document.getElementById('acm-date').value;
+  var amount = document.getElementById('acm-amount').value;
+  var errEl  = document.getElementById('acm-err');
+  if(!empId){ errEl.textContent='Please select an employee.'; errEl.style.display='block'; return; }
+  if(!date){ errEl.textContent='Please select a date.'; errEl.style.display='block'; return; }
+  if(!amount||parseFloat(amount)<=0){ errEl.textContent='Please enter a valid amount greater than 0.'; errEl.style.display='block'; return; }
+  errEl.style.display='none';
+  document.getElementById('add-credit-form').submit();
+}
+
+// fmtInr provided by static/format_inr.js
+
+// ── Inline credit repayment save (AJAX) ──
+function saveSalary(empId){
+  var crEl = document.getElementById('cr-'+empId);
+  if(!crEl) return;
+  crEl.className = 'inline-sal saving';
+  fetch('/update_salary/'+empId, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ credit_repayment: crEl.value||'0', year:'{{ sel_year }}', month:'{{ sel_month }}' })
+  })
+  .then(function(r){
+    return r.json().then(function(d){
+      if(!r.ok) throw d;
+      return d;
+    });
+  })
+  .then(function(d){
+    if(d.ok){
+      crEl.value = d.credit_repayment || '';
+      crEl.className='inline-sal saved';
+      // Update net salary cell
+      var netEl = document.getElementById('net-'+empId);
+      if(netEl){
+        netEl.textContent = fmtInr(d.net, 0);
+      }
+      // Update credit balance cell live
+      var cbEl = document.getElementById('cb-'+empId);
+      if(cbEl && typeof d.credit_balance !== 'undefined'){
+        var bal = d.credit_balance;
+        cbEl.textContent = fmtInr(bal, 2);
+        cbEl.className = 'num ' + (bal > 0 ? 'orange' : '');
+        cbEl.style.color = bal <= 0 ? 'var(--txt3)' : '';
+        // Flash green briefly to signal the repayment was recorded
+        cbEl.style.transition = 'color .3s';
+        cbEl.style.color = 'var(--ok)';
+        setTimeout(function(){ cbEl.style.color = bal <= 0 ? 'var(--txt3)' : ''; }, 1200);
+      }
+      setTimeout(function(){ crEl.className='inline-sal'; }, 2000);
+    } else { crEl.className='inline-sal error'; }
+  })
+  .catch(function(err){
+    crEl.className='inline-sal error';
+    if(err && err.max_repayment !== undefined){
+      crEl.value = err.max_repayment || '';
+    }
+    if(err && err.error){
+      window.alert(err.error);
+    }
+  });
+}
+</script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=2"></script>
+</body>
+</html>

@@ -249,6 +249,103 @@ body.sb-off .se-hero-back svg {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
+.se-filter-chip--listbox {
+  position: relative;
+  z-index: 1;
+}
+
+.se-filter-chip--listbox.is-open {
+  z-index: 40;
+}
+
+.se-filter-chip--listbox .se-filter-chip-control {
+  overflow: visible;
+}
+
+.se-filter-chip--listbox .se-filter-chip-trigger {
+  display: flex;
+  align-items: center;
+  font: 600 14px Inter, system-ui, sans-serif;
+}
+
+.se-filter-chip-value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.se-filter-listbox {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 50;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+  max-height: min(280px, 50vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.se-filter-listbox-option {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #111827;
+  font: 500 14px Inter, system-ui, sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.se-filter-listbox-option:hover,
+.se-filter-listbox-option:focus {
+  outline: none;
+  background: #F1F5F9;
+  color: #111827;
+}
+
+.se-filter-listbox-option.is-selected {
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563EB;
+  font-weight: 600;
+}
+
+.se-filter-listbox-option.is-selected:hover,
+.se-filter-listbox-option.is-selected:focus {
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.se-filter-chip--listbox.is-open .se-filter-chip-control {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  border-color: #93C5FD;
+}
+
+.se-filter-chip--listbox.is-open .se-filter-chip-chev {
+  transform: translateY(-50%) rotate(180deg);
+  color: #2563EB;
+}
+
+.se-filter-chip--listbox.is-disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.se-filter-chip--listbox.is-disabled .se-filter-chip-trigger {
+  cursor: not-allowed;
+}
+
 .se-filter-chip-chev {
   position: absolute;
   right: 14px;

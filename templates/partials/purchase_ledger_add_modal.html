@@ -1,0 +1,159 @@
+<div class="modal-backdrop" id="pl-add-purchase-modal" aria-hidden="true">
+  <div class="staff-credit-box pl-add-purchase-box" role="dialog" aria-modal="true" aria-labelledby="pl-add-purchase-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/><path d="M16 16v6"/><path d="M19 19h-6"/></svg>
+      <span id="pl-add-purchase-title">Add Purchase</span>
+    </div>
+    <p class="staff-credit-copy">Record a hotel purchase with supplier, category, payment type, and purchase date. This creates the same expense entry used in Sales Update — Hotel.</p>
+    <div id="pl-add-purchase-error" class="staff-credit-error"></div>
+    <div class="staff-field">
+      <label for="pl-add-purchase-date">Purchase date *</label>
+      <input id="pl-add-purchase-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
+    </div>
+    <div class="staff-field">
+      <div class="staff-supplier-field-head">
+        <span class="staff-supplier-field-label">Supplier *</span>
+        <button type="button" class="staff-supplier-add-btn" id="pl-add-supplier-btn">+ Add</button>
+      </div>
+      <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox data-se-listbox-searchable id="pl-add-supplier-listbox">
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          </span>
+          <input type="hidden" id="pl-add-supplier-input" value="">
+          <button type="button" class="se-filter-chip-trigger" id="pl-add-supplier-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pl-add-supplier-list" aria-labelledby="pl-add-supplier-label pl-add-supplier-value">
+            <span class="se-filter-chip-value staff-supplier-placeholder" id="pl-add-supplier-value">Select supplier</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <span class="visually-hidden" id="pl-add-supplier-label">Supplier</span>
+        <div class="se-filter-listbox staff-expense-supplier-panel" id="pl-add-supplier-list" role="listbox" aria-labelledby="pl-add-supplier-label" hidden>
+          <div class="staff-supplier-search-wrap">
+            <input type="search" class="staff-supplier-search" id="pl-add-supplier-search" placeholder="Search by name or GST..." autocomplete="off" aria-label="Search suppliers">
+          </div>
+          <div class="staff-supplier-options" id="pl-add-supplier-options">
+            {% for supplier in suppliers %}
+            <button type="button" class="se-filter-listbox-option staff-supplier-option" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }}" data-gst="{{ supplier.gst|lower }}" aria-selected="false">
+              <span class="staff-supplier-option-name">{{ supplier.name }}</span>
+              <span class="staff-supplier-option-gst">{{ supplier.gst }}</span>
+            </button>
+            {% endfor %}
+          </div>
+          <div class="staff-supplier-empty" id="pl-add-supplier-empty" hidden>No suppliers match your search.</div>
+        </div>
+      </div>
+    </div>
+    <div class="staff-grid pl-add-category-row">
+      <div class="staff-field staff-field--inline">
+        <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox data-se-listbox-searchable id="pl-add-category-listbox">
+          <span class="se-filter-chip-label" id="pl-add-category-label">Category *</span>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+            </span>
+            <input type="hidden" id="pl-add-category-input" value="">
+            <button type="button" class="se-filter-chip-trigger" id="pl-add-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pl-add-category-list" aria-labelledby="pl-add-category-label pl-add-category-value">
+              <span class="se-filter-chip-value staff-supplier-placeholder" id="pl-add-category-value">Select category</span>
+            </button>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+          <div class="se-filter-listbox staff-expense-supplier-panel" id="pl-add-category-list" role="listbox" aria-labelledby="pl-add-category-label" hidden>
+            <div class="staff-supplier-search-wrap">
+              <input type="search" class="staff-supplier-search" id="pl-add-category-search" placeholder="Search category..." autocomplete="off" aria-label="Search categories">
+            </div>
+            <div class="staff-supplier-options" id="pl-add-category-options">
+              {% for category_key, category_label in expense_categories %}
+              <button type="button" class="se-filter-listbox-option staff-category-option" role="option" data-value="{{ category_key }}" data-name="{{ category_label|lower }}" aria-selected="false">{{ category_label }}</button>
+              {% endfor %}
+            </div>
+            <div class="staff-supplier-empty" id="pl-add-category-empty" hidden>No categories match your search.</div>
+          </div>
+        </div>
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="pl-add-invoice-number">Invoice number</label>
+        <input id="pl-add-invoice-number" class="staff-input" type="text" placeholder="e.g. INV-2026-0142" autocomplete="off">
+      </div>
+    </div>
+    <div class="staff-grid">
+      <div class="staff-field staff-field--inline">
+        <label for="pl-add-description">Expense *</label>
+        <input id="pl-add-description" class="staff-input" type="text" placeholder="e.g. Transport, Supplies...">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="pl-add-amount">Value (₹) *</label>
+        <input id="pl-add-amount" class="staff-input" type="number" min="0.01" step="0.01" placeholder="e.g. 250">
+      </div>
+    </div>
+    <div class="staff-field">
+      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox staff-expense-payment-listbox" data-se-listbox id="pl-add-payment-listbox">
+        <span class="se-filter-chip-label" id="pl-add-payment-label">Payment type *</span>
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+          </span>
+          <input type="hidden" id="pl-add-payment-input" value="cash">
+          <button type="button" class="se-filter-chip-trigger" id="pl-add-payment-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pl-add-payment-list" aria-labelledby="pl-add-payment-label pl-add-payment-value">
+            <span class="se-filter-chip-value" id="pl-add-payment-value">Cash</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox" id="pl-add-payment-list" role="listbox" aria-labelledby="pl-add-payment-label" hidden>
+          {% for payment_key, payment_label in expense_payment_types %}
+          <button type="button" class="se-filter-listbox-option{% if payment_key == 'cash' %} is-selected{% endif %}" role="option" data-value="{{ payment_key }}" aria-selected="{{ 'true' if payment_key == 'cash' else 'false' }}">{{ payment_label }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    <div class="staff-field" id="pl-add-transaction-wrap" hidden>
+      <label for="pl-add-transaction-id">Transaction ID *</label>
+      <input id="pl-add-transaction-id" class="staff-input" type="text" placeholder="e.g. UTR / reference number">
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn staff-primary" id="pl-add-purchase-save">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span>Add purchase</span>
+      </button>
+      <button type="button" class="btn staff-secondary" id="pl-add-purchase-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop staff-supplier-modal-backdrop" id="pl-add-supplier-modal" aria-hidden="true">
+  <div class="staff-credit-box staff-supplier-modal-box" role="dialog" aria-modal="true" aria-labelledby="pl-add-supplier-modal-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      <span id="pl-add-supplier-modal-title">Add supplier</span>
+    </div>
+    <p class="staff-credit-copy">Enter supplier details. Name and GST are required; GST must be unique.</p>
+    <div id="pl-add-supplier-add-error" class="staff-credit-error"></div>
+    <div class="staff-grid staff-supplier-modal-grid">
+      <div class="staff-field staff-field--inline staff-field--full">
+        <label for="pl-add-supplier-name">Supplier name *</label>
+        <input id="pl-add-supplier-name" class="staff-input" type="text" placeholder="e.g. ABC Supplies Pvt Ltd">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="pl-add-supplier-gst">GST *</label>
+        <input id="pl-add-supplier-gst" class="staff-input" type="text" placeholder="e.g. 29ABCDE1234F1Z5">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="pl-add-supplier-phone">Phone number</label>
+        <input id="pl-add-supplier-phone" class="staff-input" type="text" placeholder="Optional">
+      </div>
+      <div class="staff-field staff-field--inline staff-field--full">
+        <label for="pl-add-supplier-address">Address</label>
+        <input id="pl-add-supplier-address" class="staff-input" type="text" placeholder="Optional">
+      </div>
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn staff-primary" id="pl-add-supplier-save">Save supplier</button>
+      <button type="button" class="btn staff-secondary" id="pl-add-supplier-cancel">Cancel</button>
+    </div>
+  </div>
+</div>

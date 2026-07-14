@@ -1,4 +1,10 @@
 /* Hotel Bell Elite — premium home launcher (from Neeraj Textile) */
+body.home-module,
+body.home-module *,
+body.home-module *::before,
+body.home-module *::after{
+  box-sizing:border-box;
+}
 body.home-module{
   --acc:#2563EB;
   --acc-bg:rgba(59,130,246,.08);
@@ -13,12 +19,68 @@ body.home-module .de-main-inner{
   min-height:100vh;
   box-sizing:border-box;
 }
+body.home-module .de-main-inner.db-main-inner--home{
+  display:block;
+}
+.db-coming-soon{
+  width:100%;
+  max-width:560px;
+  margin:0 auto;
+  padding:56px 48px;
+  text-align:center;
+  border-radius:28px;
+  background:#FFFFFF;
+  border:1px solid #EEF2F7;
+  box-shadow:0 8px 30px rgba(15,23,42,.04);
+}
+.db-coming-soon-badge{
+  display:inline-flex;
+  align-items:center;
+  min-height:32px;
+  padding:0 14px;
+  border-radius:999px;
+  background:rgba(59,130,246,.08);
+  color:#2563EB;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+.db-coming-soon h1{
+  margin-top:20px;
+  font-size:34px;
+  line-height:1.15;
+  font-weight:700;
+  color:#111827;
+  letter-spacing:-.03em;
+}
+.db-coming-soon-lead{
+  margin-top:12px;
+  font-size:28px;
+  line-height:1.2;
+  font-weight:700;
+  color:#2563EB;
+  letter-spacing:-.02em;
+}
+.db-coming-soon-copy{
+  margin-top:16px;
+  font-size:16px;
+  line-height:1.7;
+  color:#6B7280;
+}
 @media(max-width:640px){
   body.home-module .de-main-inner{padding:24px 20px 32px}
+  .db-coming-soon{padding:40px 24px}
+  .db-coming-soon h1{font-size:28px}
+  .db-coming-soon-lead{font-size:24px}
 }
-.db-home .db-profile-trigger{
-  border:none;background:transparent;padding:0;cursor:default;display:inline-flex;
-}
+  .db-home .db-profile-trigger{
+    border:none;
+    background:transparent;
+    padding:0;
+    cursor:pointer;
+    display:inline-flex;
+  }
 .db-home .db-avatar{
   width:46px;height:46px;border-radius:50%;background:#EFF6FF;color:#2563EB;
   font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center;
@@ -67,8 +129,43 @@ body.home-module .de-main-inner{
     position:relative;
     z-index:40;
   }
-  .db-home .db-profile{z-index:50}
+  .db-home .db-home-tools .de-fullscreen-btn{
+    flex-shrink:0;
+  }
+  .db-home .db-profile{position:relative;z-index:50}
   .db-home .db-notifications{z-index:50}
+  .db-home .db-notification-menu{
+    top:calc(100% + 10px);
+    right:0;
+    z-index:100;
+    border-radius:16px;
+    border:1px solid #EEF2F7;
+    background:#FFFFFF;
+    box-shadow:0 12px 40px rgba(15,23,42,.12);
+    position:absolute;
+    display:none;
+    min-width:260px;
+    padding:14px;
+  }
+  .db-home .db-notifications.is-open .db-notification-menu{display:block}
+  .db-home .db-notification-title{
+    font-size:13px;
+    font-weight:700;
+    color:#111827;
+    margin-bottom:10px;
+  }
+  .db-home .db-notification-item strong{
+    display:block;
+    font-size:13px;
+    color:#111827;
+  }
+  .db-home .db-notification-item span{
+    display:block;
+    margin-top:4px;
+    font-size:12px;
+    color:#6B7280;
+    line-height:1.5;
+  }
   .db-home .db-profile-menu{
     top:calc(100% + 10px);
     z-index:100;
@@ -76,24 +173,49 @@ body.home-module .de-main-inner{
     border:1px solid #EEF2F7;
     background:#FFFFFF;
     box-shadow:0 12px 40px rgba(15,23,42,.12);
+    position:absolute;
+    right:0;
+    display:none;
+    min-width:240px;
+    padding:18px;
+    box-sizing:border-box;
+    gap:14px;
+  }
+  .db-home .db-profile.is-open .db-profile-menu{
+    display:flex;
+    flex-direction:column;
+  }
+  .db-home .db-profile-meta{
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+    min-width:0;
   }
   .db-home .db-profile-name{
-    font-size:14px;
+    font-size:15px;
     font-weight:600;
     color:#111827;
+    line-height:1.35;
   }
   .db-home .db-profile-role{
-    margin-top:4px;
     font-size:13px;
     color:#6B7280;
+    line-height:1.4;
   }
   .db-home .db-profile-logout{
-    margin-top:14px;
+    width:100%;
+    min-height:42px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:12px;
     border:1px solid #E5E7EB;
     background:#F9FAFB;
     color:#111827;
+    font-size:14px;
     font-weight:600;
     text-decoration:none;
+    box-sizing:border-box;
   }
   .db-home .db-profile-logout:hover{
     background:#F3F4F6;
@@ -226,6 +348,7 @@ body.home-module .de-main-inner{
   .db-home .db-home-card{
     width:100%;
     max-width:360px;
+    min-width:0;
     min-height:210px;
     display:flex;
     flex-direction:column;

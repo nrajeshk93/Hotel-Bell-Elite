@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Room Transfer | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg></div>
+            <h1>{{ page_title }}</h1>
+          </div>
+          <p>{{ page_subtitle }}</p>
+        </div>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="room-transfer-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Room transfer filters">
+          <input type="hidden" name="company" value="{{ selected_company }}">
+          <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox" data-se-listbox>
+            <span class="se-filter-chip-label" id="room-transfer-location-label">Location</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M12 21s7-4.35 7-10a7 7 0 1 0-14 0c0 5.65 7 10 7 10z"/><circle cx="12" cy="11" r="2.5"/></svg>
+              </span>
+              <input type="hidden" id="room-transfer-location" name="location" value="{{ selected_location }}">
+              <button type="button" class="se-filter-chip-trigger" id="room-transfer-location-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="room-transfer-location-list" aria-labelledby="room-transfer-location-label room-transfer-location-value">
+                <span class="se-filter-chip-value" id="room-transfer-location-value">{{ selected_location }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="room-transfer-location-list" role="listbox" aria-labelledby="room-transfer-location-label" hidden>
+              {% for location in room_transfer_filter_locations %}
+              <button type="button" class="se-filter-listbox-option{% if selected_location == location %} is-selected{% endif %}" role="option" data-value="{{ location }}" aria-selected="{{ 'true' if selected_location == location else 'false' }}">{{ location }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox" data-se-listbox>
+            <span class="se-filter-chip-label" id="room-transfer-status-label">Payment Status</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
+              </span>
+              <input type="hidden" id="room-transfer-status" name="status" value="{{ selected_payment_status }}">
+              <button type="button" class="se-filter-chip-trigger" id="room-transfer-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="room-transfer-status-list" aria-labelledby="room-transfer-status-label room-transfer-status-value">
+                <span class="se-filter-chip-value" id="room-transfer-status-value">{% for status_key, status_label in room_transfer_filter_statuses %}{% if selected_payment_status == status_key %}{{ status_label }}{% endif %}{% endfor %}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="room-transfer-status-list" role="listbox" aria-labelledby="room-transfer-status-label" hidden>
+              {% for status_key, status_label in room_transfer_filter_statuses %}
+              <button type="button" class="se-filter-listbox-option{% if selected_payment_status == status_key %} is-selected{% endif %}" role="option" data-value="{{ status_key }}" aria-selected="{{ 'true' if selected_payment_status == status_key else 'false' }}">{{ status_label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <div id="room-transfer-widget" hidden
+      data-company="{{ selected_company }}"
+      data-status="{{ selected_payment_status }}"
+      data-location="{{ selected_location }}"></div>
+
+    <div class="se-layout-main">
+      {% include 'partials/sales_update_room_transfer_panel.html' %}
+    </div>
+  </section>
+</div>
+{% include 'partials/sales_update_filter_listbox_scripts.html' %}
+{% include 'partials/sales_update_room_transfer_scripts.html' %}
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

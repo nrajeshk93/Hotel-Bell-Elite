@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Access Management | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='access_module_access.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --card:#FFFFFF;--border:#E2E8F0;--border-s:#EEF2F7;
+  --txt:#111827;--txt2:#4B5563;--txt3:#9CA3AF;
+  --ok:#16A34A;--ok-bg:#F0FDF4;--warn:#D97706;--warn-bg:#FFF7ED;
+  --err:#DC2626;--err-bg:#FEF2F2;--chip:#F8FAFC;
+  --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);--r:10px;--rs:6px;
+}
+html,body{min-height:100%;font-size:14px;line-height:1.5}
+a{text-decoration:none;color:inherit}
+.layout{display:grid;grid-template-columns:minmax(390px,470px) minmax(0,1fr);gap:22px}
+.layout.form-focus,.layout.users-full{grid-template-columns:1fr}
+.card{overflow:hidden;margin-bottom:0}
+.card-hdr{padding:18px 22px;border-bottom:1px solid var(--border-s);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card-body{padding:22px}
+.msg{padding:12px 14px;border-radius:12px;font-size:13px;font-weight:600;margin-bottom:16px}
+.msg.ok{background:var(--ok-bg);color:var(--ok)}
+.msg.err{background:var(--err-bg);color:var(--err)}
+.errors{display:grid;gap:8px;margin-bottom:16px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+.form-full{grid-column:1/-1}
+input[type="text"],input[type="password"]{
+  width:100%;background:#fff;border:1px solid var(--border);color:var(--txt);
+  font-family:inherit;font-size:13px;padding:10px 12px;border-radius:12px;outline:none;
+  transition:border-color .15s,box-shadow .15s;height:auto;
+}
+input[type="text"]:focus,input[type="password"]:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-ring)}
+.section-panel{margin-top:18px;padding:24px;border:1px solid #E5E7EB;border-radius:18px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.section-panel > label{font-size:14px;font-weight:700;color:#111827;letter-spacing:-.01em}
+.check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.check-row{
+  display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border-s);
+  border-radius:14px;background:var(--chip);min-height:52px;cursor:pointer;
+  transition:border-color .15s,box-shadow .15s,background .15s;
+}
+.check-row:hover{border-color:#93C5FD;box-shadow:var(--sh)}
+.check-row input{margin:0;width:18px;height:18px;accent-color:var(--acc);flex-shrink:0}
+.check-row:has(input:checked){border-color:#93C5FD;background:var(--acc-bg)}
+.check-copy{display:grid}
+.check-copy strong{font-size:13px;line-height:1.35;font-weight:600;color:var(--txt)}
+.subgroup{margin-top:18px;padding:18px;border-radius:16px;background:#fff;border:1px solid var(--border-s)}
+.subgroup-head{margin-bottom:12px}
+.toggle-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.toggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--txt2)}
+.helper{font-size:12px;color:var(--txt3);line-height:1.55;margin-top:10px}
+.form-actions{display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-s);flex-wrap:wrap}
+.users-panel.hidden{display:none}
+.empty{padding:36px 18px;text-align:center;color:var(--txt3)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1;white-space:nowrap;font-family:inherit;border:none}
+@media(max-width:1100px){.layout{grid-template-columns:1fr}}
+@media(max-width:720px){
+  .form-grid{grid-template-columns:1fr}
+  .check-grid{grid-template-columns:1fr}
+  .am-header-tools{width:100%;justify-content:flex-end}
+}
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
+</head>
+<body class="de-open am-module ep-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+    <header class="am-header">
+      <div class="am-header-top">
+        <div class="am-header-left">
+          <div class="am-title">
+            <div class="am-title-row">
+              <div class="am-title-icon" aria-hidden="true"><i data-lucide="shield-check"></i></div>
+              <h1>Access Management</h1>
+            </div>
+            <p>Manage users and permissions</p>
+          </div>
+        </div>
+        <div class="am-header-tools">
+          {% if form_focus %}
+          <a class="btn" href="{{ url_for('access_management') }}">Users</a>
+          {% else %}
+          <a class="btn btn-primary" href="{{ url_for('access_management', focus='form') }}"><i data-lucide="plus"></i> Add User</a>
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <div class="am-content">
+      {% if auth_notice %}
+      <div class="msg info">{{ auth_notice }}</div>
+      {% endif %}
+
+      <div class="layout{% if form_focus %} form-focus{% else %} users-full{% endif %}">
+        {% if form_focus %}
+        <section class="card" id="user-form">
+          <div class="card-hdr">
+            <div>
+              <div class="card-title">{% if form.id %}Edit User{% else %}Add User{% endif %}</div>
+              <div class="card-sub">{% if form.id %}Update user access{% else %}Create a new user{% endif %}</div>
+            </div>
+            {% if form.id %}
+            <a class="btn" href="{{ url_for('access_management', focus='form') }}">Add User</a>
+            {% endif %}
+          </div>
+          <div class="card-body">
+            {% if success_message %}
+            <div class="msg ok">{{ success_message }}</div>
+            {% endif %}
+            {% if errors %}
+            <div class="errors">
+              {% for error in errors %}
+              <div class="msg err">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('save_access_user') }}">
+              <input type="hidden" name="user_id" value="{{ form.id }}">
+
+              <div class="form-grid">
+                <div>
+                  <label for="username">Username</label>
+                  <input type="text" id="username" name="username" value="{{ form.username }}" autocomplete="off" required>
+                </div>
+                <div>
+                  <label for="full_name">Full Name</label>
+                  <input type="text" id="full_name" name="full_name" value="{{ form.full_name }}" placeholder="Optional display name">
+                </div>
+                <div class="form-full">
+                  <label for="password">{% if form.id %}Password Reset{% else %}Password{% endif %}</label>
+                  <input type="password" id="password" name="password" placeholder="{% if form.id %}Leave blank to keep the current password{% else %}Set a password{% endif %}" {% if not form.id %}required{% endif %}>
+                </div>
+              </div>
+
+              <div class="toggle-row" style="margin-top:16px;">
+                <label class="toggle"><input type="checkbox" name="is_admin" value="1" {% if form.is_admin %}checked{% endif %}> Administrator</label>
+              </div>
+              <div class="helper">New users are always active. Delete a user when you no longer need the account.</div>
+
+              <div class="form-full section-panel" id="ma-access-root">
+                <label>Module Access</label>
+                <div class="helper" style="margin-top:6px;margin-bottom:0;">Main modules and sub-modules are loaded automatically from the system registry.</div>
+
+                <script type="application/json" id="ma-tree-data">{{ access_module_tree_ui | tojson }}</script>
+                <script type="application/json" id="ma-initial-dashboard">{{ form.dashboard_modules | tojson }}</script>
+                <script type="application/json" id="ma-initial-sales-analytics">{{ form.sales_analytics_modules | tojson }}</script>
+                <script type="application/json" id="ma-initial-user-access">{{ form.user_access_modules | tojson }}</script>
+                <script type="application/json" id="ma-initial-payroll">{{ form.payroll_modules | tojson }}</script>
+                <div id="ma-hidden-inputs" class="ma-hidden-inputs" aria-hidden="true"></div>
+
+                <div class="ma-access">
+                  <div class="ma-access-card ma-tree-card">
+                    <div class="ma-tree-toolbar">
+                      <h3>Module tree</h3>
+                      <div class="ma-tree-toolbar-actions">
+                        <button type="button" class="ma-collapse-all" id="ma-collapse-all">Collapse All</button>
+                      </div>
+                    </div>
+                    <div class="ma-tree-search-wrap">
+                      <input type="search" class="ma-tree-search" id="ma-tree-search" placeholder="Search modules..." autocomplete="off" aria-label="Search modules">
+                    </div>
+                    <div class="ma-tree-scroll">
+                      <ul class="ma-tree" id="ma-tree" role="tree" aria-label="Module access tree"></ul>
+                    </div>
+                  </div>
+
+                  <div class="ma-access-card ma-summary-card" id="ma-summary" aria-live="polite">
+                    <div class="ma-summary-empty">
+                      <i data-lucide="layout-grid"></i>
+                      <p>Select a module to view access details.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{% if form.id %}Save Changes{% else %}Create User{% endif %}</button>
+                <a class="btn" href="{{ url_for('access_management', focus='form') }}">Reset</a>
+              </div>
+            </form>
+          </div>
+        </section>
+        {% endif %}
+
+        {% if not form_focus %}
+        <section class="card users-panel am-users-panel">
+          <div class="am-users-head">
+            <div class="am-users-head-left">
+              <h2 class="am-users-title">Existing Users</h2>
+              <p class="am-users-sub">All user accounts</p>
+            </div>
+            <div class="am-users-count" id="am-users-count">{{ users|length }} account{{ '' if users|length == 1 else 's' }}</div>
+          </div>
+
+          <div class="am-users-toolbar">
+            <div class="am-users-search-wrap">
+              <i data-lucide="search" aria-hidden="true"></i>
+              <input type="search" id="am-users-search" class="am-users-search" placeholder="Search users..." autocomplete="off" aria-label="Search users">
+            </div>
+            <div class="am-users-filters">
+              <label class="am-users-filter">
+                <span class="am-users-filter-label">Role</span>
+                <select id="am-users-role-filter" class="am-users-select" aria-label="Filter by role">
+                  <option value="all">All roles</option>
+                  <option value="admin">Administrator</option>
+                  <option value="user">Standard User</option>
+                </select>
+              </label>
+              <label class="am-users-filter">
+                <span class="am-users-filter-label">Status</span>
+                <select id="am-users-status-filter" class="am-users-select" aria-label="Filter by status">
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <button type="button" class="am-users-sort-btn" id="am-users-sort" aria-label="Sort users">
+                <i data-lucide="arrow-up-down" aria-hidden="true"></i>
+                <span>Sort</span>
+              </button>
+            </div>
+          </div>
+
+          {% if users %}
+          <div class="am-users-columns" aria-hidden="true">
+            <span>User</span>
+            <span>Role</span>
+            <span>Access &amp; Permissions</span>
+            <span>Actions</span>
+          </div>
+
+          <div class="am-users-list" id="am-users-list">
+            {% for user in users %}
+            {% set name_parts = user.display_name.split() %}
+            {% if name_parts|length >= 2 %}
+              {% set user_initials = (name_parts[0][0] ~ name_parts[1][0])|upper %}
+            {% elif name_parts %}
+              {% set user_initials = name_parts[0][:2]|upper %}
+            {% else %}
+              {% set user_initials = 'U' %}
+            {% endif %}
+            <article
+              class="am-user-card"
+              data-user-id="{{ user.id }}"
+              data-search="{{ (user.display_name ~ ' ' ~ user.username)|lower }}"
+              data-role="{{ 'admin' if user.is_admin else 'user' }}"
+              data-status="{{ 'active' if user.is_active else 'inactive' }}"
+              data-name="{{ user.display_name|lower }}"
+            >
+              <div class="am-user-identity">
+                <div class="am-user-avatar" aria-hidden="true">{{ user_initials }}</div>
+                <div class="am-user-meta">
+                  <div class="am-user-name">{{ user.display_name }}</div>
+                  <div class="am-user-handle">@{{ user.username }}</div>
+                </div>
+              </div>
+
+              <div class="am-user-role">
+                {% if user.is_admin %}
+                <span class="am-role-badge am-role-admin"><i data-lucide="shield" aria-hidden="true"></i> Administrator</span>
+                {% else %}
+                <span class="am-role-badge am-role-user"><i data-lucide="user" aria-hidden="true"></i> Standard User</span>
+                {% endif %}
+              </div>
+
+              <div class="am-user-access">
+                <div class="am-access-label">Access</div>
+                <div class="am-access-chips">
+                  {% if user.is_admin %}
+                    <span class="am-access-chip am-access-chip-full">
+                      <i data-lucide="shield-check" aria-hidden="true"></i>
+                      <span>All modules</span>
+                    </span>
+                  {% else %}
+                    {% set raw_chips = user.dashboard_labels + user.sales_analytics_labels + user.user_access_labels %}
+                    {% set chip_ns = namespace(chips=[], seen=[]) %}
+                    {% for chip in raw_chips %}
+                      {% if chip and chip not in chip_ns.seen %}
+                        {% set chip_ns.seen = chip_ns.seen + [chip] %}
+                        {% set chip_ns.chips = chip_ns.chips + [chip] %}
+                      {% endif %}
+                    {% endfor %}
+                    {% if chip_ns.chips %}
+                      {% for chip in chip_ns.chips[:6] %}
+                      <span class="am-access-chip{% if chip.startswith('Companies:') or chip.startswith('Locations:') %} am-access-chip-scope{% endif %}" data-chip="{{ chip }}">
+                        <i data-lucide="{% if chip.startswith('Companies:') or chip.startswith('Locations:') %}building-2{% elif 'Attendance' in chip %}users{% elif 'Payroll' in chip or chip in ['Employee', 'Credit', 'Salary', 'Leave'] %}wallet{% elif 'Sales' in chip %}refresh-cw{% elif 'Dashboard' in chip or chip == 'Business Analytics' %}layout-grid{% elif 'Report' in chip %}file-text{% elif 'Support' in chip or 'Ticket' in chip %}life-buoy{% elif 'User' in chip %}user-cog{% elif 'Extraction' in chip or 'Master' in chip %}database{% else %}circle-dot{% endif %}" aria-hidden="true"></i>
+                        <span>{{ chip }}</span>
+                      </span>
+                      {% endfor %}
+                      {% if chip_ns.chips|length > 6 %}
+                      <a class="am-access-chip am-access-chip-more" href="{{ url_for('access_management', user_id=user.id, focus='form') }}" title="View all permissions">+{{ chip_ns.chips|length - 6 }} more</a>
+                      {% endif %}
+                    {% else %}
+                      <span class="am-access-chip am-access-chip-empty"><i data-lucide="ban" aria-hidden="true"></i><span>No access</span></span>
+                    {% endif %}
+                  {% endif %}
+                </div>
+              </div>
+
+              <div class="am-user-actions">
+                <a class="am-icon-btn" href="{{ url_for('access_management', user_id=user.id, focus='form') }}" title="Edit {{ user.display_name }}" aria-label="Edit {{ user.display_name }}">
+                  <i data-lucide="pencil" aria-hidden="true"></i>
+                </a>
+                {% if user.username|lower != 'admin' %}
+                <form method="POST" action="{{ url_for('delete_access_user', user_id=user.id) }}" class="am-delete-form" onsubmit="return confirm('Delete {{ user.display_name }}?')">
+                  <button type="submit" class="am-icon-btn am-icon-btn-danger" title="Delete {{ user.display_name }}" aria-label="Delete {{ user.display_name }}">
+                    <i data-lucide="trash-2" aria-hidden="true"></i>
+                  </button>
+                </form>
+                {% endif %}
+              </div>
+            </article>
+            {% endfor %}
+          </div>
+
+          <div class="am-users-empty-filter hidden" id="am-users-empty-filter">
+            <i data-lucide="search-x" aria-hidden="true"></i>
+            <p>No users match your search or filters.</p>
+          </div>
+
+          <div class="am-users-pagination" id="am-users-pagination" hidden></div>
+          {% else %}
+          <div class="am-users-empty">
+            <i data-lucide="users" aria-hidden="true"></i>
+            <p>No user accounts found.</p>
+          </div>
+          {% endif %}
+        </section>
+        {% endif %}
+      </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='access_module_access.js') }}?v=1"></script>
+{% if not form_focus %}
+<script src="{{ url_for('static', filename='access_users_list.js') }}?v=1"></script>
+{% endif %}
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

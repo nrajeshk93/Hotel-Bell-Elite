@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sales Update - Bar and Restaurant | Hotel Bell Elite</title>
+<title>{{ page_title|default('Sales Update') }} | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=3">
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
 <script>
 (function(){
   try{
@@ -30,6 +30,8 @@
 {%- elif field_key == 'actual_sales' -%}{%- set cls = 'se-field-icon--emerald' -%}
 {%- elif field_key == 'card' -%}{%- set cls = 'se-field-icon--violet' -%}
 {%- elif field_key == 'room_credit' -%}{%- set cls = 'se-field-icon--amber' -%}
+{%- elif field_key == 'tips' -%}{%- set cls = 'se-field-icon--violet' -%}
+{%- elif field_key == 'actual_cash' -%}{%- set cls = 'se-field-icon--emerald' -%}
 {%- elif field_key == 'upi' -%}{%- set cls = 'se-field-icon--sky' -%}
 {%- elif field_key == 'cash' -%}{%- set cls = 'se-field-icon--emerald' -%}
 {%- endif -%}
@@ -46,6 +48,10 @@
 <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l2-4h10l2 4v14"/><path d="M9 21v-4h6v4"/><rect x="8" y="9" width="3" height="3" rx=".5"/><rect x="13" y="9" width="3" height="3" rx=".5"/></svg>
 {%- elif field_key == 'room_credit' -%}
 <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M7 15h4M13 15h4"/></svg>
+{%- elif field_key == 'tips' -%}
+<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v10"/><path d="M9 10h6"/><path d="M9 14h6"/></svg>
+{%- elif field_key == 'actual_cash' -%}
+<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M7 9v.01M17 15v.01"/></svg>
 {%- elif field_key == 'upi' -%}
 <svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M12 17h.01"/><path d="M9.5 7h5"/><path d="M10 10h4"/></svg>
 {%- else -%}
@@ -61,9 +67,9 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 <div class="main-wrapper">
     {% with
-      page_title='Sales Update - Bar and Restaurant',
-      page_subtitle='Upload reports and record daily Bar & Restaurant sales.',
-      filter_form_action=url_for('sales_update_entry'),
+      page_title=page_title|default('Sales Update'),
+      page_subtitle=page_subtitle|default('Upload reports and record daily sales.'),
+      filter_form_action=filter_form_action|default(url_for('sales_update_bar')),
       include_cash_date_range=true
     %}
       {% include 'partials/sales_update_scope_header.html' %}
@@ -78,7 +84,7 @@
       </div>
       {% endif %}
       <section class="sr-kpi-section" aria-label="Sales KPI summary">
-      {% with cash_card_action=true %}
+      {% with cash_card_action=true, kpi_fourth_metric=kpi_fourth_metric|default('room_transfer') %}
         {% include 'partials/sales_update_kpi_default_row.html' %}
       {% endwith %}
 
@@ -125,13 +131,17 @@
         data-whatsapp-report-url="{{ url_for('sales_update_send_whatsapp_report') }}"
         data-whatsapp-report-company="{{ whatsapp_sales_report_company }}"></div>
       {% include 'partials/sales_update_petty_section.html' %}
-      <div class="se-sales-outlets-grid">
+      <div class="se-sales-outlets-grid{% if selected_locations|length == 1 %} se-sales-outlets-grid--single{% endif %}">
       {% for outlet in selected_locations %}
       {% set outlet_record = outlet_records[outlet] %}
       {% set outlet_slug = outlet|lower|replace(' ', '-') %}
       <article class="card se-panel se-sales-outlet-panel" data-sales-outlet="{{ outlet }}">
         <div class="card-hdr se-panel-hdr">
-          <div class="card-title se-panel-title"><svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 14 3-3 3 2 5-6"/></svg>Sales Entry - {{ outlet }}</div>
+          <div class="card-title se-panel-title">
+            <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 14 3-3 3 2 5-6"/></svg>
+            <span>Sales Entry - {{ outlet }}</span>
+            <span class="se-panel-report-tag">Upload Collections Report</span>
+          </div>
           <div class="se-panel-hdr-actions">
             <label class="se-panel-upload-label" for="se-upload-{{ outlet_slug }}"{% if outlet_record.sales_entry_locked %} hidden{% endif %}>
               <input type="file" id="se-upload-{{ outlet_slug }}" class="se-panel-upload-input" accept=".xlsx,.xls" data-upload-outlet="{{ outlet }}">
@@ -149,7 +159,7 @@
             <table class="entry-table" aria-label="Sales update entry table for {{ outlet }}">
               <thead>
                 <tr>
-                  <th>Particulars</th>
+                  <th><span class="se-particulars-head">Particulars</span></th>
                   <th>Amount</th>
                 </tr>
               </thead>
@@ -158,7 +168,7 @@
                 <tr{% if field_key == 'bank_cheque' %} class="entry-row--bank"{% endif %}>
                   <td class="entry-label se-entry-label-cell"><div class="se-entry-label-inner">{{ se_field_icon(field_key) }}<span>{{ field_label }}</span></div></td>
                   <td class="entry-input-cell">
-                    <input type="number" min="0" step="0.01" value="{{ outlet_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="{{ outlet }}" data-entry-label="{{ field_label }}" aria-label="{{ outlet }} {{ field_label }} amount" class="se-entry-input--upload" readonly tabindex="-1">
+                    <input type="number" min="0" step="0.01" value="{{ outlet_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="{{ outlet }}" data-entry-label="{{ field_label }}" aria-label="{{ outlet }} {{ field_label }} amount"{% if field_key in manual_sales_entry_keys|default([]) %} class="se-entry-input--manual"{% else %} class="se-entry-input--upload" readonly tabindex="-1"{% endif %}>
                   </td>
                 </tr>
                 {% endfor %}
@@ -263,7 +273,7 @@
   var f = document.getElementById('sales-filter-form');
   var co = document.getElementById('sales-company');
   var loc = document.getElementById('sales-location');
-  if (!f || !co) return;
+  if (!f) return;
   var panelInput = document.getElementById('se-filter-panel');
   function submitScope(){
     if (panelInput && panelInput.value === 'cash') {
@@ -284,7 +294,6 @@
     if (panelInput) panelInput.value = '';
     f.submit();
   }
-  co.addEventListener('change', submitScope);
   if (loc) loc.addEventListener('change', submitScope);
 })();
 
@@ -655,7 +664,9 @@ SalesDateRangePicker.init({
   const digitalKpi = document.getElementById('digital-transactions-kpi');
   const cashKpi = document.getElementById('cash-kpi');
   const expenseKpi = document.getElementById('expense-kpi');
+  const roomTransferKpi = document.getElementById('room-transfer-kpi');
   const differenceKpi = document.getElementById('sales-difference-kpi');
+  const manualSalesEntryKeys = new Set({{ manual_sales_entry_keys|default([])|tojson }});
   const inputs = Array.from(document.querySelectorAll('[data-denomination]'));
   const entryInputs = Array.from(document.querySelectorAll('[data-sales-entry]'));
   const salesOutlets = {{ selected_locations|tojson }};
@@ -781,7 +792,7 @@ SalesDateRangePicker.init({
       if (staffCreditAmount) staffCreditAmount.disabled = true;
       if (staffCreditDescription) staffCreditDescription.disabled = true;
       if (staffSdTrigger) staffSdTrigger.disabled = true;
-      if (saveState && !saveState.classList.contains('err')) {
+      if (!document.querySelector('.petty-save-state.err')) {
         setSaveState('View only — past date already saved', 'ok');
       }
     }
@@ -812,9 +823,10 @@ SalesDateRangePicker.init({
     return String(value || '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[ch]));
   }
   function setSaveState(text, className){
-    if (!saveState) return;
-    saveState.textContent = text;
-    saveState.className = `save-state ${className || ''}`.trim();
+    document.querySelectorAll('.petty-save-state').forEach((el) => {
+      el.textContent = text;
+      el.className = `save-state petty-save-state ${className || ''}`.trim();
+    });
   }
   function buildCounts(location){
     const counts = {};
@@ -933,18 +945,11 @@ SalesDateRangePicker.init({
         });
     });
     if (digitalKpi) digitalKpi.textContent = formatKpiInr(digital, 0);
-    let paymentTotal = 0;
-    salesOutlets.forEach((loc) => {
-      entryInputs
-        .filter((input) => input.dataset.salesLocation === loc)
-        .forEach((input) => {
-          const key = String(input.dataset.salesEntry || '');
-          if (salesEntryTotalKeys.has(key)) paymentTotal += salesEntryAmount(input);
-        });
-    });
-    const actual = sumAcrossOutlets('total_sales');
-    const diff = Math.round((actual - paymentTotal) * 100) / 100;
-    if (differenceKpi) differenceKpi.textContent = formatKpiInr(diff);
+    if (roomTransferKpi) roomTransferKpi.textContent = formatKpiInr(sumAcrossOutlets('room_credit'));
+    if (differenceKpi) {
+      const diff = Math.round((sumAcrossOutlets('cash') - sumAcrossOutlets('actual_cash')) * 100) / 100;
+      differenceKpi.textContent = formatKpiInr(diff);
+    }
   }
   function attachZeroClearBehavior(input){
     if (input.readOnly) return;
@@ -1042,7 +1047,7 @@ SalesDateRangePicker.init({
     if (clearBtn) clearBtn.disabled = true;
     try {
       entryInputs
-        .filter((input) => input.dataset.salesLocation === outlet)
+        .filter((input) => input.dataset.salesLocation === outlet && input.readOnly)
         .forEach((input) => { input.value = '0'; });
       closeStaffCreditModal();
       resetStaffCreditForm();
@@ -1057,6 +1062,16 @@ SalesDateRangePicker.init({
   }
   document.querySelectorAll('[data-clear-outlet]').forEach((btn) => {
     btn.addEventListener('click', () => clearSalesEntryPanel(btn.dataset.clearOutlet));
+  });
+  entryInputs.filter((input) => !input.readOnly).forEach((input) => {
+    attachZeroClearBehavior(input);
+    input.addEventListener('input', () => {
+      updateSalesEntries();
+      scheduleSave(input.dataset.salesLocation);
+    });
+    input.addEventListener('blur', () => {
+      scheduleSave(input.dataset.salesLocation);
+    });
   });
   inputs.forEach((input) => {
     if (!input.readOnly) {
@@ -1088,27 +1103,24 @@ SalesDateRangePicker.init({
   async function handleReportUpload(fileInput, statusEl){
     if (!fileInput || !fileInput.files || !fileInput.files[0]) return;
     const outlet = fileInput.dataset.uploadOutlet || '';
+    const filterDate = document.getElementById('se-filter-date');
+    const uploadDate = (filterDate && filterDate.value) || (widget && widget.dataset.date) || '';
+    if (!uploadDate) {
+      if (statusEl) statusEl.textContent = 'Select a sales date before uploading.';
+      return;
+    }
     if (statusEl) statusEl.textContent = 'Uploading report…';
     const formData = new FormData();
     formData.append('report_file', fileInput.files[0]);
-    formData.append('date', (widget && widget.dataset.date) || '');
+    formData.append('date', uploadDate);
     formData.append('location', outlet || (widget && widget.dataset.location) || '');
     try {
       const resp = await fetch('/sales_update/upload_report', { method: 'POST', body: formData });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) throw new Error(data.error || 'Upload failed');
-      salesOutlets.forEach((loc) => {
-        const active = data[loc.toLowerCase()];
-        if (!active) return;
-        Object.keys(active).forEach((key) => {
-          const inp = entryInput(key, loc);
-          if (inp) inp.value = formatAmount(active[key]);
-        });
-      });
-      updateSalesEntries();
-      const message = data.message || 'Report imported.';
-      if (statusEl) statusEl.textContent = message;
-      scheduleSave();
+      try { sessionStorage.setItem('hbe.salesUpdate.date', uploadDate); } catch (e) {}
+      if (statusEl) statusEl.textContent = data.message || 'Report imported. Refreshing…';
+      window.location.assign(window.location.pathname + '?date=' + encodeURIComponent(uploadDate));
     } catch (err) {
       const message = err.message || 'Upload failed.';
       if (statusEl) statusEl.textContent = message;

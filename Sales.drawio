@@ -1,0 +1,31 @@
+<mxfile host="Electron">
+  <diagram name="Page-1" id="nP7nHtvGXHQoBN8Pecj8">
+    <mxGraphModel dx="1006" dy="781" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="S_SN7jfKfkvHXjcR5ZiD-1" parent="1" style="whiteSpace=wrap;html=1;" value="Expense&amp;nbsp;" vertex="1">
+          <mxGeometry height="60" width="120" x="300" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="S_SN7jfKfkvHXjcR5ZiD-2" parent="1" style="whiteSpace=wrap;html=1;" value="Sales&amp;nbsp;" vertex="1">
+          <mxGeometry height="60" width="120" x="300" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="S_SN7jfKfkvHXjcR5ZiD-3" parent="1" style="whiteSpace=wrap;html=1;" value="Balance Value" vertex="1">
+          <mxGeometry height="60" width="120" x="510" y="130" as="geometry" />
+        </mxCell>
+        <mxCell id="S_SN7jfKfkvHXjcR5ZiD-4" parent="1" style="strokeWidth=2;html=1;shape=mxgraph.flowchart.annotation_2;align=left;labelPosition=right;pointerEvents=1;direction=west;" value="" vertex="1">
+          <mxGeometry height="100" width="90" x="420" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="S_SN7jfKfkvHXjcR5ZiD-5" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Audit the vouchers (Audited and Pending clearly needs to be shown&amp;nbsp;" vertex="1">
+          <mxGeometry height="30" width="220" x="640" y="145" as="geometry" />
+        </mxCell>
+        <mxCell id="S_SN7jfKfkvHXjcR5ZiD-7" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="This includes of cash / Card / UPI&amp;nbsp;" vertex="1">
+          <mxGeometry height="30" width="200" x="270" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="S_SN7jfKfkvHXjcR5ZiD-8" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="Get the list of expenses&amp;nbsp;" vertex="1">
+          <mxGeometry height="30" width="170" x="270" y="50" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

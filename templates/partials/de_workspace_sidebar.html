@@ -1,57 +1,122 @@
 {% set nav_section = de_nav_section|default('analytics') %}
 {% set sales_view = de_nav_sales_view|default('') %}
-{% set analytics_open = nav_section == 'analytics' or sales_view %}
+{% set access_view = de_nav_access_view|default('') %}
+{% set accounts_view = de_nav_accounts_view|default('') %}
+{% set payroll_view = de_nav_payroll_view|default('employee') %}
+{% set analytics_open = nav_section == 'analytics' %}
+{% set accounts_open = nav_section == 'accounts' %}
+{% set payroll_open = nav_section == 'payroll' %}
+{% set nav_year = sel_year|default(today_year|default('')) %}
+{% set nav_month = sel_month|default(today_month|default('')) %}
+{% set payroll_period = {'year': nav_year, 'month': nav_month} if nav_year and nav_month else {} %}
 <aside class="de-sidebar" id="de-sidebar">
   <div class="sb-brand">
-    <div class="sb-logo">HBE</div>
+    <div class="sb-logo" aria-hidden="true">
+      <img src="{{ url_for('static', filename='hbe_logo.png') }}" alt="">
+    </div>
     <div class="sb-brand-text">
       <div class="sb-brand-name">Hotel Bell Elite</div>
-      <div class="sb-brand-sub">Bar &amp; Restaurant</div>
     </div>
   </div>
 
   <nav class="de-sb-nav" aria-label="Workspace">
-    {% if user_can_access_dashboard(current_user, 'sales_update') %}
+    <a class="de-nav-item{% if nav_section == 'home' %} is-active{% endif %}" id="de-nav-home" href="{{ url_for('home') }}">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9 21v-6h6v6"/></svg>
+      <span>Home</span>
+    </a>
+
+    {% if has_dashboard_access('accounts') %}
+    <div class="de-nav-group{% if accounts_open %} is-open is-child-active{% endif %}" id="de-nav-accounts-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-accounts-toggle" aria-expanded="{{ 'true' if accounts_open else 'false' }}" aria-controls="de-nav-accounts-sub" onclick="toggleDeNavGroup(event, 'de-nav-accounts-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
+        <span>Accounts</span>
+      </button>
+      <div class="de-nav-sub" id="de-nav-accounts-sub">
+        <a class="de-nav-subitem{% if accounts_view == 'purchase_ledger' %} is-active{% endif %}" id="de-nav-purchase-ledger" href="{{ url_for('purchase_ledger') }}"{% if accounts_view == 'purchase_ledger' %} aria-current="page"{% endif %}>Purchase Ledger</a>
+        <a class="de-nav-subitem{% if accounts_view == 'credit_payment' %} is-active{% endif %}" id="de-nav-credit-payment" href="{{ url_for('credit_payment') }}"{% if accounts_view == 'credit_payment' %} aria-current="page"{% endif %}>Credit Payment</a>
+        <a class="de-nav-subitem{% if accounts_view == 'purchase_verification' %} is-active{% endif %}" id="de-nav-purchase-verification" href="{{ url_for('purchase_verification') }}"{% if accounts_view == 'purchase_verification' %} aria-current="page"{% endif %}>Purchase Verification</a>
+        {% if has_supplier_master_access() %}
+        <a class="de-nav-subitem{% if accounts_view == 'supplier_master' %} is-active{% endif %}" id="de-nav-supplier-master" href="{{ url_for('supplier_master') }}"{% if accounts_view == 'supplier_master' %} aria-current="page"{% endif %}>Supplier Master</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_dashboard_access('sales_analytics') %}
     <div class="de-nav-group{% if analytics_open %} is-open is-child-active{% endif %}" id="de-nav-sales-analytics-group">
       <button type="button" class="de-nav-group-toggle" id="de-nav-sales-analytics-toggle" aria-expanded="{{ 'true' if analytics_open else 'false' }}" aria-controls="de-nav-sales-analytics-sub" onclick="toggleDeNavGroup(event, 'de-nav-sales-analytics-group')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
         <span>Sales Analytics</span>
-        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-sales-analytics-sub">
+        {% set nav_date = selected_date|default(none) %}
+        {% set nav_company = selected_company|default(none) %}
+        {% if has_sales_analytics_access('dashboard') %}
         <a class="de-nav-subitem{% if sales_view == 'dashboard' %} is-active{% endif %}" href="{{ url_for('dashboard') }}"{% if sales_view == 'dashboard' %} aria-current="page"{% endif %}>Dashboard</a>
-        <a class="de-nav-subitem{% if sales_view == 'hotel' %} is-active{% endif %}" href="{{ url_for('sales_update_hotel') }}"{% if sales_view == 'hotel' %} aria-current="page"{% endif %}>Sales Update - Hotel</a>
-        <a class="de-nav-subitem{% if sales_view == 'outlets' %} is-active{% endif %}" href="{{ url_for('sales_update_entry') }}"{% if sales_view == 'outlets' %} aria-current="page"{% endif %}>Sales Update - Bar and Restaurant</a>
+        {% endif %}
+        {% if has_sales_analytics_access('hotel') %}
+        <a class="de-nav-subitem{% if sales_view == 'hotel' %} is-active{% endif %}" href="{{ url_for('sales_update_hotel', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_hotel') }}"{% if sales_view == 'hotel' %} aria-current="page"{% endif %}>Sales Update - Hotel</a>
+        {% endif %}
+        {% if has_sales_analytics_access('bar') %}
+        <a class="de-nav-subitem{% if sales_view == 'bar' %} is-active{% endif %}" href="{{ url_for('sales_update_bar', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_bar') }}"{% if sales_view == 'bar' %} aria-current="page"{% endif %}>Sales Update - Bar</a>
+        {% endif %}
+        {% if has_sales_analytics_access('restaurant') %}
+        <a class="de-nav-subitem{% if sales_view == 'restaurant' %} is-active{% endif %}" href="{{ url_for('sales_update_restaurant', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_restaurant') }}"{% if sales_view == 'restaurant' %} aria-current="page"{% endif %}>Sales Update - Restaurant</a>
+        {% endif %}
+        {% if has_sales_analytics_access('room_transfer') %}
+        <a class="de-nav-subitem{% if sales_view == 'room_transfer' %} is-active{% endif %}" href="{{ url_for('sales_update_room_transfer', company=nav_company) if nav_company else url_for('sales_update_room_transfer') }}"{% if sales_view == 'room_transfer' %} aria-current="page"{% endif %}>Room Transfer</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_dashboard_access('employee_payroll') %}
+    <div class="de-nav-group{% if payroll_open %} is-open is-child-active{% endif %}" id="de-nav-payroll-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-payroll-toggle" aria-expanded="{{ 'true' if payroll_open else 'false' }}" aria-controls="de-nav-payroll-sub" onclick="toggleDeNavGroup(event, 'de-nav-payroll-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Employee Payroll</span>
+      </button>
+      <div class="de-nav-sub" id="de-nav-payroll-sub">
+        {% if has_payroll_access('employee') %}
+        <a class="de-nav-subitem{% if payroll_view == 'employee' %} is-active{% endif %}" href="{{ url_for('employees', **payroll_period) }}"{% if payroll_view == 'employee' %} aria-current="page"{% endif %}>Employee</a>
+        {% endif %}
+        {% if has_payroll_access('report') %}
+        <a class="de-nav-subitem{% if payroll_view == 'report' %} is-active{% endif %}" href="{{ url_for('report', **payroll_period) }}"{% if payroll_view == 'report' %} aria-current="page"{% endif %}>Report</a>
+        {% endif %}
+        {% if has_payroll_access('attendance') %}
+        <a class="de-nav-subitem{% if payroll_view == 'attendance' %} is-active{% endif %}" href="{{ url_for('attendance_overview', **payroll_period) }}"{% if payroll_view == 'attendance' %} aria-current="page"{% endif %}>Attendance</a>
+        {% endif %}
+        {% if has_payroll_access('credit') %}
+        <a class="de-nav-subitem{% if payroll_view == 'credit' %} is-active{% endif %}" href="{{ url_for('credits_dashboard', **payroll_period) }}"{% if payroll_view == 'credit' %} aria-current="page"{% endif %}>Credit</a>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_dashboard_access('access_management') %}
+    <div class="de-nav-group{% if nav_section == 'access' %} is-open is-child-active{% endif %}" id="de-nav-access-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-access-toggle" aria-expanded="{{ 'true' if nav_section == 'access' else 'false' }}" aria-controls="de-nav-access-sub" onclick="toggleDeNavGroup(event, 'de-nav-access-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 2.5-5 6-5s6 2 6 5"/><path d="M18 8h3"/><path d="M19.5 6.5v3"/></svg>
+        <span>User &amp; Access</span>
+      </button>
+      <div class="de-nav-sub" id="de-nav-access-sub">
+        {% if has_user_access_submodule('users') %}
+        <a class="de-nav-subitem{% if access_view == 'users' %} is-active{% endif %}" href="{{ url_for('access_management') }}"{% if access_view == 'users' %} aria-current="page"{% endif %}>Users</a>
+        {% endif %}
+        {% if has_user_access_submodule('add') %}
+        <a class="de-nav-subitem{% if access_view == 'add' %} is-active{% endif %}" href="{{ url_for('access_management', focus='form') }}"{% if access_view == 'add' %} aria-current="page"{% endif %}>Add User</a>
+        {% endif %}
       </div>
     </div>
     {% endif %}
   </nav>
 
-  <button type="button" class="de-sidebar-pin-btn" id="de-sidebar-pin-btn" onclick="toggleDeSidebarExpandedPin()" aria-pressed="false" aria-label="Pin sidebar expanded" title="Pin sidebar expanded">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3.76"/></svg>
-    <span>Pin sidebar</span>
-  </button>
-
   <div class="de-sidebar-spacer"></div>
 
-  <div class="de-help">
-    <a class="de-help-compact" href="{{ url_for('logout') }}" aria-label="Log out">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-    </a>
-    <div class="de-help-expanded">
-      <div class="de-help-head">
-        <div class="de-help-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-        </div>
-        <div class="de-help-copy">
-          <h3>Sign out</h3>
-          <p>End your session securely</p>
-        </div>
-      </div>
-      <a class="de-help-link" href="{{ url_for('logout') }}">
-        <span>Logout</span>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg>
-      </a>
-    </div>
+  <div class="de-sidebar-footer">
+    <button type="button" class="de-sidebar-pin-btn" id="de-sidebar-pin-btn" onclick="toggleDeSidebarExpandedPin()" aria-pressed="false" aria-label="Pin sidebar expanded" title="Pin sidebar expanded">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3.76"/></svg>
+      <span>Pin sidebar</span>
+    </button>
   </div>
 </aside>

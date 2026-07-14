@@ -84,22 +84,35 @@
     <div class="sr-kpi-accent" aria-hidden="true"></div>
   </article>
   {% endif %}
-  <article class="sr-kpi-card sr-kpi-card--red">
+  <article class="sr-kpi-card {% if kpi_fourth_metric|default('expense') == 'room_transfer' %}sr-kpi-card--amber{% else %}sr-kpi-card--red{% endif %}">
     <div class="sr-kpi-top">
       <div class="sr-kpi-icon" aria-hidden="true">
+        {% if kpi_fourth_metric|default('expense') == 'room_transfer' %}
+        <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
+        {% else %}
         <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>
+        {% endif %}
       </div>
-      <button type="button" class="sr-kpi-menu" aria-label="Expense options" disabled>
+      <button type="button" class="sr-kpi-menu" aria-label="{% if kpi_fourth_metric|default('expense') == 'room_transfer' %}Room transfer options{% else %}Expense options{% endif %}" disabled>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"/></svg>
       </button>
     </div>
     <div class="sr-kpi-main">
+      {% if kpi_fourth_metric|default('expense') == 'room_transfer' %}
+      <div class="sr-kpi-label">Room Transfer</div>
+      <div class="sr-kpi-value" id="room-transfer-kpi">{{ kpi.room_credit | inr(0) }}</div>
+      <div class="sr-kpi-foot">
+        {{ sr_kpi_trend('room_credit') }}
+        <span class="sr-kpi-vs">vs {{ kpi_vs_label }}</span>
+      </div>
+      {% else %}
       <div class="sr-kpi-label">Expense</div>
       <div class="sr-kpi-value" id="expense-kpi">{{ kpi.expense | inr(0) }}</div>
       <div class="sr-kpi-foot">
         {{ sr_kpi_trend('expense') }}
         <span class="sr-kpi-vs">vs {{ kpi_vs_label }}</span>
       </div>
+      {% endif %}
     </div>
     <div class="sr-kpi-accent" aria-hidden="true"></div>
   </article>

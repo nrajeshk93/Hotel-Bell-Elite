@@ -1,19 +1,28 @@
 <div class="se-petty-section">
-  <div class="se-petty-save-row">
-    <div class="save-state-wrap">
-      <div class="save-state" id="petty-save-state">Saved for {{ selected_date }}</div>
-    </div>
-  </div>
   <div class="se-petty-outlets-grid{% if selected_locations|length == 1 %} se-petty-outlets-grid--single{% endif %}">
   {% for outlet in selected_locations %}
   {% set outlet_record = outlet_records[outlet] %}
   {% set outlet_slug = outlet|lower|replace(' ', '-') %}
   <article class="card se-panel se-petty-outlet-panel" id="petty-cash-card-{{ outlet_slug }}" data-petty-outlet="{{ outlet }}">
-    <div class="card-hdr">
-      <div class="card-title"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 9v.01"/><path d="M18 15v.01"/></svg>Petty Cash - {{ outlet }}</div>
+    <div class="card-hdr petty-cash-hdr">
+      <div class="petty-cash-hdr-left">
+        <div class="petty-cash-title-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/></svg>
+        </div>
+        <div class="petty-cash-title-copy">
+          <h2 class="petty-cash-title">Petty Cash{% if selected_locations|length > 1 %} — {{ outlet }}{% endif %}</h2>
+          <p class="petty-cash-subtitle">Record the cash count for each denomination</p>
+        </div>
+      </div>
       <div class="petty-cash-hdr-right">
+        <div class="save-state-wrap petty-save-badge">
+          <span class="petty-save-badge-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          </span>
+          <div class="save-state petty-save-state{% if loop.first %} ok{% endif %}"{% if loop.first %} id="petty-save-state"{% endif %}>Saved for {{ selected_date }}</div>
+        </div>
         <button type="button" class="petty-cash-toggle" aria-expanded="true" aria-controls="petty-cash-card-body-{{ outlet_slug }}" title="Collapse Petty Cash" data-petty-toggle="{{ outlet_slug }}">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </button>
       </div>
     </div>
@@ -22,25 +31,44 @@
         <table class="petty-table" aria-label="Petty Cash denomination table for {{ outlet }}">
           <thead>
             <tr>
-              <th class="petty-denom">Denomination</th>
-              <th class="petty-count"></th>
-              <th class="petty-amount"></th>
+              <th scope="col" class="petty-denom">Denomination</th>
+              <th scope="col" class="petty-count">No. of notes / coins</th>
+              <th scope="col" class="petty-amount">Amount (₹)</th>
             </tr>
           </thead>
           <tbody>
             {% for denom in petty_cash_denominations %}
             <tr>
-              <td class="petty-denom">{{ denom }}</td>
+              <td class="petty-denom">
+                <div class="petty-denom-inner">
+                  <span class="petty-denom-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M18.09 10.37A6 6 0 1 1 10.34 18"/><path d="M7 6h1v4"/><path d="m16.71 13.88.7.71-2.82 2.82"/></svg>
+                  </span>
+                  <span class="petty-denom-value">{{ denom }}</span>
+                </div>
+              </td>
               <td class="petty-count">
                 <input type="number" min="0" step="1" value="{{ outlet_record.petty_cash_counts.get(denom|string, 0) }}" inputmode="numeric" data-denomination="{{ denom }}" data-petty-location="{{ outlet }}" aria-label="{{ outlet }} {{ denom }} count">
               </td>
-              <td class="petty-amount" data-row-total>0</td>
+              <td class="petty-amount">
+                <span class="petty-amount-field" data-row-total>0</span>
+              </td>
             </tr>
             {% endfor %}
-            <tr>
-              <td></td>
-              <td class="petty-total-label">Total</td>
-              <td class="petty-total" id="petty-cash-total-{{ outlet_slug }}">0</td>
+            <tr class="petty-total-row">
+              <td colspan="2" class="petty-total-label">
+                <div class="petty-total-label-inner">
+                  <span class="petty-total-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h8M8 14h4M16 18h.01"/></svg>
+                  </span>
+                  <span>Total</span>
+                </div>
+              </td>
+              <td class="petty-total">
+                <div class="petty-total-card" aria-live="polite">
+                  <span class="petty-total-currency" aria-hidden="true">₹</span><span id="petty-cash-total-{{ outlet_slug }}">0</span>
+                </div>
+              </td>
             </tr>
           </tbody>
         </table>
