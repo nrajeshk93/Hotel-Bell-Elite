@@ -8,13 +8,32 @@
 #de-fs-app:fullscreen,
 #de-fs-app:-webkit-full-screen,
 #de-fs-app:-moz-full-screen,
-#de-fs-app:-ms-fullscreen{
+#de-fs-app:-ms-fullscreen,
+html:fullscreen #de-fs-app,
+html:-webkit-full-screen #de-fs-app,
+html:-moz-full-screen #de-fs-app,
+html:-ms-fullscreen #de-fs-app{
   width:100%;
   height:100%;
   max-width:100%;
   max-height:100%;
   overflow:hidden;
   background:#F8FAFC;
+}
+html:fullscreen,
+html:-webkit-full-screen,
+html:-moz-full-screen,
+html:-ms-fullscreen{
+  background:#F8FAFC;
+}
+html:fullscreen body,
+html:-webkit-full-screen body{
+  width:100%;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
+  overflow:hidden;
+  margin:0;
 }
 #de-fs-app:fullscreen #main-app.de-module,
 #de-fs-app:-webkit-full-screen #main-app.de-module,
@@ -23,7 +42,15 @@
 #de-fs-app:fullscreen #dashboard.de-module,
 #de-fs-app:-webkit-full-screen #dashboard.de-module,
 #de-fs-app:fullscreen .de-app-shell,
-#de-fs-app:-webkit-full-screen .de-app-shell{
+#de-fs-app:-webkit-full-screen .de-app-shell,
+html:fullscreen #main-app.de-module,
+html:-webkit-full-screen #main-app.de-module,
+html:fullscreen #ep-workspace.de-module,
+html:-webkit-full-screen #ep-workspace.de-module,
+html:fullscreen #dashboard.de-module,
+html:-webkit-full-screen #dashboard.de-module,
+html:fullscreen .de-app-shell,
+html:-webkit-full-screen .de-app-shell{
   width:100%;
   max-width:100%;
   height:100%;
@@ -33,7 +60,11 @@
 #de-fs-app:fullscreen .de-main-wrapper,
 #de-fs-app:-webkit-full-screen .de-main-wrapper,
 #de-fs-app:fullscreen .de-view-panel,
-#de-fs-app:-webkit-full-screen .de-view-panel{
+#de-fs-app:-webkit-full-screen .de-view-panel,
+html:fullscreen .de-main-wrapper,
+html:-webkit-full-screen .de-main-wrapper,
+html:fullscreen .de-view-panel,
+html:-webkit-full-screen .de-view-panel{
   max-width:100%;
   min-width:0;
 }

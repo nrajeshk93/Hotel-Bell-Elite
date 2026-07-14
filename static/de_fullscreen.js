@@ -40,7 +40,7 @@
   var escExitPending = false;
   var pageUnloading = false;
   var softNavInProgress = false;
-  var restoreDelays = [0, 60, 150, 300, 600, 1000];
+  var restoreDelays = [0, 120, 400];
 
   function loadStylesheet(){
     if(document.querySelector('link[data-de-fullscreen-css]')) return;
@@ -68,10 +68,29 @@
   function getFullscreenTargets(){
     var root = document.getElementById(FS_ROOT_ID);
     var targets = [];
-    if(root) targets.push(root);
+    // Prefer <html>: soft page swaps never remove it, so fullscreen survives navigation.
     if(document.documentElement) targets.push(document.documentElement);
+    if(root) targets.push(root);
     if(document.body) targets.push(document.body);
     return targets;
+  }
+
+  /** Call synchronously from a click/gesture before soft-nav DOM work. */
+  function preserveFullscreenForNavigation(){
+    if(!getPreference() && !getFullscreenElement()) return false;
+    setPreference(true);
+    prepareNavigation();
+    ensureFullscreenRoot();
+    // If already fullscreen on ANY element, do not re-request.
+    // Transferring from #de-fs-app → <html> exits FS in Chromium/Electron and often fails to re-enter.
+    if(getFullscreenElement()){
+      updateButtons();
+      return true;
+    }
+    // Preferred but exited (e.g. history.pushState): re-enter during the same user gesture.
+    if(attemptRestoreSync()) return true;
+    requestAppFullscreen().then(updateButtons).catch(function(){});
+    return false;
   }
 
   function getPreference(){
@@ -223,11 +242,16 @@
   }
 
   function restoreAfterNavigation(){
-    if(!getPreference() || !supported || softNavInProgress) return;
+    if(!getPreference() || !supported) return;
+    if(getFullscreenElement()){
+      updateButtons();
+      return;
+    }
     attemptRestoreSync();
     restoreDelays.forEach(function(delay){
       setTimeout(function(){
-        if(!softNavInProgress) attemptRestoreSync();
+        if(!getPreference() || getFullscreenElement()) return;
+        attemptRestoreSync();
       }, delay);
     });
   }
@@ -344,6 +368,7 @@
       escExitPending = false;
       return;
     }
+    // Soft-nav (and hard fallthrough) often drops fullscreen; keep the preference so we can restore.
     if(softNavInProgress || pageUnloading) return;
     if(userExitIntent){
       userExitIntent = false;
@@ -536,6 +561,10 @@
     softNavInProgress = !!active;
   }
 
+  function isSoftNavInProgress(){
+    return softNavInProgress;
+  }
+
   window.deFullscreen = {
     isActive: function(){ return !!getFullscreenElement(); },
     isPreferred: getPreference,
@@ -546,9 +575,11 @@
     },
     restoreAfterNavigation: restoreAfterNavigation,
     prepareNavigation: prepareNavigation,
+    preserveForNavigation: preserveFullscreenForNavigation,
     reinit: reinit,
     updateUi: updateButtons,
     setSoftNavInProgress: setSoftNavInProgress,
+    isSoftNavInProgress: isSoftNavInProgress,
     getSwapRoot: function(){
       return getPreference() || getFullscreenElement() ? ensureFullscreenRoot() : document.body;
     }

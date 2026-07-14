@@ -56,6 +56,9 @@
   function initModuleAccess(){
     var root = byId('ma-access-root');
     if(!root) return;
+    // Soft-nav can call this repeatedly; skip if this root was already wired.
+    if(root.getAttribute('data-ma-ready') === '1') return;
+    root.setAttribute('data-ma-ready', '1');
 
     var treeData = parseJson(byId('ma-tree-data'), []);
     var initial = {
@@ -494,5 +497,11 @@
     }
   }
 
-  document.addEventListener('DOMContentLoaded', initModuleAccess);
+  window.initModuleAccess = initModuleAccess;
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', initModuleAccess);
+  } else {
+    initModuleAccess();
+  }
 })();

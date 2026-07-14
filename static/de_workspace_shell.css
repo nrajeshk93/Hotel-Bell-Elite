@@ -1,13 +1,8 @@
 #page-transition{
   display:none;position:fixed;inset:0;z-index:8000;
-  background:
-    linear-gradient(180deg,rgba(250,252,255,.72) 0%,rgba(240,246,255,.78) 100%),
-    radial-gradient(circle at 20% 20%,rgba(209,227,255,.34) 0%,rgba(209,227,255,0) 42%),
-    radial-gradient(circle at 84% 82%,rgba(195,220,255,.28) 0%,rgba(195,220,255,0) 38%);
-  backdrop-filter:blur(10px) saturate(1.04);
-  -webkit-backdrop-filter:blur(10px) saturate(1.04);
+  background:rgba(246,249,255,.55);
   opacity:0;pointer-events:none;
-  transition:opacity .18s ease;
+  transition:opacity .1s ease;
 }
 html.de-sidebar-wide-boot .de-sidebar{
   width:202px!important;min-width:202px!important;max-width:202px!important;

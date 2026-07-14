@@ -8,7 +8,7 @@
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=11">
 <link rel="stylesheet" href="{{ url_for('static', filename='access_module_access.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
 <script>
 (function(){
   try{
@@ -347,9 +347,9 @@ input[type="text"]:focus,input[type="password"]:focus{border-color:var(--acc);bo
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='access_module_access.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='access_module_access.js') }}?v=2"></script>
 {% if not form_focus %}
-<script src="{{ url_for('static', filename='access_users_list.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='access_users_list.js') }}?v=2"></script>
 {% endif %}
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
