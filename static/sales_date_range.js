@@ -367,5 +367,58 @@
     refreshTriggerText();
   }
 
-  global.SalesDateRangePicker = { init: init, positionPanel: positionPanel, clearPanelPosition: clearPanelPosition };
+  global.SalesDateRangePicker = {
+    init: init,
+    positionPanel: positionPanel,
+    clearPanelPosition: clearPanelPosition,
+    /**
+     * Re-fill date chip labels after soft page navigation.
+     * The display span starts empty in older markup and can stay blank if
+     * entry-date init is skipped or races a fullscreen soft-nav swap.
+     */
+    syncChipDisplays: function () {
+      var monthShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      function fmt(iso) {
+        if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
+        var p = iso.split('-').map(Number);
+        return p[2] + ' ' + monthShort[p[1] - 1] + ', ' + p[0];
+      }
+      function setText(el, text) {
+        if (el && text) el.textContent = text;
+      }
+
+      var entryDisplay = document.getElementById('se-date-range-display');
+      var entryInput = document.getElementById('se-filter-date');
+      var entryWrap = document.getElementById('se-date-range-wrap');
+      var entryIso = ((entryInput && entryInput.value) || (entryWrap && entryWrap.getAttribute('data-initial-date')) || '').trim();
+      if (!entryIso) {
+        try { entryIso = sessionStorage.getItem('hbe.salesUpdate.date') || ''; } catch (e) {}
+      }
+      if (entryDisplay) {
+        var entryLabel = fmt(entryIso);
+        setText(entryDisplay, entryLabel || 'Select date');
+      }
+
+      var cashDisplay = document.getElementById('se-cash-date-display');
+      var cashFrom = document.getElementById('se-filter-date-from');
+      var cashTo = document.getElementById('se-filter-date-to');
+      if (cashDisplay) {
+        var fromIso = ((cashFrom && cashFrom.value) || entryIso || '').trim();
+        var toIso = ((cashTo && cashTo.value) || fromIso || '').trim();
+        var cashLabel = '';
+        if (fromIso && toIso && fromIso !== toIso) cashLabel = fmt(fromIso) + ' – ' + fmt(toIso);
+        else if (fromIso) cashLabel = fmt(fromIso);
+        setText(cashDisplay, cashLabel || 'Select date range');
+      }
+    }
+  };
+
+  // Keep chip text correct after soft navigation or partial remounts.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      global.SalesDateRangePicker.syncChipDisplays();
+    });
+  } else {
+    global.SalesDateRangePicker.syncChipDisplays();
+  }
 })(window);

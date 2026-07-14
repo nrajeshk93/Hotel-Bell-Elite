@@ -62,7 +62,12 @@
             <div class="an-range-wrap an-range-wrap--sales" id="se-date-range-wrap" data-max-date="{{ max_sales_date }}" data-initial-date="{{ selected_date }}">
               <button type="button" class="an-range-trigger se-filter-chip-trigger" id="se-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="se-date-range-panel">
                 <span class="an-range-trigger-label">
-                  <span id="se-date-range-display"></span>
+                  {% set se_date_months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+                  {% if selected_date and selected_date|length >= 10 %}
+                  <span id="se-date-range-display">{{ selected_date[8:10]|int }} {{ se_date_months[selected_date[5:7]|int - 1] }}, {{ selected_date[0:4] }}</span>
+                  {% else %}
+                  <span id="se-date-range-display">Select date</span>
+                  {% endif %}
                 </span>
               </button>
               <div class="an-range-backdrop" id="se-date-range-backdrop" aria-hidden="true"></div>

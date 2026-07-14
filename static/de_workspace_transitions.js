@@ -218,6 +218,15 @@
     } else {
       initDeSidebarPageTransitions();
     }
+    // Re-bind payroll listboxes (month/year/department) after soft page swaps —
+    // ep_form_listbox.js only auto-inits once because soft-nav skips already-loaded scripts.
+    if(typeof window.initEpListboxes === 'function'){
+      window.initEpListboxes();
+    }
+    // Re-fill sales date chips after soft nav (display can stay blank if init races).
+    if(window.SalesDateRangePicker && typeof window.SalesDateRangePicker.syncChipDisplays === 'function'){
+      window.SalesDateRangePicker.syncChipDisplays();
+    }
     if(window.deFullscreen && typeof window.deFullscreen.updateUi === 'function'){
       window.deFullscreen.updateUi();
     }
@@ -240,6 +249,11 @@
       redirect: 'follow'
     }).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
+      var contentType = (response.headers.get('content-type') || '').toLowerCase();
+      // Never soft-swap binary downloads (xlsx/docx/pdf) into the page.
+      if(contentType.indexOf('text/html') === -1){
+        throw new Error('non-html response');
+      }
       return response.text();
     }).then(function(html){
       var parser = new DOMParser();
@@ -316,9 +330,24 @@
     return true;
   }
 
+  function isFileDownloadLink(link){
+    if(link.hasAttribute('download')) return true;
+    if(link.classList.contains('rtc-dl')) return true;
+    var rawHref = (link.getAttribute('href') || '').toLowerCase();
+    var path = rawHref;
+    try{
+      path = new URL(link.href, window.location.href).pathname.toLowerCase();
+    } catch(e){}
+    if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1) return true;
+    if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path) || /\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(rawHref)){
+      return true;
+    }
+    return false;
+  }
+
   function handleWorkspaceLink(event, link){
     if(link.closest('.de-sidebar, .sidebar')) return false;
-    if(link.hasAttribute('download')) return false;
+    if(isFileDownloadLink(link)) return false;
     if(!shouldSoftNavigate()) return false;
     return handleSidebarLink(event, link);
   }
@@ -361,6 +390,12 @@
   window.deHidePageTransition = hideOverlay;
   window.deWorkspaceReinit = function(){
     initDeSidebarPageTransitions();
+    if(typeof window.initEpListboxes === 'function'){
+      window.initEpListboxes();
+    }
+    if(window.SalesDateRangePicker && typeof window.SalesDateRangePicker.syncChipDisplays === 'function'){
+      window.SalesDateRangePicker.syncChipDisplays();
+    }
   };
 
   window.addEventListener('popstate', function(){

@@ -1,5 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+*.db
 bell_elite.db
+db_backups/
 .env

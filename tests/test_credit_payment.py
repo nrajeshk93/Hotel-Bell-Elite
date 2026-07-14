@@ -16,7 +16,7 @@ def _memory_conn():
         CREATE TABLE suppliers (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
-            gst TEXT NOT NULL UNIQUE,
+            gst TEXT NOT NULL DEFAULT '',
             address TEXT NOT NULL DEFAULT '',
             phone TEXT NOT NULL DEFAULT '',
             bank_name TEXT NOT NULL DEFAULT '',
@@ -36,7 +36,8 @@ def _memory_conn():
             expense_code TEXT NOT NULL DEFAULT '',
             supplier_id INTEGER,
             category TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
         );
         CREATE TABLE credit_payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -301,6 +302,50 @@ class CreditPaymentValidationTests(unittest.TestCase):
         cash_entry = next(entry for entry in entries if entry["id"] == self.expense_cash)
         self.assertEqual(cash_entry["display_payment_type"], "cash")
         self.assertEqual(cash_entry["settlement_status"], "cleared")
+
+    def test_update_outstanding_purchase_from_ledger(self):
+        result, error = app_module._update_purchase_ledger_expense(
+            self.conn,
+            {"is_admin": True},
+            {
+                "expense_id": self.expense_a1,
+                "date": "2026-07-14",
+                "description": "Updated credit purchase",
+                "amount": 12000,
+                "payment_type": "credit",
+                "category": "grocery",
+                "supplier_id": self.supplier_a,
+                "invoice_number": "INV-EDIT-1",
+            },
+        )
+        self.assertIsNone(error)
+        self.assertEqual(result["expense_id"], self.expense_a1)
+        self.assertEqual(result["sales_date"], "2026-07-14")
+        row = self.conn.execute(
+            "SELECT description, amount, sales_date, invoice_number FROM sales_update_expenses WHERE id = ?",
+            (self.expense_a1,),
+        ).fetchone()
+        self.assertEqual(row["description"], "Updated credit purchase")
+        self.assertEqual(float(row["amount"]), 12000.0)
+        self.assertEqual(row["sales_date"], "2026-07-14")
+        self.assertEqual(row["invoice_number"], "INV-EDIT-1")
+
+    def test_reject_edit_for_cleared_purchase(self):
+        result, error = app_module._update_purchase_ledger_expense(
+            self.conn,
+            {"is_admin": True},
+            {
+                "expense_id": self.expense_cash,
+                "date": "2026-07-01",
+                "description": "Should fail",
+                "amount": 50,
+                "payment_type": "cash",
+                "category": "grocery",
+                "supplier_id": self.supplier_a,
+            },
+        )
+        self.assertIsNone(result)
+        self.assertIn("outstanding", (error or "").lower())
 
     def test_reject_duplicate_supplier_invoice(self):
         self.conn.execute(

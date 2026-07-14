@@ -149,7 +149,9 @@ _ACCOUNTS_ENDPOINTS = {
     "accounts",
     "purchase_ledger",
     "purchase_ledger_add",
+    "purchase_ledger_edit",
     "credit_payment",
+    "export_credit_payment_report",
     "purchase_verification",
     "create_credit_payment",
     "delete_credit_payment",
@@ -173,7 +175,7 @@ _PAYROLL_ENDPOINT_GROUPS = {
         "export_employees",
         "export_employee_master",
     },
-    "report": {"report", "export_wage_register"},
+    "report": {"report", "export_wage_register", "export_bank_report"},
     "attendance": {
         "attendance_overview",
         "attendance_date",

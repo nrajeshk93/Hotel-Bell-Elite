@@ -1,5 +1,6 @@
 """Hotel Bell Elite — Sales Update application."""
 
+import io
 import json
 import os
 from datetime import date, datetime, timedelta
@@ -12,6 +13,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     session,
     url_for,
 )
@@ -948,6 +950,16 @@ def _render_credit_settlement_page(mode):
         create_credit_payment_url=create_url,
         delete_credit_payment_url=delete_url,
         settlement_detail_url_template=detail_url_template,
+        credit_payment_report_url=(
+            url_for(
+                "export_credit_payment_report",
+                date_from=date_from.isoformat(),
+                date_to=date_to.isoformat(),
+                supplier=selected_supplier,
+            )
+            if page_mode == CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT
+            else None
+        ),
         today_iso=today.isoformat(),
         de_nav_section="accounts",
         de_nav_accounts_view=labels["nav_accounts_view"],
@@ -1589,8 +1601,6 @@ def _validate_supplier(conn, name, gst, supplier_id=None):
     gst = _normalize_gst(gst)
     if not name:
         errors.append("Supplier name is required.")
-    if not gst:
-        errors.append("GST is required.")
     if gst:
         existing = conn.execute(
             "SELECT id FROM suppliers WHERE gst = ?",
@@ -2079,6 +2089,7 @@ def purchase_ledger():
         expense_category_labels=EXPENSE_CATEGORY_LABELS,
         credit_settlement_status_labels=CREDIT_SETTLEMENT_STATUS_LABELS,
         purchase_add_url=url_for("purchase_ledger_add"),
+        purchase_edit_url=url_for("purchase_ledger_edit"),
         supplier_create_url=url_for("create_supplier"),
         default_company=DEFAULT_COMPANY,
         default_location=OUTLET_HOTEL,
@@ -2110,9 +2121,250 @@ def purchase_ledger_add():
     return jsonify({"ok": True, **result})
 
 
+def _update_purchase_ledger_expense(conn, user, data):
+    """Update a hotel purchase only when it is still outstanding credit."""
+    expense_id = data.get("id") or data.get("expense_id")
+    try:
+        expense_id = int(expense_id)
+    except (TypeError, ValueError):
+        return None, "Purchase not found."
+
+    existing = conn.execute(
+        """SELECT id, company, location, sales_date, description, amount, payment_type,
+                  transaction_id, supplier_id, category, invoice_number, expense_code
+           FROM sales_update_expenses WHERE id = ?""",
+        (expense_id,),
+    ).fetchone()
+    if not existing:
+        return None, "Purchase not found."
+    existing = dict(existing)
+    if existing.get("location") != OUTLET_HOTEL:
+        return None, "Only hotel purchases can be edited here."
+
+    paid_total = _credit_expense_paid_total(conn, expense_id)
+    status = _credit_settlement_status(
+        existing.get("payment_type"), existing.get("amount"), paid_total
+    )
+    if status != "outstanding":
+        return None, "Only outstanding credit purchases can be edited."
+
+    company = existing.get("company") or data.get("company", DEFAULT_COMPANY)
+    location = OUTLET_HOTEL
+    sales_date = (data.get("date") or existing.get("sales_date") or "").strip()
+    description = (data.get("description") or "").strip()
+    amount = parse_money(data.get("amount"))
+    payment_type = _normalize_expense_payment_type(data.get("payment_type"))
+    category = _normalize_expense_category(data.get("category"))
+    transaction_id = (data.get("transaction_id") or "").strip()
+    invoice_number = (data.get("invoice_number") or "").strip()
+    supplier_id = data.get("supplier_id")
+
+    lock_error = _check_sales_date_lock(user, company, location, sales_date)
+    if lock_error:
+        return None, lock_error
+    if sales_date != existing.get("sales_date"):
+        prior_lock = _check_sales_date_lock(user, company, location, existing.get("sales_date"))
+        if prior_lock:
+            return None, prior_lock
+
+    if not description or amount <= 0:
+        return None, "Description and positive amount are required."
+    if not supplier_id:
+        return None, "Please select a supplier."
+    if not category:
+        return None, "Please select a category."
+    if payment_type == EXPENSE_PAYMENT_BANK and not transaction_id:
+        return None, "Transaction ID is required for bank transfer."
+    if payment_type != EXPENSE_PAYMENT_BANK:
+        transaction_id = ""
+
+    supplier = _get_supplier(conn, supplier_id)
+    if not supplier:
+        return None, "Selected supplier was not found."
+
+    duplicate = _duplicate_expense_invoice(
+        conn, supplier_id, invoice_number, exclude_expense_id=expense_id
+    )
+    if duplicate:
+        code = duplicate["expense_code"] or f"#{duplicate['id']}"
+        return None, f"An expense with this supplier and invoice number already exists ({code})."
+
+    conn.execute(
+        f"""UPDATE sales_update_expenses
+           SET sales_date = ?, description = ?, amount = ?, payment_type = ?,
+               transaction_id = ?, supplier_id = ?, category = ?, invoice_number = ?,
+               updated_at = {SQL_NOW}
+           WHERE id = ? AND location = ?""",
+        (
+            sales_date,
+            description,
+            amount,
+            payment_type,
+            transaction_id,
+            supplier_id,
+            category,
+            invoice_number,
+            expense_id,
+            OUTLET_HOTEL,
+        ),
+    )
+    return {
+        "expense_id": expense_id,
+        "expense_code": existing.get("expense_code") or "",
+        "sales_date": sales_date,
+    }, None
+
+
+@app.route("/accounts/purchase-ledger/edit", methods=["POST"])
+def purchase_ledger_edit():
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        result, error = _update_purchase_ledger_expense(conn, user, data)
+        if error:
+            status = 403 if "Cannot save" in error or "already saved" in error else 400
+            if "not found" in error.lower():
+                status = 404
+            return jsonify({"ok": False, "error": error}), status
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, **result})
+
+
 @app.route("/accounts/credit-payment")
 def credit_payment():
     return _render_credit_settlement_page(CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT)
+
+
+_VENDOR_PAYMENT_TEMPLATE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "templates",
+    "accounts",
+    "vendor_payment_template.xlsx",
+)
+_VENDOR_DEBIT_ACC_NO = "387905000829"
+_VENDOR_MOBILE_NUM = 9933226086
+_VENDOR_EMAIL_ID = "mithra.varma@gmail.com"
+
+
+def _vendor_payment_category_narration(category):
+    """H/I narration for the expense's category only."""
+    key = _normalize_expense_category(category)
+    label = EXPENSE_CATEGORY_LABELS.get(key) or (category or "").strip() or "OTHER"
+    return label.upper()
+
+
+def _credit_payment_report_rows(conn, date_from, date_to, supplier_id=None):
+    """One ICICI vendor-payment row per supplier + category with outstanding credit."""
+    entries = _outstanding_credit_expenses(
+        conn, date_from, date_to, supplier_id=supplier_id
+    )
+    grouped = {}
+    for entry in entries:
+        sid = entry.get("supplier_id")
+        if not sid:
+            continue
+        category = _normalize_expense_category(entry.get("category")) or "other"
+        key = (sid, category)
+        bucket = grouped.get(key)
+        if not bucket:
+            bucket = {
+                "supplier_id": sid,
+                "category": category,
+                "amount": 0.0,
+            }
+            grouped[key] = bucket
+        bucket["amount"] = round_half_up(bucket["amount"] + entry.get("balance", 0), 2)
+
+    rows = []
+    for bucket in grouped.values():
+        if bucket["amount"] <= 0:
+            continue
+        supplier = _get_supplier(conn, bucket["supplier_id"])
+        if not supplier:
+            continue
+        account = (supplier.get("bank_account_number") or "").strip()
+        ifsc = (supplier.get("ifsc_code") or "").strip().upper()
+        if not account or not ifsc:
+            continue
+        rows.append({
+            "name": (supplier.get("name") or "").strip(),
+            "account": account,
+            "ifsc": ifsc,
+            "amount": bucket["amount"],
+            "narration": _vendor_payment_category_narration(bucket["category"]),
+            "mode": "FT" if ifsc.startswith("ICIC") else "NEFT",
+        })
+    rows.sort(key=lambda item: (item["name"].lower(), item["narration"]))
+    return rows
+
+
+@app.route("/accounts/credit-payment/report")
+def export_credit_payment_report():
+    """ICICI vendor payment Excel for outstanding credit suppliers."""
+    from openpyxl import load_workbook
+
+    if not os.path.isfile(_VENDOR_PAYMENT_TEMPLATE):
+        return ("Credit payment report template is missing.", 500)
+
+    today = date.today()
+    default_from = today.replace(day=1)
+    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
+    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    _, supplier_id = _parse_purchase_ledger_supplier(request.args.get("supplier"))
+
+    conn = get_db()
+    try:
+        rows = _credit_payment_report_rows(
+            conn, date_from, date_to, supplier_id=supplier_id
+        )
+    finally:
+        conn.close()
+
+    wb = load_workbook(_VENDOR_PAYMENT_TEMPLATE)
+    ws = wb.active
+    if ws.max_row > 1:
+        ws.delete_rows(2, ws.max_row - 1)
+
+    payment_date = today
+    for item in rows:
+        ws.append([
+            "PAB_VENDOR",                 # A
+            item["mode"],                 # B
+            _VENDOR_DEBIT_ACC_NO,         # C
+            item["name"],                 # D
+            item["account"],              # E
+            item["ifsc"],                 # F
+            item["amount"],               # G
+            item["narration"],            # H
+            item["narration"],            # I
+            _VENDOR_MOBILE_NUM,           # J
+            _VENDOR_EMAIL_ID,             # K
+            "NIL",                        # L
+            payment_date,                 # M
+            "NIL",                        # N
+            "NIL",                        # O
+            "NIL",                        # P
+            "NIL",                        # Q
+            "NIL",                        # R
+            "NIL",                        # S
+        ])
+        ws.cell(row=ws.max_row, column=13).value = payment_date
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f"credit_payment_report_{today.isoformat()}.xlsx"
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @app.route("/accounts/purchase-verification")

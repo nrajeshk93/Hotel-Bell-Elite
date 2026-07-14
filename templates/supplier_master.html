@@ -38,7 +38,7 @@
             </div>
             <h1>Supplier Master</h1>
           </div>
-          <p>Maintain supplier details used when recording hotel expenses. Supplier name and GST are mandatory; GST must be unique.</p>
+          <p>Maintain supplier details used when recording hotel expenses. Supplier name is required; GST is optional and must be unique when provided.</p>
         </div>
       </div>
       <div class="su-header-tools">
@@ -84,7 +84,7 @@
                     <div class="sm-name">{{ supplier.name }}</div>
                     {% if supplier.address %}<div class="sm-meta">{{ supplier.address }}</div>{% endif %}
                   </td>
-                  <td>{{ supplier.gst }}</td>
+                  <td>{{ supplier.gst or '—' }}</td>
                   <td>{{ supplier.phone or '—' }}</td>
                   <td>
                     {% if supplier.bank_name %}
@@ -135,8 +135,8 @@
                 <input id="supplier-name" class="staff-input" name="name" type="text" value="{{ form.name or '' }}" placeholder="e.g. ABC Supplies Pvt Ltd" required>
               </div>
               <div class="staff-field staff-field--inline staff-field--full">
-                <label for="supplier-gst">GST *</label>
-                <input id="supplier-gst" class="staff-input" name="gst" type="text" value="{{ form.gst or '' }}" placeholder="e.g. 29ABCDE1234F1Z5" required>
+                <label for="supplier-gst">GST</label>
+                <input id="supplier-gst" class="staff-input" name="gst" type="text" value="{{ form.gst or '' }}" placeholder="e.g. 29ABCDE1234F1Z5">
               </div>
               <div class="staff-field staff-field--inline staff-field--full">
                 <label for="supplier-address">Address</label>

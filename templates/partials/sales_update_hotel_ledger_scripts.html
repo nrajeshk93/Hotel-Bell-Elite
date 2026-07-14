@@ -619,8 +619,8 @@
       bank_account_number: salesExpenseSupplierBankAccount ? salesExpenseSupplierBankAccount.value.trim() : '',
       ifsc_code: salesExpenseSupplierIfsc ? salesExpenseSupplierIfsc.value.trim() : '',
     };
-    if (!payload.name || !payload.gst) {
-      showExpenseSupplierAddError('Supplier name and GST are required.');
+    if (!payload.name) {
+      showExpenseSupplierAddError('Supplier name is required.');
       return;
     }
     showExpenseSupplierAddError('');

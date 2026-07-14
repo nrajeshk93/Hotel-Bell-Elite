@@ -469,7 +469,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 {% include 'partials/de_fullscreen_script.html' %}
 {% include 'partials/de_fullscreen_bootstrap.html' %}
 <script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=6"></script>
-<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=10"></script>
 
 <div id="ep-workspace" class="de-module">
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox, ep_toolbar_listbox %}
@@ -867,10 +867,9 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Employee
       </a>
-      <button class="btn btn-secondary btn-sm" onclick="openImportModal()" title="Import from Excel">↑ Import</button>
       {% endif %}
       {% if employees is defined and employees %}
-      <a href="{{ url_for('export_employees', year=sel_year, month=sel_month) }}" class="btn btn-success btn-sm" title="Export to Excel">↓ Excel</a>
+      <a href="{{ url_for('export_employees', year=sel_year, month=sel_month) }}" download class="btn btn-success btn-sm" title="Export to Excel">↓ Excel</a>
       {% endif %}
     </div>
   {% endif %}
@@ -1384,13 +1383,13 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       </div>
       <div class="sal-item">
         <div class="sal-lbl">ESIC</div>
-        {% if emp.esic_applicable|default(false) %}
-        <div class="sal-val purple">{{ emp.esic | inr }}</div>
-        {% elif emp.esic_exempt|default(0) %}
+        {% if emp.esic_exempt|default(0) %}
         <div class="sal-val" style="color:var(--txt3);font-size:12px;font-weight:600;">Exempt</div>
         {% else %}
-        <div class="sal-val" style="color:var(--txt3);font-size:12px;font-weight:600;line-height:1.35;" title="ESI not applicable, because your gross monthly wages exceed the ESI eligibility limit of ₹21,000.">Not applicable</div>
-        <div style="font-size:9px;color:var(--txt3);margin-top:4px;line-height:1.35;">Gross monthly wages exceed the ESI eligibility limit of ₹21,000</div>
+        <div class="sal-val purple">{{ emp.esic | inr }}</div>
+        {% if emp.gross_actual|default(emp.gross)|default(0) > 21000 %}
+        <div style="font-size:9px;color:var(--txt3);margin-top:4px;line-height:1.35;">Fixed ₹158 (Actual Gross above ₹21,000)</div>
+        {% endif %}
         {% endif %}
       </div>
       {% if emp.sunday_incentive|default(0) > 0 %}
@@ -1673,7 +1672,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
           </div>
           <div>
             <label for="epf_amount" style="display:flex;justify-content:space-between;align-items:center;">
-              <span>EPF Amount (0 = auto 12%, max ₹1,800)</span>
+              <span>EPF Amount (0 = auto 12% of Actual Gross, max ₹1,800)</span>
               <label style="font-weight:400;font-size:11px;color:var(--err);cursor:pointer;display:flex;align-items:center;gap:4px;">
                 <input type="checkbox" id="epf_exempt" name="epf_exempt" value="1"
                        {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}checked{% endif %}
@@ -1683,12 +1682,12 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
             </label>
             <input type="number" id="epf_amount" name="epf_amount"
                    value="{{ form.get('epf_amount', 0) or '' }}"
-                   placeholder="Auto: 12% of Basic (max ₹1,800)" min="0" max="1800" step="0.01" oninput="calcPreview()"
+                   placeholder="Auto: 12% of Actual Gross (max ₹1,800)" min="0" max="1800" step="0.01" oninput="calcPreview()"
                    {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
           </div>
           <div>
             <label for="esic_amount" style="display:flex;justify-content:space-between;align-items:center;">
-              <span>ESIC Amount (0 = auto 0.75%)</span>
+              <span>ESIC Amount (0 = auto 0.75% / ₹158 above ₹21k)</span>
               <label style="font-weight:400;font-size:11px;color:var(--err);cursor:pointer;display:flex;align-items:center;gap:4px;">
                 <input type="checkbox" id="esic_exempt" name="esic_exempt" value="1"
                        {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}checked{% endif %}
@@ -1698,7 +1697,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
             </label>
             <input type="number" id="esic_amount" name="esic_amount"
                    value="{{ form.get('esic_amount', 0) or '' }}"
-                   placeholder="Auto: 0.75% of Gross" min="0" step="0.01" oninput="calcPreview()"
+                   placeholder="Auto: 0.75% of Gross (₹158 if Gross > ₹21,000)" min="0" step="0.01" oninput="calcPreview()"
                    {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
           </div>
         </div>
@@ -1825,7 +1824,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         </div>
         <div class="rtc-title">Employee Master</div>
         <div class="rtc-desc">All employee details — ID, contact, salary, EPF, ESIC</div>
-        <a href="{{ url_for('export_employee_master') }}" class="rtc-dl btn-primary" style="background:var(--acc);color:#fff;border-color:var(--acc);">↓ All Employees</a>
+        <a href="{{ url_for('export_employee_master') }}" download class="rtc-dl btn-primary" style="background:var(--acc);color:#fff;border-color:var(--acc);">↓ All Employees</a>
       </div>
 
       <!-- Monthly Payroll -->
@@ -1835,7 +1834,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         </div>
         <div class="rtc-title">Monthly Payroll</div>
         <div class="rtc-desc">Attendance-based salary — gross, EPF, ESIC, net per employee</div>
-        <a href="{{ url_for('export_employees', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:var(--warn-bg);color:var(--warn);border-color:rgba(217,119,6,.3);">↓ {{ month_name }} {{ sel_year }}</a>
+        <a href="{{ url_for('export_employees', year=sel_year, month=sel_month) }}" download class="rtc-dl" style="background:var(--warn-bg);color:var(--warn);border-color:rgba(217,119,6,.3);">↓ {{ month_name }} {{ sel_year }}</a>
       </div>
 
       <!-- Attendance Register -->
@@ -1845,17 +1844,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         </div>
         <div class="rtc-title">Attendance Register</div>
         <div class="rtc-desc">Day-wise grid (Sheet 1) + attendance summary counts (Sheet 2)</div>
-        <a href="{{ url_for('export_attendance_register', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:#EFF6FF;color:#1F4E79;border-color:rgba(31,78,121,.3);">↓ {{ month_name }} {{ sel_year }}</a>
-      </div>
-
-      <!-- Wage Register -->
-      <div class="report-type-card">
-        <div class="rtc-icon" style="background:#F0FDF4;color:#166534;">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-        </div>
-        <div class="rtc-title">Wage Register</div>
-        <div class="rtc-desc">Form XII [Rule 28(1)] — wages, deductions & net pay per employee</div>
-        <a href="{{ url_for('export_wage_register', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:#F0FDF4;color:#166534;border-color:rgba(22,101,52,.3);">↓ {{ month_name }} {{ sel_year }}</a>
+        <a href="{{ url_for('export_attendance_register', year=sel_year, month=sel_month) }}" download class="rtc-dl" style="background:#EFF6FF;color:#1F4E79;border-color:rgba(31,78,121,.3);">↓ {{ month_name }} {{ sel_year }}</a>
       </div>
 
       <!-- Credit / Advance -->
@@ -1865,7 +1854,17 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         </div>
         <div class="rtc-title">Credit / Advance</div>
         <div class="rtc-desc">All credit entries + per-employee balance summary (2 sheets)</div>
-        <a href="{{ url_for('export_credits_report', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:var(--err-bg);color:var(--err);border-color:rgba(220,38,38,.3);">↓ Credits Report</a>
+        <a href="{{ url_for('export_credits_report', year=sel_year, month=sel_month) }}" download class="rtc-dl" style="background:var(--err-bg);color:var(--err);border-color:rgba(220,38,38,.3);">↓ Credits Report</a>
+      </div>
+
+      <!-- Bank Report -->
+      <div class="report-type-card">
+        <div class="rtc-icon" style="background:#EEF2FF;color:#4338CA;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        </div>
+        <div class="rtc-title">Bank Report</div>
+        <div class="rtc-desc">ICICI fund-transfer Excel — EPF staff accounts &amp; net salary for the month</div>
+        <a href="{{ url_for('export_bank_report', year=sel_year, month=sel_month) }}" download class="rtc-dl" style="background:#EEF2FF;color:#4338CA;border-color:rgba(67,56,202,.3);">↓ {{ month_name }} {{ sel_year }}</a>
       </div>
 
     </div>
@@ -2308,6 +2307,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
                      placeholder="0"
                      data-emp="{{ emp.id }}" data-field="credit_repayment" max="{{ emp.repayment_max }}"
                      {% if not emp.repayment_input_enabled %}disabled{% endif %}
+                     title="{% if emp.repayment_input_enabled %}Repayment for {{ payroll_state.label }} — max {{ emp.repayment_max | inr }}{% elif payroll_state.locked|default(false) %}{{ payroll_state.message }}{% elif emp.repayment_max <= 0 %}No payable net salary for {{ payroll_state.label }} yet{% else %}{{ payroll_state.message }}{% endif %}"
                      onchange="saveSalary({{ emp.id }})"
                      min="0" step="0.01">
               {% else %}
@@ -2541,7 +2541,9 @@ function toggleExempt(type){
     inp.disabled = false;
     inp.style.opacity = '';
     inp.style.background = '';
-    inp.placeholder = type === 'epf' ? 'Auto: 12% of Basic (max ₹1,800)' : 'Auto: 0.75% of Gross';
+    inp.placeholder = type === 'epf'
+      ? 'Auto: 12% of Actual Gross (max ₹1,800)'
+      : 'Auto: 0.75% of Gross (₹158 if Gross > ₹21,000)';
   }
   calcPreview();
 }
@@ -2562,62 +2564,47 @@ function calcPreview(){
   if (crItem) crItem.style.display = crEl ? '' : 'none';
   var epfExempt  = document.getElementById('epf_exempt')  && document.getElementById('epf_exempt').checked;
   var esicExempt = document.getElementById('esic_exempt') && document.getElementById('esic_exempt').checked;
-  var esicApplicable = false;
   var esic = 0;
+  var esicLabel = 'ESIC (auto .75%)';
   if(esicExempt){
     esic = 0;
+    esicLabel = 'ESIC (exempt ₹0)';
   } else if(customEsic > 0){
     esic = customEsic;
-    esicApplicable = true;
-  } else if(gross <= 21000){
+    esicLabel = 'ESIC (custom)';
+  } else if(gross > 21000){
+    esic = 158;
+    esicLabel = 'ESIC (fixed ₹158 > ₹21k)';
+  } else {
     esic = Math.round(gross * 0.0075 * 100) / 100;
-    esicApplicable = true;
+    esicLabel = 'ESIC (auto .75%)';
   }
-  var basicRaw = 0, epf = 0;
+  var epf = 0;
   if(epfExempt){
     epf = 0;
-    basicRaw = gross - esic;
-  } else if(customBasic > 0){
-    basicRaw = customBasic;
-    epf = customEpf > 0 ? customEpf : Math.round(customBasic * 0.12 * 100) / 100;
   } else if(customEpf > 0){
-    epf = customEpf;
-    basicRaw = Math.round((gross - epf - esic) * 100) / 100;
+    epf = Math.min(1800, customEpf);
   } else {
-    basicRaw = Math.round(((gross - esic) / 1.12) * 100) / 100;
-    epf = Math.round((gross - basicRaw - esic) * 100) / 100;
+    epf = Math.min(1800, Math.round(gross * 0.12 * 100) / 100);
   }
-  var basic = Math.max(0, Math.min(basicRaw, gross));
-  epf = Math.max(0, epf);
-  if(!epfExempt && epf > 1800){
-    var surplus = Math.round((epf - 1800) * 100) / 100;
-    epf = 1800;
-    basic = Math.round((basic + surplus) * 100) / 100;
-  }
+  var basic = Math.max(0, Math.round((gross - epf - esic) * 100) / 100);
   var netRaw = Math.round((gross - epf - esic - creditRepay) * 100) / 100;
   var net = Math.max(0, netRaw);
   document.getElementById('pv-gross').textContent = fmtInr(gross, 0);
   document.getElementById('pv-basic').textContent = fmtInr(basic, 0);
   document.getElementById('pv-epf').textContent   = fmtInr(epf, 0);
-  document.getElementById('pv-esic').textContent  = esicExempt ? fmtInr(0, 0) : (esicApplicable ? fmtInr(esic, 0) : 'N/A');
+  document.getElementById('pv-esic').textContent  = fmtInr(esic, 0);
   document.getElementById('pv-cr').textContent    = fmtInr(creditRepay, 0);
   document.getElementById('pv-net').textContent   = fmtInr(net, 0);
   document.getElementById('pv-basic-label').textContent = epfExempt ? 'Basic (EPF exempt)' : (customBasic > 0 ? 'Basic (custom)' : 'Basic (auto)');
-  document.getElementById('pv-epf-label').textContent   = epfExempt ? 'EPF (exempt ₹0)' : (customEpf > 0 ? 'EPF (custom, max ₹1,800)' : 'EPF (auto 12%, max ₹1,800)');
-  document.getElementById('pv-esic-label').textContent  = esicExempt ? 'ESIC (exempt ₹0)' : (customEsic > 0 ? 'ESIC (custom)' : (esicApplicable ? 'ESIC (auto .75%)' : 'ESIC (N/A > ₹21,000)'));
+  document.getElementById('pv-epf-label').textContent   = epfExempt ? 'EPF (exempt ₹0)' : (customEpf > 0 ? 'EPF (custom, max ₹1,800)' : 'EPF (12% of Gross, max ₹1,800)');
+  document.getElementById('pv-esic-label').textContent  = esicLabel;
   document.getElementById('pv-cr-label').textContent = creditRepay > 0 ? 'Credit Repay' : 'Credit Repay (0)';
   var warnings = [];
   if(customBasic > 0 && customBasic > gross) warnings.push('Basic Pay exceeds Gross Salary');
-  if(!esicExempt && !esicApplicable && customEsic <= 0 && gross > 21000){
-    warnings.push('ESI not applicable — gross monthly wages exceed the ESI eligibility limit of ₹21,000');
-  }
-  if(!epfExempt && esicApplicable){
+  if(!epfExempt){
     var comp = Math.round((basic + epf + esic) * 100) / 100;
     if(Math.abs(comp - gross) > 0.01) warnings.push('Gross mismatch: Basic+EPF+ESIC = '+comp.toFixed(2)+', Gross = '+gross.toFixed(2));
-  }
-  if(!epfExempt && !esicExempt && !esicApplicable){
-    var compNoEsic = Math.round((basic + epf) * 100) / 100;
-    if(Math.abs(compNoEsic - gross) > 0.01) warnings.push('Gross mismatch: Basic+EPF = '+compNoEsic.toFixed(2)+', Gross = '+gross.toFixed(2));
   }
   if(epf + esic + creditRepay > gross) warnings.push('Total deductions exceed Gross Salary');
   if(netRaw < 0) warnings.push('Net is 0 — deductions exceed Gross');

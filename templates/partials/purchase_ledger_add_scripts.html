@@ -4,23 +4,30 @@
   if (!page) return;
 
   var addUrl = {{ purchase_add_url|tojson }};
+  var editUrl = {{ purchase_edit_url|tojson }};
   var supplierCreateUrl = {{ supplier_create_url|tojson }};
   var defaultCompany = {{ default_company|tojson }};
   var defaultLocation = {{ default_location|tojson }};
   var todayIso = {{ today_iso|tojson }};
   var paymentLabels = {{ expense_payment_labels|tojson }};
+  var categoryLabels = {{ expense_category_labels|tojson }};
 
   var modal = document.getElementById('pl-add-purchase-modal');
   var openBtn = document.getElementById('pl-open-add-purchase');
   var cancelBtn = document.getElementById('pl-add-purchase-cancel');
   var saveBtn = document.getElementById('pl-add-purchase-save');
+  var saveLabel = document.getElementById('pl-add-purchase-save-label');
+  var titleEl = document.getElementById('pl-add-purchase-title');
+  var copyEl = document.getElementById('pl-add-purchase-copy');
   var errorEl = document.getElementById('pl-add-purchase-error');
+  var expenseIdEl = document.getElementById('pl-edit-expense-id');
   var dateEl = document.getElementById('pl-add-purchase-date');
   var descriptionEl = document.getElementById('pl-add-description');
   var amountEl = document.getElementById('pl-add-amount');
   var invoiceEl = document.getElementById('pl-add-invoice-number');
   var transactionWrap = document.getElementById('pl-add-transaction-wrap');
   var transactionEl = document.getElementById('pl-add-transaction-id');
+  var editingExpenseId = null;
 
   function setError(msg){
     if (!errorEl) return;
@@ -163,47 +170,85 @@
     if (method !== 'bank_transfer' && transactionEl) transactionEl.value = '';
   }
 
+  function setListboxValue(prefix, value, label, placeholder){
+    var hidden = document.getElementById(prefix + '-input');
+    var valueEl = document.getElementById(prefix + '-value');
+    var list = document.getElementById(prefix + '-list');
+    if (hidden) hidden.value = value || '';
+    if (valueEl) {
+      if (value) {
+        valueEl.textContent = label || value;
+        valueEl.classList.remove('staff-supplier-placeholder');
+      } else {
+        valueEl.textContent = placeholder || 'Select';
+        valueEl.classList.add('staff-supplier-placeholder');
+      }
+    }
+    if (list) {
+      list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+        var selected = String(opt.getAttribute('data-value') || '') === String(value || '');
+        opt.classList.toggle('is-selected', selected);
+        opt.setAttribute('aria-selected', selected ? 'true' : 'false');
+      });
+    }
+  }
+
+  function setModalMode(isEdit){
+    if (titleEl) titleEl.textContent = isEdit ? 'Edit Purchase' : 'Add Purchase';
+    if (copyEl) {
+      copyEl.textContent = isEdit
+        ? 'Update this outstanding credit purchase. Cleared or partially paid purchases cannot be edited.'
+        : 'Record a hotel purchase with supplier, category, payment type, and purchase date. This creates the same expense entry used in Sales Update — Hotel.';
+    }
+    if (saveLabel) saveLabel.textContent = isEdit ? 'Save changes' : 'Add purchase';
+  }
+
   function resetForm(){
+    editingExpenseId = null;
+    if (expenseIdEl) expenseIdEl.value = '';
+    setModalMode(false);
     setError('');
     if (dateEl) dateEl.value = todayIso;
     if (descriptionEl) descriptionEl.value = '';
     if (amountEl) amountEl.value = '';
     if (invoiceEl) invoiceEl.value = '';
     if (transactionEl) transactionEl.value = '';
-    ['pl-add-supplier', 'pl-add-category'].forEach(function(prefix){
-      var hidden = document.getElementById(prefix + '-input');
-      var valueEl = document.getElementById(prefix + '-value');
-      if (hidden) hidden.value = '';
-      if (valueEl) {
-        valueEl.textContent = prefix.indexOf('supplier') >= 0 ? 'Select supplier' : 'Select category';
-        valueEl.classList.add('staff-supplier-placeholder');
-      }
-      var list = document.getElementById(prefix + '-list');
-      if (list) {
-        list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
-          opt.classList.remove('is-selected');
-          opt.setAttribute('aria-selected', 'false');
-        });
-      }
-    });
-    var paymentHidden = document.getElementById('pl-add-payment-input');
-    var paymentValue = document.getElementById('pl-add-payment-value');
-    if (paymentHidden) paymentHidden.value = 'cash';
-    if (paymentValue) paymentValue.textContent = paymentLabels.cash || 'Cash';
-    var paymentList = document.getElementById('pl-add-payment-list');
-    if (paymentList) {
-      paymentList.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
-        var selected = opt.getAttribute('data-value') === 'cash';
-        opt.classList.toggle('is-selected', selected);
-        opt.setAttribute('aria-selected', selected ? 'true' : 'false');
-      });
-    }
+    setListboxValue('pl-add-supplier', '', '', 'Select supplier');
+    setListboxValue('pl-add-category', '', '', 'Select category');
+    setListboxValue('pl-add-payment', 'cash', paymentLabels.cash || 'Cash');
     syncTransactionVisibility();
     closeAllListboxes();
   }
 
   function openPurchaseModal(){
     resetForm();
+    openModal(modal);
+    if (descriptionEl) descriptionEl.focus();
+  }
+
+  function openEditModal(btn){
+    if (!btn) return;
+    resetForm();
+    editingExpenseId = btn.getAttribute('data-expense-id') || '';
+    if (expenseIdEl) expenseIdEl.value = editingExpenseId;
+    setModalMode(true);
+    if (dateEl) dateEl.value = btn.getAttribute('data-date') || todayIso;
+    if (descriptionEl) descriptionEl.value = btn.getAttribute('data-description') || '';
+    if (amountEl) amountEl.value = btn.getAttribute('data-amount') || '';
+    if (invoiceEl) invoiceEl.value = btn.getAttribute('data-invoice') || '';
+    var category = btn.getAttribute('data-category') || '';
+    var categoryLabel = btn.getAttribute('data-category-label') || (categoryLabels[category] || category);
+    setListboxValue('pl-add-category', category, categoryLabel, 'Select category');
+    setListboxValue(
+      'pl-add-supplier',
+      btn.getAttribute('data-supplier-id') || '',
+      btn.getAttribute('data-supplier-name') || '',
+      'Select supplier'
+    );
+    var paymentType = btn.getAttribute('data-payment-type') || 'credit';
+    setListboxValue('pl-add-payment', paymentType, paymentLabels[paymentType] || paymentType);
+    if (transactionEl) transactionEl.value = btn.getAttribute('data-transaction-id') || '';
+    syncTransactionVisibility();
     openModal(modal);
     if (descriptionEl) descriptionEl.focus();
   }
@@ -218,6 +263,11 @@
 
   document.addEventListener('click', function(e){
     if (!e.target.closest('#pl-add-purchase-modal [data-se-listbox]')) closeAllListboxes();
+    var editBtn = e.target.closest('.pl-edit-btn');
+    if (editBtn) {
+      e.preventDefault();
+      openEditModal(editBtn);
+    }
   });
 
   async function submitPurchase(){
@@ -257,25 +307,28 @@
 
     setError('');
     if (saveBtn) saveBtn.disabled = true;
+    var isEdit = !!editingExpenseId;
+    var payload = {
+      company: defaultCompany,
+      location: defaultLocation,
+      date: purchaseDate,
+      description: description,
+      amount: amountRaw,
+      payment_type: paymentType,
+      category: category,
+      transaction_id: paymentType === 'bank_transfer' ? transactionId : '',
+      invoice_number: invoiceNumber,
+      supplier_id: supplierId
+    };
+    if (isEdit) payload.expense_id = editingExpenseId;
     try {
-      var res = await fetch(addUrl, {
+      var res = await fetch(isEdit ? editUrl : addUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          company: defaultCompany,
-          location: defaultLocation,
-          date: purchaseDate,
-          description: description,
-          amount: amountRaw,
-          payment_type: paymentType,
-          category: category,
-          transaction_id: paymentType === 'bank_transfer' ? transactionId : '',
-          invoice_number: invoiceNumber,
-          supplier_id: supplierId
-        })
+        body: JSON.stringify(payload)
       });
       var data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'Could not save purchase.');
+      if (!data.ok) throw new Error(data.error || (isEdit ? 'Could not update purchase.' : 'Could not save purchase.'));
       closeModal(modal);
       var url = new URL(window.location.href);
       var savedDate = data.sales_date || purchaseDate;
@@ -285,7 +338,7 @@
       }
       window.location.href = url.toString();
     } catch (err) {
-      setError(err.message || 'Could not save purchase.');
+      setError(err.message || (isEdit ? 'Could not update purchase.' : 'Could not save purchase.'));
     } finally {
       if (saveBtn) saveBtn.disabled = false;
     }
@@ -348,8 +401,8 @@
       phone: document.getElementById('pl-add-supplier-phone') ? document.getElementById('pl-add-supplier-phone').value.trim() : '',
       address: document.getElementById('pl-add-supplier-address') ? document.getElementById('pl-add-supplier-address').value.trim() : ''
     };
-    if (!payload.name || !payload.gst) {
-      setSupplierError('Supplier name and GST are required.');
+    if (!payload.name) {
+      setSupplierError('Supplier name is required.');
       return;
     }
     setSupplierError('');

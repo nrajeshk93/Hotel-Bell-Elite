@@ -55,7 +55,7 @@ class TotalOffLopTests(unittest.TestCase):
         self.assertEqual(salary['gross_actual'], 0.0)
         self.assertEqual(salary['net'], 0.0)
 
-    def test_epf_caps_at_1800_for_high_salary(self):
+    def test_epf_is_12_percent_of_actual_gross_capped_at_1800(self):
         salary = _calc_salary(
             30000,
             calendar_days=30,
@@ -63,13 +63,27 @@ class TotalOffLopTests(unittest.TestCase):
             epf_exempt=False,
             esic_exempt=True,
         )
+        self.assertEqual(salary['gross_actual'], 30000.0)
+        self.assertEqual(salary['epf'], 1800.0)  # min(1800, 12% of 30000)
         self.assertEqual(salary['epf_full'], 1800.0)
-        self.assertLessEqual(salary['epf'], 1800.0)
         self.assertAlmostEqual(
-            salary['basic_full'] + salary['epf_full'] + salary['esic_full'],
+            salary['basic'] + salary['epf'] + salary['esic'],
             30000.0,
             places=2,
         )
+
+    def test_epf_uses_actual_gross_after_lop(self):
+        salary = _calc_salary(
+            15000,
+            calendar_days=30,
+            weekday_leave_days=5,
+            total_off=4,
+            tracked=True,
+            epf_exempt=False,
+            esic_exempt=True,
+        )
+        self.assertEqual(salary['gross_actual'], 14500.0)
+        self.assertEqual(salary['epf'], 1740.0)  # 12% of 14500
 
     def test_custom_epf_also_caps_at_1800(self):
         salary = _calc_salary(
@@ -81,8 +95,9 @@ class TotalOffLopTests(unittest.TestCase):
             esic_exempt=True,
         )
         self.assertEqual(salary['epf_full'], 1800.0)
+        self.assertEqual(salary['epf'], 1800.0)
 
-    def test_esic_not_applicable_above_21000(self):
+    def test_esic_fixed_158_above_21000(self):
         salary = _calc_salary(
             30000,
             calendar_days=30,
@@ -90,8 +105,11 @@ class TotalOffLopTests(unittest.TestCase):
             epf_exempt=False,
             esic_exempt=False,
         )
-        self.assertEqual(salary['esic_full'], 0.0)
-        self.assertFalse(salary['esic_applicable'])
+        self.assertEqual(salary['esic_full'], 158.0)
+        self.assertEqual(salary['esic'], 158.0)
+        self.assertTrue(salary['esic_applicable'])
+        self.assertEqual(salary['epf'], 1800.0)
+        self.assertEqual(salary['net'], 28042.0)  # 30000 - 1800 - 158
 
     def test_esic_applies_at_or_below_21000(self):
         salary = _calc_salary(

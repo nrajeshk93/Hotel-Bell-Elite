@@ -46,6 +46,11 @@
           <p>{{ page_subtitle }}</p>
         </div>
       </div>
+      <div class="su-header-tools">
+        {% if credit_payment_report_url %}
+        <a class="btn btn-primary" href="{{ credit_payment_report_url }}" download>Credit payment report</a>
+        {% endif %}
+      </div>
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">

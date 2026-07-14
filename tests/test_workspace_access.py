@@ -110,6 +110,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("accounts"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("purchase_ledger"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("purchase_ledger_add"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("purchase_ledger_edit"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("export_credit_payment_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("credit_payment"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("purchase_verification"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("create_credit_payment"), "accounts")

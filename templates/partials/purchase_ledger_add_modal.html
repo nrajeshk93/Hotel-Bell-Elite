@@ -4,8 +4,9 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/><path d="M16 16v6"/><path d="M19 19h-6"/></svg>
       <span id="pl-add-purchase-title">Add Purchase</span>
     </div>
-    <p class="staff-credit-copy">Record a hotel purchase with supplier, category, payment type, and purchase date. This creates the same expense entry used in Sales Update — Hotel.</p>
+    <p class="staff-credit-copy" id="pl-add-purchase-copy">Record a hotel purchase with supplier, category, payment type, and purchase date. This creates the same expense entry used in Sales Update — Hotel.</p>
     <div id="pl-add-purchase-error" class="staff-credit-error"></div>
+    <input type="hidden" id="pl-edit-expense-id" value="">
     <div class="staff-field">
       <label for="pl-add-purchase-date">Purchase date *</label>
       <input id="pl-add-purchase-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
@@ -118,7 +119,7 @@
     <div class="staff-credit-actions">
       <button type="button" class="btn staff-primary" id="pl-add-purchase-save">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-        <span>Add purchase</span>
+        <span id="pl-add-purchase-save-label">Add purchase</span>
       </button>
       <button type="button" class="btn staff-secondary" id="pl-add-purchase-cancel">Cancel</button>
     </div>
@@ -131,7 +132,7 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
       <span id="pl-add-supplier-modal-title">Add supplier</span>
     </div>
-    <p class="staff-credit-copy">Enter supplier details. Name and GST are required; GST must be unique.</p>
+    <p class="staff-credit-copy">Enter supplier details. Name is required; GST is optional and must be unique when provided.</p>
     <div id="pl-add-supplier-add-error" class="staff-credit-error"></div>
     <div class="staff-grid staff-supplier-modal-grid">
       <div class="staff-field staff-field--inline staff-field--full">
@@ -139,8 +140,8 @@
         <input id="pl-add-supplier-name" class="staff-input" type="text" placeholder="e.g. ABC Supplies Pvt Ltd">
       </div>
       <div class="staff-field staff-field--inline">
-        <label for="pl-add-supplier-gst">GST *</label>
-        <input id="pl-add-supplier-gst" class="staff-input" type="text" placeholder="e.g. 29ABCDE1234F1Z5">
+        <label for="pl-add-supplier-gst">GST</label>
+        <input id="pl-add-supplier-gst" class="staff-input" type="text" placeholder="Optional — e.g. 29ABCDE1234F1Z5">
       </div>
       <div class="staff-field staff-field--inline">
         <label for="pl-add-supplier-phone">Phone number</label>

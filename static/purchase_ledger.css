@@ -123,6 +123,7 @@ body.su-module .pl-table th{
 }
 body.su-module .pl-table tr:last-child td{border-bottom:0}
 body.su-module .pl-col-amount{width:120px;white-space:nowrap;text-align:right}
+body.su-module .pl-col-actions{width:88px;white-space:nowrap;text-align:right}
 body.su-module .pl-col-date{white-space:nowrap}
 body.su-module .pl-col-code{white-space:nowrap}
 body.su-module .pl-expense-code{
@@ -139,10 +140,25 @@ body.su-module .pl-expense-code{
 body.su-module .pl-name{font-weight:700;color:var(--txt)}
 body.su-module .pl-meta{font-size:12px;color:var(--txt3);margin-top:2px;line-height:1.4}
 body.su-module .pl-amount{font-weight:700;color:var(--txt)}
+body.su-module .pl-edit-btn{
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:var(--acc);
+  font:700 13px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  padding:0;
+}
+body.su-module .pl-edit-btn:hover{text-decoration:underline}
+body.su-module .pl-action-muted{color:var(--txt3);font-weight:600}
 body.su-module .pl-empty{padding:36px 18px;text-align:center;color:var(--txt3);font-size:14px}
 
 body.su-module .pl-add-purchase-box,
 body.su-module .sales-expense-modal-box{width:min(720px,96vw)}
+body.su-module #pl-add-purchase-modal .pl-add-purchase-box{
+  /* Keep modal content scrollable, but let listboxes escape the clip. */
+  overflow:visible;
+}
 body.su-module .pl-add-category-row{margin-bottom:14px}
 body.su-module .pl-add-category-row .staff-field--inline{margin-bottom:0;min-width:0}
 body.su-module .pl-add-category-row .se-filter-chip{width:100%}
@@ -152,4 +168,13 @@ body.su-module #pl-add-purchase-modal .se-filter-listbox{
   left:0;
   right:0;
   min-width:100%;
+  z-index:80;
+}
+/* Payment sits near the modal footer — open upward so options stay visible. */
+body.su-module #pl-add-purchase-modal #pl-add-payment-listbox .se-filter-listbox{
+  top:auto;
+  bottom:calc(100% + 8px);
+}
+body.su-module #pl-add-purchase-modal #pl-add-payment-listbox.is-open{
+  z-index:90;
 }

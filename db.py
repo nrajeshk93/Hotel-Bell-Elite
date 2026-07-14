@@ -16,6 +16,42 @@ def get_db():
     return conn
 
 
+def _migrate_suppliers_optional_gst(cursor):
+    """Allow blank GST on multiple suppliers; keep uniqueness only when GST is set."""
+    row = cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='suppliers'"
+    ).fetchone()
+    if not row:
+        return
+    compact = " ".join((row["sql"] or "").split()).upper()
+    if "GST TEXT NOT NULL UNIQUE" not in compact:
+        return
+
+    cursor.execute("""
+        CREATE TABLE suppliers__gst_optional (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                TEXT    NOT NULL,
+            gst                 TEXT    NOT NULL DEFAULT '',
+            address             TEXT    NOT NULL DEFAULT '',
+            phone               TEXT    NOT NULL DEFAULT '',
+            bank_name           TEXT    NOT NULL DEFAULT '',
+            bank_account_number TEXT    NOT NULL DEFAULT '',
+            ifsc_code           TEXT    NOT NULL DEFAULT '',
+            created_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        INSERT INTO suppliers__gst_optional
+            (id, name, gst, address, phone, bank_name, bank_account_number, ifsc_code, created_at, updated_at)
+        SELECT id, name, COALESCE(gst, ''), address, phone, bank_name, bank_account_number, ifsc_code,
+               created_at, updated_at
+        FROM suppliers
+    """)
+    cursor.execute("DROP TABLE suppliers")
+    cursor.execute("ALTER TABLE suppliers__gst_optional RENAME TO suppliers")
+
+
 def init_db():
     conn = get_db()
     conn.execute("PRAGMA journal_mode=WAL")
@@ -115,7 +151,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS suppliers (
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             name                TEXT    NOT NULL,
-            gst                 TEXT    NOT NULL UNIQUE,
+            gst                 TEXT    NOT NULL DEFAULT '',
             address             TEXT    NOT NULL DEFAULT '',
             phone               TEXT    NOT NULL DEFAULT '',
             bank_name           TEXT    NOT NULL DEFAULT '',
@@ -125,9 +161,14 @@ def init_db():
             updated_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         )
     """)
+    _migrate_suppliers_optional_gst(cursor)
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_suppliers_name
         ON suppliers(LOWER(name))
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_suppliers_gst_unique
+        ON suppliers(gst) WHERE gst != ''
     """)
 
     cursor.execute("""

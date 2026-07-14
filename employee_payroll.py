@@ -25,8 +25,9 @@ _DEFAULT_COMPANY = "Hotel Bell Elite"
 _EMP_CODE_PREFIX = "HBE"
 _EMP_CODE_RE = re.compile(rf"^{re.escape(_EMP_CODE_PREFIX)}(\d+)$", re.IGNORECASE)
 _EPF_MAX = 1800.0
-_ESIC_RATE = 0.0075  # employee share 0.75% of gross
-_ESIC_WAGE_LIMIT = 21000.0  # ESI not applicable above this monthly gross
+_ESIC_RATE = 0.0075  # employee share 0.75% of actual gross when <= wage limit
+_ESIC_WAGE_LIMIT = 21000.0
+_ESIC_FIXED_ABOVE_LIMIT = 158.0  # fixed ESI when actual gross > wage limit
 _PAYROLL_DEPARTMENTS = (
     "OM",
     "FO",
@@ -411,15 +412,17 @@ def _get_payroll_month_state(conn, year, month):
             'previous_locked': True,
         }
 
+    # Earlier months are not locked yet — still allow repayment edits for this
+    # unlocked month; only the Lock action waits on the previous month.
     return {
         'label': label,
-        'status_label': 'Waiting',
-        'status_badge': 'bg-gray',
+        'status_label': 'Open',
+        'status_badge': 'bg-orange',
         'supported': True,
         'locked': False,
-        'can_edit': False,
+        'can_edit': True,
         'can_lock': False,
-        'message': f'Lock {prev_label} first to update or lock {label}.',
+        'message': f'{label} is open for repayment updates. Lock {prev_label} first before locking {label}.',
         'button_label': f'Lock {label}',
         'reason': f'Lock {prev_label} first.',
         'previous_label': prev_label,
@@ -739,57 +742,54 @@ def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
                   tracked=False, custom_basic=0, custom_epf=0, custom_esic=0,
                   credit_repayment=0, sunday_incentive_days=0,
                   sunday_shift='', epf_exempt=False, esic_exempt=False):
-    """Calculate salary components from gross salary.
+    """Calculate salary components from gross / actual gross.
 
-    Leave policy — Total Off LOP:
-      Each employee has `total_off` paid weekday leave days per month.
-      Weekday leave beyond that is Loss of Pay at gross / calendar_days per day.
-      Half-day leave counts as 0.5 weekday leave day.
+    Deductions (per Actual Gross for the month):
+      EPF = min(₹1,800, 12% of Actual Gross) unless exempt / custom EPF
+      ESI = 0.75% of Actual Gross when Actual Gross <= ₹21,000
+          = ₹158 fixed when Actual Gross > ₹21,000
+          (unless exempt / custom ESI)
+      Basic = Actual Gross − EPF − ESI (residual)
+    Leave: weekday leave beyond Total Off is LOP at gross / calendar_days.
     """
     gross = max(0.0, float(gross))
     credit_repayment = float(credit_repayment or 0)
-    # Auto model:
-    #   Gross = Basic + EPF + ESIC
-    #   EPF = 12% of Basic (unless custom EPF provided or epf_exempt), capped at ₹1,800
-    #   ESIC = 0.75% of Gross when Gross <= ₹21,000 (unless custom ESIC / esic_exempt)
-    if esic_exempt:
-        esic_full = 0.0
-        esic_applicable = False
-    elif custom_esic > 0:
-        esic_full = round(custom_esic, 2)
-        esic_applicable = True
-    elif gross <= _ESIC_WAGE_LIMIT:
-        esic_full = round(gross * _ESIC_RATE, 2)
-        esic_applicable = True
-    else:
-        esic_full = 0.0
-        esic_applicable = False
+    custom_basic = float(custom_basic or 0)
+    custom_epf = float(custom_epf or 0)
+    custom_esic = float(custom_esic or 0)
 
-    if epf_exempt:
-        epf_full = 0.0
-        basic_full = round(gross - esic_full, 2)
-    elif custom_basic > 0:
-        basic_full = round(custom_basic, 2)
-        epf_full = round(custom_epf, 2) if custom_epf > 0 else round(basic_full * 0.12, 2)
-    else:
-        if custom_epf > 0:
-            # If EPF is explicitly set, derive Basic as the residual component.
-            epf_full = round(custom_epf, 2)
-            basic_full = round(gross - epf_full - esic_full, 2)
+    def _components(actual_gross, custom_scale=1.0):
+        actual_gross = max(0.0, float(actual_gross or 0))
+        custom_scale = max(0.0, float(custom_scale or 0))
+
+        if esic_exempt:
+            esic = 0.0
+            esic_applicable = False
+        elif custom_esic > 0:
+            esic = round(custom_esic * custom_scale, 2)
+            esic_applicable = True
+        elif actual_gross > _ESIC_WAGE_LIMIT:
+            esic = _ESIC_FIXED_ABOVE_LIMIT
+            esic_applicable = True
+        elif actual_gross > 0:
+            esic = round(actual_gross * _ESIC_RATE, 2)
+            esic_applicable = True
         else:
-            # Auto split keeping Gross = Basic + EPF + ESIC and EPF = 12% of Basic.
-            basic_full = round((gross - esic_full) / 1.12, 2) if gross > 0 else 0.0
-            epf_full = round(gross - basic_full - esic_full, 2)
+            esic = 0.0
+            esic_applicable = False
 
-    basic_full = max(0.0, min(basic_full, gross))
-    epf_full = max(0.0, epf_full)
-    # Statutory-style ceiling: EPF never exceeds ₹1,800 regardless of salary.
-    if not epf_exempt and epf_full > _EPF_MAX:
-        surplus = round(epf_full - _EPF_MAX, 2)
-        epf_full = _EPF_MAX
-        basic_full = round(basic_full + surplus, 2)
+        if epf_exempt:
+            epf = 0.0
+        elif custom_epf > 0:
+            epf = min(_EPF_MAX, round(custom_epf * custom_scale, 2))
+        else:
+            epf = min(_EPF_MAX, round(actual_gross * 0.12, 2))
 
-    net_full   = max(0.0, round(gross - epf_full - esic_full - credit_repayment, 2))
+        basic = max(0.0, round(actual_gross - epf - esic, 2))
+        return basic, max(0.0, epf), max(0.0, esic), esic_applicable
+
+    basic_full, epf_full, esic_full, esic_applicable = _components(gross, 1.0)
+    net_full = max(0.0, round(gross - epf_full - esic_full - credit_repayment, 2))
 
     result = {
         'basic_full': basic_full, 'epf_full': epf_full,
@@ -818,6 +818,10 @@ def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
         else:
             sunday_incentive = round(daily_rate * sunday_days, 2)
 
+        gross_actual = round(gross * ratio, 2)
+        custom_scale = ratio if (custom_epf > 0 or custom_esic > 0 or custom_basic > 0) else 1.0
+        basic_a, epf_a, esic_a, esic_app_a = _components(gross_actual, custom_scale)
+
         result['present_days'] = lop_info['paid_calendar_days']
         result['total_days'] = cal_days
         result['daily_rate'] = daily_rate
@@ -829,12 +833,13 @@ def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
         result['total_off'] = lop_info['total_off']
         result['weekday_leave_days'] = lop_info['weekday_leave_days']
         result['paid_calendar_days'] = lop_info['paid_calendar_days']
-        result['gross_actual'] = round(gross * ratio, 2)
-        result['basic'] = round(basic_full * ratio, 2)
-        result['epf'] = round(epf_full * ratio, 2)
-        result['esic'] = round(esic_full * ratio, 2)
+        result['gross_actual'] = gross_actual
+        result['basic'] = basic_a
+        result['epf'] = epf_a
+        result['esic'] = esic_a
+        result['esic_applicable'] = esic_app_a
         result['net'] = max(0.0, round(
-            result['gross_actual'] - result['epf'] - result['esic']
+            gross_actual - epf_a - esic_a
             - credit_repayment + sunday_incentive, 2))
     elif not tracked and cal_days > 0:
         result['present_days'] = 0
@@ -2434,7 +2439,7 @@ _SUN_SHIFT_LABELS = {
 
 @payroll_bp.route('/export/employee_master')
 def export_employee_master():
-    """Employee Master Report — separate company sheets in NL/TLNT order."""
+    """Employee Master Report — Hotel Bell Elite only."""
     from openpyxl import Workbook
     conn = get_db()
     rows = conn.execute(
@@ -2443,39 +2448,34 @@ def export_employee_master():
     conn.close()
 
     COL_WIDTHS = [
-        12, 26, 14, 16,           # Emp ID, Name, Company, Location
+        12, 26, 16,                # Emp ID, Name, Department
         14, 16, 10, 10,            # Mobile, Guardian Mobile, Sex, Status
         16, 14, 18, 16,            # Aadhar, PAN, EPF No, ESIC No
         14, 14,                    # Gross, Basic
         14, 10,                    # EPF Amount, EPF Exempt
         14, 10,                    # ESIC Amount, ESIC Exempt
-        16,                        # Credit Repayment
-        36, 38,                    # Weekday Shift, Sunday Shift
         20, 24, 20, 14,            # Bank Name, Account Holder, Account Number, IFSC
         34,                        # Address
     ]
     headers = [
-        'Emp ID', 'Name', 'Company', 'Location',
+        'Emp ID', 'Name', 'Department',
         'Mobile', 'Guardian Mobile', 'Sex', 'Status',
         'Aadhar', 'PAN', 'EPF No', 'ESIC No',
         'Gross Salary', 'Basic Salary',
         'EPF Amount', 'EPF Exempt',
         'ESIC Amount', 'ESIC Exempt',
-        'Credit Repayment',
-        'Weekday Shift', 'Sunday Shift',
         'Bank Name', 'Account Holder Name', 'Account Number', 'IFSC Code',
         'Address',
     ]
 
-    def _fill_sheet(ws, rows):
+    def _fill_sheet(ws, sheet_rows):
         ws.append(headers)
         _xl_style_header(ws, headers, '1F4E79')
-        for r in rows:
+        for r in sheet_rows:
             e = dict(r)
             ws.append([
                 e.get('emp_code', ''),
                 e['name'],
-                e['company'],
                 e['location'],
                 e.get('mobile', ''),
                 e.get('guardian_mobile', ''),
@@ -2491,24 +2491,19 @@ def export_employee_master():
                 'Yes' if e.get('epf_exempt') else 'No',
                 _round_rupee(e.get('esic_amount', 0) or 0),
                 'Yes' if e.get('esic_exempt') else 'No',
-                _round_rupee(e.get('credit_repayment', 0) or 0),
-                _WD_SHIFT_LABELS.get(e.get('weekday_shift', ''), ''),
-                _SUN_SHIFT_LABELS.get(e.get('sunday_shift', ''), ''),
                 e.get('bank_name', '') or '',
                 e.get('account_holder_name', '') or '',
                 e.get('account_number', '') or '',
                 e.get('ifsc_code', '') or '',
                 e.get('address', ''),
             ])
-        _xl_style_data(ws, headers, center_from=6)
+        _xl_style_data(ws, headers, center_from=5)
         _xl_col_widths(ws, COL_WIDTHS)
 
     wb = Workbook()
-    company_pages = _group_report_rows_by_company(rows)
-    for idx, (company_name, company_rows) in enumerate(company_pages):
-        ws = wb.active if idx == 0 else wb.create_sheet()
-        ws.title = company_name
-        _fill_sheet(ws, company_rows)
+    ws = wb.active
+    ws.title = _DEFAULT_COMPANY[:31]
+    _fill_sheet(ws, rows)
 
     return _xl_send(wb, 'employee_master.xlsx')
 
@@ -3190,6 +3185,95 @@ def export_credits_report():
 
     fname = f'credit_advance_{date.today().strftime("%Y%m%d")}.xlsx'
     return _xl_send(wb, fname)
+
+
+_BANK_REPORT_TEMPLATE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    'templates', 'payroll', 'bank_report_template.xlsx',
+)
+_BANK_DEBIT_ACC_NO = '387905000829'
+_BANK_EMAIL_ID = 'mithra.varma@gmail.com'
+
+
+@payroll_bp.route('/export/bank_report')
+def export_bank_report():
+    """ICICI fund-transfer Excel for active EPF employees (selected payroll month)."""
+    from openpyxl import load_workbook
+
+    year, month = _period_from_source(request.args)
+    if not os.path.isfile(_BANK_REPORT_TEMPLATE):
+        return ('Bank report template is missing.', 500)
+
+    conn = get_db()
+    rows = conn.execute(
+        f"""SELECT * FROM employees
+            WHERE status='active' AND COALESCE(epf_exempt, 0)=0
+            ORDER BY {_EMPLOYEE_DISPLAY_ORDER}"""
+    ).fetchall()
+
+    payment_date = date.today()
+    bank_rows = []
+    for row in rows:
+        view = _attach_employee_month_context(conn, row, year, month)
+        amount = _round_rupee(view.get('net', 0) or 0)
+        if amount <= 0:
+            continue
+        ifsc = (view.get('ifsc_code') or '').strip().upper()
+        holder = (view.get('account_holder_name') or '').strip() or (view.get('name') or '')
+        bank_rows.append({
+            'name': holder,
+            'account': (view.get('account_number') or '').strip(),
+            'ifsc': ifsc,
+            'amount': amount,
+            'mobile': (view.get('mobile') or '').strip(),
+            'mode': 'FT' if ifsc.startswith('ICIC') else 'NEFT',
+        })
+    conn.close()
+
+    wb = load_workbook(_BANK_REPORT_TEMPLATE)
+    ws = wb.active
+
+    # Keep header row; clear sample data rows.
+    if ws.max_row > 1:
+        ws.delete_rows(2, ws.max_row - 1)
+
+    # Clone formatting from the original first sample row if available via template styles;
+    # after delete, append values with shared constants.
+    for item in bank_rows:
+        ws.append([
+            'PAB_VENDOR',                 # A
+            item['mode'],                 # B PYMT_MODE
+            _BANK_DEBIT_ACC_NO,           # C
+            item['name'],                 # D BNF_NAME
+            item['account'],              # E BENE_ACC_NO
+            item['ifsc'],                 # F BENE_IFSC
+            item['amount'],               # G AMOUNT
+            'SALARRY',                    # H
+            'SALARRY',                    # I
+            item['mobile'],               # J MOBILE_NUM
+            _BANK_EMAIL_ID,               # K
+            'NIL',                        # L
+            payment_date,                 # M PYMT_DATE
+            'NIL',                        # N
+            'NIL',                        # O
+            'NIL',                        # P
+            'NIL',                        # Q
+            'NIL',                        # R
+            'NIL',                        # S
+        ])
+        # Ensure payment date is a real date cell (not text)
+        ws.cell(row=ws.max_row, column=13).value = payment_date
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    fname = f'bank_report_{calendar.month_abbr[month].lower()}_{year}.xlsx'
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
 
 
 # ── Quick inline update for salary fields ────────────────────────────────
