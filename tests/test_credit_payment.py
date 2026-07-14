@@ -347,6 +347,29 @@ class CreditPaymentValidationTests(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIn("outstanding", (error or "").lower())
 
+    def test_delete_outstanding_purchase_from_ledger(self):
+        result, error = app_module._delete_purchase_ledger_expense(
+            self.conn,
+            {"is_admin": True},
+            {"expense_id": self.expense_a2},
+        )
+        self.assertIsNone(error)
+        self.assertEqual(result["expense_id"], self.expense_a2)
+        gone = self.conn.execute(
+            "SELECT id FROM sales_update_expenses WHERE id = ?",
+            (self.expense_a2,),
+        ).fetchone()
+        self.assertIsNone(gone)
+
+    def test_reject_delete_for_cleared_purchase(self):
+        result, error = app_module._delete_purchase_ledger_expense(
+            self.conn,
+            {"is_admin": True},
+            {"expense_id": self.expense_cash},
+        )
+        self.assertIsNone(result)
+        self.assertIn("outstanding", (error or "").lower())
+
     def test_reject_duplicate_supplier_invoice(self):
         self.conn.execute(
             "UPDATE sales_update_expenses SET invoice_number = ? WHERE id = ?",

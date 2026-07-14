@@ -123,7 +123,7 @@ body.su-module .pl-table th{
 }
 body.su-module .pl-table tr:last-child td{border-bottom:0}
 body.su-module .pl-col-amount{width:120px;white-space:nowrap;text-align:right}
-body.su-module .pl-col-actions{width:88px;white-space:nowrap;text-align:right}
+body.su-module .pl-col-actions{min-width:120px;white-space:nowrap;text-align:right}
 body.su-module .pl-col-date{white-space:nowrap}
 body.su-module .pl-col-code{white-space:nowrap}
 body.su-module .pl-expense-code{
@@ -140,16 +140,28 @@ body.su-module .pl-expense-code{
 body.su-module .pl-name{font-weight:700;color:var(--txt)}
 body.su-module .pl-meta{font-size:12px;color:var(--txt3);margin-top:2px;line-height:1.4}
 body.su-module .pl-amount{font-weight:700;color:var(--txt)}
-body.su-module .pl-edit-btn{
+body.su-module .pl-action-btns{
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:12px;
+  flex-wrap:nowrap;
+}
+body.su-module .pl-edit-btn,
+body.su-module .pl-delete-btn{
   appearance:none;
   border:0;
   background:transparent;
-  color:var(--acc);
   font:700 13px Inter,system-ui,sans-serif;
   cursor:pointer;
   padding:0;
+  white-space:nowrap;
 }
+body.su-module .pl-edit-btn{color:var(--acc)}
 body.su-module .pl-edit-btn:hover{text-decoration:underline}
+body.su-module .pl-delete-btn{color:#DC2626}
+body.su-module .pl-delete-btn:hover{text-decoration:underline}
+body.su-module .pl-delete-btn:disabled{opacity:.55;cursor:not-allowed}
 body.su-module .pl-action-muted{color:var(--txt3);font-weight:600}
 body.su-module .pl-empty{padding:36px 18px;text-align:center;color:var(--txt3);font-size:14px}
 

@@ -5,6 +5,7 @@
 
   var addUrl = {{ purchase_add_url|tojson }};
   var editUrl = {{ purchase_edit_url|tojson }};
+  var deleteUrl = {{ purchase_delete_url|tojson }};
   var supplierCreateUrl = {{ supplier_create_url|tojson }};
   var defaultCompany = {{ default_company|tojson }};
   var defaultLocation = {{ default_location|tojson }};
@@ -261,12 +262,40 @@
     });
   }
 
+  async function deletePurchase(btn){
+    if (!btn || !deleteUrl) return;
+    var expenseId = btn.getAttribute('data-expense-id') || '';
+    var expenseCode = btn.getAttribute('data-expense-code') || expenseId;
+    if (!expenseId) return;
+    if (!window.confirm('Delete purchase ' + expenseCode + '? This cannot be undone.')) return;
+    btn.disabled = true;
+    try {
+      var res = await fetch(deleteUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expense_id: expenseId })
+      });
+      var data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Could not delete purchase.');
+      window.location.reload();
+    } catch (err) {
+      window.alert(err.message || 'Could not delete purchase.');
+      btn.disabled = false;
+    }
+  }
+
   document.addEventListener('click', function(e){
     if (!e.target.closest('#pl-add-purchase-modal [data-se-listbox]')) closeAllListboxes();
     var editBtn = e.target.closest('.pl-edit-btn');
     if (editBtn) {
       e.preventDefault();
       openEditModal(editBtn);
+      return;
+    }
+    var deleteBtn = e.target.closest('.pl-delete-btn');
+    if (deleteBtn) {
+      e.preventDefault();
+      deletePurchase(deleteBtn);
     }
   });
 

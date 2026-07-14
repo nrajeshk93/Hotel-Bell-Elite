@@ -960,6 +960,19 @@ def _render_credit_settlement_page(mode):
             if page_mode == CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT
             else None
         ),
+        purchase_verification_report_url=(
+            url_for(
+                "export_purchase_verification_report",
+                view=selected_view,
+                date_from=date_from.isoformat(),
+                date_to=date_to.isoformat(),
+                payment_date_from=payment_date_from.isoformat(),
+                payment_date_to=payment_date_to.isoformat(),
+                supplier=selected_supplier,
+            )
+            if page_mode == CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION
+            else None
+        ),
         today_iso=today.isoformat(),
         de_nav_section="accounts",
         de_nav_accounts_view=labels["nav_accounts_view"],
@@ -2007,12 +2020,7 @@ def dashboard():
 
 @app.route("/accounts")
 def accounts():
-    return render_template(
-        "accounts.html",
-        current_user=get_current_user(),
-        de_nav_section="accounts",
-        de_nav_accounts_view="overview",
-    )
+    return redirect(url_for("purchase_ledger"))
 
 
 @app.route("/accounts/purchase-ledger")
@@ -2090,6 +2098,7 @@ def purchase_ledger():
         credit_settlement_status_labels=CREDIT_SETTLEMENT_STATUS_LABELS,
         purchase_add_url=url_for("purchase_ledger_add"),
         purchase_edit_url=url_for("purchase_ledger_edit"),
+        purchase_delete_url=url_for("purchase_ledger_delete"),
         supplier_create_url=url_for("create_supplier"),
         default_company=DEFAULT_COMPANY,
         default_location=OUTLET_HOTEL,
@@ -2222,6 +2231,83 @@ def purchase_ledger_edit():
     conn = get_db()
     try:
         result, error = _update_purchase_ledger_expense(conn, user, data)
+        if error:
+            status = 403 if "Cannot save" in error or "already saved" in error else 400
+            if "not found" in error.lower():
+                status = 404
+            return jsonify({"ok": False, "error": error}), status
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, **result})
+
+
+def _delete_purchase_ledger_expense(conn, user, data):
+    """Delete a hotel purchase only when it is still outstanding credit."""
+    expense_id = data.get("id") or data.get("expense_id")
+    try:
+        expense_id = int(expense_id)
+    except (TypeError, ValueError):
+        return None, "Purchase not found."
+
+    existing = conn.execute(
+        """SELECT id, company, location, sales_date, amount, payment_type, expense_code
+           FROM sales_update_expenses WHERE id = ?""",
+        (expense_id,),
+    ).fetchone()
+    if not existing:
+        return None, "Purchase not found."
+    existing = dict(existing)
+    if existing.get("location") != OUTLET_HOTEL:
+        return None, "Only hotel purchases can be deleted here."
+
+    paid_total = _credit_expense_paid_total(conn, expense_id)
+    status = _credit_settlement_status(
+        existing.get("payment_type"), existing.get("amount"), paid_total
+    )
+    if status != "outstanding":
+        return None, "Only outstanding credit purchases can be deleted."
+
+    company = existing.get("company") or DEFAULT_COMPANY
+    sales_date = existing.get("sales_date") or ""
+    lock_error = _check_sales_date_lock(user, company, OUTLET_HOTEL, sales_date)
+    if lock_error:
+        return None, lock_error
+
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if "credit_payment_allocations" in tables:
+        conn.execute(
+            "DELETE FROM credit_payment_allocations WHERE expense_id = ?",
+            (expense_id,),
+        )
+    if "purchase_verification_allocations" in tables:
+        conn.execute(
+            "DELETE FROM purchase_verification_allocations WHERE expense_id = ?",
+            (expense_id,),
+        )
+    conn.execute(
+        "DELETE FROM sales_update_expenses WHERE id = ? AND location = ?",
+        (expense_id, OUTLET_HOTEL),
+    )
+    return {
+        "expense_id": expense_id,
+        "expense_code": existing.get("expense_code") or "",
+        "sales_date": sales_date,
+    }, None
+
+
+@app.route("/accounts/purchase-ledger/delete", methods=["POST"])
+def purchase_ledger_delete():
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        result, error = _delete_purchase_ledger_expense(conn, user, data)
         if error:
             status = 403 if "Cannot save" in error or "already saved" in error else 400
             if "not found" in error.lower():
@@ -2370,6 +2456,133 @@ def export_credit_payment_report():
 @app.route("/accounts/purchase-verification")
 def purchase_verification():
     return _render_credit_settlement_page(CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION)
+
+
+@app.route("/accounts/purchase-verification/report")
+def export_purchase_verification_report():
+    """Excel report for pending or verified purchases based on page filters."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    today = date.today()
+    default_from = today.replace(day=1)
+    selected_view = _normalize_credit_payment_view(request.args.get("view"))
+    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
+    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    payment_date_from = _parse_sales_date(
+        request.args.get("payment_date_from") or default_from.isoformat()
+    )
+    payment_date_to = _parse_sales_date(
+        request.args.get("payment_date_to") or today.isoformat()
+    )
+    if payment_date_from > payment_date_to:
+        payment_date_from, payment_date_to = payment_date_to, payment_date_from
+    _, supplier_id = _parse_purchase_ledger_supplier(request.args.get("supplier"))
+
+    wb = Workbook()
+    ws = wb.active
+    header_font = Font(bold=True)
+
+    conn = get_db()
+    try:
+        if selected_view == CREDIT_PAYMENT_VIEW_HISTORY:
+            ws.title = "Verified Purchases"
+            headers = [
+                "Verification Date",
+                "Supplier",
+                "GST",
+                "Method",
+                "Account",
+                "Transaction ID",
+                "Expense IDs",
+                "Amount",
+                "Notes",
+            ]
+            for col, title in enumerate(headers, start=1):
+                cell = ws.cell(row=1, column=col, value=title)
+                cell.font = header_font
+            entries = _purchase_verification_entries(
+                conn,
+                verification_date_from=payment_date_from,
+                verification_date_to=payment_date_to,
+                supplier_id=supplier_id,
+            )
+            for idx, entry in enumerate(entries, start=2):
+                method = entry.get("payment_method") or ""
+                method_label = CREDIT_PAYMENT_METHOD_LABELS.get(method, method)
+                ws.cell(row=idx, column=1, value=entry.get("payment_date") or "")
+                ws.cell(row=idx, column=2, value=entry.get("supplier_name") or "")
+                ws.cell(row=idx, column=3, value=entry.get("supplier_gst") or "")
+                ws.cell(row=idx, column=4, value=method_label)
+                ws.cell(row=idx, column=5, value=entry.get("verification_account") or "")
+                ws.cell(row=idx, column=6, value=entry.get("transaction_id") or "")
+                ws.cell(row=idx, column=7, value=entry.get("expense_codes") or "")
+                ws.cell(row=idx, column=8, value=round_half_up(entry.get("total_amount"), 2))
+                ws.cell(row=idx, column=9, value=entry.get("notes") or "")
+            fname = (
+                f"purchase_verification_history_"
+                f"{payment_date_from.isoformat()}_to_{payment_date_to.isoformat()}.xlsx"
+            )
+        else:
+            ws.title = "Pending Verification"
+            headers = [
+                "Expense ID",
+                "Date",
+                "Expense",
+                "Category",
+                "Supplier",
+                "GST",
+                "Payment Type",
+                "Amount",
+                "Verified",
+                "Balance",
+            ]
+            for col, title in enumerate(headers, start=1):
+                cell = ws.cell(row=1, column=col, value=title)
+                cell.font = header_font
+            entries = _pending_purchase_verifications(
+                conn, date_from, date_to, supplier_id=supplier_id
+            )
+            for idx, entry in enumerate(entries, start=2):
+                category = entry.get("category") or ""
+                category_label = EXPENSE_CATEGORY_LABELS.get(category, category)
+                payment_type = entry.get("payment_type") or ""
+                payment_label = EXPENSE_PAYMENT_LABELS.get(payment_type, payment_type)
+                ws.cell(row=idx, column=1, value=entry.get("expense_code") or "")
+                ws.cell(row=idx, column=2, value=entry.get("sales_date") or "")
+                ws.cell(row=idx, column=3, value=entry.get("description") or "")
+                ws.cell(row=idx, column=4, value=category_label)
+                ws.cell(row=idx, column=5, value=entry.get("supplier_name") or "")
+                ws.cell(row=idx, column=6, value=entry.get("supplier_gst") or "")
+                ws.cell(row=idx, column=7, value=payment_label)
+                ws.cell(row=idx, column=8, value=round_half_up(entry.get("amount"), 2))
+                ws.cell(row=idx, column=9, value=round_half_up(entry.get("paid_amount"), 2))
+                ws.cell(row=idx, column=10, value=round_half_up(entry.get("balance"), 2))
+            fname = (
+                f"purchase_verification_pending_"
+                f"{date_from.isoformat()}_to_{date_to.isoformat()}.xlsx"
+            )
+    finally:
+        conn.close()
+
+    for column_cells in ws.columns:
+        width = 12
+        for cell in column_cells:
+            value = "" if cell.value is None else str(cell.value)
+            width = max(width, min(len(value) + 2, 40))
+        ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @app.route("/accounts/purchase-verification/create", methods=["POST"])

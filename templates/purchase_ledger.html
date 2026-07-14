@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=6">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <script>
 (function(){
@@ -216,21 +216,30 @@
                 <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}">{{ entry.amount }}</td>
                 <td class="pl-col-actions">
                   {% if entry.settlement_status == 'outstanding' %}
-                  <button
-                    type="button"
-                    class="pl-edit-btn"
-                    data-expense-id="{{ entry.id }}"
-                    data-date="{{ entry.sales_date }}"
-                    data-description="{{ entry.description or '' }}"
-                    data-amount="{{ entry.amount }}"
-                    data-category="{{ entry.category or '' }}"
-                    data-category-label="{{ expense_category_labels.get(entry.category, entry.category or '') }}"
-                    data-invoice="{{ entry.invoice_number or '' }}"
-                    data-supplier-id="{{ entry.supplier_id or '' }}"
-                    data-supplier-name="{{ entry.supplier_name or '' }}"
-                    data-payment-type="{{ entry.payment_type or 'credit' }}"
-                    data-transaction-id="{{ entry.transaction_id or '' }}"
-                  >Edit</button>
+                  <div class="pl-action-btns">
+                    <button
+                      type="button"
+                      class="pl-edit-btn"
+                      data-expense-id="{{ entry.id }}"
+                      data-date="{{ entry.sales_date }}"
+                      data-description="{{ entry.description or '' }}"
+                      data-amount="{{ entry.amount }}"
+                      data-category="{{ entry.category or '' }}"
+                      data-category-label="{{ expense_category_labels.get(entry.category, entry.category or '') }}"
+                      data-invoice="{{ entry.invoice_number or '' }}"
+                      data-supplier-id="{{ entry.supplier_id or '' }}"
+                      data-supplier-name="{{ entry.supplier_name or '' }}"
+                      data-payment-type="{{ entry.payment_type or 'credit' }}"
+                      data-transaction-id="{{ entry.transaction_id or '' }}"
+                    >Edit</button>
+                    <button
+                      type="button"
+                      class="pl-delete-btn"
+                      data-expense-id="{{ entry.id }}"
+                      data-expense-code="{{ entry.expense_code or entry.id }}"
+                      data-date="{{ entry.sales_date }}"
+                    >Delete</button>
+                  </div>
                   {% else %}
                   <span class="pl-action-muted">—</span>
                   {% endif %}
