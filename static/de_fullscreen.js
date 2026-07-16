@@ -215,6 +215,96 @@
     }, 3200);
   }
 
+  var nativeConfirm = window.confirm.bind(window);
+  var confirmResolver = null;
+
+  function ensureConfirmModal(){
+    var existing = document.getElementById('de-confirm-modal');
+    if(existing) return existing;
+    var backdrop = document.createElement('div');
+    backdrop.id = 'de-confirm-modal';
+    backdrop.className = 'de-confirm-backdrop';
+    backdrop.setAttribute('aria-hidden', 'true');
+    backdrop.innerHTML =
+      '<div class="de-confirm-box" role="dialog" aria-modal="true" aria-labelledby="de-confirm-title">' +
+        '<div class="de-confirm-title" id="de-confirm-title">Please confirm</div>' +
+        '<p class="de-confirm-message" id="de-confirm-message"></p>' +
+        '<div class="de-confirm-actions">' +
+          '<button type="button" class="btn de-confirm-cancel" id="de-confirm-cancel">Cancel</button>' +
+          '<button type="button" class="btn btn-primary de-confirm-ok" id="de-confirm-ok">Confirm</button>' +
+        '</div>' +
+      '</div>';
+    (document.getElementById(FS_ROOT_ID) || document.body).appendChild(backdrop);
+
+    function finish(result){
+      backdrop.classList.remove('open');
+      backdrop.setAttribute('aria-hidden', 'true');
+      var resolve = confirmResolver;
+      confirmResolver = null;
+      if(resolve) resolve(!!result);
+    }
+    backdrop.querySelector('#de-confirm-cancel').addEventListener('click', function(){ finish(false); });
+    backdrop.querySelector('#de-confirm-ok').addEventListener('click', function(){ finish(true); });
+    backdrop.addEventListener('click', function(event){
+      if(event.target === backdrop) finish(false);
+    });
+    document.addEventListener('keydown', function(event){
+      if(!backdrop.classList.contains('open')) return;
+      if(event.key === 'Escape'){
+        event.preventDefault();
+        finish(false);
+      } else if(event.key === 'Enter'){
+        event.preventDefault();
+        finish(true);
+      }
+    });
+    return backdrop;
+  }
+
+  /**
+   * In-app confirm that does NOT call window.confirm (native dialogs exit fullscreen).
+   * Always preferred when fullscreen is active/locked; otherwise uses native confirm.
+   */
+  function confirmAsync(message){
+    var text = message == null ? '' : String(message);
+    if(!getPreference() && !getFullscreenElement()){
+      return Promise.resolve(nativeConfirm(text));
+    }
+    return new Promise(function(resolve){
+      if(confirmResolver){
+        confirmResolver(false);
+        confirmResolver = null;
+      }
+      var backdrop = ensureConfirmModal();
+      var msg = backdrop.querySelector('#de-confirm-message');
+      if(msg) msg.textContent = text;
+      confirmResolver = resolve;
+      backdrop.classList.add('open');
+      backdrop.setAttribute('aria-hidden', 'false');
+      var okBtn = backdrop.querySelector('#de-confirm-ok');
+      if(okBtn) okBtn.focus();
+    });
+  }
+
+  function installConfirmGuard(){
+    window.confirm = function(message){
+      // Native confirm always exits browser fullscreen. Block it while FS is preferred.
+      // Callers must use window.deConfirm(...) / deFullscreen.confirm(...).
+      if(getPreference() || getFullscreenElement()){
+        return false;
+      }
+      return nativeConfirm(message == null ? '' : String(message));
+    };
+    var nativeAlert = window.alert.bind(window);
+    window.alert = function(message){
+      if(getPreference() || getFullscreenElement()){
+        showToast(message == null ? '' : String(message));
+        return;
+      }
+      return nativeAlert(message);
+    };
+  }
+
   function updateButtons(){
     var active = !!getFullscreenElement();
     buttons.forEach(function(btn){
@@ -268,10 +358,85 @@
     return !!(target && target.closest('.de-fullscreen-btn'));
   }
 
+  function preferSoftNavigation(url){
+    if(!getPreference() && !getFullscreenElement()) return false;
+    if(typeof window.deSoftRefresh !== 'function') return false;
+    window.deSoftRefresh(url || window.location.href);
+    return true;
+  }
+
+  function installLocationGuards(){
+    if(window.__deFsLocationGuards) return;
+    window.__deFsLocationGuards = true;
+
+    try{
+      var reload = window.location.reload.bind(window.location);
+      window.location.reload = function(){
+        if(preferSoftNavigation()) return;
+        if(getPreference() || getFullscreenElement()){
+          setPreference(true);
+          prepareNavigation();
+        }
+        return reload.apply(window.location, arguments);
+      };
+    } catch(e){}
+
+    try{
+      var assign = window.location.assign.bind(window.location);
+      window.location.assign = function(url){
+        if(preferSoftNavigation(url)) return;
+        if(getPreference() || getFullscreenElement()){
+          setPreference(true);
+          prepareNavigation();
+        }
+        return assign.call(window.location, url);
+      };
+    } catch(e){}
+
+    try{
+      var replace = window.location.replace.bind(window.location);
+      window.location.replace = function(url){
+        if(preferSoftNavigation(url)) return;
+        if(getPreference() || getFullscreenElement()){
+          setPreference(true);
+          prepareNavigation();
+        }
+        return replace.call(window.location, url);
+      };
+    } catch(e){}
+
+    try{
+      var hrefDesc = Object.getOwnPropertyDescriptor(Location.prototype, 'href');
+      if(hrefDesc && hrefDesc.set && hrefDesc.get){
+        Object.defineProperty(Location.prototype, 'href', {
+          configurable: true,
+          enumerable: hrefDesc.enumerable,
+          get: function(){ return hrefDesc.get.call(this); },
+          set: function(url){
+            if(this === window.location && preferSoftNavigation(url)) return;
+            if(this === window.location && (getPreference() || getFullscreenElement())){
+              setPreference(true);
+              prepareNavigation();
+            }
+            return hrefDesc.set.call(this, url);
+          }
+        });
+      }
+    } catch(e){}
+  }
+
   function bindGestureRestore(){
-    document.addEventListener('click', function(event){
-      if(softNavInProgress || !getPreference() || getFullscreenElement() || isIgnoredClickTarget(event.target)) return;
+    function restoreFromGesture(event){
+      if(softNavInProgress || !getPreference() || getFullscreenElement()) return;
+      if(isIgnoredClickTarget(event.target)) return;
+      // Keep the lock alive; only the exit fullscreen button clears preference.
       attemptRestoreSync();
+    }
+    document.addEventListener('pointerdown', restoreFromGesture, true);
+    document.addEventListener('click', restoreFromGesture, true);
+    document.addEventListener('keydown', function(event){
+      if(event.key !== 'Enter' && event.key !== ' ') return;
+      restoreFromGesture(event);
     }, true);
   }
 
@@ -370,15 +535,15 @@
     }
     // Soft-nav (and hard fallthrough) often drops fullscreen; keep the preference so we can restore.
     if(softNavInProgress || pageUnloading) return;
+    // Only the Exit full screen button clears the lock.
     if(userExitIntent){
       userExitIntent = false;
       setPreference(false);
       return;
     }
+    // Esc / other browser exits stay preferred so the next click re-enters.
     if(escExitPending){
       escExitPending = false;
-      setPreference(false);
-      return;
     }
     if(getPreference()) scheduleRestore();
   }
@@ -533,6 +698,8 @@
     loadStylesheet();
     supported = detectSupport();
     if(getPreference()) ensureFullscreenRoot();
+    installLocationGuards();
+    installConfirmGuard();
     wrapTransitionHooks();
     wrapIndexViewHelpers();
     mountButtons();
@@ -548,6 +715,7 @@
     }
     setTimeout(wrapIndexViewHelpers, 0);
     setTimeout(wrapIndexViewHelpers, 800);
+    setTimeout(installLocationGuards, 0);
   }
 
   function reinit(){
@@ -576,6 +744,7 @@
     restoreAfterNavigation: restoreAfterNavigation,
     prepareNavigation: prepareNavigation,
     preserveForNavigation: preserveFullscreenForNavigation,
+    confirm: confirmAsync,
     reinit: reinit,
     updateUi: updateButtons,
     setSoftNavInProgress: setSoftNavInProgress,
@@ -584,6 +753,7 @@
       return getPreference() || getFullscreenElement() ? ensureFullscreenRoot() : document.body;
     }
   };
+  window.deConfirm = confirmAsync;
 
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', init);

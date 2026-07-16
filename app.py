@@ -19,10 +19,11 @@ from flask import (
 )
 from werkzeug.security import check_password_hash
 
-from db import SQL_NOW, get_db, init_db
+from db import SQL_NOW, ensure_cash_ledger_schema, get_db, init_db
 from fo_invoice_tax_parser import parse_fo_invoice_tax_report
 from sales_report_parser import OUTLET_BAR, OUTLET_RESTAURANT, parse_sales_report
 from workspace_access import (
+    _ACCOUNTS_SUBMODULE_LABELS,
     _DASHBOARD_MODULE_LABELS,
     _DASHBOARD_MODULES,
     _PUBLIC_ENDPOINTS,
@@ -31,9 +32,11 @@ from workspace_access import (
     _USER_ACCESS_SUBMODULE_LABELS,
     access_module_tree,
     access_module_tree_ui,
+    accounts_access_list,
     build_user_context,
     dashboard_access_list,
     fetch_access_management_users,
+    get_endpoint_accounts_submodule,
     get_endpoint_dashboard_module,
     get_endpoint_payroll_submodule,
     get_endpoint_user_access_submodule,
@@ -43,7 +46,9 @@ from workspace_access import (
     sales_analytics_access_list,
     save_access_user_record,
     user_access_submodule_list,
+    user_can_access_accounts_submodule,
     user_can_access_dashboard,
+    user_can_access_endpoint_accounts,
     user_can_access_endpoint_sales_analytics,
     user_can_access_payroll_submodule,
     user_can_access_sales_analytics_submodule,
@@ -101,6 +106,29 @@ DEFAULT_COMPANY = "HBE"
 DEFAULT_LOCATION = OUTLET_BAR
 OUTLET_HOTEL = "Hotel"
 HOTEL_LOCATIONS = [OUTLET_HOTEL]
+CASH_LEDGER_OUTLETS = (OUTLET_HOTEL, OUTLET_BAR, OUTLET_RESTAURANT)
+CASH_LEDGER_ENTRY_SALES = "sales_cash"
+CASH_LEDGER_ENTRY_LOAD = "load_cash"
+CASH_LEDGER_ENTRY_EXPENSE = "expense"
+CASH_LEDGER_ENTRY_TRANSFER = "transfer_out"
+CASH_LEDGER_ENTRY_LABELS = {
+    CASH_LEDGER_ENTRY_SALES: "Sales Cash",
+    CASH_LEDGER_ENTRY_LOAD: "Load Cash",
+    CASH_LEDGER_ENTRY_EXPENSE: "Expense",
+    CASH_LEDGER_ENTRY_TRANSFER: "Transfer Out",
+}
+CASH_LEDGER_ENTRY_RANK = {
+    CASH_LEDGER_ENTRY_SALES: 0,
+    CASH_LEDGER_ENTRY_LOAD: 1,
+    CASH_LEDGER_ENTRY_EXPENSE: 2,
+    CASH_LEDGER_ENTRY_TRANSFER: 3,
+}
+CASH_LEDGER_TRANSFER_DESTINATIONS = (
+    ("bank", "Bank"),
+    ("owner", "Owner"),
+)
+CASH_LEDGER_TRANSFER_DESTINATION_LABELS = dict(CASH_LEDGER_TRANSFER_DESTINATIONS)
+CASH_LEDGER_ALL_ENTRIES_FROM = date(2000, 1, 1)
 HOTEL_PAYMENT_MODES = (
     ("cash", "Cash"),
     ("card", "Card"),
@@ -123,12 +151,24 @@ HOTEL_MANUAL_SALES_ENTRY_KEYS = ("actual_cash",)
 EXPENSE_PAYMENT_CASH = "cash"
 EXPENSE_PAYMENT_BANK = "bank_transfer"
 EXPENSE_PAYMENT_CREDIT = "credit"
-EXPENSE_PAYMENT_TYPES = (
+
+
+def _sorted_label_choices(choices):
+    """Sort (value, label) dropdown choices ascending by display label."""
+    return tuple(
+        sorted(
+            choices,
+            key=lambda item: (str(item[1] or "").casefold(), str(item[0] or "").casefold()),
+        )
+    )
+
+
+EXPENSE_PAYMENT_TYPES = _sorted_label_choices((
     (EXPENSE_PAYMENT_CASH, "Cash"),
     (EXPENSE_PAYMENT_BANK, "Bank Transfer"),
     (EXPENSE_PAYMENT_CREDIT, "Credit"),
-)
-EXPENSE_CATEGORIES = (
+))
+EXPENSE_CATEGORIES = _sorted_label_choices((
     ("grocery", "Grocery"),
     ("vegetables", "Vegetables"),
     ("travel", "Travel"),
@@ -140,20 +180,21 @@ EXPENSE_CATEGORIES = (
     ("sea_food", "Sea Food"),
     ("labour", "Labour"),
     ("water_tank", "Water Tank"),
+    ("liquor", "Liquor"),
+    ("fuel", "Fuel"),
     ("other", "Other"),
-)
+))
 EXPENSE_CATEGORY_LABELS = dict(EXPENSE_CATEGORIES)
 
 HOTEL_IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit")
-ROOM_TRANSFER_PAYMENT_STATUSES = (
+ROOM_TRANSFER_PAYMENT_STATUSES = _sorted_label_choices((
     ("unpaid", "Un Paid"),
     ("paid", "Paid"),
-)
+))
 ROOM_TRANSFER_FILTER_ALL = "All"
 ROOM_TRANSFER_FILTER_STATUSES = (
-    ("all", "All"),
-    ("paid", "Paid"),
     ("unpaid", "Un Paid"),
+    ("paid", "Paid"),
 )
 ROOM_TRANSFER_FILTER_LOCATIONS = (ROOM_TRANSFER_FILTER_ALL, OUTLET_BAR, OUTLET_RESTAURANT)
 PURCHASE_LEDGER_FILTER_ALL = "all"
@@ -276,6 +317,13 @@ def enforce_access():
     if not user_can_access_endpoint_sales_analytics(user, endpoint):
         return _permission_denied_response("You do not have access to this Sales Analytics section.")
 
+    if not user_can_access_endpoint_accounts(user, endpoint):
+        label = _ACCOUNTS_SUBMODULE_LABELS.get(
+            get_endpoint_accounts_submodule(endpoint) or "",
+            "requested Accounts section",
+        )
+        return _permission_denied_response(f"You do not have access to {label}.")
+
     required_user_access = get_endpoint_user_access_submodule(endpoint)
     if required_user_access and not user_can_access_user_access_submodule(user, required_user_access):
         label = _USER_ACCESS_SUBMODULE_LABELS.get(required_user_access, "requested User & Access section")
@@ -304,14 +352,17 @@ def inject_auth_context():
         "accessible_sales_analytics_modules": sales_analytics_access_list(user),
         "accessible_user_access_modules": user_access_submodule_list(user),
         "accessible_payroll_modules": payroll_access_list(user),
+        "accessible_accounts_modules": accounts_access_list(user),
         "has_dashboard_access": lambda key: user_can_access_dashboard(user, key),
         "has_sales_analytics_access": lambda key: user_can_access_sales_analytics_submodule(user, key),
         "has_payroll_access": lambda key: user_can_access_payroll_submodule(user, key),
+        "has_accounts_access": lambda key: user_can_access_accounts_submodule(user, key),
         "has_supplier_master_access": lambda: user_can_access_supplier_master(user),
         "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
         "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
         "sales_analytics_submodule_labels": _SALES_ANALYTICS_SUBMODULE_LABELS,
         "payroll_module_labels": _PAYROLL_SUBMODULE_LABELS,
+        "accounts_module_labels": _ACCOUNTS_SUBMODULE_LABELS,
         "user_access_submodule_labels": _USER_ACCESS_SUBMODULE_LABELS,
     }
 
@@ -443,11 +494,48 @@ def sync_hotel_sales_from_ledger(conn, user, company, location, sales_date):
     }
 
 
+def _room_transfer_entry_paid_total(conn, entry_id):
+    row = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS total
+           FROM room_transfer_payment_allocations
+           WHERE room_transfer_entry_id = ?""",
+        (entry_id,),
+    ).fetchone()
+    return round_half_up(row["total"] if row else 0, 2)
+
+
+def _room_transfer_entry_balance(amount, paid_total):
+    return round_half_up(max(parse_money(amount) - parse_money(paid_total), 0), 2)
+
+
+def _sync_room_transfer_status_after_payment(conn, entry_id):
+    entry = conn.execute(
+        "SELECT id, amount FROM room_transfer_entries WHERE id = ?",
+        (entry_id,),
+    ).fetchone()
+    if not entry:
+        return
+    paid_total = _room_transfer_entry_paid_total(conn, entry_id)
+    balance = _room_transfer_entry_balance(entry["amount"], paid_total)
+    payment_status = "paid" if balance <= 0.001 else "unpaid"
+    conn.execute(
+        """UPDATE room_transfer_entries
+           SET payment_status = ?, updated_at = datetime('now','localtime')
+           WHERE id = ?""",
+        (payment_status, entry_id),
+    )
+
+
 def _room_transfer_entry_to_dict(row):
     item = dict(row)
     item["amount"] = round_half_up(item.get("amount"), 2)
     status = (item.get("payment_status") or "unpaid").strip().lower()
     item["payment_status"] = status if status in {"paid", "unpaid"} else "unpaid"
+    paid_total = item.get("paid_amount")
+    if paid_total is None:
+        paid_total = 0.0
+    item["paid_amount"] = round_half_up(paid_total, 2)
+    item["balance"] = _room_transfer_entry_balance(item["amount"], item["paid_amount"])
     sales_date = item.get("sales_date") or ""
     try:
         parsed = date.fromisoformat(str(sales_date))
@@ -459,11 +547,15 @@ def _room_transfer_entry_to_dict(row):
 
 def load_room_transfer_entries(conn, company, sales_date):
     rows = conn.execute(
-        """SELECT id, sales_date, location, invoice_number, outlet_name, table_room, guest_name,
-                  ledger_detail, amount, payment_status, sort_order, source_row
-           FROM room_transfer_entries
-           WHERE company = ? AND sales_date = ?
-           ORDER BY sort_order, id""",
+        """SELECT e.id, e.sales_date, e.location, e.invoice_number, e.outlet_name, e.table_room, e.guest_name,
+                  e.ledger_detail, e.amount, e.payment_status, e.sort_order, e.source_row,
+                  COALESCE((
+                      SELECT SUM(a.amount) FROM room_transfer_payment_allocations a
+                      WHERE a.room_transfer_entry_id = e.id
+                  ), 0) AS paid_amount
+           FROM room_transfer_entries e
+           WHERE e.company = ? AND e.sales_date = ?
+           ORDER BY e.sort_order, e.id""",
         (company, sales_date),
     ).fetchall()
     return [_room_transfer_entry_to_dict(r) for r in rows]
@@ -474,30 +566,43 @@ def load_pending_room_transfer_entries(conn, company, location=None):
 
 
 def _normalize_room_transfer_filter_status(status):
-    value = (status or "all").strip().lower()
-    if value in {"paid", "unpaid"}:
+    value = (status or "unpaid").strip().lower()
+    if value in {"paid", "unpaid", "all"}:
         return value
-    return "all"
+    return "unpaid"
 
 
-def load_room_transfer_entries_by_status(conn, company, status="all", location=None):
+def load_room_transfer_entries_by_status(
+    conn, company, status="all", location=None, date_from=None, date_to=None
+):
     params = [company]
     status_clause = ""
     normalized = _normalize_room_transfer_filter_status(status)
     if normalized == "paid":
-        status_clause = " AND payment_status = 'paid'"
+        status_clause = " AND e.payment_status = 'paid'"
     elif normalized == "unpaid":
-        status_clause = " AND payment_status = 'unpaid'"
+        status_clause = " AND e.payment_status = 'unpaid'"
     location_clause = ""
     if location and location != ROOM_TRANSFER_FILTER_ALL:
-        location_clause = " AND location = ?"
+        location_clause = " AND e.location = ?"
         params.append(location)
+    date_clause = ""
+    if date_from:
+        date_clause += " AND e.sales_date >= ?"
+        params.append(date_from.isoformat() if hasattr(date_from, "isoformat") else str(date_from))
+    if date_to:
+        date_clause += " AND e.sales_date <= ?"
+        params.append(date_to.isoformat() if hasattr(date_to, "isoformat") else str(date_to))
     rows = conn.execute(
-        f"""SELECT id, sales_date, location, invoice_number, outlet_name, table_room, guest_name,
-                  ledger_detail, amount, payment_status, sort_order, source_row
-           FROM room_transfer_entries
-           WHERE company = ?{status_clause}{location_clause}
-           ORDER BY sales_date DESC, location, sort_order, id""",
+        f"""SELECT e.id, e.sales_date, e.location, e.invoice_number, e.outlet_name, e.table_room, e.guest_name,
+                  e.ledger_detail, e.amount, e.payment_status, e.sort_order, e.source_row,
+                  COALESCE((
+                      SELECT SUM(a.amount) FROM room_transfer_payment_allocations a
+                      WHERE a.room_transfer_entry_id = e.id
+                  ), 0) AS paid_amount
+           FROM room_transfer_entries e
+           WHERE e.company = ?{status_clause}{location_clause}{date_clause}
+           ORDER BY e.sales_date DESC, e.location, e.sort_order, e.id""",
         params,
     ).fetchall()
     return [_room_transfer_entry_to_dict(r) for r in rows]
@@ -514,18 +619,49 @@ def rollup_room_transfer_entries(entries):
     }
     for entry in entries or []:
         amount = parse_money(entry.get("amount"))
+        balance = parse_money(entry.get("balance") if entry.get("balance") is not None else amount)
         rollup["total_amount"] = round_half_up(rollup["total_amount"] + amount, 2)
         rollup["total_count"] += 1
         if entry.get("payment_status") == "paid":
             rollup["paid_amount"] = round_half_up(rollup["paid_amount"] + amount, 2)
             rollup["paid_count"] += 1
         else:
-            rollup["unpaid_amount"] = round_half_up(rollup["unpaid_amount"] + amount, 2)
+            rollup["unpaid_amount"] = round_half_up(rollup["unpaid_amount"] + balance, 2)
             rollup["unpaid_count"] += 1
     return rollup
 
 
 def sync_room_transfer_entries(conn, company, sales_date, lines):
+    existing_ids = [
+        row["id"]
+        for row in conn.execute(
+            "SELECT id FROM room_transfer_entries WHERE company = ? AND sales_date = ?",
+            (company, sales_date),
+        ).fetchall()
+    ]
+    if existing_ids:
+        placeholders = ",".join("?" for _ in existing_ids)
+        payment_ids = [
+            row["room_transfer_payment_id"]
+            for row in conn.execute(
+                f"""SELECT DISTINCT room_transfer_payment_id
+                    FROM room_transfer_payment_allocations
+                    WHERE room_transfer_entry_id IN ({placeholders})""",
+                existing_ids,
+            ).fetchall()
+        ]
+        conn.execute(
+            f"DELETE FROM room_transfer_payment_allocations WHERE room_transfer_entry_id IN ({placeholders})",
+            existing_ids,
+        )
+        for payment_id in payment_ids:
+            remaining = conn.execute(
+                """SELECT COUNT(*) AS cnt FROM room_transfer_payment_allocations
+                   WHERE room_transfer_payment_id = ?""",
+                (payment_id,),
+            ).fetchone()
+            if remaining and int(remaining["cnt"] or 0) == 0:
+                conn.execute("DELETE FROM room_transfer_payments WHERE id = ?", (payment_id,))
     conn.execute(
         "DELETE FROM room_transfer_entries WHERE company = ? AND sales_date = ?",
         (company, sales_date),
@@ -558,6 +694,124 @@ def sync_room_transfer_entries(conn, company, sales_date, lines):
                 now,
             ),
         )
+
+
+def _validate_room_transfer_payment_payload(conn, data):
+    errors = []
+    payment_date = _parse_sales_date(data.get("payment_date") or date.today().isoformat())
+    payment_method = _normalize_credit_payment_method(data.get("payment_method"))
+    transaction_id = str(data.get("transaction_id") or "").strip()
+    notes = str(data.get("notes") or "").strip()
+    company = str(data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+
+    if payment_method == CREDIT_PAYMENT_METHOD_CARD and not transaction_id:
+        errors.append("Transaction ID is required for bank transfer.")
+    if payment_method != CREDIT_PAYMENT_METHOD_CARD:
+        transaction_id = ""
+
+    raw_allocations = data.get("allocations") or []
+    if not isinstance(raw_allocations, list) or not raw_allocations:
+        errors.append("Select at least one room transfer to clear.")
+        return None, errors
+
+    parsed_allocations = []
+    seen_entry_ids = set()
+    for raw in raw_allocations:
+        try:
+            entry_id = int(raw.get("entry_id") if isinstance(raw, dict) else None)
+        except (TypeError, ValueError, AttributeError):
+            errors.append("Invalid room transfer selection.")
+            continue
+        if entry_id in seen_entry_ids:
+            errors.append("Duplicate room transfer in the same clearance.")
+            continue
+        seen_entry_ids.add(entry_id)
+        amount = parse_money(raw.get("amount") if isinstance(raw, dict) else None)
+        if amount <= 0:
+            errors.append("Each allocation amount must be greater than zero.")
+            continue
+        entry = conn.execute(
+            """SELECT id, company, location, sales_date, invoice_number, guest_name,
+                      amount, payment_status
+               FROM room_transfer_entries WHERE id = ?""",
+            (entry_id,),
+        ).fetchone()
+        if not entry:
+            errors.append("One or more selected room transfers were not found.")
+            continue
+        entry = dict(entry)
+        if entry.get("company") != company:
+            errors.append("Selected room transfers must belong to the same company.")
+            continue
+        paid_total = _room_transfer_entry_paid_total(conn, entry_id)
+        balance = _room_transfer_entry_balance(entry.get("amount"), paid_total)
+        if balance <= 0.001:
+            code = entry.get("invoice_number") or f"#{entry_id}"
+            errors.append(f"{code} is already fully paid.")
+            continue
+        if amount > balance + 0.001:
+            code = entry.get("invoice_number") or f"#{entry_id}"
+            errors.append(f"Allocation for {code} exceeds outstanding balance.")
+            continue
+        parsed_allocations.append({
+            "entry_id": entry_id,
+            "amount": round_half_up(amount, 2),
+            "entry": entry,
+        })
+
+    if errors:
+        return None, errors
+    if not parsed_allocations:
+        return None, ["Select at least one room transfer to clear."]
+
+    total_amount = round_half_up(sum(item["amount"] for item in parsed_allocations), 2)
+    return {
+        "company": company,
+        "payment_date": payment_date.isoformat(),
+        "payment_method": payment_method,
+        "transaction_id": transaction_id,
+        "notes": notes,
+        "total_amount": total_amount,
+        "allocations": parsed_allocations,
+    }, []
+
+
+def _reverse_room_transfer_entry_payments(conn, entry_ids):
+    ids = []
+    for raw in entry_ids or []:
+        try:
+            entry_id = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if entry_id and entry_id not in ids:
+            ids.append(entry_id)
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    payment_ids = [
+        row["room_transfer_payment_id"]
+        for row in conn.execute(
+            f"""SELECT DISTINCT room_transfer_payment_id
+                FROM room_transfer_payment_allocations
+                WHERE room_transfer_entry_id IN ({placeholders})""",
+            ids,
+        ).fetchall()
+    ]
+    conn.execute(
+        f"DELETE FROM room_transfer_payment_allocations WHERE room_transfer_entry_id IN ({placeholders})",
+        ids,
+    )
+    for payment_id in payment_ids:
+        remaining = conn.execute(
+            """SELECT COUNT(*) AS cnt FROM room_transfer_payment_allocations
+               WHERE room_transfer_payment_id = ?""",
+            (payment_id,),
+        ).fetchone()
+        if remaining and int(remaining["cnt"] or 0) == 0:
+            conn.execute("DELETE FROM room_transfer_payments WHERE id = ?", (payment_id,))
+    for entry_id in ids:
+        _sync_room_transfer_status_after_payment(conn, entry_id)
+    return ids
 
 
 def _sales_expense_total(conn, company, location, sales_date):
@@ -726,27 +980,27 @@ CREDIT_SETTLEMENT_STATUS_LABELS = {
 
 CREDIT_PAYMENT_METHOD_CASH = EXPENSE_PAYMENT_CASH
 CREDIT_PAYMENT_METHOD_CARD = "card"
-CREDIT_PAYMENT_METHODS = (
+CREDIT_PAYMENT_METHODS = _sorted_label_choices((
     (CREDIT_PAYMENT_METHOD_CASH, "Cash"),
-    (CREDIT_PAYMENT_METHOD_CARD, "Card"),
-)
+    (CREDIT_PAYMENT_METHOD_CARD, "Bank Transfer"),
+))
 CREDIT_PAYMENT_METHOD_LABELS = dict(CREDIT_PAYMENT_METHODS)
 PURCHASE_LEDGER_PAYMENT_LABELS = {
     **EXPENSE_PAYMENT_LABELS,
-    CREDIT_PAYMENT_METHOD_CARD: "Card",
+    CREDIT_PAYMENT_METHOD_CARD: "Bank Transfer",
 }
 CREDIT_PAYMENT_VIEW_OUTSTANDING = "outstanding"
 CREDIT_PAYMENT_VIEW_HISTORY = "history"
 CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT = "credit_payment"
 CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION = "purchase_verification"
-CREDIT_PAYMENT_VIEWS = (
+CREDIT_PAYMENT_VIEWS = _sorted_label_choices((
     (CREDIT_PAYMENT_VIEW_OUTSTANDING, "Outstanding Credit"),
     (CREDIT_PAYMENT_VIEW_HISTORY, "Payment History"),
-)
-PURCHASE_VERIFICATION_VIEWS = (
+))
+PURCHASE_VERIFICATION_VIEWS = _sorted_label_choices((
     (CREDIT_PAYMENT_VIEW_OUTSTANDING, "Pending Verification"),
     (CREDIT_PAYMENT_VIEW_HISTORY, "Verified Purchase"),
-)
+))
 CREDIT_SETTLEMENT_PAGE_MODES = {
     CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT: {
         "page_title": "Credit Payment",
@@ -770,7 +1024,7 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "history_empty": "No credit payments found for the selected filters.",
         "action_button": "Clear Payment",
         "select_modal_title": "Select Credit Items",
-        "select_modal_copy": "Choose outstanding credit expenses from one supplier to combine into a single payment clearance.",
+        "select_modal_copy": "Choose outstanding credit expenses to combine into payment clearances. Mixed suppliers are recorded as separate payments.",
         "select_table_aria": "Select credit line items",
         "select_continue": "Clear Payment",
         "clearance_modal_title": "Payment Details",
@@ -816,7 +1070,7 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "history_empty": "No verified purchases found for the selected filters.",
         "action_button": "Verify",
         "select_modal_title": "Select Items to Verify",
-        "select_modal_copy": "Choose pending purchases from one supplier to combine into a single verification.",
+        "select_modal_copy": "Choose pending purchases to verify. Mixed suppliers are recorded as separate verifications.",
         "select_table_aria": "Select purchases to verify",
         "select_continue": "Verify",
         "clearance_modal_title": "Verification Details",
@@ -853,21 +1107,13 @@ def _credit_settlement_page_mode(value):
 def _render_credit_settlement_page(mode):
     labels = CREDIT_SETTLEMENT_PAGE_MODES[_credit_settlement_page_mode(mode)]
     today = date.today()
-    default_from = today.replace(day=1)
     selected_view = _normalize_credit_payment_view(request.args.get("view"))
-    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
-    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
-    if date_from > date_to:
-        date_from, date_to = date_to, date_from
-
-    payment_date_from = _parse_sales_date(
-        request.args.get("payment_date_from") or default_from.isoformat()
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to"
     )
-    payment_date_to = _parse_sales_date(
-        request.args.get("payment_date_to") or today.isoformat()
+    payment_date_from, payment_date_to, payment_date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "payment_date_from", "payment_date_to"
     )
-    if payment_date_from > payment_date_to:
-        payment_date_from, payment_date_to = payment_date_to, payment_date_from
 
     selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
         request.args.get("supplier")
@@ -923,6 +1169,40 @@ def _render_credit_settlement_page(mode):
             selected_supplier_label = match["name"]
 
     route_endpoint = labels["route_endpoint"]
+    filter_date_from = date_from.isoformat() if date_filter_active else ""
+    filter_date_to = date_to.isoformat() if date_filter_active else ""
+    filter_payment_date_from = (
+        payment_date_from.isoformat() if payment_date_filter_active else ""
+    )
+    filter_payment_date_to = (
+        payment_date_to.isoformat() if payment_date_filter_active else ""
+    )
+    active_date_filter = (
+        date_filter_active
+        if selected_view == CREDIT_PAYMENT_VIEW_OUTSTANDING
+        else payment_date_filter_active
+    )
+    tab_query = {"supplier": selected_supplier}
+    if date_filter_active:
+        tab_query["date_from"] = filter_date_from
+        tab_query["date_to"] = filter_date_to
+    if payment_date_filter_active:
+        tab_query["payment_date_from"] = filter_payment_date_from
+        tab_query["payment_date_to"] = filter_payment_date_to
+
+    credit_report_kwargs = {"supplier": selected_supplier}
+    if date_filter_active:
+        credit_report_kwargs["date_from"] = filter_date_from
+        credit_report_kwargs["date_to"] = filter_date_to
+
+    purchase_report_kwargs = {"view": selected_view, "supplier": selected_supplier}
+    if date_filter_active:
+        purchase_report_kwargs["date_from"] = filter_date_from
+        purchase_report_kwargs["date_to"] = filter_date_to
+    if payment_date_filter_active:
+        purchase_report_kwargs["payment_date_from"] = filter_payment_date_from
+        purchase_report_kwargs["payment_date_to"] = filter_payment_date_to
+
     return render_template(
         "credit_settlement_page.html",
         settlement_labels=labels,
@@ -932,10 +1212,14 @@ def _render_credit_settlement_page(mode):
         filter_form_action=url_for(route_endpoint),
         selected_view=selected_view,
         credit_payment_views=labels["views"],
-        date_from=date_from.isoformat(),
-        date_to=date_to.isoformat(),
-        payment_date_from=payment_date_from.isoformat(),
-        payment_date_to=payment_date_to.isoformat(),
+        date_from=filter_date_from,
+        date_to=filter_date_to,
+        payment_date_from=filter_payment_date_from,
+        payment_date_to=filter_payment_date_to,
+        date_filter_active=date_filter_active,
+        payment_date_filter_active=payment_date_filter_active,
+        active_date_filter=active_date_filter,
+        settlement_tab_query=tab_query,
         selected_supplier=selected_supplier,
         selected_supplier_label=selected_supplier_label,
         suppliers=suppliers,
@@ -951,25 +1235,12 @@ def _render_credit_settlement_page(mode):
         delete_credit_payment_url=delete_url,
         settlement_detail_url_template=detail_url_template,
         credit_payment_report_url=(
-            url_for(
-                "export_credit_payment_report",
-                date_from=date_from.isoformat(),
-                date_to=date_to.isoformat(),
-                supplier=selected_supplier,
-            )
+            url_for("export_credit_payment_report", **credit_report_kwargs)
             if page_mode == CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT
             else None
         ),
         purchase_verification_report_url=(
-            url_for(
-                "export_purchase_verification_report",
-                view=selected_view,
-                date_from=date_from.isoformat(),
-                date_to=date_to.isoformat(),
-                payment_date_from=payment_date_from.isoformat(),
-                payment_date_to=payment_date_to.isoformat(),
-                supplier=selected_supplier,
-            )
+            url_for("export_purchase_verification_report", **purchase_report_kwargs)
             if page_mode == CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION
             else None
         ),
@@ -977,6 +1248,20 @@ def _render_credit_settlement_page(mode):
         de_nav_section="accounts",
         de_nav_accounts_view=labels["nav_accounts_view"],
     )
+
+
+def _resolve_optional_filter_date_range(args, from_key, to_key):
+    """Return (date_from, date_to, active). Missing both keys => no date filter."""
+    today = date.today()
+    raw_from = (args.get(from_key) or "").strip()
+    raw_to = (args.get(to_key) or "").strip()
+    if not raw_from and not raw_to:
+        return None, None, False
+    date_from = _parse_sales_date(raw_from or today.replace(day=1).isoformat())
+    date_to = _parse_sales_date(raw_to or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    return date_from, date_to, True
 
 
 def _normalize_credit_payment_method(payment_method):
@@ -1041,7 +1326,7 @@ def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company
     return entries
 
 
-def _outstanding_credit_expenses(conn, date_from, date_to, supplier_id=None, company=None):
+def _outstanding_credit_expenses(conn, date_from=None, date_to=None, supplier_id=None, company=None):
     sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
                     e.category, e.supplier_id,
                     s.name AS supplier_name, s.gst AS supplier_gst,
@@ -1050,8 +1335,14 @@ def _outstanding_credit_expenses(conn, date_from, date_to, supplier_id=None, com
                     ), 0) AS paid_amount
              FROM sales_update_expenses e
              LEFT JOIN suppliers s ON s.id = e.supplier_id
-             WHERE e.location = ? AND e.payment_type = ? AND e.sales_date >= ? AND e.sales_date <= ?"""
-    params = [OUTLET_HOTEL, EXPENSE_PAYMENT_CREDIT, date_from.isoformat(), date_to.isoformat()]
+             WHERE e.location = ? AND e.payment_type = ?"""
+    params = [OUTLET_HOTEL, EXPENSE_PAYMENT_CREDIT]
+    if date_from:
+        sql += " AND e.sales_date >= ?"
+        params.append(date_from.isoformat() if hasattr(date_from, "isoformat") else str(date_from))
+    if date_to:
+        sql += " AND e.sales_date <= ?"
+        params.append(date_to.isoformat() if hasattr(date_to, "isoformat") else str(date_to))
     if company:
         sql += " AND e.company = ?"
         params.append(company)
@@ -1095,7 +1386,7 @@ def _purchase_verification_balance(amount, verified_total):
     return _credit_expense_balance(amount, verified_total)
 
 
-def _pending_purchase_verifications(conn, date_from, date_to, supplier_id=None, company=None):
+def _pending_purchase_verifications(conn, date_from=None, date_to=None, supplier_id=None, company=None):
     sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
                     e.category, e.supplier_id,
                     s.name AS supplier_name, s.gst AS supplier_gst,
@@ -1104,8 +1395,14 @@ def _pending_purchase_verifications(conn, date_from, date_to, supplier_id=None, 
                     ), 0) AS paid_amount
              FROM sales_update_expenses e
              LEFT JOIN suppliers s ON s.id = e.supplier_id
-             WHERE e.location = ? AND e.sales_date >= ? AND e.sales_date <= ?"""
-    params = [OUTLET_HOTEL, date_from.isoformat(), date_to.isoformat()]
+             WHERE e.location = ?"""
+    params = [OUTLET_HOTEL]
+    if date_from:
+        sql += " AND e.sales_date >= ?"
+        params.append(date_from.isoformat() if hasattr(date_from, "isoformat") else str(date_from))
+    if date_to:
+        sql += " AND e.sales_date <= ?"
+        params.append(date_to.isoformat() if hasattr(date_to, "isoformat") else str(date_to))
     if company:
         sql += " AND e.company = ?"
         params.append(company)
@@ -1406,7 +1703,7 @@ def _validate_credit_payment_payload(conn, data):
     company = str(data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
 
     if payment_method == CREDIT_PAYMENT_METHOD_CARD and not transaction_id:
-        errors.append("Transaction ID is required for card payment.")
+        errors.append("Transaction ID is required for bank transfer.")
     if payment_method != CREDIT_PAYMENT_METHOD_CARD:
         transaction_id = ""
 
@@ -1546,6 +1843,11 @@ def _normalize_expense_category(category):
         "labor": "labour",
         "water_tank": "water_tank",
         "watertank": "water_tank",
+        "liquor": "liquor",
+        "alcohol": "liquor",
+        "fuel": "fuel",
+        "petrol": "fuel",
+        "diesel": "fuel",
         "other": "other",
     }
     return aliases.get(value, "")
@@ -2018,9 +2320,303 @@ def dashboard():
     )
 
 
+def _resolve_cash_ledger_date_range(args):
+    """Return (date_from, date_to, date_filter_active).
+
+    With no date query params, return the full ledger window (all entries).
+    """
+    today = date.today()
+    raw_from = (args.get("date_from") or "").strip()
+    raw_to = (args.get("date_to") or "").strip()
+    if not raw_from and not raw_to:
+        return CASH_LEDGER_ALL_ENTRIES_FROM, today, False
+    date_from = _parse_sales_date(raw_from or today.replace(day=1).isoformat())
+    date_to = _parse_sales_date(raw_to or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+    return date_from, date_to, True
+
+
+def _normalize_cash_ledger_transfer_destination(value):
+    key = (value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if key in CASH_LEDGER_TRANSFER_DESTINATION_LABELS:
+        return key
+    return ""
+
+
+def _cash_ledger_sales_rows(conn, company, date_from, date_to):
+    placeholders = ",".join("?" for _ in CASH_LEDGER_OUTLETS)
+    rows = conn.execute(
+        f"""SELECT id, location, sales_date, sales_entry_values
+            FROM sales_updates
+            WHERE company = ?
+              AND location IN ({placeholders})
+              AND sales_date >= ? AND sales_date <= ?
+            ORDER BY sales_date, location, id""",
+        (company, *CASH_LEDGER_OUTLETS, date_from.isoformat(), date_to.isoformat()),
+    ).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        try:
+            values = json.loads(item.get("sales_entry_values") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            values = {}
+        amount = parse_money(values.get("cash"))
+        if amount <= 0:
+            continue
+        entries.append(
+            {
+                "id": f"sales-{item['id']}",
+                "source_id": item["id"],
+                "entry_type": CASH_LEDGER_ENTRY_SALES,
+                "entry_date": item["sales_date"],
+                "location": item["location"] or "",
+                "detail": item["location"] or "",
+                "description": f"Cash collected — {item['location']}",
+                "amount": amount,
+                "signed_amount": amount,
+                "can_delete": False,
+            }
+        )
+    return entries
+
+
+def _cash_ledger_expense_rows(conn, company, date_from, date_to):
+    placeholders = ",".join("?" for _ in CASH_LEDGER_OUTLETS)
+    rows = conn.execute(
+        f"""SELECT e.id, e.location, e.sales_date, e.description, e.amount, e.expense_code,
+                   e.category, s.name AS supplier_name
+            FROM sales_update_expenses e
+            LEFT JOIN suppliers s ON s.id = e.supplier_id
+            WHERE e.company = ?
+              AND e.location IN ({placeholders})
+              AND e.payment_type = ?
+              AND e.sales_date >= ? AND e.sales_date <= ?
+            ORDER BY e.sales_date, e.id""",
+        (
+            company,
+            *CASH_LEDGER_OUTLETS,
+            EXPENSE_PAYMENT_CASH,
+            date_from.isoformat(),
+            date_to.isoformat(),
+        ),
+    ).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        amount = round_half_up(item.get("amount"), 2)
+        if amount <= 0:
+            continue
+        desc = (item.get("description") or "").strip() or "Cash expense"
+        code = (item.get("expense_code") or "").strip()
+        if code:
+            desc = f"{code} · {desc}"
+        entries.append(
+            {
+                "id": f"expense-{item['id']}",
+                "source_id": item["id"],
+                "entry_type": CASH_LEDGER_ENTRY_EXPENSE,
+                "entry_date": item["sales_date"],
+                "location": item.get("location") or "",
+                "detail": item.get("location") or "",
+                "description": desc,
+                "amount": amount,
+                "signed_amount": -amount,
+                "can_delete": False,
+                "supplier_name": item.get("supplier_name") or "",
+            }
+        )
+    return entries
+
+
+def _cash_ledger_load_rows(conn, company, date_from, date_to):
+    rows = conn.execute(
+        """SELECT id, load_date, description, amount
+           FROM cash_ledger_loads
+           WHERE company = ? AND load_date >= ? AND load_date <= ?
+           ORDER BY load_date, id""",
+        (company, date_from.isoformat(), date_to.isoformat()),
+    ).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        amount = round_half_up(item.get("amount"), 2)
+        if amount <= 0:
+            continue
+        entries.append(
+            {
+                "id": f"load-{item['id']}",
+                "source_id": item["id"],
+                "entry_type": CASH_LEDGER_ENTRY_LOAD,
+                "entry_date": item["load_date"],
+                "location": "",
+                "detail": "Cash load",
+                "description": (item.get("description") or "").strip() or "Cash load",
+                "amount": amount,
+                "signed_amount": amount,
+                "can_delete": True,
+            }
+        )
+    return entries
+
+
+def _cash_ledger_transfer_rows(conn, company, date_from, date_to):
+    rows = conn.execute(
+        """SELECT id, transfer_date, destination, description, amount
+           FROM cash_ledger_transfers
+           WHERE company = ? AND transfer_date >= ? AND transfer_date <= ?
+           ORDER BY transfer_date, id""",
+        (company, date_from.isoformat(), date_to.isoformat()),
+    ).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        amount = round_half_up(item.get("amount"), 2)
+        if amount <= 0:
+            continue
+        destination = _normalize_cash_ledger_transfer_destination(item.get("destination")) or "bank"
+        dest_label = CASH_LEDGER_TRANSFER_DESTINATION_LABELS.get(destination, destination)
+        entries.append(
+            {
+                "id": f"transfer-{item['id']}",
+                "source_id": item["id"],
+                "entry_type": CASH_LEDGER_ENTRY_TRANSFER,
+                "entry_date": item["transfer_date"],
+                "location": "",
+                "detail": dest_label,
+                "destination": destination,
+                "description": (item.get("description") or "").strip() or f"Transfer to {dest_label}",
+                "amount": amount,
+                "signed_amount": -amount,
+                "can_delete": True,
+            }
+        )
+    return entries
+
+
+def _build_cash_ledger_entries(conn, company, date_from, date_to):
+    ensure_cash_ledger_schema(conn)
+    entries = []
+    entries.extend(_cash_ledger_sales_rows(conn, company, date_from, date_to))
+    entries.extend(_cash_ledger_load_rows(conn, company, date_from, date_to))
+    entries.extend(_cash_ledger_expense_rows(conn, company, date_from, date_to))
+    entries.extend(_cash_ledger_transfer_rows(conn, company, date_from, date_to))
+    entries.sort(
+        key=lambda row: (
+            row.get("entry_date") or "",
+            CASH_LEDGER_ENTRY_RANK.get(row.get("entry_type"), 99),
+            row.get("source_id") or 0,
+            row.get("id") or "",
+        )
+    )
+    running = 0.0
+    for entry in entries:
+        running = round_half_up(running + entry.get("signed_amount", 0), 2)
+        entry["running_balance"] = running
+    return entries
+
+
+def _cash_ledger_totals(entries):
+    sales_total = 0.0
+    load_total = 0.0
+    expense_total = 0.0
+    transfer_total = 0.0
+    sales_count = load_count = expense_count = transfer_count = 0
+    for entry in entries:
+        kind = entry.get("entry_type")
+        amount = round_half_up(entry.get("amount"), 2)
+        if kind == CASH_LEDGER_ENTRY_SALES:
+            sales_total += amount
+            sales_count += 1
+        elif kind == CASH_LEDGER_ENTRY_LOAD:
+            load_total += amount
+            load_count += 1
+        elif kind == CASH_LEDGER_ENTRY_EXPENSE:
+            expense_total += amount
+            expense_count += 1
+        elif kind == CASH_LEDGER_ENTRY_TRANSFER:
+            transfer_total += amount
+            transfer_count += 1
+    available = round_half_up(sales_total + load_total - expense_total - transfer_total, 2)
+    return {
+        "sales_total": round_half_up(sales_total, 2),
+        "sales_count": sales_count,
+        "load_total": round_half_up(load_total, 2),
+        "load_count": load_count,
+        "expense_total": round_half_up(expense_total, 2),
+        "expense_count": expense_count,
+        "transfer_total": round_half_up(transfer_total, 2),
+        "transfer_count": transfer_count,
+        "available_total": available,
+    }
+
+
+def _cash_ledger_available_as_of(conn, company, as_of_date, *, exclude_expense_id=None):
+    """Available Cash through as_of_date using the Cash Ledger formula.
+
+    Optionally excludes an existing cash expense (used when editing) so its
+    amount is treated as still available for re-save / amount changes.
+    """
+    as_of = as_of_date
+    if isinstance(as_of, str):
+        as_of = _parse_sales_date(as_of)
+    if not as_of:
+        as_of = date.today()
+    company = company or DEFAULT_COMPANY
+    entries = _build_cash_ledger_entries(conn, company, date(2000, 1, 1), as_of)
+    available = _cash_ledger_totals(entries)["available_total"]
+    if exclude_expense_id:
+        try:
+            exclude_id = int(exclude_expense_id)
+        except (TypeError, ValueError):
+            exclude_id = None
+        if exclude_id:
+            row = conn.execute(
+                """SELECT amount, payment_type, sales_date
+                   FROM sales_update_expenses WHERE id = ? AND company = ?""",
+                (exclude_id, company),
+            ).fetchone()
+            if (
+                row
+                and _normalize_expense_payment_type(row["payment_type"]) == EXPENSE_PAYMENT_CASH
+                and (row["sales_date"] or "") <= as_of.isoformat()
+            ):
+                available = round_half_up(available + round_half_up(row["amount"], 2), 2)
+    return available
+
+
+def _validate_cash_expense_against_available(
+    conn, company, sales_date, amount, payment_type, *, exclude_expense_id=None
+):
+    """Reject cash expenses that exceed Cash Ledger Available Cash."""
+    if _normalize_expense_payment_type(payment_type) != EXPENSE_PAYMENT_CASH:
+        return None
+    available = _cash_ledger_available_as_of(
+        conn, company, sales_date, exclude_expense_id=exclude_expense_id
+    )
+    if round_half_up(amount, 2) - available > 0.001:
+        return (
+            "Cash expense cannot be more than available cash "
+            f"(₹{available:,.2f})."
+        )
+    return None
+
+
 @app.route("/accounts")
 def accounts():
-    return redirect(url_for("purchase_ledger"))
+    user = get_current_user()
+    preferred = (
+        ("purchase_ledger", "purchase_ledger"),
+        ("cash_ledger", "cash_ledger"),
+        ("credit_payment", "credit_payment"),
+        ("purchase_verification", "purchase_verification"),
+        ("supplier_master", "supplier_master"),
+    )
+    for key, endpoint in preferred:
+        if user_can_access_accounts_submodule(user, key):
+            return redirect(url_for(endpoint))
+    return redirect(url_for("home"))
 
 
 @app.route("/accounts/purchase-ledger")
@@ -2058,10 +2654,26 @@ def purchase_ledger():
         entries = _purchase_ledger_entries(
             conn, date_from, date_to, supplier_id, category=category, payment_type=payment_type
         )
+        available_cash = _cash_ledger_available_as_of(conn, DEFAULT_COMPANY, today)
     finally:
         conn.close()
 
     total_amount = round_half_up(sum(entry["amount"] for entry in entries), 2)
+    outstanding_entries = [
+        entry for entry in entries
+        if entry.get("settlement_status") in ("outstanding", "partial")
+    ]
+    cleared_entries = [
+        entry for entry in entries
+        if entry.get("settlement_status") == "cleared"
+    ]
+    cash_entries = [
+        entry for entry in entries
+        if entry.get("display_payment_type") == EXPENSE_PAYMENT_CASH
+    ]
+    outstanding_total = round_half_up(sum(entry["balance"] for entry in outstanding_entries), 2)
+    cleared_total = round_half_up(sum(entry["amount"] for entry in cleared_entries), 2)
+    cash_total = round_half_up(sum(entry["amount"] for entry in cash_entries), 2)
     selected_supplier_label = "All suppliers"
     if selected_supplier != PURCHASE_LEDGER_FILTER_ALL:
         match = supplier_lookup.get(selected_supplier)
@@ -2090,6 +2702,12 @@ def purchase_ledger():
         suppliers=suppliers,
         purchase_entries=entries,
         purchase_total=total_amount,
+        outstanding_total=outstanding_total,
+        outstanding_count=len(outstanding_entries),
+        cleared_total=cleared_total,
+        cleared_count=len(cleared_entries),
+        cash_total=cash_total,
+        cash_count=len(cash_entries),
         expense_payment_types=EXPENSE_PAYMENT_TYPES,
         expense_payment_labels=EXPENSE_PAYMENT_LABELS,
         purchase_ledger_payment_labels=PURCHASE_LEDGER_PAYMENT_LABELS,
@@ -2099,12 +2717,123 @@ def purchase_ledger():
         purchase_add_url=url_for("purchase_ledger_add"),
         purchase_edit_url=url_for("purchase_ledger_edit"),
         purchase_delete_url=url_for("purchase_ledger_delete"),
+        purchase_ledger_report_url=url_for(
+            "export_purchase_ledger_report",
+            date_from=date_from.isoformat(),
+            date_to=date_to.isoformat(),
+            supplier=selected_supplier,
+            category=selected_category,
+            payment=selected_payment,
+        ),
         supplier_create_url=url_for("create_supplier"),
+        available_cash=available_cash,
+        available_cash_url=url_for("cash_ledger_available"),
         default_company=DEFAULT_COMPANY,
         default_location=OUTLET_HOTEL,
         today_iso=today.isoformat(),
         de_nav_section="accounts",
         de_nav_accounts_view="purchase_ledger",
+    )
+
+
+@app.route("/accounts/purchase-ledger/report")
+def export_purchase_ledger_report():
+    """Excel download of purchase ledger entries for the selected filters."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    today = date.today()
+    default_from = today.replace(day=1)
+    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
+    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
+        request.args.get("supplier")
+    )
+    selected_category, category = _parse_purchase_ledger_category(
+        request.args.get("category")
+    )
+    selected_payment, payment_type = _parse_purchase_ledger_payment(
+        request.args.get("payment")
+    )
+    if selected_category != PURCHASE_LEDGER_FILTER_ALL and selected_category not in EXPENSE_CATEGORY_LABELS:
+        category = None
+    if selected_payment != PURCHASE_LEDGER_FILTER_ALL and selected_payment not in EXPENSE_PAYMENT_LABELS:
+        payment_type = None
+
+    conn = get_db()
+    try:
+        entries = _purchase_ledger_entries(
+            conn, date_from, date_to, supplier_id, category=category, payment_type=payment_type
+        )
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Purchase Ledger"
+    header_font = Font(bold=True)
+    headers = [
+        "Expense ID",
+        "Date",
+        "Expense",
+        "Category",
+        "Invoice",
+        "Supplier",
+        "GST",
+        "Payment",
+        "Status",
+        "Amount",
+        "Paid",
+        "Balance",
+    ]
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = header_font
+
+    for idx, entry in enumerate(entries, start=2):
+        category_key = entry.get("category") or ""
+        payment_key = entry.get("display_payment_type") or entry.get("payment_type") or ""
+        status_key = entry.get("settlement_status") or ""
+        ws.cell(row=idx, column=1, value=entry.get("expense_code") or "")
+        ws.cell(row=idx, column=2, value=entry.get("sales_date") or "")
+        ws.cell(row=idx, column=3, value=entry.get("description") or "")
+        ws.cell(row=idx, column=4, value=EXPENSE_CATEGORY_LABELS.get(category_key, category_key))
+        ws.cell(row=idx, column=5, value=entry.get("invoice_number") or "")
+        ws.cell(row=idx, column=6, value=entry.get("supplier_name") or "")
+        ws.cell(row=idx, column=7, value=entry.get("supplier_gst") or "")
+        ws.cell(
+            row=idx,
+            column=8,
+            value=PURCHASE_LEDGER_PAYMENT_LABELS.get(payment_key, payment_key),
+        )
+        ws.cell(
+            row=idx,
+            column=9,
+            value=CREDIT_SETTLEMENT_STATUS_LABELS.get(status_key, status_key),
+        )
+        ws.cell(row=idx, column=10, value=round_half_up(entry.get("amount"), 2))
+        ws.cell(row=idx, column=11, value=round_half_up(entry.get("paid_amount"), 2))
+        ws.cell(row=idx, column=12, value=round_half_up(entry.get("balance"), 2))
+
+    for column_cells in ws.columns:
+        width = 12
+        for cell in column_cells:
+            value = "" if cell.value is None else str(cell.value)
+            width = max(width, min(len(value) + 2, 40))
+        ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    fname = f"purchase_ledger_{date_from.isoformat()}_to_{date_to.isoformat()}.xlsx"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -2319,6 +3048,281 @@ def purchase_ledger_delete():
     return jsonify({"ok": True, **result})
 
 
+@app.route("/accounts/cash-ledger/available")
+def cash_ledger_available():
+    """JSON Available Cash as of a date (Cash Ledger formula)."""
+    company = request.args.get("company") or DEFAULT_COMPANY
+    as_of = _parse_sales_date(request.args.get("date") or date.today().isoformat())
+    exclude_expense_id = request.args.get("exclude_expense_id")
+    conn = get_db()
+    try:
+        available = _cash_ledger_available_as_of(
+            conn, company, as_of, exclude_expense_id=exclude_expense_id
+        )
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "available_cash": available, "date": as_of.isoformat()})
+
+
+@app.route("/accounts/cash-ledger")
+def cash_ledger():
+    today = date.today()
+    date_from, date_to, date_filter_active = _resolve_cash_ledger_date_range(request.args)
+
+    company = DEFAULT_COMPANY
+    conn = get_db()
+    try:
+        entries = _build_cash_ledger_entries(conn, company, date_from, date_to)
+    finally:
+        conn.close()
+
+    filter_date_from = date_from.isoformat() if date_filter_active else ""
+    filter_date_to = date_to.isoformat() if date_filter_active else ""
+    report_kwargs = {}
+    if date_filter_active:
+        report_kwargs = {
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+        }
+
+    totals = _cash_ledger_totals(entries)
+    return render_template(
+        "cash_ledger.html",
+        page_title="Cash Ledger",
+        page_subtitle="Track available cash from sales, loads, cash expenses, and transfers to bank or owner.",
+        filter_form_action=url_for("cash_ledger"),
+        date_from=filter_date_from,
+        date_to=filter_date_to,
+        date_filter_active=date_filter_active,
+        ledger_entries=entries,
+        sales_total=totals["sales_total"],
+        sales_count=totals["sales_count"],
+        load_total=totals["load_total"],
+        load_count=totals["load_count"],
+        expense_total=totals["expense_total"],
+        expense_count=totals["expense_count"],
+        transfer_total=totals["transfer_total"],
+        transfer_count=totals["transfer_count"],
+        available_total=totals["available_total"],
+        cash_ledger_entry_labels=CASH_LEDGER_ENTRY_LABELS,
+        cash_ledger_transfer_destinations=CASH_LEDGER_TRANSFER_DESTINATIONS,
+        cash_ledger_transfer_destination_labels=CASH_LEDGER_TRANSFER_DESTINATION_LABELS,
+        load_url=url_for("cash_ledger_load"),
+        transfer_url=url_for("cash_ledger_transfer"),
+        delete_load_url=url_for("cash_ledger_delete_load"),
+        delete_transfer_url=url_for("cash_ledger_delete_transfer"),
+        cash_ledger_report_url=url_for("export_cash_ledger_report", **report_kwargs),
+        default_company=company,
+        today_iso=today.isoformat(),
+        de_nav_section="accounts",
+        de_nav_accounts_view="cash_ledger",
+    )
+
+
+@app.route("/accounts/cash-ledger/load", methods=["POST"])
+def cash_ledger_load():
+    data = request.get_json(silent=True) or {}
+    company = (data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+    raw_date = (data.get("date") or data.get("load_date") or "").strip()
+    description = (data.get("description") or "").strip()
+    amount = parse_money(data.get("amount"))
+    if not raw_date:
+        return jsonify({"ok": False, "error": "Date is required."}), 400
+    try:
+        load_date = date.fromisoformat(raw_date)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Enter a valid date."}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "Enter a positive amount."}), 400
+    if not description:
+        return jsonify({"ok": False, "error": "Description is required."}), 400
+
+    conn = get_db()
+    try:
+        ensure_cash_ledger_schema(conn)
+        cursor = conn.execute(
+            """INSERT INTO cash_ledger_loads (company, load_date, description, amount)
+               VALUES (?, ?, ?, ?)""",
+            (company, load_date.isoformat(), description, amount),
+        )
+        conn.commit()
+        load_id = cursor.lastrowid
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "id": load_id})
+
+
+@app.route("/accounts/cash-ledger/transfer", methods=["POST"])
+def cash_ledger_transfer():
+    data = request.get_json(silent=True) or {}
+    company = (data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+    raw_date = (data.get("date") or data.get("transfer_date") or "").strip()
+    description = (data.get("description") or "").strip()
+    amount = parse_money(data.get("amount"))
+    destination = _normalize_cash_ledger_transfer_destination(data.get("destination"))
+    if not raw_date:
+        return jsonify({"ok": False, "error": "Date is required."}), 400
+    try:
+        transfer_date = date.fromisoformat(raw_date)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Enter a valid date."}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "Enter a positive amount."}), 400
+    if not destination:
+        return jsonify({"ok": False, "error": "Select Bank or Owner."}), 400
+    if not description:
+        return jsonify({"ok": False, "error": "Description is required."}), 400
+
+    conn = get_db()
+    try:
+        ensure_cash_ledger_schema(conn)
+        cursor = conn.execute(
+            """INSERT INTO cash_ledger_transfers
+               (company, transfer_date, destination, description, amount)
+               VALUES (?, ?, ?, ?, ?)""",
+            (company, transfer_date.isoformat(), destination, description, amount),
+        )
+        conn.commit()
+        transfer_id = cursor.lastrowid
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "id": transfer_id})
+
+
+@app.route("/accounts/cash-ledger/report")
+def export_cash_ledger_report():
+    """Excel download of cash ledger movements for the selected date range."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    date_from, date_to, date_filter_active = _resolve_cash_ledger_date_range(request.args)
+
+    company = DEFAULT_COMPANY
+    conn = get_db()
+    try:
+        entries = _build_cash_ledger_entries(conn, company, date_from, date_to)
+    finally:
+        conn.close()
+
+    totals = _cash_ledger_totals(entries)
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    header_font = Font(bold=True)
+    summary_headers = ["Metric", "Amount", "Count"]
+    for col, title in enumerate(summary_headers, start=1):
+        cell = summary.cell(row=1, column=col, value=title)
+        cell.font = header_font
+    summary_rows = [
+        ("Sales Cash", totals["sales_total"], totals["sales_count"]),
+        ("Load Cash", totals["load_total"], totals["load_count"]),
+        ("Expense", totals["expense_total"], totals["expense_count"]),
+        ("Transfer Out", totals["transfer_total"], totals["transfer_count"]),
+        ("Available Cash", totals["available_total"], len(entries)),
+        (
+            "Date From",
+            date_from.isoformat() if date_filter_active else "All",
+            "",
+        ),
+        (
+            "Date To",
+            date_to.isoformat() if date_filter_active else "All",
+            "",
+        ),
+    ]
+    for idx, (label, amount, count) in enumerate(summary_rows, start=2):
+        summary.cell(row=idx, column=1, value=label)
+        summary.cell(row=idx, column=2, value=amount if isinstance(amount, (int, float)) else amount)
+        summary.cell(row=idx, column=3, value=count)
+
+    movements = wb.create_sheet("Cash Movements")
+    headers = ["Date", "Type", "Detail", "Description", "Amount", "Balance"]
+    for col, title in enumerate(headers, start=1):
+        cell = movements.cell(row=1, column=col, value=title)
+        cell.font = header_font
+    for idx, entry in enumerate(entries, start=2):
+        entry_type = entry.get("entry_type") or ""
+        movements.cell(row=idx, column=1, value=entry.get("entry_date") or "")
+        movements.cell(
+            row=idx,
+            column=2,
+            value=CASH_LEDGER_ENTRY_LABELS.get(entry_type, entry_type),
+        )
+        movements.cell(row=idx, column=3, value=entry.get("detail") or "")
+        movements.cell(row=idx, column=4, value=entry.get("description") or "")
+        movements.cell(row=idx, column=5, value=round_half_up(entry.get("signed_amount"), 2))
+        movements.cell(row=idx, column=6, value=round_half_up(entry.get("running_balance"), 2))
+
+    for ws in (summary, movements):
+        for column_cells in ws.columns:
+            width = 12
+            for cell in column_cells:
+                value = "" if cell.value is None else str(cell.value)
+                width = max(width, min(len(value) + 2, 48))
+            ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    fname = (
+        f"cash_ledger_{date_from.isoformat()}_to_{date_to.isoformat()}.xlsx"
+        if date_filter_active
+        else "cash_ledger_all.xlsx"
+    )
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/accounts/cash-ledger/load/delete", methods=["POST"])
+def cash_ledger_delete_load():
+    data = request.get_json(silent=True) or {}
+    try:
+        load_id = int(data.get("id") or data.get("load_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Load entry not found."}), 404
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id FROM cash_ledger_loads WHERE id = ?",
+            (load_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Load entry not found."}), 404
+        conn.execute("DELETE FROM cash_ledger_loads WHERE id = ?", (load_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "id": load_id})
+
+
+@app.route("/accounts/cash-ledger/transfer/delete", methods=["POST"])
+def cash_ledger_delete_transfer():
+    data = request.get_json(silent=True) or {}
+    try:
+        transfer_id = int(data.get("id") or data.get("transfer_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Transfer entry not found."}), 404
+
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT id FROM cash_ledger_transfers WHERE id = ?",
+            (transfer_id,),
+        ).fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Transfer entry not found."}), 404
+        conn.execute("DELETE FROM cash_ledger_transfers WHERE id = ?", (transfer_id,))
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "id": transfer_id})
+
+
 @app.route("/accounts/credit-payment")
 def credit_payment():
     return _render_credit_settlement_page(CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT)
@@ -2396,11 +3400,9 @@ def export_credit_payment_report():
         return ("Credit payment report template is missing.", 500)
 
     today = date.today()
-    default_from = today.replace(day=1)
-    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
-    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
-    if date_from > date_to:
-        date_from, date_to = date_to, date_from
+    date_from, date_to, _date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to"
+    )
     _, supplier_id = _parse_purchase_ledger_supplier(request.args.get("supplier"))
 
     conn = get_db()
@@ -2465,20 +3467,13 @@ def export_purchase_verification_report():
     from openpyxl.styles import Font
 
     today = date.today()
-    default_from = today.replace(day=1)
     selected_view = _normalize_credit_payment_view(request.args.get("view"))
-    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
-    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
-    if date_from > date_to:
-        date_from, date_to = date_to, date_from
-    payment_date_from = _parse_sales_date(
-        request.args.get("payment_date_from") or default_from.isoformat()
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to"
     )
-    payment_date_to = _parse_sales_date(
-        request.args.get("payment_date_to") or today.isoformat()
+    payment_date_from, payment_date_to, payment_date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "payment_date_from", "payment_date_to"
     )
-    if payment_date_from > payment_date_to:
-        payment_date_from, payment_date_to = payment_date_to, payment_date_from
     _, supplier_id = _parse_purchase_ledger_supplier(request.args.get("supplier"))
 
     wb = Workbook()
@@ -2523,7 +3518,8 @@ def export_purchase_verification_report():
                 ws.cell(row=idx, column=9, value=entry.get("notes") or "")
             fname = (
                 f"purchase_verification_history_"
-                f"{payment_date_from.isoformat()}_to_{payment_date_to.isoformat()}.xlsx"
+                f"{payment_date_from.isoformat() if payment_date_filter_active else 'All'}_to_"
+                f"{payment_date_to.isoformat() if payment_date_filter_active else 'All'}.xlsx"
             )
         else:
             ws.title = "Pending Verification"
@@ -2562,7 +3558,8 @@ def export_purchase_verification_report():
                 ws.cell(row=idx, column=10, value=round_half_up(entry.get("balance"), 2))
             fname = (
                 f"purchase_verification_pending_"
-                f"{date_from.isoformat()}_to_{date_to.isoformat()}.xlsx"
+                f"{date_from.isoformat() if date_filter_active else 'All'}_to_"
+                f"{date_to.isoformat() if date_filter_active else 'All'}.xlsx"
             )
     finally:
         conn.close()
@@ -2779,6 +3776,7 @@ def sales_update_hotel():
         }
         kpi_bundle = _sales_report_kpi_bundle(conn, entry_date, entry_date, selected_company, selected_location)
         suppliers = _all_suppliers(conn)
+        available_cash = _cash_ledger_available_as_of(conn, selected_company, entry_date)
     finally:
         conn.close()
 
@@ -2801,6 +3799,7 @@ def sales_update_hotel():
         expense_payment_types=EXPENSE_PAYMENT_TYPES,
         expense_categories=EXPENSE_CATEGORIES,
         suppliers=suppliers,
+        available_cash=available_cash,
         cash_date_from=selected_date,
         cash_date_to=selected_date,
         cash_panel=False,
@@ -3094,9 +4093,17 @@ def sales_update_restaurant():
 @app.route("/sales_update/room_transfer")
 def sales_update_room_transfer():
     user = get_current_user()
+    today = date.today()
+    default_from = today.replace(day=1)
     selected_company = request.args.get("company", DEFAULT_COMPANY)
     selected_payment_status = _normalize_room_transfer_filter_status(request.args.get("status"))
+    if selected_payment_status == "all":
+        selected_payment_status = "unpaid"
     selected_location = request.args.get("location", ROOM_TRANSFER_FILTER_ALL)
+    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
+    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
 
     if selected_company not in SALES_COMPANY_LOCATIONS:
         selected_company = DEFAULT_COMPANY
@@ -3106,11 +4113,21 @@ def sales_update_room_transfer():
     conn = get_db()
     try:
         entries = load_room_transfer_entries_by_status(
-            conn, selected_company, selected_payment_status, selected_location
+            conn,
+            selected_company,
+            selected_payment_status,
+            selected_location,
+            date_from=date_from,
+            date_to=date_to,
         )
         rollup = rollup_room_transfer_entries(entries)
         summary_entries = load_room_transfer_entries_by_status(
-            conn, selected_company, "all", selected_location
+            conn,
+            selected_company,
+            "all",
+            selected_location,
+            date_from=date_from,
+            date_to=date_to,
         )
         summary_rollup = rollup_room_transfer_entries(summary_entries)
     finally:
@@ -3119,22 +4136,118 @@ def sales_update_room_transfer():
     return render_template(
         "sales_update_room_transfer.html",
         page_title="Room Transfer",
-        page_subtitle="Room credit lines from Collections reports. Mark each as Paid when settled.",
+        page_subtitle="Room credit lines from Collections reports. Clear payment to record how each settlement was made.",
         filter_form_action=url_for("sales_update_room_transfer"),
+        create_room_transfer_payment_url=url_for("create_room_transfer_payment"),
+        reverse_room_transfer_payment_url=url_for("reverse_room_transfer_payment"),
         selected_company=selected_company,
         selected_company_label=SALES_COMPANY_LOCATIONS[selected_company]["label"],
         selected_payment_status=selected_payment_status,
         selected_location=selected_location,
+        date_from=date_from.isoformat(),
+        date_to=date_to.isoformat(),
+        today_iso=today.isoformat(),
         room_transfer_filter_statuses=ROOM_TRANSFER_FILTER_STATUSES,
         room_transfer_filter_locations=ROOM_TRANSFER_FILTER_LOCATIONS,
         room_transfer_entries=entries,
         room_transfer_rollup=rollup,
         room_transfer_summary_rollup=summary_rollup,
         room_transfer_payment_statuses=ROOM_TRANSFER_PAYMENT_STATUSES,
+        credit_payment_methods=CREDIT_PAYMENT_METHODS,
         sales_update_is_admin=user.get("is_admin", False),
         de_nav_section="analytics",
         de_nav_sales_view="room_transfer",
     )
+
+
+@app.route("/sales_update/room_transfer/create_payment", methods=["POST"])
+def create_room_transfer_payment():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        payload, errors = _validate_room_transfer_payment_payload(conn, data)
+        if errors:
+            return jsonify({"ok": False, "error": errors[0], "errors": errors}), 400
+        cursor = conn.execute(
+            """INSERT INTO room_transfer_payments
+               (company, payment_date, payment_method, transaction_id, total_amount, notes)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                payload["company"],
+                payload["payment_date"],
+                payload["payment_method"],
+                payload["transaction_id"],
+                payload["total_amount"],
+                payload["notes"],
+            ),
+        )
+        payment_id = cursor.lastrowid
+        for allocation in payload["allocations"]:
+            entry = allocation["entry"]
+            conn.execute(
+                """INSERT INTO room_transfer_payment_allocations
+                   (room_transfer_payment_id, room_transfer_entry_id, amount,
+                    invoice_number, guest_name, location, sales_date)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    payment_id,
+                    allocation["entry_id"],
+                    allocation["amount"],
+                    entry.get("invoice_number") or "",
+                    entry.get("guest_name") or "",
+                    entry.get("location") or "",
+                    entry.get("sales_date") or "",
+                ),
+            )
+            _sync_room_transfer_status_after_payment(conn, allocation["entry_id"])
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "payment_id": payment_id})
+
+
+@app.route("/sales_update/room_transfer/reverse_payment", methods=["POST"])
+def reverse_room_transfer_payment():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "Not authenticated"}), 401
+
+    data = request.get_json(silent=True) or {}
+    company = str(data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+    raw_ids = data.get("entry_ids") or []
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return jsonify({"ok": False, "error": "Select at least one room transfer."}), 400
+
+    conn = get_db()
+    try:
+        valid_ids = []
+        for raw in raw_ids:
+            try:
+                entry_id = int(raw)
+            except (TypeError, ValueError):
+                continue
+            row = conn.execute(
+                "SELECT id, company, payment_status FROM room_transfer_entries WHERE id = ?",
+                (entry_id,),
+            ).fetchone()
+            if not row or row["company"] != company:
+                continue
+            if row["payment_status"] != "paid" and _room_transfer_entry_paid_total(conn, entry_id) <= 0:
+                continue
+            valid_ids.append(entry_id)
+        if not valid_ids:
+            return jsonify({"ok": False, "error": "No paid room transfers found to reverse."}), 400
+        reversed_ids = _reverse_room_transfer_entry_payments(conn, valid_ids)
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "entry_ids": reversed_ids})
 
 
 @app.route("/sales_update/room_transfer/save_status", methods=["POST"])
@@ -3149,6 +4262,12 @@ def save_room_transfer_status():
     location_filter = data.get("location", ROOM_TRANSFER_FILTER_ALL)
     if location_filter not in ROOM_TRANSFER_FILTER_LOCATIONS:
         location_filter = ROOM_TRANSFER_FILTER_ALL
+    today = date.today()
+    default_from = today.replace(day=1)
+    date_from = _parse_sales_date(data.get("date_from") or default_from.isoformat())
+    date_to = _parse_sales_date(data.get("date_to") or today.isoformat())
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
     updates = data.get("updates") or []
     allowed = {status for status, _ in ROOM_TRANSFER_PAYMENT_STATUSES}
 
@@ -3168,10 +4287,24 @@ def save_room_transfer_status():
                 (payment_status, entry_id, company),
             )
         conn.commit()
-        entries = load_room_transfer_entries_by_status(conn, company, status_filter, location_filter)
+        entries = load_room_transfer_entries_by_status(
+            conn,
+            company,
+            status_filter,
+            location_filter,
+            date_from=date_from,
+            date_to=date_to,
+        )
         rollup = rollup_room_transfer_entries(entries)
         summary_rollup = rollup_room_transfer_entries(
-            load_room_transfer_entries_by_status(conn, company, "all", location_filter)
+            load_room_transfer_entries_by_status(
+                conn,
+                company,
+                "all",
+                location_filter,
+                date_from=date_from,
+                date_to=date_to,
+            )
         )
     finally:
         conn.close()
@@ -3360,6 +4493,12 @@ def _create_sales_expense(conn, user, data, *, default_location=None, include_sa
     if not supplier:
         return None, "Selected supplier was not found."
 
+    cash_error = _validate_cash_expense_against_available(
+        conn, company, sales_date, amount, payment_type
+    )
+    if cash_error:
+        return None, cash_error
+
     duplicate = _duplicate_expense_invoice(conn, supplier_id, invoice_number)
     if duplicate:
         code = duplicate["expense_code"] or f"#{duplicate['id']}"
@@ -3420,6 +4559,16 @@ def sales_update_edit_expense():
         supplier = _get_supplier(conn, supplier_id)
         if not supplier:
             return jsonify({"ok": False, "error": "Selected supplier was not found."}), 400
+        cash_error = _validate_cash_expense_against_available(
+            conn,
+            company,
+            sales_date,
+            amount,
+            payment_type,
+            exclude_expense_id=expense_id,
+        )
+        if cash_error:
+            return jsonify({"ok": False, "error": cash_error}), 400
         duplicate = _duplicate_expense_invoice(
             conn, supplier_id, invoice_number, exclude_expense_id=expense_id
         )
@@ -3714,6 +4863,68 @@ def supplier_master():
         success_message=success_message,
         form_focus=form_focus or bool(selected_supplier),
         show_form=form_focus or bool(selected_supplier),
+        supplier_report_url=url_for("export_supplier_report"),
+    )
+
+
+@app.route("/suppliers/report")
+def export_supplier_report():
+    """Excel download of all suppliers from Supplier Master."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    user = get_current_user()
+    if not user_can_access_supplier_master(user):
+        return _permission_denied_response("You do not have access to Supplier Master.")
+
+    conn = get_db()
+    try:
+        suppliers = _all_suppliers(conn)
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Suppliers"
+    header_font = Font(bold=True)
+    headers = [
+        "Name",
+        "GST",
+        "Phone",
+        "Address",
+        "Bank",
+        "Account Number",
+        "IFSC",
+    ]
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = header_font
+
+    for idx, supplier in enumerate(suppliers, start=2):
+        ws.cell(row=idx, column=1, value=supplier.get("name") or "")
+        ws.cell(row=idx, column=2, value=supplier.get("gst") or "")
+        ws.cell(row=idx, column=3, value=supplier.get("phone") or "")
+        ws.cell(row=idx, column=4, value=supplier.get("address") or "")
+        ws.cell(row=idx, column=5, value=supplier.get("bank_name") or "")
+        ws.cell(row=idx, column=6, value=supplier.get("bank_account_number") or "")
+        ws.cell(row=idx, column=7, value=supplier.get("ifsc_code") or "")
+
+    for column_cells in ws.columns:
+        width = 12
+        for cell in column_cells:
+            value = "" if cell.value is None else str(cell.value)
+            width = max(width, min(len(value) + 2, 40))
+        ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    fname = f"supplier_report_{date.today().isoformat()}.xlsx"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -3744,6 +4955,7 @@ def save_supplier():
                 success_message="",
                 form_focus=True,
                 show_form=True,
+                supplier_report_url=url_for("export_supplier_report"),
             ), 400
         conn.commit()
     finally:
@@ -3843,6 +5055,7 @@ def access_management():
         "sales_analytics_modules": sales_analytics_access_list(selected_user) if selected_user else [],
         "user_access_modules": user_access_submodule_list(selected_user) if selected_user else [],
         "payroll_modules": payroll_access_list(selected_user) if selected_user else [],
+        "accounts_modules": accounts_access_list(selected_user) if selected_user else [],
     }
     success_message = ""
     if saved_flag == "created":
@@ -3873,6 +5086,7 @@ def save_access_user():
     sales_analytics_modules = request.form.getlist("sales_analytics_modules")
     user_access_modules = request.form.getlist("user_access_modules")
     payroll_modules = request.form.getlist("payroll_modules")
+    accounts_modules = request.form.getlist("accounts_modules")
 
     if sales_analytics_modules and not is_admin and "sales_analytics" not in dashboard_modules:
         dashboard_modules = list(dashboard_modules) + ["sales_analytics"]
@@ -3880,6 +5094,8 @@ def save_access_user():
         dashboard_modules = list(dashboard_modules) + ["access_management"]
     if payroll_modules and not is_admin and "employee_payroll" not in dashboard_modules:
         dashboard_modules = list(dashboard_modules) + ["employee_payroll"]
+    if accounts_modules and not is_admin and "accounts" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["accounts"]
 
     try:
         user_id = int(user_id_raw) if user_id_raw else None
@@ -3899,6 +5115,7 @@ def save_access_user():
             sales_analytics_modules=sales_analytics_modules,
             user_access_modules=user_access_modules,
             payroll_modules=payroll_modules,
+            accounts_modules=accounts_modules,
         )
         if errors:
             users, selected_user = fetch_access_management_users(conn, user_id)
@@ -3911,6 +5128,7 @@ def save_access_user():
                 "sales_analytics_modules": sales_analytics_modules,
                 "user_access_modules": user_access_modules,
                 "payroll_modules": payroll_modules,
+                "accounts_modules": accounts_modules,
             }
             return _am_page_render(
                 "access_management.html",
@@ -3933,6 +5151,7 @@ def save_access_user():
             sales_analytics_modules=sales_analytics_modules,
             user_access_modules=user_access_modules,
             payroll_modules=payroll_modules,
+            accounts_modules=accounts_modules,
             sql_now=SQL_NOW,
         )
         conn.commit()

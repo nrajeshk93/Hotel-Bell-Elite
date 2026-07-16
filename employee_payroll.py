@@ -618,12 +618,9 @@ def _attach_employee_month_context(conn, employee, year, month, payroll_state=No
     total_off = int(salary.get('total_off', emp.get('total_off') or 0) or 0)
     att = _apply_total_off_to_attendance_view(att, total_off)
     if att.get('tracked'):
-        paid_days = float(salary.get('paid_calendar_days', 0) or 0)
-        if paid_days.is_integer():
-            paid_days = int(paid_days)
-        att['badge_num'] = paid_days
-        att['display_badge_num'] = paid_days
-        att['badge_den'] = int(att.get('num_days', 0) or 0)
+        # ATTEND. badge stays as marked present days (P + ½H) from _get_month_attendance.
+        # Do not overwrite with paid_calendar_days — unmarked days are not attendance
+        # and must not display as a full-month preset like 31/31.
         att['lop_days'] = salary.get('lop_days', 0)
         att['total_off'] = total_off
     emp['att'] = att

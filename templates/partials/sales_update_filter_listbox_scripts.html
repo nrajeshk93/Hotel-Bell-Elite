@@ -11,12 +11,37 @@
     var list = root.querySelector('.se-filter-listbox');
     root.classList.remove('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
-    if (list) list.hidden = true;
+    if (list) {
+      list.hidden = true;
+      list.style.paddingBottom = '';
+      list.scrollTop = 0;
+    }
   }
 
   function closeAllListboxes(except){
     document.querySelectorAll('#room-transfer-filter-form [data-se-listbox].is-open').forEach(function(root){
       if (root !== except) closeListbox(root);
+    });
+  }
+
+  function scrollSelectedToTop(list){
+    if (!list) return;
+    var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
+    if (!selected || selected.classList.contains('is-filtered-out')) return;
+    list.style.paddingBottom = '';
+    requestAnimationFrame(function(){
+      var searchWrap = list.querySelector('.ep-listbox-search-wrap, .pl-supplier-search-wrap, .staff-supplier-search-wrap');
+      var topPad = searchWrap ? searchWrap.offsetHeight : 0;
+      if (list.scrollHeight <= list.clientHeight + 1) {
+        list.scrollTop = 0;
+        return;
+      }
+      var target = Math.max(0, selected.offsetTop - topPad);
+      var naturalMax = Math.max(0, list.scrollHeight - list.clientHeight);
+      if (target > naturalMax) {
+        list.style.paddingBottom = (target - naturalMax) + 'px';
+      }
+      list.scrollTop = target;
     });
   }
 
@@ -30,7 +55,8 @@
     if (list) {
       list.hidden = false;
       var selected = list.querySelector('[aria-selected="true"]') || list.querySelector('.se-filter-listbox-option');
-      if (selected) selected.focus();
+      scrollSelectedToTop(list);
+      if (selected) selected.focus({ preventScroll: true });
     }
   }
 

@@ -7,9 +7,9 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <script>
 (function(){
@@ -43,6 +43,7 @@
         </div>
       </div>
       <div class="su-header-tools">
+        <a class="btn btn-primary" href="{{ purchase_ledger_report_url }}" download>Purchase Ledger Report</a>
         <button type="button" class="btn btn-primary" id="pl-open-add-purchase">Add Purchase</button>
       </div>
     </div>
@@ -152,11 +153,32 @@
 
   <section class="content se-content">
     <div class="pl-summary-row">
-      <article class="card pl-summary-card" aria-label="Purchase summary">
+      <article class="card pl-summary-card" aria-label="Total purchases">
         <div class="card-body pl-summary-body">
           <div class="pl-summary-label">Total purchases</div>
-          <div class="pl-summary-value" id="pl-total-amount" data-amount="{{ purchase_total }}">{{ purchase_total }}</div>
-          <div class="pl-summary-meta">{{ purchase_entries|length }} expense{{ '' if purchase_entries|length == 1 else 's' }}{% if date_from != date_to %} · {{ date_from }} to {{ date_to }}{% else %} · {{ date_from }}{% endif %}</div>
+          <div class="pl-summary-value pl-amount" id="pl-total-amount" data-amount="{{ purchase_total }}">{{ purchase_total }}</div>
+          <div class="pl-summary-meta">{{ purchase_entries|length }} expense{{ '' if purchase_entries|length == 1 else 's' }}</div>
+        </div>
+      </article>
+      <article class="card pl-summary-card" aria-label="Outstanding purchases">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Outstanding</div>
+          <div class="pl-summary-value pl-amount" id="pl-outstanding-amount" data-amount="{{ outstanding_total }}">{{ outstanding_total }}</div>
+          <div class="pl-summary-meta">{{ outstanding_count }} expense{{ '' if outstanding_count == 1 else 's' }}</div>
+        </div>
+      </article>
+      <article class="card pl-summary-card" aria-label="Cleared purchases">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Cleared</div>
+          <div class="pl-summary-value pl-amount" id="pl-cleared-amount" data-amount="{{ cleared_total }}">{{ cleared_total }}</div>
+          <div class="pl-summary-meta">{{ cleared_count }} expense{{ '' if cleared_count == 1 else 's' }}</div>
+        </div>
+      </article>
+      <article class="card pl-summary-card" aria-label="Cash purchases">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Cash</div>
+          <div class="pl-summary-value pl-amount" id="pl-cash-amount" data-amount="{{ cash_total }}">{{ cash_total }}</div>
+          <div class="pl-summary-meta">{{ cash_count }} expense{{ '' if cash_count == 1 else 's' }}</div>
         </div>
       </article>
     </div>
@@ -175,29 +197,29 @@
           <table class="pl-table" aria-label="Purchase ledger entries">
             <thead>
               <tr>
-                <th>Expense ID</th>
-                <th>Date</th>
-                <th>Expense</th>
-                <th>Category</th>
-                <th>Invoice</th>
-                <th>Supplier</th>
-                <th>Payment</th>
-                <th>Status</th>
-                <th class="pl-col-amount">Amount</th>
+                <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">Expense ID</th>
+                <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
+                <th class="pl-sortable" data-sort="expense" scope="col" tabindex="0" aria-sort="none">Expense</th>
+                <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
+                <th class="pl-sortable" data-sort="invoice" scope="col" tabindex="0" aria-sort="none">Invoice</th>
+                <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
+                <th class="pl-sortable" data-sort="payment" scope="col" tabindex="0" aria-sort="none">Payment</th>
+                <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+                <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
                 <th class="pl-col-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% for entry in purchase_entries %}
               <tr>
-                <td class="pl-col-code"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
-                <td class="pl-col-date">{{ entry.sales_date }}</td>
-                <td>
+                <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
+                <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date }}</td>
+                <td data-sort-value="{{ entry.description or '' }}">
                   <div class="pl-name">{{ entry.description or '—' }}</div>
                 </td>
-                <td>{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
-                <td>{{ entry.invoice_number or '—' }}</td>
-                <td>
+                <td data-sort-value="{{ expense_category_labels.get(entry.category, entry.category or '') }}">{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
+                <td data-sort-value="{{ entry.invoice_number or '' }}">{{ entry.invoice_number or '—' }}</td>
+                <td data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
                   {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
@@ -205,15 +227,15 @@
                   —
                   {% endif %}
                 </td>
-                <td>{{ purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) }}</td>
-                <td>
+                <td data-sort-value="{{ purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) }}">{{ purchase_ledger_payment_labels.get(entry.display_payment_type, entry.display_payment_type) }}</td>
+                <td data-sort-value="{{ credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status or '') }}">
                   {% if entry.settlement_status %}
                   <span class="cp-status-pill cp-status-pill--{{ entry.settlement_status }}">{{ credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status) }}</span>
                   {% else %}
                   —
                   {% endif %}
                 </td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}">{{ entry.amount }}</td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
                 <td class="pl-col-actions">
                   {% if entry.settlement_status == 'outstanding' %}
                   <div class="pl-action-btns">

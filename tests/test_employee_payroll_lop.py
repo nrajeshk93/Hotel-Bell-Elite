@@ -1,6 +1,14 @@
+import calendar
+import sqlite3
 import unittest
 
-from employee_payroll import _calc_salary, _calc_total_off_lop, _apply_total_off_to_attendance_view
+from employee_payroll import (
+    _apply_total_off_to_attendance_view,
+    _attach_employee_month_context,
+    _calc_salary,
+    _calc_total_off_lop,
+    _get_month_attendance,
+)
 
 
 class TotalOffLopTests(unittest.TestCase):
@@ -157,6 +165,74 @@ class TotalOffAbsentDisplayTests(unittest.TestCase):
         view = _apply_total_off_to_attendance_view(att, total_off=4)
         self.assertEqual(view['absent'], 0)
         self.assertEqual(view['leave_covered_by_off'], 4)
+
+
+class AttendanceBadgeTests(unittest.TestCase):
+    def _conn(self):
+        conn = sqlite3.connect(':memory:')
+        conn.row_factory = sqlite3.Row
+        conn.executescript(
+            """
+            CREATE TABLE attendance (
+                id INTEGER PRIMARY KEY,
+                employee_id INTEGER NOT NULL,
+                date TEXT NOT NULL,
+                status TEXT NOT NULL,
+                updated_at TEXT
+            );
+            CREATE TABLE credits (
+                id INTEGER PRIMARY KEY,
+                employee_id INTEGER NOT NULL,
+                date TEXT,
+                amount REAL NOT NULL DEFAULT 0,
+                transaction_type TEXT,
+                description TEXT,
+                entry_type TEXT NOT NULL DEFAULT 'manual',
+                payroll_year INTEGER,
+                payroll_month INTEGER
+            );
+            """
+        )
+        return conn
+
+    def test_badge_uses_marked_present_days_not_full_month_preset(self):
+        """Few marked present days must not display as 31/31 paid preset."""
+        year, month = 2026, 5
+        num_days = calendar.monthrange(year, month)[1]
+        self.assertEqual(num_days, 31)
+
+        conn = self._conn()
+        for day in (1, 2, 3):
+            conn.execute(
+                "INSERT INTO attendance (employee_id, date, status, updated_at) VALUES (1, ?, 'present', '2026-05-03')",
+                (f'{year}-{month:02d}-{day:02d}',),
+            )
+
+        att = _get_month_attendance(conn, 1, year, month)
+        self.assertEqual(att['badge_num'], 3)
+        self.assertEqual(att['badge_den'], 31)
+
+        emp = _attach_employee_month_context(
+            conn,
+            {
+                'id': 1,
+                'name': 'Test',
+                'gross_salary': 30000,
+                'basic_salary': 0,
+                'epf_amount': 0,
+                'esic_amount': 0,
+                'total_off': 4,
+                'epf_exempt': 1,
+                'esic_exempt': 1,
+            },
+            year,
+            month,
+        )
+        self.assertEqual(emp['att']['badge_num'], 3)
+        self.assertEqual(emp['att']['display_badge_num'], 3)
+        self.assertEqual(emp['att']['badge_den'], 31)
+        # Payroll may still treat unmarked days as paid; badge must not.
+        self.assertEqual(emp['paid_calendar_days'], 31)
 
 
 if __name__ == '__main__':

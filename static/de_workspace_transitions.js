@@ -68,6 +68,59 @@
     return hasWorkspaceShell() || isFullscreenActive() || isFullscreenPreferred();
   }
 
+  function formToGetUrl(form){
+    var url = new URL(form.getAttribute('action') || window.location.href, window.location.href);
+    var params = new URLSearchParams();
+    var fd = new FormData(form);
+    fd.forEach(function(value, key){
+      if(typeof File !== 'undefined' && value instanceof File) return;
+      params.append(key, String(value));
+    });
+    url.search = params.toString();
+    return withSalesScope(url.toString());
+  }
+
+  function shouldSoftSubmitForm(form){
+    if(!form || form.nodeName !== 'FORM') return false;
+    if(form.getAttribute('data-de-hard-nav') === '1') return false;
+    if(form.hasAttribute('data-de-hard-nav')) return false;
+    var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
+    if(method && method !== 'get') return false;
+    var enctype = String(form.getAttribute('enctype') || form.enctype || '').toLowerCase();
+    if(enctype.indexOf('multipart') !== -1) return false;
+    return shouldSoftNavigate();
+  }
+
+  /** Convert a GET form submit into soft-nav so fullscreen and the workspace shell survive. */
+  function softSubmitForm(form){
+    if(!shouldSoftSubmitForm(form)) return false;
+    var url = formToGetUrl(form);
+    navigateWithTransition(url);
+    return true;
+  }
+
+  function installFormSubmitGuards(){
+    if(window.__deFormSubmitGuards) return;
+    window.__deFormSubmitGuards = true;
+
+    document.addEventListener('submit', function(event){
+      var form = event.target;
+      if(!form || form.nodeName !== 'FORM') return;
+      if(!shouldSoftSubmitForm(form)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      softSubmitForm(form);
+    }, true);
+
+    try{
+      var originalSubmit = HTMLFormElement.prototype.submit;
+      HTMLFormElement.prototype.submit = function(){
+        if(softSubmitForm(this)) return;
+        return originalSubmit.call(this);
+      };
+    } catch(e){}
+  }
+
   function withSalesScope(url){
     try{
       var target = new URL(url, window.location.origin);
@@ -218,9 +271,11 @@
         loadExternalScript(old).then(next);
         return;
       }
-      var inline = document.createElement('script');
-      inline.text = old.textContent;
-      document.body.appendChild(inline);
+      try{
+        var inline = document.createElement('script');
+        inline.text = old.textContent;
+        document.body.appendChild(inline);
+      } catch(e){}
       next();
     }
 
@@ -240,6 +295,15 @@
     );
   }
 
+  function extractNestedScripts(element, scripts){
+    if(!element || element.nodeType !== 1) return;
+    Array.from(element.querySelectorAll('script')).forEach(function(scriptEl){
+      if(!isExecutableScript(scriptEl)) return;
+      scripts.push(scriptEl.cloneNode(true));
+      if(scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    });
+  }
+
   function collectNodesAndScripts(rootEl){
     var scripts = [];
     var nodes = [];
@@ -248,6 +312,7 @@
         scripts.push(node);
       } else if(node.nodeType === 1 || node.nodeType === 3){
         if(node.nodeType === 3 && !String(node.textContent || '').trim()) return;
+        if(node.nodeType === 1) extractNestedScripts(node, scripts);
         nodes.push(node);
       }
     });
@@ -418,13 +483,20 @@
       if(window.deFullscreen && typeof window.deFullscreen.setSoftNavInProgress === 'function'){
         window.deFullscreen.setSoftNavInProgress(false);
       }
+      if(typeof done === 'function') done();
+      // Soft-nav already pushState'd the target URL. Failing silently leaves a stale
+      // page (month/year filters look broken until a manual refresh). Always hard-nav.
       window.location.href = url;
     });
   }
 
   function navigateWithTransition(url){
-    if(!url || url === window.location.href) return;
+    if(!url) return;
     url = withSalesScope(url);
+    if(url === window.location.href){
+      window.deSoftRefresh(url);
+      return;
+    }
     rememberSidebarState();
     try{
       sessionStorage.setItem(NAV_FLAG, '1');
@@ -486,7 +558,7 @@
     try{
       path = new URL(link.href, window.location.href).pathname.toLowerCase();
     } catch(e){}
-    if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1) return true;
+    if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1 || path.indexOf('/report') !== -1) return true;
     if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path) || /\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(rawHref)){
       return true;
     }
@@ -536,6 +608,36 @@
 
   window.deNavigateWithTransition = navigateWithTransition;
   window.deHidePageTransition = hideOverlay;
+  window.deSoftSubmitForm = softSubmitForm;
+  /** Soft-reload current (or given) URL without a hard navigation, so fullscreen can stay. */
+  window.deSoftRefresh = function(url){
+    url = withSalesScope(url || window.location.href);
+    rememberSidebarState();
+    try{
+      sessionStorage.setItem(NAV_FLAG, '1');
+    } catch(e){}
+
+    if(window.deFullscreen && typeof window.deFullscreen.setSoftNavInProgress === 'function'){
+      window.deFullscreen.setSoftNavInProgress(true);
+    }
+    if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+      window.deFullscreen.preserveForNavigation();
+    }
+
+    if(shouldSoftNavigate()){
+      showOverlay();
+      softNavigate(url, hideOverlay);
+      return;
+    }
+
+    if(window.deFullscreen && typeof window.deFullscreen.isPreferred === 'function' && window.deFullscreen.isPreferred()){
+      showOverlay();
+      softNavigate(url, hideOverlay);
+      return;
+    }
+
+    window.location.href = url;
+  };
   window.deWorkspaceReinit = function(){
     initDeSidebarPageTransitions();
     if(typeof window.initEpListboxes === 'function'){
@@ -550,15 +652,20 @@
     if(window.SalesDateRangePicker && typeof window.SalesDateRangePicker.syncChipDisplays === 'function'){
       window.SalesDateRangePicker.syncChipDisplays();
     }
+    if(window.lucide && typeof window.lucide.createIcons === 'function'){
+      window.lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
+    }
   };
 
   window.addEventListener('popstate', function(){
     if(history.state && history.state.deSoftNav){
-      window.location.reload();
+      if(typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
+      else window.location.reload();
     }
   });
 
   function init(){
+    installFormSubmitGuards();
     initDeSidebarPageTransitions();
     initPageEnterTransition();
   }

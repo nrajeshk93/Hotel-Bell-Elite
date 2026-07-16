@@ -12,6 +12,8 @@
   var todayIso = {{ today_iso|tojson }};
   var paymentLabels = {{ expense_payment_labels|tojson }};
   var categoryLabels = {{ expense_category_labels|tojson }};
+  var availableCashUrl = {{ available_cash_url|tojson }};
+  var availableCash = Number({{ available_cash|default(0)|tojson }} || 0);
 
   var modal = document.getElementById('pl-add-purchase-modal');
   var openBtn = document.getElementById('pl-open-add-purchase');
@@ -19,7 +21,8 @@
   var saveBtn = document.getElementById('pl-add-purchase-save');
   var saveLabel = document.getElementById('pl-add-purchase-save-label');
   var titleEl = document.getElementById('pl-add-purchase-title');
-  var copyEl = document.getElementById('pl-add-purchase-copy');
+  var availableWrap = document.getElementById('pl-add-available-wrap');
+  var availableCashEl = document.getElementById('pl-add-available-cash');
   var errorEl = document.getElementById('pl-add-purchase-error');
   var expenseIdEl = document.getElementById('pl-edit-expense-id');
   var dateEl = document.getElementById('pl-add-purchase-date');
@@ -29,6 +32,43 @@
   var transactionWrap = document.getElementById('pl-add-transaction-wrap');
   var transactionEl = document.getElementById('pl-add-transaction-id');
   var editingExpenseId = null;
+  var availableFetchToken = 0;
+
+  function formatAvailableCash(amount){
+    if (typeof window.formatINR === 'function') return window.formatINR(amount, 0);
+    var n = Number(amount || 0);
+    return isFinite(n) ? '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '₹0';
+  }
+
+  function syncAvailableCashDisplay(){
+    var paymentInput = document.getElementById('pl-add-payment-input');
+    var method = paymentInput ? paymentInput.value : 'cash';
+    var isCash = method === 'cash';
+    if (availableWrap) availableWrap.hidden = !isCash;
+    if (availableCashEl) availableCashEl.textContent = formatAvailableCash(availableCash);
+  }
+
+  async function refreshAvailableCash(){
+    if (!availableCashUrl) {
+      syncAvailableCashDisplay();
+      return;
+    }
+    var token = ++availableFetchToken;
+    var purchaseDate = dateEl && dateEl.value ? dateEl.value : todayIso;
+    var url = new URL(availableCashUrl, window.location.origin);
+    url.searchParams.set('company', defaultCompany);
+    url.searchParams.set('date', purchaseDate);
+    if (editingExpenseId) url.searchParams.set('exclude_expense_id', editingExpenseId);
+    try {
+      var res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      var data = await res.json().catch(function(){ return {}; });
+      if (token !== availableFetchToken) return;
+      if (res.ok && data.ok) availableCash = Number(data.available_cash || 0);
+    } catch (err) {
+      /* keep last known availableCash */
+    }
+    if (token === availableFetchToken) syncAvailableCashDisplay();
+  }
 
   function setError(msg){
     if (!errorEl) return;
@@ -96,7 +136,13 @@
     var needle = String(query || '').trim().toLowerCase();
     var options = Array.from(optionsWrap.querySelectorAll('.staff-supplier-option, .staff-category-option'));
     if (!needle) {
-      options.forEach(function(option){ option.classList.remove('is-filtered-out'); });
+      options.sort(function(a, b){
+        return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
+      });
+      options.forEach(function(option){
+        option.classList.remove('is-filtered-out');
+        optionsWrap.appendChild(option);
+      });
       if (emptyEl) emptyEl.hidden = options.length > 0;
       return;
     }
@@ -112,6 +158,17 @@
     options.forEach(function(option){ option.classList.add('is-filtered-out'); });
     best.forEach(function(entry){ entry.option.classList.remove('is-filtered-out'); });
     if (emptyEl) emptyEl.hidden = true;
+  }
+
+  function scrollSelectedToTop(list){
+    if (!list) return;
+    var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"], .staff-supplier-option.is-selected, .staff-category-option.is-selected');
+    if (!selected) return;
+    requestAnimationFrame(function(){
+      var searchWrap = list.querySelector('.staff-supplier-search-wrap, .pl-supplier-search-wrap, .ep-listbox-search-wrap');
+      var topPad = searchWrap ? searchWrap.offsetHeight : 0;
+      list.scrollTop = Math.max(0, selected.offsetTop - topPad);
+    });
   }
 
   function bindListbox(root){
@@ -135,6 +192,7 @@
         search.focus();
         filterSearchableOptions(root, search.value);
       }
+      scrollSelectedToTop(list);
     });
 
     list.addEventListener('click', function(e){
@@ -153,7 +211,10 @@
         valueEl.classList.remove('staff-supplier-placeholder');
       }
       closeListbox(root);
-      if (root.id === 'pl-add-payment-listbox') syncTransactionVisibility();
+      if (root.id === 'pl-add-payment-listbox') {
+        syncTransactionVisibility();
+        syncAvailableCashDisplay();
+      }
     });
 
     if (search) {
@@ -169,6 +230,7 @@
     var method = paymentInput ? paymentInput.value : 'cash';
     if (transactionWrap) transactionWrap.hidden = method !== 'bank_transfer';
     if (method !== 'bank_transfer' && transactionEl) transactionEl.value = '';
+    syncAvailableCashDisplay();
   }
 
   function setListboxValue(prefix, value, label, placeholder){
@@ -196,11 +258,6 @@
 
   function setModalMode(isEdit){
     if (titleEl) titleEl.textContent = isEdit ? 'Edit Purchase' : 'Add Purchase';
-    if (copyEl) {
-      copyEl.textContent = isEdit
-        ? 'Update this outstanding credit purchase. Cleared or partially paid purchases cannot be edited.'
-        : 'Record a hotel purchase with supplier, category, payment type, and purchase date. This creates the same expense entry used in Sales Update — Hotel.';
-    }
     if (saveLabel) saveLabel.textContent = isEdit ? 'Save changes' : 'Add purchase';
   }
 
@@ -219,6 +276,7 @@
     setListboxValue('pl-add-payment', 'cash', paymentLabels.cash || 'Cash');
     syncTransactionVisibility();
     closeAllListboxes();
+    refreshAvailableCash();
   }
 
   function openPurchaseModal(){
@@ -250,6 +308,7 @@
     setListboxValue('pl-add-payment', paymentType, paymentLabels[paymentType] || paymentType);
     if (transactionEl) transactionEl.value = btn.getAttribute('data-transaction-id') || '';
     syncTransactionVisibility();
+    refreshAvailableCash();
     openModal(modal);
     if (descriptionEl) descriptionEl.focus();
   }
@@ -267,7 +326,10 @@
     var expenseId = btn.getAttribute('data-expense-id') || '';
     var expenseCode = btn.getAttribute('data-expense-code') || expenseId;
     if (!expenseId) return;
-    if (!window.confirm('Delete purchase ' + expenseCode + '? This cannot be undone.')) return;
+    var ok = typeof window.deConfirm === 'function'
+      ? await window.deConfirm('Delete purchase ' + expenseCode + '? This cannot be undone.')
+      : window.confirm('Delete purchase ' + expenseCode + '? This cannot be undone.');
+    if (!ok) return;
     btn.disabled = true;
     try {
       var res = await fetch(deleteUrl, {
@@ -277,7 +339,8 @@
       });
       var data = await res.json();
       if (!data.ok) throw new Error(data.error || 'Could not delete purchase.');
-      window.location.reload();
+      if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
+      else window.location.reload();
     } catch (err) {
       window.alert(err.message || 'Could not delete purchase.');
       btn.disabled = false;
@@ -333,6 +396,10 @@
       setError('Please enter the bank transaction ID.');
       return;
     }
+    if (paymentType === 'cash' && Number(amountRaw) - Number(availableCash) > 0.001) {
+      setError('Cash expense cannot be more than available cash (' + formatAvailableCash(availableCash) + ').');
+      return;
+    }
 
     setError('');
     if (saveBtn) saveBtn.disabled = true;
@@ -365,7 +432,8 @@
         url.searchParams.set('date_from', savedDate);
         url.searchParams.set('date_to', savedDate);
       }
-      window.location.href = url.toString();
+      if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh(url.toString());
+      else window.location.href = url.toString();
     } catch (err) {
       setError(err.message || (isEdit ? 'Could not update purchase.' : 'Could not save purchase.'));
     } finally {
@@ -374,6 +442,7 @@
   }
 
   if (saveBtn) saveBtn.addEventListener('click', submitPurchase);
+  if (dateEl) dateEl.addEventListener('change', refreshAvailableCash);
 
   /* Inline supplier add */
   var supplierModal = document.getElementById('pl-add-supplier-modal');
@@ -411,7 +480,13 @@
       opt.classList.remove('is-selected');
       opt.setAttribute('aria-selected', 'false');
     });
-    supplierOptions.appendChild(btn);
+    var newName = String(supplier.name || '').toLowerCase();
+    var existing = Array.from(supplierOptions.querySelectorAll('.staff-supplier-option'));
+    var insertBefore = existing.find(function(opt){
+      return (opt.getAttribute('data-name') || '') > newName;
+    });
+    if (insertBefore) supplierOptions.insertBefore(btn, insertBefore);
+    else supplierOptions.appendChild(btn);
     var hidden = document.getElementById('pl-add-supplier-input');
     var valueEl = document.getElementById('pl-add-supplier-value');
     if (hidden) hidden.value = String(supplier.id);

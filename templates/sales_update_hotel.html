@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=3">
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
 <script>
@@ -52,7 +52,8 @@
           data-expense-add-url="{{ url_for('sales_update_add_expense') }}"
           data-expense-edit-url="{{ url_for('sales_update_edit_expense') }}"
           data-expense-delete-url="{{ url_for('sales_update_delete_expense') }}"
-          data-supplier-create-url="{{ url_for('create_supplier') }}"></div>
+          data-supplier-create-url="{{ url_for('create_supplier') }}"
+          data-available-cash="{{ available_cash }}"></div>
         {% include 'partials/sales_update_petty_section.html' %}
         <div class="se-sales-outlets-grid se-sales-outlets-grid--single">
         {% include 'partials/sales_update_hotel_ledger.html' %}

@@ -1041,7 +1041,10 @@ SalesDateRangePicker.init({
     if (!widget) return;
     if (!guardEntryEditable(outlet)) return;
     const outletLabel = outlet || 'this outlet';
-    if (!window.confirm(`Clear all amounts in Sales Entry for ${outletLabel}? This resets uploaded amounts. Petty Cash is not changed.`)) return;
+    var ok = typeof window.deConfirm === 'function'
+      ? await window.deConfirm(`Clear all amounts in Sales Entry for ${outletLabel}? This resets uploaded amounts. Petty Cash is not changed.`)
+      : window.confirm(`Clear all amounts in Sales Entry for ${outletLabel}? This resets uploaded amounts. Petty Cash is not changed.`);
+    if (!ok) return;
     const clearBtn = document.querySelector(`[data-clear-outlet="${outlet}"]`);
     clearTimeout(saveTimer);
     if (clearBtn) clearBtn.disabled = true;
@@ -1289,7 +1292,10 @@ SalesDateRangePicker.init({
   }
   async function deleteCashTransfer(transferId) {
     if (!guardEntryEditable() || !transferId) return;
-    if (!window.confirm('Delete this cash transfer?')) return;
+    var ok = typeof window.deConfirm === 'function'
+      ? await window.deConfirm('Delete this cash transfer?')
+      : window.confirm('Delete this cash transfer?');
+    if (!ok) return;
     try {
       await performCashTransferDelete(transferId);
     } catch (err) {

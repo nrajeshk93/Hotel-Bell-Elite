@@ -2,13 +2,17 @@ import unittest
 
 from workspace_access import (
     access_module_tree_ui,
+    accounts_access_list,
     build_user_context,
     dashboard_access_list,
+    get_endpoint_accounts_submodule,
     get_endpoint_dashboard_module,
     get_endpoint_sales_analytics_submodules,
     sales_analytics_access_list,
     set_user_permissions,
+    user_can_access_accounts_submodule,
     user_can_access_dashboard,
+    user_can_access_endpoint_accounts,
     user_can_access_endpoint_sales_analytics,
     user_can_access_sales_analytics_submodule,
     user_can_access_supplier_master,
@@ -54,6 +58,17 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Room Transfer",
             ],
         )
+        accounts_children = [child["label"] for child in tree[2]["children"]]
+        self.assertEqual(
+            accounts_children,
+            [
+                "Purchase Ledger",
+                "Cash Ledger",
+                "Credit Payment",
+                "Purchase Verification",
+                "Supplier Master",
+            ],
+        )
 
     def test_supplier_master_uses_accounts_access(self):
         user = {
@@ -62,9 +77,34 @@ class WorkspaceAccessTests(unittest.TestCase):
             "dashboard_access": {"accounts"},
             "sales_analytics_access": set(),
             "user_access": set(),
+            "accounts_access": set(),
         }
         self.assertTrue(user_can_access_supplier_master(user))
         self.assertEqual(get_endpoint_dashboard_module("supplier_master"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("cash_ledger"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("cash_ledger_available"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("cash_ledger_load"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("cash_ledger_transfer"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("export_cash_ledger_report"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("export_purchase_ledger_report"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("export_supplier_report"), "accounts")
+
+    def test_accounts_submodule_grants_only_selected_pages(self):
+        user = {
+            "id": 6,
+            "is_admin": False,
+            "dashboard_access": {"accounts"},
+            "accounts_access": {"cash_ledger"},
+            "sales_analytics_access": set(),
+            "user_access": set(),
+        }
+        self.assertTrue(user_can_access_dashboard(user, "accounts"))
+        self.assertTrue(user_can_access_accounts_submodule(user, "cash_ledger"))
+        self.assertFalse(user_can_access_accounts_submodule(user, "purchase_ledger"))
+        self.assertTrue(user_can_access_endpoint_accounts(user, "cash_ledger"))
+        self.assertFalse(user_can_access_endpoint_accounts(user, "purchase_ledger"))
+        self.assertEqual(get_endpoint_accounts_submodule("purchase_ledger"), "purchase_ledger")
+        self.assertEqual(accounts_access_list(user), ["cash_ledger"])
 
     def test_submodule_grants_parent_dashboard_access(self):
         user = {
@@ -112,6 +152,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("purchase_ledger_add"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("purchase_ledger_edit"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("purchase_ledger_delete"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("export_purchase_ledger_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_credit_payment_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_purchase_verification_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("credit_payment"), "accounts")
@@ -124,6 +165,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("purchase_verification_detail"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("supplier_master"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("save_supplier"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("export_supplier_report"), "accounts")
         self.assertEqual(get_endpoint_sales_analytics_submodules("save_sales_update"), ["bar", "restaurant"])
 
 

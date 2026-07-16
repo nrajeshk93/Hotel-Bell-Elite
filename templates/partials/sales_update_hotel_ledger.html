@@ -90,7 +90,12 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/><path d="M16 16v6"/><path d="M19 19h-6"/></svg>
       <span id="sales-expense-title">Expenses</span>
     </div>
-    <p class="staff-credit-copy">Add each expense with a short description and value. The total updates the Expense amount in Sales Entry.</p>
+    <div class="se-expense-available-cash" id="sales-expense-available-wrap" hidden>
+      <div class="se-expense-available-cash-card" aria-label="Available cash">
+        <span class="se-expense-available-cash-label">Available Cash</span>
+        <span class="se-expense-available-cash-value" id="sales-expense-available-cash">{{ available_cash|default(0)|inr(0) }}</span>
+      </div>
+    </div>
     <div id="sales-expense-error" class="staff-credit-error"></div>
     <div class="staff-field">
       <div class="staff-supplier-field-head">

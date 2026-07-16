@@ -115,6 +115,22 @@ class CreditPaymentBalanceTests(unittest.TestCase):
         self.assertEqual(app_module._credit_settlement_status("cash", 100, 0), "cleared")
         self.assertEqual(app_module._credit_settlement_status("bank_transfer", 100, 0), "cleared")
 
+    def test_optional_filter_date_range_inactive_when_missing(self):
+        date_from, date_to, active = app_module._resolve_optional_filter_date_range({}, "date_from", "date_to")
+        self.assertIsNone(date_from)
+        self.assertIsNone(date_to)
+        self.assertFalse(active)
+
+    def test_optional_filter_date_range_active_when_provided(self):
+        date_from, date_to, active = app_module._resolve_optional_filter_date_range(
+            {"date_from": "2026-07-01", "date_to": "2026-07-14"},
+            "date_from",
+            "date_to",
+        )
+        self.assertEqual(date_from, date(2026, 7, 1))
+        self.assertEqual(date_to, date(2026, 7, 14))
+        self.assertTrue(active)
+
 
 class CreditPaymentValidationTests(unittest.TestCase):
     def setUp(self):

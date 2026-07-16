@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cash Ledger | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=5">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper" id="cash-ledger-page"
+     data-load-url="{{ load_url }}"
+     data-transfer-url="{{ transfer_url }}"
+     data-delete-load-url="{{ delete_load_url }}"
+     data-delete-transfer-url="{{ delete_transfer_url }}"
+     data-company="{{ default_company }}"
+     data-today="{{ today_iso }}">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
+            </div>
+            <h1>{{ page_title }}</h1>
+          </div>
+          <p>{{ page_subtitle }}</p>
+        </div>
+      </div>
+      <div class="su-header-tools cl-header-actions">
+        <a class="btn btn-primary" href="{{ cash_ledger_report_url }}" download>Cash ledger report</a>
+        <button type="button" class="btn btn-primary" id="cl-open-load">Load Cash</button>
+        <button type="button" class="btn btn-primary" id="cl-open-transfer">Transfer Out</button>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="cash-ledger-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters cl-filter-form" aria-label="Cash ledger filters"
+              data-date-filter-active="{{ '1' if date_filter_active else '0' }}"
+              data-clear-url="{{ filter_form_action }}">
+          <input type="hidden" id="cash-ledger-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="cash-ledger-date-to" name="date_to" value="{{ date_to }}">
+          <div class="se-filter-chip-date-host cl-date-range-host" id="cl-date-range-host">
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range{% if date_filter_active %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <span class="se-filter-chip-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                </span>
+                <div class="an-range-wrap an-range-wrap--sales" id="cl-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="cl-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="cl-date-range-panel">
+                    <span class="an-range-trigger-label">
+                      <span id="cl-date-range-display">{% if date_filter_active %}{{ date_from }} – {{ date_to }}{% else %}Date{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="cl-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="cl-date-range-panel" role="dialog" aria-labelledby="cl-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="cl-date-range-panel-title">Date range</div>
+                      <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="cl-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="cl-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="cl-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="cl-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="cl-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="cl-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="cl-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="cl-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <div class="pl-summary-row cl-summary-row">
+      <article class="card pl-summary-card" aria-label="Sales cash">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Sales Cash</div>
+          <div class="pl-summary-value pl-amount" data-amount="{{ sales_total }}">{{ sales_total }}</div>
+          <div class="pl-summary-meta">{{ sales_count }} entr{{ 'y' if sales_count == 1 else 'ies' }}</div>
+        </div>
+      </article>
+      <article class="card pl-summary-card" aria-label="Load cash">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Load Cash</div>
+          <div class="pl-summary-value pl-amount" data-amount="{{ load_total }}">{{ load_total }}</div>
+          <div class="pl-summary-meta">{{ load_count }} load{{ '' if load_count == 1 else 's' }}</div>
+        </div>
+      </article>
+      <article class="card pl-summary-card" aria-label="Cash expenses">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Expense</div>
+          <div class="pl-summary-value pl-amount" data-amount="{{ expense_total }}">{{ expense_total }}</div>
+          <div class="pl-summary-meta">{{ expense_count }} expense{{ '' if expense_count == 1 else 's' }}</div>
+        </div>
+      </article>
+      <article class="card pl-summary-card" aria-label="Transfer out">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Transfer Out</div>
+          <div class="pl-summary-value pl-amount" data-amount="{{ transfer_total }}">{{ transfer_total }}</div>
+          <div class="pl-summary-meta">{{ transfer_count }} transfer{{ '' if transfer_count == 1 else 's' }}</div>
+        </div>
+      </article>
+      <article class="card pl-summary-card cl-summary-card--available" aria-label="Available cash">
+        <div class="card-body pl-summary-body">
+          <div class="pl-summary-label">Available Cash</div>
+          <div class="pl-summary-value pl-amount" data-amount="{{ available_total }}">{{ available_total }}</div>
+          <div class="pl-summary-meta">{{ ledger_entries|length }} movement{{ '' if ledger_entries|length == 1 else 's' }}</div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel" aria-label="Cash ledger entries">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+          <span>Cash movements</span>
+        </div>
+        <span class="pl-count">{{ ledger_entries|length }} entries</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if ledger_entries %}
+        <div class="pl-table-wrap">
+          <table class="pl-table" id="cl-ledger-table" aria-label="Cash ledger movements">
+            <thead>
+              <tr>
+                <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
+                <th class="pl-sortable" data-sort="type" scope="col" tabindex="0" aria-sort="none">Type</th>
+                <th class="pl-sortable" data-sort="detail" scope="col" tabindex="0" aria-sort="none">Detail</th>
+                <th class="pl-sortable" data-sort="description" scope="col" tabindex="0" aria-sort="none">Description</th>
+                <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
+                <th class="pl-col-amount" scope="col">Balance</th>
+                <th class="pl-col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in ledger_entries %}
+              <tr data-entry-type="{{ entry.entry_type }}" data-source-id="{{ entry.source_id }}">
+                <td class="pl-col-date" data-sort-value="{{ entry.entry_date or '' }}">{{ entry.entry_date }}</td>
+                <td data-sort-value="{{ cash_ledger_entry_labels.get(entry.entry_type, entry.entry_type) }}">
+                  <span class="cl-type-pill cl-type-pill--{{ entry.entry_type }}">{{ cash_ledger_entry_labels.get(entry.entry_type, entry.entry_type) }}</span>
+                </td>
+                <td data-sort-value="{{ entry.detail or '' }}">{{ entry.detail or '—' }}</td>
+                <td data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
+                <td class="pl-col-amount {% if entry.signed_amount >= 0 %}cl-amount-in{% else %}cl-amount-out{% endif %}" data-amount="{{ entry.signed_amount }}" data-sort-value="{{ entry.signed_amount }}">{{ entry.signed_amount }}</td>
+                <td class="pl-col-amount cl-balance pl-amount" data-amount="{{ entry.running_balance }}">{{ entry.running_balance }}</td>
+                <td class="pl-col-actions">
+                  {% if entry.can_delete %}
+                  <button
+                    type="button"
+                    class="pl-delete-btn cl-delete-btn"
+                    data-entry-type="{{ entry.entry_type }}"
+                    data-source-id="{{ entry.source_id }}"
+                    data-description="{{ entry.description or '' }}"
+                  >Delete</button>
+                  {% else %}
+                  <span class="pl-action-muted">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">No cash movements found for the selected dates.</div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+
+<div class="modal-backdrop" id="cl-load-modal" aria-hidden="true">
+  <div class="staff-credit-box" role="dialog" aria-modal="true" aria-labelledby="cl-load-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+      <span id="cl-load-title">Load Cash</span>
+    </div>
+    <p class="staff-credit-copy">Add cash loaded into the hotel till. This increases Available Cash.</p>
+    <div id="cl-load-error" class="staff-credit-error"></div>
+    <div class="staff-field">
+      <label for="cl-load-date">Date *</label>
+      <input id="cl-load-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
+    </div>
+    <div class="staff-field">
+      <label for="cl-load-amount">Amount *</label>
+      <input id="cl-load-amount" class="staff-input" type="number" min="0.01" step="0.01" placeholder="0.00">
+    </div>
+    <div class="staff-field">
+      <label for="cl-load-description">Description *</label>
+      <input id="cl-load-description" class="staff-input" type="text" maxlength="200" placeholder="e.g. Opening float / owner top-up">
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn btn-secondary" id="cl-load-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="cl-load-submit">Save load</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="cl-transfer-modal" aria-hidden="true">
+  <div class="staff-credit-box" role="dialog" aria-modal="true" aria-labelledby="cl-transfer-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+      <span id="cl-transfer-title">Transfer Out</span>
+    </div>
+    <p class="staff-credit-copy">Record cash moved to the bank or given to the owner. This reduces Available Cash.</p>
+    <div id="cl-transfer-error" class="staff-credit-error"></div>
+    <div class="staff-field">
+      <label for="cl-transfer-date">Date *</label>
+      <input id="cl-transfer-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
+    </div>
+    <div class="staff-field">
+      <label>Destination *</label>
+      <div class="staff-credit-type-toggle" id="cl-transfer-destination-toggle" role="group" aria-label="Transfer destination">
+        {% for dest_key, dest_label in cash_ledger_transfer_destinations %}
+        <button type="button" class="staff-credit-type-btn{% if dest_key == 'bank' %} active{% endif %}" data-value="{{ dest_key }}">{{ dest_label }}</button>
+        {% endfor %}
+      </div>
+      <input type="hidden" id="cl-transfer-destination" value="bank">
+    </div>
+    <div class="staff-field">
+      <label for="cl-transfer-amount">Amount *</label>
+      <input id="cl-transfer-amount" class="staff-input" type="number" min="0.01" step="0.01" placeholder="0.00">
+    </div>
+    <div class="staff-field">
+      <label for="cl-transfer-description">Description *</label>
+      <input id="cl-transfer-description" class="staff-input" type="text" maxlength="200" placeholder="e.g. Bank deposit / owner draw">
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn btn-secondary" id="cl-transfer-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="cl-transfer-submit">Save transfer</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=5"></script>
+{% include 'partials/cash_ledger_scripts.html' %}
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

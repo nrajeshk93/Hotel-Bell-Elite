@@ -22,6 +22,14 @@ _PAYROLL_SUBMODULES = (
     {"key": "credit", "label": "Credit"},
 )
 
+_ACCOUNTS_SUBMODULES = (
+    {"key": "purchase_ledger", "label": "Purchase Ledger"},
+    {"key": "cash_ledger", "label": "Cash Ledger"},
+    {"key": "credit_payment", "label": "Credit Payment"},
+    {"key": "purchase_verification", "label": "Purchase Verification"},
+    {"key": "supplier_master", "label": "Supplier Master"},
+)
+
 # Single registry aligned with the workspace sidebar and access-management UI.
 # Add a new top-level module here and wire its endpoints to auto-include it everywhere.
 _WORKSPACE_MODULE_REGISTRY = (
@@ -42,6 +50,9 @@ _WORKSPACE_MODULE_REGISTRY = (
     {
         "key": "accounts",
         "label": "Accounts",
+        "permission_scope": "accounts",
+        "permission_field": "accounts_modules",
+        "permission_children": _ACCOUNTS_SUBMODULES,
     },
     {
         "key": "employee_payroll",
@@ -74,6 +85,9 @@ _USER_ACCESS_SUBMODULE_LABELS = {
 }
 _PAYROLL_SUBMODULE_LABELS = {
     item["key"]: item["label"] for item in _PAYROLL_SUBMODULES
+}
+_ACCOUNTS_SUBMODULE_LABELS = {
+    item["key"]: item["label"] for item in _ACCOUNTS_SUBMODULES
 }
 
 _ACCESS_MODULE_UI_META = {
@@ -135,6 +149,8 @@ _SALES_ANALYTICS_ENDPOINT_GROUPS = {
     "room_transfer": {
         "sales_update_room_transfer",
         "save_room_transfer_status",
+        "create_room_transfer_payment",
+        "reverse_room_transfer_payment",
     },
 }
 
@@ -145,26 +161,46 @@ _ACCESS_ENDPOINT_GROUPS = {
     "add": set(),
 }
 _ACCESS_MANAGEMENT_ENDPOINTS = {"access_management", "save_access_user"}
-_ACCOUNTS_ENDPOINTS = {
-    "accounts",
-    "purchase_ledger",
-    "purchase_ledger_add",
-    "purchase_ledger_edit",
-    "purchase_ledger_delete",
-    "credit_payment",
-    "export_credit_payment_report",
-    "purchase_verification",
-    "create_credit_payment",
-    "delete_credit_payment",
-    "credit_payment_detail",
-    "create_purchase_verification",
-    "delete_purchase_verification",
-    "purchase_verification_detail",
-    "export_purchase_verification_report",
-    "supplier_master",
-    "save_supplier",
-    "delete_supplier",
+_ACCOUNTS_ENDPOINT_GROUPS = {
+    "purchase_ledger": {
+        "purchase_ledger",
+        "purchase_ledger_add",
+        "purchase_ledger_edit",
+        "purchase_ledger_delete",
+        "export_purchase_ledger_report",
+    },
+    "cash_ledger": {
+        "cash_ledger",
+        "cash_ledger_available",
+        "cash_ledger_load",
+        "cash_ledger_transfer",
+        "cash_ledger_delete_load",
+        "cash_ledger_delete_transfer",
+        "export_cash_ledger_report",
+    },
+    "credit_payment": {
+        "credit_payment",
+        "export_credit_payment_report",
+        "create_credit_payment",
+        "delete_credit_payment",
+        "credit_payment_detail",
+    },
+    "purchase_verification": {
+        "purchase_verification",
+        "create_purchase_verification",
+        "delete_purchase_verification",
+        "purchase_verification_detail",
+        "export_purchase_verification_report",
+    },
+    "supplier_master": {
+        "supplier_master",
+        "save_supplier",
+        "delete_supplier",
+        "export_supplier_report",
+    },
 }
+_ACCOUNTS_PARENT_ENDPOINTS = set().union(*_ACCOUNTS_ENDPOINT_GROUPS.values()) | {"accounts"}
+_ACCOUNTS_ENDPOINTS = _ACCOUNTS_PARENT_ENDPOINTS
 
 _PAYROLL_ENDPOINT_GROUPS = {
     "employee": {
@@ -267,6 +303,7 @@ def load_user_permissions(conn, user_id):
     sales_analytics_access = set()
     user_access = set()
     payroll_access = set()
+    accounts_access = set()
     for row in rows:
         scope = (row["scope"] or "").strip()
         item_key = (row["item_key"] or "").strip()
@@ -278,10 +315,12 @@ def load_user_permissions(conn, user_id):
             user_access.add(item_key)
         elif scope == "payroll" and item_key:
             payroll_access.add(item_key)
+        elif scope == "accounts" and item_key:
+            accounts_access.add(item_key)
         elif scope == "dashboard" and item_key == "sales_update":
             # Legacy key from earlier builds.
             dashboard_access.add("sales_analytics")
-    return dashboard_access, sales_analytics_access, user_access, payroll_access
+    return dashboard_access, sales_analytics_access, user_access, payroll_access, accounts_access
 
 
 def build_user_context(conn, row):
@@ -290,13 +329,18 @@ def build_user_context(conn, row):
     user = dict(row)
     user["is_admin"] = bool(user.get("is_admin"))
     user["is_active"] = bool(user.get("is_active"))
-    dashboard_access, sales_analytics_access, user_access, payroll_access = load_user_permissions(
-        conn, user["id"]
-    )
+    (
+        dashboard_access,
+        sales_analytics_access,
+        user_access,
+        payroll_access,
+        accounts_access,
+    ) = load_user_permissions(conn, user["id"])
     user["dashboard_access"] = dashboard_access
     user["sales_analytics_access"] = sales_analytics_access
     user["user_access"] = user_access
     user["payroll_access"] = payroll_access
+    user["accounts_access"] = accounts_access
     user["display_name"] = (user.get("full_name") or user.get("username") or "User").strip()
     return user
 
@@ -311,6 +355,8 @@ def user_can_access_dashboard(user, module_key):
     if module_key == "access_management" and user.get("user_access", set()):
         return True
     if module_key == "employee_payroll" and user.get("payroll_access", set()):
+        return True
+    if module_key == "accounts" and user.get("accounts_access", set()):
         return True
     return module_key in user.get("dashboard_access", set())
 
@@ -339,12 +385,35 @@ def user_can_access_payroll_submodule(user, submodule_key):
     return submodule_key in user.get("payroll_access", set())
 
 
+def _accounts_access_keys(user):
+    """Resolved Accounts page keys for a user (legacy parent grant = all pages)."""
+    if not user:
+        return set()
+    if user.get("is_admin"):
+        return {item["key"] for item in _ACCOUNTS_SUBMODULES}
+    access = set(user.get("accounts_access", set()) or set())
+    if access:
+        return access
+    # Legacy: dashboard Accounts alone used to unlock every Accounts page.
+    if "accounts" in user.get("dashboard_access", set()):
+        return {item["key"] for item in _ACCOUNTS_SUBMODULES}
+    return set()
+
+
+def user_can_access_accounts_submodule(user, submodule_key):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return submodule_key in _accounts_access_keys(user)
+
+
 def user_can_access_supplier_master(user):
     if not user:
         return False
     if user.get("is_admin"):
         return True
-    if user_can_access_dashboard(user, "accounts"):
+    if user_can_access_accounts_submodule(user, "supplier_master"):
         return True
     return "suppliers" in user.get("sales_analytics_access", set())
 
@@ -361,6 +430,8 @@ def dashboard_access_list(user):
         dashboard_access.add("access_management")
     if user.get("payroll_access", set()):
         dashboard_access.add("employee_payroll")
+    if user.get("accounts_access", set()):
+        dashboard_access.add("accounts")
     return [item["key"] for item in _DASHBOARD_MODULES if item["key"] in dashboard_access]
 
 
@@ -374,6 +445,13 @@ def payroll_access_list(user):
         for item in _PAYROLL_SUBMODULES
         if item["key"] in user.get("payroll_access", set())
     ]
+
+
+def accounts_access_list(user):
+    if not user:
+        return []
+    unlocked = _accounts_access_keys(user)
+    return [item["key"] for item in _ACCOUNTS_SUBMODULES if item["key"] in unlocked]
 
 
 def sales_analytics_access_list(user):
@@ -419,6 +497,13 @@ def get_endpoint_payroll_submodule(endpoint):
     return None
 
 
+def get_endpoint_accounts_submodule(endpoint):
+    for key, endpoints in _ACCOUNTS_ENDPOINT_GROUPS.items():
+        if endpoint in endpoints:
+            return key
+    return None
+
+
 def get_endpoint_sales_analytics_submodules(endpoint):
     matches = []
     for key, endpoints in _SALES_ANALYTICS_ENDPOINT_GROUPS.items():
@@ -437,6 +522,13 @@ def user_can_access_endpoint_sales_analytics(user, endpoint):
         user_can_access_sales_analytics_submodule(user, submodule)
         for submodule in submodules
     )
+
+
+def user_can_access_endpoint_accounts(user, endpoint):
+    submodule = get_endpoint_accounts_submodule(endpoint)
+    if not submodule:
+        return True
+    return user_can_access_accounts_submodule(user, submodule)
 
 
 def get_endpoint_user_access_submodule(endpoint):
@@ -464,6 +556,7 @@ def set_user_permissions(
     sales_analytics_modules=None,
     user_access_modules=None,
     payroll_modules=None,
+    accounts_modules=None,
 ):
     dashboard_modules = sorted({
         module for module in dashboard_modules if module in _DASHBOARD_MODULE_LABELS
@@ -483,6 +576,11 @@ def set_user_permissions(
         for module in (payroll_modules or [])
         if module in _PAYROLL_SUBMODULE_LABELS
     })
+    accounts_modules = sorted({
+        module
+        for module in (accounts_modules or [])
+        if module in _ACCOUNTS_SUBMODULE_LABELS
+    })
 
     if sales_analytics_modules and "sales_analytics" not in dashboard_modules:
         dashboard_modules.append("sales_analytics")
@@ -492,6 +590,9 @@ def set_user_permissions(
         dashboard_modules = sorted(set(dashboard_modules))
     if payroll_modules and "employee_payroll" not in dashboard_modules:
         dashboard_modules.append("employee_payroll")
+        dashboard_modules = sorted(set(dashboard_modules))
+    if accounts_modules and "accounts" not in dashboard_modules:
+        dashboard_modules.append("accounts")
         dashboard_modules = sorted(set(dashboard_modules))
 
     conn.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
@@ -518,6 +619,12 @@ def set_user_permissions(
                 "INSERT INTO user_permissions (user_id, scope, item_key) VALUES (?, ?, ?)",
                 (user_id, "payroll", module_key),
             )
+    if "accounts" in dashboard_modules:
+        for module_key in accounts_modules:
+            conn.execute(
+                "INSERT INTO user_permissions (user_id, scope, item_key) VALUES (?, ?, ?)",
+                (user_id, "accounts", module_key),
+            )
 
 
 def fetch_access_management_users(conn, selected_user_id=None):
@@ -539,6 +646,9 @@ def fetch_access_management_users(conn, selected_user_id=None):
         ]
         user["payroll_labels"] = [
             _PAYROLL_SUBMODULE_LABELS[key] for key in payroll_access_list(user)
+        ]
+        user["accounts_labels"] = [
+            _ACCOUNTS_SUBMODULE_LABELS[key] for key in accounts_access_list(user)
         ]
         users.append(user)
 
@@ -563,6 +673,7 @@ def validate_access_user_form(
     sales_analytics_modules,
     user_access_modules,
     payroll_modules=None,
+    accounts_modules=None,
 ):
     errors = []
     actor_is_admin = bool(actor and actor.get("is_admin"))
@@ -584,6 +695,10 @@ def validate_access_user_form(
     if "employee_payroll" in dashboard_modules and not payroll_modules and not is_admin:
         errors.append(
             "Choose at least one Employee Payroll submodule when Employee Payroll access is enabled."
+        )
+    if "accounts" in dashboard_modules and not accounts_modules and not is_admin:
+        errors.append(
+            "Choose at least one Accounts submodule when Accounts access is enabled."
         )
 
     if not actor_is_admin:
@@ -640,6 +755,7 @@ def save_access_user_record(
     sales_analytics_modules,
     user_access_modules,
     payroll_modules=None,
+    accounts_modules=None,
     sql_now,
 ):
     if user_id:
@@ -676,5 +792,6 @@ def save_access_user_record(
         sales_analytics_modules,
         user_access_modules,
         payroll_modules,
+        accounts_modules,
     )
     return saved_user_id, result_flag

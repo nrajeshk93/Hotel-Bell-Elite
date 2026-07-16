@@ -4,7 +4,12 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/><path d="M16 16v6"/><path d="M19 19h-6"/></svg>
       <span id="pl-add-purchase-title">Add Purchase</span>
     </div>
-    <p class="staff-credit-copy" id="pl-add-purchase-copy">Record a hotel purchase with supplier, category, payment type, and purchase date. This creates the same expense entry used in Sales Update — Hotel.</p>
+    <div class="se-expense-available-cash" id="pl-add-available-wrap" hidden>
+      <div class="se-expense-available-cash-card" aria-label="Available cash">
+        <span class="se-expense-available-cash-label">Available Cash</span>
+        <span class="se-expense-available-cash-value" id="pl-add-available-cash">{{ available_cash|default(0)|inr(0) }}</span>
+      </div>
+    </div>
     <div id="pl-add-purchase-error" class="staff-credit-error"></div>
     <input type="hidden" id="pl-edit-expense-id" value="">
     <div class="staff-field">

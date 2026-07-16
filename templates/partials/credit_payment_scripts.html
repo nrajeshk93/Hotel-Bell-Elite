@@ -21,7 +21,6 @@
     outstandingData = [];
   }
 
-  var lockedSupplierId = null;
   var pendingSelections = [];
   var selectionSource = 'table'; // 'table' | 'modal'
 
@@ -104,6 +103,17 @@
       });
     }
 
+    function scrollSelectedToTop(list){
+      if (!list) return;
+      var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"], .pl-supplier-option.is-selected');
+      if (!selected) return;
+      requestAnimationFrame(function(){
+        var searchWrap = list.querySelector('.pl-supplier-search-wrap, .ep-listbox-search-wrap');
+        var topPad = searchWrap ? searchWrap.offsetHeight : 0;
+        list.scrollTop = Math.max(0, selected.offsetTop - topPad);
+      });
+    }
+
     function scoreSearchOption(option, needle){
       if (!needle) return 0;
       var name = (option.getAttribute('data-name') || '').toLowerCase();
@@ -167,6 +177,7 @@
           search.focus();
           filterSearchableOptions(root, search.value);
         }
+        scrollSelectedToTop(list);
       });
 
       list.addEventListener('click', function(e){
@@ -198,11 +209,43 @@
       if (!e.target.closest('#credit-payment-filter-form [data-se-listbox]')) closeAllListboxes();
     });
 
-    ['credit-payment-date-from', 'credit-payment-date-to', 'credit-payment-pay-from', 'credit-payment-pay-to'].forEach(function(id){
-      var el = document.getElementById(id);
-      if (!el) return;
-      el.addEventListener('change', submitScope);
-    });
+    if (window.SalesDateRangePicker) {
+      SalesDateRangePicker.init({
+        wrapId: 'cp-date-range-wrap',
+        triggerId: 'cp-date-range-trigger',
+        backdropId: 'cp-date-range-backdrop',
+        panelId: 'cp-date-range-panel',
+        displayId: 'cp-date-range-display',
+        formId: 'credit-payment-filter-form',
+        fromInputId: 'credit-payment-date-from',
+        toInputId: 'credit-payment-date-to',
+        applyId: 'cp-date-range-apply',
+        prevId: 'cp-cal-prev',
+        nextId: 'cp-cal-next',
+        title0Id: 'cp-cal-title0',
+        title1Id: 'cp-cal-title1',
+        grid0Id: 'cp-cal-grid0',
+        grid1Id: 'cp-cal-grid1',
+        emptyLabel: 'Date',
+        onBeforeSubmit: function(){
+          filterForm.querySelectorAll(
+            'input[name="date_from"], input[name="date_to"], input[name="payment_date_from"], input[name="payment_date_to"]'
+          ).forEach(function(input){
+            if (!input.value) input.removeAttribute('name');
+          });
+        }
+      });
+    }
+
+    var clearBtn = document.getElementById('cp-date-range-clear');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        var clearUrl = filterForm.getAttribute('data-clear-url') || filterForm.action || '';
+        if (clearUrl) window.location.href = clearUrl;
+      });
+    }
   }
 
   /* ---------- Outstanding table multi-select ---------- */
@@ -222,43 +265,48 @@
   function selectedExpenseRows(){
     return expenseRows().filter(function(row){
       var check = row.querySelector('.cp-row-check');
-      return check && check.checked && !check.disabled;
+      return check && check.checked;
     });
+  }
+
+  function uniqueSupplierSummary(rows){
+    var names = [];
+    var seen = {};
+    rows.forEach(function(row){
+      var name = row.getAttribute('data-supplier-name') || '';
+      var id = String(row.getAttribute('data-supplier-id') || '');
+      var key = id || name;
+      if (!key || seen[key]) return;
+      seen[key] = true;
+      if (name) names.push(name);
+    });
+    if (!names.length) return '';
+    if (names.length === 1) return '· ' + names[0];
+    return '· ' + names.length + ' suppliers';
   }
 
   function updateTableSelectionUi(){
     var selected = selectedExpenseRows();
     var total = 0;
-    var supplierName = '';
     selected.forEach(function(row){
       total += Number(row.getAttribute('data-balance') || 0);
-      supplierName = row.getAttribute('data-supplier-name') || supplierName;
     });
-    lockedSupplierId = selected.length ? String(selected[0].getAttribute('data-supplier-id') || '') : null;
 
     expenseRows().forEach(function(row){
       var check = row.querySelector('.cp-row-check');
-      var supplierId = String(row.getAttribute('data-supplier-id') || '');
-      var lockedOut = !!(lockedSupplierId && supplierId !== lockedSupplierId);
       row.classList.toggle('is-selected', !!(check && check.checked));
-      row.classList.toggle('is-locked-out', lockedOut);
-      if (check) {
-        check.disabled = lockedOut;
-        if (lockedOut) check.checked = false;
-      }
+      row.classList.remove('is-locked-out');
+      if (check) check.disabled = false;
     });
 
-    var selectable = expenseRows().filter(function(row){
-      var check = row.querySelector('.cp-row-check');
-      return check && !check.disabled;
-    });
-    var allSelectableChecked = selectable.length > 0 && selectable.every(function(row){
-      return row.querySelector('.cp-row-check').checked;
-    });
+    var totalRows = expenseRows().length;
     if (selectAllCheck) {
-      selectAllCheck.checked = allSelectableChecked;
-      selectAllCheck.indeterminate = selected.length > 0 && !allSelectableChecked;
-      selectAllCheck.disabled = !selectable.length && !selected.length;
+      selectAllCheck.checked = totalRows > 0 && selected.length === totalRows;
+      selectAllCheck.indeterminate = selected.length > 0 && selected.length < totalRows;
+      selectAllCheck.disabled = totalRows === 0;
+      selectAllCheck.title = 'Select all expenses';
+      selectAllCheck.setAttribute('aria-label', 'Select all expenses');
+      selectAllCheck.removeAttribute('data-supplier-complete');
     }
 
     if (tableSelectCountEl) {
@@ -269,22 +317,22 @@
       tableSelectTotalEl.textContent = formatInr(total);
     }
     if (tableSelectSupplierEl) {
-      tableSelectSupplierEl.textContent = supplierName ? ('· ' + supplierName) : '';
+      tableSelectSupplierEl.textContent = uniqueSupplierSummary(selected);
     }
     if (selectionBar) selectionBar.hidden = selected.length === 0;
     if (openSelectBtn) openSelectBtn.disabled = selected.length === 0;
   }
 
-  function clearTableSelection(){
+  function setAllExpenseChecks(checked){
     expenseRows().forEach(function(row){
       var check = row.querySelector('.cp-row-check');
-      if (check) {
-        check.checked = false;
-        check.disabled = false;
-      }
+      if (check) check.checked = !!checked;
     });
-    lockedSupplierId = null;
     updateTableSelectionUi();
+  }
+
+  function clearTableSelection(){
+    setAllExpenseChecks(false);
   }
 
   function collectSelectionsFromTable(){
@@ -296,22 +344,7 @@
       var target = e.target;
       if (!target) return;
       if (target.id === 'cp-select-all') {
-        var checked = !!target.checked;
-        if (!checked) {
-          clearTableSelection();
-          return;
-        }
-        var anchorSupplier = lockedSupplierId;
-        if (!anchorSupplier) {
-          var firstRow = expenseRows()[0];
-          anchorSupplier = firstRow ? String(firstRow.getAttribute('data-supplier-id') || '') : null;
-        }
-        expenseRows().forEach(function(row){
-          var check = row.querySelector('.cp-row-check');
-          if (!check) return;
-          check.checked = String(row.getAttribute('data-supplier-id') || '') === String(anchorSupplier || '');
-        });
-        updateTableSelectionUi();
+        setAllExpenseChecks(!!target.checked);
         return;
       }
       if (target.classList.contains('cp-row-check')) {
@@ -321,9 +354,10 @@
 
     outstandingTable.addEventListener('click', function(e){
       var row = e.target.closest('.cp-expense-row');
-      if (!row || e.target.closest('a, button, input, label')) return;
+      if (!row || e.target.closest('a, button, label')) return;
+      if (e.target.closest('input')) return;
       var check = row.querySelector('.cp-row-check');
-      if (!check || check.disabled) return;
+      if (!check) return;
       check.checked = !check.checked;
       updateTableSelectionUi();
     });
@@ -391,31 +425,16 @@
   function updateSelectUi(){
     var selected = selectedSelectRows();
     var total = 0;
-    var supplierName = '';
-    var modalLockedSupplierId = selected.length ? String(selected[0].getAttribute('data-supplier-id') || '') : null;
     selected.forEach(function(row){
       var input = row.querySelector('.cp-select-amount');
       total += Number(input && input.value || 0);
-      supplierName = row.getAttribute('data-supplier-name') || supplierName;
     });
 
     document.querySelectorAll('.cp-select-row').forEach(function(row){
       var check = row.querySelector('.cp-select-check');
-      var supplierId = String(row.getAttribute('data-supplier-id') || '');
-      var lockedOut = modalLockedSupplierId && supplierId !== modalLockedSupplierId;
       row.classList.toggle('is-selected', !!(check && check.checked));
-      row.classList.toggle('is-locked-out', !!lockedOut);
-      if (check) {
-        check.disabled = !!lockedOut;
-        if (lockedOut) {
-          check.checked = false;
-          var amountInput = row.querySelector('.cp-select-amount');
-          if (amountInput) {
-            amountInput.disabled = true;
-            amountInput.value = row.getAttribute('data-balance');
-          }
-        }
-      }
+      row.classList.remove('is-locked-out');
+      if (check) check.disabled = false;
     });
 
     if (selectCountEl) selectCountEl.textContent = selected.length + ' selected';
@@ -424,7 +443,7 @@
       selectTotalEl.textContent = formatInr(total);
     }
     if (selectSupplierEl) {
-      selectSupplierEl.textContent = supplierName ? ('· ' + supplierName) : '';
+      selectSupplierEl.textContent = uniqueSupplierSummary(selected);
     }
   }
 
@@ -503,14 +522,33 @@
   function populatePaymentModal(selections){
     if (!allocBody) return;
     allocBody.innerHTML = '';
-    var supplierName = selections.length ? (selections[0].supplier_name || '') : '';
-    if (allocSupplierEl) allocSupplierEl.textContent = supplierName;
+    var supplierNames = [];
+    var seenSuppliers = {};
+    selections.forEach(function(item){
+      var key = String(item.supplier_id || '') + '|' + (item.supplier_name || '');
+      if (seenSuppliers[key]) return;
+      seenSuppliers[key] = true;
+      if (item.supplier_name) supplierNames.push(item.supplier_name);
+    });
+    if (allocSupplierEl) {
+      if (supplierNames.length <= 1) {
+        allocSupplierEl.textContent = supplierNames[0] || '';
+      } else {
+        allocSupplierEl.textContent = supplierNames.length + ' suppliers';
+      }
+    }
+    var multiSupplier = supplierNames.length > 1;
     selections.forEach(function(item){
       var tr = document.createElement('tr');
       tr.setAttribute('data-expense-id', item.expense_id);
+      tr.setAttribute('data-supplier-id', item.supplier_id || '');
       tr.innerHTML =
         '<td><span class="cp-alloc-code">' + escapeHtml(item.expense_code || '—') + '</span>' +
-        '<span>' + escapeHtml(item.description || '—') + '</span></td>' +
+        '<span>' + escapeHtml(item.description || '—') + '</span>' +
+        (multiSupplier && item.supplier_name
+          ? '<span class="cp-alloc-supplier">' + escapeHtml(item.supplier_name) + '</span>'
+          : '') +
+        '</td>' +
         '<td class="pl-col-amount">' + formatInr(item.balance) + '</td>' +
         '<td class="pl-col-amount"><input class="cp-alloc-input" type="number" min="0.01" step="0.01" max="' + item.balance + '" value="' + item.amount + '"></td>';
       allocBody.appendChild(tr);
@@ -594,7 +632,7 @@
     var method = showPaymentMode && paymentMethodEl ? paymentMethodEl.value : 'cash';
     var transactionId = showPaymentMode && transactionEl ? transactionEl.value.trim() : '';
     if (showPaymentMode && method === 'card' && !transactionId) {
-      setError(clearanceError, 'Transaction ID is required for card payment.');
+      setError(clearanceError, 'Transaction ID is required for bank transfer.');
       return;
     }
     var allocations = [];
@@ -618,28 +656,46 @@
       return;
     }
 
+    var pendingByExpense = {};
+    pendingSelections.forEach(function(item){
+      pendingByExpense[String(item.expense_id)] = item;
+    });
+
     var submitBtn = document.getElementById('cp-clearance-submit');
     if (submitBtn) submitBtn.disabled = true;
     setError(clearanceError, '');
     try {
-      var res = await fetch(createUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          supplier_id: pendingSelections[0].supplier_id,
-          payment_date: paymentDateEl ? paymentDateEl.value : todayIso,
-          payment_method: method,
-          transaction_id: transactionId,
-          notes: notesEl ? notesEl.value.trim() : '',
-          allocations: allocations
-        })
+      // Backend requires one supplier per payment — group mixed selections.
+      var groups = {};
+      allocations.forEach(function(allocation){
+        var pending = pendingByExpense[String(allocation.expense_id)];
+        var supplierId = pending ? Number(pending.supplier_id || 0) : 0;
+        if (!groups[supplierId]) groups[supplierId] = [];
+        groups[supplierId].push(allocation);
       });
-      var data = await res.json();
-      if (!data.ok) {
-        setError(clearanceError, data.error || labels.submit_error_record || 'Unable to record payment.');
-        return;
+      var groupIds = Object.keys(groups);
+      for (var i = 0; i < groupIds.length; i++) {
+        var supplierId = Number(groupIds[i]);
+        var res = await fetch(createUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            supplier_id: supplierId,
+            payment_date: paymentDateEl ? paymentDateEl.value : todayIso,
+            payment_method: method,
+            transaction_id: transactionId,
+            notes: notesEl ? notesEl.value.trim() : '',
+            allocations: groups[groupIds[i]]
+          })
+        });
+        var data = await res.json();
+        if (!data.ok) {
+          setError(clearanceError, data.error || labels.submit_error_record || 'Unable to record payment.');
+          return;
+        }
       }
-      window.location.reload();
+      if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
+      else window.location.reload();
     } catch (err) {
       setError(clearanceError, labels.submit_error_network || 'Network error while recording payment.');
     } finally {
@@ -712,7 +768,10 @@
   }
 
   async function deletePayment(paymentId){
-    if (!window.confirm(labels.delete_confirm || 'Delete this payment? Outstanding balances will be restored.')) return;
+    var ok = typeof window.deConfirm === 'function'
+      ? await window.deConfirm(labels.delete_confirm || 'Delete this payment? Outstanding balances will be restored.')
+      : window.confirm(labels.delete_confirm || 'Delete this payment? Outstanding balances will be restored.');
+    if (!ok) return;
     try {
       var res = await fetch(deleteUrl, {
         method: 'POST',
@@ -724,7 +783,8 @@
         window.alert(data.error || labels.delete_error || 'Unable to delete payment.');
         return;
       }
-      window.location.reload();
+      if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
+      else window.location.reload();
     } catch (err) {
       window.alert(labels.delete_error_network || 'Network error while deleting payment.');
     }
@@ -742,5 +802,72 @@
       if (e.target === detailModal) closeModal(detailModal);
     });
   }
+
+  /* ---------- Sortable table headers ---------- */
+  function initSortableTable(table){
+    if (!table) return;
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+    if (!headers.length) return;
+    var activeKey = '';
+    var ascending = true;
+
+    function cellSortValue(row, colIndex, type){
+      var cell = row.cells[colIndex];
+      if (!cell) return type === 'number' ? 0 : '';
+      var raw = cell.getAttribute('data-sort-value');
+      if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+      if (type === 'number') {
+        var n = Number(raw);
+        return isFinite(n) ? n : 0;
+      }
+      return String(raw).toLowerCase();
+    }
+
+    function sortBy(th){
+      var key = th.getAttribute('data-sort') || '';
+      var type = th.getAttribute('data-sort-type') || 'text';
+      var colIndex = Array.from(th.parentNode.children).indexOf(th);
+      if (colIndex < 0) return;
+
+      if (activeKey === key) ascending = !ascending;
+      else {
+        activeKey = key;
+        ascending = true;
+      }
+
+      var rows = Array.from(tbody.rows);
+      rows.sort(function(a, b){
+        var av = cellSortValue(a, colIndex, type);
+        var bv = cellSortValue(b, colIndex, type);
+        var cmp = type === 'number'
+          ? av - bv
+          : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+        return ascending ? cmp : -cmp;
+      });
+      rows.forEach(function(row){ tbody.appendChild(row); });
+
+      headers.forEach(function(header){
+        header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+        header.setAttribute('aria-sort', 'none');
+      });
+      th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+      th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+    }
+
+    headers.forEach(function(th){
+      th.addEventListener('click', function(){ sortBy(th); });
+      th.addEventListener('keydown', function(e){
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          sortBy(th);
+        }
+      });
+    });
+  }
+
+  initSortableTable(document.getElementById('cp-outstanding-table'));
+  initSortableTable(document.querySelector('table.cp-table'));
 })();
 </script>

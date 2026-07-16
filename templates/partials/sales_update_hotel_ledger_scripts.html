@@ -38,8 +38,11 @@
   const salesExpenseError = document.getElementById('sales-expense-error');
   const salesExpenseList = document.getElementById('sales-expense-list');
   const salesExpenseHistoryTotal = document.getElementById('sales-expense-history-total');
+  const salesExpenseAvailableWrap = document.getElementById('sales-expense-available-wrap');
+  const salesExpenseAvailableCash = document.getElementById('sales-expense-available-cash');
   const expensePaymentLabels = Object.fromEntries({{ expense_payment_types|tojson }}.map(([key, label]) => [key, label]));
   const expenseCategoryLabels = Object.fromEntries({{ expense_categories|default([])|tojson }}.map(([key, label]) => [key, label]));
+  let availableCash = Number((widget && widget.dataset.availableCash) || {{ available_cash|default(0)|tojson }} || 0);
   const salesExpenseSupplierListbox = document.getElementById('sales-expense-supplier-listbox');
   const salesExpenseSupplierInput = document.getElementById('sales-expense-supplier-input');
   const salesExpenseSupplierValue = document.getElementById('sales-expense-supplier-value');
@@ -124,6 +127,17 @@
     if (salesExpensePaymentList) salesExpensePaymentList.hidden = true;
   }
 
+  function scrollSelectedToTop(list){
+    if (!list) return;
+    var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
+    if (!selected) return;
+    requestAnimationFrame(function(){
+      var searchWrap = list.querySelector('.staff-supplier-search-wrap, .pl-supplier-search-wrap, .ep-listbox-search-wrap');
+      var topPad = searchWrap ? searchWrap.offsetHeight : 0;
+      list.scrollTop = Math.max(0, selected.offsetTop - topPad);
+    });
+  }
+
   function openExpensePaymentListbox(){
     if (!salesExpensePaymentListbox) return;
     closeExpenseSupplierListbox();
@@ -135,7 +149,8 @@
       salesExpensePaymentList.hidden = false;
       const selected = salesExpensePaymentList.querySelector('[aria-selected="true"]')
         || salesExpensePaymentList.querySelector('.se-filter-listbox-option');
-      if (selected) selected.focus();
+      scrollSelectedToTop(salesExpensePaymentList);
+      if (selected) selected.focus({ preventScroll: true });
     }
   }
 
@@ -162,6 +177,20 @@
     setExpensePaymentType(value, { skipListbox: true });
   }
 
+  function syncExpenseAvailableCashDisplay(){
+    const isCash = getSelectedExpensePaymentType() === 'cash';
+    if (salesExpenseAvailableWrap) salesExpenseAvailableWrap.hidden = !isCash;
+    if (!salesExpenseAvailableCash) return;
+    let display = availableCash;
+    if (isCash && editingExpenseId) {
+      const existing = expenseEntries.find((row) => String(row.id) === String(editingExpenseId));
+      if (existing && (existing.payment_type || 'cash') === 'cash') {
+        display = Number(availableCash) + Number(existing.amount || 0);
+      }
+    }
+    salesExpenseAvailableCash.textContent = formatInrKpi(display);
+  }
+
   function setExpensePaymentType(paymentType, options){
     const opts = options || {};
     const normalized = Object.prototype.hasOwnProperty.call(expensePaymentLabels, paymentType)
@@ -179,10 +208,16 @@
           opt.setAttribute('aria-selected', on ? 'true' : 'false');
         });
       }
+    } else if (salesExpensePaymentInput) {
+      salesExpensePaymentInput.value = normalized;
+      if (salesExpensePaymentValue) {
+        salesExpensePaymentValue.textContent = expensePaymentLabels[normalized] || 'Cash';
+      }
     }
     const isBank = normalized === 'bank_transfer';
     if (salesExpenseTransactionWrap) salesExpenseTransactionWrap.hidden = !isBank;
     if (!isBank && salesExpenseTransactionId) salesExpenseTransactionId.value = '';
+    syncExpenseAvailableCashDisplay();
   }
 
   function expensePaymentLine(row){
@@ -225,7 +260,13 @@
     const options = Array.from(salesExpenseCategoryOptions.querySelectorAll('.staff-category-option'));
 
     if (!needle) {
-      options.forEach((option) => option.classList.remove('is-filtered-out'));
+      options.sort(function(a, b){
+        return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
+      });
+      options.forEach((option) => {
+        option.classList.remove('is-filtered-out');
+        salesExpenseCategoryOptions.appendChild(option);
+      });
       if (salesExpenseCategoryEmpty) salesExpenseCategoryEmpty.hidden = true;
       return;
     }
@@ -259,6 +300,7 @@
     if (salesExpenseCategoryList) {
       salesExpenseCategoryList.hidden = false;
       filterExpenseCategoryOptions('');
+      scrollSelectedToTop(salesExpenseCategoryList);
       if (salesExpenseCategorySearch) {
         salesExpenseCategorySearch.value = '';
         salesExpenseCategorySearch.focus();
@@ -457,6 +499,7 @@
     if (salesExpenseSupplierList) {
       salesExpenseSupplierList.hidden = false;
       filterExpenseSupplierOptions('');
+      scrollSelectedToTop(salesExpenseSupplierList);
       if (salesExpenseSupplierSearch) {
         salesExpenseSupplierSearch.value = '';
         salesExpenseSupplierSearch.focus();
@@ -494,6 +537,11 @@
 
   function renderSupplierOptions(){
     if (!salesExpenseSupplierOptions) return;
+    supplierCatalog = Array.isArray(supplierCatalog)
+      ? supplierCatalog.slice().sort(function(a, b){
+          return String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+        })
+      : [];
     if (!supplierCatalog.length) {
       salesExpenseSupplierOptions.innerHTML = '';
       if (salesExpenseSupplierEmpty) {
@@ -821,6 +869,7 @@
 
   async function performExpenseDelete(expenseId){
     if (!widget || !expenseId) throw new Error('Missing expense id.');
+    const existing = expenseEntries.find((row) => String(row.id) === String(expenseId));
     const resp = await fetch(widget.dataset.expenseDeleteUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -833,13 +882,21 @@
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not delete expense.');
+    if (existing && (existing.payment_type || 'cash') === 'cash') {
+      availableCash = Number(availableCash) + Number(existing.amount || 0);
+      widget.dataset.availableCash = String(availableCash);
+      syncExpenseAvailableCashDisplay();
+    }
     renderExpenseEntries(data.expense_entries || []);
     await saveSalesEntry();
   }
 
   async function deleteExpense(expenseId){
     if (!widget || salesEntryLocked || !expenseId) return;
-    if (!window.confirm('Delete this expense line?')) return;
+    var ok = typeof window.deConfirm === 'function'
+      ? await window.deConfirm('Delete this expense line?')
+      : window.confirm('Delete this expense line?');
+    if (!ok) return;
     try {
       await performExpenseDelete(expenseId);
     } catch (err) {
@@ -877,8 +934,29 @@
       showSalesExpenseError('Please enter the bank transaction ID.');
       return;
     }
+    if (paymentType === 'cash') {
+      let limit = availableCash;
+      if (editingExpenseId) {
+        const existing = expenseEntries.find((row) => String(row.id) === String(editingExpenseId));
+        if (existing && (existing.payment_type || 'cash') === 'cash') {
+          limit = Number(availableCash) + Number(existing.amount || 0);
+        }
+      }
+      if (Number(amountRaw) - Number(limit) > 0.001) {
+        showSalesExpenseError(
+          'Cash expense cannot be more than available cash (' + formatInrKpi(limit) + ').'
+        );
+        return;
+      }
+    }
     showSalesExpenseError('');
     if (saveExpenseBtn) saveExpenseBtn.disabled = true;
+    const previousPayment = editingExpenseId
+      ? ((expenseEntries.find((row) => String(row.id) === String(editingExpenseId)) || {}).payment_type || 'cash')
+      : null;
+    const previousAmount = editingExpenseId
+      ? Number((expenseEntries.find((row) => String(row.id) === String(editingExpenseId)) || {}).amount || 0)
+      : 0;
     try {
       const resp = await fetch(editingExpenseId ? widget.dataset.expenseEditUrl : widget.dataset.expenseAddUrl, {
         method: 'POST',
@@ -900,6 +978,10 @@
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save expense.');
       renderExpenseEntries(data.expense_entries || []);
+      if (previousPayment === 'cash') availableCash = Number(availableCash) + previousAmount;
+      if (paymentType === 'cash') availableCash = Number(availableCash) - Number(amountRaw);
+      if (widget) widget.dataset.availableCash = String(availableCash);
+      syncExpenseAvailableCashDisplay();
       resetExpenseForm();
       await saveSalesEntry();
     } catch (err) {
@@ -979,7 +1061,8 @@
           const url = new URL(window.location.href);
           url.searchParams.set('date', data.date);
           if (statusEl) statusEl.textContent = `${data.message || 'Report imported.'} Opening ${data.date}…`;
-          window.location.href = url.toString();
+          if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh(url.toString());
+          else window.location.href = url.toString();
           return;
         }
         if (data.sales_entries) {
@@ -998,7 +1081,10 @@
   if (clearBtn) {
     clearBtn.addEventListener('click', async function(){
       if (!widget || salesEntryLocked) return;
-      if (!window.confirm('Clear uploaded hotel sales amounts for this date? Actual Cash and Expense lines will be kept.')) return;
+      var ok = typeof window.deConfirm === 'function'
+        ? await window.deConfirm('Clear uploaded hotel sales amounts for this date? Actual Cash and Expense lines will be kept.')
+        : window.confirm('Clear uploaded hotel sales amounts for this date? Actual Cash and Expense lines will be kept.');
+      if (!ok) return;
       if (statusEl) statusEl.textContent = 'Clearing…';
       clearBtn.disabled = true;
       try {

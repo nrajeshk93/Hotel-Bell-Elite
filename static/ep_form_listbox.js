@@ -61,7 +61,10 @@
     var search = root.querySelector('.ep-listbox-search');
     root.classList.remove('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
-    if (list) list.hidden = true;
+    if (list) {
+      list.hidden = true;
+      clearFixedListbox(list);
+    }
     if (search) search.value = '';
     if (root.hasAttribute('data-se-listbox-searchable')) {
       filterSearchableOptions(root, '');
@@ -71,6 +74,77 @@
   function closeAllListboxes(except){
     document.querySelectorAll('body.ep-module [data-se-listbox].is-open').forEach(function(root){
       if (root !== except) closeListbox(root);
+    });
+  }
+
+  function positionFixedListbox(root, list){
+    if (!root || !list || !root.classList.contains('ep-toolbar-listbox')) return;
+    var control = root.querySelector('.se-filter-chip-control') || root;
+    var rect = control.getBoundingClientRect();
+    var width = Math.max(rect.width, 140);
+    var left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 8));
+    var maxHeight = Math.min(260, Math.max(120, window.innerHeight - rect.bottom - 16));
+    list.style.position = 'fixed';
+    list.style.left = left + 'px';
+    list.style.right = 'auto';
+    list.style.top = (rect.bottom + 6) + 'px';
+    list.style.width = width + 'px';
+    list.style.minWidth = width + 'px';
+    list.style.maxHeight = maxHeight + 'px';
+    list.style.zIndex = '4000';
+  }
+
+  function clearFixedListbox(list){
+    if (!list) return;
+    list.style.position = '';
+    list.style.left = '';
+    list.style.right = '';
+    list.style.top = '';
+    list.style.width = '';
+    list.style.minWidth = '';
+    list.style.maxHeight = '';
+    list.style.zIndex = '';
+    list.style.paddingBottom = '';
+    list.scrollTop = 0;
+  }
+
+  /** Scroll selected to the top when the list overflows; shrink height so no empty gap under the last option. */
+  function scrollSelectedToTop(list){
+    if (!list) return;
+    var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
+    if (!selected || selected.classList.contains('is-filtered-out')) return;
+    list.style.paddingBottom = '';
+    requestAnimationFrame(function(){
+      var searchWrap = list.querySelector('.ep-listbox-search-wrap, .pl-supplier-search-wrap, .staff-supplier-search-wrap');
+      var topPad = searchWrap ? searchWrap.offsetHeight : 0;
+      var cap = parseFloat(list.style.maxHeight) || list.clientHeight || 260;
+
+      // Short list: size to content only (no tall empty tray).
+      if (list.scrollHeight <= cap + 1) {
+        list.style.maxHeight = list.scrollHeight + 'px';
+        list.scrollTop = 0;
+        return;
+      }
+
+      var target = Math.max(0, selected.offsetTop - topPad);
+      var naturalMax = Math.max(0, list.scrollHeight - cap);
+      if (target > naturalMax) {
+        list.style.paddingBottom = (target - naturalMax) + 'px';
+      }
+      list.style.maxHeight = cap + 'px';
+      list.scrollTop = target;
+
+      // After pinning selection at the top, trim leftover blank space under the last year/option.
+      requestAnimationFrame(function(){
+        var last = null;
+        var options = list.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)');
+        if (options.length) last = options[options.length - 1];
+        if (!last) return;
+        var gap = list.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
+        if (gap > 10) {
+          list.style.maxHeight = Math.max(88, list.clientHeight - gap + 4) + 'px';
+        }
+      });
     });
   }
 
@@ -84,15 +158,18 @@
     if (trigger) trigger.setAttribute('aria-expanded', 'true');
     if (list) {
       list.hidden = false;
+      positionFixedListbox(root, list);
       if (root.hasAttribute('data-se-listbox-searchable')) {
         filterSearchableOptions(root, '');
+        scrollSelectedToTop(list);
         if (search) {
           search.value = '';
           search.focus();
         }
       } else {
         var selected = list.querySelector('[aria-selected="true"]') || list.querySelector('.se-filter-listbox-option');
-        if (selected) selected.focus();
+        scrollSelectedToTop(list);
+        if (selected) selected.focus({ preventScroll: true });
       }
     }
   }
@@ -131,7 +208,11 @@
     var submitFormId = root.getAttribute('data-se-listbox-submit');
     if (submitFormId) {
       var form = document.getElementById(submitFormId);
-      if (form) form.submit();
+      if (form) {
+        // Prefer soft-submit helper so GET payroll filters keep the workspace shell.
+        if (typeof window.deSoftSubmitForm === 'function' && window.deSoftSubmitForm(form)) return;
+        form.submit();
+      }
       return;
     }
 
@@ -145,16 +226,26 @@
     if (!root || root.__epListboxBound) return;
     root.__epListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
+    var control = root.querySelector('.se-filter-chip-control');
     var list = root.querySelector('.se-filter-listbox');
     var optionsWrap = optionsWrapFor(root);
     var search = root.querySelector('.ep-listbox-search');
     if (!trigger || !list) return;
 
-    trigger.addEventListener('click', function(e){
+    function onTriggerClick(e){
       e.preventDefault();
       e.stopPropagation();
       toggleListbox(root);
-    });
+    }
+    trigger.addEventListener('click', onTriggerClick);
+    // Chevron / icon sit outside the button — still toggle the menu.
+    if (control) {
+      control.addEventListener('click', function(e){
+        if (e.target.closest('.se-filter-chip-trigger')) return;
+        if (e.target.closest('.se-filter-listbox')) return;
+        onTriggerClick(e);
+      });
+    }
     trigger.addEventListener('keydown', function(e){
       if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();

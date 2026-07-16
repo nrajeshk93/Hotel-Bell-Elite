@@ -7,10 +7,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
   try{
@@ -57,61 +58,27 @@
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <form id="credit-payment-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="{{ settlement_labels.filter_aria_label }}">
+        <form id="credit-payment-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="{{ settlement_labels.filter_aria_label }}"
+              data-clear-url="{{ url_for(settlement_route_endpoint, view=selected_view, supplier=selected_supplier) }}">
           <input type="hidden" name="view" id="credit-payment-view" value="{{ selected_view }}">
           <div class="cp-view-tabs" role="tablist" aria-label="{{ settlement_labels.view_aria_label }}">
             {% for view_key, view_label in credit_payment_views %}
             <a class="cp-view-tab{% if selected_view == view_key %} is-active{% endif %}"
-               href="{{ url_for(settlement_route_endpoint, view=view_key, date_from=date_from, date_to=date_to, payment_date_from=payment_date_from, payment_date_to=payment_date_to, supplier=selected_supplier) }}"
+               href="{{ url_for(settlement_route_endpoint, view=view_key, **settlement_tab_query) }}"
                role="tab"
                aria-selected="{{ 'true' if selected_view == view_key else 'false' }}">{{ view_label }}</a>
             {% endfor %}
           </div>
           {% if selected_view == 'outstanding' %}
-          <div class="se-filter-chip se-filter-chip--date">
-            <label class="se-filter-chip-label" for="credit-payment-date-from">From</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              </span>
-              <input type="date" id="credit-payment-date-from" name="date_from" class="pl-date-input" value="{{ date_from }}" max="{{ date_to }}">
-            </div>
-          </div>
-          <div class="se-filter-chip se-filter-chip--date">
-            <label class="se-filter-chip-label" for="credit-payment-date-to">To</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              </span>
-              <input type="date" id="credit-payment-date-to" name="date_to" class="pl-date-input" value="{{ date_to }}" min="{{ date_from }}">
-            </div>
-          </div>
-          {% else %}
-          <div class="se-filter-chip se-filter-chip--date">
-            <label class="se-filter-chip-label" for="credit-payment-pay-from">From</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              </span>
-              <input type="date" id="credit-payment-pay-from" name="payment_date_from" class="pl-date-input" value="{{ payment_date_from }}" max="{{ payment_date_to }}">
-            </div>
-          </div>
-          <div class="se-filter-chip se-filter-chip--date">
-            <label class="se-filter-chip-label" for="credit-payment-pay-to">To</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              </span>
-              <input type="date" id="credit-payment-pay-to" name="payment_date_to" class="pl-date-input" value="{{ payment_date_to }}" min="{{ payment_date_from }}">
-            </div>
-          </div>
-          <input type="hidden" name="date_from" value="{{ date_from }}">
-          <input type="hidden" name="date_to" value="{{ date_to }}">
-          {% endif %}
-          {% if selected_view == 'history' %}
-          {% else %}
+          <input type="hidden" id="credit-payment-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="credit-payment-date-to" name="date_to" value="{{ date_to }}">
           <input type="hidden" name="payment_date_from" value="{{ payment_date_from }}">
           <input type="hidden" name="payment_date_to" value="{{ payment_date_to }}">
+          {% else %}
+          <input type="hidden" name="date_from" value="{{ date_from }}">
+          <input type="hidden" name="date_to" value="{{ date_to }}">
+          <input type="hidden" id="credit-payment-date-from" name="payment_date_from" value="{{ payment_date_from }}">
+          <input type="hidden" id="credit-payment-date-to" name="payment_date_to" value="{{ payment_date_to }}">
           {% endif %}
           <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable>
             <span class="se-filter-chip-label" id="credit-payment-supplier-label">Supplier</span>
@@ -143,6 +110,64 @@
               <div class="pl-supplier-empty" id="credit-payment-supplier-empty" hidden>No suppliers match your search.</div>
             </div>
           </div>
+          <div class="se-filter-chip-date-host cp-date-range-host" id="cp-date-range-host">
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <span class="se-filter-chip-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                </span>
+                <div class="an-range-wrap an-range-wrap--sales" id="cp-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="cp-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="cp-date-range-panel">
+                    <span class="an-range-trigger-label">
+                      <span id="cp-date-range-display">{% if active_date_filter %}{% if selected_view == 'outstanding' %}{{ date_from }} – {{ date_to }}{% else %}{{ payment_date_from }} – {{ payment_date_to }}{% endif %}{% else %}Date{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="cp-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="cp-date-range-panel" role="dialog" aria-labelledby="cp-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="cp-date-range-panel-title">Date range</div>
+                      <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="cp-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="cp-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="cp-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="cp-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="cp-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="cp-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="cp-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="cp-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
         </form>
       </div>
     </div>
@@ -155,7 +180,7 @@
         <div class="card-body pl-summary-body">
           <div class="pl-summary-label">{{ settlement_labels.outstanding_summary_label }}</div>
           <div class="pl-summary-value" id="cp-outstanding-total" data-amount="{{ outstanding_total }}">{{ outstanding_total }}</div>
-          <div class="pl-summary-meta">{{ outstanding_entries|length }} expense{{ '' if outstanding_entries|length == 1 else 's' }}{% if date_from != date_to %} · {{ date_from }} to {{ date_to }}{% else %} · {{ date_from }}{% endif %}</div>
+          <div class="pl-summary-meta">{{ outstanding_entries|length }} expense{{ '' if outstanding_entries|length == 1 else 's' }}</div>
         </div>
       </article>
     </div>
@@ -187,16 +212,16 @@
             <thead>
               <tr>
                 <th class="cp-col-check">
-                  <input type="checkbox" class="cp-expense-check" id="cp-select-all" aria-label="Select all line items for the same supplier">
+                  <input type="checkbox" class="cp-expense-check" id="cp-select-all" aria-label="Select all expenses">
                 </th>
-                <th>Expense ID</th>
-                <th>Date</th>
-                <th>Expense</th>
-                <th>Category</th>
-                <th>Supplier</th>
-                <th class="pl-col-amount">Amount</th>
-                <th class="pl-col-amount">Paid</th>
-                <th class="pl-col-amount">Balance</th>
+                <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">Expense ID</th>
+                <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
+                <th class="pl-sortable" data-sort="expense" scope="col" tabindex="0" aria-sort="none">Expense</th>
+                <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
+                <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
+                <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
+                <th class="pl-sortable pl-col-amount" data-sort="paid" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Paid</th>
+                <th class="pl-sortable pl-col-amount" data-sort="balance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Balance</th>
               </tr>
             </thead>
             <tbody>
@@ -212,11 +237,11 @@
                 <td class="cp-col-check">
                   <input type="checkbox" class="cp-expense-check cp-row-check" aria-label="Select {{ entry.expense_code or entry.id }}">
                 </td>
-                <td class="pl-col-code"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
-                <td class="pl-col-date">{{ entry.sales_date }}</td>
-                <td><div class="pl-name">{{ entry.description or '—' }}</div></td>
-                <td>{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
-                <td>
+                <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
+                <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date }}</td>
+                <td data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
+                <td data-sort-value="{{ expense_category_labels.get(entry.category, entry.category or '') }}">{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
+                <td data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
                   {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
@@ -224,9 +249,9 @@
                   —
                   {% endif %}
                 </td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}">{{ entry.amount }}</td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.paid_amount }}">{{ entry.paid_amount }}</td>
-                <td class="pl-col-amount pl-amount cp-balance" data-amount="{{ entry.balance }}">{{ entry.balance }}</td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.paid_amount }}" data-sort-value="{{ entry.paid_amount }}">{{ entry.paid_amount }}</td>
+                <td class="pl-col-amount pl-amount cp-balance" data-amount="{{ entry.balance }}" data-sort-value="{{ entry.balance }}">{{ entry.balance }}</td>
               </tr>
               {% endfor %}
             </tbody>
@@ -244,7 +269,7 @@
         <div class="card-body pl-summary-body">
           <div class="pl-summary-label">{{ settlement_labels.history_summary_label }}</div>
           <div class="pl-summary-value" id="cp-payment-total" data-amount="{{ payment_total }}">{{ payment_total }}</div>
-          <div class="pl-summary-meta">{{ payment_entries|length }} {{ settlement_labels.history_summary_unit }}{{ '' if payment_entries|length == 1 else 's' }}{% if payment_date_from != payment_date_to %} · {{ payment_date_from }} to {{ payment_date_to }}{% else %} · {{ payment_date_from }}{% endif %}</div>
+          <div class="pl-summary-meta">{{ payment_entries|length }} {{ settlement_labels.history_summary_unit }}{{ '' if payment_entries|length == 1 else 's' }}</div>
         </div>
       </article>
     </div>
@@ -263,28 +288,28 @@
           <table class="pl-table cp-table" aria-label="{{ settlement_labels.history_table_aria }}">
             <thead>
               <tr>
-                <th>{{ settlement_labels.history_date_column }}</th>
-                <th>Supplier</th>
+                <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.history_date_column }}</th>
+                <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
                 {% if settlement_labels.show_payment_mode %}
-                <th>Method</th>
-                <th>Transaction ID</th>
+                <th class="pl-sortable" data-sort="method" scope="col" tabindex="0" aria-sort="none">Method</th>
+                <th class="pl-sortable" data-sort="transaction" scope="col" tabindex="0" aria-sort="none">Transaction ID</th>
                 {% endif %}
                 {% if settlement_labels.show_verification_account %}
-                <th>Account</th>
+                <th class="pl-sortable" data-sort="account" scope="col" tabindex="0" aria-sort="none">Account</th>
                 {% endif %}
                 {% if settlement_labels.show_history_expense_ids %}
-                <th>Expense ID</th>
+                <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">Expense ID</th>
                 {% endif %}
-                <th class="pl-col-amount">Total</th>
-                <th>Expenses</th>
+                <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Total</th>
+                <th class="pl-sortable" data-sort="expenses" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Expenses</th>
                 <th class="cp-col-actions">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% for entry in payment_entries %}
               <tr data-payment-id="{{ entry.id }}">
-                <td class="pl-col-date">{{ entry.payment_date }}</td>
-                <td>
+                <td class="pl-col-date" data-sort-value="{{ entry.payment_date or '' }}">{{ entry.payment_date }}</td>
+                <td data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
                   {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
@@ -293,14 +318,14 @@
                   {% endif %}
                 </td>
                 {% if settlement_labels.show_payment_mode %}
-                <td>{{ credit_payment_method_labels.get(entry.payment_method, entry.payment_method) }}</td>
-                <td>{{ entry.transaction_id or '—' }}</td>
+                <td data-sort-value="{{ credit_payment_method_labels.get(entry.payment_method, entry.payment_method) }}">{{ credit_payment_method_labels.get(entry.payment_method, entry.payment_method) }}</td>
+                <td data-sort-value="{{ entry.transaction_id or '' }}">{{ entry.transaction_id or '—' }}</td>
                 {% endif %}
                 {% if settlement_labels.show_verification_account %}
-                <td>{{ entry.verification_account or '—' }}</td>
+                <td data-sort-value="{{ entry.verification_account or '' }}">{{ entry.verification_account or '—' }}</td>
                 {% endif %}
                 {% if settlement_labels.show_history_expense_ids %}
-                <td class="pl-col-code">
+                <td class="pl-col-code" data-sort-value="{{ entry.expense_codes or '' }}">
                   {% if entry.expense_codes %}
                   <span class="pl-expense-code">{{ entry.expense_codes }}</span>
                   {% else %}
@@ -308,11 +333,10 @@
                   {% endif %}
                 </td>
                 {% endif %}
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.total_amount }}">{{ entry.total_amount }}</td>
-                <td>{{ entry.allocation_count }}</td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.total_amount }}" data-sort-value="{{ entry.total_amount }}">{{ entry.total_amount }}</td>
+                <td data-sort-value="{{ entry.allocation_count }}">{{ entry.allocation_count }}</td>
                 <td class="cp-col-actions">
                   <button type="button" class="cp-link-btn cp-view-payment" data-payment-id="{{ entry.id }}">View</button>
-                  <button type="button" class="cp-link-btn cp-link-btn--danger cp-delete-payment" data-payment-id="{{ entry.id }}">Delete</button>
                 </td>
               </tr>
               {% endfor %}
@@ -388,7 +412,7 @@
     </div>
     <div class="staff-field" id="cp-transaction-wrap" hidden>
       <label for="cp-transaction-id">Transaction ID *</label>
-      <input id="cp-transaction-id" class="staff-input" type="text" placeholder="Card transaction reference" autocomplete="off">
+      <input id="cp-transaction-id" class="staff-input" type="text" placeholder="Bank transfer / UTR reference" autocomplete="off">
     </div>
     {% else %}
     <input type="hidden" id="cp-payment-method" value="cash">
@@ -441,6 +465,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=5"></script>
 <script id="cp-outstanding-data" type="application/json">{{ outstanding_entries|tojson }}</script>
 {% include 'partials/credit_payment_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}

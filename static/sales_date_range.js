@@ -164,7 +164,7 @@
     function refreshTriggerText() {
       if (selFrom && selTo) display.textContent = fmtRange(selFrom, selTo);
       else if (selFrom) display.textContent = fmt(selFrom) + ' – …';
-      else display.textContent = 'Select date range';
+      else display.textContent = cfg.emptyLabel || 'Select date range';
     }
     function syncFormHidden() {
       ff.value = selFrom;
@@ -409,6 +409,30 @@
         if (fromIso && toIso && fromIso !== toIso) cashLabel = fmt(fromIso) + ' – ' + fmt(toIso);
         else if (fromIso) cashLabel = fmt(fromIso);
         setText(cashDisplay, cashLabel || 'Select date range');
+      }
+
+      var clDisplay = document.getElementById('cl-date-range-display');
+      var clFrom = document.getElementById('cash-ledger-date-from');
+      var clTo = document.getElementById('cash-ledger-date-to');
+      if (clDisplay) {
+        var clFromIso = ((clFrom && clFrom.value) || '').trim();
+        var clToIso = ((clTo && clTo.value) || '').trim();
+        var clLabel = '';
+        if (clFromIso && clToIso && clFromIso !== clToIso) clLabel = fmt(clFromIso) + ' – ' + fmt(clToIso);
+        else if (clFromIso) clLabel = fmt(clFromIso);
+        setText(clDisplay, clLabel || 'Date');
+      }
+
+      var cpDisplay = document.getElementById('cp-date-range-display');
+      var cpFrom = document.getElementById('credit-payment-date-from');
+      var cpTo = document.getElementById('credit-payment-date-to');
+      if (cpDisplay) {
+        var cpFromIso = ((cpFrom && cpFrom.value) || '').trim();
+        var cpToIso = ((cpTo && cpTo.value) || '').trim();
+        var cpLabel = '';
+        if (cpFromIso && cpToIso && cpFromIso !== cpToIso) cpLabel = fmt(cpFromIso) + ' – ' + fmt(cpToIso);
+        else if (cpFromIso) cpLabel = fmt(cpFromIso);
+        setText(cpDisplay, cpLabel || 'Date');
       }
     }
   };

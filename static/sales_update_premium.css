@@ -64,17 +64,8 @@ body.su-module .nav-item.active::before{display:none}
 body.su-module .menu-btn{display:none!important}
 body.su-module .sb-pin-btn{display:flex}
 body.su-module.sb-off .sb-pin-btn svg{transform:rotate(180deg)}
-body.su-module header.se-sales-header.su-header{
-  padding:40px 48px 0;
-  background:transparent;
-  max-width:1600px;
-  margin-left:auto;
-  margin-right:auto;
-  width:100%;
-  box-sizing:border-box;
-}
-body.su-module .su-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px}
-body.su-module .su-header-left{display:flex;align-items:flex-start;gap:16px;min-width:0}
+body.su-module .su-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px;flex-wrap:wrap}
+body.su-module .su-header-left{display:flex;align-items:flex-start;gap:16px;min-width:0;flex:1 1 260px}
 body.su-module .su-header-nav{display:flex;align-items:center;gap:10px;flex-shrink:0}
 body.su-module .menu-btn,
 body.su-module .sb-pin-btn{
@@ -86,7 +77,8 @@ body.su-module .menu-btn:hover,
 body.su-module .sb-pin-btn:hover{background:#F9FAFB;color:#111827;border-color:#E5E7EB}
 body.su-module .menu-btn svg,
 body.su-module .sb-pin-btn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-body.su-module .su-title-row{display:flex;align-items:center;gap:14px}
+body.su-module .su-title{min-width:0;flex:1 1 auto}
+body.su-module .su-title-row{display:flex;align-items:center;gap:14px;min-width:0}
 body.su-module .su-title-icon{
   width:48px;height:48px;border-radius:14px;background:var(--acc-bg);color:var(--acc);
   display:flex;align-items:center;justify-content:center;flex-shrink:0;
@@ -94,8 +86,12 @@ body.su-module .su-title-icon{
 body.su-module .su-title-icon svg,
 body.su-module .su-title-icon i svg{width:24px;height:24px;stroke-width:1.75}
 body.su-module .su-title h1{font-size:34px;line-height:1.15;font-weight:700;color:#111827;letter-spacing:-.03em;margin:0}
-body.su-module .su-title p{margin-top:8px;font-size:16px;font-weight:400;color:#6B7280;line-height:1.5}
-body.su-module .su-header-tools{display:flex;align-items:center;gap:10px;flex-shrink:0}
+body.su-module .su-title p{margin-top:8px;font-size:16px;font-weight:400;color:#6B7280;line-height:1.5;max-width:62ch}
+body.su-module .su-header-tools{display:flex;align-items:center;gap:10px;flex:0 1 auto;flex-wrap:wrap;max-width:100%;justify-content:flex-end}
+body.su-module .su-header-tools .btn{
+  white-space:nowrap;
+  max-width:100%;
+}
 body.su-module .su-home-btn{
   display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;
   border:1px solid #EEF2F7;border-radius:999px;background:#fff;color:#6B7280;
@@ -106,11 +102,12 @@ body.su-module .su-home-btn svg{width:16px;height:16px}
 body.su-module header.se-sales-header.su-header{
   padding:40px 48px 0;
   background:transparent;
-  max-width:1600px;
   margin-left:auto;
   margin-right:auto;
   width:100%;
+  max-width:min(1600px,100%);
   box-sizing:border-box;
+  min-width:0;
 }
 body.su-module .se-sales-header-hero{display:none}
 body.su-module .se-sales-header-card{
@@ -150,8 +147,8 @@ body.su-module .staff-credit-head svg{stroke:var(--acc)}
 body.su-module .se-filter-chip select,
 body.su-module .se-filter-chip .se-filter-chip-trigger{font-weight:500;color:#111827}
 body.su-module .content.se-content{
-  max-width:1600px;margin-left:auto;margin-right:auto;
-  padding:24px 48px 48px;width:100%;box-sizing:border-box;
+  max-width:min(1600px,100%);margin-left:auto;margin-right:auto;
+  padding:24px 48px 48px;width:100%;box-sizing:border-box;min-width:0;
 }
 body.su-module .card{border-radius:20px;border:1px solid #EEF2F7;box-shadow:0 8px 30px rgba(15,23,42,.04)}
 body.su-module .btn-primary{background:var(--acc);border-color:var(--acc)}
@@ -165,6 +162,30 @@ body.su-module .se-summary-value--diff{color:var(--acc)}
 body.su-module .staff-credit-head-rupee{color:var(--acc)}
 body.su-module .staff-credit-home{color:var(--acc)}
 body.su-module .sales-expense-modal-box{width:min(720px,96vw)}
+body.su-module .se-expense-available-cash{margin:0 0 14px}
+body.su-module .se-expense-available-cash-card{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 16px;
+  border-radius:12px;
+  background:#EFF6FF;
+  border:1px solid #BFDBFE;
+}
+body.su-module .se-expense-available-cash-label{
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  color:#1E40AF;
+}
+body.su-module .se-expense-available-cash-value{
+  font-size:20px;
+  font-weight:800;
+  color:#1D4ED8;
+  line-height:1;
+}
 body.su-module .pl-add-category-row{margin-bottom:14px}
 body.su-module .pl-add-category-row .staff-field--inline{margin-bottom:0;min-width:0}
 body.su-module .pl-add-category-row .se-filter-chip{width:100%}
@@ -452,6 +473,12 @@ body.su-module .se-sales-outlet-panel .entry-table thead th .se-particulars-head
   body.su-module .se-sales-outlet-panel .entry-table thead th{height:52px;min-height:52px;padding:0 12px;font-size:10px}
 }
 
+@media(max-width:1100px){
+  body.su-module header.se-sales-header.su-header{padding:28px 20px 0}
+  body.su-module .content.se-content{padding:20px 20px 40px}
+  body.su-module .su-header-tools{width:100%;justify-content:flex-end}
+  body.su-module .su-title h1{font-size:30px}
+}
 @media(max-width:760px){
   body.su-module .sidebar{
     position:fixed!important;top:0;left:0;bottom:0;width:var(--ba-sidebar-open);min-width:var(--ba-sidebar-open);
@@ -466,11 +493,11 @@ body.su-module .se-sales-outlet-panel .entry-table thead th .se-particulars-head
   body.su-module .menu-btn{display:flex!important}
   body.su-module .sb-pin-btn{display:none!important}
   body.su-module.sb-off .sidebar{transform:translateX(calc(-1 * var(--ba-sidebar-open) - 12px))!important}
-  body.su-module header.se-sales-header.su-header{padding:24px 20px 0}
-  body.su-module .su-header-top{flex-direction:column;gap:20px}
-  body.su-module .su-header-tools{align-self:flex-end}
+  body.su-module header.se-sales-header.su-header{padding:24px 16px 0}
+  body.su-module .su-header-top{flex-direction:column;gap:16px}
+  body.su-module .su-header-tools{align-self:stretch;justify-content:flex-start}
   body.su-module .su-title h1{font-size:28px}
-  body.su-module .content.se-content{padding:20px 16px 32px}
+  body.su-module .content.se-content{padding:16px 16px 32px}
   body.su-module .se-sales-header-filters{padding:16px}
 }
 @media(max-width:640px){

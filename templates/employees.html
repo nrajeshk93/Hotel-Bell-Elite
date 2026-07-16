@@ -469,7 +469,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 {% include 'partials/de_fullscreen_script.html' %}
 {% include 'partials/de_fullscreen_bootstrap.html' %}
 <script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=6"></script>
-<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=14"></script>
+<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=20"></script>
 
 <div id="ep-workspace" class="de-module">
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox, ep_toolbar_listbox %}
@@ -477,7 +477,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 {% set ep_month_opts = namespace(options=[]) %}
 {% for m in range(1,13) %}{% set ep_month_opts.options = ep_month_opts.options + [(m|string, ep_month_names[m])] %}{% endfor %}
 {% set ep_year_opts = namespace(options=[]) %}
-{% if sel_year is defined %}{% for y in range(sel_year - 2, sel_year + 3) %}{% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}{% endfor %}{% endif %}
+{% if sel_year is defined %}{% for y in range(sel_year - 5, sel_year + 6) %}{% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}{% endfor %}{% endif %}
 {% set ep_location_opts = namespace(options=[('', 'All Departments')]) %}
 {% if locations is defined %}{% for l in locations %}{% set ep_location_opts.options = ep_location_opts.options + [(l, l)] %}{% endfor %}{% endif %}
 {% set ep_sort_opts = namespace(options=[('id', 'ID'), ('name', 'Name'), ('department', 'Department')]) %}
@@ -743,7 +743,14 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
     <!-- Employee list topbar -->
     <div class="ep-title">
       <div class="ep-title-row">
-        <div class="ep-title-icon" aria-hidden="true"><i data-lucide="users"></i></div>
+        <div class="ep-title-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+        </div>
         <div>
           <h1 class="ep-page-title">Employees</h1>
           <p class="ep-page-sub">{{ month_name }} {{ sel_year }}</p>
@@ -867,9 +874,6 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Employee
       </a>
-      {% endif %}
-      {% if employees is defined and employees %}
-      <a href="{{ url_for('export_employees', year=sel_year, month=sel_month) }}" download class="btn btn-success btn-sm" title="Export to Excel">↓ Excel</a>
       {% endif %}
     </div>
   {% endif %}
@@ -1000,7 +1004,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
             <td style="text-align:center;">
               {% if att.tracked %}
               <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
-                    title="{{ badge_num }} paid day{{ 's' if badge_num != 1 else '' }} out of {{ att.badge_den }} in the month{% if att.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(att.weekday_leave_days) }} leave{% if att.total_off|default(0) %} ({{ att.total_off }} allowed){% endif %}{% endif %}{% if att.lop_days|default(0) > 0 %} · {{ '%g'|format(att.lop_days) }} LOP{% endif %}">
+                    title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ att.badge_den }} in the month{% if att.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(att.weekday_leave_days) }} leave{% if att.total_off|default(0) %} ({{ att.total_off }} allowed){% endif %}{% endif %}{% if att.lop_days|default(0) > 0 %} · {{ '%g'|format(att.lop_days) }} LOP{% endif %}">
                 {{ badge_num }}/{{ att.badge_den }}
               </span>
               {% else %}
@@ -1268,14 +1272,19 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
   }
 
   // On load: style existing listboxes by their current value
-  document.addEventListener('DOMContentLoaded', function(){
+  function davInitControls(){
     document.querySelectorAll('.dav-status-listbox').forEach(function(root){
       var empId = root.getAttribute('data-emp-id');
       var hidden = document.getElementById('dav-sel-' + empId);
       davStyleSelect(root, hidden ? hidden.value : '');
     });
     if (typeof initEpListboxes === 'function') initEpListboxes();
-  });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', davInitControls);
+  } else {
+    davInitControls();
+  }
   </script>
 
 
@@ -1973,7 +1982,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
               {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
               {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.badge_den > 0 else 0 %}
               <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
-                    title="{{ badge_num }} paid day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
+                    title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
                 {{ badge_num }}/{{ emp.att.badge_den }}
               </span>
               {% else %}
@@ -2287,7 +2296,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
             <td>
               {% if emp.att.tracked %}
               <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
-                    title="{{ badge_num }} paid day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
+                    title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
                 {{ badge_num }}/{{ emp.att.badge_den }}
               </span>
               {% else %}
@@ -2368,6 +2377,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 
 </main>
 </div><!-- /main-wrapper -->
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=9"></script>
 </div><!-- /de-main-wrapper -->
 </div><!-- /de-app-shell -->
 </div><!-- /ep-workspace -->
@@ -2898,6 +2908,5 @@ function saveSalary(empId){
   });
 }
 </script>
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=2"></script>
 </body>
 </html>

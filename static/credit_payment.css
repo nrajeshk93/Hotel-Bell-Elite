@@ -27,6 +27,36 @@ body.su-module .cp-view-tab.is-active{
   box-shadow:0 1px 2px rgba(15,23,42,.08);
 }
 
+body.su-module #credit-payment-filter-form.sr-topbar-filters{
+  align-items:flex-end;
+  flex-wrap:wrap;
+}
+body.su-module .cp-date-range-host{
+  flex:0 0 auto;
+  min-width:0;
+  z-index:30;
+  margin-left:auto;
+}
+body.su-module .cp-date-range-host .se-filter-chip--date-range{
+  flex:none;
+  min-width:0;
+  width:auto;
+}
+body.su-module .cp-date-range-host .an-range-trigger{
+  min-width:148px;
+  width:auto;
+  max-width:min(340px, 70vw);
+}
+body.su-module .cp-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
+  border-color:#93C5FD;
+  background:#EFF6FF;
+}
+body.su-module .cp-date-range-host .an-range-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
+
 body.su-module .cp-panel-actions{
   display:flex;
   align-items:center;
@@ -83,10 +113,7 @@ body.su-module .cp-expense-row{
 body.su-module .cp-expense-row.is-selected,
 body.su-module .cp-select-row.is-selected{background:#EFF6FF}
 body.su-module .cp-expense-row.is-locked-out,
-body.su-module .cp-select-row.is-locked-out{opacity:.45}
-body.su-module .cp-expense-row.is-locked-out{cursor:not-allowed}
-body.su-module .cp-expense-row.is-locked-out .cp-expense-check,
-body.su-module .cp-select-row.is-locked-out .cp-select-check{cursor:not-allowed}
+body.su-module .cp-select-row.is-locked-out{opacity:.55}
 
 body.su-module .cp-balance{color:#B45309;font-weight:800}
 
@@ -207,6 +234,13 @@ body.su-module .cp-alloc-code{
   font-weight:800;
   color:#2563EB;
   margin-right:6px;
+}
+body.su-module .cp-alloc-supplier{
+  display:block;
+  margin-top:2px;
+  font-size:11px;
+  font-weight:600;
+  color:#64748B;
 }
 body.su-module .cp-alloc-input{
   width:110px;

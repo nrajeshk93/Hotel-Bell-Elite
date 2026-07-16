@@ -32,10 +32,19 @@
         <span>Accounts</span>
       </button>
       <div class="de-nav-sub" id="de-nav-accounts-sub">
+        {% if has_accounts_access('purchase_ledger') %}
         <a class="de-nav-subitem{% if accounts_view == 'purchase_ledger' %} is-active{% endif %}" id="de-nav-purchase-ledger" href="{{ url_for('purchase_ledger') }}"{% if accounts_view == 'purchase_ledger' %} aria-current="page"{% endif %}>Purchase Ledger</a>
+        {% endif %}
+        {% if has_accounts_access('cash_ledger') %}
+        <a class="de-nav-subitem{% if accounts_view == 'cash_ledger' %} is-active{% endif %}" id="de-nav-cash-ledger" href="{{ url_for('cash_ledger') }}"{% if accounts_view == 'cash_ledger' %} aria-current="page"{% endif %}>Cash Ledger</a>
+        {% endif %}
+        {% if has_accounts_access('credit_payment') %}
         <a class="de-nav-subitem{% if accounts_view == 'credit_payment' %} is-active{% endif %}" id="de-nav-credit-payment" href="{{ url_for('credit_payment') }}"{% if accounts_view == 'credit_payment' %} aria-current="page"{% endif %}>Credit Payment</a>
+        {% endif %}
+        {% if has_accounts_access('purchase_verification') %}
         <a class="de-nav-subitem{% if accounts_view == 'purchase_verification' %} is-active{% endif %}" id="de-nav-purchase-verification" href="{{ url_for('purchase_verification') }}"{% if accounts_view == 'purchase_verification' %} aria-current="page"{% endif %}>Purchase Verification</a>
-        {% if has_supplier_master_access() %}
+        {% endif %}
+        {% if has_accounts_access('supplier_master') %}
         <a class="de-nav-subitem{% if accounts_view == 'supplier_master' %} is-active{% endif %}" id="de-nav-supplier-master" href="{{ url_for('supplier_master') }}"{% if accounts_view == 'supplier_master' %} aria-current="page"{% endif %}>Supplier Master</a>
         {% endif %}
       </div>

@@ -162,6 +162,7 @@ input[type="text"]:focus,input[type="password"]:focus{border-color:var(--acc);bo
                 <script type="application/json" id="ma-initial-sales-analytics">{{ form.sales_analytics_modules | tojson }}</script>
                 <script type="application/json" id="ma-initial-user-access">{{ form.user_access_modules | tojson }}</script>
                 <script type="application/json" id="ma-initial-payroll">{{ form.payroll_modules | tojson }}</script>
+                <script type="application/json" id="ma-initial-accounts">{{ form.accounts_modules | default([]) | tojson }}</script>
                 <div id="ma-hidden-inputs" class="ma-hidden-inputs" aria-hidden="true"></div>
 
                 <div class="ma-access">
@@ -288,7 +289,7 @@ input[type="text"]:focus,input[type="password"]:focus{border-color:var(--acc);bo
                       <span>All modules</span>
                     </span>
                   {% else %}
-                    {% set raw_chips = user.dashboard_labels + user.sales_analytics_labels + user.user_access_labels %}
+                    {% set raw_chips = user.dashboard_labels + user.sales_analytics_labels + user.user_access_labels + user.accounts_labels|default([]) + user.payroll_labels|default([]) %}
                     {% set chip_ns = namespace(chips=[], seen=[]) %}
                     {% for chip in raw_chips %}
                       {% if chip and chip not in chip_ns.seen %}
@@ -347,7 +348,7 @@ input[type="text"]:focus,input[type="password"]:focus{border-color:var(--acc);bo
     </div>
 </div>
 
-<script src="{{ url_for('static', filename='access_module_access.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='access_module_access.js') }}?v=3"></script>
 {% if not form_focus %}
 <script src="{{ url_for('static', filename='access_users_list.js') }}?v=2"></script>
 {% endif %}

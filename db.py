@@ -52,6 +52,43 @@ def _migrate_suppliers_optional_gst(cursor):
     cursor.execute("ALTER TABLE suppliers__gst_optional RENAME TO suppliers")
 
 
+def ensure_cash_ledger_schema(conn):
+    """Create cash ledger load/transfer tables if missing (e.g. after DB restore)."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cash_ledger_loads (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            company     TEXT    NOT NULL,
+            load_date   TEXT    NOT NULL,
+            description TEXT    NOT NULL DEFAULT '',
+            amount      REAL    NOT NULL DEFAULT 0,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cash_ledger_loads_scope
+        ON cash_ledger_loads(company, load_date)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS cash_ledger_transfers (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            company       TEXT    NOT NULL,
+            transfer_date TEXT    NOT NULL,
+            destination   TEXT    NOT NULL DEFAULT 'bank',
+            description   TEXT    NOT NULL DEFAULT '',
+            amount        REAL    NOT NULL DEFAULT 0,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_cash_ledger_transfers_scope
+        ON cash_ledger_transfers(company, transfer_date)
+    """)
+    conn.commit()
+
+
 def init_db():
     conn = get_db()
     conn.execute("PRAGMA journal_mode=WAL")
@@ -306,6 +343,8 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_purchase_verification_allocations_expense
         ON purchase_verification_allocations(expense_id)
     """)
+    ensure_cash_ledger_schema(conn)
+
     existing_pv_cols = {
         row["name"] for row in cursor.execute("PRAGMA table_info(purchase_verifications)").fetchall()
     }
@@ -372,6 +411,44 @@ def init_db():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_room_transfer_scope
         ON room_transfer_entries(company, sales_date, location, sort_order)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS room_transfer_payments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            company         TEXT    NOT NULL,
+            payment_date    TEXT    NOT NULL,
+            payment_method  TEXT    NOT NULL DEFAULT 'cash',
+            transaction_id  TEXT    NOT NULL DEFAULT '',
+            total_amount    REAL    NOT NULL DEFAULT 0,
+            notes           TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS room_transfer_payment_allocations (
+            id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_transfer_payment_id INTEGER NOT NULL,
+            room_transfer_entry_id   INTEGER NOT NULL,
+            amount                   REAL    NOT NULL DEFAULT 0,
+            invoice_number           TEXT    NOT NULL DEFAULT '',
+            guest_name               TEXT    NOT NULL DEFAULT '',
+            location                 TEXT    NOT NULL DEFAULT '',
+            sales_date               TEXT    NOT NULL DEFAULT '',
+            created_at               TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_room_transfer_payments_scope
+        ON room_transfer_payments(company, payment_date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_room_transfer_payment_allocations_payment
+        ON room_transfer_payment_allocations(room_transfer_payment_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_room_transfer_payment_allocations_entry
+        ON room_transfer_payment_allocations(room_transfer_entry_id)
     """)
 
     cursor.execute("""

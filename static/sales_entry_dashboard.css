@@ -716,6 +716,4 @@ body.se-cash-mode .sr-kpi-section{
 .room-transfer-row--unpaid td{background:#FFFBEB}
 .room-transfer-col-amount,.room-transfer-amount{text-align:right;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .room-transfer-col-status,.room-transfer-status{text-align:center}
-.room-transfer-status-select{min-width:120px;height:36px;border:1px solid var(--border);border-radius:var(--rs);background:#fff;padding:0 10px;font:600 12px Inter,system-ui,sans-serif;color:var(--txt)}
-.room-transfer-status-select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-ring);outline:none}
 .room-transfer-empty{padding:28px 20px;text-align:center;color:var(--txt3);font-size:14px;line-height:1.55;background:#F8FAFD;border:1px dashed var(--border);border-radius:var(--r)}

@@ -1,0 +1,57 @@
+<div class="modal-backdrop" id="rt-clearance-modal" aria-hidden="true">
+  <div class="staff-credit-box cp-modal-box" role="dialog" aria-modal="true" aria-labelledby="rt-clearance-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+      <span id="rt-clearance-title">Payment Details</span>
+    </div>
+    <p class="staff-credit-copy">Enter how this room transfer payment was made.</p>
+    <div id="rt-clearance-error" class="staff-credit-error"></div>
+    <div class="staff-field">
+      <label for="rt-payment-date">Payment date *</label>
+      <input id="rt-payment-date" class="staff-input" type="date" value="{{ today_iso }}">
+    </div>
+    <div class="staff-field">
+      <label>Payment mode *</label>
+      <div class="staff-credit-type-toggle" id="rt-method-toggle">
+        {% for method_key, method_label in credit_payment_methods %}
+        <button type="button" class="staff-credit-type-btn{% if method_key == 'cash' %} active{% endif %}" data-value="{{ method_key }}">{{ method_label }}</button>
+        {% endfor %}
+      </div>
+      <input type="hidden" id="rt-payment-method" value="cash">
+    </div>
+    <div class="staff-field" id="rt-transaction-wrap" hidden>
+      <label for="rt-transaction-id">Transaction ID *</label>
+      <input id="rt-transaction-id" class="staff-input" type="text" placeholder="Bank transfer / UTR reference" autocomplete="off">
+    </div>
+    <div class="staff-field">
+      <label for="rt-notes">Notes</label>
+      <input id="rt-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
+    </div>
+    <div class="cp-alloc-wrap">
+      <div class="cp-alloc-head">
+        <span>Selected transfers</span>
+        <span id="rt-alloc-meta"></span>
+      </div>
+      <div class="cp-alloc-table-wrap">
+        <table class="cp-alloc-table" aria-label="Payment allocations">
+          <thead>
+            <tr>
+              <th>Invoice</th>
+              <th class="pl-col-amount">Balance</th>
+              <th class="pl-col-amount">Pay now</th>
+            </tr>
+          </thead>
+          <tbody id="rt-alloc-body"></tbody>
+        </table>
+      </div>
+      <div class="cp-alloc-total">
+        <span>Payment total</span>
+        <strong id="rt-alloc-total" data-amount="0">0</strong>
+      </div>
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn" id="rt-clearance-back">Back</button>
+      <button type="button" class="btn btn-primary" id="rt-clearance-submit">Record Payment</button>
+    </div>
+  </div>
+</div>

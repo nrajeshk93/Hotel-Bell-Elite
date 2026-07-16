@@ -12,7 +12,11 @@
     var search = root.querySelector('.pl-supplier-search');
     root.classList.remove('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
-    if (list) list.hidden = true;
+    if (list) {
+      list.hidden = true;
+      list.style.paddingBottom = '';
+      list.scrollTop = 0;
+    }
     if (search) search.value = '';
     if (root.hasAttribute('data-se-listbox-searchable')) {
       filterSearchableOptions(root, '');
@@ -101,6 +105,27 @@
     return Array.from(optionsWrap.querySelectorAll('.pl-supplier-option:not(.is-filtered-out), .pl-filter-option:not(.is-filtered-out)'));
   }
 
+  function scrollSelectedToTop(list){
+    if (!list) return;
+    var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"], .pl-supplier-option.is-selected, .pl-filter-option.is-selected');
+    if (!selected || selected.classList.contains('is-filtered-out')) return;
+    list.style.paddingBottom = '';
+    requestAnimationFrame(function(){
+      var searchWrap = list.querySelector('.pl-supplier-search-wrap, .ep-listbox-search-wrap');
+      var topPad = searchWrap ? searchWrap.offsetHeight : 0;
+      if (list.scrollHeight <= list.clientHeight + 1) {
+        list.scrollTop = 0;
+        return;
+      }
+      var target = Math.max(0, selected.offsetTop - topPad);
+      var naturalMax = Math.max(0, list.scrollHeight - list.clientHeight);
+      if (target > naturalMax) {
+        list.style.paddingBottom = (target - naturalMax) + 'px';
+      }
+      list.scrollTop = target;
+    });
+  }
+
   function openListbox(root){
     if (!root || root.classList.contains('is-disabled')) return;
     closeAllListboxes(root);
@@ -113,13 +138,15 @@
       list.hidden = false;
       if (root.hasAttribute('data-se-listbox-searchable')) {
         filterSearchableOptions(root, '');
+        scrollSelectedToTop(list);
         if (search) {
           search.value = '';
           search.focus();
         }
       } else {
         var selected = list.querySelector('[aria-selected="true"]') || list.querySelector('.se-filter-listbox-option');
-        if (selected) selected.focus();
+        scrollSelectedToTop(list);
+        if (selected) selected.focus({ preventScroll: true });
       }
     }
   }
@@ -262,5 +289,69 @@
       el.textContent = formatInr(el.getAttribute('data-amount'), 0);
     });
   }
+
+  /* ---------- Sortable purchase table headers ---------- */
+  (function initPurchaseTableSort(){
+    var table = document.querySelector('table.pl-table');
+    if (!table) return;
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+    var activeKey = '';
+    var ascending = true;
+
+    function cellSortValue(row, colIndex, type){
+      var cell = row.cells[colIndex];
+      if (!cell) return '';
+      var raw = cell.getAttribute('data-sort-value');
+      if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+      if (type === 'number') {
+        var n = Number(raw);
+        return isFinite(n) ? n : 0;
+      }
+      return String(raw).toLowerCase();
+    }
+
+    function sortBy(th){
+      var key = th.getAttribute('data-sort') || '';
+      var type = th.getAttribute('data-sort-type') || 'text';
+      var colIndex = Array.from(th.parentNode.children).indexOf(th);
+      if (colIndex < 0) return;
+
+      if (activeKey === key) ascending = !ascending;
+      else {
+        activeKey = key;
+        ascending = true;
+      }
+
+      var rows = Array.from(tbody.rows);
+      rows.sort(function(a, b){
+        var av = cellSortValue(a, colIndex, type);
+        var bv = cellSortValue(b, colIndex, type);
+        var cmp = 0;
+        if (type === 'number') cmp = av - bv;
+        else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+        return ascending ? cmp : -cmp;
+      });
+      rows.forEach(function(row){ tbody.appendChild(row); });
+
+      headers.forEach(function(header){
+        header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+        header.setAttribute('aria-sort', 'none');
+      });
+      th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+      th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+    }
+
+    headers.forEach(function(th){
+      th.addEventListener('click', function(){ sortBy(th); });
+      th.addEventListener('keydown', function(e){
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          sortBy(th);
+        }
+      });
+    });
+  })();
 })();
 </script>

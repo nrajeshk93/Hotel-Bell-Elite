@@ -1,0 +1,22 @@
+/* Room Transfer — purchase-ledger / credit-payment aligned */
+body.su-module .rt-summary-row{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+body.su-module .rt-col-status{min-width:110px}
+body.su-module .rt-selectable-row{cursor:pointer}
+body.su-module .rt-selectable-row.is-selected{background:#EFF6FF}
+body.su-module tr.room-transfer-row--unpaid td{
+  background:rgba(245,158,11,.04);
+}
+body.su-module tr.room-transfer-row--unpaid.is-selected td{
+  background:#EFF6FF;
+}
+body.su-module #room-transfer-save-status:empty{display:none}
+body.su-module #room-transfer-save-status{
+  font-size:12px;
+  font-weight:600;
+  color:var(--txt3);
+}
+@media (max-width:900px){
+  body.su-module .rt-summary-row{grid-template-columns:1fr}
+}

@@ -1,6 +1,36 @@
 body.su-module #purchase-ledger-filter-form .se-filter-chip-label{
   text-align:center;
 }
+/* Five filter chips need a fluid grid — flex nowrap overflows mid-width screens. */
+body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:14px;
+  align-items:end;
+  width:100%;
+  min-width:0;
+}
+body.su-module #purchase-ledger-filter-form .se-filter-chip{
+  flex:none;
+  min-width:0;
+  width:100%;
+  max-width:none;
+}
+@media (max-width:1200px){
+  body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
+}
+@media (max-width:900px){
+  body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media (max-width:560px){
+  body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
+    grid-template-columns:1fr;
+  }
+}
 body.su-module .pl-date-input{
   width:100%;
   min-width:0;
@@ -75,8 +105,13 @@ body.su-module .pl-supplier-empty{
 }
 body.su-module .pl-supplier-option-name{display:block;font-weight:600}
 body.su-module .pl-supplier-option-gst{display:block;font-size:11px;color:var(--txt3);margin-top:2px}
-body.su-module .pl-summary-row{margin-bottom:16px}
-body.su-module .pl-summary-card{max-width:320px}
+body.su-module .pl-summary-row{
+  margin-bottom:16px;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+}
+body.su-module .pl-summary-card{max-width:none;min-width:0}
 body.su-module .pl-summary-body{padding:18px 20px}
 body.su-module .pl-summary-label{
   font-size:11px;
@@ -97,6 +132,13 @@ body.su-module .pl-summary-meta{
   font-size:12px;
   color:var(--txt3);
   font-weight:600;
+}
+@media (max-width:1100px){
+  body.su-module .pl-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:640px){
+  body.su-module .pl-summary-row{grid-template-columns:1fr}
+  body.su-module .pl-summary-value{font-size:24px}
 }
 body.su-module .pl-count{font-size:12px;font-weight:600;color:var(--txt3)}
 body.su-module .pl-card-body--flush{padding:0}
@@ -120,6 +162,28 @@ body.su-module .pl-table th{
   font-weight:700;
   text-transform:uppercase;
   letter-spacing:.5px;
+}
+body.su-module .pl-table th.pl-sortable{
+  cursor:pointer;
+  user-select:none;
+  white-space:nowrap;
+}
+body.su-module .pl-table th.pl-sortable:hover{color:var(--txt2)}
+body.su-module .pl-table th.pl-sortable::after{
+  content:'';
+  display:inline-block;
+  margin-left:6px;
+  font-size:9px;
+  opacity:.35;
+  vertical-align:middle;
+}
+body.su-module .pl-table th.pl-sortable.is-sorted-asc::after,
+body.su-module .pl-table th.pl-sortable.is-sorted-desc::after{opacity:1;color:#2563EB}
+body.su-module .pl-table th.pl-sortable.is-sorted-asc::after{content:'▲'}
+body.su-module .pl-table th.pl-sortable.is-sorted-desc::after{content:'▼'}
+body.su-module .pl-table th.pl-sortable:focus-visible{
+  outline:2px solid rgba(37,99,235,.35);
+  outline-offset:-2px;
 }
 body.su-module .pl-table tr:last-child td{border-bottom:0}
 body.su-module .pl-col-amount{width:120px;white-space:nowrap;text-align:right}

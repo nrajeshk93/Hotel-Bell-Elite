@@ -1,93 +1,499 @@
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script>
 (function(){
-  const widget = document.getElementById('room-transfer-widget');
-  const statusEl = document.getElementById('room-transfer-save-status');
-  const paidEl = document.getElementById('room-transfer-paid');
-  const unpaidEl = document.getElementById('room-transfer-unpaid');
-  const wrapEl = document.getElementById('room-transfer-wrap');
-  const statusFilter = widget ? String(widget.dataset.status || 'all') : 'all';
-  const locationFilter = widget ? String(widget.dataset.location || 'All') : 'All';
-  let saveTimer = null;
+  var page = document.getElementById('room-transfer-page');
+  var widget = document.getElementById('room-transfer-widget');
+  var statusEl = document.getElementById('room-transfer-save-status');
+  var totalEl = document.getElementById('room-transfer-total');
+  var paidEl = document.getElementById('room-transfer-paid');
+  var unpaidEl = document.getElementById('room-transfer-unpaid');
+  var totalCountEl = document.getElementById('room-transfer-total-count');
+  var paidCountEl = document.getElementById('room-transfer-paid-count');
+  var unpaidCountEl = document.getElementById('room-transfer-unpaid-count');
+  var entryCountEl = document.getElementById('room-transfer-entry-count');
+  var wrapEl = document.getElementById('room-transfer-wrap');
+  var filterForm = document.getElementById('room-transfer-filter-form');
+  var dateFrom = document.getElementById('room-transfer-date-from');
+  var dateTo = document.getElementById('room-transfer-date-to');
+  var statusFilter = widget ? String(widget.dataset.status || 'unpaid') : 'unpaid';
+  var locationFilter = widget ? String(widget.dataset.location || 'All') : 'All';
+  var dateFromVal = widget ? String(widget.dataset.dateFrom || '') : '';
+  var dateToVal = widget ? String(widget.dataset.dateTo || '') : '';
+  var createUrl = page ? String(page.getAttribute('data-create-url') || '') : '';
+  var reverseUrl = page ? String(page.getAttribute('data-reverse-url') || '') : '';
+  var todayIso = page ? String(page.getAttribute('data-today') || '') : '';
 
-  const formatInrKpi = (value) => formatInr(value, 0);
+  var selectAllCheck = document.getElementById('rt-select-all');
+  var selectionBar = document.getElementById('rt-selection-bar');
+  var tableSelectCountEl = document.getElementById('rt-table-select-count');
+  var tableSelectTotalEl = document.getElementById('rt-table-select-total');
+  var clearSelectionBtn = document.getElementById('rt-clear-selection-btn');
+  var statusActionBtn = document.getElementById('rt-status-action-btn');
+  var actionMode = statusActionBtn ? String(statusActionBtn.getAttribute('data-action') || 'clear') : 'clear';
+  var actionIdleLabel = statusActionBtn
+    ? String(statusActionBtn.getAttribute('data-idle-label') || statusActionBtn.textContent || 'Clear Payment')
+    : 'Clear Payment';
+  var actionBusy = false;
+
+  var clearanceModal = document.getElementById('rt-clearance-modal');
+  var clearanceError = document.getElementById('rt-clearance-error');
+  var paymentDateEl = document.getElementById('rt-payment-date');
+  var paymentMethodEl = document.getElementById('rt-payment-method');
+  var methodToggle = document.getElementById('rt-method-toggle');
+  var transactionWrap = document.getElementById('rt-transaction-wrap');
+  var transactionEl = document.getElementById('rt-transaction-id');
+  var notesEl = document.getElementById('rt-notes');
+  var allocBody = document.getElementById('rt-alloc-body');
+  var allocMetaEl = document.getElementById('rt-alloc-meta');
+  var allocTotalEl = document.getElementById('rt-alloc-total');
+  var pendingSelections = [];
+
+  function formatInrKpi(value){
+    if (typeof window.formatINR === 'function') return window.formatINR(value, 0);
+    var n = Number(value || 0);
+    return isFinite(n) ? n.toLocaleString('en-IN', { maximumFractionDigits: 0 }) : '0';
+  }
+
+  function formatMoneyNodes(root){
+    (root || document).querySelectorAll('[data-amount]').forEach(function(el){
+      if (el.closest && el.closest('tr.room-transfer-row') && el.tagName === 'TR') return;
+      el.textContent = formatInrKpi(el.getAttribute('data-amount'));
+    });
+  }
+  formatMoneyNodes(document);
+
+  function escapeHtml(value){
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function setError(el, message){
+    if (!el) return;
+    if (message) {
+      el.textContent = message;
+      el.style.display = 'block';
+    } else {
+      el.textContent = '';
+      el.style.display = 'none';
+    }
+  }
+
+  function openModal(el){
+    if (!el) return;
+    el.classList.add('open');
+    el.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeModal(el){
+    if (!el) return;
+    el.classList.remove('open');
+    el.setAttribute('aria-hidden', 'true');
+  }
+
+  function transferWord(count){
+    return Number(count || 0) === 1 ? 'transfer' : 'transfers';
+  }
 
   function updateSummary(summaryRollup){
-    const rollup = summaryRollup || {};
-    if (paidEl) paidEl.textContent = formatInrKpi(rollup.paid_amount || 0);
-    if (unpaidEl) unpaidEl.textContent = formatInrKpi(rollup.unpaid_amount || 0);
+    var rollup = summaryRollup || {};
+    if (totalEl) {
+      totalEl.setAttribute('data-amount', String(rollup.total_amount || 0));
+      totalEl.textContent = formatInrKpi(rollup.total_amount || 0);
+    }
+    if (paidEl) {
+      paidEl.setAttribute('data-amount', String(rollup.paid_amount || 0));
+      paidEl.textContent = formatInrKpi(rollup.paid_amount || 0);
+    }
+    if (unpaidEl) {
+      unpaidEl.setAttribute('data-amount', String(rollup.unpaid_amount || 0));
+      unpaidEl.textContent = formatInrKpi(rollup.unpaid_amount || 0);
+    }
+    if (totalCountEl) totalCountEl.textContent = (rollup.total_count || 0) + ' ' + transferWord(rollup.total_count);
+    if (paidCountEl) paidCountEl.textContent = (rollup.paid_count || 0) + ' ' + transferWord(rollup.paid_count);
+    if (unpaidCountEl) unpaidCountEl.textContent = (rollup.unpaid_count || 0) + ' ' + transferWord(rollup.unpaid_count);
+    var body = document.getElementById('room-transfer-body');
+    var visible = body ? body.querySelectorAll('tr').length : 0;
+    if (entryCountEl) entryCountEl.textContent = visible + ' entries';
   }
 
   function emptyStateMessage(){
-    const locationSuffix = locationFilter === 'All' ? '' : ` for ${locationFilter}`;
+    var locationSuffix = locationFilter === 'All' ? '' : (' for ' + locationFilter);
     if (statusFilter === 'paid') {
-      return `No paid room transfers found${locationSuffix}. Mark pending lines as Paid when settled.`;
+      return 'No paid room transfers found' + locationSuffix + ' for the selected dates.';
     }
     if (statusFilter === 'unpaid') {
-      return `No pending room transfers${locationSuffix}. Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.`;
+      return 'No pending room transfers' + locationSuffix + ' for the selected dates. Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.';
     }
-    return `No room transfers found${locationSuffix}. Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.`;
+    return 'No room transfers found' + locationSuffix + ' for the selected dates. Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.';
   }
 
   function showEmptyState(){
     if (!wrapEl) return;
-    wrapEl.innerHTML = `<div class="room-transfer-empty" id="room-transfer-empty">${emptyStateMessage()}</div>`;
-  }
-
-  function rowMatchesFilter(paymentStatus){
-    if (statusFilter === 'all') return true;
-    return paymentStatus === statusFilter;
-  }
-
-  function updateRowStatus(row, paymentStatus){
-    if (!row) return;
-    row.classList.remove('room-transfer-row--paid', 'room-transfer-row--unpaid');
-    row.classList.add(`room-transfer-row--${paymentStatus}`);
-  }
-
-  async function saveStatus(entryId, paymentStatus){
-    if (!widget) return;
-    const resp = await fetch('{{ url_for("save_room_transfer_status") }}', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        company: widget.dataset.company,
-        status: statusFilter,
-        location: locationFilter,
-        updates: [{ id: entryId, payment_status: paymentStatus }],
-      }),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save status.');
-    if (data.summary_rollup) updateSummary(data.summary_rollup);
-    else if (data.rollup) updateSummary(data.rollup);
-
-    const row = document.querySelector(`tr[data-entry-id="${entryId}"]`);
-    if (!rowMatchesFilter(paymentStatus)) {
-      if (row) row.remove();
-      if (!document.querySelector('#room-transfer-body tr')) showEmptyState();
-    } else {
-      updateRowStatus(row, paymentStatus);
+    wrapEl.innerHTML = '<div class="pl-empty" id="room-transfer-empty">' + emptyStateMessage() + '</div>';
+    if (entryCountEl) entryCountEl.textContent = '0 entries';
+    if (selectionBar) selectionBar.hidden = true;
+    if (statusActionBtn) {
+      statusActionBtn.disabled = true;
+      statusActionBtn.hidden = true;
     }
-    if (statusEl) statusEl.textContent = 'Status saved';
+    if (selectAllCheck) selectAllCheck.disabled = true;
   }
 
-  function scheduleSave(entryId, paymentStatus, selectEl){
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(async () => {
-      try {
-        await saveStatus(entryId, paymentStatus);
-      } catch (err) {
-        if (statusEl) statusEl.textContent = err.message || 'Save failed';
-        if (selectEl) selectEl.focus();
+  function selectableRows(){
+    return Array.from(document.querySelectorAll('.rt-selectable-row'));
+  }
+
+  function selectedRows(){
+    return selectableRows().filter(function(row){
+      var check = row.querySelector('.rt-row-check');
+      return check && check.checked;
+    });
+  }
+
+  function selectionFromRow(row){
+    var balance = Number(row.getAttribute('data-balance') || 0);
+    return {
+      entry_id: Number(row.getAttribute('data-entry-id')),
+      balance: balance,
+      amount: balance,
+      invoice_number: row.getAttribute('data-invoice') || '',
+      guest_name: row.getAttribute('data-guest') || '',
+      location: row.getAttribute('data-location') || '',
+    };
+  }
+
+  function updateTableSelectionUi(){
+    var selected = selectedRows();
+    var total = 0;
+    selected.forEach(function(row){
+      total += Number(row.getAttribute('data-balance') || 0);
+    });
+
+    selectableRows().forEach(function(row){
+      var check = row.querySelector('.rt-row-check');
+      row.classList.toggle('is-selected', !!(check && check.checked));
+    });
+
+    var totalRows = selectableRows().length;
+    if (selectAllCheck) {
+      selectAllCheck.checked = totalRows > 0 && selected.length === totalRows;
+      selectAllCheck.indeterminate = selected.length > 0 && selected.length < totalRows;
+      selectAllCheck.disabled = totalRows === 0 || actionBusy;
+    }
+
+    if (tableSelectCountEl) tableSelectCountEl.textContent = selected.length + ' selected';
+    if (tableSelectTotalEl) {
+      tableSelectTotalEl.setAttribute('data-amount', String(total));
+      tableSelectTotalEl.textContent = formatInrKpi(total);
+    }
+    if (selectionBar) selectionBar.hidden = selected.length === 0;
+    if (statusActionBtn) statusActionBtn.disabled = selected.length === 0 || actionBusy;
+  }
+
+  function setAllChecks(checked){
+    selectableRows().forEach(function(row){
+      var check = row.querySelector('.rt-row-check');
+      if (check && !check.disabled) check.checked = !!checked;
+    });
+    updateTableSelectionUi();
+  }
+
+  function syncTransactionVisibility(){
+    var method = paymentMethodEl ? paymentMethodEl.value : 'cash';
+    if (transactionWrap) transactionWrap.hidden = method !== 'card';
+  }
+
+  function refreshAllocTotal(){
+    if (!allocBody || !allocTotalEl) return;
+    var total = 0;
+    allocBody.querySelectorAll('.cp-alloc-input').forEach(function(input){
+      total += Number(input.value || 0);
+    });
+    allocTotalEl.setAttribute('data-amount', String(total));
+    allocTotalEl.textContent = formatInrKpi(total);
+  }
+
+  function populatePaymentModal(selections){
+    if (!allocBody) return;
+    allocBody.innerHTML = '';
+    if (allocMetaEl) {
+      allocMetaEl.textContent = selections.length === 1
+        ? (selections[0].invoice_number || '1 transfer')
+        : (selections.length + ' transfers');
+    }
+    selections.forEach(function(item){
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-entry-id', item.entry_id);
+      tr.innerHTML =
+        '<td><span class="cp-alloc-code">' + escapeHtml(item.invoice_number || '—') + '</span>' +
+        '<span>' + escapeHtml(item.guest_name || '—') + '</span>' +
+        (item.location ? '<span class="cp-alloc-supplier">' + escapeHtml(item.location) + '</span>' : '') +
+        '</td>' +
+        '<td class="pl-col-amount">' + formatInrKpi(item.balance) + '</td>' +
+        '<td class="pl-col-amount"><input class="cp-alloc-input" type="number" min="0.01" step="0.01" max="' + item.balance + '" value="' + item.amount + '"></td>';
+      allocBody.appendChild(tr);
+      tr.querySelector('.cp-alloc-input').addEventListener('input', refreshAllocTotal);
+    });
+    refreshAllocTotal();
+  }
+
+  function beginPaymentFromSelections(selections){
+    if (!selections.length) return;
+    pendingSelections = selections;
+    setError(clearanceError, '');
+    if (paymentDateEl) paymentDateEl.value = todayIso;
+    if (paymentMethodEl) paymentMethodEl.value = 'cash';
+    if (methodToggle) {
+      methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(btn){
+        var active = btn.getAttribute('data-value') === 'cash';
+        btn.classList.toggle('active', active);
+      });
+    }
+    if (transactionEl) transactionEl.value = '';
+    if (notesEl) notesEl.value = '';
+    syncTransactionVisibility();
+    populatePaymentModal(pendingSelections);
+    openModal(clearanceModal);
+  }
+
+  async function submitClearance(){
+    if (!pendingSelections.length) {
+      setError(clearanceError, 'Select at least one room transfer.');
+      return;
+    }
+    if (!createUrl) {
+      setError(clearanceError, 'Payment endpoint is not available.');
+      return;
+    }
+    var method = paymentMethodEl ? paymentMethodEl.value : 'cash';
+    var transactionId = transactionEl ? transactionEl.value.trim() : '';
+    if (method === 'card' && !transactionId) {
+      setError(clearanceError, 'Transaction ID is required for bank transfer.');
+      return;
+    }
+    var allocations = [];
+    var invalid = false;
+    allocBody.querySelectorAll('tr').forEach(function(tr, index){
+      var input = tr.querySelector('.cp-alloc-input');
+      var amount = Number(input && input.value);
+      var pending = pendingSelections[index];
+      var max = pending ? pending.balance : Number(input && input.getAttribute('max'));
+      if (!amount || amount <= 0 || amount > max + 0.001) {
+        invalid = true;
+        return;
       }
-    }, 350);
+      allocations.push({
+        entry_id: Number(tr.getAttribute('data-entry-id')),
+        amount: amount
+      });
+    });
+    if (invalid || !allocations.length) {
+      setError(clearanceError, 'Enter a valid pay amount for each transfer.');
+      return;
+    }
+
+    var submitBtn = document.getElementById('rt-clearance-submit');
+    if (submitBtn) submitBtn.disabled = true;
+    setError(clearanceError, '');
+    try {
+      var res = await fetch(createUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: widget ? widget.dataset.company : '',
+          payment_date: paymentDateEl ? paymentDateEl.value : todayIso,
+          payment_method: method,
+          transaction_id: transactionId,
+          notes: notesEl ? notesEl.value.trim() : '',
+          allocations: allocations
+        })
+      });
+      var data = await res.json().catch(function(){ return {}; });
+      if (!res.ok || !data.ok) {
+        setError(clearanceError, data.error || 'Unable to record payment.');
+        return;
+      }
+      if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
+      else window.location.reload();
+    } catch (err) {
+      setError(clearanceError, 'Network error while recording payment.');
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
   }
 
-  document.querySelectorAll('.room-transfer-status-select').forEach((select) => {
-    select.addEventListener('change', function(){
-      scheduleSave(Number(select.dataset.entryId), select.value, select);
+  async function reverseSelectedPayments(){
+    if (!widget || actionBusy || !reverseUrl) return;
+    var selected = selectedRows();
+    if (!selected.length) return;
+    var entryIds = selected.map(function(row){
+      return Number(row.getAttribute('data-entry-id'));
+    }).filter(Boolean);
+    if (!entryIds.length) return;
+
+    actionBusy = true;
+    updateTableSelectionUi();
+    if (statusActionBtn) statusActionBtn.textContent = 'Reversing…';
+    if (statusEl) statusEl.textContent = 'Reversing payment…';
+
+    try {
+      var res = await fetch(reverseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: widget.dataset.company,
+          entry_ids: entryIds,
+        }),
+      });
+      var data = await res.json().catch(function(){ return {}; });
+      if (!res.ok || !data.ok) throw new Error(data.error || 'Could not mark Un Paid.');
+      if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
+      else window.location.reload();
+    } catch (err) {
+      if (statusEl) statusEl.textContent = err.message || 'Save failed';
+      actionBusy = false;
+      if (statusActionBtn) statusActionBtn.textContent = actionIdleLabel;
+      updateTableSelectionUi();
+    }
+  }
+
+  function onPrimaryAction(){
+    if (actionMode === 'reverse') {
+      reverseSelectedPayments();
+      return;
+    }
+    var selections = selectedRows().map(selectionFromRow).filter(function(item){
+      return item.entry_id && item.balance > 0;
+    });
+    if (!selections.length) return;
+    beginPaymentFromSelections(selections);
+  }
+
+  if (selectAllCheck) {
+    selectAllCheck.addEventListener('change', function(){
+      setAllChecks(selectAllCheck.checked);
+    });
+  }
+  if (clearSelectionBtn) {
+    clearSelectionBtn.addEventListener('click', function(){ setAllChecks(false); });
+  }
+  if (statusActionBtn) {
+    statusActionBtn.addEventListener('click', onPrimaryAction);
+  }
+
+  if (methodToggle) {
+    methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var value = btn.getAttribute('data-value') || 'cash';
+        if (paymentMethodEl) paymentMethodEl.value = value;
+        methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(other){
+          other.classList.toggle('active', other === btn);
+        });
+        syncTransactionVisibility();
+      });
+    });
+  }
+
+  var clearanceBack = document.getElementById('rt-clearance-back');
+  if (clearanceBack) clearanceBack.addEventListener('click', function(){ closeModal(clearanceModal); });
+  if (clearanceModal) {
+    clearanceModal.addEventListener('click', function(e){
+      if (e.target === clearanceModal) closeModal(clearanceModal);
+    });
+  }
+  var clearanceSubmit = document.getElementById('rt-clearance-submit');
+  if (clearanceSubmit) clearanceSubmit.addEventListener('click', submitClearance);
+
+  document.querySelectorAll('.rt-selectable-row').forEach(function(row){
+    var check = row.querySelector('.rt-row-check');
+    if (check) {
+      check.addEventListener('change', updateTableSelectionUi);
+      check.addEventListener('click', function(e){ e.stopPropagation(); });
+    }
+    row.addEventListener('click', function(e){
+      if (e.target.closest('a, button, input, label')) return;
+      if (!check || check.disabled) return;
+      check.checked = !check.checked;
+      updateTableSelectionUi();
     });
   });
+  updateTableSelectionUi();
+
+  function syncDateBounds(){
+    if (dateFrom && dateTo) {
+      dateFrom.max = dateTo.value || '';
+      dateTo.min = dateFrom.value || '';
+    }
+  }
+  if (dateFrom) dateFrom.addEventListener('change', function(){ syncDateBounds(); if (filterForm) filterForm.submit(); });
+  if (dateTo) dateTo.addEventListener('change', function(){ syncDateBounds(); if (filterForm) filterForm.submit(); });
+
+  (function initSortable(){
+    var table = document.getElementById('room-transfer-table');
+    if (!table) return;
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+    if (!headers.length) return;
+    var activeKey = '';
+    var ascending = true;
+
+    function cellSortValue(row, colIndex, type){
+      var cell = row.cells[colIndex];
+      if (!cell) return type === 'number' ? 0 : '';
+      var raw = cell.getAttribute('data-sort-value');
+      if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+      if (type === 'number') {
+        var n = Number(raw);
+        return isFinite(n) ? n : 0;
+      }
+      return String(raw).toLowerCase();
+    }
+
+    function sortBy(th){
+      var key = th.getAttribute('data-sort') || '';
+      var type = th.getAttribute('data-sort-type') || 'text';
+      var colIndex = Array.from(th.parentNode.children).indexOf(th);
+      if (colIndex < 0) return;
+
+      if (activeKey === key) ascending = !ascending;
+      else {
+        activeKey = key;
+        ascending = true;
+      }
+
+      var rows = Array.from(tbody.rows);
+      rows.sort(function(a, b){
+        var av = cellSortValue(a, colIndex, type);
+        var bv = cellSortValue(b, colIndex, type);
+        var cmp = type === 'number'
+          ? av - bv
+          : String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+        return ascending ? cmp : -cmp;
+      });
+      rows.forEach(function(row){ tbody.appendChild(row); });
+
+      headers.forEach(function(header){
+        header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+        header.setAttribute('aria-sort', 'none');
+      });
+      th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+      th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+    }
+
+    headers.forEach(function(th){
+      th.addEventListener('click', function(){ sortBy(th); });
+      th.addEventListener('keydown', function(e){
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          sortBy(th);
+        }
+      });
+    });
+  })();
 })();
 </script>
