@@ -1,3 +1,5 @@
+/* Beat shared .pl-summary-row 4-col from hbe_kpi.css (cash has 5 KPIs) */
+body.su-module .pl-summary-row.cl-summary-row,
 body.su-module .cl-summary-row{
   display:grid;
   grid-template-columns:repeat(5,minmax(0,1fr));
@@ -5,12 +7,15 @@ body.su-module .cl-summary-row{
   margin-bottom:18px;
 }
 @media (max-width:1200px){
+  body.su-module .pl-summary-row.cl-summary-row,
   body.su-module .cl-summary-row{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media (max-width:720px){
+  body.su-module .pl-summary-row.cl-summary-row,
   body.su-module .cl-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media (max-width:480px){
+  body.su-module .pl-summary-row.cl-summary-row,
   body.su-module .cl-summary-row{grid-template-columns:1fr}
 }
 body.su-module .cl-header-actions{
@@ -53,19 +58,27 @@ body.su-module .cl-summary-card--available .pl-summary-value{color:#1D4ED8}
 body.su-module #cash-ledger-filter-form.cl-filter-form{
   display:flex;
   align-items:flex-end;
-  justify-content:flex-end;
+  justify-content:flex-start;
   flex:1 1 auto;
+  flex-wrap:wrap;
   width:100%;
   min-width:0;
-  gap:0;
+  gap:12px;
 }
 body.su-module .se-sales-header-filters:has(#cash-ledger-filter-form){
-  justify-content:flex-end;
+  justify-content:flex-start;
+}
+body.su-module .cl-location-chip{
+  flex:0 0 auto;
+  width:160px;
+  min-width:148px;
+  max-width:180px;
 }
 body.su-module .cl-date-range-host{
   flex:0 0 auto;
   min-width:0;
   z-index:30;
+  margin-left:auto;
 }
 body.su-module .cl-date-range-host .se-filter-chip--date-range{
   flex:none;

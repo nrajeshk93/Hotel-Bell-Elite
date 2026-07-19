@@ -10,23 +10,39 @@
   var company = page.getAttribute('data-company') || 'HBE';
   var todayIso = page.getAttribute('data-today') || '';
 
-  function formatInr(amount){
-    if (typeof window.formatINR === 'function') return window.formatINR(amount);
+  function formatInr(amount, dec){
+    var places = dec === undefined ? 0 : dec;
+    if (typeof window.formatInr === 'function') return window.formatInr(amount, places);
     var n = Number(amount || 0);
-    return isFinite(n) ? n.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0';
+    if (!isFinite(n)) return '₹0';
+    return (n < 0 ? '−' : '') + '₹' + Math.abs(n).toLocaleString('en-IN', {
+      maximumFractionDigits: places,
+      minimumFractionDigits: 0
+    });
+  }
+
+  function isKpiAmountNode(el){
+    return !!(el && (
+      el.classList.contains('pl-summary-value') ||
+      el.classList.contains('kpi-val') ||
+      el.classList.contains('hbe-kpi-value') ||
+      el.classList.contains('sr-kpi-value')
+    ));
   }
 
   function formatMoneyNodes(root){
     (root || document).querySelectorAll('[data-amount]').forEach(function(el){
       var raw = Number(el.getAttribute('data-amount') || 0);
+      var places = isKpiAmountNode(el) ? 0 : 0;
       if (el.classList.contains('cl-amount-in') || el.classList.contains('cl-amount-out')) {
-        el.textContent = (raw < 0 ? '−' : '+') + formatInr(Math.abs(raw));
+        el.textContent = (raw < 0 ? '−' : '+') + formatInr(Math.abs(raw), places);
         return;
       }
-      el.textContent = formatInr(raw);
+      el.textContent = formatInr(raw, places);
     });
   }
   formatMoneyNodes(document);
+  if (typeof scheduleFitKpiValues === 'function') scheduleFitKpiValues();
 
   var filterForm = document.getElementById('cash-ledger-filter-form');
   var clearUrl = filterForm ? String(filterForm.getAttribute('data-clear-url') || filterForm.action || '') : '';

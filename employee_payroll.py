@@ -39,7 +39,7 @@ _PAYROLL_DEPARTMENTS = (
     "MAINTENANCE",
     "SECURITY",
 )
-_PAYROLL_LOCK_START = (2026, 3)
+_PAYROLL_LOCK_START = (2026, 7)
 REPORTING_PERIOD_SESSION_KEY = "reporting_period"
 
 # Injected from app at registration time
@@ -238,8 +238,10 @@ def _parse_db_datetime(value):
         return None
 
 
-def _can_modify_attendance_record(user, att_dt, record=None, today=None, now=None):
+def _can_modify_attendance_record(user, att_dt, record=None, today=None, now=None, payroll_locked=False):
     if not att_dt:
+        return False
+    if payroll_locked:
         return False
     today = today or date.today()
     if att_dt > today:
@@ -257,7 +259,9 @@ def _can_modify_attendance_record(user, att_dt, record=None, today=None, now=Non
     return timedelta(0) <= (now - updated_at) <= timedelta(minutes=30)
 
 
-def _attendance_date_lock_message(today=None):
+def _attendance_date_lock_message(today=None, payroll_locked=False, year=None, month=None):
+    if payroll_locked and year and month:
+        return _payroll_month_frozen_message(year, month)
     today = today or date.today()
     return (
         f'Only administrators can modify locked attendance. Standard users can edit today, '
@@ -338,6 +342,102 @@ def _is_payroll_month_locked(conn, year, month):
     return bool(row)
 
 
+def _payroll_month_frozen_message(year, month):
+    label = _period_label(year, month)
+    return (
+        f'{label} is locked. No attendance, credit, repayment, tip incentive, '
+        f'or payroll edits are allowed for this month — including for administrators.'
+    )
+
+
+def _period_from_credit_date(cr_date):
+    """Return (year, month) for a credit entry date, or (None, None) if invalid."""
+    try:
+        d = datetime.strptime(str(cr_date)[:10], '%Y-%m-%d').date()
+        return d.year, d.month
+    except (TypeError, ValueError):
+        return None, None
+
+
+def _is_credit_date_locked(conn, cr_date):
+    """True when the credit date falls in a locked payroll month."""
+    year, month = _period_from_credit_date(cr_date)
+    if year is None:
+        return False
+    return _is_payroll_month_locked(conn, year, month)
+
+
+def _annotate_credit_editability(conn, items):
+    """Attach can_edit to each credit dict based on payroll month lock."""
+    annotated = []
+    for item in items:
+        row = dict(item)
+        row['can_edit'] = not _is_credit_date_locked(conn, row.get('date'))
+        annotated.append(row)
+    return annotated
+
+
+def _employee_has_locked_month_data(conn, emp_id):
+    """True when the employee has attendance/credits/tips tied to a locked month."""
+    if conn.execute(
+        """SELECT 1
+           FROM attendance a
+           JOIN payroll_month_locks l
+             ON CAST(substr(a.date, 1, 4) AS INTEGER) = l.year
+            AND CAST(substr(a.date, 6, 2) AS INTEGER) = l.month
+           WHERE a.employee_id = ?
+           LIMIT 1""",
+        (emp_id,),
+    ).fetchone():
+        return True
+    if conn.execute(
+        """SELECT 1
+           FROM credits c
+           JOIN payroll_month_locks l
+             ON CAST(substr(c.date, 1, 4) AS INTEGER) = l.year
+            AND CAST(substr(c.date, 6, 2) AS INTEGER) = l.month
+           WHERE c.employee_id = ?
+           LIMIT 1""",
+        (emp_id,),
+    ).fetchone():
+        return True
+    if conn.execute(
+        """SELECT 1
+           FROM tip_incentive_payouts t
+           JOIN payroll_month_locks l ON t.year = l.year AND t.month = l.month
+           WHERE t.employee_id = ?
+           LIMIT 1""",
+        (emp_id,),
+    ).fetchone():
+        return True
+    return False
+
+
+def _wage_fields_changed(existing, new_vals):
+    """True when payroll-affecting master fields would change."""
+    def _f(key, default=0):
+        try:
+            return float(existing[key] if existing[key] is not None else default)
+        except (TypeError, ValueError, KeyError, IndexError):
+            return float(default)
+
+    def _i(key, default=0):
+        try:
+            return int(existing[key] if existing[key] is not None else default)
+        except (TypeError, ValueError, KeyError, IndexError):
+            return int(default)
+
+    return (
+        abs(_f('gross_salary') - float(new_vals.get('gross_salary') or 0)) > 1e-9
+        or abs(_f('basic_salary') - float(new_vals.get('basic_salary') or 0)) > 1e-9
+        or abs(_f('epf_amount') - float(new_vals.get('epf_amount') or 0)) > 1e-9
+        or abs(_f('esic_amount') - float(new_vals.get('esic_amount') or 0)) > 1e-9
+        or _i('epf_exempt') != int(new_vals.get('epf_exempt') or 0)
+        or _i('esic_exempt') != int(new_vals.get('esic_exempt') or 0)
+        or _i('total_off') != int(new_vals.get('total_off') or 0)
+    )
+
+
 def _get_payroll_month_state(conn, year, month):
     start_year, start_month = _PAYROLL_LOCK_START
     label = _period_label(year, month)
@@ -373,7 +473,7 @@ def _get_payroll_month_state(conn, year, month):
             'locked': True,
             'can_edit': False,
             'can_lock': False,
-            'message': f'{label} is locked. Credit repayment for this payroll month is now read-only.',
+            'message': _payroll_month_frozen_message(year, month),
             'button_label': 'Locked',
             'reason': f'{label} is already locked.',
             'previous_label': prev_label,
@@ -458,6 +558,66 @@ def _get_month_credit_repayment(conn, emp_id, year, month):
     return _round_half_up(abs(float(row['amount'] or 0)), 2) if row else 0.0
 
 
+def _get_month_tip_incentive(conn, emp_id, year, month, company=None):
+    """Tip incentive payout for one employee in a payroll month."""
+    if company:
+        row = conn.execute(
+            """SELECT amount FROM tip_incentive_payouts
+               WHERE company=? AND year=? AND month=? AND employee_id=?""",
+            (company, year, month, emp_id),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS amount FROM tip_incentive_payouts
+               WHERE year=? AND month=? AND employee_id=?""",
+            (year, month, emp_id),
+        ).fetchone()
+    return _round_half_up(float(row['amount'] or 0), 2) if row else 0.0
+
+
+def _get_month_tip_incentive_map(conn, year, month, company=None):
+    """Map employee_id -> tip incentive for a payroll month."""
+    if company:
+        rows = conn.execute(
+            """SELECT employee_id, amount FROM tip_incentive_payouts
+               WHERE company=? AND year=? AND month=?""",
+            (company, year, month),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT employee_id, COALESCE(SUM(amount), 0) AS amount
+               FROM tip_incentive_payouts
+               WHERE year=? AND month=?
+               GROUP BY employee_id""",
+            (year, month),
+        ).fetchall()
+    return {
+        row['employee_id']: _round_half_up(float(row['amount'] or 0), 2)
+        for row in rows
+        if float(row['amount'] or 0) > 0
+    }
+
+
+def _upsert_month_tip_incentive(conn, company, year, month, emp_id, amount):
+    """Save tip incentive for one employee; zero amount deletes the row."""
+    amount = _round_half_up(max(0.0, float(amount or 0)), 2)
+    if amount <= 0:
+        conn.execute(
+            """DELETE FROM tip_incentive_payouts
+               WHERE company=? AND year=? AND month=? AND employee_id=?""",
+            (company, year, month, emp_id),
+        )
+        return 0.0
+    conn.execute(
+        """INSERT INTO tip_incentive_payouts (company, year, month, employee_id, amount, updated_at)
+           VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+           ON CONFLICT(company, year, month, employee_id)
+           DO UPDATE SET amount=excluded.amount, updated_at=datetime('now','localtime')""",
+        (company, year, month, emp_id, amount),
+    )
+    return amount
+
+
 def _get_month_credit_repayment_map(conn, year, month):
     rows = conn.execute(
         """
@@ -527,12 +687,17 @@ def _upsert_month_credit_repayment(conn, emp_id, year, month, amount):
         conn.execute("DELETE FROM credits WHERE id=?", (row['id'],))
 
 
-def _employee_month_salary(conn, employee, year, month, credit_repayment=None):
+def _employee_month_salary(conn, employee, year, month, credit_repayment=None, tip_incentive=None):
     emp = dict(employee) if not isinstance(employee, dict) else dict(employee)
     credit_repayment = (
         _get_month_credit_repayment(conn, emp['id'], year, month)
         if credit_repayment is None
         else _round_half_up(credit_repayment, 2)
+    )
+    tip_incentive = (
+        _get_month_tip_incentive(conn, emp['id'], year, month)
+        if tip_incentive is None
+        else _round_half_up(tip_incentive, 2)
     )
     att = _get_month_attendance(conn, emp['id'], year, month)
     calendar_days = int(att.get('num_days', 0) or 0)
@@ -552,6 +717,7 @@ def _employee_month_salary(conn, employee, year, month, credit_repayment=None):
             sunday_shift='',
             epf_exempt=bool(emp.get('epf_exempt', 0)),
             esic_exempt=bool(emp.get('esic_exempt', 0)),
+            tip_incentive=tip_incentive,
         )
     else:
         salary = _calc_salary(
@@ -566,8 +732,10 @@ def _employee_month_salary(conn, employee, year, month, credit_repayment=None):
             sunday_shift='',
             epf_exempt=bool(emp.get('epf_exempt', 0)),
             esic_exempt=bool(emp.get('esic_exempt', 0)),
+            tip_incentive=tip_incentive,
         )
     salary['credit_repayment'] = _round_half_up(credit_repayment, 2)
+    salary['tip_incentive'] = _round_half_up(tip_incentive, 2)
     return att, salary
 
 
@@ -738,7 +906,8 @@ def _calc_total_off_lop(weekday_leave_days, total_off, gross, calendar_days):
 def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
                   tracked=False, custom_basic=0, custom_epf=0, custom_esic=0,
                   credit_repayment=0, sunday_incentive_days=0,
-                  sunday_shift='', epf_exempt=False, esic_exempt=False):
+                  sunday_shift='', epf_exempt=False, esic_exempt=False,
+                  tip_incentive=0):
     """Calculate salary components from gross / actual gross.
 
     Deductions (per Actual Gross for the month):
@@ -748,9 +917,11 @@ def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
           (unless exempt / custom ESI)
       Basic = Actual Gross − EPF − ESI (residual)
     Leave: weekday leave beyond Total Off is LOP at gross / calendar_days.
+    Tip incentive is added to net (manual monthly payout from Tips pool).
     """
     gross = max(0.0, float(gross))
     credit_repayment = float(credit_repayment or 0)
+    tip_incentive = max(0.0, float(tip_incentive or 0))
     custom_basic = float(custom_basic or 0)
     custom_epf = float(custom_epf or 0)
     custom_esic = float(custom_esic or 0)
@@ -786,13 +957,15 @@ def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
         return basic, max(0.0, epf), max(0.0, esic), esic_applicable
 
     basic_full, epf_full, esic_full, esic_applicable = _components(gross, 1.0)
-    net_full = max(0.0, round(gross - epf_full - esic_full - credit_repayment, 2))
+    net_full = max(0.0, round(
+        gross - epf_full - esic_full - credit_repayment + tip_incentive, 2))
 
     result = {
         'basic_full': basic_full, 'epf_full': epf_full,
         'esic_full': esic_full, 'net_full': net_full,
         'esic_applicable': esic_applicable,
         'credit_repayment': credit_repayment,
+        'tip_incentive': tip_incentive,
         'sunday_incentive_days': 0.0,
         'sunday_incentive': 0.0,
         'lop_deduction': 0.0,
@@ -835,9 +1008,10 @@ def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
         result['epf'] = epf_a
         result['esic'] = esic_a
         result['esic_applicable'] = esic_app_a
+        result['tip_incentive'] = tip_incentive
         result['net'] = max(0.0, round(
             gross_actual - epf_a - esic_a
-            - credit_repayment + sunday_incentive, 2))
+            - credit_repayment + sunday_incentive + tip_incentive, 2))
     elif not tracked and cal_days > 0:
         result['present_days'] = 0
         result['total_days'] = cal_days
@@ -845,7 +1019,8 @@ def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
         result['basic'] = 0.0
         result['epf'] = 0.0
         result['esic'] = 0.0
-        result['net'] = 0.0
+        result['tip_incentive'] = tip_incentive
+        result['net'] = max(0.0, round(tip_incentive, 2))
     else:
         result['present_days'] = cal_days
         result['total_days'] = cal_days
@@ -853,12 +1028,13 @@ def _calc_salary(gross, calendar_days=0, weekday_leave_days=0, total_off=0,
         result['basic'] = basic_full
         result['epf'] = epf_full
         result['esic'] = esic_full
+        result['tip_incentive'] = tip_incentive
         result['net'] = net_full
 
     for key in (
         'basic_full', 'epf_full', 'esic_full', 'net_full',
         'gross_actual', 'basic', 'epf', 'esic', 'net',
-        'sunday_incentive', 'lop_deduction',
+        'sunday_incentive', 'lop_deduction', 'tip_incentive',
     ):
         result[key] = _round_rupee(result.get(key, 0))
 
@@ -1011,7 +1187,7 @@ def report():
     ).fetchall()
     inactive_count = conn.execute("SELECT COUNT(*) FROM employees WHERE status='inactive'").fetchone()[0]
 
-    total_gross = total_net = total_epf = total_esic = 0.0
+    total_gross = total_net = total_epf = total_esic = total_incentive = 0.0
     total_present = total_absent = total_half = tracked_count = 0
     emp_list = []
 
@@ -1026,6 +1202,7 @@ def report():
         total_net   += e['net']
         total_epf   += e['epf']
         total_esic  += e['esic']
+        total_incentive += float(e.get('tip_incentive') or 0)
         emp_list.append(e)
 
     active_count = len(active_rows)
@@ -1047,6 +1224,7 @@ def report():
         total_net=round(total_net, 2),
         total_epf=round(total_epf, 2),
         total_esic=round(total_esic, 2),
+        total_incentive=round(total_incentive, 2),
         total_credits=round(total_credits, 2),
         credit_count=credit_count,
         total_present=total_present,
@@ -1274,13 +1452,29 @@ def edit_employee(emp_id):
         if sunday_shift not in ('shift1', 'shift2', 'shift3', ''):
             sunday_shift = ''
 
+        payroll_fields_locked = _employee_has_locked_month_data(conn, emp_id)
+        if payroll_fields_locked and _wage_fields_changed(existing, {
+            'gross_salary': salary_val,
+            'basic_salary': basic_val,
+            'epf_amount': epf_val,
+            'esic_amount': esic_val,
+            'epf_exempt': epf_exempt,
+            'esic_exempt': esic_exempt,
+            'total_off': total_off_val,
+        }):
+            errors.append(
+                'This employee has data in a locked payroll month. '
+                'Salary, statutory, and Total Off fields cannot be changed.'
+            )
+
         if errors:
             form_data = dict(request.form)
             form_data['id'] = emp_id
             form_data['emp_code'] = emp_code
             conn.close()
             return _emp_render('employees.html', errors=errors, form=form_data,
-                                   mode='edit', employees=[], search='')
+                                   mode='edit', employees=[], search='',
+                                   payroll_fields_locked=payroll_fields_locked)
 
         conn.execute(
             f"UPDATE employees SET emp_code=?, name=?, company=?, location=?, mobile=?, guardian_mobile=?, sex=?, address=?, aadhar=?, pan=?, epf_number=?, esic_number=?, gross_salary=?, basic_salary=?, epf_amount=?, esic_amount=?, credit_repayment=?, epf_exempt=?, esic_exempt=?, weekday_shift=?, sunday_shift=?, bank_name=?, account_holder_name=?, account_number=?, ifsc_code=?, total_off=?, status=?, updated_at={SQL_NOW} WHERE id=?",
@@ -1290,13 +1484,20 @@ def edit_employee(emp_id):
         conn.close()
         return redirect(url_for('employees'))
 
+    payroll_fields_locked = _employee_has_locked_month_data(conn, emp_id)
     conn.close()
-    return _emp_render('employees.html', mode='edit', form=dict(existing), employees=[], search='')
+    return _emp_render('employees.html', mode='edit', form=dict(existing), employees=[], search='',
+                       payroll_fields_locked=payroll_fields_locked)
 
 
 @payroll_bp.route('/delete_employee/<int:emp_id>')
 def delete_employee(emp_id):
     conn = get_db()
+    if _employee_has_locked_month_data(conn, emp_id):
+        conn.close()
+        return _permission_denied_response(
+            'This employee has data in a locked payroll month and cannot be deleted — including by administrators.'
+        )
     conn.execute("DELETE FROM credits WHERE employee_id=?", (emp_id,))
     conn.execute("DELETE FROM attendance WHERE employee_id=?", (emp_id,))
     conn.execute("DELETE FROM employees WHERE id=?", (emp_id,))
@@ -1424,6 +1625,8 @@ def attendance_date_view():
         _params
     ).fetchall()
 
+    payroll_state = _get_payroll_month_state(conn, sel_dt.year, sel_dt.month)
+    payroll_locked = bool(payroll_state['locked'])
     emps = []
     present_count = absent_count = half_count = unmarked_count = 0
     can_modify_attendance_date = False
@@ -1440,7 +1643,7 @@ def attendance_date_view():
             ).fetchone()
             e['date_status'] = rec['status'] if rec else ''
         e['can_modify_date_status'] = (not is_future) and _can_modify_attendance_record(
-            user, sel_dt, rec, today=today_dt, now=now_dt
+            user, sel_dt, rec, today=today_dt, now=now_dt, payroll_locked=payroll_locked
         )
         if e['can_modify_date_status']:
             can_modify_attendance_date = True
@@ -1463,7 +1666,13 @@ def attendance_date_view():
                        is_sunday=is_sunday,
                        is_future=is_future,
                        can_modify_attendance_date=can_modify_attendance_date,
-                       attendance_date_lock_message=_attendance_date_lock_message(today_dt),
+                       attendance_date_lock_message=_attendance_date_lock_message(
+                           today_dt,
+                           payroll_locked=payroll_locked,
+                           year=sel_dt.year,
+                           month=sel_dt.month,
+                       ),
+                       payroll_state=payroll_state,
                        today=today_dt.isoformat(),
                        present_count=present_count,
                        absent_count=absent_count,
@@ -1487,6 +1696,7 @@ def attendance(emp_id):
         conn.close()
         return _permission_denied_response('You do not have access to this employee attendance.')
     payroll_state = _get_payroll_month_state(conn, year, month)
+    payroll_locked = bool(payroll_state['locked'])
     emp = _attach_employee_month_context(conn, emp, year, month, payroll_state=payroll_state)
     att = emp['att']
 
@@ -1502,7 +1712,9 @@ def attendance(emp_id):
         status = att['records'].get(d_str, '')
         att_dt = date(year, month, day)
         record = att.get('record_meta', {}).get(d_str)
-        can_edit = _can_modify_attendance_record(user, att_dt, record, today=today_dt, now=now_dt)
+        can_edit = _can_modify_attendance_record(
+            user, att_dt, record, today=today_dt, now=now_dt, payroll_locked=payroll_locked
+        )
         week.append({'day': day, 'date': d_str, 'status': status, 'can_edit': can_edit})
         if len(week) == 7:
             cal_weeks.append(week)
@@ -1529,8 +1741,12 @@ def attendance(emp_id):
                        prev_y=prev_y, prev_m=prev_m,
                        next_y=next_y, next_m=next_m,
                        today=date.today().isoformat(),
-                       can_modify_past_attendance=bool(user and user.get('is_admin')),
-                       attendance_date_lock_message=_attendance_date_lock_message(),
+                       can_modify_past_attendance=(
+                           bool(user and user.get('is_admin')) and not payroll_locked
+                       ),
+                       attendance_date_lock_message=_attendance_date_lock_message(
+                           payroll_locked=payroll_locked, year=year, month=month
+                       ),
                        employees=[], search='')
 
 
@@ -1561,11 +1777,20 @@ def mark_attendance():
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return jsonify({'error': 'You do not have access to this employee attendance.'}), 403
         return _permission_denied_response('You do not have access to this employee attendance.')
+    payroll_locked = _is_payroll_month_locked(conn, att_dt.year, att_dt.month)
+    if payroll_locked:
+        conn.close()
+        message = _payroll_month_frozen_message(att_dt.year, att_dt.month)
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'error': message, 'locked': True}), 403
+        return _permission_denied_response(message)
     rec = conn.execute(
         "SELECT status, updated_at FROM attendance WHERE employee_id=? AND date=?",
         (emp_id, att_date)
     ).fetchone()
-    if not _can_modify_attendance_record(user, att_dt, rec, today=today_dt, now=datetime.now()):
+    if not _can_modify_attendance_record(
+        user, att_dt, rec, today=today_dt, now=datetime.now(), payroll_locked=payroll_locked
+    ):
         conn.close()
         message = _attendance_date_lock_message(today_dt)
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -1600,6 +1825,9 @@ def bulk_attendance(emp_id):
     if not _user_can_access_attendance_employee(conn, emp_id):
         conn.close()
         return _permission_denied_response('You do not have access to this employee attendance.')
+    if _is_payroll_month_locked(conn, year, month):
+        conn.close()
+        return _permission_denied_response(_payroll_month_frozen_message(year, month))
     if not (user and user.get('is_admin')):
         conn.close()
         return _permission_denied_response(_attendance_date_lock_message())
@@ -1630,9 +1858,14 @@ def bulk_attendance(emp_id):
     return redirect(url_for('attendance', emp_id=emp_id, year=year, month=month))
 
 
-def _get_employee_credits(conn, emp_id, year=None, month=None):
-    """Return credits for an employee, optionally filtered by month."""
-    if year and month:
+def _get_employee_credits(conn, emp_id, year=None, month=None, date_from=None, date_to=None):
+    """Return credits for an employee, optionally filtered by month or date range."""
+    if date_from and date_to:
+        rows = conn.execute(
+            "SELECT * FROM credits WHERE employee_id=? AND date>=? AND date<=? ORDER BY date DESC",
+            (emp_id, date_from, date_to)
+        ).fetchall()
+    elif year and month:
         rows = conn.execute(
             "SELECT * FROM credits WHERE employee_id=? AND date LIKE ? ORDER BY date DESC",
             (emp_id, f'{year}-{month:02d}-%')
@@ -1700,11 +1933,12 @@ def credits_dashboard():
     all_employees = conn.execute(
         f"SELECT id, name, emp_code, company FROM employees WHERE status='active' ORDER BY {_EMPLOYEE_DISPLAY_ORDER}"
     ).fetchall()
+    recent_credits = _annotate_credit_editability(conn, recent)
     conn.close()
 
     return _emp_render('employees.html', mode='credits_dashboard',
                        credit_emps=credit_emps,
-                       recent_credits=[dict(r) for r in recent],
+                       recent_credits=recent_credits,
                        total_credit_amount=total_credit_amount,
                        total_credit_entries=total_credit_entries,
                        employees_with_credit=employees_with_credit,
@@ -1741,6 +1975,9 @@ def add_credit_global():
         description = 'Repayment'
 
     conn = get_db()
+    if _is_credit_date_locked(conn, cr_date):
+        conn.close()
+        return redirect(url_for('credits_dashboard', year=year, month=month))
     emp = conn.execute("SELECT id FROM employees WHERE id=?", (emp_id_val,)).fetchone()
     if emp:
         conn.execute(
@@ -1755,7 +1992,17 @@ def add_credit_global():
 @payroll_bp.route('/credits/<int:emp_id>')
 def employee_credits(emp_id):
     """Show credits/advances for an employee."""
+    date_from = (request.args.get('date_from') or '').strip()
+    date_to = (request.args.get('date_to') or '').strip()
+    active_date_filter = bool(date_from and date_to)
     year, month = _period_from_source(request.args)
+    if active_date_filter:
+        try:
+            period_end = datetime.strptime(date_to, '%Y-%m-%d').date()
+            year, month = period_end.year, period_end.month
+        except ValueError:
+            active_date_filter = False
+            date_from = date_to = ''
     conn = get_db()
     emp = conn.execute("SELECT * FROM employees WHERE id=?", (emp_id,)).fetchone()
     if not emp:
@@ -1763,15 +2010,25 @@ def employee_credits(emp_id):
         return redirect(url_for('employees'))
     payroll_state = _get_payroll_month_state(conn, year, month)
     emp = _attach_employee_month_context(conn, emp, year, month, payroll_state=payroll_state)
-    cr = _get_employee_credits(conn, emp_id)
+    cr = _get_employee_credits(
+        conn, emp_id,
+        date_from=date_from if active_date_filter else None,
+        date_to=date_to if active_date_filter else None,
+    )
+    credit_items = _annotate_credit_editability(conn, cr['items'])
     overall_total = _get_total_credits(conn, emp_id)
+    today_iso = date.today().isoformat()
     conn.close()
     return _emp_render('employees.html', mode='credits', emp=emp,
-                       credit_items=cr['items'], credit_total=cr['total'],
+                       credit_items=credit_items, credit_total=cr['total'],
                        overall_credit=overall_total,
                        sel_year=year, sel_month=month,
                        month_name=calendar.month_name[month],
                        payroll_state=payroll_state,
+                       date_from=date_from if active_date_filter else '',
+                       date_to=date_to if active_date_filter else '',
+                       active_date_filter=active_date_filter,
+                       today_iso=today_iso,
                        employees=[], search='')
 
 
@@ -1799,6 +2056,9 @@ def add_credit(emp_id):
         description = 'Repayment'
 
     conn = get_db()
+    if _is_credit_date_locked(conn, cr_date):
+        conn.close()
+        return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
     conn.execute(
         "INSERT INTO credits (employee_id, date, description, amount, entry_type) VALUES (?,?,?,?,?)",
         (emp_id, cr_date, description, amount_val, entry_type)
@@ -1822,14 +2082,19 @@ def edit_credit(credit_id):
         amount_val = 0
 
     conn = get_db()
-    row = conn.execute("SELECT employee_id FROM credits WHERE id=?", (credit_id,)).fetchone()
+    row = conn.execute(
+        "SELECT employee_id, date FROM credits WHERE id=?", (credit_id,)
+    ).fetchone()
     if row and cr_date and amount_val != 0:
+        emp_id = row['employee_id']
+        if _is_credit_date_locked(conn, row['date']) or _is_credit_date_locked(conn, cr_date):
+            conn.close()
+            return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
         conn.execute(
             "UPDATE credits SET date=?, description=?, amount=? WHERE id=?",
             (cr_date, description, amount_val, credit_id)
         )
         conn.commit()
-        emp_id = row['employee_id']
         conn.close()
         return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
     conn.close()
@@ -1841,9 +2106,14 @@ def delete_credit(credit_id):
     """Delete a credit entry."""
     year, month = _period_from_source(request.args)
     conn = get_db()
-    row = conn.execute("SELECT employee_id FROM credits WHERE id=?", (credit_id,)).fetchone()
+    row = conn.execute(
+        "SELECT employee_id, date FROM credits WHERE id=?", (credit_id,)
+    ).fetchone()
     if row:
         emp_id = row['employee_id']
+        if _is_credit_date_locked(conn, row['date']):
+            conn.close()
+            return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
         conn.execute("DELETE FROM credits WHERE id=?", (credit_id,))
         conn.commit()
         conn.close()
@@ -3321,9 +3591,12 @@ def update_salary(emp_id):
         return jsonify({'error': 'Employee not found'}), 404
 
     payroll_state = _get_payroll_month_state(conn, year, month)
-    if not payroll_state['can_edit']:
+    if payroll_state['locked'] or not payroll_state['can_edit']:
         conn.close()
-        return jsonify({'error': payroll_state['message']}), 400
+        return jsonify({
+            'error': payroll_state['message'],
+            'locked': bool(payroll_state['locked']),
+        }), 403
 
     limits = _get_month_repayment_limits(conn, emp, year, month)
     max_allowed = limits['repayment_max']

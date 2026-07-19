@@ -75,21 +75,48 @@
     return targets;
   }
 
-  /** Call synchronously from a click/gesture before soft-nav DOM work. */
-  function preserveFullscreenForNavigation(){
-    if(!getPreference() && !getFullscreenElement()) return false;
+  function navRestoreWindowOpen(){
+    if(softNavInProgress) return true;
+    try{
+      var ts = Number(sessionStorage.getItem(NAV_TS_KEY) || 0);
+      return !!(ts && (Date.now() - ts) < 4000);
+    } catch(e){
+      return false;
+    }
+  }
+
+  /** Call BEFORE history.pushState while fullscreen is still active. */
+  function armForSoftNav(){
+    if(!getFullscreenElement()) return false;
     setPreference(true);
-    prepareNavigation();
+    try{
+      sessionStorage.setItem(NAV_TS_KEY, String(Date.now()));
+    } catch(e){}
     ensureFullscreenRoot();
-    // If already fullscreen on ANY element, do not re-request.
-    // Transferring from #de-fs-app → <html> exits FS in Chromium/Electron and often fails to re-enter.
+    return true;
+  }
+
+  /**
+   * Call during the click gesture around soft-nav.
+   * - If still fullscreen: keep the lock.
+   * - If pushState already dropped FS but we armed via armForSoftNav: re-enter now
+   *   (still within the user gesture so the browser allows it).
+   * Never enter fullscreen from a cold/stale flag when the user was not in FS.
+   */
+  function preserveFullscreenForNavigation(){
     if(getFullscreenElement()){
+      setPreference(true);
+      try{ sessionStorage.setItem(NAV_TS_KEY, String(Date.now())); } catch(e){}
+      ensureFullscreenRoot();
       updateButtons();
       return true;
     }
-    // Preferred but exited (e.g. history.pushState): re-enter during the same user gesture.
-    if(attemptRestoreSync()) return true;
-    requestAppFullscreen().then(updateButtons).catch(function(){});
+    if(getPreference() && (softNavInProgress || navRestoreWindowOpen())){
+      ensureFullscreenRoot();
+      if(attemptRestoreSync()) return true;
+      requestAppFullscreen().then(updateButtons).catch(function(){});
+      return true;
+    }
     return false;
   }
 
@@ -332,11 +359,13 @@
   }
 
   function restoreAfterNavigation(){
+    // Only re-enter when soft-nav dropped an active fullscreen session.
     if(!getPreference() || !supported) return;
     if(getFullscreenElement()){
       updateButtons();
       return;
     }
+    // Require that we still intend to restore (preference set while FS was live).
     attemptRestoreSync();
     restoreDelays.forEach(function(delay){
       setTimeout(function(){
@@ -347,7 +376,8 @@
   }
 
   function prepareNavigation(){
-    if(!getPreference() && !getFullscreenElement()) return;
+    // Only mark navigation while actually fullscreen.
+    if(!getFullscreenElement()) return;
     setPreference(true);
     try{
       sessionStorage.setItem(NAV_TS_KEY, String(Date.now()));
@@ -359,8 +389,9 @@
   }
 
   function preferSoftNavigation(url){
-    if(!getPreference() && !getFullscreenElement()) return false;
+    if(!getFullscreenElement()) return false;
     if(typeof window.deSoftRefresh !== 'function') return false;
+    setPreference(true);
     window.deSoftRefresh(url || window.location.href);
     return true;
   }
@@ -373,10 +404,7 @@
       var reload = window.location.reload.bind(window.location);
       window.location.reload = function(){
         if(preferSoftNavigation()) return;
-        if(getPreference() || getFullscreenElement()){
-          setPreference(true);
-          prepareNavigation();
-        }
+        if(getFullscreenElement()) prepareNavigation();
         return reload.apply(window.location, arguments);
       };
     } catch(e){}
@@ -385,10 +413,7 @@
       var assign = window.location.assign.bind(window.location);
       window.location.assign = function(url){
         if(preferSoftNavigation(url)) return;
-        if(getPreference() || getFullscreenElement()){
-          setPreference(true);
-          prepareNavigation();
-        }
+        if(getFullscreenElement()) prepareNavigation();
         return assign.call(window.location, url);
       };
     } catch(e){}
@@ -397,10 +422,7 @@
       var replace = window.location.replace.bind(window.location);
       window.location.replace = function(url){
         if(preferSoftNavigation(url)) return;
-        if(getPreference() || getFullscreenElement()){
-          setPreference(true);
-          prepareNavigation();
-        }
+        if(getFullscreenElement()) prepareNavigation();
         return replace.call(window.location, url);
       };
     } catch(e){}
@@ -414,30 +436,12 @@
           get: function(){ return hrefDesc.get.call(this); },
           set: function(url){
             if(this === window.location && preferSoftNavigation(url)) return;
-            if(this === window.location && (getPreference() || getFullscreenElement())){
-              setPreference(true);
-              prepareNavigation();
-            }
+            if(this === window.location && getFullscreenElement()) prepareNavigation();
             return hrefDesc.set.call(this, url);
           }
         });
       }
     } catch(e){}
-  }
-
-  function bindGestureRestore(){
-    function restoreFromGesture(event){
-      if(softNavInProgress || !getPreference() || getFullscreenElement()) return;
-      if(isIgnoredClickTarget(event.target)) return;
-      // Keep the lock alive; only the exit fullscreen button clears preference.
-      attemptRestoreSync();
-    }
-    document.addEventListener('pointerdown', restoreFromGesture, true);
-    document.addEventListener('click', restoreFromGesture, true);
-    document.addEventListener('keydown', function(event){
-      if(event.key !== 'Enter' && event.key !== ' ') return;
-      restoreFromGesture(event);
-    }, true);
   }
 
   function bindNavigationPreserve(){
@@ -447,7 +451,8 @@
       var href = link.getAttribute('href') || '';
       if(!href || href.indexOf('javascript:') === 0 || href.charAt(0) === '#') return;
       if(link.target && link.target !== '_self') return;
-      if(!getPreference() && !getFullscreenElement()) return;
+      // Only preserve when currently fullscreen — never arm FS from a stale flag.
+      if(!getFullscreenElement()) return;
       setPreference(true);
       prepareNavigation();
     }, true);
@@ -459,37 +464,11 @@
       if(!link) return;
       var href = link.getAttribute('href') || '';
       if(href.indexOf('javascript:') !== 0) return;
-      if(!getPreference() && !getFullscreenElement()) return;
+      if(!getFullscreenElement()) return;
       setPreference(true);
-      setTimeout(function(){
-        updateButtons();
-        if(!getFullscreenElement()) attemptRestoreSync();
-      }, 220);
+      setTimeout(updateButtons, 220);
       setTimeout(updateButtons, 500);
     }, true);
-  }
-
-  function watchInAppViewChanges(){
-    var root = document.getElementById(FS_ROOT_ID);
-    var targets = [
-      document.getElementById('dashboard'),
-      document.getElementById('main-app'),
-      document.getElementById('tally-app'),
-      document.getElementById('ep-workspace'),
-      root
-    ].filter(Boolean);
-    if(!targets.length) return;
-    var observer = new MutationObserver(function(){
-      if(getPreference() && !softNavInProgress) scheduleRestore();
-    });
-    targets.forEach(function(target){
-      observer.observe(target, {
-        attributes: true,
-        attributeFilter: ['class', 'style', 'hidden'],
-        childList: true,
-        subtree: false
-      });
-    });
   }
 
   function wrapTransitionHooks(){
@@ -511,10 +490,12 @@
     var wrapped = function(){
       var wasFs = !!getFullscreenElement();
       var result = fn.apply(this, arguments);
-      if(getPreference()){
+      // Only restore if we were actually fullscreen before the view swap.
+      if(wasFs){
+        setPreference(true);
         setTimeout(function(){
           updateButtons();
-          if(wasFs && !getFullscreenElement()) attemptRestoreSync();
+          if(!getFullscreenElement()) attemptRestoreSync();
         }, 240);
       }
       return result;
@@ -531,21 +512,22 @@
     updateButtons();
     if(getFullscreenElement()){
       escExitPending = false;
+      setPreference(true);
       return;
     }
-    // Soft-nav (and hard fallthrough) often drops fullscreen; keep the preference so we can restore.
-    if(softNavInProgress || pageUnloading) return;
-    // Only the Exit full screen button clears the lock.
+    if(pageUnloading) return;
+    // Explicit Exit button — always clear.
     if(userExitIntent){
       userExitIntent = false;
+      escExitPending = false;
       setPreference(false);
       return;
     }
-    // Esc / other browser exits stay preferred so the next click re-enters.
-    if(escExitPending){
-      escExitPending = false;
-    }
-    if(getPreference()) scheduleRestore();
+    // Soft-nav / pushState often drops fullscreen; keep preference so restore can run.
+    if(softNavInProgress || navRestoreWindowOpen()) return;
+    // Esc or browser UI exit while idle — stay out; do not re-enter on nav clicks.
+    escExitPending = false;
+    setPreference(false);
   }
 
   function toggleFullscreen(){
@@ -572,6 +554,7 @@
   }
 
   function createButton(){
+    if(!supported) return null;
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'de-fullscreen-btn';
@@ -580,10 +563,6 @@
     btn.title = 'Full screen';
     btn.innerHTML = ICON_ENTER + ICON_EXIT;
     btn.addEventListener('click', toggleFullscreen);
-    if(!supported){
-      btn.disabled = true;
-      btn.title = 'Full screen is not supported in this browser';
-    }
     buttons.push(btn);
     return btn;
   }
@@ -596,8 +575,9 @@
   }
 
   function mountInContainer(container, useTopSlot, corner){
-    if(!container || container.querySelector('.de-fullscreen-btn')) return;
+    if(!supported || !container || container.querySelector('.de-fullscreen-btn')) return;
     var btn = createButton();
+    if(!btn) return;
     if(useTopSlot){
       var slot = document.createElement('div');
       slot.className = 'de-fullscreen-slot' + (corner ? ' de-fullscreen-slot--corner' : '');
@@ -644,6 +624,13 @@
   }
 
   function mountButtons(){
+    if(!supported){
+      document.querySelectorAll('.de-fullscreen-btn, .de-fullscreen-slot').forEach(function(node){
+        if(node && node.parentNode) node.parentNode.removeChild(node);
+      });
+      buttons = [];
+      return;
+    }
     clearMisplacedButtons();
     buttons = buttons.filter(function(btn){ return btn.isConnected; });
     var seen = new Set();
@@ -697,22 +684,28 @@
   function init(){
     loadStylesheet();
     supported = detectSupport();
-    if(getPreference()) ensureFullscreenRoot();
+    if(!supported){
+      try{ sessionStorage.removeItem(STORAGE_KEY); } catch(e){}
+      mountButtons();
+      return;
+    }
+    // Clear stale "preferred" flag unless we are already fullscreen.
+    // Prevents sidebar / page clicks from auto-entering fullscreen.
+    if(!getFullscreenElement()){
+      setPreference(false);
+    } else {
+      setPreference(true);
+      ensureFullscreenRoot();
+    }
     installLocationGuards();
     installConfirmGuard();
     wrapTransitionHooks();
     wrapIndexViewHelpers();
     mountButtons();
     bindFullscreenEvents();
-    bindGestureRestore();
     bindNavigationPreserve();
     bindIndexHomeLink();
-    watchInAppViewChanges();
     updateButtons();
-    if(getPreference()){
-      attemptRestoreSync();
-      restoreAfterNavigation();
-    }
     setTimeout(wrapIndexViewHelpers, 0);
     setTimeout(wrapIndexViewHelpers, 800);
     setTimeout(installLocationGuards, 0);
@@ -743,6 +736,7 @@
     },
     restoreAfterNavigation: restoreAfterNavigation,
     prepareNavigation: prepareNavigation,
+    armForSoftNav: armForSoftNav,
     preserveForNavigation: preserveFullscreenForNavigation,
     confirm: confirmAsync,
     reinit: reinit,

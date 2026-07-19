@@ -1,9 +1,15 @@
 <script>
 (function(){
-  var f = document.getElementById('room-transfer-filter-form');
-  if (!f) return;
+  var LISTBOX_FORM_SELECTOR = '#room-transfer-filter-form, #cash-ledger-filter-form, #tips-filter-form';
 
-  function submitScope(){ f.submit(); }
+  function closestFilterForm(el){
+    return el ? el.closest(LISTBOX_FORM_SELECTOR) : null;
+  }
+
+  function submitScope(root){
+    var form = closestFilterForm(root);
+    if (form) form.submit();
+  }
 
   function closeListbox(root){
     if (!root) return;
@@ -19,7 +25,7 @@
   }
 
   function closeAllListboxes(except){
-    document.querySelectorAll('#room-transfer-filter-form [data-se-listbox].is-open').forEach(function(root){
+    document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox].is-open').forEach(function(root){
       if (root !== except) closeListbox(root);
     });
   }
@@ -83,7 +89,7 @@
       });
     }
     closeListbox(root);
-    submitScope();
+    submitScope(root);
   }
 
   function bindListbox(root){
@@ -137,15 +143,15 @@
     });
   }
 
-  document.querySelectorAll('#room-transfer-filter-form [data-se-listbox]').forEach(bindListbox);
+  document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox]').forEach(bindListbox);
   document.addEventListener('click', function(e){
-    document.querySelectorAll('#room-transfer-filter-form [data-se-listbox].is-open').forEach(function(root){
+    document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox].is-open').forEach(function(root){
       if (!root.contains(e.target)) closeListbox(root);
     });
   });
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
-    document.querySelectorAll('#room-transfer-filter-form [data-se-listbox].is-open').forEach(closeListbox);
+    document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox].is-open').forEach(closeListbox);
   });
 })();
 </script>

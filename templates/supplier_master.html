@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Supplier Master | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=3">
 <script>
 (function(){
@@ -57,7 +58,7 @@
     {% endif %}
 
     <div class="sm-layout{% if show_form %} sm-layout--form-focus{% endif %}">
-      <article class="card sm-list-panel{% if show_form %} hidden{% endif %}" aria-label="Supplier list">
+      <article class="card sm-list-panel sm-list-panel--scroll hbe-scroll-panel{% if show_form %} hidden{% endif %}" aria-label="Supplier list">
         <div class="card-hdr">
           <div class="card-title">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
@@ -67,7 +68,7 @@
         </div>
         <div class="card-body sm-card-body--flush">
           {% if suppliers %}
-          <div class="sm-table-wrap">
+          <div class="sm-table-wrap" tabindex="0" aria-label="Supplier list, scroll for more">
             <table class="sm-table" aria-label="Supplier list">
               <thead>
                 <tr>

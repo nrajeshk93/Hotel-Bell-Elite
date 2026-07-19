@@ -1,0 +1,65 @@
+<div class="modal-backdrop" id="sales-tips-modal" aria-hidden="true">
+  <div class="staff-credit-box sales-expense-modal-box" role="dialog" aria-modal="true" aria-labelledby="sales-tips-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3"/><path d="M9 13c6.667 0 6.667-10 0-10"/></svg>
+      <span id="sales-tips-title">Tips</span>
+    </div>
+    <p class="staff-credit-copy">Assign tip amounts to employees for this sales date.</p>
+    <div id="sales-tips-error" class="staff-credit-error"></div>
+    <div class="staff-field">
+      <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox id="sales-tips-employee-listbox">
+        <span class="se-filter-chip-label" id="sales-tips-employee-label">Employee *</span>
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </span>
+          <input type="hidden" id="sales-tips-employee-input" value="">
+          <button type="button" class="se-filter-chip-trigger" id="sales-tips-employee-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="sales-tips-employee-list" aria-labelledby="sales-tips-employee-label sales-tips-employee-value">
+            <span class="se-filter-chip-value staff-supplier-placeholder" id="sales-tips-employee-value">Select employee</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox staff-expense-supplier-panel" id="sales-tips-employee-list" role="listbox" aria-labelledby="sales-tips-employee-label" hidden>
+          <div class="staff-supplier-search-wrap">
+            <input type="search" class="staff-supplier-search" id="sales-tips-employee-search" placeholder="Search by name or ID..." autocomplete="off" aria-label="Search employees">
+          </div>
+          <div class="staff-supplier-options" id="sales-tips-employee-options">
+            {% for employee in tip_employees|default([]) %}
+            <button type="button" class="se-filter-listbox-option staff-supplier-option staff-tips-employee-option" role="option" data-value="{{ employee.id }}" data-name="{{ employee.name|lower }}" data-code="{{ (employee.emp_code or '')|lower }}" aria-selected="false">
+              <span class="staff-supplier-option-name">{{ employee.name }}</span>
+              <span class="staff-supplier-option-gst">{% if employee.emp_code %}{{ employee.emp_code }}{% else %}ID {{ employee.id }}{% endif %}</span>
+            </button>
+            {% endfor %}
+          </div>
+          <div class="staff-supplier-empty" id="sales-tips-employee-empty" hidden>No employees match your search.</div>
+        </div>
+      </div>
+    </div>
+    <div class="staff-grid">
+      <div class="staff-field staff-field--inline">
+        <label for="sales-tips-value">Tip amount (₹) *</label>
+        <input id="sales-tips-value" class="staff-input" type="number" min="0.01" step="0.01" placeholder="e.g. 200">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="sales-tips-description">Note</label>
+        <input id="sales-tips-description" class="staff-input" type="text" placeholder="Optional note" autocomplete="off">
+      </div>
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn staff-primary" id="save-sales-tip">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span id="sales-tips-submit-label">Add tip</span>
+      </button>
+      <button type="button" class="btn staff-secondary" id="cancel-sales-tip">Cancel</button>
+    </div>
+    <div class="staff-credit-history">
+      <div class="staff-credit-history-head">
+        <div class="staff-credit-history-title">Tips for this date</div>
+        <div class="staff-credit-history-total" id="sales-tips-history-total">0</div>
+      </div>
+      <div class="staff-credit-list" id="sales-tips-list"></div>
+    </div>
+  </div>
+</div>

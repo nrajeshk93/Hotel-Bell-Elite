@@ -70,15 +70,15 @@ class CashLedgerHelperTests(unittest.TestCase):
         conn = _memory_conn()
         conn.execute(
             "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
-            ("HBE", "Hotel", "2026-07-01", json.dumps({"cash": 1000})),
+            ("HBE", "Hotel", "2026-07-01", json.dumps({"cash": 9999, "actual_cash": 1000})),
         )
         conn.execute(
             "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
-            ("HBE", "Bar", "2026-07-01", json.dumps({"cash": 500})),
+            ("HBE", "Bar", "2026-07-01", json.dumps({"cash": 9999, "actual_cash": 500})),
         )
         conn.execute(
             "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
-            ("HBE", "Restaurant", "2026-07-02", json.dumps({"cash": 250})),
+            ("HBE", "Restaurant", "2026-07-02", json.dumps({"cash": 9999, "actual_cash": 250})),
         )
         conn.execute(
             "INSERT INTO cash_ledger_loads (company, load_date, description, amount) VALUES (?,?,?,?)",
@@ -136,6 +136,62 @@ class CashLedgerHelperTests(unittest.TestCase):
         self.assertEqual(expense_outlets, {"Hotel", "Bar"})
         conn.close()
 
+    def test_location_filter_scopes_sales_and_expenses(self):
+        conn = _memory_conn()
+        conn.execute(
+            "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
+            ("HBE", "Hotel", "2026-07-01", json.dumps({"actual_cash": 1000})),
+        )
+        conn.execute(
+            "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
+            ("HBE", "Bar", "2026-07-01", json.dumps({"actual_cash": 500})),
+        )
+        conn.execute(
+            "INSERT INTO cash_ledger_loads (company, load_date, description, amount) VALUES (?,?,?,?)",
+            ("HBE", "2026-07-01", "Opening float", 200),
+        )
+        conn.execute(
+            """INSERT INTO sales_update_expenses
+               (company, location, sales_date, description, amount, payment_type, expense_code)
+               VALUES (?,?,?,?,?,?,?)""",
+            ("HBE", "Hotel", "2026-07-01", "Veggies", 100, "cash", "HBE-EX-1"),
+        )
+        conn.execute(
+            """INSERT INTO sales_update_expenses
+               (company, location, sales_date, description, amount, payment_type, expense_code)
+               VALUES (?,?,?,?,?,?,?)""",
+            ("HBE", "Bar", "2026-07-01", "Ice", 50, "cash", "HBE-EX-2"),
+        )
+        conn.execute(
+            """INSERT INTO cash_ledger_transfers
+               (company, transfer_date, destination, description, amount)
+               VALUES (?,?,?,?,?)""",
+            ("HBE", "2026-07-01", "bank", "Deposit", 300),
+        )
+        conn.commit()
+
+        hotel_entries = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2026, 7, 1), date(2026, 7, 1), location="Hotel"
+        )
+        hotel_totals = app_module._cash_ledger_totals(hotel_entries)
+        self.assertEqual(hotel_totals["sales_total"], 1000.0)
+        self.assertEqual(hotel_totals["expense_total"], 100.0)
+        self.assertEqual(hotel_totals["load_total"], 0.0)
+        self.assertEqual(hotel_totals["transfer_total"], 0.0)
+        self.assertEqual(
+            {e["location"] for e in hotel_entries if e["entry_type"] == "sales_cash"},
+            {"Hotel"},
+        )
+
+        all_entries = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2026, 7, 1), date(2026, 7, 1), location="All"
+        )
+        all_totals = app_module._cash_ledger_totals(all_entries)
+        self.assertEqual(all_totals["sales_total"], 1500.0)
+        self.assertEqual(all_totals["load_total"], 200.0)
+        self.assertEqual(all_totals["transfer_total"], 300.0)
+        conn.close()
+
     def test_transfer_destination_normalizer(self):
         self.assertEqual(
             app_module._normalize_cash_ledger_transfer_destination("Owner"),
@@ -173,11 +229,11 @@ class CashLedgerHelperTests(unittest.TestCase):
         conn = _memory_conn()
         conn.execute(
             "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
-            ("HBE", "Hotel", "2025-01-15", json.dumps({"cash": 400})),
+            ("HBE", "Hotel", "2025-01-15", json.dumps({"actual_cash": 400})),
         )
         conn.execute(
             "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
-            ("HBE", "Hotel", "2026-07-01", json.dumps({"cash": 100})),
+            ("HBE", "Hotel", "2026-07-01", json.dumps({"actual_cash": 100})),
         )
         conn.commit()
         all_from, all_to, _ = app_module._resolve_cash_ledger_date_range({})
@@ -197,7 +253,7 @@ class CashLedgerHelperTests(unittest.TestCase):
         )
         conn.execute(
             "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
-            ("HBE", "Hotel", "2026-07-01", json.dumps({"cash": 100})),
+            ("HBE", "Hotel", "2026-07-01", json.dumps({"cash": 500, "actual_cash": 100})),
         )
         conn.commit()
         available = app_module._cash_ledger_available_as_of(
@@ -243,7 +299,7 @@ class CashLedgerHelperTests(unittest.TestCase):
         conn.execute("INSERT INTO suppliers (name) VALUES (?)", ("ABC Supplies",))
         conn.execute(
             "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
-            ("HBE", "Hotel", "2026-07-01", json.dumps({"cash": 100})),
+            ("HBE", "Hotel", "2026-07-01", json.dumps({"actual_cash": 100})),
         )
         conn.execute(
             """INSERT INTO sales_update_expenses

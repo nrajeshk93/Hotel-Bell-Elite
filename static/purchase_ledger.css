@@ -1,35 +1,45 @@
 body.su-module #purchase-ledger-filter-form .se-filter-chip-label{
   text-align:center;
 }
-/* Five filter chips need a fluid grid — flex nowrap overflows mid-width screens. */
 body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
-  display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
   gap:14px;
-  align-items:end;
   width:100%;
   min-width:0;
 }
 body.su-module #purchase-ledger-filter-form .se-filter-chip{
+  flex:1 1 160px;
+  min-width:140px;
+  max-width:240px;
+}
+body.su-module .pl-date-range-host{
+  flex:0 0 auto;
+  min-width:0;
+  z-index:30;
+  margin-left:auto;
+}
+body.su-module .pl-date-range-host .se-filter-chip--date-range{
   flex:none;
   min-width:0;
-  width:100%;
+  width:auto;
   max-width:none;
 }
-@media (max-width:1200px){
-  body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
-    grid-template-columns:repeat(3,minmax(0,1fr));
-  }
+body.su-module .pl-date-range-host .an-range-trigger{
+  min-width:148px;
+  width:auto;
+  max-width:min(340px,70vw);
 }
-@media (max-width:900px){
-  body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
-    grid-template-columns:repeat(2,minmax(0,1fr));
-  }
+body.su-module .pl-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
+  border-color:#93C5FD;
+  background:#EFF6FF;
 }
-@media (max-width:560px){
-  body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
-    grid-template-columns:1fr;
-  }
+body.su-module .pl-date-range-host .an-range-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
 }
 body.su-module .pl-date-input{
   width:100%;
@@ -105,44 +115,11 @@ body.su-module .pl-supplier-empty{
 }
 body.su-module .pl-supplier-option-name{display:block;font-weight:600}
 body.su-module .pl-supplier-option-gst{display:block;font-size:11px;color:var(--txt3);margin-top:2px}
-body.su-module .pl-summary-row{
-  margin-bottom:16px;
-  display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:14px;
-}
-body.su-module .pl-summary-card{max-width:none;min-width:0}
-body.su-module .pl-summary-body{padding:18px 20px}
-body.su-module .pl-summary-label{
-  font-size:11px;
-  font-weight:700;
-  text-transform:uppercase;
-  letter-spacing:.5px;
-  color:var(--txt3);
-}
-body.su-module .pl-summary-value{
-  margin-top:6px;
-  font-size:28px;
-  font-weight:800;
-  color:var(--txt);
-  line-height:1.1;
-}
-body.su-module .pl-summary-meta{
-  margin-top:8px;
-  font-size:12px;
-  color:var(--txt3);
-  font-weight:600;
-}
-@media (max-width:1100px){
-  body.su-module .pl-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}
-}
-@media (max-width:640px){
-  body.su-module .pl-summary-row{grid-template-columns:1fr}
-  body.su-module .pl-summary-value{font-size:24px}
-}
+/* Summary KPI row/type: shared via hbe_kpi.css */
 body.su-module .pl-count{font-size:12px;font-weight:600;color:var(--txt3)}
 body.su-module .pl-card-body--flush{padding:0}
 body.su-module .pl-table-wrap{overflow:auto}
+/* Dense list scroll + edge pan: shared via hbe_table_scroll.css */
 body.su-module .pl-table{
   width:100%;
   border-collapse:collapse;
@@ -204,29 +181,93 @@ body.su-module .pl-expense-code{
 body.su-module .pl-name{font-weight:700;color:var(--txt)}
 body.su-module .pl-meta{font-size:12px;color:var(--txt3);margin-top:2px;line-height:1.4}
 body.su-module .pl-amount{font-weight:700;color:var(--txt)}
-body.su-module .pl-action-btns{
+/* Icon actions — match Employee Payroll list (.act-grp / .act-btn) */
+body.su-module .pl-list-panel .act-grp,
+body.su-module .pl-action-btns.act-grp{
   display:inline-flex;
   align-items:center;
-  justify-content:flex-end;
-  gap:12px;
-  flex-wrap:nowrap;
+  gap:2px;
+  background:#F8FAFD;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:8px;
+  padding:3px;
+  position:relative;
+  overflow:visible;
 }
-body.su-module .pl-edit-btn,
-body.su-module .pl-delete-btn{
-  appearance:none;
-  border:0;
-  background:transparent;
-  font:700 13px Inter,system-ui,sans-serif;
+body.su-module .pl-list-panel .act-btn,
+body.su-module .pl-action-btns .act-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  border-radius:6px;
+  border:none;
   cursor:pointer;
+  background:transparent;
+  color:var(--txt3,#94A3B8);
+  text-decoration:none;
+  transition:background .12s,color .12s;
+  position:relative;
+  flex-shrink:0;
   padding:0;
-  white-space:nowrap;
+  appearance:none;
+  font:inherit;
 }
-body.su-module .pl-edit-btn{color:var(--acc)}
-body.su-module .pl-edit-btn:hover{text-decoration:underline}
-body.su-module .pl-delete-btn{color:#DC2626}
-body.su-module .pl-delete-btn:hover{text-decoration:underline}
+body.su-module .pl-list-panel .act-btn svg,
+body.su-module .pl-action-btns .act-btn svg{
+  width:14px;
+  height:14px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  pointer-events:none;
+}
+body.su-module .pl-list-panel .act-btn:hover,
+body.su-module .pl-action-btns .act-btn:hover{color:var(--txt,#1A202C)}
+body.su-module .pl-list-panel .act-btn.edit:hover,
+body.su-module .pl-action-btns .act-btn.edit:hover{
+  background:var(--acc-bg,#EEF5FF);
+  color:var(--acc,#1877F2);
+}
+body.su-module .pl-list-panel .act-btn.del:hover,
+body.su-module .pl-action-btns .act-btn.del:hover{
+  background:var(--err-bg,#FEF2F2);
+  color:var(--err,#DC2626);
+}
+body.su-module .pl-list-panel .act-btn[data-tip]::after,
+body.su-module .pl-action-btns .act-btn[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute;
+  top:calc(100% + 8px);
+  left:50%;
+  transform:translateX(-50%);
+  background:#1A202C;
+  color:#fff;
+  font-size:10px;
+  font-weight:600;
+  white-space:nowrap;
+  padding:4px 8px;
+  border-radius:4px;
+  pointer-events:none;
+  opacity:0;
+  visibility:hidden;
+  z-index:30;
+  box-shadow:0 4px 12px rgba(15,23,42,.18);
+  transition:opacity .12s,visibility .12s;
+}
+body.su-module .pl-list-panel .act-btn[data-tip]:hover::after,
+body.su-module .pl-list-panel .act-btn[data-tip]:focus-visible::after,
+body.su-module .pl-action-btns .act-btn[data-tip]:hover::after,
+body.su-module .pl-action-btns .act-btn[data-tip]:focus-visible::after{
+  opacity:1;
+  visibility:visible;
+}
 body.su-module .pl-delete-btn:disabled{opacity:.55;cursor:not-allowed}
 body.su-module .pl-action-muted{color:var(--txt3);font-weight:600}
+body.su-module .pl-col-actions{white-space:nowrap;width:1%;text-align:right}
 body.su-module .pl-empty{padding:36px 18px;text-align:center;color:var(--txt3);font-size:14px}
 
 body.su-module .pl-add-purchase-box,
@@ -243,13 +284,10 @@ body.su-module #pl-add-purchase-modal .se-filter-chip-control{width:100%}
 body.su-module #pl-add-purchase-modal .se-filter-listbox{
   left:0;
   right:0;
+  top:calc(100% + 8px);
+  bottom:auto;
   min-width:100%;
   z-index:80;
-}
-/* Payment sits near the modal footer — open upward so options stay visible. */
-body.su-module #pl-add-purchase-modal #pl-add-payment-listbox .se-filter-listbox{
-  top:auto;
-  bottom:calc(100% + 8px);
 }
 body.su-module #pl-add-purchase-modal #pl-add-payment-listbox.is-open{
   z-index:90;

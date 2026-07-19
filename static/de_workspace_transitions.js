@@ -85,17 +85,99 @@
     if(form.getAttribute('data-de-hard-nav') === '1') return false;
     if(form.hasAttribute('data-de-hard-nav')) return false;
     var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
-    if(method && method !== 'get') return false;
+    if(method && method !== 'get' && method !== 'post') return false;
     var enctype = String(form.getAttribute('enctype') || form.enctype || '').toLowerCase();
     if(enctype.indexOf('multipart') !== -1) return false;
     return shouldSoftNavigate();
   }
 
-  /** Convert a GET form submit into soft-nav so fullscreen and the workspace shell survive. */
-  function softSubmitForm(form){
+  function formMethod(form){
+    return String(form.getAttribute('method') || form.method || 'get').toLowerCase() || 'get';
+  }
+
+  function appendSubmitter(fd, submitter){
+    if(!fd || !submitter || !submitter.name) return;
+    try{
+      fd.set(submitter.name, submitter.value != null ? String(submitter.value) : '');
+    } catch(e){
+      fd.append(submitter.name, submitter.value != null ? String(submitter.value) : '');
+    }
+  }
+
+  function hardSubmitFallback(form, submitter){
+    try{
+      form.setAttribute('data-de-hard-nav', '1');
+      if(submitter && submitter.name){
+        var ghost = document.createElement('input');
+        ghost.type = 'hidden';
+        ghost.name = submitter.name;
+        ghost.value = submitter.value != null ? String(submitter.value) : '';
+        ghost.setAttribute('data-de-soft-submitter', '1');
+        form.appendChild(ghost);
+      }
+      HTMLFormElement.prototype.submit.call(form);
+    } catch(e){
+      form.submit();
+    }
+  }
+
+  /** Soft-submit GET/POST forms so fullscreen and the workspace shell survive. */
+  function softSubmitForm(form, submitter){
     if(!shouldSoftSubmitForm(form)) return false;
-    var url = formToGetUrl(form);
-    navigateWithTransition(url);
+    var method = formMethod(form);
+
+    if(method === 'get'){
+      navigateWithTransition(formToGetUrl(form));
+      return true;
+    }
+
+    rememberSidebarState();
+    try{ sessionStorage.setItem(NAV_FLAG, '1'); } catch(e){}
+    if(window.deFullscreen && typeof window.deFullscreen.setSoftNavInProgress === 'function'){
+      window.deFullscreen.setSoftNavInProgress(true);
+    }
+    if(window.deFullscreen && typeof window.deFullscreen.armForSoftNav === 'function'){
+      window.deFullscreen.armForSoftNav();
+    } else if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+      window.deFullscreen.preserveForNavigation();
+    }
+    if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+      window.deFullscreen.preserveForNavigation();
+    }
+
+    var actionUrl = form.getAttribute('action') || window.location.href;
+    var fd = new FormData(form);
+    appendSubmitter(fd, submitter);
+
+    showOverlay();
+    fetch(actionUrl, {
+      method: 'POST',
+      body: fd,
+      credentials: 'same-origin',
+      headers: { 'Accept': 'text/html' },
+      redirect: 'follow'
+    }).then(function(response){
+      if(!response.ok) throw new Error('post soft submit failed');
+      var contentType = (response.headers.get('content-type') || '').toLowerCase();
+      if(contentType.indexOf('text/html') === -1) throw new Error('non-html response');
+      var finalUrl = response.url || actionUrl;
+      return response.text().then(function(html){
+        return { html: html, url: finalUrl };
+      });
+    }).then(function(result){
+      try{ history.pushState({ deSoftNav: true }, '', result.url); } catch(e){}
+      if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+        window.deFullscreen.preserveForNavigation();
+      }
+      var doc = new DOMParser().parseFromString(result.html, 'text/html');
+      applySoftSwap(doc, result.url, hideOverlay);
+    }).catch(function(){
+      if(window.deFullscreen && typeof window.deFullscreen.setSoftNavInProgress === 'function'){
+        window.deFullscreen.setSoftNavInProgress(false);
+      }
+      hideOverlay();
+      hardSubmitFallback(form, submitter);
+    });
     return true;
   }
 
@@ -109,13 +191,13 @@
       if(!shouldSoftSubmitForm(form)) return;
       event.preventDefault();
       event.stopPropagation();
-      softSubmitForm(form);
+      softSubmitForm(form, event.submitter || null);
     }, true);
 
     try{
       var originalSubmit = HTMLFormElement.prototype.submit;
       HTMLFormElement.prototype.submit = function(){
-        if(softSubmitForm(this)) return;
+        if(softSubmitForm(this, null)) return;
         return originalSubmit.call(this);
       };
     } catch(e){}
@@ -155,6 +237,7 @@
           expanded = true;
         }
       });
+      persistOpenNavGroups();
       if(pinned){
         localStorage.setItem('de-sidebar-pinned', '1');
         sessionStorage.setItem('de-sidebar-expanded', '1');
@@ -338,53 +421,169 @@
     return { nodes: nodes, scripts: scripts };
   }
 
-  function syncSidebarFromDoc(doc){
-    var curNav = document.querySelector('#de-sidebar .de-sb-nav, .de-sidebar .de-sb-nav');
-    var nextNav = doc.querySelector('#de-sidebar .de-sb-nav, .de-sidebar .de-sb-nav');
-    if(curNav && nextNav){
-      curNav.replaceWith(document.importNode(nextNav, true));
-      return;
+  var OPEN_NAV_GROUPS_KEY = 'de-nav-open-groups';
+
+  function navLinkPathname(href){
+    if(!href) return '';
+    try{
+      return new URL(href, window.location.origin).pathname;
+    } catch(e){
+      return String(href).split('?')[0];
     }
+  }
+
+  function findSidebarLink(sidebar, nextLink){
+    if(!sidebar || !nextLink) return null;
+    var id = nextLink.id;
+    if(id){
+      var byId = document.getElementById(id);
+      if(byId && sidebar.contains(byId)) return byId;
+    }
+    var path = navLinkPathname(nextLink.getAttribute('href') || '');
+    if(!path) return null;
+    var candidates = sidebar.querySelectorAll('a.de-nav-subitem, a.de-nav-item');
+    for(var i = 0; i < candidates.length; i++){
+      if(navLinkPathname(candidates[i].getAttribute('href') || '') === path){
+        return candidates[i];
+      }
+    }
+    return null;
+  }
+
+  function persistOpenNavGroups(sidebar){
+    sidebar = sidebar || document.querySelector('#de-sidebar, .de-sidebar');
+    if(!sidebar) return;
+    var ids = [];
+    sidebar.querySelectorAll('.de-nav-group.is-open').forEach(function(group){
+      if(group.id) ids.push(group.id);
+    });
+    try{
+      sessionStorage.setItem(OPEN_NAV_GROUPS_KEY, JSON.stringify(ids));
+    } catch(e){}
+  }
+
+  function restoreOpenNavGroups(sidebar){
+    sidebar = sidebar || document.querySelector('#de-sidebar, .de-sidebar');
+    if(!sidebar) return;
+    var ids = [];
+    try{
+      ids = JSON.parse(sessionStorage.getItem(OPEN_NAV_GROUPS_KEY) || '[]') || [];
+    } catch(e){
+      ids = [];
+    }
+    if(!Array.isArray(ids)) return;
+    ids.forEach(function(id){
+      var group = document.getElementById(id);
+      if(!group || !sidebar.contains(group)) return;
+      group.classList.add('is-open');
+      var toggle = group.querySelector('.de-nav-group-toggle');
+      if(toggle) toggle.setAttribute('aria-expanded', 'true');
+    });
+  }
+
+  /**
+   * Pull any new nav links from the destination page into the live sidebar
+   * without replacing the whole nav (keeps open sections / scroll / pin state).
+   * Needed when modules are added mid-session (e.g. Tips) while soft-nav
+   * keeps the previous sidebar DOM.
+   */
+  function mergeMissingSidebarLinks(curSidebar, nextSidebar){
+    if(!curSidebar || !nextSidebar) return false;
+    var addedTips = false;
+    nextSidebar.querySelectorAll('.de-nav-group').forEach(function(nextGroup){
+      if(!nextGroup.id) return;
+      var curGroup = document.getElementById(nextGroup.id);
+      if(!curGroup || !curSidebar.contains(curGroup)) return;
+      var curSub = curGroup.querySelector('.de-nav-sub');
+      var nextSub = nextGroup.querySelector('.de-nav-sub');
+      if(!curSub || !nextSub) return;
+
+      nextSub.querySelectorAll('a.de-nav-subitem').forEach(function(nextLink){
+        if(findSidebarLink(curSidebar, nextLink)) return;
+        var imported = document.importNode(nextLink, true);
+        imported.classList.remove('is-active');
+        imported.removeAttribute('aria-current');
+
+        var placed = false;
+        var prev = nextLink.previousElementSibling;
+        while(prev){
+          var curPrev = findSidebarLink(curSidebar, prev);
+          if(curPrev && curSub.contains(curPrev)){
+            curPrev.insertAdjacentElement('afterend', imported);
+            placed = true;
+            break;
+          }
+          prev = prev.previousElementSibling;
+        }
+        if(!placed){
+          var next = nextLink.nextElementSibling;
+          while(next){
+            var curNext = findSidebarLink(curSidebar, next);
+            if(curNext && curSub.contains(curNext)){
+              curNext.insertAdjacentElement('beforebegin', imported);
+              placed = true;
+              break;
+            }
+            next = next.nextElementSibling;
+          }
+        }
+        if(!placed) curSub.appendChild(imported);
+        if(imported.id === 'de-nav-payroll-tips') addedTips = true;
+      });
+    });
+    // Tips moved from Sales Analytics → Employee Payroll; drop the old link if present.
+    var legacyTips = document.getElementById('de-nav-sales-tips');
+    if(legacyTips) legacyTips.remove();
+    if(addedTips){
+      var payrollGroup = document.getElementById('de-nav-payroll-group');
+      if(payrollGroup){
+        payrollGroup.classList.add('is-open');
+        var toggle = payrollGroup.querySelector('.de-nav-group-toggle');
+        if(toggle) toggle.setAttribute('aria-expanded', 'true');
+      }
+    }
+    return addedTips;
+  }
+
+  /**
+   * Keep the left nav DOM stable across soft navigations.
+   * Only sync active/current page state and open the destination section —
+   * never replace .de-sb-nav (that collapses other sections and drops items
+   * the user still needs, e.g. Sales Analytics → Credit while on Payroll).
+   */
+  function syncSidebarFromDoc(doc){
     var curSidebar = document.querySelector('#de-sidebar, .de-sidebar');
     var nextSidebar = doc.querySelector('#de-sidebar, .de-sidebar');
     if(!curSidebar || !nextSidebar) return;
-    curSidebar.querySelectorAll('.is-active, [aria-current="page"]').forEach(function(el){
+
+    persistOpenNavGroups(curSidebar);
+    mergeMissingSidebarLinks(curSidebar, nextSidebar);
+
+    curSidebar.querySelectorAll('a.is-active, a[aria-current="page"], .de-nav-item.is-active').forEach(function(el){
       el.classList.remove('is-active');
       el.removeAttribute('aria-current');
     });
-    curSidebar.querySelectorAll('.de-nav-group').forEach(function(group){
-      group.classList.remove('is-open', 'is-child-active');
-      var toggle = group.querySelector('.de-nav-group-toggle');
-      if(toggle) toggle.setAttribute('aria-expanded', 'false');
+    curSidebar.querySelectorAll('.de-nav-group.is-child-active').forEach(function(group){
+      group.classList.remove('is-child-active');
     });
+
     nextSidebar.querySelectorAll('a.is-active, a[aria-current="page"]').forEach(function(a){
-      var id = a.id;
-      var href = a.getAttribute('href');
-      var match = null;
-      if(id){
-        var byId = document.getElementById(id);
-        if(byId && curSidebar.contains(byId)) match = byId;
-      }
-      if(!match && href){
-        match = curSidebar.querySelector('a[href="' + href.replace(/"/g, '\\"') + '"]');
-      }
+      var match = findSidebarLink(curSidebar, a);
       if(!match) return;
+      var nextHref = a.getAttribute('href');
+      if(nextHref) match.setAttribute('href', nextHref);
       match.classList.add('is-active');
-      if(a.getAttribute('aria-current')) match.setAttribute('aria-current', 'page');
-    });
-    nextSidebar.querySelectorAll('.de-nav-group.is-open, .de-nav-group.is-child-active').forEach(function(group){
-      var id = group.id;
-      var match = null;
-      if(id){
-        var byId = document.getElementById(id);
-        if(byId && curSidebar.contains(byId)) match = byId;
+      match.setAttribute('aria-current', 'page');
+      var group = match.closest('.de-nav-group');
+      if(group){
+        group.classList.add('is-open', 'is-child-active');
+        var toggle = group.querySelector('.de-nav-group-toggle');
+        if(toggle) toggle.setAttribute('aria-expanded', 'true');
       }
-      if(!match) return;
-      if(group.classList.contains('is-open')) match.classList.add('is-open');
-      if(group.classList.contains('is-child-active')) match.classList.add('is-child-active');
-      var toggle = match.querySelector('.de-nav-group-toggle');
-      if(toggle) toggle.setAttribute('aria-expanded', match.classList.contains('is-open') ? 'true' : 'false');
     });
+
+    restoreOpenNavGroups(curSidebar);
+    persistOpenNavGroups(curSidebar);
   }
 
   function scrollMainToTop(){
@@ -414,12 +613,18 @@
     if(window.deFullscreen && typeof window.deFullscreen.restoreAfterNavigation === 'function'){
       window.deFullscreen.restoreAfterNavigation();
     }
-    if(window.deFullscreen && typeof window.deFullscreen.setSoftNavInProgress === 'function'){
-      window.deFullscreen.setSoftNavInProgress(false);
+    if(typeof window.initHbeTableScroll === 'function'){
+      window.initHbeTableScroll();
     }
-    if(window.deFullscreen && typeof window.deFullscreen.updateUi === 'function'){
-      window.deFullscreen.updateUi();
-    }
+    // Keep soft-nav flag briefly so late fullscreenchange events do not clear the lock.
+    setTimeout(function(){
+      if(window.deFullscreen && typeof window.deFullscreen.setSoftNavInProgress === 'function'){
+        window.deFullscreen.setSoftNavInProgress(false);
+      }
+      if(window.deFullscreen && typeof window.deFullscreen.updateUi === 'function'){
+        window.deFullscreen.updateUi();
+      }
+    }, 600);
   }
 
   function applySoftSwap(doc, url, done){
@@ -490,13 +695,21 @@
     });
   }
 
+  function sameAppUrl(a, b){
+    try{
+      var ua = new URL(a, window.location.href);
+      var ub = new URL(b, window.location.href);
+      return ua.pathname === ub.pathname && ua.search === ub.search;
+    } catch(e){
+      return a === b;
+    }
+  }
+
   function navigateWithTransition(url){
     if(!url) return;
     url = withSalesScope(url);
-    if(url === window.location.href){
-      window.deSoftRefresh(url);
-      return;
-    }
+    // Already on this page — do not soft-refresh / hard-reload (that exits fullscreen).
+    if(sameAppUrl(url, window.location.href)) return;
     rememberSidebarState();
     try{
       sessionStorage.setItem(NAV_FLAG, '1');
@@ -507,11 +720,16 @@
       if(window.deFullscreen && typeof window.deFullscreen.setSoftNavInProgress === 'function'){
         window.deFullscreen.setSoftNavInProgress(true);
       }
-      // Push URL during the click gesture. Some embeds exit fullscreen on pushState —
-      // re-assert fullscreen immediately after while the gesture is still valid.
+      // Arm while still fullscreen — pushState often drops FS immediately after.
+      if(window.deFullscreen && typeof window.deFullscreen.armForSoftNav === 'function'){
+        window.deFullscreen.armForSoftNav();
+      } else if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+        window.deFullscreen.preserveForNavigation();
+      }
       try{
         history.pushState({ deSoftNav: true }, '', url);
       } catch(e){}
+      // Re-enter during the same click gesture if pushState exited fullscreen.
       if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
         window.deFullscreen.preserveForNavigation();
       }
@@ -520,7 +738,9 @@
       return;
     }
 
-    if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+    if(window.deFullscreen && typeof window.deFullscreen.armForSoftNav === 'function'){
+      window.deFullscreen.armForSoftNav();
+    } else if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
       window.deFullscreen.preserveForNavigation();
     }
     showOverlay();
@@ -542,7 +762,13 @@
     if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return false;
     if(!isSameOriginLink(link)) return false;
     var url = withSalesScope(link.href);
-    if(!url || url === window.location.href) return false;
+    if(!url) return false;
+    // Same page: block default navigation so a hard reload cannot exit fullscreen.
+    if(sameAppUrl(url, window.location.href)){
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
     event.preventDefault();
     event.stopPropagation();
     link.classList.add('is-navigating');
@@ -619,6 +845,9 @@
 
     if(window.deFullscreen && typeof window.deFullscreen.setSoftNavInProgress === 'function'){
       window.deFullscreen.setSoftNavInProgress(true);
+    }
+    if(window.deFullscreen && typeof window.deFullscreen.armForSoftNav === 'function'){
+      window.deFullscreen.armForSoftNav();
     }
     if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
       window.deFullscreen.preserveForNavigation();

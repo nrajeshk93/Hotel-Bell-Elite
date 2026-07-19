@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Home | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=6">
 <script>
 (function(){
@@ -110,7 +111,18 @@
       </a>
       {% endif %}
 
-      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') %}
+      {% if has_dashboard_access('stores') %}
+      <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('stores') }}" data-search="stores inventory stock warehouse materials indent bar kitchen" aria-label="Open Stores">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+        </div>
+        <h2>Stores</h2>
+        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <p class="db-home-card-desc">Simple indent-to-stock flow for Bar and Kitchen.</p>
+      </a>
+      {% endif %}
+
+      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('stores') %}
       <div class="db-home-empty" role="status">
         <h2>No modules assigned yet</h2>
         <p>This account is active, but no dashboard modules have been assigned. Ask an administrator to grant access so your modules appear here.</p>

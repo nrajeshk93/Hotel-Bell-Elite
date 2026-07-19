@@ -117,7 +117,7 @@
   }
 
   function getSelectedExpensePaymentType(){
-    return salesExpensePaymentInput ? salesExpensePaymentInput.value || 'cash' : 'cash';
+    return salesExpensePaymentInput ? (salesExpensePaymentInput.value || '') : '';
   }
 
   function closeExpensePaymentListbox(){
@@ -162,10 +162,13 @@
 
   function selectExpensePaymentOption(option){
     if (!salesExpensePaymentListbox || !option) return;
-    const value = option.getAttribute('data-value') || 'cash';
-    const label = (option.textContent || '').trim() || expensePaymentLabels[value] || 'Cash';
+    const value = option.getAttribute('data-value') || '';
+    const label = (option.textContent || '').trim() || expensePaymentLabels[value] || 'Select payment type';
     if (salesExpensePaymentInput) salesExpensePaymentInput.value = value;
-    if (salesExpensePaymentValue) salesExpensePaymentValue.textContent = label;
+    if (salesExpensePaymentValue) {
+      salesExpensePaymentValue.textContent = label;
+      salesExpensePaymentValue.classList.toggle('staff-supplier-placeholder', !value);
+    }
     if (salesExpensePaymentList) {
       salesExpensePaymentList.querySelectorAll('.se-filter-listbox-option').forEach((opt) => {
         const on = opt === option;
@@ -184,7 +187,7 @@
     let display = availableCash;
     if (isCash && editingExpenseId) {
       const existing = expenseEntries.find((row) => String(row.id) === String(editingExpenseId));
-      if (existing && (existing.payment_type || 'cash') === 'cash') {
+      if (existing && (existing.payment_type || '') === 'cash') {
         display = Number(availableCash) + Number(existing.amount || 0);
       }
     }
@@ -195,24 +198,20 @@
     const opts = options || {};
     const normalized = Object.prototype.hasOwnProperty.call(expensePaymentLabels, paymentType)
       ? paymentType
-      : 'cash';
+      : '';
+    if (salesExpensePaymentInput) salesExpensePaymentInput.value = normalized;
+    if (salesExpensePaymentValue) {
+      salesExpensePaymentValue.textContent = normalized
+        ? (expensePaymentLabels[normalized] || 'Select payment type')
+        : 'Select payment type';
+      salesExpensePaymentValue.classList.toggle('staff-supplier-placeholder', !normalized);
+    }
     if (!opts.skipListbox && salesExpensePaymentList) {
-      const option = salesExpensePaymentList.querySelector(`.se-filter-listbox-option[data-value="${normalized}"]`);
-      if (option) {
-        const label = (option.textContent || '').trim() || expensePaymentLabels[normalized] || 'Cash';
-        if (salesExpensePaymentInput) salesExpensePaymentInput.value = normalized;
-        if (salesExpensePaymentValue) salesExpensePaymentValue.textContent = label;
-        salesExpensePaymentList.querySelectorAll('.se-filter-listbox-option').forEach((opt) => {
-          const on = opt === option;
-          opt.classList.toggle('is-selected', on);
-          opt.setAttribute('aria-selected', on ? 'true' : 'false');
-        });
-      }
-    } else if (salesExpensePaymentInput) {
-      salesExpensePaymentInput.value = normalized;
-      if (salesExpensePaymentValue) {
-        salesExpensePaymentValue.textContent = expensePaymentLabels[normalized] || 'Cash';
-      }
+      salesExpensePaymentList.querySelectorAll('.se-filter-listbox-option').forEach((opt) => {
+        const on = String(opt.getAttribute('data-value') || '') === normalized;
+        opt.classList.toggle('is-selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
     }
     const isBank = normalized === 'bank_transfer';
     if (salesExpenseTransactionWrap) salesExpenseTransactionWrap.hidden = !isBank;
@@ -789,7 +788,7 @@
     if (salesExpenseValue) salesExpenseValue.value = '';
     if (salesExpenseTransactionId) salesExpenseTransactionId.value = '';
     if (salesExpenseInvoiceNumber) salesExpenseInvoiceNumber.value = '';
-    setExpensePaymentType('cash');
+    setExpensePaymentType('');
     setExpenseCategory('');
     setExpenseSupplier('');
     closeExpenseSupplierAddPanel();
@@ -823,7 +822,7 @@
     editingExpenseId = row.id;
     if (salesExpenseDescription) salesExpenseDescription.value = row.description || '';
     if (salesExpenseValue) salesExpenseValue.value = formatAmount(row.amount);
-    setExpensePaymentType(row.payment_type || 'cash');
+    setExpensePaymentType(row.payment_type || '');
     setExpenseCategory(row.category || '');
     setExpenseSupplier(row.supplier_id || '');
     if (salesExpenseTransactionId) salesExpenseTransactionId.value = row.transaction_id || '';
@@ -882,7 +881,7 @@
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not delete expense.');
-    if (existing && (existing.payment_type || 'cash') === 'cash') {
+    if (existing && existing.payment_type === 'cash') {
       availableCash = Number(availableCash) + Number(existing.amount || 0);
       widget.dataset.availableCash = String(availableCash);
       syncExpenseAvailableCashDisplay();
@@ -930,6 +929,10 @@
       showSalesExpenseError('Please select a category.');
       return;
     }
+    if (!paymentType) {
+      showSalesExpenseError('Please select a payment type.');
+      return;
+    }
     if (paymentType === 'bank_transfer' && !transactionId) {
       showSalesExpenseError('Please enter the bank transaction ID.');
       return;
@@ -938,7 +941,7 @@
       let limit = availableCash;
       if (editingExpenseId) {
         const existing = expenseEntries.find((row) => String(row.id) === String(editingExpenseId));
-        if (existing && (existing.payment_type || 'cash') === 'cash') {
+        if (existing && (existing.payment_type || '') === 'cash') {
           limit = Number(availableCash) + Number(existing.amount || 0);
         }
       }
@@ -952,7 +955,7 @@
     showSalesExpenseError('');
     if (saveExpenseBtn) saveExpenseBtn.disabled = true;
     const previousPayment = editingExpenseId
-      ? ((expenseEntries.find((row) => String(row.id) === String(editingExpenseId)) || {}).payment_type || 'cash')
+      ? ((expenseEntries.find((row) => String(row.id) === String(editingExpenseId)) || {}).payment_type || '')
       : null;
     const previousAmount = editingExpenseId
       ? Number((expenseEntries.find((row) => String(row.id) === String(editingExpenseId)) || {}).amount || 0)
@@ -1082,8 +1085,8 @@
     clearBtn.addEventListener('click', async function(){
       if (!widget || salesEntryLocked) return;
       var ok = typeof window.deConfirm === 'function'
-        ? await window.deConfirm('Clear uploaded hotel sales amounts for this date? Actual Cash and Expense lines will be kept.')
-        : window.confirm('Clear uploaded hotel sales amounts for this date? Actual Cash and Expense lines will be kept.');
+        ? await window.deConfirm('Clear uploaded hotel sales amounts for this date? Actual Cash, Tips, and Expense lines will be kept.')
+        : window.confirm('Clear uploaded hotel sales amounts for this date? Actual Cash, Tips, and Expense lines will be kept.');
       if (!ok) return;
       if (statusEl) statusEl.textContent = 'Clearing…';
       clearBtn.disabled = true;

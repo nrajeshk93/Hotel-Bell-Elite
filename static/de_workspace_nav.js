@@ -1,6 +1,21 @@
 (function(){
   var COLLAPSE_DELAY = 220;
 
+  function prefersCoarsePointer(){
+    try{
+      return !!(window.matchMedia && (
+        window.matchMedia('(pointer: coarse)').matches ||
+        window.matchMedia('(hover: none)').matches
+      ));
+    } catch(e){
+      return false;
+    }
+  }
+
+  function isHoverExpandAllowed(){
+    return !prefersCoarsePointer();
+  }
+
   function getActiveWorkspaceHost(){
     var mainApp = document.getElementById('main-app');
     if(mainApp && mainApp.style.display !== 'none') return mainApp;
@@ -41,7 +56,8 @@
   function isDeSidebarExpandedState(sidebar){
     sidebar = sidebar || getSidebar();
     if(!sidebar) return false;
-    return sidebar.matches(':hover') || sidebar.classList.contains('is-expanded') || sidebar.classList.contains('is-pinned');
+    var hovered = isHoverExpandAllowed() && sidebar.matches(':hover');
+    return hovered || sidebar.classList.contains('is-expanded') || sidebar.classList.contains('is-pinned');
   }
 
   function rememberDeSidebarExpanded(expanded){
@@ -98,7 +114,7 @@
         sb.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(group){
           group.classList.remove('is-flyout-active');
         });
-      } else if(!sb.matches(':hover')){
+      } else if(!(isHoverExpandAllowed() && sb.matches(':hover'))){
         sb.classList.remove('is-expanded');
       }
     });
@@ -131,18 +147,26 @@
     var sidebarExpanded = isDeSidebarExpandedState(sidebar);
     var opening = !group.classList.contains('is-open');
 
-    sidebar.querySelectorAll('.de-nav-group').forEach(function(other){
-      if(other === group) return;
-      if(other.classList.contains('is-child-active')) return;
-      other.classList.remove('is-open', 'is-flyout-active');
-      var otherToggle = other.querySelector('.de-nav-group-toggle');
-      if(otherToggle) otherToggle.setAttribute('aria-expanded', 'false');
-    });
+    // Keep other sections open so the left nav stays a stable map of the app
+    // (Sales Analytics → Credit remains visible while Payroll is also open).
+    if(opening){
+      sidebar.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(other){
+        if(other === group) return;
+        other.classList.remove('is-flyout-active');
+      });
+    }
 
     group.classList.toggle('is-open', opening);
     group.classList.toggle('is-flyout-active', opening && !sidebarExpanded);
     var toggle = group.querySelector('.de-nav-group-toggle');
     if(toggle) toggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    try{
+      var openIds = [];
+      sidebar.querySelectorAll('.de-nav-group.is-open').forEach(function(g){
+        if(g.id) openIds.push(g.id);
+      });
+      sessionStorage.setItem('de-nav-open-groups', JSON.stringify(openIds));
+    } catch(e){}
   }
 
   function closeDeNavFlyouts(sidebar){
@@ -228,6 +252,12 @@
     if(!deSidebar || deSidebar.__deSidebarBound) return;
     deSidebar.__deSidebarBound = true;
 
+    // Touch / coarse-pointer: no hover-expand. Use pin + ≤760px drawer only.
+    if(!isHoverExpandAllowed()){
+      deSidebar.classList.add('de-sidebar--touch');
+      return;
+    }
+
     deSidebar.addEventListener('mouseenter', function(){
       clearDeSidebarCollapseTimer();
       setDeSidebarExpanded(true, deSidebar);
@@ -263,8 +293,21 @@
     });
   }
 
+  function seedPersistedNavGroups(){
+    var ids = [];
+    document.querySelectorAll('.de-sidebar .de-nav-group.is-open').forEach(function(group){
+      if(group.id) ids.push(group.id);
+    });
+    if(!ids.length) return;
+    try{
+      sessionStorage.setItem('de-nav-open-groups', JSON.stringify(ids));
+    } catch(e){}
+  }
+
   function initDeWorkspaceSidebar(){
     applyDeSidebarBootState();
+    restorePersistedNavGroups();
+    seedPersistedNavGroups();
     getAllSidebars().forEach(bindDeSidebarInteractions);
 
     if(!document.__deSidebarDocClickBound){
@@ -281,8 +324,27 @@
     }
   }
 
+  function restorePersistedNavGroups(){
+    var ids = [];
+    try{
+      ids = JSON.parse(sessionStorage.getItem('de-nav-open-groups') || '[]') || [];
+    } catch(e){
+      ids = [];
+    }
+    if(!Array.isArray(ids)) return;
+    ids.forEach(function(id){
+      var group = document.getElementById(id);
+      if(!group) return;
+      group.classList.add('is-open');
+      var toggle = group.querySelector('.de-nav-group-toggle');
+      if(toggle) toggle.setAttribute('aria-expanded', 'true');
+    });
+  }
+
   function reinitDeWorkspaceSidebar(){
     applyDeSidebarBootState();
+    restorePersistedNavGroups();
+    seedPersistedNavGroups();
     getAllSidebars().forEach(bindDeSidebarInteractions);
   }
 

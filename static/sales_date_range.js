@@ -8,31 +8,41 @@
     opts = opts || {};
     const gap = opts.gap != null ? opts.gap : 8;
     const margin = opts.margin != null ? opts.margin : 12;
+    const vv = window.visualViewport;
+    const viewW = (vv && vv.width) || window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewH = (vv && vv.height) || window.innerHeight || document.documentElement.clientHeight || 0;
+    const offsetLeft = (vv && vv.offsetLeft) || 0;
+    const offsetTop = (vv && vv.offsetTop) || 0;
+    const maxPanelH = Math.max(180, viewH - margin * 2);
 
     panel.style.position = 'fixed';
     panel.style.right = 'auto';
     panel.style.bottom = 'auto';
+    panel.style.maxHeight = Math.round(maxPanelH) + 'px';
+    panel.style.overflowY = 'auto';
     panel.style.visibility = 'hidden';
     panel.style.display = 'flex';
     panel.style.flexDirection = 'column';
 
     const panelW = panel.offsetWidth;
-    const panelH = panel.offsetHeight;
+    const panelH = Math.min(panel.offsetHeight, maxPanelH);
     const rect = trigger.getBoundingClientRect();
 
     let top = rect.bottom + gap;
     let left = rect.left;
 
-    if (left + panelW > window.innerWidth - margin) {
-      left = Math.max(margin, window.innerWidth - margin - panelW);
+    if (left + panelW > offsetLeft + viewW - margin) {
+      left = Math.max(offsetLeft + margin, offsetLeft + viewW - margin - panelW);
     }
-    if (left < margin) left = margin;
+    if (left < offsetLeft + margin) left = offsetLeft + margin;
 
-    if (top + panelH > window.innerHeight - margin) {
+    if (top + panelH > offsetTop + viewH - margin) {
       const above = rect.top - gap - panelH;
-      top = above >= margin ? above : Math.max(margin, window.innerHeight - margin - panelH);
+      top = above >= offsetTop + margin
+        ? above
+        : Math.max(offsetTop + margin, offsetTop + viewH - margin - panelH);
     }
-    if (top < margin) top = margin;
+    if (top < offsetTop + margin) top = offsetTop + margin;
 
     panel.style.top = Math.round(top) + 'px';
     panel.style.left = Math.round(left) + 'px';
@@ -45,6 +55,8 @@
     panel.style.left = '';
     panel.style.right = '';
     panel.style.bottom = '';
+    panel.style.maxHeight = '';
+    panel.style.overflowY = '';
     panel.style.visibility = '';
   }
 
@@ -433,6 +445,54 @@
         if (cpFromIso && cpToIso && cpFromIso !== cpToIso) cpLabel = fmt(cpFromIso) + ' – ' + fmt(cpToIso);
         else if (cpFromIso) cpLabel = fmt(cpFromIso);
         setText(cpDisplay, cpLabel || 'Date');
+      }
+
+      var rtDisplay = document.getElementById('rt-date-range-display');
+      var rtFrom = document.getElementById('room-transfer-date-from');
+      var rtTo = document.getElementById('room-transfer-date-to');
+      if (rtDisplay) {
+        var rtFromIso = ((rtFrom && rtFrom.value) || '').trim();
+        var rtToIso = ((rtTo && rtTo.value) || '').trim();
+        var rtLabel = '';
+        if (rtFromIso && rtToIso && rtFromIso !== rtToIso) rtLabel = fmt(rtFromIso) + ' – ' + fmt(rtToIso);
+        else if (rtFromIso) rtLabel = fmt(rtFromIso);
+        setText(rtDisplay, rtLabel || 'Date');
+      }
+
+      var plDisplay = document.getElementById('pl-date-range-display');
+      var plFrom = document.getElementById('purchase-ledger-date-from');
+      var plTo = document.getElementById('purchase-ledger-date-to');
+      if (plDisplay) {
+        var plFromIso = ((plFrom && plFrom.value) || '').trim();
+        var plToIso = ((plTo && plTo.value) || '').trim();
+        var plLabel = '';
+        if (plFromIso && plToIso && plFromIso !== plToIso) plLabel = fmt(plFromIso) + ' – ' + fmt(plToIso);
+        else if (plFromIso) plLabel = fmt(plFromIso);
+        setText(plDisplay, plLabel || 'Date');
+      }
+
+      var tipsDisplay = document.getElementById('tips-date-range-display');
+      var tipsFrom = document.getElementById('tips-date-from');
+      var tipsTo = document.getElementById('tips-date-to');
+      if (tipsDisplay) {
+        var tipsFromIso = ((tipsFrom && tipsFrom.value) || '').trim();
+        var tipsToIso = ((tipsTo && tipsTo.value) || '').trim();
+        var tipsLabel = '';
+        if (tipsFromIso && tipsToIso && tipsFromIso !== tipsToIso) tipsLabel = fmt(tipsFromIso) + ' – ' + fmt(tipsToIso);
+        else if (tipsFromIso) tipsLabel = fmt(tipsFromIso);
+        setText(tipsDisplay, tipsLabel || 'Date');
+      }
+
+      var ecDisplay = document.getElementById('ec-date-range-display');
+      var ecFrom = document.getElementById('emp-credits-date-from');
+      var ecTo = document.getElementById('emp-credits-date-to');
+      if (ecDisplay) {
+        var ecFromIso = ((ecFrom && ecFrom.value) || '').trim();
+        var ecToIso = ((ecTo && ecTo.value) || '').trim();
+        var ecLabel = '';
+        if (ecFromIso && ecToIso && ecFromIso !== ecToIso) ecLabel = fmt(ecFromIso) + ' – ' + fmt(ecToIso);
+        else if (ecFromIso) ecLabel = fmt(ecFromIso);
+        setText(ecDisplay, ecLabel || 'Date');
       }
     }
   };

@@ -1,10 +1,18 @@
 """Hotel Bell Elite — Sales Update application."""
 
+import calendar
 import io
 import json
 import os
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
 
 from flask import (
     Flask,
@@ -14,6 +22,7 @@ from flask import (
     render_template,
     request,
     send_file,
+    send_from_directory,
     session,
     url_for,
 )
@@ -29,6 +38,7 @@ from workspace_access import (
     _PUBLIC_ENDPOINTS,
     _PAYROLL_SUBMODULE_LABELS,
     _SALES_ANALYTICS_SUBMODULE_LABELS,
+    _STORES_SUBMODULE_LABELS,
     _USER_ACCESS_SUBMODULE_LABELS,
     access_module_tree,
     access_module_tree_ui,
@@ -39,27 +49,47 @@ from workspace_access import (
     get_endpoint_accounts_submodule,
     get_endpoint_dashboard_module,
     get_endpoint_payroll_submodule,
+    get_endpoint_stores_submodule,
     get_endpoint_user_access_submodule,
     is_system_administrator,
     normalize_username,
     payroll_access_list,
     sales_analytics_access_list,
     save_access_user_record,
+    stores_access_list,
     user_access_submodule_list,
     user_can_access_accounts_submodule,
     user_can_access_dashboard,
     user_can_access_endpoint_accounts,
     user_can_access_endpoint_sales_analytics,
+    user_can_access_endpoint_stores,
     user_can_access_payroll_submodule,
     user_can_access_sales_analytics_submodule,
+    user_can_access_stores_submodule,
     user_can_access_supplier_master,
     user_can_access_user_access_submodule,
     validate_access_user_form,
 )
 from employee_payroll import register_employee_payroll
+from stores import register_stores
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "hotel-bell-elite-dev-key-change-in-production")
+
+# Cookie session hardening for HTTPS / Android WebView (auth flow unchanged).
+_app_env = (
+    os.environ.get("FLASK_ENV")
+    or os.environ.get("ENV")
+    or os.environ.get("APP_ENV")
+    or ""
+).strip().lower()
+_secure_cookies = (
+    _app_env in ("production", "prod")
+    or os.environ.get("SESSION_COOKIE_SECURE", "").strip() in ("1", "true", "True", "yes")
+)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = bool(_secure_cookies)
 
 init_db()
 
@@ -107,12 +137,17 @@ DEFAULT_LOCATION = OUTLET_BAR
 OUTLET_HOTEL = "Hotel"
 HOTEL_LOCATIONS = [OUTLET_HOTEL]
 CASH_LEDGER_OUTLETS = (OUTLET_HOTEL, OUTLET_BAR, OUTLET_RESTAURANT)
+TIP_OUTLET_LOCATIONS = CASH_LEDGER_OUTLETS
+TIPS_FILTER_ALL = "All"
+TIPS_FILTER_LOCATIONS = (TIPS_FILTER_ALL, *TIP_OUTLET_LOCATIONS)
+CASH_LEDGER_FILTER_ALL = "All"
+CASH_LEDGER_FILTER_LOCATIONS = (CASH_LEDGER_FILTER_ALL, *CASH_LEDGER_OUTLETS)
 CASH_LEDGER_ENTRY_SALES = "sales_cash"
 CASH_LEDGER_ENTRY_LOAD = "load_cash"
 CASH_LEDGER_ENTRY_EXPENSE = "expense"
 CASH_LEDGER_ENTRY_TRANSFER = "transfer_out"
 CASH_LEDGER_ENTRY_LABELS = {
-    CASH_LEDGER_ENTRY_SALES: "Sales Cash",
+    CASH_LEDGER_ENTRY_SALES: "Actual Cash",
     CASH_LEDGER_ENTRY_LOAD: "Load Cash",
     CASH_LEDGER_ENTRY_EXPENSE: "Expense",
     CASH_LEDGER_ENTRY_TRANSFER: "Transfer Out",
@@ -143,10 +178,11 @@ HOTEL_SALES_ENTRY_FIELDS = (
     ("upi", "UPI"),
     ("room_credit", "Credit"),
     ("actual_cash", "Actual Cash"),
+    ("tips", "Tips"),
     ("expense", "Expense"),
 )
 
-HOTEL_MANUAL_SALES_ENTRY_KEYS = ("actual_cash",)
+HOTEL_MANUAL_SALES_ENTRY_KEYS = ("actual_cash", "tips")
 
 EXPENSE_PAYMENT_CASH = "cash"
 EXPENSE_PAYMENT_BANK = "bank_transfer"
@@ -179,6 +215,7 @@ EXPENSE_CATEGORIES = _sorted_label_choices((
     ("meat", "Meat"),
     ("sea_food", "Sea Food"),
     ("labour", "Labour"),
+    ("salary", "Salary"),
     ("water_tank", "Water Tank"),
     ("liquor", "Liquor"),
     ("fuel", "Fuel"),
@@ -197,6 +234,9 @@ ROOM_TRANSFER_FILTER_STATUSES = (
     ("paid", "Paid"),
 )
 ROOM_TRANSFER_FILTER_LOCATIONS = (ROOM_TRANSFER_FILTER_ALL, OUTLET_BAR, OUTLET_RESTAURANT)
+ROOM_TRANSFER_OUTLET_LOCATIONS = (OUTLET_BAR, OUTLET_RESTAURANT)
+CREDIT_FILTER_LOCATIONS = (ROOM_TRANSFER_FILTER_ALL, OUTLET_HOTEL)
+CREDIT_OUTLET_LOCATIONS = (OUTLET_HOTEL,)
 PURCHASE_LEDGER_FILTER_ALL = "all"
 EXPENSE_PAYMENT_LABELS = dict(EXPENSE_PAYMENT_TYPES)
 
@@ -259,6 +299,11 @@ register_employee_payroll(
     app,
     pop_auth_notice=_pop_auth_notice,
     permission_denied_response=_permission_denied_response,
+    get_user=get_current_user,
+)
+register_stores(
+    app,
+    pop_auth_notice=_pop_auth_notice,
     get_user=get_current_user,
 )
 
@@ -334,6 +379,13 @@ def enforce_access():
         label = _PAYROLL_SUBMODULE_LABELS.get(required_payroll, "requested payroll section")
         return _permission_denied_response(f"You do not have access to the {label} payroll section.")
 
+    if not user_can_access_endpoint_stores(user, endpoint):
+        label = _STORES_SUBMODULE_LABELS.get(
+            get_endpoint_stores_submodule(endpoint) or "",
+            "requested Stores section",
+        )
+        return _permission_denied_response(f"You do not have access to {label}.")
+
     return None
 
 
@@ -353,16 +405,19 @@ def inject_auth_context():
         "accessible_user_access_modules": user_access_submodule_list(user),
         "accessible_payroll_modules": payroll_access_list(user),
         "accessible_accounts_modules": accounts_access_list(user),
+        "accessible_stores_modules": stores_access_list(user),
         "has_dashboard_access": lambda key: user_can_access_dashboard(user, key),
         "has_sales_analytics_access": lambda key: user_can_access_sales_analytics_submodule(user, key),
         "has_payroll_access": lambda key: user_can_access_payroll_submodule(user, key),
         "has_accounts_access": lambda key: user_can_access_accounts_submodule(user, key),
+        "has_stores_access": lambda key: user_can_access_stores_submodule(user, key),
         "has_supplier_master_access": lambda: user_can_access_supplier_master(user),
         "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
         "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
         "sales_analytics_submodule_labels": _SALES_ANALYTICS_SUBMODULE_LABELS,
         "payroll_module_labels": _PAYROLL_SUBMODULE_LABELS,
         "accounts_module_labels": _ACCOUNTS_SUBMODULE_LABELS,
+        "stores_module_labels": _STORES_SUBMODULE_LABELS,
         "user_access_submodule_labels": _USER_ACCESS_SUBMODULE_LABELS,
     }
 
@@ -472,6 +527,49 @@ def replace_hotel_ledger_entries(conn, company, location, sales_date, lines):
         )
 
 
+def hotel_ledger_to_credit_lines(entries, location=OUTLET_HOTEL):
+    """Map hotel FO ledger room_credit rows into room_transfer_entries line dicts."""
+    lines = []
+    for entry in entries or []:
+        mode = (entry.get("payment_mode") or "").strip()
+        if mode != "room_credit":
+            continue
+        detail_parts = [
+            (entry.get("company_name") or "").strip(),
+            (entry.get("travel_agent") or "").strip(),
+            (entry.get("room_type") or "").strip(),
+        ]
+        lines.append(
+            {
+                "location": location,
+                "invoice_number": entry.get("invoice_number") or "",
+                "outlet_name": (entry.get("company_name") or "").strip() or OUTLET_HOTEL,
+                "table_room": entry.get("room") or "",
+                "guest_name": entry.get("guest_name") or "",
+                "ledger_detail": " · ".join(part for part in detail_parts if part),
+                "amount": entry.get("amount"),
+                "payment_status": "unpaid",
+                "sort_order": entry.get("sort_order"),
+                "source_row": entry.get("source_row"),
+            }
+        )
+    return lines
+
+
+def sync_hotel_credit_entries(conn, company, location, sales_date, ledger_entries=None):
+    """Replace Hotel credit receivables for a date from FO ledger room_credit lines."""
+    if ledger_entries is None:
+        ledger_entries = load_hotel_ledger_entries(conn, company, location, sales_date)
+    lines = hotel_ledger_to_credit_lines(ledger_entries, location=location)
+    sync_room_transfer_entries(
+        conn,
+        company,
+        sales_date,
+        lines,
+        locations=(location,),
+    )
+
+
 def sync_hotel_sales_from_ledger(conn, user, company, location, sales_date):
     entries = load_hotel_ledger_entries(conn, company, location, sales_date)
     sales_entries = rollup_hotel_ledger_entries(entries)
@@ -482,10 +580,13 @@ def sync_hotel_sales_from_ledger(conn, user, company, location, sales_date):
             sales_entries[key] = parse_money(existing_values.get(key))
     sales_entries = build_hotel_sales_entry_values(sales_entries)
     sales_entries["expense"] = _sales_expense_total(conn, company, location, sales_date)
+    _apply_tip_line_total(conn, company, location, sales_date, sales_entries)
     existing_row = load_sales_row(company, location, sales_date)
     petty = (existing_row or {}).get("petty_cash_counts", {})
     cash_denoms = (existing_row or {}).get("cash_denomination_counts", {})
     upsert_sales_row(user, company, location, sales_date, sales_entries, petty, cash_denoms)
+    sync_hotel_credit_entries(conn, company, location, sales_date, ledger_entries=entries)
+    conn.commit()
     return {
         "entries": entries,
         "sales_entries": sales_entries,
@@ -573,7 +674,13 @@ def _normalize_room_transfer_filter_status(status):
 
 
 def load_room_transfer_entries_by_status(
-    conn, company, status="all", location=None, date_from=None, date_to=None
+    conn,
+    company,
+    status="all",
+    location=None,
+    date_from=None,
+    date_to=None,
+    allowed_locations=None,
 ):
     params = [company]
     status_clause = ""
@@ -586,6 +693,12 @@ def load_room_transfer_entries_by_status(
     if location and location != ROOM_TRANSFER_FILTER_ALL:
         location_clause = " AND e.location = ?"
         params.append(location)
+    elif allowed_locations:
+        scoped = [loc for loc in allowed_locations if loc and loc != ROOM_TRANSFER_FILTER_ALL]
+        if scoped:
+            placeholders = ",".join("?" for _ in scoped)
+            location_clause = f" AND e.location IN ({placeholders})"
+            params.extend(scoped)
     date_clause = ""
     if date_from:
         date_clause += " AND e.sales_date >= ?"
@@ -631,12 +744,33 @@ def rollup_room_transfer_entries(entries):
     return rollup
 
 
-def sync_room_transfer_entries(conn, company, sales_date, lines):
+def sync_room_transfer_entries(conn, company, sales_date, lines, locations=None):
+    """Replace room_transfer_entries for the given locations/date.
+
+    When ``locations`` is omitted, it is derived from the line locations so a
+    Bar/Restaurant Collections sync cannot wipe Hotel credit rows (and vice versa).
+    """
+    lines = list(lines or [])
+    if locations is None:
+        locations = sorted(
+            {
+                str(line.get("location") or "").strip()
+                for line in lines
+                if str(line.get("location") or "").strip()
+            }
+        )
+    else:
+        locations = [str(loc).strip() for loc in locations if str(loc).strip()]
+    if not locations:
+        return
+
+    loc_placeholders = ",".join("?" for _ in locations)
     existing_ids = [
         row["id"]
         for row in conn.execute(
-            "SELECT id FROM room_transfer_entries WHERE company = ? AND sales_date = ?",
-            (company, sales_date),
+            f"""SELECT id FROM room_transfer_entries
+                WHERE company = ? AND sales_date = ? AND location IN ({loc_placeholders})""",
+            (company, sales_date, *locations),
         ).fetchall()
     ]
     if existing_ids:
@@ -663,11 +797,12 @@ def sync_room_transfer_entries(conn, company, sales_date, lines):
             if remaining and int(remaining["cnt"] or 0) == 0:
                 conn.execute("DELETE FROM room_transfer_payments WHERE id = ?", (payment_id,))
     conn.execute(
-        "DELETE FROM room_transfer_entries WHERE company = ? AND sales_date = ?",
-        (company, sales_date),
+        f"""DELETE FROM room_transfer_entries
+            WHERE company = ? AND sales_date = ? AND location IN ({loc_placeholders})""",
+        (company, sales_date, *locations),
     )
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    for line in lines or []:
+    for line in lines:
         payment_status = (line.get("payment_status") or "unpaid").strip().lower()
         if payment_status not in {"paid", "unpaid"}:
             payment_status = "unpaid"
@@ -696,18 +831,109 @@ def sync_room_transfer_entries(conn, company, sales_date, lines):
         )
 
 
+def _normalize_room_transfer_payment_method(payment_method):
+    value = (payment_method or ROOM_TRANSFER_PAYMENT_CASH).strip().lower()
+    if value in (ROOM_TRANSFER_PAYMENT_BANK, "bank", "bank transfer"):
+        return ROOM_TRANSFER_PAYMENT_BANK
+    if value == ROOM_TRANSFER_PAYMENT_UPI:
+        return ROOM_TRANSFER_PAYMENT_UPI
+    if value in (ROOM_TRANSFER_PAYMENT_CARD, "credit card", "debit card"):
+        return ROOM_TRANSFER_PAYMENT_CARD
+    if value == ROOM_TRANSFER_PAYMENT_CASH:
+        return ROOM_TRANSFER_PAYMENT_CASH
+    return None
+
+
+def _proportion_room_transfer_allocations(allocations, split_amount):
+    """Split invoice allocations across one payment-mode amount (remainder on last)."""
+    total = round_half_up(sum(item["amount"] for item in allocations), 2)
+    if total <= 0 or split_amount <= 0:
+        return []
+    split_amount = round_half_up(split_amount, 2)
+    result = []
+    assigned = 0.0
+    last_index = len(allocations) - 1
+    for index, item in enumerate(allocations):
+        if index == last_index:
+            portion = round_half_up(split_amount - assigned, 2)
+        else:
+            portion = round_half_up(split_amount * (item["amount"] / total), 2)
+            assigned = round_half_up(assigned + portion, 2)
+        if portion <= 0:
+            continue
+        result.append({
+            "entry_id": item["entry_id"],
+            "amount": portion,
+            "entry": item["entry"],
+        })
+    return result
+
+
+def _parse_room_transfer_payment_splits(data, allocation_total, errors):
+    raw_splits = data.get("payment_splits")
+    if raw_splits is None:
+        method = _normalize_room_transfer_payment_method(data.get("payment_method"))
+        if method is None:
+            errors.append("Invalid payment mode.")
+            return []
+        transaction_id = str(data.get("transaction_id") or "").strip()
+        raw_splits = [{
+            "payment_method": method,
+            "amount": allocation_total,
+            "transaction_id": transaction_id,
+        }]
+    if not isinstance(raw_splits, list) or not raw_splits:
+        errors.append("Add at least one payment mode.")
+        return []
+
+    parsed = []
+    seen_methods = set()
+    for raw in raw_splits:
+        if not isinstance(raw, dict):
+            errors.append("Invalid payment mode split.")
+            continue
+        method = _normalize_room_transfer_payment_method(raw.get("payment_method"))
+        if method is None:
+            errors.append("Invalid payment mode.")
+            continue
+        if method in seen_methods:
+            errors.append("Each payment mode can only be used once.")
+            continue
+        seen_methods.add(method)
+        amount = parse_money(raw.get("amount"))
+        if amount <= 0:
+            errors.append("Each payment mode amount must be greater than zero.")
+            continue
+        transaction_id = str(raw.get("transaction_id") or "").strip()
+        if method in ROOM_TRANSFER_PAYMENT_METHODS_REQUIRING_TXN and not transaction_id:
+            errors.append("Transaction ID is required for bank transfer.")
+            continue
+        if method not in ROOM_TRANSFER_PAYMENT_METHODS_REQUIRING_TXN:
+            transaction_id = ""
+        parsed.append({
+            "payment_method": method,
+            "amount": round_half_up(amount, 2),
+            "transaction_id": transaction_id,
+        })
+
+    if (errors):
+        return []
+    if not parsed:
+        errors.append("Add at least one payment mode.")
+        return []
+
+    split_total = round_half_up(sum(item["amount"] for item in parsed), 2)
+    if abs(split_total - allocation_total) > 0.001:
+        errors.append("Modes total must equal the payment total before saving.")
+        return []
+    return parsed
+
+
 def _validate_room_transfer_payment_payload(conn, data):
     errors = []
     payment_date = _parse_sales_date(data.get("payment_date") or date.today().isoformat())
-    payment_method = _normalize_credit_payment_method(data.get("payment_method"))
-    transaction_id = str(data.get("transaction_id") or "").strip()
     notes = str(data.get("notes") or "").strip()
     company = str(data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
-
-    if payment_method == CREDIT_PAYMENT_METHOD_CARD and not transaction_id:
-        errors.append("Transaction ID is required for bank transfer.")
-    if payment_method != CREDIT_PAYMENT_METHOD_CARD:
-        transaction_id = ""
 
     raw_allocations = data.get("allocations") or []
     if not isinstance(raw_allocations, list) or not raw_allocations:
@@ -765,14 +991,17 @@ def _validate_room_transfer_payment_payload(conn, data):
         return None, ["Select at least one room transfer to clear."]
 
     total_amount = round_half_up(sum(item["amount"] for item in parsed_allocations), 2)
+    payment_splits = _parse_room_transfer_payment_splits(data, total_amount, errors)
+    if errors:
+        return None, errors
+
     return {
         "company": company,
         "payment_date": payment_date.isoformat(),
-        "payment_method": payment_method,
-        "transaction_id": transaction_id,
         "notes": notes,
         "total_amount": total_amount,
         "allocations": parsed_allocations,
+        "payment_splits": payment_splits,
     }, []
 
 
@@ -820,6 +1049,207 @@ def _sales_expense_total(conn, company, location, sales_date):
         (company, location, sales_date),
     ).fetchone()
     return round_half_up(row["total"] if row else 0, 2)
+
+
+def _sales_tip_total(conn, company, location, sales_date):
+    row = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_tips
+           WHERE company=? AND location=? AND sales_date=?""",
+        (company, location, sales_date),
+    ).fetchone()
+    return round_half_up(row["total"] if row else 0, 2)
+
+
+def _sales_tip_entries(conn, company, location, sales_date):
+    rows = conn.execute(
+        """SELECT t.id, t.employee_id, t.amount, t.description, t.sales_date,
+                  e.name AS employee_name, e.emp_code AS employee_code
+           FROM sales_update_tips t
+           LEFT JOIN employees e ON e.id = t.employee_id
+           WHERE t.company=? AND t.location=? AND t.sales_date=?
+           ORDER BY t.created_at, t.id""",
+        (company, location, sales_date),
+    ).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        item["employee_name"] = item.get("employee_name") or "Unknown"
+        item["employee_code"] = item.get("employee_code") or ""
+        entries.append(item)
+    return entries
+
+
+def _active_employees_for_tips(conn):
+    rows = conn.execute(
+        """SELECT id, emp_code, name, location
+           FROM employees
+           WHERE status = 'active'
+           ORDER BY LOWER(name), id"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _sales_tip_line_count(conn, company, location, sales_date):
+    row = conn.execute(
+        """SELECT COUNT(*) AS cnt FROM sales_update_tips
+           WHERE company=? AND location=? AND sales_date=?""",
+        (company, location, sales_date),
+    ).fetchone()
+    return int(row["cnt"] if row else 0)
+
+
+def _apply_tip_line_total(conn, company, location, sales_date, sales_entries):
+    """Overwrite tips from employee tip lines when any exist for the outlet/date."""
+    if location not in TIP_OUTLET_LOCATIONS:
+        return sales_entries
+    if _sales_tip_line_count(conn, company, location, sales_date):
+        sales_entries["tips"] = _sales_tip_total(conn, company, location, sales_date)
+    return sales_entries
+
+
+def _load_tips_analytics_bundle(conn, company, date_from, date_to, location_filter=None):
+    """Employee tip rollup by outlet for the Tips analytics page (read-only)."""
+    params = [company]
+    sql = """
+        SELECT t.employee_id, t.location, t.amount,
+               e.name AS employee_name, e.emp_code AS employee_code
+        FROM sales_update_tips t
+        LEFT JOIN employees e ON e.id = t.employee_id
+        WHERE t.company = ?
+    """
+    if date_from:
+        sql += " AND t.sales_date >= ?"
+        params.append(date_from.isoformat() if hasattr(date_from, "isoformat") else str(date_from))
+    if date_to:
+        sql += " AND t.sales_date <= ?"
+        params.append(date_to.isoformat() if hasattr(date_to, "isoformat") else str(date_to))
+    if location_filter and location_filter in TIP_OUTLET_LOCATIONS:
+        sql += " AND t.location = ?"
+        params.append(location_filter)
+    sql += " ORDER BY LOWER(COALESCE(e.name, '')), t.employee_id, t.location"
+    rows = conn.execute(sql, params).fetchall()
+
+    by_employee = {}
+    outlet_totals = {loc: 0.0 for loc in TIP_OUTLET_LOCATIONS}
+    for row in rows:
+        emp_id = row["employee_id"]
+        loc = row["location"]
+        amount = round_half_up(row["amount"], 2)
+        if emp_id not in by_employee:
+            by_employee[emp_id] = {
+                "employee_id": emp_id,
+                "employee_name": row["employee_name"] or "Unknown",
+                "employee_code": row["employee_code"] or "",
+                "hotel": 0.0,
+                "bar": 0.0,
+                "restaurant": 0.0,
+                "total": 0.0,
+            }
+        item = by_employee[emp_id]
+        if loc == OUTLET_HOTEL:
+            item["hotel"] = round_half_up(item["hotel"] + amount, 2)
+        elif loc == OUTLET_BAR:
+            item["bar"] = round_half_up(item["bar"] + amount, 2)
+        elif loc == OUTLET_RESTAURANT:
+            item["restaurant"] = round_half_up(item["restaurant"] + amount, 2)
+        item["total"] = round_half_up(item["total"] + amount, 2)
+        if loc in outlet_totals:
+            outlet_totals[loc] = round_half_up(outlet_totals[loc] + amount, 2)
+
+    employees = sorted(
+        by_employee.values(),
+        key=lambda row: (-row["total"], (row["employee_name"] or "").casefold(), row["employee_id"]),
+    )
+    grand_total = round_half_up(sum(outlet_totals.values()), 2)
+    return {
+        "employees": employees,
+        "outlet_totals": outlet_totals,
+        "grand_total": grand_total,
+        "hotel_total": outlet_totals[OUTLET_HOTEL],
+        "bar_total": outlet_totals[OUTLET_BAR],
+        "restaurant_total": outlet_totals[OUTLET_RESTAURANT],
+    }
+
+
+def _month_tip_pool_total(conn, company, year, month):
+    """Sum of tip collections for a calendar payroll month (all outlets)."""
+    date_from = date(int(year), int(month), 1)
+    last_day = calendar.monthrange(int(year), int(month))[1]
+    date_to = date(int(year), int(month), last_day)
+    row = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS total
+           FROM sales_update_tips
+           WHERE company=? AND sales_date >= ? AND sales_date <= ?""",
+        (company, date_from.isoformat(), date_to.isoformat()),
+    ).fetchone()
+    return round_half_up(row["total"] if row else 0, 2)
+
+
+def _available_tip_pool_total(conn, company, year=None, month=None):
+    """Tips available for incentive payout: all collections minus prior payouts.
+
+    When year/month are provided, allocations for that payroll month are excluded
+    from the deduction so the current month can be edited against Remaining.
+    """
+    tips_row = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS total
+           FROM sales_update_tips WHERE company=?""",
+        (company,),
+    ).fetchone()
+    tips_total = float(tips_row["total"] if tips_row else 0)
+
+    if year is not None and month is not None:
+        paid_row = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS total
+               FROM tip_incentive_payouts
+               WHERE company=? AND NOT (year=? AND month=?)""",
+            (company, int(year), int(month)),
+        ).fetchone()
+    else:
+        paid_row = conn.execute(
+            """SELECT COALESCE(SUM(amount), 0) AS total
+               FROM tip_incentive_payouts WHERE company=?""",
+            (company,),
+        ).fetchone()
+    paid_total = float(paid_row["total"] if paid_row else 0)
+    return round_half_up(max(0.0, tips_total - paid_total), 2)
+
+
+def _load_tips_detail_entries(conn, company, date_from, date_to, location_filter=None):
+    """Individual tip lines for Tips Report Excel (date / employee / outlet / amount)."""
+    params = [company]
+    sql = """
+        SELECT t.id, t.sales_date, t.location, t.amount, t.description,
+               t.employee_id, e.name AS employee_name, e.emp_code AS employee_code
+        FROM sales_update_tips t
+        LEFT JOIN employees e ON e.id = t.employee_id
+        WHERE t.company = ?
+    """
+    if date_from:
+        sql += " AND t.sales_date >= ?"
+        params.append(date_from.isoformat() if hasattr(date_from, "isoformat") else str(date_from))
+    if date_to:
+        sql += " AND t.sales_date <= ?"
+        params.append(date_to.isoformat() if hasattr(date_to, "isoformat") else str(date_to))
+    if location_filter and location_filter in TIP_OUTLET_LOCATIONS:
+        sql += " AND t.location = ?"
+        params.append(location_filter)
+    sql += " ORDER BY t.sales_date, LOWER(COALESCE(e.name, '')), t.employee_id, t.location, t.id"
+    rows = conn.execute(sql, params).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "sales_date": row["sales_date"] or "",
+            "location": row["location"] or "",
+            "amount": round_half_up(row["amount"], 2),
+            "description": row["description"] or "",
+            "employee_id": row["employee_id"],
+            "employee_name": row["employee_name"] or "Unknown",
+            "employee_code": row["employee_code"] or "",
+        }
+        for row in rows
+    ]
 
 
 def _next_expense_code(conn, company):
@@ -985,6 +1415,20 @@ CREDIT_PAYMENT_METHODS = _sorted_label_choices((
     (CREDIT_PAYMENT_METHOD_CARD, "Bank Transfer"),
 ))
 CREDIT_PAYMENT_METHOD_LABELS = dict(CREDIT_PAYMENT_METHODS)
+
+ROOM_TRANSFER_PAYMENT_CASH = "cash"
+ROOM_TRANSFER_PAYMENT_BANK = EXPENSE_PAYMENT_BANK
+ROOM_TRANSFER_PAYMENT_UPI = "upi"
+ROOM_TRANSFER_PAYMENT_CARD = "card"
+# Keep user-facing order (not alpha-sorted).
+ROOM_TRANSFER_PAYMENT_METHODS = (
+    (ROOM_TRANSFER_PAYMENT_BANK, "Bank Transfer"),
+    (ROOM_TRANSFER_PAYMENT_CASH, "Cash"),
+    (ROOM_TRANSFER_PAYMENT_UPI, "UPI"),
+    (ROOM_TRANSFER_PAYMENT_CARD, "Card"),
+)
+ROOM_TRANSFER_PAYMENT_METHOD_LABELS = dict(ROOM_TRANSFER_PAYMENT_METHODS)
+ROOM_TRANSFER_PAYMENT_METHODS_REQUIRING_TXN = frozenset({ROOM_TRANSFER_PAYMENT_BANK})
 PURCHASE_LEDGER_PAYMENT_LABELS = {
     **EXPENSE_PAYMENT_LABELS,
     CREDIT_PAYMENT_METHOD_CARD: "Bank Transfer",
@@ -1004,7 +1448,7 @@ PURCHASE_VERIFICATION_VIEWS = _sorted_label_choices((
 CREDIT_SETTLEMENT_PAGE_MODES = {
     CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT: {
         "page_title": "Credit Payment",
-        "page_subtitle": "Clear outstanding credit purchases by combining expenses into a single supplier payment.",
+        "page_subtitle": "Verified purchase update here for credit payment",
         "filter_aria_label": "Credit payment filters",
         "view_aria_label": "Credit payment views",
         "nav_accounts_view": "credit_payment",
@@ -1014,7 +1458,7 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "outstanding_panel_title": "Outstanding Credit",
         "outstanding_panel_aria": "Outstanding credit expenses",
         "outstanding_table_aria": "Outstanding credit expenses",
-        "outstanding_empty": "No outstanding credit expenses found for the selected filters.",
+        "outstanding_empty": "No verified outstanding credit expenses found for the selected filters.",
         "history_summary_label": "Payments cleared",
         "history_summary_unit": "clearance",
         "history_panel_title": "Payment History",
@@ -1332,7 +1776,10 @@ def _outstanding_credit_expenses(conn, date_from=None, date_to=None, supplier_id
                     s.name AS supplier_name, s.gst AS supplier_gst,
                     COALESCE((
                         SELECT SUM(a.amount) FROM credit_payment_allocations a WHERE a.expense_id = e.id
-                    ), 0) AS paid_amount
+                    ), 0) AS paid_amount,
+                    COALESCE((
+                        SELECT SUM(a.amount) FROM purchase_verification_allocations a WHERE a.expense_id = e.id
+                    ), 0) AS verified_amount
              FROM sales_update_expenses e
              LEFT JOIN suppliers s ON s.id = e.supplier_id
              WHERE e.location = ? AND e.payment_type = ?"""
@@ -1356,8 +1803,12 @@ def _outstanding_credit_expenses(conn, date_from=None, date_to=None, supplier_id
         item = dict(row)
         item["amount"] = round_half_up(item.get("amount"), 2)
         item["paid_amount"] = round_half_up(item.get("paid_amount"), 2)
+        item["verified_amount"] = round_half_up(item.get("verified_amount"), 2)
         item["payment_type"] = EXPENSE_PAYMENT_CREDIT
         item["category"] = _normalize_expense_category(item.get("category"))
+        # Credit Payment is step 3: only fully verified purchases are payable.
+        if _purchase_verification_balance(item["amount"], item["verified_amount"]) > 0.001:
+            continue
         item["balance"] = _credit_expense_balance(item["amount"], item["paid_amount"])
         item["settlement_status"] = _credit_settlement_status(
             EXPENSE_PAYMENT_CREDIT, item["amount"], item["paid_amount"]
@@ -1748,6 +2199,11 @@ def _validate_credit_payment_payload(conn, data):
         if _normalize_expense_payment_type(expense.get("payment_type")) != EXPENSE_PAYMENT_CREDIT:
             errors.append("Only credit expenses can be cleared.")
             continue
+        verified_total = _purchase_verification_verified_total(conn, expense_id)
+        if _purchase_verification_balance(expense.get("amount"), verified_total) > 0.001:
+            code = expense.get("expense_code") or f"#{expense_id}"
+            errors.append(f"{code} must be verified in Purchase Verification before payment.")
+            continue
         if supplier_id and int(expense.get("supplier_id") or 0) != supplier_id:
             errors.append("All selected expenses must belong to the same supplier.")
             continue
@@ -1841,6 +2297,8 @@ def _normalize_expense_category(category):
         "seafood": "sea_food",
         "labour": "labour",
         "labor": "labour",
+        "salary": "salary",
+        "salaries": "salary",
         "water_tank": "water_tank",
         "watertank": "water_tank",
         "liquor": "liquor",
@@ -2242,6 +2700,21 @@ def _check_sales_date_lock(user, company, location, sales_date):
     return None
 
 
+def _check_payroll_month_date_lock(conn, sales_date):
+    """Block tip/payroll-linked writes when the sales date falls in a locked month."""
+    from employee_payroll import (
+        _is_payroll_month_locked,
+        _payroll_month_frozen_message,
+        _period_from_credit_date,
+    )
+    year, month = _period_from_credit_date(sales_date)
+    if year is None:
+        return None
+    if _is_payroll_month_locked(conn, year, month):
+        return _payroll_month_frozen_message(year, month)
+    return None
+
+
 
 @app.template_filter("inr")
 def inr_format(value, dec=0):
@@ -2271,6 +2744,16 @@ def inr_format(value, dec=0):
         return ("−" if neg else "") + "₹" + s
     except (TypeError, ValueError):
         return "₹0"
+
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        app.static_folder,
+        "favicon-32.png",
+        mimetype="image/png",
+        max_age=60 * 60 * 24 * 30,
+    )
 
 
 @app.route("/")
@@ -2337,6 +2820,21 @@ def _resolve_cash_ledger_date_range(args):
     return date_from, date_to, True
 
 
+def _normalize_cash_ledger_location(location):
+    value = (location or CASH_LEDGER_FILTER_ALL).strip()
+    if value in CASH_LEDGER_FILTER_LOCATIONS:
+        return value
+    return CASH_LEDGER_FILTER_ALL
+
+
+def _cash_ledger_outlet_scope(location=None):
+    """Return outlet names to include for sales/expense rows."""
+    normalized = _normalize_cash_ledger_location(location)
+    if normalized == CASH_LEDGER_FILTER_ALL:
+        return CASH_LEDGER_OUTLETS
+    return (normalized,)
+
+
 def _normalize_cash_ledger_transfer_destination(value):
     key = (value or "").strip().lower().replace(" ", "_").replace("-", "_")
     if key in CASH_LEDGER_TRANSFER_DESTINATION_LABELS:
@@ -2344,8 +2842,9 @@ def _normalize_cash_ledger_transfer_destination(value):
     return ""
 
 
-def _cash_ledger_sales_rows(conn, company, date_from, date_to):
-    placeholders = ",".join("?" for _ in CASH_LEDGER_OUTLETS)
+def _cash_ledger_sales_rows(conn, company, date_from, date_to, location=None):
+    outlets = _cash_ledger_outlet_scope(location)
+    placeholders = ",".join("?" for _ in outlets)
     rows = conn.execute(
         f"""SELECT id, location, sales_date, sales_entry_values
             FROM sales_updates
@@ -2353,7 +2852,7 @@ def _cash_ledger_sales_rows(conn, company, date_from, date_to):
               AND location IN ({placeholders})
               AND sales_date >= ? AND sales_date <= ?
             ORDER BY sales_date, location, id""",
-        (company, *CASH_LEDGER_OUTLETS, date_from.isoformat(), date_to.isoformat()),
+        (company, *outlets, date_from.isoformat(), date_to.isoformat()),
     ).fetchall()
     entries = []
     for row in rows:
@@ -2362,7 +2861,7 @@ def _cash_ledger_sales_rows(conn, company, date_from, date_to):
             values = json.loads(item.get("sales_entry_values") or "{}")
         except (TypeError, ValueError, json.JSONDecodeError):
             values = {}
-        amount = parse_money(values.get("cash"))
+        amount = parse_money(values.get("actual_cash"))
         if amount <= 0:
             continue
         entries.append(
@@ -2373,7 +2872,7 @@ def _cash_ledger_sales_rows(conn, company, date_from, date_to):
                 "entry_date": item["sales_date"],
                 "location": item["location"] or "",
                 "detail": item["location"] or "",
-                "description": f"Cash collected — {item['location']}",
+                "description": f"Actual cash — {item['location']}",
                 "amount": amount,
                 "signed_amount": amount,
                 "can_delete": False,
@@ -2382,8 +2881,9 @@ def _cash_ledger_sales_rows(conn, company, date_from, date_to):
     return entries
 
 
-def _cash_ledger_expense_rows(conn, company, date_from, date_to):
-    placeholders = ",".join("?" for _ in CASH_LEDGER_OUTLETS)
+def _cash_ledger_expense_rows(conn, company, date_from, date_to, location=None):
+    outlets = _cash_ledger_outlet_scope(location)
+    placeholders = ",".join("?" for _ in outlets)
     rows = conn.execute(
         f"""SELECT e.id, e.location, e.sales_date, e.description, e.amount, e.expense_code,
                    e.category, s.name AS supplier_name
@@ -2396,7 +2896,7 @@ def _cash_ledger_expense_rows(conn, company, date_from, date_to):
             ORDER BY e.sales_date, e.id""",
         (
             company,
-            *CASH_LEDGER_OUTLETS,
+            *outlets,
             EXPENSE_PAYMENT_CASH,
             date_from.isoformat(),
             date_to.isoformat(),
@@ -2495,13 +2995,17 @@ def _cash_ledger_transfer_rows(conn, company, date_from, date_to):
     return entries
 
 
-def _build_cash_ledger_entries(conn, company, date_from, date_to):
+def _build_cash_ledger_entries(conn, company, date_from, date_to, location=None):
     ensure_cash_ledger_schema(conn)
+    location = _normalize_cash_ledger_location(location)
     entries = []
-    entries.extend(_cash_ledger_sales_rows(conn, company, date_from, date_to))
-    entries.extend(_cash_ledger_load_rows(conn, company, date_from, date_to))
-    entries.extend(_cash_ledger_expense_rows(conn, company, date_from, date_to))
-    entries.extend(_cash_ledger_transfer_rows(conn, company, date_from, date_to))
+    entries.extend(_cash_ledger_sales_rows(conn, company, date_from, date_to, location=location))
+    # Loads/transfers are company-level; show them only when viewing all locations.
+    if location == CASH_LEDGER_FILTER_ALL:
+        entries.extend(_cash_ledger_load_rows(conn, company, date_from, date_to))
+    entries.extend(_cash_ledger_expense_rows(conn, company, date_from, date_to, location=location))
+    if location == CASH_LEDGER_FILTER_ALL:
+        entries.extend(_cash_ledger_transfer_rows(conn, company, date_from, date_to))
     entries.sort(
         key=lambda row: (
             row.get("entry_date") or "",
@@ -2609,8 +3113,8 @@ def accounts():
     preferred = (
         ("purchase_ledger", "purchase_ledger"),
         ("cash_ledger", "cash_ledger"),
-        ("credit_payment", "credit_payment"),
         ("purchase_verification", "purchase_verification"),
+        ("credit_payment", "credit_payment"),
         ("supplier_master", "supplier_master"),
     )
     for key, endpoint in preferred:
@@ -2622,11 +3126,11 @@ def accounts():
 @app.route("/accounts/purchase-ledger")
 def purchase_ledger():
     today = date.today()
-    default_from = today.replace(day=1)
-    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
-    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
-    if date_from > date_to:
-        date_from, date_to = date_to, date_from
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to"
+    )
+    query_date_from = date_from if date_filter_active else date(2000, 1, 1)
+    query_date_to = date_to if date_filter_active else today
 
     selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
         request.args.get("supplier")
@@ -2652,7 +3156,12 @@ def purchase_ledger():
             selected_payment = PURCHASE_LEDGER_FILTER_ALL
             payment_type = None
         entries = _purchase_ledger_entries(
-            conn, date_from, date_to, supplier_id, category=category, payment_type=payment_type
+            conn,
+            query_date_from,
+            query_date_to,
+            supplier_id,
+            category=category,
+            payment_type=payment_type,
         )
         available_cash = _cash_ledger_available_as_of(conn, DEFAULT_COMPANY, today)
     finally:
@@ -2686,13 +3195,30 @@ def purchase_ledger():
     if selected_payment != PURCHASE_LEDGER_FILTER_ALL:
         selected_payment_label = EXPENSE_PAYMENT_LABELS.get(selected_payment, selected_payment_label)
 
+    filter_date_from = date_from.isoformat() if date_filter_active else ""
+    filter_date_to = date_to.isoformat() if date_filter_active else ""
+    report_kwargs = {
+        "supplier": selected_supplier,
+        "category": selected_category,
+        "payment": selected_payment,
+    }
+    if date_filter_active:
+        report_kwargs["date_from"] = filter_date_from
+        report_kwargs["date_to"] = filter_date_to
+    clear_kwargs = {
+        "supplier": selected_supplier,
+        "category": selected_category,
+        "payment": selected_payment,
+    }
+
     return render_template(
         "purchase_ledger.html",
         page_title="Purchase Ledger",
         page_subtitle="Hotel expenses recorded in Sales Update — Hotel, with date, supplier, category, and payment filters.",
         filter_form_action=url_for("purchase_ledger"),
-        date_from=date_from.isoformat(),
-        date_to=date_to.isoformat(),
+        date_from=filter_date_from,
+        date_to=filter_date_to,
+        active_date_filter=date_filter_active,
         selected_supplier=selected_supplier,
         selected_supplier_label=selected_supplier_label,
         selected_category=selected_category,
@@ -2717,14 +3243,8 @@ def purchase_ledger():
         purchase_add_url=url_for("purchase_ledger_add"),
         purchase_edit_url=url_for("purchase_ledger_edit"),
         purchase_delete_url=url_for("purchase_ledger_delete"),
-        purchase_ledger_report_url=url_for(
-            "export_purchase_ledger_report",
-            date_from=date_from.isoformat(),
-            date_to=date_to.isoformat(),
-            supplier=selected_supplier,
-            category=selected_category,
-            payment=selected_payment,
-        ),
+        purchase_ledger_report_url=url_for("export_purchase_ledger_report", **report_kwargs),
+        purchase_ledger_clear_url=url_for("purchase_ledger", **clear_kwargs),
         supplier_create_url=url_for("create_supplier"),
         available_cash=available_cash,
         available_cash_url=url_for("cash_ledger_available"),
@@ -2743,11 +3263,11 @@ def export_purchase_ledger_report():
     from openpyxl.styles import Font
 
     today = date.today()
-    default_from = today.replace(day=1)
-    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
-    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
-    if date_from > date_to:
-        date_from, date_to = date_to, date_from
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to"
+    )
+    query_date_from = date_from if date_filter_active else date(2000, 1, 1)
+    query_date_to = date_to if date_filter_active else today
 
     selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
         request.args.get("supplier")
@@ -2766,7 +3286,12 @@ def export_purchase_ledger_report():
     conn = get_db()
     try:
         entries = _purchase_ledger_entries(
-            conn, date_from, date_to, supplier_id, category=category, payment_type=payment_type
+            conn,
+            query_date_from,
+            query_date_to,
+            supplier_id,
+            category=category,
+            payment_type=payment_type,
         )
     finally:
         conn.close()
@@ -2825,7 +3350,10 @@ def export_purchase_ledger_report():
             width = max(width, min(len(value) + 2, 40))
         ws.column_dimensions[column_cells[0].column_letter].width = width
 
-    fname = f"purchase_ledger_{date_from.isoformat()}_to_{date_to.isoformat()}.xlsx"
+    if date_filter_active:
+        fname = f"purchase_ledger_{query_date_from.isoformat()}_to_{query_date_to.isoformat()}.xlsx"
+    else:
+        fname = "purchase_ledger_all.xlsx"
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -2891,7 +3419,10 @@ def _update_purchase_ledger_expense(conn, user, data):
     sales_date = (data.get("date") or existing.get("sales_date") or "").strip()
     description = (data.get("description") or "").strip()
     amount = parse_money(data.get("amount"))
-    payment_type = _normalize_expense_payment_type(data.get("payment_type"))
+    raw_payment_type = (data.get("payment_type") or "").strip()
+    if not raw_payment_type:
+        return None, "Please select a payment type."
+    payment_type = _normalize_expense_payment_type(raw_payment_type)
     category = _normalize_expense_category(data.get("category"))
     transaction_id = (data.get("transaction_id") or "").strip()
     invoice_number = (data.get("invoice_number") or "").strip()
@@ -3068,32 +3599,41 @@ def cash_ledger_available():
 def cash_ledger():
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_cash_ledger_date_range(request.args)
+    selected_location = _normalize_cash_ledger_location(request.args.get("location"))
 
     company = DEFAULT_COMPANY
     conn = get_db()
     try:
-        entries = _build_cash_ledger_entries(conn, company, date_from, date_to)
+        entries = _build_cash_ledger_entries(
+            conn, company, date_from, date_to, location=selected_location
+        )
     finally:
         conn.close()
 
     filter_date_from = date_from.isoformat() if date_filter_active else ""
     filter_date_to = date_to.isoformat() if date_filter_active else ""
     report_kwargs = {}
+    if selected_location != CASH_LEDGER_FILTER_ALL:
+        report_kwargs["location"] = selected_location
     if date_filter_active:
-        report_kwargs = {
-            "date_from": date_from.isoformat(),
-            "date_to": date_to.isoformat(),
-        }
+        report_kwargs["date_from"] = date_from.isoformat()
+        report_kwargs["date_to"] = date_to.isoformat()
+
+    clear_kwargs = {}
+    if selected_location != CASH_LEDGER_FILTER_ALL:
+        clear_kwargs["location"] = selected_location
 
     totals = _cash_ledger_totals(entries)
     return render_template(
         "cash_ledger.html",
         page_title="Cash Ledger",
-        page_subtitle="Track available cash from sales, loads, cash expenses, and transfers to bank or owner.",
+        page_subtitle="Track available cash from actual cash, loads, cash expenses, and transfers to bank or owner.",
         filter_form_action=url_for("cash_ledger"),
         date_from=filter_date_from,
         date_to=filter_date_to,
         date_filter_active=date_filter_active,
+        selected_location=selected_location,
+        cash_ledger_filter_locations=CASH_LEDGER_FILTER_LOCATIONS,
         ledger_entries=entries,
         sales_total=totals["sales_total"],
         sales_count=totals["sales_count"],
@@ -3112,6 +3652,7 @@ def cash_ledger():
         delete_load_url=url_for("cash_ledger_delete_load"),
         delete_transfer_url=url_for("cash_ledger_delete_transfer"),
         cash_ledger_report_url=url_for("export_cash_ledger_report", **report_kwargs),
+        cash_ledger_clear_url=url_for("cash_ledger", **clear_kwargs),
         default_company=company,
         today_iso=today.isoformat(),
         de_nav_section="accounts",
@@ -3196,11 +3737,14 @@ def export_cash_ledger_report():
     from openpyxl.styles import Font
 
     date_from, date_to, date_filter_active = _resolve_cash_ledger_date_range(request.args)
+    selected_location = _normalize_cash_ledger_location(request.args.get("location"))
 
     company = DEFAULT_COMPANY
     conn = get_db()
     try:
-        entries = _build_cash_ledger_entries(conn, company, date_from, date_to)
+        entries = _build_cash_ledger_entries(
+            conn, company, date_from, date_to, location=selected_location
+        )
     finally:
         conn.close()
 
@@ -3214,11 +3758,12 @@ def export_cash_ledger_report():
         cell = summary.cell(row=1, column=col, value=title)
         cell.font = header_font
     summary_rows = [
-        ("Sales Cash", totals["sales_total"], totals["sales_count"]),
+        ("Actual Cash", totals["sales_total"], totals["sales_count"]),
         ("Load Cash", totals["load_total"], totals["load_count"]),
         ("Expense", totals["expense_total"], totals["expense_count"]),
         ("Transfer Out", totals["transfer_total"], totals["transfer_count"]),
         ("Available Cash", totals["available_total"], len(entries)),
+        ("Location", selected_location, ""),
         (
             "Date From",
             date_from.isoformat() if date_filter_active else "All",
@@ -3776,6 +4321,7 @@ def sales_update_hotel():
         }
         kpi_bundle = _sales_report_kpi_bundle(conn, entry_date, entry_date, selected_company, selected_location)
         suppliers = _all_suppliers(conn)
+        tip_employees = _active_employees_for_tips(conn)
         available_cash = _cash_ledger_available_as_of(conn, selected_company, entry_date)
     finally:
         conn.close()
@@ -3799,6 +4345,7 @@ def sales_update_hotel():
         expense_payment_types=EXPENSE_PAYMENT_TYPES,
         expense_categories=EXPENSE_CATEGORIES,
         suppliers=suppliers,
+        tip_employees=tip_employees,
         available_cash=available_cash,
         cash_date_from=selected_date,
         cash_date_to=selected_date,
@@ -3956,6 +4503,8 @@ def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_i
     row = None if is_future else load_sales_row(company, location, sales_date)
     sales_entry_locked = bool(row and sales_date < today_iso and not user.get("is_admin"))
     sales_entries = row.get("sales_entry_values", {}) if row else {}
+    tip_entries = []
+    tip_total = 0.0
     if location in HOTEL_LOCATIONS:
         sales_entries = build_hotel_sales_entry_values(sales_entries)
         expense_total = _sales_expense_total(conn, company, location, sales_date)
@@ -3964,6 +4513,11 @@ def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_i
     else:
         sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
         expense_entries = []
+        expense_total = 0.0
+    if location in TIP_OUTLET_LOCATIONS:
+        tip_entries = _sales_tip_entries(conn, company, location, sales_date)
+        tip_total = _sales_tip_total(conn, company, location, sales_date)
+        _apply_tip_line_total(conn, company, location, sales_date, sales_entries)
     petty_cash_counts = row.get("petty_cash_counts", {}) if row else {}
     bundle = {
         "sales_entry_values": sales_entries,
@@ -3971,6 +4525,8 @@ def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_i
         "sales_entry_locked": sales_entry_locked,
         "petty_cash_counts": petty_cash_counts,
         "petty_cash_total": get_denomination_total(petty_cash_counts),
+        "tip_entries": tip_entries,
+        "tip_total": tip_total,
     }
     if location in HOTEL_LOCATIONS:
         bundle["expense_entries"] = expense_entries
@@ -4001,6 +4557,7 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
         }
         cash_transfer_entries = _sales_cash_transfer_entries(conn, selected_company, selected_location, selected_date)
         cash_transfer_total = _sales_cash_transfer_total(conn, selected_company, selected_location, selected_date)
+        tip_employees = _active_employees_for_tips(conn)
         entry_date = _parse_sales_date(selected_date)
         kpi_bundle = _sales_report_kpi_bundle(
             conn, entry_date, entry_date, selected_company, selected_location, difference_mode="cash_actual"
@@ -4053,6 +4610,7 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
         sales_record=sales_record,
         outlet_records=outlet_records,
         credit_employees=[],
+        tip_employees=tip_employees,
         kpi=kpi_bundle["current"],
         kpi_trends=kpi_bundle["trends"],
         kpi_vs_label=kpi_bundle["vs_label"],
@@ -4090,25 +4648,39 @@ def sales_update_restaurant():
     return _render_sales_update_outlet(user, OUTLET_RESTAURANT, "restaurant", "sales_update_restaurant")
 
 
-@app.route("/sales_update/room_transfer")
-def sales_update_room_transfer():
-    user = get_current_user()
+def _render_room_transfer_receivables_page(
+    user,
+    *,
+    page_endpoint,
+    create_payment_endpoint,
+    reverse_payment_endpoint,
+    page_title,
+    page_subtitle,
+    filter_locations,
+    allowed_locations,
+    nav_sales_view,
+    template_name,
+    receivables_panel_title,
+    receivables_empty_noun,
+    receivables_empty_import_hint,
+):
     today = date.today()
-    default_from = today.replace(day=1)
     selected_company = request.args.get("company", DEFAULT_COMPANY)
     selected_payment_status = _normalize_room_transfer_filter_status(request.args.get("status"))
     if selected_payment_status == "all":
         selected_payment_status = "unpaid"
     selected_location = request.args.get("location", ROOM_TRANSFER_FILTER_ALL)
-    date_from = _parse_sales_date(request.args.get("date_from") or default_from.isoformat())
-    date_to = _parse_sales_date(request.args.get("date_to") or today.isoformat())
-    if date_from > date_to:
-        date_from, date_to = date_to, date_from
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to"
+    )
 
     if selected_company not in SALES_COMPANY_LOCATIONS:
         selected_company = DEFAULT_COMPANY
-    if selected_location not in ROOM_TRANSFER_FILTER_LOCATIONS:
+    if selected_location not in filter_locations:
         selected_location = ROOM_TRANSFER_FILTER_ALL
+
+    filter_date_from = date_from.isoformat() if date_filter_active else ""
+    filter_date_to = date_to.isoformat() if date_filter_active else ""
 
     conn = get_db()
     try:
@@ -4117,8 +4689,9 @@ def sales_update_room_transfer():
             selected_company,
             selected_payment_status,
             selected_location,
-            date_from=date_from,
-            date_to=date_to,
+            date_from=date_from if date_filter_active else None,
+            date_to=date_to if date_filter_active else None,
+            allowed_locations=allowed_locations,
         )
         rollup = rollup_room_transfer_entries(entries)
         summary_entries = load_room_transfer_entries_by_status(
@@ -4126,93 +4699,120 @@ def sales_update_room_transfer():
             selected_company,
             "all",
             selected_location,
-            date_from=date_from,
-            date_to=date_to,
+            date_from=date_from if date_filter_active else None,
+            date_to=date_to if date_filter_active else None,
+            allowed_locations=allowed_locations,
         )
         summary_rollup = rollup_room_transfer_entries(summary_entries)
     finally:
         conn.close()
 
+    status_tab_query = {
+        "company": selected_company,
+        "location": selected_location,
+    }
+    if date_filter_active:
+        status_tab_query["date_from"] = filter_date_from
+        status_tab_query["date_to"] = filter_date_to
+
     return render_template(
-        "sales_update_room_transfer.html",
-        page_title="Room Transfer",
-        page_subtitle="Room credit lines from Collections reports. Clear payment to record how each settlement was made.",
-        filter_form_action=url_for("sales_update_room_transfer"),
-        create_room_transfer_payment_url=url_for("create_room_transfer_payment"),
-        reverse_room_transfer_payment_url=url_for("reverse_room_transfer_payment"),
+        template_name,
+        page_title=page_title,
+        page_subtitle=page_subtitle,
+        filter_form_action=url_for(page_endpoint),
+        create_room_transfer_payment_url=url_for(create_payment_endpoint),
+        reverse_room_transfer_payment_url=url_for(reverse_payment_endpoint),
         selected_company=selected_company,
         selected_company_label=SALES_COMPANY_LOCATIONS[selected_company]["label"],
         selected_payment_status=selected_payment_status,
         selected_location=selected_location,
-        date_from=date_from.isoformat(),
-        date_to=date_to.isoformat(),
+        date_from=filter_date_from,
+        date_to=filter_date_to,
+        active_date_filter=date_filter_active,
         today_iso=today.isoformat(),
         room_transfer_filter_statuses=ROOM_TRANSFER_FILTER_STATUSES,
-        room_transfer_filter_locations=ROOM_TRANSFER_FILTER_LOCATIONS,
+        room_transfer_filter_locations=filter_locations,
+        room_transfer_status_tab_query=status_tab_query,
         room_transfer_entries=entries,
         room_transfer_rollup=rollup,
         room_transfer_summary_rollup=summary_rollup,
         room_transfer_payment_statuses=ROOM_TRANSFER_PAYMENT_STATUSES,
-        credit_payment_methods=CREDIT_PAYMENT_METHODS,
+        room_transfer_payment_methods=ROOM_TRANSFER_PAYMENT_METHODS,
+        receivables_page_endpoint=page_endpoint,
+        receivables_panel_title=receivables_panel_title,
+        receivables_empty_noun=receivables_empty_noun,
+        receivables_empty_import_hint=receivables_empty_import_hint,
         sales_update_is_admin=user.get("is_admin", False),
         de_nav_section="analytics",
-        de_nav_sales_view="room_transfer",
+        de_nav_sales_view=nav_sales_view,
     )
 
 
-@app.route("/sales_update/room_transfer/create_payment", methods=["POST"])
-def create_room_transfer_payment():
+def _create_room_transfer_payment_response():
     user = get_current_user()
     if not user:
         return jsonify({"ok": False, "error": "Not authenticated"}), 401
 
     data = request.get_json(silent=True) or {}
     conn = get_db()
+    payment_ids = []
     try:
         payload, errors = _validate_room_transfer_payment_payload(conn, data)
         if errors:
             return jsonify({"ok": False, "error": errors[0], "errors": errors}), 400
-        cursor = conn.execute(
-            """INSERT INTO room_transfer_payments
-               (company, payment_date, payment_method, transaction_id, total_amount, notes)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (
-                payload["company"],
-                payload["payment_date"],
-                payload["payment_method"],
-                payload["transaction_id"],
-                payload["total_amount"],
-                payload["notes"],
-            ),
-        )
-        payment_id = cursor.lastrowid
-        for allocation in payload["allocations"]:
-            entry = allocation["entry"]
-            conn.execute(
-                """INSERT INTO room_transfer_payment_allocations
-                   (room_transfer_payment_id, room_transfer_entry_id, amount,
-                    invoice_number, guest_name, location, sales_date)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        touched_entry_ids = set()
+        for split in payload["payment_splits"]:
+            cursor = conn.execute(
+                """INSERT INTO room_transfer_payments
+                   (company, payment_date, payment_method, transaction_id, total_amount, notes)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
                 (
-                    payment_id,
-                    allocation["entry_id"],
-                    allocation["amount"],
-                    entry.get("invoice_number") or "",
-                    entry.get("guest_name") or "",
-                    entry.get("location") or "",
-                    entry.get("sales_date") or "",
+                    payload["company"],
+                    payload["payment_date"],
+                    split["payment_method"],
+                    split["transaction_id"],
+                    split["amount"],
+                    payload["notes"],
                 ),
             )
-            _sync_room_transfer_status_after_payment(conn, allocation["entry_id"])
+            payment_id = cursor.lastrowid
+            payment_ids.append(payment_id)
+            split_allocations = _proportion_room_transfer_allocations(
+                payload["allocations"],
+                split["amount"],
+            )
+            for allocation in split_allocations:
+                entry = allocation["entry"]
+                conn.execute(
+                    """INSERT INTO room_transfer_payment_allocations
+                       (room_transfer_payment_id, room_transfer_entry_id, amount,
+                        invoice_number, guest_name, location, sales_date)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        payment_id,
+                        allocation["entry_id"],
+                        allocation["amount"],
+                        entry.get("invoice_number") or "",
+                        entry.get("guest_name") or "",
+                        entry.get("location") or "",
+                        entry.get("sales_date") or "",
+                    ),
+                )
+                touched_entry_ids.add(allocation["entry_id"])
+        for entry_id in touched_entry_ids:
+            _sync_room_transfer_status_after_payment(conn, entry_id)
         conn.commit()
     finally:
         conn.close()
 
-    return jsonify({"ok": True, "payment_id": payment_id})
+    return jsonify({
+        "ok": True,
+        "payment_id": payment_ids[0] if payment_ids else None,
+        "payment_ids": payment_ids,
+    })
 
 
-@app.route("/sales_update/room_transfer/reverse_payment", methods=["POST"])
-def reverse_room_transfer_payment():
+def _reverse_room_transfer_payment_response(empty_selection_error, none_paid_error):
     user = get_current_user()
     if not user:
         return jsonify({"ok": False, "error": "Not authenticated"}), 401
@@ -4221,7 +4821,7 @@ def reverse_room_transfer_payment():
     company = str(data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
     raw_ids = data.get("entry_ids") or []
     if not isinstance(raw_ids, list) or not raw_ids:
-        return jsonify({"ok": False, "error": "Select at least one room transfer."}), 400
+        return jsonify({"ok": False, "error": empty_selection_error}), 400
 
     conn = get_db()
     try:
@@ -4241,13 +4841,79 @@ def reverse_room_transfer_payment():
                 continue
             valid_ids.append(entry_id)
         if not valid_ids:
-            return jsonify({"ok": False, "error": "No paid room transfers found to reverse."}), 400
+            return jsonify({"ok": False, "error": none_paid_error}), 400
         reversed_ids = _reverse_room_transfer_entry_payments(conn, valid_ids)
         conn.commit()
     finally:
         conn.close()
 
     return jsonify({"ok": True, "entry_ids": reversed_ids})
+
+
+@app.route("/sales_update/room_transfer")
+def sales_update_room_transfer():
+    user = get_current_user()
+    return _render_room_transfer_receivables_page(
+        user,
+        page_endpoint="sales_update_room_transfer",
+        create_payment_endpoint="create_room_transfer_payment",
+        reverse_payment_endpoint="reverse_room_transfer_payment",
+        page_title="Room Transfer",
+        page_subtitle="Room credit lines from Collections reports. Clear payment to record how each settlement was made.",
+        filter_locations=ROOM_TRANSFER_FILTER_LOCATIONS,
+        allowed_locations=ROOM_TRANSFER_OUTLET_LOCATIONS,
+        nav_sales_view="room_transfer",
+        template_name="sales_update_room_transfer.html",
+        receivables_panel_title="Room transfers",
+        receivables_empty_noun="room transfers",
+        receivables_empty_import_hint="Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.",
+    )
+
+
+@app.route("/sales_update/credit")
+def sales_update_credit():
+    user = get_current_user()
+    return _render_room_transfer_receivables_page(
+        user,
+        page_endpoint="sales_update_credit",
+        create_payment_endpoint="create_sales_credit_payment",
+        reverse_payment_endpoint="reverse_sales_credit_payment",
+        page_title="Credit",
+        page_subtitle="Hotel FO Invoice Tax credit lines from Sales Update. Clear payment to record how each settlement was made.",
+        filter_locations=CREDIT_FILTER_LOCATIONS,
+        allowed_locations=CREDIT_OUTLET_LOCATIONS,
+        nav_sales_view="credit",
+        template_name="sales_update_credit.html",
+        receivables_panel_title="Credit",
+        receivables_empty_noun="credits",
+        receivables_empty_import_hint="Upload an FO Invoice Tax report on Sales Update - Hotel to import credit lines.",
+    )
+
+
+@app.route("/sales_update/room_transfer/create_payment", methods=["POST"])
+def create_room_transfer_payment():
+    return _create_room_transfer_payment_response()
+
+
+@app.route("/sales_update/credit/create_payment", methods=["POST"])
+def create_sales_credit_payment():
+    return _create_room_transfer_payment_response()
+
+
+@app.route("/sales_update/room_transfer/reverse_payment", methods=["POST"])
+def reverse_room_transfer_payment():
+    return _reverse_room_transfer_payment_response(
+        "Select at least one room transfer.",
+        "No paid room transfers found to reverse.",
+    )
+
+
+@app.route("/sales_update/credit/reverse_payment", methods=["POST"])
+def reverse_sales_credit_payment():
+    return _reverse_room_transfer_payment_response(
+        "Select at least one credit entry.",
+        "No paid credit entries found to reverse.",
+    )
 
 
 @app.route("/sales_update/room_transfer/save_status", methods=["POST"])
@@ -4342,8 +5008,10 @@ def save_sales_update():
     try:
         if location in HOTEL_LOCATIONS:
             sales_entries = build_hotel_sales_entry_values(sales_entries)
+            sales_entries["expense"] = _sales_expense_total(conn, company, location, sales_date)
         else:
             sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
+        _apply_tip_line_total(conn, company, location, sales_date, sales_entries)
     finally:
         conn.close()
 
@@ -4413,6 +5081,7 @@ def upload_sales_report():
         conn = get_db()
         try:
             merged = build_sales_entry_values(conn, company, outlet, sales_date.isoformat(), merged)
+            _apply_tip_line_total(conn, company, outlet, sales_date.isoformat(), merged)
         finally:
             conn.close()
 
@@ -4468,7 +5137,10 @@ def _create_sales_expense(conn, user, data, *, default_location=None, include_sa
     sales_date = data.get("date", "")
     description = (data.get("description") or "").strip()
     amount = parse_money(data.get("amount"))
-    payment_type = _normalize_expense_payment_type(data.get("payment_type"))
+    raw_payment_type = (data.get("payment_type") or "").strip()
+    if not raw_payment_type:
+        return None, "Please select a payment type."
+    payment_type = _normalize_expense_payment_type(raw_payment_type)
     category = _normalize_expense_category(data.get("category"))
     transaction_id = (data.get("transaction_id") or "").strip()
     invoice_number = (data.get("invoice_number") or "").strip()
@@ -4533,7 +5205,10 @@ def sales_update_edit_expense():
     sales_date = data.get("date", "")
     description = (data.get("description") or "").strip()
     amount = parse_money(data.get("amount"))
-    payment_type = _normalize_expense_payment_type(data.get("payment_type"))
+    raw_payment_type = (data.get("payment_type") or "").strip()
+    if not raw_payment_type:
+        return jsonify({"ok": False, "error": "Please select a payment type."}), 400
+    payment_type = _normalize_expense_payment_type(raw_payment_type)
     category = _normalize_expense_category(data.get("category"))
     transaction_id = (data.get("transaction_id") or "").strip()
     invoice_number = (data.get("invoice_number") or "").strip()
@@ -4623,6 +5298,478 @@ def sales_update_delete_expense():
         conn.close()
 
     return jsonify({"ok": True, "expense_total": expense_total, "expense_entries": expense_entries})
+
+
+@app.route("/sales_update/add_tip", methods=["POST"])
+def sales_update_add_tip():
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    company = data.get("company", DEFAULT_COMPANY)
+    location = data.get("location", OUTLET_HOTEL)
+    sales_date = data.get("date", "")
+    description = (data.get("description") or "").strip()
+    amount = parse_money(data.get("amount"))
+    try:
+        employee_id = int(data.get("employee_id") or 0)
+    except (TypeError, ValueError):
+        employee_id = 0
+
+    if location not in TIP_OUTLET_LOCATIONS:
+        return jsonify({"ok": False, "error": "Tips can only be recorded for Hotel, Bar, or Restaurant."}), 400
+
+    lock_error = _check_sales_date_lock(user, company, location, sales_date)
+    if lock_error:
+        return jsonify({"ok": False, "error": lock_error}), 403
+
+    if employee_id <= 0:
+        return jsonify({"ok": False, "error": "Please select an employee."}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "Please enter a tip amount greater than 0."}), 400
+
+    conn = get_db()
+    try:
+        payroll_lock_error = _check_payroll_month_date_lock(conn, sales_date)
+        if payroll_lock_error:
+            return jsonify({"ok": False, "error": payroll_lock_error, "locked": True}), 403
+        employee = conn.execute(
+            "SELECT id FROM employees WHERE id = ? AND status = 'active'",
+            (employee_id,),
+        ).fetchone()
+        if not employee:
+            return jsonify({"ok": False, "error": "Selected employee was not found."}), 400
+        cursor = conn.execute(
+            """INSERT INTO sales_update_tips
+               (company, location, sales_date, employee_id, amount, description)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (company, location, sales_date, employee_id, amount, description),
+        )
+        tip_id = cursor.lastrowid
+        conn.commit()
+        tip_total = _sales_tip_total(conn, company, location, sales_date)
+        tip_entries = _sales_tip_entries(conn, company, location, sales_date)
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "tip_id": tip_id,
+        "tip_total": tip_total,
+        "tip_entries": tip_entries,
+    })
+
+
+@app.route("/sales_update/edit_tip", methods=["POST"])
+def sales_update_edit_tip():
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    tip_id = data.get("id") or data.get("tip_id")
+    company = data.get("company", DEFAULT_COMPANY)
+    location = data.get("location", OUTLET_HOTEL)
+    sales_date = data.get("date", "")
+    description = (data.get("description") or "").strip()
+    amount = parse_money(data.get("amount"))
+    try:
+        employee_id = int(data.get("employee_id") or 0)
+    except (TypeError, ValueError):
+        employee_id = 0
+
+    if location not in TIP_OUTLET_LOCATIONS:
+        return jsonify({"ok": False, "error": "Tips can only be recorded for Hotel, Bar, or Restaurant."}), 400
+
+    lock_error = _check_sales_date_lock(user, company, location, sales_date)
+    if lock_error:
+        return jsonify({"ok": False, "error": lock_error}), 403
+
+    if not tip_id:
+        return jsonify({"ok": False, "error": "Missing tip id."}), 400
+    if employee_id <= 0:
+        return jsonify({"ok": False, "error": "Please select an employee."}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "Please enter a tip amount greater than 0."}), 400
+
+    conn = get_db()
+    try:
+        payroll_lock_error = _check_payroll_month_date_lock(conn, sales_date)
+        if payroll_lock_error:
+            return jsonify({"ok": False, "error": payroll_lock_error, "locked": True}), 403
+        employee = conn.execute(
+            "SELECT id FROM employees WHERE id = ? AND status = 'active'",
+            (employee_id,),
+        ).fetchone()
+        if not employee:
+            return jsonify({"ok": False, "error": "Selected employee was not found."}), 400
+        updated = conn.execute(
+            """UPDATE sales_update_tips
+               SET employee_id=?, amount=?, description=?, updated_at=datetime('now','localtime')
+               WHERE id=? AND company=? AND location=? AND sales_date=?""",
+            (employee_id, amount, description, tip_id, company, location, sales_date),
+        )
+        if updated.rowcount == 0:
+            return jsonify({"ok": False, "error": "Tip entry was not found."}), 404
+        conn.commit()
+        tip_total = _sales_tip_total(conn, company, location, sales_date)
+        tip_entries = _sales_tip_entries(conn, company, location, sales_date)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "tip_total": tip_total, "tip_entries": tip_entries})
+
+
+@app.route("/sales_update/delete_tip", methods=["POST"])
+def sales_update_delete_tip():
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    tip_id = data.get("id") or data.get("tip_id")
+    company = data.get("company", DEFAULT_COMPANY)
+    location = data.get("location", OUTLET_HOTEL)
+    sales_date = data.get("date", "")
+
+    if location not in TIP_OUTLET_LOCATIONS:
+        return jsonify({"ok": False, "error": "Tips can only be recorded for Hotel, Bar, or Restaurant."}), 400
+
+    lock_error = _check_sales_date_lock(user, company, location, sales_date)
+    if lock_error:
+        return jsonify({"ok": False, "error": lock_error}), 403
+
+    conn = get_db()
+    try:
+        payroll_lock_error = _check_payroll_month_date_lock(conn, sales_date)
+        if payroll_lock_error:
+            return jsonify({"ok": False, "error": payroll_lock_error, "locked": True}), 403
+        conn.execute(
+            "DELETE FROM sales_update_tips WHERE id=? AND company=? AND location=? AND sales_date=?",
+            (tip_id, company, location, sales_date),
+        )
+        conn.commit()
+        tip_total = _sales_tip_total(conn, company, location, sales_date)
+        tip_entries = _sales_tip_entries(conn, company, location, sales_date)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "tip_total": tip_total, "tip_entries": tip_entries})
+
+
+@app.route("/sales_update/tips")
+def sales_update_tips_page():
+    user = get_current_user()
+    selected_company = request.args.get("company", DEFAULT_COMPANY)
+    if selected_company not in SALES_COMPANY_LOCATIONS:
+        selected_company = DEFAULT_COMPANY
+
+    today = date.today()
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to"
+    )
+
+    location_filter = (request.args.get("location") or TIPS_FILTER_ALL).strip()
+    if location_filter not in TIPS_FILTER_LOCATIONS:
+        location_filter = TIPS_FILTER_ALL
+    outlet_filter = location_filter if location_filter in TIP_OUTLET_LOCATIONS else None
+
+    conn = get_db()
+    try:
+        tips_bundle = _load_tips_analytics_bundle(
+            conn,
+            selected_company,
+            date_from if date_filter_active else None,
+            date_to if date_filter_active else None,
+            outlet_filter,
+        )
+    finally:
+        conn.close()
+
+    filter_date_from = date_from.isoformat() if date_filter_active else ""
+    filter_date_to = date_to.isoformat() if date_filter_active else ""
+    clear_query = {"company": selected_company, "location": location_filter}
+    report_kwargs = {"company": selected_company, "location": location_filter}
+    if date_filter_active:
+        report_kwargs["date_from"] = filter_date_from
+        report_kwargs["date_to"] = filter_date_to
+
+    payout_year, payout_month = today.year, today.month
+
+    return render_template(
+        "sales_update_tips.html",
+        page_title="Tips",
+        selected_company=selected_company,
+        selected_company_label=SALES_COMPANY_LOCATIONS[selected_company]["label"],
+        selected_location=location_filter,
+        tips_filter_locations=TIPS_FILTER_LOCATIONS,
+        date_from=filter_date_from,
+        date_to=filter_date_to,
+        date_filter_active=date_filter_active,
+        today_iso=today.isoformat(),
+        tips_employees=tips_bundle["employees"],
+        tips_grand_total=tips_bundle["grand_total"],
+        tips_hotel_total=tips_bundle["hotel_total"],
+        tips_bar_total=tips_bundle["bar_total"],
+        tips_restaurant_total=tips_bundle["restaurant_total"],
+        filter_form_action=url_for("sales_update_tips_page"),
+        tips_clear_url=url_for("sales_update_tips_page", **clear_query),
+        tips_report_url=url_for("export_tips_report", **report_kwargs),
+        tip_incentive_payout_url=url_for("tips_incentive_payout"),
+        payout_year=payout_year,
+        payout_month=payout_month,
+        de_nav_section="payroll",
+        de_nav_payroll_view="tips",
+    )
+
+
+@app.route("/sales_update/tips/report")
+def export_tips_report():
+    """Excel download of tip details and employee rollup for the selected filters."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    selected_company = request.args.get("company", DEFAULT_COMPANY)
+    if selected_company not in SALES_COMPANY_LOCATIONS:
+        selected_company = DEFAULT_COMPANY
+
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to"
+    )
+    location_filter = (request.args.get("location") or TIPS_FILTER_ALL).strip()
+    if location_filter not in TIPS_FILTER_LOCATIONS:
+        location_filter = TIPS_FILTER_ALL
+    outlet_filter = location_filter if location_filter in TIP_OUTLET_LOCATIONS else None
+
+    conn = get_db()
+    try:
+        tips_bundle = _load_tips_analytics_bundle(
+            conn,
+            selected_company,
+            date_from if date_filter_active else None,
+            date_to if date_filter_active else None,
+            outlet_filter,
+        )
+        detail_entries = _load_tips_detail_entries(
+            conn,
+            selected_company,
+            date_from if date_filter_active else None,
+            date_to if date_filter_active else None,
+            outlet_filter,
+        )
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    header_font = Font(bold=True)
+
+    summary = wb.active
+    summary.title = "Summary"
+    summary_headers = ["Metric", "Amount"]
+    for col, title in enumerate(summary_headers, start=1):
+        cell = summary.cell(row=1, column=col, value=title)
+        cell.font = header_font
+    summary_rows = [
+        ("Total Tips", tips_bundle["grand_total"]),
+        ("Hotel", tips_bundle["hotel_total"]),
+        ("Bar", tips_bundle["bar_total"]),
+        ("Restaurant", tips_bundle["restaurant_total"]),
+        ("Location", location_filter),
+        ("Date From", date_from.isoformat() if date_filter_active else "All"),
+        ("Date To", date_to.isoformat() if date_filter_active else "All"),
+        ("Employees", len(tips_bundle["employees"])),
+        ("Tip Lines", len(detail_entries)),
+    ]
+    for idx, (label, value) in enumerate(summary_rows, start=2):
+        summary.cell(row=idx, column=1, value=label)
+        summary.cell(row=idx, column=2, value=value)
+
+    by_employee = wb.create_sheet("By Employee")
+    emp_headers = ["Employee", "Emp Code", "Hotel", "Bar", "Restaurant", "Total"]
+    for col, title in enumerate(emp_headers, start=1):
+        cell = by_employee.cell(row=1, column=col, value=title)
+        cell.font = header_font
+    for idx, row in enumerate(tips_bundle["employees"], start=2):
+        by_employee.cell(row=idx, column=1, value=row.get("employee_name") or "")
+        by_employee.cell(row=idx, column=2, value=row.get("employee_code") or "")
+        by_employee.cell(row=idx, column=3, value=round_half_up(row.get("hotel"), 2))
+        by_employee.cell(row=idx, column=4, value=round_half_up(row.get("bar"), 2))
+        by_employee.cell(row=idx, column=5, value=round_half_up(row.get("restaurant"), 2))
+        by_employee.cell(row=idx, column=6, value=round_half_up(row.get("total"), 2))
+
+    detail = wb.create_sheet("Tip Details")
+    detail_headers = [
+        "Date",
+        "Employee",
+        "Emp Code",
+        "Location",
+        "Amount",
+        "Description",
+    ]
+    for col, title in enumerate(detail_headers, start=1):
+        cell = detail.cell(row=1, column=col, value=title)
+        cell.font = header_font
+    for idx, entry in enumerate(detail_entries, start=2):
+        detail.cell(row=idx, column=1, value=entry.get("sales_date") or "")
+        detail.cell(row=idx, column=2, value=entry.get("employee_name") or "")
+        detail.cell(row=idx, column=3, value=entry.get("employee_code") or "")
+        detail.cell(row=idx, column=4, value=entry.get("location") or "")
+        detail.cell(row=idx, column=5, value=round_half_up(entry.get("amount"), 2))
+        detail.cell(row=idx, column=6, value=entry.get("description") or "")
+
+    for ws in (summary, by_employee, detail):
+        for column_cells in ws.columns:
+            width = 12
+            for cell in column_cells:
+                value = "" if cell.value is None else str(cell.value)
+                width = max(width, min(len(value) + 2, 40))
+            ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    if date_filter_active:
+        fname = f"tips_report_{date_from.isoformat()}_to_{date_to.isoformat()}.xlsx"
+    else:
+        fname = "tips_report_all.xlsx"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _tips_incentive_payout_payload(conn, company, year, month):
+    """Build GET payload for Incentive Payout modal (pool + active employees)."""
+    from employee_payroll import (
+        _get_month_tip_incentive_map,
+        _get_payroll_month_state,
+        _period_label,
+    )
+
+    pool = _available_tip_pool_total(conn, company, year, month)
+    payout_map = _get_month_tip_incentive_map(conn, year, month, company=company)
+    employees = []
+    allocated = 0.0
+    for emp in _active_employees_for_tips(conn):
+        amount = round_half_up(payout_map.get(emp["id"], 0), 2)
+        allocated = round_half_up(allocated + amount, 2)
+        employees.append({
+            "id": emp["id"],
+            "emp_code": emp.get("emp_code") or "",
+            "name": emp.get("name") or "",
+            "location": emp.get("location") or "",
+            "amount": amount,
+        })
+    payroll_state = _get_payroll_month_state(conn, year, month)
+    remaining = round_half_up(max(0.0, pool - allocated), 2)
+    return {
+        "ok": True,
+        "company": company,
+        "year": year,
+        "month": month,
+        "month_label": _period_label(year, month),
+        "total_tips": pool,
+        "allocated": allocated,
+        "remaining": remaining,
+        "can_edit": bool(payroll_state["can_edit"]),
+        "locked": bool(payroll_state["locked"]),
+        "message": payroll_state.get("message") or "",
+        "employees": employees,
+    }
+
+
+@app.route("/sales_update/tips/incentive-payout", methods=["GET", "POST"])
+def tips_incentive_payout():
+    """Load or save monthly tip incentive allocations for active employees."""
+    from employee_payroll import (
+        _get_payroll_month_state,
+        _parse_period_value,
+        _upsert_month_tip_incentive,
+    )
+
+    get_current_user()
+    if request.method == "GET":
+        source = request.args
+    else:
+        source = request.get_json(silent=True) or {}
+
+    selected_company = (source.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+    if selected_company not in SALES_COMPANY_LOCATIONS:
+        selected_company = DEFAULT_COMPANY
+
+    from employee_payroll import _default_reporting_period
+
+    default_year, default_month = _default_reporting_period()
+    try:
+        year, month = _parse_period_value(
+            source.get("year", default_year),
+            source.get("month", default_month),
+        )
+    except (TypeError, ValueError):
+        year, month = default_year, default_month
+
+    if request.method == "GET":
+        conn = get_db()
+        try:
+            payload = _tips_incentive_payout_payload(conn, selected_company, year, month)
+        finally:
+            conn.close()
+        return jsonify(payload)
+
+    allocations_raw = source.get("allocations")
+    if allocations_raw is None:
+        allocations_raw = source.get("employees") or []
+    if not isinstance(allocations_raw, list):
+        return jsonify({"ok": False, "error": "Allocations must be a list."}), 400
+
+    parsed = []
+    for item in allocations_raw:
+        if not isinstance(item, dict):
+            return jsonify({"ok": False, "error": "Invalid allocation row."}), 400
+        try:
+            emp_id = int(item.get("employee_id", item.get("id")))
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid employee id."}), 400
+        amount = parse_money(item.get("amount"))
+        if amount < 0:
+            return jsonify({"ok": False, "error": "Incentive cannot be negative."}), 400
+        parsed.append((emp_id, round_half_up(amount, 2)))
+
+    allocated_total = round_half_up(sum(amount for _, amount in parsed), 2)
+
+    conn = get_db()
+    try:
+        payroll_state = _get_payroll_month_state(conn, year, month)
+        if payroll_state["locked"] or not payroll_state["can_edit"]:
+            return jsonify({
+                "ok": False,
+                "error": payroll_state.get("message") or "This payroll month is read-only.",
+                "locked": bool(payroll_state["locked"]),
+            }), 403
+
+        pool = _available_tip_pool_total(conn, selected_company, year, month)
+        if allocated_total > pool + 1e-9:
+            return jsonify({
+                "ok": False,
+                "error": (
+                    f"Allocated ₹{allocated_total:,.2f} exceeds available tip pool "
+                    f"₹{pool:,.2f}."
+                ),
+                "total_tips": pool,
+                "allocated": allocated_total,
+                "remaining": round_half_up(max(0.0, pool - allocated_total), 2),
+            }), 400
+
+        active_ids = {emp["id"] for emp in _active_employees_for_tips(conn)}
+        for emp_id, amount in parsed:
+            if emp_id not in active_ids:
+                return jsonify({
+                    "ok": False,
+                    "error": f"Employee {emp_id} is not an active employee.",
+                }), 400
+            _upsert_month_tip_incentive(
+                conn, selected_company, year, month, emp_id, amount
+            )
+        conn.commit()
+        payload = _tips_incentive_payout_payload(conn, selected_company, year, month)
+        payload["saved"] = True
+        return jsonify(payload)
+    finally:
+        conn.close()
 
 
 @app.route("/sales_update/add_unpaid_bill", methods=["POST"])
@@ -5056,6 +6203,7 @@ def access_management():
         "user_access_modules": user_access_submodule_list(selected_user) if selected_user else [],
         "payroll_modules": payroll_access_list(selected_user) if selected_user else [],
         "accounts_modules": accounts_access_list(selected_user) if selected_user else [],
+        "stores_modules": stores_access_list(selected_user) if selected_user else [],
     }
     success_message = ""
     if saved_flag == "created":
@@ -5087,6 +6235,7 @@ def save_access_user():
     user_access_modules = request.form.getlist("user_access_modules")
     payroll_modules = request.form.getlist("payroll_modules")
     accounts_modules = request.form.getlist("accounts_modules")
+    stores_modules = request.form.getlist("stores_modules")
 
     if sales_analytics_modules and not is_admin and "sales_analytics" not in dashboard_modules:
         dashboard_modules = list(dashboard_modules) + ["sales_analytics"]
@@ -5096,6 +6245,8 @@ def save_access_user():
         dashboard_modules = list(dashboard_modules) + ["employee_payroll"]
     if accounts_modules and not is_admin and "accounts" not in dashboard_modules:
         dashboard_modules = list(dashboard_modules) + ["accounts"]
+    if stores_modules and not is_admin and "stores" not in dashboard_modules:
+        dashboard_modules = list(dashboard_modules) + ["stores"]
 
     try:
         user_id = int(user_id_raw) if user_id_raw else None
@@ -5116,6 +6267,7 @@ def save_access_user():
             user_access_modules=user_access_modules,
             payroll_modules=payroll_modules,
             accounts_modules=accounts_modules,
+            stores_modules=stores_modules,
         )
         if errors:
             users, selected_user = fetch_access_management_users(conn, user_id)
@@ -5129,6 +6281,7 @@ def save_access_user():
                 "user_access_modules": user_access_modules,
                 "payroll_modules": payroll_modules,
                 "accounts_modules": accounts_modules,
+                "stores_modules": stores_modules,
             }
             return _am_page_render(
                 "access_management.html",
@@ -5152,6 +6305,7 @@ def save_access_user():
             user_access_modules=user_access_modules,
             payroll_modules=payroll_modules,
             accounts_modules=accounts_modules,
+            stores_modules=stores_modules,
             sql_now=SQL_NOW,
         )
         conn.commit()

@@ -43,9 +43,8 @@
       return b.score - a.score || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
     });
 
-    var best = ranked.length ? [ranked[0]] : [];
     options.forEach(function(option){ option.classList.add('is-filtered-out'); });
-    best.forEach(function(entry){ entry.option.classList.remove('is-filtered-out'); });
+    ranked.forEach(function(entry){ entry.option.classList.remove('is-filtered-out'); });
   }
 
   function visibleOptions(root){
@@ -71,8 +70,14 @@
     }
   }
 
+  function listboxRoots(selector){
+    return document.querySelectorAll(
+      'body.ep-module ' + selector + ', body.su-module ' + selector
+    );
+  }
+
   function closeAllListboxes(except){
-    document.querySelectorAll('body.ep-module [data-se-listbox].is-open').forEach(function(root){
+    listboxRoots('[data-se-listbox].is-open').forEach(function(root){
       if (root !== except) closeListbox(root);
     });
   }
@@ -310,17 +315,17 @@
   }
 
   function initEpListboxes(){
-    document.querySelectorAll('body.ep-module [data-se-listbox]').forEach(bindListbox);
+    listboxRoots('[data-se-listbox]').forEach(bindListbox);
   }
 
   document.addEventListener('click', function(e){
-    document.querySelectorAll('body.ep-module [data-se-listbox].is-open').forEach(function(root){
+    listboxRoots('[data-se-listbox].is-open').forEach(function(root){
       if (!root.contains(e.target)) closeListbox(root);
     });
   });
   document.addEventListener('keydown', function(e){
     if (e.key !== 'Escape') return;
-    document.querySelectorAll('body.ep-module [data-se-listbox].is-open').forEach(closeListbox);
+    listboxRoots('[data-se-listbox].is-open').forEach(closeListbox);
   });
 
   if (document.readyState === 'loading') {

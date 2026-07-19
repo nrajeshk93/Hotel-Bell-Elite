@@ -1,0 +1,284 @@
+{% if detail %}
+<section class="st-indent-page">
+  <article class="st-card st-card--detail" aria-label="Indent detail">
+    <div class="st-card-head">
+      <div class="st-card-title-wrap">
+        <span class="st-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 5h6"/><path d="M9 3h6v4H9z"/><path d="M7 7h10v14H7z"/><path d="M10 12h4"/><path d="M10 16h4"/></svg>
+        </span>
+        <div>
+          <h2 class="st-card-title">{{ detail.indent_no }}</h2>
+          <p class="st-card-sub">{{ selected_outlet_label }} · Created{% if detail.created_by_name %} by {{ detail.created_by_name }}{% endif %} · {{ detail.created_at }}</p>
+        </div>
+      </div>
+      <span class="cp-status-pill cp-status-pill--{{ detail.status }}">{{ status_label(detail.status) }}</span>
+    </div>
+    <div class="st-card-body">
+      {% if detail.notes %}<p class="st-detail-notes">{{ detail.notes }}</p>{% endif %}
+      {% if detail.decision_note %}<p class="st-card-sub">Decision note: {{ detail.decision_note }}</p>{% endif %}
+      <div class="st-detail-table-wrap">
+        <table class="st-detail-table">
+          <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Note</th></tr></thead>
+          <tbody>
+            {% for line in detail_lines %}
+            <tr>
+              <td>{{ line.item_name }}</td>
+              <td>{{ line.quantity }}</td>
+              <td>{{ line.unit }}</td>
+              <td>{{ line.notes or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="st-detail-actions">
+        <a class="st-btn st-btn--ghost" href="{{ url_for('stores_indent', outlet=selected_outlet) }}">Back to list</a>
+        {% if detail.status == 'draft' %}
+        <form method="post" action="{{ url_for('stores_indent_submit', indent_id=detail.id) }}">
+          <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+          <button type="submit" class="st-btn st-btn--primary">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            Send for approval
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </article>
+</section>
+
+{% elif show_form %}
+<section class="st-indent-page st-indent-page--form">
+  {% if errors %}
+  <div class="st-flash st-flash--error">{% for err in errors %}{{ err }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('stores_indent', outlet=selected_outlet) }}" class="st-indent-form" id="st-indent-form">
+    <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+
+    {# Introduction card #}
+    <article class="st-intro-card" aria-label="Create indent">
+      <div class="st-intro-left">
+        <div class="st-intro-art" aria-hidden="true">
+          <svg viewBox="0 0 72 72" fill="none">
+            <rect x="14" y="12" width="32" height="42" rx="6" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1.75"/>
+            <path d="M22 26h16M22 34h12M22 42h8" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+            <rect x="30" y="28" width="28" height="22" rx="5" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.75"/>
+            <path d="M38 39h12M40 34h8" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="52" cy="52" r="9" fill="#DBEAFE" stroke="#93C5FD" stroke-width="1.5"/>
+            <path d="M52 48v8M48 52h8" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+        </div>
+        <div class="st-intro-copy">
+          <h2 class="st-intro-title">Create a new indent</h2>
+          <p class="st-intro-desc">Add the items your team needs and submit for approval.</p>
+        </div>
+      </div>
+      <div class="st-intro-divider" aria-hidden="true"></div>
+      <div class="st-intro-outlet">
+        <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" id="st-outlet-listbox">
+          <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+            </span>
+            <input type="hidden" id="st-outlet" value="{{ selected_outlet }}">
+            <button type="button" class="se-filter-chip-trigger" id="st-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-outlet-list" aria-labelledby="st-outlet-label st-outlet-value">
+              <span class="se-filter-chip-value" id="st-outlet-value">{{ selected_outlet_label }}</span>
+            </button>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+          <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
+            {% for outlet in stores_outlets %}
+            <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </article>
+
+    {# Indent items card #}
+    <article class="st-card st-items-card">
+      <div class="st-card-head">
+        <div class="st-card-title-wrap">
+          <span class="st-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+          </span>
+          <h2 class="st-card-title">Indent Items</h2>
+        </div>
+      </div>
+      <div class="st-card-body st-lines-wrap">
+        {% set ns = namespace(has_products=false) %}
+        {% for cat in product_catalog or [] %}
+          {% if cat.products %}{% set ns.has_products = true %}{% endif %}
+        {% endfor %}
+        {% if not ns.has_products %}
+        <div class="st-flash st-flash--error">
+          No products in master yet.
+          <a class="st-link" href="{{ url_for('stores_product_master') }}">Open Product Master</a>
+        </div>
+        {% endif %}
+
+        <div class="st-lines-head" aria-hidden="true">
+          <span class="st-lines-head-drag"></span>
+          <span>Item</span>
+          <span>Qty</span>
+          <span>Unit</span>
+          <span>Line note</span>
+          <span>Action</span>
+        </div>
+
+        <div class="st-lines">
+          {% for line in form.lines %}
+          {% set fid = 'st-item-' ~ loop.index0 %}
+          {% set ufid = 'st-unit-' ~ loop.index0 %}
+          {% set has_item = line.item_name|default('')|length > 0 %}
+          {% include 'partials/stores_indent_line.html' %}
+          {% endfor %}
+        </div>
+
+        <template>
+          {% set fid = 'st-item-new' %}
+          {% set ufid = 'st-unit-new' %}
+          {% set has_item = false %}
+          {% set line = {"item_name": "", "quantity": "", "unit": "kg", "notes": ""} %}
+          {% include 'partials/stores_indent_line.html' %}
+        </template>
+
+      </div>
+    </article>
+
+    {# Notes card #}
+    <article class="st-card st-notes-card">
+      <div class="st-notes-left">
+        <span class="st-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+        </span>
+        <h2 class="st-card-title">Notes</h2>
+      </div>
+      <div class="st-notes-right">
+        <label class="st-sr-only" for="st-indent-notes">Notes</label>
+        <textarea id="st-indent-notes" name="notes" maxlength="500" rows="2" placeholder="Anything the approver should know." data-st-notes-counter>{{ form.notes }}</textarea>
+        <div class="st-notes-count"><span data-st-notes-count>0</span> / 500</div>
+      </div>
+    </article>
+
+    <div class="st-sticky-actions" role="region" aria-label="Indent actions">
+      <a class="st-btn st-btn--secondary" href="{{ url_for('stores_indent', outlet=selected_outlet) }}">Cancel</a>
+      <button type="submit" class="st-btn st-btn--ghost" name="action" value="save">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+        Save Draft
+      </button>
+      <button type="submit" class="st-btn st-btn--primary" name="action" value="submit">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        Send for Approval
+      </button>
+    </div>
+  </form>
+</section>
+
+{% else %}
+<section class="st-indent-page">
+  <article class="st-intro-card" aria-label="Indent outlet">
+    <div class="st-intro-left">
+      <div class="st-intro-art" aria-hidden="true">
+        <svg viewBox="0 0 72 72" fill="none">
+          <rect x="14" y="12" width="32" height="42" rx="6" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1.75"/>
+          <path d="M22 26h16M22 34h12M22 42h8" stroke="#94A3B8" stroke-width="2" stroke-linecap="round"/>
+          <rect x="30" y="28" width="28" height="22" rx="5" fill="#EFF6FF" stroke="#93C5FD" stroke-width="1.75"/>
+          <path d="M38 39h12M40 34h8" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="52" cy="52" r="9" fill="#DBEAFE" stroke="#93C5FD" stroke-width="1.5"/>
+          <path d="M52 48v8M48 52h8" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="st-intro-copy">
+        <h2 class="st-intro-title">Indents</h2>
+        <p class="st-intro-desc">Review requirements for {{ selected_outlet_label }}. Create a new indent when the team needs stock.</p>
+      </div>
+    </div>
+    <div class="st-intro-divider" aria-hidden="true"></div>
+    <div class="st-intro-outlet">
+      <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" id="st-outlet-listbox">
+        <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+          </span>
+          <input type="hidden" id="st-outlet" value="{{ selected_outlet }}">
+          <button type="button" class="se-filter-chip-trigger" id="st-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-outlet-list" aria-labelledby="st-outlet-label st-outlet-value">
+            <span class="se-filter-chip-value" id="st-outlet-value">{{ selected_outlet_label }}</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
+          {% for outlet in stores_outlets %}
+          <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </article>
+
+  <article class="st-card st-list-card" aria-label="Indent list">
+    <div class="st-card-head">
+      <div class="st-card-title-wrap">
+        <span class="st-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+        </span>
+        <h2 class="st-card-title">Recent · {{ indents|length }}</h2>
+      </div>
+    </div>
+    <div class="st-card-body st-list-body">
+      {% if indents %}
+      <div class="st-detail-table-wrap">
+        <table class="st-detail-table">
+          <thead>
+            <tr>
+              <th>Indent</th>
+              <th>Status</th>
+              <th>Items</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for indent in indents %}
+            <tr>
+              <td>
+                <div class="st-list-name">{{ indent.indent_no }}</div>
+                {% if indent.notes %}<div class="st-card-sub">{{ indent.notes }}</div>{% endif %}
+              </td>
+              <td><span class="cp-status-pill cp-status-pill--{{ indent.status }}">{{ status_label(indent.status) }}</span></td>
+              <td>{{ indent.line_count }} · qty {{ indent.total_qty }}</td>
+              <td>
+                <div>{{ indent.created_at }}</div>
+                {% if indent.created_by_name %}<div class="st-card-sub">{{ indent.created_by_name }}</div>{% endif %}
+              </td>
+              <td class="st-actions">
+                <a class="st-link" href="{{ url_for('stores_indent_detail', indent_id=indent.id, outlet=selected_outlet) }}">Open</a>
+                {% if indent.status == 'draft' %}
+                <form method="post" action="{{ url_for('stores_indent_submit', indent_id=indent.id) }}">
+                  <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+                  <button type="submit" class="st-link st-link-btn">Send</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="st-empty">
+        <strong>No indents yet</strong>
+        <p>Create the first requirement for {{ selected_outlet_label }}. After approval it can become a purchase request.</p>
+      </div>
+      {% endif %}
+    </div>
+  </article>
+</section>
+{% endif %}

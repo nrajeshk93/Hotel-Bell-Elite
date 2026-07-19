@@ -1,0 +1,314 @@
+/* Employee / Credit list — Purchase Ledger visual language */
+/* Summary KPI row/type: shared via hbe_kpi.css */
+body.ep-module .emp-summary-card{
+  margin-bottom:0;
+}
+
+body.ep-module .emp-list-panel,
+body.ep-module .pl-list-panel{
+  border:1px solid #EEF2F7;
+  border-radius:20px;
+  background:#fff;
+  box-shadow:0 8px 30px rgba(15,23,42,.04);
+  overflow:hidden;
+}
+body.ep-module .emp-list-panel > .card-hdr,
+body.ep-module .pl-list-panel > .card-hdr{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  padding:16px 20px;
+  border-bottom:1px solid var(--border-s,#EEF2F7);
+  background:#fff;
+}
+body.ep-module .emp-list-panel > .card-hdr .card-title,
+body.ep-module .pl-list-panel > .card-hdr .card-title{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:15px;
+  font-weight:700;
+  color:var(--txt,#1A202C);
+  margin:0;
+}
+body.ep-module .emp-list-panel > .card-hdr .card-title svg,
+body.ep-module .pl-list-panel > .card-hdr .card-title svg{
+  width:18px;
+  height:18px;
+  stroke:var(--txt3,#94A3B8);
+  fill:none;
+  stroke-width:1.8;
+}
+body.ep-module .emp-list-count,
+body.ep-module .pl-count{
+  font-size:12px;
+  font-weight:600;
+  color:var(--txt3,#94A3B8);
+}
+body.ep-module .kpi-val.pl-amount,
+body.ep-module .pl-summary-value.pl-amount{
+  font-variant-numeric:tabular-nums;
+}
+body.ep-module .emp-card-body--flush,
+body.ep-module .pl-card-body--flush{padding:0}
+
+body.ep-module .emp-table-wrap,
+body.ep-module .pl-table-wrap{overflow:auto}
+body.ep-module table.emp-pl-table .pl-col-actions{
+  min-width:96px;
+  white-space:nowrap;
+  text-align:right;
+}
+body.ep-module table.emp-pl-table{
+  width:100%;
+  min-width:1100px;
+  table-layout:auto;
+  border-collapse:collapse;
+}
+body.ep-module #credit-emp-table.emp-pl-table,
+body.ep-module #credit-recent-table.emp-pl-table{
+  min-width:780px;
+}
+body.ep-module #emp-salary-breakdown-table.emp-pl-table{
+  min-width:920px;
+}
+body.ep-module #emp-attendance-overview-table.emp-pl-table{
+  min-width:860px;
+}
+body.ep-module #emp-salary-breakdown-table.emp-pl-table tfoot td{
+  background:#F8FAFD;
+  border-bottom:0;
+  font-weight:800;
+  padding-top:14px;
+  padding-bottom:14px;
+}
+body.ep-module #emp-salary-breakdown-table .ec-ledger-label{
+  text-align:right;
+  color:var(--txt2,#4A5568);
+  font-weight:700;
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+body.ep-module table.emp-pl-table .pl-amount.pl-amount--pur{
+  color:var(--pur,#7C3AED);
+}
+body.ep-module table.emp-pl-table th,
+body.ep-module table.emp-pl-table td{
+  padding:12px 18px;
+  text-align:left;
+  border-bottom:1px solid var(--border-s,#EEF2F7);
+  font-size:13px;
+  vertical-align:middle;
+}
+body.ep-module table.emp-pl-table th{
+  background:#F8FAFD;
+  color:var(--txt3,#94A3B8);
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+}
+body.ep-module table.emp-pl-table th.pl-sortable{
+  cursor:pointer;
+  user-select:none;
+  white-space:nowrap;
+}
+body.ep-module table.emp-pl-table th.pl-sortable:hover{color:var(--txt2,#4A5568)}
+body.ep-module table.emp-pl-table th.pl-sortable::after{
+  content:'';
+  display:inline-block;
+  margin-left:6px;
+  font-size:9px;
+  opacity:.35;
+  vertical-align:middle;
+}
+body.ep-module table.emp-pl-table th.pl-sortable.is-sorted-asc::after,
+body.ep-module table.emp-pl-table th.pl-sortable.is-sorted-desc::after{
+  opacity:1;
+  color:#2563EB;
+}
+body.ep-module table.emp-pl-table th.pl-sortable.is-sorted-asc::after{content:'▲'}
+body.ep-module table.emp-pl-table th.pl-sortable.is-sorted-desc::after{content:'▼'}
+body.ep-module table.emp-pl-table th.pl-sortable:focus-visible{
+  outline:2px solid rgba(37,99,235,.35);
+  outline-offset:-2px;
+}
+body.ep-module table.emp-pl-table tr:last-child td{border-bottom:0}
+body.ep-module table.emp-pl-table tbody tr:hover td{
+  background:#FAFBFD;
+}
+body.ep-module table.emp-pl-table .pl-col-code{white-space:nowrap}
+body.ep-module table.emp-pl-table .pl-expense-code{
+  display:inline-block;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.3px;
+  color:var(--acc,#1877F2);
+  background:var(--acc-bg,#EEF5FF);
+  border:1px solid rgba(37,99,235,.15);
+  border-radius:999px;
+  padding:4px 8px;
+}
+body.ep-module table.emp-pl-table .pl-name{
+  font-weight:700;
+  color:var(--txt,#1A202C);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  max-width:180px;
+}
+body.ep-module table.emp-pl-table .pl-meta{
+  font-size:12px;
+  color:var(--txt3,#94A3B8);
+  margin-top:2px;
+  line-height:1.4;
+}
+body.ep-module table.emp-pl-table .pl-col-amount{
+  width:120px;
+  white-space:nowrap;
+  text-align:right;
+}
+body.ep-module table.emp-pl-table .pl-amount{
+  font-weight:700;
+  color:var(--txt,#1A202C);
+}
+body.ep-module table.emp-pl-table .pl-amount.pl-amount--ok{color:var(--ok,#16A34A)}
+body.ep-module table.emp-pl-table .pl-amount.pl-amount--warn{color:var(--warn,#D97706)}
+body.ep-module table.emp-pl-table .pl-amount.pl-amount--debt{color:var(--err,#DC2626)}
+body.ep-module table.emp-pl-table .pl-amount.pl-amount--muted{color:var(--txt3,#94A3B8);font-weight:600}
+body.ep-module table.emp-pl-table tbody tr:hover .pl-col-actions{background:#FAFBFD}
+body.ep-module table.emp-pl-table .pl-col-attend{text-align:center;white-space:nowrap}
+body.ep-module table.emp-pl-table .pl-col-attend .badge{
+  font-size:11px;
+  font-weight:700;
+  padding:4px 9px;
+  border-radius:999px;
+  letter-spacing:.2px;
+}
+body.ep-module table.emp-pl-table .emp-dept{
+  font-size:13px;
+  font-weight:600;
+  color:var(--txt2,#4A5568);
+}
+body.ep-module table.emp-pl-table .inline-sal{
+  width:96px;
+  height:36px;
+  padding:0 10px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  background:#fff;
+  font-size:13px;
+  font-weight:700;
+  color:var(--txt,#1A202C);
+  font-variant-numeric:tabular-nums;
+}
+body.ep-module table.emp-pl-table .inline-sal:focus{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  outline:none;
+}
+body.ep-module table.emp-pl-table .inline-sal:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  background:#F8FAFD;
+}
+/* Actions column kept as existing act-grp / sticky pattern */
+body.ep-module table.emp-pl-table .tbl-sticky{
+  position:sticky;
+  right:0;
+  z-index:2;
+  background:#fff;
+  text-align:center;
+  min-width:136px;
+  width:136px;
+  box-shadow:-6px 0 12px rgba(15,23,42,.04);
+}
+body.ep-module table.emp-pl-table thead .tbl-sticky{background:#F8FAFD;z-index:3}
+body.ep-module table.emp-pl-table tbody tr:hover .tbl-sticky{background:#FAFBFD;z-index:5}
+body.ep-module .emp-empty,
+body.ep-module .pl-empty{
+  padding:36px 18px;
+  text-align:center;
+  color:var(--txt3,#94A3B8);
+  font-size:14px;
+}
+body.ep-module .acm-locked-emp .pl-expense-code{
+  display:inline-block;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.3px;
+  color:var(--acc,#1877F2);
+  background:var(--acc-bg,#EEF5FF);
+  border:1px solid rgba(37,99,235,.15);
+  border-radius:999px;
+  padding:3px 8px;
+}
+body.ep-module .ec-repay-value{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:inherit;
+}
+body.ep-module .ec-repay-input.inline-sal{
+  width:120px;
+  height:40px;
+  padding:0 12px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  background:#fff;
+  font-size:18px;
+  font-weight:800;
+  color:var(--txt,#1A202C);
+  font-variant-numeric:tabular-nums;
+}
+body.ep-module .ec-repay-input.inline-sal:focus{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  outline:none;
+}
+body.ep-module .ec-repay-input.inline-sal:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  background:#F8FAFD;
+}
+body.ep-module .ec-repay-unit{
+  font-size:13px;
+  font-weight:600;
+  color:var(--txt3,#94A3B8);
+}
+body.ep-module #emp-credit-history-table.emp-pl-table{
+  min-width:640px;
+}
+body.ep-module #emp-credit-history-table.emp-pl-table tfoot td{
+  background:#F8FAFD;
+  border-bottom:0;
+  padding:14px 18px;
+}
+body.ep-module #emp-credit-history-table .ec-ledger-label{
+  text-align:right;
+  font-weight:700;
+  color:var(--txt2,#4A5568);
+}
+body.ep-module #emp-credit-history-table .ec-edit-input{
+  width:100%;
+  min-width:0;
+  height:36px;
+  padding:0 10px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  background:#fff;
+  font:600 13px Inter,system-ui,sans-serif;
+  color:var(--txt,#1A202C);
+  box-sizing:border-box;
+}
+body.ep-module #emp-credit-history-table .ec-edit-input--amt{
+  width:120px;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+body.ep-module #emp-credit-history-table .ec-edit-row td{
+  background:#FAFBFD;
+}

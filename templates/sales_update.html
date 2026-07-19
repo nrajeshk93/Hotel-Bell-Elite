@@ -2,16 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{{ page_title|default('Sales Update') }} | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
 <script>
 (function(){
   try{
@@ -126,6 +127,9 @@
         data-cash-collected="{{ cash_transfer_day_collected }}"
         data-sales-admin="{{ '1' if sales_update_is_admin else '0' }}"
         data-save-url="{{ url_for('save_sales_update') }}"
+        data-tip-add-url="{{ url_for('sales_update_add_tip') }}"
+        data-tip-edit-url="{{ url_for('sales_update_edit_tip') }}"
+        data-tip-delete-url="{{ url_for('sales_update_delete_tip') }}"
         data-cash-transfer-add-url="{{ url_for('sales_update_add_cash_transfer') }}"
         data-cash-transfer-delete-url="{{ url_for('sales_update_delete_cash_transfer') }}"
         data-whatsapp-report-url="{{ url_for('sales_update_send_whatsapp_report') }}"
@@ -168,7 +172,14 @@
                 <tr{% if field_key == 'bank_cheque' %} class="entry-row--bank"{% endif %}>
                   <td class="entry-label se-entry-label-cell"><div class="se-entry-label-inner">{{ se_field_icon(field_key) }}<span>{{ field_label }}</span></div></td>
                   <td class="entry-input-cell">
+                    {% if field_key == 'tips' %}
+                    <div class="cash-cell-action">
+                      <input type="number" min="0" step="0.01" value="{{ outlet_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="{{ outlet }}" data-entry-label="{{ field_label }}" aria-label="{{ outlet }} {{ field_label }} amount" class="se-entry-input--upload" readonly tabindex="-1">
+                      <button type="button" class="se-row-action" id="open-sales-tips" title="Manage tips by employee" aria-label="Open tip entry"{% if outlet_record.sales_entry_locked %} disabled{% endif %}>{{ se_row_more_icon() }}</button>
+                    </div>
+                    {% else %}
                     <input type="number" min="0" step="0.01" value="{{ outlet_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="{{ outlet }}" data-entry-label="{{ field_label }}" aria-label="{{ outlet }} {{ field_label }} amount"{% if field_key in manual_sales_entry_keys|default([]) %} class="se-entry-input--manual"{% else %} class="se-entry-input--upload" readonly tabindex="-1"{% endif %}>
+                    {% endif %}
                   </td>
                 </tr>
                 {% endfor %}
@@ -187,6 +198,7 @@
       </article>
       {% endfor %}
       </div>
+      {% include 'partials/sales_update_tips_modal.html' %}
 
       </div>
       </div>
@@ -1414,6 +1426,7 @@ SalesDateRangePicker.init({
   applyEntryLock();
 })();
 </script>
+{% include 'partials/sales_update_tips_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

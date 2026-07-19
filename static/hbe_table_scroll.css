@@ -1,0 +1,48 @@
+/**
+ * Shared dense-table panel behavior:
+ * - ~10 visible rows, vertical scroll for the rest
+ * - sticky header
+ * - edge cue while horizontal auto-scroll runs (JS)
+ */
+.hbe-scroll-panel .pl-table-wrap,
+.hbe-scroll-panel .emp-table-wrap,
+.hbe-scroll-panel .sm-table-wrap,
+.pl-list-panel--scroll .pl-table-wrap,
+.emp-list-panel--scroll .emp-table-wrap,
+.sm-list-panel--scroll .sm-table-wrap{
+  max-height:calc(44px + 10 * 52px);
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  position:relative;
+}
+
+.hbe-scroll-panel .pl-table-wrap.is-edge-scroll-right,
+.hbe-scroll-panel .emp-table-wrap.is-edge-scroll-right,
+.hbe-scroll-panel .sm-table-wrap.is-edge-scroll-right,
+.pl-list-panel--scroll .pl-table-wrap.is-edge-scroll-right,
+.emp-list-panel--scroll .emp-table-wrap.is-edge-scroll-right,
+.sm-list-panel--scroll .sm-table-wrap.is-edge-scroll-right{
+  box-shadow:inset -18px 0 16px -16px rgba(15,23,42,.22);
+}
+
+.hbe-scroll-panel .pl-table-wrap.is-edge-scroll-left,
+.hbe-scroll-panel .emp-table-wrap.is-edge-scroll-left,
+.hbe-scroll-panel .sm-table-wrap.is-edge-scroll-left,
+.pl-list-panel--scroll .pl-table-wrap.is-edge-scroll-left,
+.emp-list-panel--scroll .emp-table-wrap.is-edge-scroll-left,
+.sm-list-panel--scroll .sm-table-wrap.is-edge-scroll-left{
+  box-shadow:inset 18px 0 16px -16px rgba(15,23,42,.22);
+}
+
+.hbe-scroll-panel .pl-table thead th,
+.hbe-scroll-panel .emp-pl-table thead th,
+.hbe-scroll-panel .sm-table thead th,
+.pl-list-panel--scroll .pl-table thead th,
+.emp-list-panel--scroll .emp-pl-table thead th,
+.sm-list-panel--scroll .sm-table thead th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:#F8FAFD;
+  box-shadow:0 1px 0 var(--border-s,#EEF2F7);
+}

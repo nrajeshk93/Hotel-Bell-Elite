@@ -1,0 +1,139 @@
+{% if show_form %}
+<article class="card pl-list-panel st-panel" aria-label="New stock issue">
+  <div class="card-hdr">
+    <div class="card-title"><span>New issue · {{ selected_outlet_label }}</span></div>
+  </div>
+  <div class="card-body">
+    {% if errors %}
+    <div class="st-flash st-flash--error">{% for err in errors %}{{ err }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+    {% endif %}
+    {% if not stock_options %}
+    <div class="pl-empty">
+      <strong>No stock available</strong>
+      Receive purchases first, then reduce stock against an invoice or usage.
+    </div>
+    {% else %}
+    <form method="post" action="{{ url_for('stores_stock_issues', outlet=selected_outlet) }}" class="st-form-grid">
+      <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+      <div class="st-field">
+        <label for="st-invoice-ref">Invoice / bill ref (optional)</label>
+        <input id="st-invoice-ref" type="text" name="invoice_ref" value="{{ form.invoice_ref }}" placeholder="e.g. INV-1042">
+      </div>
+      <div class="st-field">
+        <label for="st-issue-notes">Note (optional)</label>
+        <textarea id="st-issue-notes" name="notes">{{ form.notes }}</textarea>
+      </div>
+      <div class="st-lines-wrap">
+        <label style="display:block;font-size:12px;font-weight:650;color:#475569;margin-bottom:8px;">Items to reduce</label>
+        <div class="st-lines">
+          {% for line in form.lines %}
+          <div class="st-line" style="grid-template-columns:minmax(0,1.8fr) 120px 120px auto;">
+            <div class="st-field">
+              <label>Item</label>
+              <select name="item_name" required>
+                <option value="">Select item</option>
+                {% for opt in stock_options %}
+                <option value="{{ opt.item_name }}"{% if line.item_name == opt.item_name %} selected{% endif %}>
+                  {{ opt.item_name }} ({{ opt.qty_on_hand }} {{ opt.unit }})
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="st-field">
+              <label>Qty</label>
+              <input type="number" name="quantity" min="0.01" step="0.01" value="{{ line.quantity }}" required>
+            </div>
+            <div class="st-field">
+              <label>Unit</label>
+              <select name="unit">
+                {% for opt in stock_options %}
+                <option value="{{ opt.unit }}"{% if line.unit == opt.unit or (not line.unit and loop.first) %} selected{% endif %}>{{ opt.unit }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <input type="hidden" name="line_notes" value="">
+            <button type="button" class="st-line-remove" data-st-remove-line aria-label="Remove line">×</button>
+          </div>
+          {% endfor %}
+        </div>
+        <template>
+          <div class="st-line" style="grid-template-columns:minmax(0,1.8fr) 120px 120px auto;">
+            <div class="st-field">
+              <label>Item</label>
+              <select name="item_name">
+                <option value="">Select item</option>
+                {% for opt in stock_options %}
+                <option value="{{ opt.item_name }}">{{ opt.item_name }} ({{ opt.qty_on_hand }} {{ opt.unit }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="st-field">
+              <label>Qty</label>
+              <input type="number" name="quantity" min="0.01" step="0.01">
+            </div>
+            <div class="st-field">
+              <label>Unit</label>
+              <select name="unit">
+                {% for opt in stock_options %}
+                <option value="{{ opt.unit }}">{{ opt.unit }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <input type="hidden" name="line_notes" value="">
+            <button type="button" class="st-line-remove" data-st-remove-line aria-label="Remove line">×</button>
+          </div>
+        </template>
+        <button type="button" class="btn" data-st-add-line style="margin-top:10px;">Add item</button>
+      </div>
+      <div class="st-form-actions">
+        <a class="btn" href="{{ url_for('stores_stock_issues', outlet=selected_outlet) }}">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save issue</button>
+      </div>
+    </form>
+    {% endif %}
+  </div>
+</article>
+{% endif %}
+
+<article class="card pl-list-panel st-panel" aria-label="Stock issues">
+  <div class="card-hdr">
+    <div class="card-title"><span>Issues · {{ selected_outlet_label }}</span></div>
+    <span class="pl-count">{{ issues|length }}</span>
+  </div>
+  <div class="card-body" style="padding:0;">
+    {% if issues %}
+    <div class="pl-table-wrap">
+      <table class="pl-table">
+        <thead>
+          <tr>
+            <th>Issue</th>
+            <th>Invoice</th>
+            <th>Items</th>
+            <th>Qty</th>
+            <th>When</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in issues %}
+          <tr>
+            <td>
+              <div class="pl-name">{{ row.issue_no }}</div>
+              {% if row.notes %}<div class="pl-meta">{{ row.notes }}</div>{% endif %}
+            </td>
+            <td>{{ row.invoice_ref or '—' }}</td>
+            <td>{{ row.line_count }}</td>
+            <td>{{ row.total_qty }}</td>
+            <td>{{ row.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="pl-empty">
+      <strong>No issues yet</strong>
+      When goods are sold or used, record an issue to reduce store stock.
+    </div>
+    {% endif %}
+  </div>
+</article>

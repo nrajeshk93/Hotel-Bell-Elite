@@ -2,10 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Employee Payroll | Hotel Bell Elite</title>
 <meta name="description" content="Employee payroll, attendance, reports and credit management for Hotel Bell Elite.">
 <meta name="robots" content="noindex,nofollow,noarchive">
+{% include 'partials/de_android_head.html' %}
 <script>
 (function(){
   try{
@@ -19,9 +20,16 @@
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
+{% if mode is defined and mode == 'credits' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+{% endif %}
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 :root{
@@ -61,7 +69,7 @@ html,body{min-height:100vh;background:var(--bg);color:var(--txt);font-family:'In
 body.sb-off #ep-workspace.de-module .de-sidebar{transform:translateX(calc(-202px - 12px));}
 
 /* ── Topbar ── */
-.topbar{background:var(--card);border-bottom:1px solid var(--border);height:var(--th);display:flex;align-items:center;padding:0 22px;gap:14px;position:sticky;top:0;z-index:30;box-shadow:var(--sh);}
+.topbar:not(.se-sales-header){background:var(--card);border-bottom:1px solid var(--border);height:var(--th);display:flex;align-items:center;padding:0 22px;gap:14px;position:sticky;top:0;z-index:30;box-shadow:var(--sh);}
 .menu-btn{display:none;background:none;border:1px solid var(--border);border-radius:var(--rs);padding:6px 8px;cursor:pointer;color:var(--txt2);align-items:center;justify-content:center;transition:all .15s;flex-shrink:0;}
 .menu-btn:hover{background:var(--acc-bg);color:var(--acc);border-color:var(--acc);}
 .menu-btn svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;}
@@ -74,20 +82,7 @@ body.sb-off #ep-workspace.de-module .de-sidebar{transform:translateX(calc(-202px
 /* ── Content ── */
 .content{padding:22px 24px 48px;flex:1;}
 
-/* ── KPI grid ── */
-.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px;}
-.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;box-shadow:var(--sh);display:flex;align-items:flex-start;gap:14px;}
-.kpi-icon{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.kpi-icon svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
-.kpi-icon.blue{background:var(--acc-bg);color:var(--acc);}
-.kpi-icon.green{background:var(--ok-bg);color:var(--ok);}
-.kpi-icon.orange{background:var(--warn-bg);color:var(--warn);}
-.kpi-icon.purple{background:var(--pur-bg);color:var(--pur);}
-.kpi-icon.red{background:var(--err-bg);color:var(--err);}
-.kpi-body{flex:1;min-width:0;}
-.kpi-lbl{font-size:10px;font-weight:600;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
-.kpi-val{font-size:22px;font-weight:800;color:var(--txt);line-height:1.1;}
-.kpi-meta{font-size:11px;color:var(--txt3);margin-top:3px;}
+/* KPI cards: shared via hbe_kpi.css (icon layout + Purchase Ledger type) */
 
 /* ── Card ── */
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--sh);overflow:hidden;margin-bottom:18px;}
@@ -376,14 +371,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 .card.card-emp-table > .table-wrap{overflow-x:auto;padding-bottom:6px;}
 #emp-main-table tbody tr:hover .tbl-sticky{z-index:5;}
 
-/* ── Compact employee table ── */
-#emp-main-table{table-layout:fixed;width:100%;min-width:1108px;}
-#emp-main-table thead th{padding:8px 9px;font-size:9.5px;}
-#emp-main-table tbody td{padding:8px 9px;font-size:11.5px;}
-#emp-main-table tfoot td{padding:8px 9px;}
-#emp-main-table .num{white-space:nowrap;}
-#emp-main-table .emp-name{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-#emp-main-table .tbl-sticky{width:136px;min-width:136px;}
+/* Legacy compact rules removed — employee list uses employees_list.css (PL layout) */
 
 /* ── Compact icon action group ── */
 .act-grp{display:inline-flex;align-items:center;gap:2px;background:#F8FAFD;border:1px solid var(--border);border-radius:8px;padding:3px;position:relative;overflow:visible;}
@@ -394,6 +382,8 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 .act-btn.cred:hover{background:var(--pur-bg);color:var(--pur);}
 .act-btn.edit:hover{background:var(--acc-bg);color:var(--acc);}
 .act-btn.del:hover{background:var(--err-bg);color:var(--err);}
+.act-btn:disabled,.act-btn.is-disabled{opacity:.42;cursor:not-allowed;}
+.act-btn:disabled:hover,.act-btn.is-disabled:hover{background:transparent;color:var(--txt3);}
 .act-sep{width:1px;height:18px;background:var(--border);margin:0 2px;flex-shrink:0;}
 /* tooltip — below icon so sticky header / card overflow do not clip */
 .act-btn[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1A202C;color:#fff;font-size:10px;font-weight:600;white-space:nowrap;padding:4px 8px;border-radius:4px;pointer-events:none;opacity:0;visibility:hidden;z-index:30;box-shadow:0 4px 12px rgba(15,23,42,.18);transition:opacity .12s,visibility .12s;}
@@ -436,14 +426,12 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 .topbar-breadcrumb .bc-cur{color:var(--txt);font-weight:700;}
 
 /* ── Responsive ── */
-@media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:900px){.att-strip{grid-template-columns:repeat(4,1fr);}}
 @media(max-width:768px){
   :root{--sw:0px;}
   .menu-btn{display:flex;}
   .sb-pin-btn.de-sb-pin-btn{display:none;}
   .content{padding:14px 14px 40px;}
-  .kpi-grid{grid-template-columns:repeat(2,1fr);gap:10px;}
   .form-grid,.form-grid.three{grid-template-columns:1fr;}
   .sal-strip{grid-template-columns:repeat(2,1fr);}
   .sal-item:nth-child(2){border-right:none;}
@@ -455,7 +443,6 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
   .att-si:nth-child(2n){border-right:none;}
 }
 @media(max-width:480px){
-  .kpi-grid{grid-template-columns:1fr;}
   .sal-preview{grid-template-columns:repeat(2,1fr);}
   .filter-tabs{flex-wrap:wrap;}
 }
@@ -463,13 +450,14 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 </head>
-<body class="de-open ep-module">
+<body class="de-open ep-module{% if mode is defined and mode in ('credits_dashboard', 'credits') %} cd-ledger-page{% endif %}">
 
 <div id="page-transition"></div>
 {% include 'partials/de_fullscreen_script.html' %}
 {% include 'partials/de_fullscreen_bootstrap.html' %}
-<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=6"></script>
-<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=20"></script>
+<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=26"></script>
+<script src="{{ url_for('static', filename='hbe_table_scroll.js') }}?v=1"></script>
 
 <div id="ep-workspace" class="de-module">
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox, ep_toolbar_listbox %}
@@ -480,9 +468,6 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 {% if sel_year is defined %}{% for y in range(sel_year - 5, sel_year + 6) %}{% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}{% endfor %}{% endif %}
 {% set ep_location_opts = namespace(options=[('', 'All Departments')]) %}
 {% if locations is defined %}{% for l in locations %}{% set ep_location_opts.options = ep_location_opts.options + [(l, l)] %}{% endfor %}{% endif %}
-{% set ep_sort_opts = namespace(options=[('id', 'ID'), ('name', 'Name'), ('department', 'Department')]) %}
-{% set ep_sort_labels = {'id': 'ID', 'name': 'Name', 'department': 'Department'} %}
-{% set sel_sort = sel_sort|default('id') %}
 <div class="de-sb-overlay" id="de-sb-overlay" onclick="closeDeSidebar()"></div>
 <div class="de-app-shell">
 {% include 'partials/de_workspace_sidebar.html' %}
@@ -490,30 +475,59 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 <div class="main-wrapper">
 
 <!-- ── Top bar ── -->
-<header class="ep-header topbar">
-  <div class="ep-header-main">
+<header class="ep-header topbar se-sales-header su-header" id="ep-page-header">
 
   {% if mode is defined and mode == 'attendance_list' %}
-    <div class="ep-topbar-head">
-      <div class="topbar-title">Attendance</div>
-      <span class="topbar-sub">{{ month_name }} {{ sel_year }}</span>
-    </div>
-    <div class="topbar-actions ep-topbar-toolbar">
-      <div class="search-wrap" style="position:relative;">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <form method="GET" action="{{ url_for('attendance_overview') }}" id="attendance-search-form">
-          <input type="hidden" name="year" value="{{ sel_year }}">
-          <input type="hidden" name="month" value="{{ sel_month }}">
-          <input type="hidden" name="location" value="{{ sel_location|default('') }}">
-          <input type="text" name="q" id="attendance-search-input" value="{{ search|default('') }}" placeholder="Search employee…"
-                 autocomplete="off"
-                 oninput="attendanceAcFilter(this.value)"
-                 onkeydown="attendanceAcKeyNav(event)"
-                 onblur="setTimeout(attendanceAcHide,180)">
-        </form>
-        <ul id="attendance-ac-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:500;background:var(--card);border:1px solid var(--acc);border-radius:var(--rs);box-shadow:var(--sh2);margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;"></ul>
+  <div class="su-header-top">
+    <div class="su-header-left">
+      <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
       </div>
-      {% if attendance_autocomplete_emps is defined %}
+      <div class="su-title">
+        <div class="su-title-row">
+          <div class="su-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <h1>Attendance</h1>
+        </div>
+        <p>{{ month_name }} {{ sel_year }}</p>
+      </div>
+    </div>
+    <div class="su-header-tools">
+      <a href="{{ url_for('export_attendance_register', year=sel_year, month=sel_month, location=sel_location|default('')) }}" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Register
+      </a>
+    </div>
+  </div>
+  <div class="se-sales-header-card">
+    <div class="se-sales-header-filters">
+      <div class="ep-header-filters sr-topbar-filters">
+        <div class="cp-view-tabs" role="tablist" aria-label="Attendance views">
+          <a class="cp-view-tab is-active"
+             href="{{ url_for('attendance_overview', year=sel_year, month=sel_month, location=sel_location|default(''), q=search|default('')) }}"
+             role="tab" aria-selected="true">Month View</a>
+          <a class="cp-view-tab"
+             href="{{ url_for('attendance_date_view', date=date_view_date, location=sel_location|default('')) }}"
+             role="tab" aria-selected="false">Date View</a>
+        </div>
+        <div class="search-wrap" style="position:relative;">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <form method="GET" action="{{ url_for('attendance_overview') }}" id="attendance-search-form">
+            <input type="hidden" name="year" value="{{ sel_year }}">
+            <input type="hidden" name="month" value="{{ sel_month }}">
+            <input type="hidden" name="location" value="{{ sel_location|default('') }}">
+            <input type="text" name="q" id="attendance-search-input" value="{{ search|default('') }}" placeholder="Search employee…"
+                   autocomplete="off"
+                   oninput="attendanceAcFilter(this.value)"
+                   onkeydown="attendanceAcKeyNav(event)"
+                   onblur="setTimeout(attendanceAcHide,180)">
+          </form>
+          <ul id="attendance-ac-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:500;background:var(--card);border:1px solid var(--acc);border-radius:var(--rs);box-shadow:var(--sh2);margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;"></ul>
+        </div>
+{% if attendance_autocomplete_emps is defined %}
       <script>
       var _attendanceAcData = {{ attendance_autocomplete_emps | tojson }};
       var _attendanceAcIdx = -1;
@@ -595,61 +609,90 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       }
       </script>
       {% endif %}
-      <form method="GET" action="{{ url_for('attendance_overview') }}" id="attendance-overview-form" class="ep-topbar-filter-form">
-        <input type="hidden" name="q" value="{{ search|default('') }}">
-        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'attendance-overview-form', searchable=true) }}
-        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'attendance-overview-form') }}
-        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'attendance-overview-form') }}
-      </form>
-      <a href="{{ url_for('attendance_date_view', date=date_view_date, location=sel_location|default('')) }}" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:5px;white-space:nowrap;">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
-        Date View
-      </a>
-      <a href="{{ url_for('export_attendance_register', year=sel_year, month=sel_month, location=sel_location|default('')) }}" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:5px;white-space:nowrap;">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Register
-      </a>
+        <form method="GET" action="{{ url_for('attendance_overview') }}" id="attendance-overview-form" class="ep-topbar-filter-form">
+          <input type="hidden" name="q" value="{{ search|default('') }}">
+          {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'attendance-overview-form') }}
+          {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'attendance-overview-form') }}
+          {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'attendance-overview-form') }}
+        </form>
+      </div>
     </div>
+  </div>
 
   {% elif mode is defined and mode == 'attendance_date' %}
-    <div class="topbar-breadcrumb">
-      <a href="{{ url_for('attendance_overview', year=sel_year, month=sel_month, location=sel_location|default('')) }}">Attendance</a>
-      <span class="bc-sep">›</span>
-      <span class="bc-cur">Date View — {{ day_name }}, {{ sel_date }}</span>
+  <div class="su-header-top">
+    <div class="su-header-left">
+      <div class="su-header-nav">
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
+      <div class="su-title">
+        <div class="su-title-row">
+          <div class="su-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </div>
+          <h1>Attendance</h1>
+        </div>
+        <p>{{ day_name }} · {{ month_name }} {{ sel_date[8:10]|int }}, {{ sel_year }}</p>
+      </div>
     </div>
-    <div class="topbar-sp"></div>
-    <div class="topbar-actions">
-      <form method="GET" action="{{ url_for('attendance_date_view') }}" id="attendance-date-filter-form" class="ep-topbar-filter-form">
-        <input type="hidden" name="date" value="{{ sel_date }}">
-        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'attendance-date-filter-form', searchable=true) }}
-      </form>
-      <a class="mnav-btn" href="{{ url_for('attendance_date_view', date=prev_date, location=sel_location|default('')) }}" title="Previous day">‹</a>
-      <input type="date" id="dav-date-picker" value="{{ sel_date }}" max="{{ today }}"
-             onchange="if(this.value) window.location='{{ url_for('attendance_date_view') }}?date='+this.value+'&location={{ sel_location|default('') }}'">
-      <a class="mnav-btn" href="{{ url_for('attendance_date_view', date=next_date, location=sel_location|default('')) }}"
-         {% if next_date > today %}style="opacity:.35;pointer-events:none;" title="Future date"{% else %}title="Next day"{% endif %}>›</a>
-      <a href="{{ url_for('attendance_overview', year=sel_year, month=sel_month, location=sel_location|default('')) }}" class="btn btn-secondary btn-sm" style="display:flex;align-items:center;gap:5px;white-space:nowrap;">
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-        Month View
-      </a>
+    <div class="su-header-tools"></div>
+  </div>
+  <div class="se-sales-header-card">
+    <div class="se-sales-header-filters">
+      <div class="ep-header-filters sr-topbar-filters">
+        <div class="cp-view-tabs" role="tablist" aria-label="Attendance views">
+          <a class="cp-view-tab"
+             href="{{ url_for('attendance_overview', year=sel_year, month=sel_month, location=sel_location|default('')) }}"
+             role="tab" aria-selected="false">Month View</a>
+          <a class="cp-view-tab is-active"
+             href="{{ url_for('attendance_date_view', date=sel_date, location=sel_location|default('')) }}"
+             role="tab" aria-selected="true">Date View</a>
+        </div>
+        <form method="GET" action="{{ url_for('attendance_date_view') }}" id="attendance-date-filter-form" class="ep-topbar-filter-form">
+          <input type="hidden" name="date" value="{{ sel_date }}">
+          {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'attendance-date-filter-form', searchable=true) }}
+          <div class="se-filter-chip se-filter-chip--date ep-date-chip" role="group" aria-label="Day navigation">
+            <span class="se-filter-chip-label" id="attendance-date-label">Date</span>
+            <div class="se-filter-chip-control ep-date-chip-control">
+              <a class="ep-date-step" href="{{ url_for('attendance_date_view', date=prev_date, location=sel_location|default('')) }}" title="Previous day" aria-label="Previous day">‹</a>
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </span>
+              <input type="date" id="dav-date-picker" class="ep-date-input" value="{{ sel_date }}" max="{{ today }}"
+                     aria-labelledby="attendance-date-label"
+                     onchange="if(this.value) window.location='{{ url_for('attendance_date_view') }}?date='+this.value+'&location={{ sel_location|default('') }}'">
+              <a class="ep-date-step{% if next_date > today %} is-disabled{% endif %}"
+                 href="{{ url_for('attendance_date_view', date=next_date, location=sel_location|default('')) }}"
+                 {% if next_date > today %}aria-disabled="true" tabindex="-1"{% endif %}
+                 title="{% if next_date > today %}Future date{% else %}Next day{% endif %}"
+                 aria-label="Next day">›</a>
+            </div>
+          </div>
+        </form>
+      </div>
     </div>
+  </div>
 
   {% elif mode is defined and mode == 'attendance' %}
-    <div class="topbar-breadcrumb">
-      <a href="{{ url_for('attendance_overview', year=sel_year, month=sel_month) }}">Attendance</a>
-      <span class="bc-sep">›</span>
-      <a href="{{ url_for('edit_employee', emp_id=emp.id) }}">{{ emp.name }}</a>
-      <span class="bc-sep">›</span>
-      <span class="bc-cur">Attendance</span>
+  <div class="su-header-top ep-att-header">
+    <div class="su-header-left">
+      <div class="topbar-breadcrumb">
+        <a href="{{ url_for('attendance_overview', year=sel_year, month=sel_month) }}">Attendance</a>
+        <span class="bc-sep">›</span>
+        <a href="{{ url_for('edit_employee', emp_id=emp.id) }}">{{ emp.name }}</a>
+        <span class="bc-sep">›</span>
+        <span class="bc-cur">Attendance</span>
+      </div>
     </div>
-    <div class="topbar-sp"></div>
-    <div class="topbar-actions">
+    <div class="su-header-tools">
       <div class="month-nav">
         <a class="mnav-btn" href="{{ url_for('attendance', emp_id=emp.id, year=prev_y, month=prev_m) }}" title="Previous month">‹</a>
         <span class="mnav-lbl">{{ month_name }} {{ sel_year }}</span>
         <a class="mnav-btn" href="{{ url_for('attendance', emp_id=emp.id, year=next_y, month=next_m) }}" title="Next month">›</a>
       </div>
-      {% if current_user and current_user.is_admin %}
+      {% if current_user and current_user.is_admin and not (payroll_state.locked if payroll_state is defined else false) %}
       <form method="POST" action="{{ url_for('bulk_attendance', emp_id=emp.id) }}" style="display:inline;">
         <input type="hidden" name="year" value="{{ sel_year }}">
         <input type="hidden" name="month" value="{{ sel_month }}">
@@ -662,121 +705,282 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         <input type="hidden" name="action" value="clear_all">
         <button type="submit" class="btn btn-danger btn-sm">✕ Clear All</button>
       </form>
+      {% elif payroll_state is defined and payroll_state.locked %}
+      <button type="button" class="btn btn-secondary btn-sm" disabled title="{{ payroll_state.message }}">Month Locked</button>
       {% endif %}
     </div>
+  </div>
 
   {% elif mode is defined and mode == 'credits' %}
-    <div class="topbar-breadcrumb">
-      {% if has_payroll_access('employee') %}
-      <a href="{{ url_for('employees', year=sel_year, month=sel_month) }}">Employees</a>
-      {% else %}
-      <span>Payroll</span>
-      {% endif %}
-      <span class="bc-sep">›</span>
-      {% if has_payroll_access('employee') %}
-      <a href="{{ url_for('edit_employee', emp_id=emp.id) }}">{{ emp.name }}</a>
-      {% else %}
-      <span>{{ emp.name }}</span>
-      {% endif %}
-      <span class="bc-sep">›</span>
-      <span class="bc-cur">Credits &amp; Advances</span>
+  <div class="su-header-top">
+    <div class="su-header-left">
+      <div class="su-header-nav">
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
+      <div class="su-title">
+        <div class="su-title-row">
+          <div class="su-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
+          <h1>Credits &amp; Advances</h1>
+        </div>
+      </div>
     </div>
-    <div class="topbar-sep"></div>
-    <span class="topbar-sub">{{ month_name }} {{ sel_year }}</span>
-    <div class="topbar-sp"></div>
-    <div class="topbar-actions">
-      <form method="GET" action="{{ url_for('employee_credits', emp_id=emp.id) }}" id="emp-credits-month-form" class="ep-topbar-filter-form">
-        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'emp-credits-month-form') }}
-        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'emp-credits-month-form') }}
+    <div class="su-header-tools">
+      {% if payroll_state is defined and payroll_state.locked %}
+      <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Add Credit</button>
+      <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Repayment</button>
+      {% else %}
+      <button type="button" class="btn btn-primary" onclick="openAddCreditModal('credit')">Add Credit</button>
+      <button type="button" class="btn btn-primary" onclick="openAddCreditModal('repayment')">Repayment</button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="se-sales-header-card">
+    <div class="se-sales-header-filters">
+      <form method="GET" action="{{ url_for('employee_credits', emp_id=emp.id) }}" id="emp-credits-filter-form" class="sr-topbar-filters cd-ledger-filters" aria-label="Employee credit filters"
+            data-clear-url="{{ url_for('employee_credits', emp_id=emp.id, year=sel_year, month=sel_month) }}">
+        <input type="hidden" id="emp-credits-date-from" name="date_from" value="{{ date_from|default('') }}">
+        <input type="hidden" id="emp-credits-date-to" name="date_to" value="{{ date_to|default('') }}">
+        <div class="se-filter-chip-date-host ec-date-range-host" id="ec-date-range-host">
+          <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range{% if active_date_filter|default(false) %} is-filtered{% endif %}">
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+              </span>
+              <div class="an-range-wrap an-range-wrap--sales" id="ec-date-range-wrap" data-max-date="{{ today_iso|default('') }}">
+                <button type="button" class="an-range-trigger se-filter-chip-trigger" id="ec-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="ec-date-range-panel">
+                  <span class="an-range-trigger-label">
+                    <span id="ec-date-range-display">{% if active_date_filter|default(false) %}{{ date_from }} – {{ date_to }}{% else %}Date{% endif %}</span>
+                  </span>
+                </button>
+                <div class="an-range-backdrop" id="ec-date-range-backdrop" aria-hidden="true"></div>
+                <div class="an-range-panel" id="ec-date-range-panel" role="dialog" aria-labelledby="ec-date-range-panel-title" hidden>
+                  <div class="an-range-panel-inner">
+                    <div class="an-range-panel-h" id="ec-date-range-panel-title">Date range</div>
+                    <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+                    <div class="an-cal-dual">
+                      <div class="an-cal-pane">
+                        <div class="an-cal-pane-hdr">
+                          <button type="button" class="an-cal-nav-btn" id="ec-cal-prev" aria-label="Previous months">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                          </button>
+                          <h4 class="an-cal-month-title" id="ec-cal-title0">—</h4>
+                          <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                        </div>
+                        <div class="an-cal-dow" aria-hidden="true">
+                          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div class="an-cal-grid" id="ec-cal-grid0"></div>
+                      </div>
+                      <div class="an-cal-pane">
+                        <div class="an-cal-pane-hdr">
+                          <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          <h4 class="an-cal-month-title" id="ec-cal-title1">—</h4>
+                          <button type="button" class="an-cal-nav-btn" id="ec-cal-next" aria-label="Next months">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                          </button>
+                        </div>
+                        <div class="an-cal-dow" aria-hidden="true">
+                          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                        </div>
+                        <div class="an-cal-grid" id="ec-cal-grid1"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="an-range-actions">
+                    <button type="button" class="btn" id="ec-date-range-clear">Clear</button>
+                    <button type="button" class="btn btn-primary" id="ec-date-range-apply">Apply</button>
+                  </div>
+                </div>
+              </div>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+          </div>
+        </div>
       </form>
     </div>
+  </div>
 
   {% elif mode is defined and mode == 'add' %}
-    <div class="topbar-breadcrumb">
-      <a href="{{ url_for('employees') }}">Employees</a>
-      <span class="bc-sep">›</span>
-      <span class="bc-cur">Add Employee</span>
+  <div class="su-header-top ep-att-header">
+    <div class="su-header-left">
+      <div class="topbar-breadcrumb">
+        <a href="{{ url_for('employees') }}">Employees</a>
+        <span class="bc-sep">›</span>
+        <span class="bc-cur">Add Employee</span>
+      </div>
     </div>
-    <div class="topbar-sp"></div>
+    <div class="su-header-tools"></div>
+  </div>
 
   {% elif mode is defined and mode == 'edit' %}
-    <div class="topbar-breadcrumb">
-      <a href="{{ url_for('employees') }}">Employees</a>
-      <span class="bc-sep">›</span>
-      <span class="bc-cur">Edit Employee{% if form.get('id') %} #{{ form['id'] }}{% endif %}</span>
+  <div class="su-header-top ep-att-header">
+    <div class="su-header-left">
+      <div class="topbar-breadcrumb">
+        <a href="{{ url_for('employees') }}">Employees</a>
+        <span class="bc-sep">›</span>
+        <span class="bc-cur">Edit Employee{% if form.get('id') %} #{{ form['id'] }}{% endif %}</span>
+      </div>
     </div>
-    <div class="topbar-sp"></div>
+    <div class="su-header-tools"></div>
+  </div>
 
   {% elif mode is defined and mode == 'credits_dashboard' %}
-    <div class="topbar-title">Credit Dashboard</div>
-    <div class="topbar-sep"></div>
-    <span class="topbar-sub">{{ month_name }} {{ sel_year }}</span>
-    <div class="topbar-sp"></div>
-    <div class="topbar-actions">
-      <form method="GET" action="{{ url_for('credits_dashboard') }}" id="credits-dashboard-form" class="ep-topbar-filter-form">
-        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'credits-dashboard-form') }}
-        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'credits-dashboard-form') }}
-      </form>
-      <button class="btn btn-primary btn-sm" onclick="openAddCreditModal('credit')">
-        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Credit
-      </button>
-      <button class="btn btn-warn btn-sm" onclick="openAddCreditModal('repayment')">
-        Repayment
-      </button>
-      <a href="{{ url_for('export_credits_report', year=sel_year, month=sel_month) }}" class="btn btn-success btn-sm">↓ Export Credits</a>
+  {% set cd_month_names = ['','January','February','March','April','May','June','July','August','September','October','November','December'] %}
+  {% set cd_month_opts = namespace(options=[]) %}
+  {% for i in range(12) %}
+    {% set m = ((sel_month - 1 + i) % 12) + 1 %}
+    {% set cd_month_opts.options = cd_month_opts.options + [(m|string, cd_month_names[m])] %}
+  {% endfor %}
+  {% set cd_year_opts = namespace(options=[(sel_year|string, sel_year|string)]) %}
+  {% for y in range(sel_year + 1, sel_year + 3) %}
+    {% set cd_year_opts.options = cd_year_opts.options + [(y|string, y|string)] %}
+  {% endfor %}
+  {% for y in range(sel_year - 1, sel_year - 6, -1) %}
+    {% set cd_year_opts.options = cd_year_opts.options + [(y|string, y|string)] %}
+  {% endfor %}
+  <div class="su-header-top">
+    <div class="su-header-left">
+      <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+      </div>
+      <div class="su-title">
+        <div class="su-title-row">
+          <div class="su-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          </div>
+          <h1>Credit Dashboard</h1>
+        </div>
+        <p>{{ month_name }} {{ sel_year }} · advances and repayments</p>
+      </div>
     </div>
+    <div class="su-header-tools">
+      <a class="btn btn-primary" href="{{ url_for('export_credits_report', year=sel_year, month=sel_month) }}" download>Credits Report</a>
+      {% if payroll_state is defined and payroll_state.locked %}
+      <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Add Credit</button>
+      <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Repayment</button>
+      {% else %}
+      <button type="button" class="btn btn-primary" onclick="openAddCreditModal('credit')">Add Credit</button>
+      <button type="button" class="btn btn-primary" onclick="openAddCreditModal('repayment')">Repayment</button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="se-sales-header-card">
+    <div class="se-sales-header-filters">
+      <div class="sr-topbar-filters cd-ledger-filters" aria-label="Credit dashboard filters">
+        <form method="GET" action="{{ url_for('credits_dashboard') }}" id="credits-dashboard-form" class="cd-period-form">
+          {{ ep_toolbar_listbox('month', 'Month', cd_month_opts.options, sel_month|string, cd_month_names[sel_month], 'credits-dashboard-form', icon='calendar') }}
+          {{ ep_toolbar_listbox('year', 'Year', cd_year_opts.options, sel_year|string, sel_year|string, 'credits-dashboard-form', icon='calendar') }}
+        </form>
+        <div class="se-filter-chip se-filter-chip--payment cd-search-chip" id="cd-search-chip">
+          <span class="se-filter-chip-label">Search</span>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            </span>
+            <input type="search" id="cd-search" class="cd-search-input" placeholder="Employee or ID" autocomplete="off" aria-label="Search employees" oninput="filterCreditTable()">
+          </div>
+        </div>
+        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, '', 'All Departments', '', searchable=true, field_id='cd-location', change_handler='filterCreditTable', icon='people') }}
+      </div>
+    </div>
+  </div>
 
   {% elif mode is defined and mode == 'report' %}
-    <div class="topbar-title">Payroll Report</div>
-    <div class="topbar-sep"></div>
-    <span class="topbar-sub">{{ month_name }} {{ sel_year }}</span>
-    <div class="topbar-sp"></div>
-    <div class="topbar-actions">
-      <form method="GET" action="{{ url_for('report') }}" id="report-month-form" class="ep-topbar-filter-form">
-        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'report-month-form') }}
-        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'report-month-form') }}
-      </form>
+  <div class="su-header-top">
+    <div class="su-header-left">
+      <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+      </div>
+      <div class="su-title">
+        <div class="su-title-row">
+          <div class="su-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <h1>Payroll Report</h1>
+        </div>
+        <p>{{ month_name }} {{ sel_year }}</p>
+      </div>
     </div>
+    <div class="su-header-tools"></div>
+  </div>
+  <div class="se-sales-header-card">
+    <div class="se-sales-header-filters">
+      <div class="ep-header-filters sr-topbar-filters">
+        <form method="GET" action="{{ url_for('report') }}" id="report-month-form" class="ep-topbar-filter-form">
+          {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'report-month-form') }}
+          {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'report-month-form') }}
+        </form>
+      </div>
+    </div>
+  </div>
 
   {% else %}
-    <!-- Employee list topbar -->
-    <div class="ep-title">
-      <div class="ep-title-row">
-        <div class="ep-title-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-            <circle cx="9" cy="7" r="4"/>
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87"/>
-            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-          </svg>
+  <div class="su-header-top">
+    <div class="su-header-left">
+      <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+      </div>
+      <div class="su-title">
+        <div class="su-title-row">
+          <div class="su-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </div>
+          <h1>Employees</h1>
         </div>
-        <div>
-          <h1 class="ep-page-title">Employees</h1>
-          <p class="ep-page-sub">{{ month_name }} {{ sel_year }}</p>
-        </div>
+        <p>{{ month_name }} {{ sel_year }}</p>
       </div>
     </div>
-    <div class="topbar-sp"></div>
-    <div class="topbar-actions">
-      <div class="search-wrap" style="position:relative;">
-        <form method="GET" action="{{ url_for('employees') }}" id="search-form" style="display:flex;align-items:center;width:100%;">
-          <input type="hidden" name="year" value="{{ sel_year }}">
-          <input type="hidden" name="month" value="{{ sel_month }}">
-          <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
-          <input type="hidden" name="location" value="{{ sel_location|default('') }}">
-          <input type="hidden" name="sort" value="{{ sel_sort|default('id') }}">
-          <svg viewBox="0 0 24 24" style="position:absolute;left:9px;pointer-events:none;z-index:1;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" name="q" id="emp-search-input" value="{{ search }}" placeholder="Search employees..."
-                 autocomplete="off"
-                 oninput="empAcFilter(this.value)"
-                 onkeydown="empAcKeyNav(event)"
-                 onblur="setTimeout(empAcHide,180)">
-        </form>
-        <!-- Autocomplete dropdown -->
-        <ul id="emp-ac-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:500;background:var(--card);border:1px solid var(--acc);border-radius:var(--rs);box-shadow:var(--sh2);margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;"></ul>
-      </div>
-      {% if autocomplete_emps is defined %}
+    <div class="su-header-tools">
+      {% if has_payroll_access('employee') %}
+      <a href="{{ url_for('add_employee') }}" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Employee
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="se-sales-header-card">
+    <div class="se-sales-header-filters">
+      <div class="ep-header-filters sr-topbar-filters">
+        <div class="cp-view-tabs" role="tablist" aria-label="Employee status">
+          <a class="cp-view-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
+             href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default('')) }}"
+             role="tab"
+             aria-selected="{{ 'true' if sel_status|default('active') == 'active' else 'false' }}">Active</a>
+          <a class="cp-view-tab{% if sel_status|default('active') == 'inactive' %} is-active{% endif %}"
+             href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default('')) }}"
+             role="tab"
+             aria-selected="{{ 'true' if sel_status|default('active') == 'inactive' else 'false' }}">Inactive</a>
+        </div>
+        <div class="search-wrap" style="position:relative;">
+          <form method="GET" action="{{ url_for('employees') }}" id="search-form" style="display:flex;align-items:center;width:100%;">
+            <input type="hidden" name="year" value="{{ sel_year }}">
+            <input type="hidden" name="month" value="{{ sel_month }}">
+            <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
+            <input type="hidden" name="location" value="{{ sel_location|default('') }}">
+            <input type="hidden" name="sort" value="id">
+            <svg viewBox="0 0 24 24" style="position:absolute;left:9px;pointer-events:none;z-index:1;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" name="q" id="emp-search-input" value="{{ search }}" placeholder="Search employees..."
+                   autocomplete="off"
+                   oninput="empAcFilter(this.value)"
+                   onkeydown="empAcKeyNav(event)"
+                   onblur="setTimeout(empAcHide,180)">
+          </form>
+          <ul id="emp-ac-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:500;background:var(--card);border:1px solid var(--acc);border-radius:var(--rs);box-shadow:var(--sh2);margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;"></ul>
+        </div>
+{% if autocomplete_emps is defined %}
       <script>
       var _empAcData = {{ autocomplete_emps | tojson }};
       var _empAcIdx  = -1;
@@ -853,42 +1057,33 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       }
       </script>
       {% endif %}
-      <form method="GET" action="{{ url_for('employees') }}" id="month-form" class="ep-topbar-filter-form">
-        <input type="hidden" name="q" value="{{ search }}">
-        <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
-        <input type="hidden" name="location" value="{{ sel_location|default('') }}">
-        <input type="hidden" name="sort" value="{{ sel_sort|default('id') }}">
-        {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'month-form') }}
-        {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'month-form') }}
-      </form>
-      <div class="filter-tabs">
-        <a href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default(''), sort=sel_sort|default('id')) }}"
-           class="ftab {% if sel_status|default('active') == 'active' %}ft-active{% endif %}">Active</a>
-        <a href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='inactive', location=sel_location|default(''), sort=sel_sort|default('id')) }}"
-           class="ftab {% if sel_status|default('active') == 'inactive' %}ft-inactive{% endif %}">Inactive</a>
-        <a href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='all', location=sel_location|default(''), sort=sel_sort|default('id')) }}"
-           class="ftab {% if sel_status|default('active') == 'all' %}ft-all{% endif %}">All</a>
+        <form method="GET" action="{{ url_for('employees') }}" id="month-form" class="ep-topbar-filter-form emp-list-filter-form">
+          <input type="hidden" name="q" value="{{ search }}">
+          <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
+          <input type="hidden" name="sort" value="id">
+          {{ ep_toolbar_listbox('month', 'Month', ep_month_opts.options, sel_month|string, ep_month_names[sel_month], 'month-form') }}
+          {{ ep_toolbar_listbox('year', 'Year', ep_year_opts.options, sel_year|string, sel_year|string, 'month-form') }}
+          {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'month-form', searchable=true) }}
+          {% if sel_location %}
+          <a href="{{ url_for('employees', q=search, status=sel_status, year=sel_year, month=sel_month) }}" class="btn-clear">✕ Clear</a>
+          {% endif %}
+        </form>
       </div>
-      {% if has_payroll_access('employee') %}
-      <a href="{{ url_for('add_employee') }}" class="btn btn-primary">
-        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Employee
-      </a>
-      {% endif %}
     </div>
-  {% endif %}
   </div>
+  {% endif %}
+
 </header>
 
 <!-- ── Content area ── -->
-<main class="content">
+<main class="content{% if mode is defined and mode in ('credits_dashboard', 'credits') %} se-content{% endif %}">
 {% if auth_notice %}
   <div class="card" style="margin-bottom:14px;background:#EFF6FF;border-color:rgba(24,119,242,.18);">
     <div class="card-body" style="padding:12px 18px;color:var(--acc);font-weight:700;">{{ auth_notice }}</div>
   </div>
 {% endif %}
 
-{% set _show_payroll_state = (mode is defined and mode in ('report','credits_dashboard','credits')) or (mode is not defined) %}
+{% set _show_payroll_state = mode is not defined or mode in ['attendance_date', 'credits'] %}
 {% if payroll_state is defined and _show_payroll_state %}
   <div class="card" style="margin-bottom:18px;">
     <div class="card-body" style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
@@ -920,7 +1115,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 {% if mode is defined and mode == 'attendance_list' %}
 
   <!-- KPI summary -->
-  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px;">
+  <div class="kpi-grid">
     <div class="kpi-card">
       <div class="kpi-icon blue">
         <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -963,80 +1158,142 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
     </div>
   </div>
 
-  <!-- Attendance table -->
-  <div class="card">
+  <!-- Attendance table (Purchase Ledger layout) -->
+  <article class="card pl-list-panel pl-list-panel--scroll emp-list-panel emp-list-panel--scroll hbe-scroll-panel" aria-label="Employee attendance">
     <div class="card-hdr">
       <div class="card-title">
-        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        Employee Attendance — {{ month_name }} {{ sel_year }}
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <span>Employee Attendance — {{ month_name }} {{ sel_year }}</span>
       </div>
-      {% if employees %}<span class="badge bg-blue">{{ employees|length }} employees</span>{% endif %}
+      {% if employees %}<span class="pl-count emp-list-count">{{ employees|length }} employees</span>{% endif %}
     </div>
     {% if employees %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Employee</th>
-            <th>Department</th>
-            <th style="text-align:center;">Present</th>
-            <th style="text-align:center;">Half Day</th>
-            <th style="text-align:center;">Absent</th>
-            <th style="text-align:center;">Paid Days</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for emp in employees %}
-          {% set att = emp.att %}
-          {% set badge_num = att.display_badge_num|default(att.badge_num) %}
-          {% set pct = (badge_num / att.badge_den * 100) if att.badge_den > 0 else 0 %}
-          <tr>
-            <td>
-              <div class="emp-name">{{ emp.name }}</div>
-              <div style="font-size:10px;color:var(--txt3);">{{ emp.emp_code }}</div>
-            </td>
-            <td style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
-            <td style="text-align:center;font-weight:700;color:var(--ok);">{{ att.present_effective if att.tracked else '—' }}</td>
-            <td style="text-align:center;font-weight:700;color:var(--warn);">{{ att.half_day if att.tracked else '—' }}</td>
-            <td style="text-align:center;font-weight:700;color:var(--err);">{{ att.absent if att.tracked else '—' }}</td>
-            <td style="text-align:center;">
-              {% if att.tracked %}
-              <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
-                    title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ att.badge_den }} in the month{% if att.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(att.weekday_leave_days) }} leave{% if att.total_off|default(0) %} ({{ att.total_off }} allowed){% endif %}{% endif %}{% if att.lop_days|default(0) > 0 %} · {{ '%g'|format(att.lop_days) }} LOP{% endif %}">
-                {{ badge_num }}/{{ att.badge_den }}
-              </span>
-              {% else %}
-              <span class="badge bg-gray">Not tracked</span>
-              {% endif %}
-            </td>
-            <td>
-              {% if att.tracked %}
-              <span class="badge bg-green">Tracked</span>
-              {% else %}
-              <span class="badge bg-gray">Pending</span>
-              {% endif %}
-            </td>
-            <td>
-              <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
-                 class="btn btn-warn btn-sm btn-xs">
-                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                Mark
-              </a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="card-body pl-card-body--flush emp-card-body--flush">
+      <div class="pl-table-wrap emp-table-wrap" tabindex="0" aria-label="Employee attendance, scroll for more">
+        <table id="emp-attendance-overview-table" class="emp-pl-table pl-table" aria-label="Employee attendance">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="employee" scope="col" tabindex="0" aria-sort="none">Employee</th>
+              <th class="pl-sortable" data-sort="department" scope="col" tabindex="0" aria-sort="none">Department</th>
+              <th class="pl-sortable pl-col-attend" data-sort="present" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Present</th>
+              <th class="pl-sortable pl-col-attend" data-sort="half" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Half Day</th>
+              <th class="pl-sortable pl-col-attend" data-sort="absent" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Absent</th>
+              <th class="pl-sortable pl-col-attend" data-sort="paid" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Paid Days</th>
+              <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+              <th class="pl-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for emp in employees %}
+            {% set att = emp.att %}
+            {% set badge_num = att.display_badge_num|default(att.badge_num) %}
+            {% set pct = (badge_num / att.badge_den * 100) if att.tracked and att.badge_den > 0 else 0 %}
+            <tr data-sort-row>
+              <td data-sort-value="{{ emp.name }}">
+                <div class="pl-name">{{ emp.name }}</div>
+                <div class="pl-meta">{{ emp.emp_code }}</div>
+              </td>
+              <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
+              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--ok{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ att.present_effective if att.tracked else -1 }}">
+                {{ att.present_effective if att.tracked else '—' }}
+              </td>
+              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ att.half_day if att.tracked else -1 }}">
+                {{ att.half_day if att.tracked else '—' }}
+              </td>
+              <td class="pl-col-attend pl-amount {% if att.tracked %}pl-amount--debt{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ att.absent if att.tracked else -1 }}">
+                {{ att.absent if att.tracked else '—' }}
+              </td>
+              <td class="pl-col-attend" data-sort-value="{{ badge_num if att.tracked else -1 }}">
+                {% if att.tracked %}
+                <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
+                      title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ att.badge_den }} in the month{% if att.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(att.weekday_leave_days) }} leave{% if att.total_off|default(0) %} ({{ att.total_off }} allowed){% endif %}{% endif %}{% if att.lop_days|default(0) > 0 %} · {{ '%g'|format(att.lop_days) }} LOP{% endif %}">
+                  {{ badge_num }}/{{ att.badge_den }}
+                </span>
+                {% else %}
+                <span class="badge bg-gray">Not tracked</span>
+                {% endif %}
+              </td>
+              <td data-sort-value="{{ 'tracked' if att.tracked else 'pending' }}">
+                {% if att.tracked %}
+                <span class="badge bg-green">Tracked</span>
+                {% else %}
+                <span class="badge bg-gray">Pending</span>
+                {% endif %}
+              </td>
+              <td class="pl-col-actions">
+                <div class="act-grp">
+                  <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
+                     class="act-btn att" data-tip="Mark attendance" aria-label="Mark attendance for {{ emp.name }}">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
+    <script>
+    (function initEmpAttendanceOverviewSort(){
+      var table = document.getElementById('emp-attendance-overview-table');
+      if (!table) return;
+      var tbody = table.tBodies[0];
+      if (!tbody) return;
+      var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+      var activeKey = '';
+      var ascending = true;
+
+      function cellSortValue(row, colIndex, type){
+        var cell = row.cells[colIndex];
+        if (!cell) return type === 'number' ? 0 : '';
+        var raw = cell.getAttribute('data-sort-value');
+        if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+        if (type === 'number') {
+          var n = Number(raw);
+          return isFinite(n) ? n : 0;
+        }
+        return String(raw).toLowerCase();
+      }
+
+      function sortBy(th){
+        var key = th.getAttribute('data-sort') || '';
+        var type = th.getAttribute('data-sort-type') || 'text';
+        var colIndex = Array.from(th.parentNode.children).indexOf(th);
+        if (colIndex < 0) return;
+        if (activeKey === key) ascending = !ascending;
+        else { activeKey = key; ascending = true; }
+        headers.forEach(function(h){
+          h.classList.remove('is-sorted-asc', 'is-sorted-desc');
+          h.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+        th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+        var rows = Array.from(tbody.querySelectorAll('tr[data-sort-row]'));
+        rows.sort(function(a, b){
+          var av = cellSortValue(a, colIndex, type);
+          var bv = cellSortValue(b, colIndex, type);
+          if (av < bv) return ascending ? -1 : 1;
+          if (av > bv) return ascending ? 1 : -1;
+          return 0;
+        });
+        rows.forEach(function(row){ tbody.appendChild(row); });
+      }
+
+      headers.forEach(function(th){
+        th.addEventListener('click', function(){ sortBy(th); });
+        th.addEventListener('keydown', function(e){
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortBy(th); }
+        });
+      });
+    })();
+    </script>
     {% else %}
-    <div class="empty-state">
-      <div style="font-size:32px;opacity:.25;margin-bottom:10px;">📅</div>
-      <p>No employees found.{% if has_payroll_access('employee') %} <a href="{{ url_for('add_employee') }}" style="color:var(--acc);">Add an employee</a> to start tracking attendance.{% endif %}</p>
+    <div class="pl-empty emp-empty">
+      No employees found.{% if has_payroll_access('employee') %} <a href="{{ url_for('add_employee') }}" style="color:var(--acc);">Add an employee</a> to start tracking attendance.{% endif %}
     </div>
     {% endif %}
-  </div>
+  </article>
 
 
 {# ══════════════════════════════════════════════════════
@@ -1457,42 +1714,44 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 ══════════════════════════════════════════════════════ #}
 {% elif mode is defined and mode == 'credits' %}
 
-  <!-- Employee context -->
-  <div class="card">
-    <div class="emp-ctx">
-      <div class="emp-ctx-name">{{ emp.name }}</div>
-      <div class="emp-ctx-meta">#{{ emp.id }} · {{ emp.location }}</div>
-      <div style="flex:1;"></div>
-      {% if has_payroll_access('attendance') %}
-      <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}" class="btn btn-warn btn-sm">Attendance</a>
-      {% endif %}
-      {% if has_payroll_access('employee') %}
-      <a href="{{ url_for('edit_employee', emp_id=emp.id) }}" class="btn btn-secondary btn-sm">Edit Employee</a>
-      {% endif %}
+  <div class="kpi-grid kpi-grid--3">
+    <div class="kpi-card">
+      <div class="kpi-icon orange">
+        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Total Credit Amount</div>
+        <div class="kpi-val">{{ overall_credit | inr(0) }}</div>
+        <div class="kpi-meta">{{ emp.emp_code }} · {{ emp.location }}</div>
+      </div>
     </div>
-
-    <!-- Summary cards -->
-    <div class="sal-strip" style="grid-template-columns:repeat(3,1fr);">
-      <div class="sal-item">
-        <div class="sal-lbl">Total Credit Amount</div>
-        <div class="sal-val green">{{ overall_credit | inr(2) }}</div>
+    <div class="kpi-card">
+      <div class="kpi-icon blue">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       </div>
-      <div class="sal-item">
-        <div class="sal-lbl">Ledger Entries</div>
-        <div class="sal-val orange">{{ credit_items|length }}</div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Ledger Entries</div>
+        <div class="kpi-val">{{ credit_items|length }}</div>
+        <div class="kpi-meta">{{ emp.name }}</div>
       </div>
-      <div class="sal-item">
-        <div class="sal-lbl">Repayment for {{ month_name }} {{ sel_year }}</div>
-        <div style="display:flex;align-items:center;gap:6px;justify-content:center;margin-top:2px;">
-          <input type="number" class="inline-sal" id="cr-{{ emp.id }}"
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon purple">
+        <svg viewBox="0 0 24 24"><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3"/><path d="M9 13c6.667 0 6.667-10 0-10"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Repayment · {{ month_name }} {{ sel_year }}</div>
+        <div class="kpi-val kpi-val--action ec-repay-value">
+          <input type="number" class="inline-sal ec-repay-input" id="cr-{{ emp.id }}"
                  value="{{ emp.credit_repayment or '' }}"
                  placeholder="0" min="0" step="0.01" max="{{ emp.repayment_max }}"
                  {% if not emp.repayment_input_enabled %}disabled{% endif %}
                  onchange="saveSalary({{ emp.id }})"
-                 title="Repayment for {{ payroll_state.label }} only">
-          <span style="font-size:10px;color:var(--txt3);">/mo</span>
+                 title="Repayment for {{ payroll_state.label }} only"
+                 aria-label="Repayment for {{ month_name }} {{ sel_year }}">
+          <span class="ec-repay-unit">/mo</span>
         </div>
-        <div style="font-size:9px;color:var(--txt3);text-align:center;margin-top:3px;">
+        <div class="kpi-meta">
           {% if emp.repayment_input_enabled %}
           Max {{ emp.repayment_max | inr }} for {{ payroll_state.label }}
           {% else %}
@@ -1503,99 +1762,160 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
     </div>
   </div>
 
-  <!-- Add credit form -->
-  <div class="card">
-    <div class="card-hdr">
-      <div class="card-title">
-        <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Credit / Repayment
-      </div>
-    </div>
-    <div class="card-body">
-      <div id="credit-msg" style="display:none;padding:10px 14px;border-radius:6px;font-size:12px;margin-bottom:12px;"></div>
-      <form id="credit-form" onsubmit="return addCredit(event)">
-        <input type="hidden" name="year" value="{{ sel_year }}">
-        <input type="hidden" name="month" value="{{ sel_month }}">
-        <input type="hidden" id="cr_type" name="transaction_type" value="credit">
-        <div class="form-grid three">
-          <div>
-            <label for="cr_date">Date *</label>
-            <input type="date" id="cr_date" name="date" required value="{{ '%04d-%02d-%02d'|format(sel_year, sel_month, 1) }}">
-          </div>
-          <div>
-            <label for="cr_desc">Description</label>
-            <input type="text" id="cr_desc" name="description" placeholder="e.g. Advance, Loan...">
-          </div>
-          <div>
-            <label for="cr_amount">Amount *</label>
-            <input type="number" id="cr_amount" name="amount" required placeholder="e.g. 5000" min="0.01" step="0.01">
-          </div>
-        </div>
-        <div class="form-actions" style="border:none;padding:0;margin-top:14px;">
-          <button type="submit" class="btn btn-primary" id="cr-submit-btn" onclick="setCreditType('credit')">Add Credit</button>
-          <button type="submit" class="btn btn-warn" onclick="setCreditType('repayment')">Repayment</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
   <!-- Credit history -->
-  <div class="card">
+  <article class="card pl-list-panel pl-list-panel--scroll emp-list-panel emp-list-panel--scroll hbe-scroll-panel" aria-label="Credit history">
     <div class="card-hdr">
       <div class="card-title">
-        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Credit History
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>Credit History</span>
       </div>
+      {% if credit_items %}<span class="pl-count emp-list-count">{{ credit_items|length }} entries</span>{% endif %}
     </div>
     {% if credit_items %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Description</th>
-            <th class="num">Amount</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for cr in credit_items %}
-          <tr id="cr-row-{{ cr.id }}">
-            <td>{{ cr.date }}</td>
-            <td>{{ cr.description or '—' }}</td>
-            <td class="num {% if cr.amount < 0 %}red{% else %}green{% endif %}">{{ cr.amount | inr(2) }}</td>
-            <td class="actions">
-              <button class="btn btn-secondary btn-sm" onclick="showEditCredit({{ cr.id }})">Edit</button>
-              <a href="{{ url_for('delete_credit', credit_id=cr.id, year=sel_year, month=sel_month) }}" class="btn btn-danger btn-sm" onclick="return confirm('Delete this credit entry?')">Delete</a>
-            </td>
-          </tr>
-          <tr id="cr-edit-{{ cr.id }}" style="display:none;">
-            <td><input type="date" id="cr-date-{{ cr.id }}" value="{{ cr.date }}" class="app-date-inline"></td>
-            <td><input type="text" id="cr-desc-{{ cr.id }}" value="{{ cr.description }}" placeholder="Description" style="width:100%;padding:5px 7px;font-size:12px;"></td>
-            <td><input type="number" id="cr-amt-{{ cr.id }}" value="{{ cr.amount }}" step="0.01" style="width:100px;padding:5px 7px;font-size:12px;"></td>
-            <td class="actions">
-              <button type="button" class="btn btn-success btn-sm" onclick="submitEditCredit({{ cr.id }})">Save</button>
-              <button type="button" class="btn btn-secondary btn-sm" onclick="hideEditCredit({{ cr.id }})">Cancel</button>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="2" style="text-align:right;font-weight:700;color:var(--txt2);">Ledger Balance</td>
-            <td class="num {% if credit_total < 0 %}red{% else %}green{% endif %}" style="font-size:13px;font-weight:800;">{{ credit_total | inr(2) }}</td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>
+    <div class="card-body pl-card-body--flush emp-card-body--flush">
+      <div class="pl-table-wrap emp-table-wrap" tabindex="0" aria-label="Credit history, scroll for more">
+        <table id="emp-credit-history-table" class="emp-pl-table pl-table" aria-label="Credit history">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
+              <th class="pl-sortable" data-sort="description" scope="col" tabindex="0" aria-sort="none">Description</th>
+              <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
+              <th class="pl-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cr in credit_items %}
+            <tr id="cr-row-{{ cr.id }}" data-sort-row>
+              <td class="pl-col-date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date }}</span></td>
+              <td data-sort-value="{{ cr.description or '' }}"><div class="pl-name" style="font-weight:600;max-width:320px;">{{ cr.description or '—' }}</div></td>
+              <td class="pl-col-amount pl-amount {% if cr.amount < 0 %}pl-amount--debt{% elif cr.amount > 0 %}pl-amount--ok{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ cr.amount }}">{{ cr.amount | inr(2) }}</td>
+              <td class="pl-col-actions">
+                <div class="act-grp">
+                  {% if cr.can_edit %}
+                  <button type="button" class="act-btn edit" data-tip="Edit" aria-label="Edit entry" onclick="showEditCredit({{ cr.id }})">
+                    <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <a href="{{ url_for('delete_credit', credit_id=cr.id, year=sel_year, month=sel_month) }}"
+                     class="act-btn del" data-tip="Delete" aria-label="Delete entry"
+                     onclick="return confirm('Delete this credit entry?')">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </a>
+                  {% else %}
+                  <button type="button" class="act-btn edit is-disabled" data-tip="Month locked" aria-label="Edit blocked — month locked" aria-disabled="true" tabindex="-1">
+                    <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </button>
+                  <button type="button" class="act-btn del is-disabled" data-tip="Month locked" aria-label="Delete blocked — month locked" aria-disabled="true" tabindex="-1">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            <tr id="cr-edit-{{ cr.id }}" class="ec-edit-row" hidden>
+              <td><input type="date" id="cr-date-{{ cr.id }}" value="{{ cr.date }}" class="app-date-inline ec-edit-input"></td>
+              <td><input type="text" id="cr-desc-{{ cr.id }}" value="{{ cr.description }}" placeholder="Description" class="ec-edit-input ec-edit-input--wide"></td>
+              <td class="pl-col-amount"><input type="number" id="cr-amt-{{ cr.id }}" value="{{ cr.amount }}" step="0.01" class="ec-edit-input ec-edit-input--amt"></td>
+              <td class="pl-col-actions">
+                <div class="act-grp">
+                  <button type="button" class="act-btn edit" data-tip="Save" aria-label="Save" onclick="submitEditCredit({{ cr.id }})">
+                    <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                  </button>
+                  <button type="button" class="act-btn del" data-tip="Cancel" aria-label="Cancel" onclick="hideEditCredit({{ cr.id }})">
+                    <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="2" class="ec-ledger-label">Ledger Balance</td>
+              <td class="pl-col-amount pl-amount {% if credit_total < 0 %}pl-amount--debt{% elif credit_total > 0 %}pl-amount--ok{% else %}pl-amount--muted{% endif %}">{{ credit_total | inr(2) }}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
+    <script>
+    (function initEmpCreditHistorySort(){
+      var table = document.getElementById('emp-credit-history-table');
+      if (!table) return;
+      var tbody = table.tBodies[0];
+      if (!tbody) return;
+      var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+      var activeKey = '';
+      var ascending = true;
+
+      function cellSortValue(row, colIndex, type){
+        var cell = row.cells[colIndex];
+        if (!cell) return type === 'number' ? 0 : '';
+        var raw = cell.getAttribute('data-sort-value');
+        if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+        if (type === 'number') {
+          var n = Number(raw);
+          return isFinite(n) ? n : 0;
+        }
+        return String(raw).toLowerCase();
+      }
+
+      function sortBy(th){
+        var key = th.getAttribute('data-sort') || '';
+        var type = th.getAttribute('data-sort-type') || 'text';
+        var colIndex = Array.from(th.parentNode.children).indexOf(th);
+        if (colIndex < 0) return;
+
+        if (activeKey === key) ascending = !ascending;
+        else {
+          activeKey = key;
+          ascending = true;
+        }
+
+        var pairs = [];
+        var rows = Array.from(tbody.rows);
+        for (var i = 0; i < rows.length; i++) {
+          if (!rows[i].hasAttribute('data-sort-row')) continue;
+          pairs.push({ view: rows[i], edit: rows[i + 1] && rows[i + 1].classList.contains('ec-edit-row') ? rows[i + 1] : null });
+        }
+        pairs.sort(function(a, b){
+          var av = cellSortValue(a.view, colIndex, type);
+          var bv = cellSortValue(b.view, colIndex, type);
+          var cmp = 0;
+          if (type === 'number') cmp = av - bv;
+          else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+          return ascending ? cmp : -cmp;
+        });
+        pairs.forEach(function(pair){
+          tbody.appendChild(pair.view);
+          if (pair.edit) tbody.appendChild(pair.edit);
+        });
+
+        headers.forEach(function(header){
+          header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+          header.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+        th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+      }
+
+      headers.forEach(function(th){
+        th.addEventListener('click', function(){ sortBy(th); });
+        th.addEventListener('keydown', function(e){
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            sortBy(th);
+          }
+        });
+      });
+    })();
+    </script>
     {% else %}
-    <div class="empty-state">
-      <div style="font-size:28px;opacity:.3;margin-bottom:8px;">💳</div>
-      <p>No credit entries yet. Use the form above to add one.</p>
+    <div class="pl-empty emp-empty">
+      <p>No credit entries yet.</p>
     </div>
     {% endif %}
-  </div>
+  </article>
 
 
 {# ══════════════════════════════════════════════════════
@@ -1660,8 +1980,9 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
           </div>
           <div>
             <label for="total_off">Total Off</label>
-            <input type="number" id="total_off" name="total_off" value="{{ form.get('total_off', 0) }}" placeholder="e.g. 4" min="0" max="31" step="1">
-            <div style="margin-top:5px;font-size:10.5px;color:var(--txt3);">Paid weekday leave days per month. Extra leave is deducted at daily gross rate.</div>
+            <input type="number" id="total_off" name="total_off" value="{{ form.get('total_off', 0) }}" placeholder="e.g. 4" min="0" max="31" step="1"{% if payroll_fields_locked|default(false) %} disabled title="Locked payroll month — wage fields are read-only"{% endif %}>
+            {% if payroll_fields_locked|default(false) %}<input type="hidden" name="total_off" value="{{ form.get('total_off', 0) }}">{% endif %}
+            <div style="margin-top:5px;font-size:10.5px;color:var(--txt3);">{% if payroll_fields_locked|default(false) %}Locked payroll month — Total Off cannot be changed.{% else %}Paid weekday leave days per month. Extra leave is deducted at daily gross rate.{% endif %}</div>
           </div>
           <div>
             {% set status_options = [('active', 'Active'), ('inactive', 'Inactive')] %}
@@ -1670,14 +1991,21 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         </div>
 
         <div class="form-sec-title">Salary Details</div>
+        {% if payroll_fields_locked|default(false) %}
+        <div style="margin-bottom:12px;padding:10px 14px;background:var(--warn-bg);border:1px solid rgba(217,119,6,.25);color:var(--warn);border-radius:var(--rs);font-size:12px;font-weight:600;">
+          This employee has data in a locked payroll month. Salary, statutory, and Total Off fields are read-only — including for administrators.
+        </div>
+        {% endif %}
         <div class="form-grid three" style="margin-bottom:16px;">
           <div>
             <label for="gross_salary">Gross Salary (Monthly) *</label>
-            <input type="number" id="gross_salary" name="gross_salary" value="{{ form.get('gross_salary', '') }}" required placeholder="e.g. 25000" min="0" step="0.01" oninput="calcPreview()">
+            <input type="number" id="gross_salary" name="gross_salary" value="{{ form.get('gross_salary', '') }}" required placeholder="e.g. 25000" min="0" step="0.01" oninput="calcPreview()"{% if payroll_fields_locked|default(false) %} disabled{% endif %}>
+            {% if payroll_fields_locked|default(false) %}<input type="hidden" name="gross_salary" value="{{ form.get('gross_salary', '') }}">{% endif %}
           </div>
           <div>
             <label for="basic_salary">Basic Pay (0 = auto from Gross)</label>
-            <input type="number" id="basic_salary" name="basic_salary" value="{{ form.get('basic_salary', 0) or '' }}" placeholder="Auto-derived" min="0" step="0.01" oninput="calcPreview()">
+            <input type="number" id="basic_salary" name="basic_salary" value="{{ form.get('basic_salary', 0) or '' }}" placeholder="Auto-derived" min="0" step="0.01" oninput="calcPreview()"{% if payroll_fields_locked|default(false) %} disabled{% endif %}>
+            {% if payroll_fields_locked|default(false) %}<input type="hidden" name="basic_salary" value="{{ form.get('basic_salary', 0) or '' }}">{% endif %}
           </div>
           <div>
             <label for="epf_amount" style="display:flex;justify-content:space-between;align-items:center;">
@@ -1685,14 +2013,18 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
               <label style="font-weight:400;font-size:11px;color:var(--err);cursor:pointer;display:flex;align-items:center;gap:4px;">
                 <input type="checkbox" id="epf_exempt" name="epf_exempt" value="1"
                        {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}checked{% endif %}
-                       onchange="toggleExempt('epf')">
+                       onchange="toggleExempt('epf')"{% if payroll_fields_locked|default(false) %} disabled{% endif %}>
                 No EPF (exempt)
               </label>
             </label>
             <input type="number" id="epf_amount" name="epf_amount"
                    value="{{ form.get('epf_amount', 0) or '' }}"
                    placeholder="Auto: 12% of Actual Gross (max ₹1,800)" min="0" max="1800" step="0.01" oninput="calcPreview()"
-                   {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
+                   {% if payroll_fields_locked|default(false) or (form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','')) %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
+            {% if payroll_fields_locked|default(false) %}
+            <input type="hidden" name="epf_amount" value="{{ form.get('epf_amount', 0) or '' }}">
+            {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}<input type="hidden" name="epf_exempt" value="1">{% endif %}
+            {% endif %}
           </div>
           <div>
             <label for="esic_amount" style="display:flex;justify-content:space-between;align-items:center;">
@@ -1700,14 +2032,18 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
               <label style="font-weight:400;font-size:11px;color:var(--err);cursor:pointer;display:flex;align-items:center;gap:4px;">
                 <input type="checkbox" id="esic_exempt" name="esic_exempt" value="1"
                        {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}checked{% endif %}
-                       onchange="toggleExempt('esic')">
+                       onchange="toggleExempt('esic')"{% if payroll_fields_locked|default(false) %} disabled{% endif %}>
                 No ESIC (exempt)
               </label>
             </label>
             <input type="number" id="esic_amount" name="esic_amount"
                    value="{{ form.get('esic_amount', 0) or '' }}"
                    placeholder="Auto: 0.75% of Gross (₹158 if Gross > ₹21,000)" min="0" step="0.01" oninput="calcPreview()"
-                   {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
+                   {% if payroll_fields_locked|default(false) or (form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','')) %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
+            {% if payroll_fields_locked|default(false) %}
+            <input type="hidden" name="esic_amount" value="{{ form.get('esic_amount', 0) or '' }}">
+            {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}<input type="hidden" name="esic_exempt" value="1">{% endif %}
+            {% endif %}
           </div>
         </div>
 
@@ -1782,7 +2118,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 {% elif mode is defined and mode == 'report' %}
 
   <!-- KPI row -->
-  <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+  <div class="kpi-grid kpi-grid--3">
     <div class="kpi-card">
       <div class="kpi-icon blue">
         <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -1948,68 +2284,132 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
     </div>
   </div>
 
-  <!-- Employee breakdown table -->
-  <div class="card">
+  <!-- Employee breakdown table (Purchase Ledger layout) -->
+  <article class="card pl-list-panel pl-list-panel--scroll emp-list-panel emp-list-panel--scroll hbe-scroll-panel" aria-label="Employee salary breakdown">
     <div class="card-hdr">
       <div class="card-title">
-        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-        Employee Salary Breakdown — {{ month_name }} {{ sel_year }}
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        <span>Employee Salary Breakdown — {{ month_name }} {{ sel_year }}</span>
+      </div>
+      {% if report.employees %}<span class="pl-count emp-list-count">{{ report.employees|length }} employees</span>{% endif %}
+    </div>
+    {% if report.employees %}
+    <div class="card-body pl-card-body--flush emp-card-body--flush">
+      <div class="pl-table-wrap emp-table-wrap" tabindex="0" aria-label="Employee salary breakdown, scroll for more">
+        <table id="emp-salary-breakdown-table" class="emp-pl-table pl-table" aria-label="Employee salary breakdown">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="employee" scope="col" tabindex="0" aria-sort="none">Employee</th>
+              <th class="pl-sortable" data-sort="department" scope="col" tabindex="0" aria-sort="none">Department</th>
+              <th class="pl-sortable pl-col-attend" data-sort="attendance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Attendance</th>
+              <th class="pl-sortable pl-col-amount" data-sort="gross" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Gross</th>
+              <th class="pl-sortable pl-col-amount" data-sort="epf" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">EPF</th>
+              <th class="pl-sortable pl-col-amount" data-sort="esic" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">ESIC</th>
+              <th class="pl-sortable pl-col-amount" data-sort="incentive" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Incentive</th>
+              <th class="pl-sortable pl-col-amount" data-sort="net" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Net Salary</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for emp in report.employees %}
+            {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
+            {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.tracked and emp.att.badge_den > 0 else 0 %}
+            <tr data-sort-row>
+              <td data-sort-value="{{ emp.name }}">
+                <div class="pl-name">{{ emp.name }}</div>
+                <div class="pl-meta">{{ emp.emp_code }}</div>
+              </td>
+              <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
+              <td class="pl-col-attend" data-sort-value="{{ badge_num if emp.att.tracked else -1 }}">
+                {% if emp.att.tracked %}
+                <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
+                      title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
+                  {{ badge_num }}/{{ emp.att.badge_den }}
+                </span>
+                {% else %}
+                <span class="badge bg-gray">Not tracked</span>
+                {% endif %}
+              </td>
+              <td class="pl-col-amount pl-amount" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--warn" data-sort-value="{{ emp.epf }}">{{ emp.epf | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--pur" data-sort-value="{{ emp.esic }}">{{ emp.esic | inr }}</td>
+              <td class="pl-col-amount pl-amount {% if emp.tip_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ emp.tip_incentive|default(0) }}">
+                {% if emp.tip_incentive|default(0) > 0 %}{{ emp.tip_incentive | inr }}{% else %}—{% endif %}
+              </td>
+              <td class="pl-col-amount pl-amount pl-amount--ok" data-sort-value="{{ emp.net }}">{{ emp.net | inr }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="3" class="ec-ledger-label">Total</td>
+              <td class="pl-col-amount pl-amount">{{ report.total_gross | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--warn">{{ report.total_epf | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--pur">{{ report.total_esic | inr }}</td>
+              <td class="pl-col-amount pl-amount {% if report.total_incentive|default(0) > 0 %}{% else %}pl-amount--muted{% endif %}">{{ report.total_incentive|default(0) | inr }}</td>
+              <td class="pl-col-amount pl-amount pl-amount--ok">{{ report.total_net | inr }}</td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Employee</th>
-            <th>Department</th>
-            <th class="center">Attendance</th>
-            <th class="num">Gross</th>
-            <th class="num">EPF</th>
-            <th class="num">ESIC</th>
-            <th class="num">Net Salary</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for emp in report.employees %}
-          <tr>
-            <td>
-              <div class="emp-name">{{ emp.name }}</div>
-              <div style="font-size:10px;color:var(--txt3);">{{ emp.emp_code }}</div>
-            </td>
-            <td style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
-            <td class="center">
-              {% if emp.att.tracked %}
-              {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
-              {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.badge_den > 0 else 0 %}
-              <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
-                    title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
-                {{ badge_num }}/{{ emp.att.badge_den }}
-              </span>
-              {% else %}
-              <span class="badge bg-gray">Not tracked</span>
-              {% endif %}
-            </td>
-            <td class="num">{{ emp.gross_salary | inr }}</td>
-            <td class="num orange">{{ emp.epf | inr }}</td>
-            <td class="num purple">{{ emp.esic | inr }}</td>
-            <td class="num green">{{ emp.net | inr }}</td>
-          </tr>
-          {% else %}
-          <tr><td colspan="7" class="empty-state"><p>No active employees found.</p></td></tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colspan="3" style="text-align:right;font-weight:700;color:var(--txt2);">Total</td>
-            <td class="num" style="font-weight:800;">{{ report.total_gross | inr }}</td>
-            <td class="num orange" style="font-weight:800;">{{ report.total_epf | inr }}</td>
-            <td class="num purple" style="font-weight:800;">{{ report.total_esic | inr }}</td>
-            <td class="num green" style="font-weight:800;">{{ report.total_net | inr }}</td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-  </div>
+    <script>
+    (function initEmpSalaryBreakdownSort(){
+      var table = document.getElementById('emp-salary-breakdown-table');
+      if (!table) return;
+      var tbody = table.tBodies[0];
+      if (!tbody) return;
+      var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+      var activeKey = '';
+      var ascending = true;
+
+      function cellSortValue(row, colIndex, type){
+        var cell = row.cells[colIndex];
+        if (!cell) return type === 'number' ? 0 : '';
+        var raw = cell.getAttribute('data-sort-value');
+        if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+        if (type === 'number') {
+          var n = Number(raw);
+          return isFinite(n) ? n : 0;
+        }
+        return String(raw).toLowerCase();
+      }
+
+      function sortBy(th){
+        var key = th.getAttribute('data-sort') || '';
+        var type = th.getAttribute('data-sort-type') || 'text';
+        var colIndex = Array.from(th.parentNode.children).indexOf(th);
+        if (colIndex < 0) return;
+        if (activeKey === key) ascending = !ascending;
+        else { activeKey = key; ascending = true; }
+        headers.forEach(function(h){
+          h.classList.remove('is-sorted-asc', 'is-sorted-desc');
+          h.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+        th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+        var rows = Array.from(tbody.querySelectorAll('tr[data-sort-row]'));
+        rows.sort(function(a, b){
+          var av = cellSortValue(a, colIndex, type);
+          var bv = cellSortValue(b, colIndex, type);
+          if (av < bv) return ascending ? -1 : 1;
+          if (av > bv) return ascending ? 1 : -1;
+          return 0;
+        });
+        rows.forEach(function(row){ tbody.appendChild(row); });
+      }
+
+      headers.forEach(function(th){
+        th.addEventListener('click', function(){ sortBy(th); });
+        th.addEventListener('keydown', function(e){
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortBy(th); }
+        });
+      });
+    })();
+    </script>
+    {% else %}
+    <div class="pl-empty emp-empty">No active employees found.</div>
+    {% endif %}
+  </article>
 
 
 {# ══════════════════════════════════════════════════════
@@ -2017,15 +2417,14 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 ══════════════════════════════════════════════════════ #}
 {% elif mode is defined and mode == 'credits_dashboard' %}
 
-  <!-- KPI cards -->
-  <div class="kpi-grid">
+  <div class="kpi-grid kpi-grid--3">
     <div class="kpi-card">
       <div class="kpi-icon orange">
-        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
       </div>
       <div class="kpi-body">
         <div class="kpi-lbl">Total Credit Balance</div>
-        <div class="kpi-val">{{ total_credit_amount | inr(2) }}</div>
+        <div class="kpi-val">{{ total_credit_amount | inr(0) }}</div>
         <div class="kpi-meta">Across all employees</div>
       </div>
     </div>
@@ -2036,7 +2435,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       <div class="kpi-body">
         <div class="kpi-lbl">Employees with History</div>
         <div class="kpi-val">{{ employees_with_credit }}</div>
-        <div class="kpi-meta">Employees with credit records</div>
+        <div class="kpi-meta">With credit records</div>
       </div>
     </div>
     <div class="kpi-card">
@@ -2049,130 +2448,258 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         <div class="kpi-meta">All-time records</div>
       </div>
     </div>
-    <div class="kpi-card">
-      <div class="kpi-icon green">
-        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </div>
-      <div class="kpi-body">
-        <div class="kpi-lbl">Export Credits</div>
-        <div class="kpi-val" style="font-size:14px;">
-          <a href="{{ url_for('export_credits_report', year=sel_year, month=sel_month) }}" class="btn btn-success btn-sm" style="margin-top:4px;">↓ Download Excel</a>
-        </div>
-      </div>
-    </div>
   </div>
 
-  <!-- Employees with outstanding balance -->
-  <div class="card" style="margin-bottom:18px;">
+  <article class="card pl-list-panel pl-list-panel--scroll emp-list-panel emp-list-panel--scroll hbe-scroll-panel cd-credit-panel" aria-label="Employees with credit history" style="margin-bottom:18px;">
     <div class="card-hdr">
       <div class="card-title">
-        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-        Employees with Credit History
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        <span>Credit History</span>
       </div>
-      <div class="filter-bar">
-        <div class="filter-bar" style="align-items:flex-end;">
-        <div class="search-wrap" style="max-width:220px;">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" id="cd-search" placeholder="Search employee…" oninput="filterCreditTable()" style="height:30px;font-size:12px;">
-        </div>
-        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, '', 'All Departments', '', searchable=true, field_id='cd-location', hide_label=true, change_handler='filterCreditTable') }}
-        <button onclick="clearCreditFilters()" class="btn-clear" id="cd-clear-btn" style="display:none;">✕ Clear</button>
-        {% if credit_emps %}<span class="badge bg-orange" id="cd-count-badge">{{ credit_emps|length }} employees</span>{% endif %}
-      </div>
+      {% if credit_emps %}<span class="pl-count emp-list-count" id="cd-count-badge">{{ credit_emps|length }} employees</span>{% endif %}
     </div>
     {% if credit_emps %}
-    <div class="table-wrap">
-      <table id="credit-emp-table">
-        <thead>
-          <tr>
-            <th>Employee</th>
-            <th>Department</th>
-            <th class="center">Entries</th>
-            <th class="num">Credit Balance</th>
-            <th class="num">{{ ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][sel_month] }} Repay</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for e in credit_emps %}
-          <tr data-name="{{ e.name|lower }} {{ e.emp_code|lower }}" data-location="{{ e.location|lower }}">
-            <td>
-              <div class="emp-name">{{ e.name }}</div>
-              <div style="font-size:10px;color:var(--txt3);">{{ e.emp_code }}</div>
-            </td>
-            <td style="font-size:11px;color:var(--txt3);">{{ e.location }}</td>
-            <td style="text-align:center;color:var(--txt3);">{{ e.credit_entries }}</td>
-            <td class="num orange" style="font-weight:800;">{{ e.credit_balance | inr(2) }}</td>
-            <td class="num">
-              <input type="number" class="inline-sal" id="cr-{{ e.id }}"
-                     value="{{ e.credit_repayment or '' }}"
-                     placeholder="0" min="0" step="0.01" max="{{ e.repayment_max }}"
-                     {% if not e.repayment_input_enabled %}disabled{% endif %}
-                     onchange="saveSalary({{ e.id }})"
-                     title="Repayment for {{ payroll_state.label }} — change and press Tab or Enter">
-            </td>
-            <td>
-              <a href="{{ url_for('employee_credits', emp_id=e.id, year=sel_year, month=sel_month) }}" class="btn btn-purple btn-sm btn-xs">Manage</a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-      <div id="cd-no-results" style="display:none;" class="empty-state" style="padding:24px;">
+    <div class="card-body pl-card-body--flush emp-card-body--flush">
+      <div class="pl-table-wrap emp-table-wrap" tabindex="0" aria-label="Credit history, scroll for more">
+        <table id="credit-emp-table" class="emp-pl-table pl-table" aria-label="Employees with credit history">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="id" scope="col" tabindex="0" aria-sort="none">ID</th>
+              <th class="pl-sortable" data-sort="name" scope="col" tabindex="0" aria-sort="none">Name</th>
+              <th class="pl-sortable" data-sort="department" scope="col" tabindex="0" aria-sort="none">Department</th>
+              <th class="pl-sortable pl-col-attend" data-sort="entries" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Entries</th>
+              <th class="pl-sortable pl-col-amount" data-sort="balance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Credit Balance</th>
+              <th class="pl-sortable pl-col-amount" data-sort="repay" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">{{ ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][sel_month] }} Repay</th>
+              <th class="pl-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in credit_emps %}
+            <tr data-name="{{ e.name|lower }} {{ e.emp_code|lower }}" data-location="{{ e.location|lower }}">
+              <td class="pl-col-code" data-sort-value="{{ e.emp_code }}"><span class="pl-expense-code">{{ e.emp_code }}</span></td>
+              <td data-sort-value="{{ e.name }}"><div class="pl-name">{{ e.name }}</div></td>
+              <td data-sort-value="{{ e.location }}"><span class="emp-dept">{{ e.location }}</span></td>
+              <td class="pl-col-attend" data-sort-value="{{ e.credit_entries }}">
+                <span class="badge bg-gray">{{ e.credit_entries }}</span>
+              </td>
+              <td class="pl-col-amount pl-amount {% if e.credit_balance > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ e.credit_balance }}">{{ e.credit_balance | inr(2) }}</td>
+              <td class="pl-col-amount" data-sort-value="{{ e.credit_repayment|default(0) }}">
+                <input type="number" class="inline-sal" id="cr-{{ e.id }}"
+                       value="{{ e.credit_repayment or '' }}"
+                       placeholder="0" min="0" step="0.01" max="{{ e.repayment_max }}"
+                       {% if not e.repayment_input_enabled %}disabled{% endif %}
+                       onchange="saveSalary({{ e.id }})"
+                       title="Repayment for {{ payroll_state.label }} — change and press Tab or Enter">
+              </td>
+              <td class="pl-col-actions">
+                <div class="act-grp">
+                  <a href="{{ url_for('employee_credits', emp_id=e.id, year=sel_year, month=sel_month) }}"
+                     class="act-btn cred" data-tip="Manage">
+                    <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div id="cd-no-results" class="pl-empty emp-empty" hidden>
         <p>No employees match the current filters.</p>
       </div>
     </div>
+    <script>
+    (function initCreditEmpTableSort(){
+      var table = document.getElementById('credit-emp-table');
+      if (!table) return;
+      var tbody = table.tBodies[0];
+      if (!tbody) return;
+      var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+      var activeKey = '';
+      var ascending = true;
+
+      function cellSortValue(row, colIndex, type){
+        var cell = row.cells[colIndex];
+        if (!cell) return type === 'number' ? 0 : '';
+        var raw = cell.getAttribute('data-sort-value');
+        if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+        if (type === 'number') {
+          var n = Number(raw);
+          return isFinite(n) ? n : 0;
+        }
+        return String(raw).toLowerCase();
+      }
+
+      function sortBy(th){
+        var key = th.getAttribute('data-sort') || '';
+        var type = th.getAttribute('data-sort-type') || 'text';
+        var colIndex = Array.from(th.parentNode.children).indexOf(th);
+        if (colIndex < 0) return;
+
+        if (activeKey === key) ascending = !ascending;
+        else {
+          activeKey = key;
+          ascending = true;
+        }
+
+        var rows = Array.from(tbody.rows);
+        rows.sort(function(a, b){
+          var av = cellSortValue(a, colIndex, type);
+          var bv = cellSortValue(b, colIndex, type);
+          var cmp = 0;
+          if (type === 'number') cmp = av - bv;
+          else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+          return ascending ? cmp : -cmp;
+        });
+        rows.forEach(function(row){ tbody.appendChild(row); });
+
+        headers.forEach(function(header){
+          header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+          header.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+        th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+      }
+
+      headers.forEach(function(th){
+        th.addEventListener('click', function(){ sortBy(th); });
+        th.addEventListener('keydown', function(e){
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            sortBy(th);
+          }
+        });
+      });
+    })();
+    </script>
     {% else %}
-    <div class="empty-state">
-      <div style="font-size:28px;opacity:.3;margin-bottom:8px;">💳</div>
+    <div class="pl-empty emp-empty">
       <p>No credit history found yet.</p>
     </div>
     {% endif %}
-  </div>
+  </article>
 
-  <!-- Recent credit entries -->
-  <div class="card">
+  <article class="card pl-list-panel pl-list-panel--scroll emp-list-panel emp-list-panel--scroll hbe-scroll-panel cd-recent-panel" aria-label="Recent credit entries">
     <div class="card-hdr">
       <div class="card-title">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Recent Credit Entries
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Recent Entries</span>
       </div>
-      <span class="badge bg-gray">Last 15</span>
+      <span class="pl-count emp-list-count">Last 15</span>
     </div>
     {% if recent_credits %}
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Employee</th>
-            <th>Description</th>
-            <th class="num">Amount</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for cr in recent_credits %}
-          <tr>
-            <td style="font-size:11px;color:var(--txt3);white-space:nowrap;">{{ cr.date }}</td>
-            <td>
-              <div class="emp-name">{{ cr.emp_name }}</div>
-            </td>
-            <td style="color:var(--txt2);">{{ cr.description or '—' }}</td>
-            <td class="num {% if cr.amount < 0 %}red{% else %}green{% endif %}">{{ cr.amount | inr(2) }}</td>
-            <td>
-              <a href="{{ url_for('employee_credits', emp_id=cr.emp_id, year=sel_year, month=sel_month) }}" class="btn btn-secondary btn-sm btn-xs">View</a>
-              <a href="{{ url_for('delete_credit', credit_id=cr.id, year=sel_year, month=sel_month) }}" class="btn btn-danger btn-sm btn-xs" onclick="return confirm('Delete this entry?')">Delete</a>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="card-body pl-card-body--flush emp-card-body--flush">
+      <div class="pl-table-wrap emp-table-wrap" tabindex="0" aria-label="Recent credit entries, scroll for more">
+        <table id="credit-recent-table" class="emp-pl-table pl-table" aria-label="Recent credit entries">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
+              <th class="pl-sortable" data-sort="employee" scope="col" tabindex="0" aria-sort="none">Employee</th>
+              <th class="pl-sortable" data-sort="description" scope="col" tabindex="0" aria-sort="none">Description</th>
+              <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
+              <th class="pl-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cr in recent_credits %}
+            <tr>
+              <td class="pl-col-date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date }}</span></td>
+              <td data-sort-value="{{ cr.emp_name }}"><div class="pl-name">{{ cr.emp_name }}</div></td>
+              <td data-sort-value="{{ cr.description or '' }}"><div class="pl-name" style="font-weight:600;max-width:280px;">{{ cr.description or '—' }}</div></td>
+              <td class="pl-col-amount pl-amount {% if cr.amount < 0 %}pl-amount--debt{% elif cr.amount > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ cr.amount }}">{{ cr.amount | inr(2) }}</td>
+              <td class="pl-col-actions">
+                <div class="act-grp">
+                  <a href="{{ url_for('employee_credits', emp_id=cr.emp_id, year=sel_year, month=sel_month) }}"
+                     class="act-btn cred" data-tip="View">
+                    <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </a>
+                  {% if cr.can_edit %}
+                  <a href="{{ url_for('delete_credit', credit_id=cr.id, year=sel_year, month=sel_month) }}"
+                     class="act-btn del" data-tip="Delete"
+                     onclick="return confirm('Delete this entry?')">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </a>
+                  {% else %}
+                  <button type="button" class="act-btn del is-disabled" data-tip="Month locked" aria-label="Delete blocked — month locked" aria-disabled="true" tabindex="-1">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
+    <script>
+    (function initCreditRecentTableSort(){
+      var table = document.getElementById('credit-recent-table');
+      if (!table) return;
+      var tbody = table.tBodies[0];
+      if (!tbody) return;
+      var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+      var activeKey = '';
+      var ascending = true;
+
+      function cellSortValue(row, colIndex, type){
+        var cell = row.cells[colIndex];
+        if (!cell) return type === 'number' ? 0 : '';
+        var raw = cell.getAttribute('data-sort-value');
+        if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+        if (type === 'number') {
+          var n = Number(raw);
+          return isFinite(n) ? n : 0;
+        }
+        return String(raw).toLowerCase();
+      }
+
+      function sortBy(th){
+        var key = th.getAttribute('data-sort') || '';
+        var type = th.getAttribute('data-sort-type') || 'text';
+        var colIndex = Array.from(th.parentNode.children).indexOf(th);
+        if (colIndex < 0) return;
+
+        if (activeKey === key) ascending = !ascending;
+        else {
+          activeKey = key;
+          ascending = true;
+        }
+
+        var rows = Array.from(tbody.rows);
+        rows.sort(function(a, b){
+          var av = cellSortValue(a, colIndex, type);
+          var bv = cellSortValue(b, colIndex, type);
+          var cmp = 0;
+          if (type === 'number') cmp = av - bv;
+          else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+          return ascending ? cmp : -cmp;
+        });
+        rows.forEach(function(row){ tbody.appendChild(row); });
+
+        headers.forEach(function(header){
+          header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+          header.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+        th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+      }
+
+      headers.forEach(function(th){
+        th.addEventListener('click', function(){ sortBy(th); });
+        th.addEventListener('keydown', function(e){
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            sortBy(th);
+          }
+        });
+      });
+    })();
+    </script>
     {% else %}
-    <div class="empty-state"><p>No credit entries yet.</p></div>
+    <div class="pl-empty emp-empty"><p>No credit entries yet.</p></div>
     {% endif %}
-  </div>
+  </article>
 
 
 {# ══════════════════════════════════════════════════════
@@ -2198,9 +2725,9 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
   {% endif %}
 
   <!-- KPI Summary cards -->
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-icon blue">
+  <div class="emp-summary-row kpi-grid" role="group" aria-label="Employee summary">
+    <article class="card emp-summary-card kpi-card" aria-label="Total active employees">
+      <div class="kpi-icon blue" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
       </div>
       <div class="kpi-body">
@@ -2208,162 +2735,219 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         <div class="kpi-val">{{ total_employees }}</div>
         <div class="kpi-meta">{{ employees|length }} shown with current filters</div>
       </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon green">
-        <svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+    </article>
+    <article class="card emp-summary-card kpi-card" aria-label="Attendance tracked">
+      <div class="kpi-icon green" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
       </div>
       <div class="kpi-body">
         <div class="kpi-lbl">Attendance Tracked</div>
         <div class="kpi-val">{{ kpi_att_pct }}%</div>
         <div class="kpi-meta">{{ kpi_att_tracked }} of {{ total_employees }} active — {{ month_name }}</div>
       </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon orange">
-        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+    </article>
+    <article class="card emp-summary-card kpi-card" aria-label="Total credit balance">
+      <div class="kpi-icon orange" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
       </div>
       <div class="kpi-body">
         <div class="kpi-lbl">Total Credit Balance</div>
-        <div class="kpi-val">{{ kpi_credits | inr }}</div>
+        <div class="kpi-val pl-amount">{{ kpi_credits | inr }}</div>
         <div class="kpi-meta">Outstanding advance / credit</div>
       </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon purple">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12M6 9h12M9 4a5 5 0 0 1 0 10M9 9l9 11"/></svg>
+    </article>
+    <article class="card emp-summary-card kpi-card" aria-label="Total net payable">
+      <div class="kpi-icon purple" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3"/><path d="M9 13c6.667 0 6.667-10 0-10"/></svg>
       </div>
       <div class="kpi-body">
         <div class="kpi-lbl">Total Net Payable</div>
-        <div class="kpi-val">{{ kpi_net | inr }}</div>
+        <div class="kpi-val pl-amount">{{ kpi_net | inr }}</div>
         <div class="kpi-meta">Net salary — {{ month_name }} {{ sel_year }}</div>
       </div>
-    </div>
+    </article>
   </div>
 
   <!-- Employee table -->
-  <div class="card card-emp-table">
+  <article class="card emp-list-panel emp-list-panel--scroll hbe-scroll-panel" aria-label="Employee records">
     <div class="card-hdr">
       <div class="card-title">
-        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-        Employee Records
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        <span>Employees</span>
       </div>
-      <div class="filter-bar" style="align-items:flex-end;">
-        <form method="GET" action="{{ url_for('employees') }}" id="filter-form" style="display:flex;align-items:flex-end;gap:6px;">
-          <input type="hidden" name="q" value="{{ search }}">
-          <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
-          <input type="hidden" name="year" value="{{ sel_year }}">
-          <input type="hidden" name="month" value="{{ sel_month }}">
-          {{ ep_toolbar_listbox('sort', 'Sort by', ep_sort_opts.options, sel_sort|default('id'), ep_sort_labels.get(sel_sort|default('id'), 'ID'), 'filter-form') }}
-          {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, sel_location|default(''), 'All Departments', 'filter-form', searchable=true) }}
-        </form>
-        {% if sel_location %}
-        <a href="{{ url_for('employees', q=search, status=sel_status, year=sel_year, month=sel_month, sort=sel_sort|default('id')) }}" class="btn-clear">✕ Clear Filters</a>
-        {% endif %}
-        {% if employees %}
-        <span class="badge bg-blue">{{ employees|length }} shown</span>
-        {% endif %}
-      </div>
+      <span class="emp-list-count">{{ employees|length if employees else 0 }} entries</span>
     </div>
     {% if employees %}
-    <div class="table-wrap">
-      <table id="emp-main-table">
-        <thead>
-          <tr>
-            <th style="width:46px;">ID</th>
-            <th style="width:140px;">Name</th>
-            <th style="width:90px;">Department</th>
-            <th class="num" style="width:95px;">Gross</th>
-            <th style="width:66px;text-align:center;">Attend.</th>
-            <th class="num" style="width:88px;">Deductions</th>
-            <th class="num" style="width:105px;">Net Salary</th>
-            <th class="num" style="width:108px;">Repay</th>
-            <th class="num" style="width:100px;">Cr. Balance</th>
-            <th class="tbl-sticky" style="text-align:center;width:136px;">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for emp in employees %}
-          {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
-          {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.badge_den > 0 else 0 %}
-          <tr id="emp-row-{{ emp.id }}">
-            <td style="font-size:11px;color:var(--txt3);">{{ emp.emp_code }}</td>
-            <td>
-              <div class="emp-name">{{ emp.name }}</div>
-            </td>
-            <td style="font-size:11px;color:var(--txt3);">{{ emp.location }}</td>
-            <td class="num">{{ emp.gross_salary | inr }}</td>
-            <td>
-              {% if emp.att.tracked %}
-              <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
-                    title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
-                {{ badge_num }}/{{ emp.att.badge_den }}
-              </span>
-              {% else %}
-              <span class="badge bg-gray">—</span>
-              {% endif %}
-            </td>
-            <td class="num orange" title="EPF: {{ emp.epf | inr }} + ESIC: {{ emp.esic | inr }}{% if emp.lop_deduction|default(0) > 0 %} + LOP: {{ emp.lop_deduction | inr }}{% endif %}">
-              {{ (emp.epf + emp.esic + emp.lop_deduction|default(0)) | inr }}
-            </td>
-            <td class="num green" id="net-{{ emp.id }}">
-              {{ emp.net | inr }}
-            </td>
-            <td class="num">
-              {% if emp.repayment_input_visible %}
-              <input type="number" class="inline-sal" id="cr-{{ emp.id }}"
-                     value="{{ emp.credit_repayment or '' }}"
-                     placeholder="0"
-                     data-emp="{{ emp.id }}" data-field="credit_repayment" max="{{ emp.repayment_max }}"
-                     {% if not emp.repayment_input_enabled %}disabled{% endif %}
-                     title="{% if emp.repayment_input_enabled %}Repayment for {{ payroll_state.label }} — max {{ emp.repayment_max | inr }}{% elif payroll_state.locked|default(false) %}{{ payroll_state.message }}{% elif emp.repayment_max <= 0 %}No payable net salary for {{ payroll_state.label }} yet{% else %}{{ payroll_state.message }}{% endif %}"
-                     onchange="saveSalary({{ emp.id }})"
-                     min="0" step="0.01">
-              {% else %}
-              <span style="color:var(--txt3);font-size:11px;">—</span>
-              {% endif %}
-            </td>
-            <td id="cb-{{ emp.id }}" class="num {% if emp.credit_total > 0 %}orange{% endif %}" style="{% if emp.credit_total <= 0 %}color:var(--txt3);{% endif %}">
-              {{ emp.credit_total | inr(2) }}
-            </td>
-            <td class="tbl-sticky" style="text-align:center;padding:8px 9px;">
-              <div class="act-grp">
-                {% if has_payroll_access('attendance') %}
-                <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
-                   class="act-btn att" data-tip="Attendance">
-                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                </a>
+    <div class="card-body emp-card-body--flush">
+      <div class="emp-table-wrap" tabindex="0" aria-label="Employee records, scroll for more">
+        <table id="emp-main-table" class="emp-pl-table" aria-label="Employee records">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="id" scope="col" tabindex="0" aria-sort="none">ID</th>
+              <th class="pl-sortable" data-sort="name" scope="col" tabindex="0" aria-sort="none">Name</th>
+              <th class="pl-sortable" data-sort="department" scope="col" tabindex="0" aria-sort="none">Department</th>
+              <th class="pl-sortable pl-col-amount" data-sort="gross" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Gross</th>
+              <th class="pl-sortable pl-col-attend" data-sort="attendance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Attend.</th>
+              <th class="pl-sortable pl-col-amount" data-sort="deductions" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Deductions</th>
+              <th class="pl-sortable pl-col-amount" data-sort="incentive" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Incentive</th>
+              <th class="pl-sortable pl-col-amount" data-sort="net" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Net Salary</th>
+              <th class="pl-sortable pl-col-amount" data-sort="repay" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Repay</th>
+              <th class="pl-sortable pl-col-amount" data-sort="credit" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Cr. Balance</th>
+              <th class="tbl-sticky">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for emp in employees %}
+            {% set badge_num = emp.att.display_badge_num|default(emp.att.badge_num) %}
+            {% set pct = (badge_num / emp.att.badge_den * 100) if emp.att.badge_den > 0 else 0 %}
+            {% set deductions = emp.epf + emp.esic + (emp.lop_deduction|default(0)) %}
+            <tr id="emp-row-{{ emp.id }}">
+              <td class="pl-col-code" data-sort-value="{{ emp.emp_code }}"><span class="pl-expense-code">{{ emp.emp_code }}</span></td>
+              <td data-sort-value="{{ emp.name }}"><div class="pl-name">{{ emp.name }}</div></td>
+              <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location }}</span></td>
+              <td class="pl-col-amount pl-amount" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
+              <td class="pl-col-attend" data-sort-value="{{ badge_num if emp.att.tracked else -1 }}">
+                {% if emp.att.tracked %}
+                <span class="badge {% if pct >= 90 %}bg-green{% elif pct >= 70 %}bg-orange{% else %}bg-red{% endif %}"
+                      title="{{ badge_num }} present day{{ 's' if badge_num != 1 else '' }} out of {{ emp.att.badge_den }} in the month{% if emp.weekday_leave_days|default(0) > 0 %} · {{ '%g'|format(emp.weekday_leave_days) }} leave{% if emp.total_off|default(0) %} ({{ emp.total_off }} allowed){% endif %}{% endif %}{% if emp.lop_days|default(0) > 0 %} · {{ '%g'|format(emp.lop_days) }} LOP{% endif %}">
+                  {{ badge_num }}/{{ emp.att.badge_den }}
+                </span>
+                {% else %}
+                <span class="badge bg-gray">—</span>
                 {% endif %}
-                {% if has_payroll_access('credit') %}
-                <a href="{{ url_for('employee_credits', emp_id=emp.id, year=sel_year, month=sel_month) }}"
-                   class="act-btn cred" data-tip="Credits">
-                  <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                </a>
+              </td>
+              <td class="pl-col-amount pl-amount pl-amount--warn" data-sort-value="{{ deductions }}" title="EPF: {{ emp.epf | inr }} + ESIC: {{ emp.esic | inr }}{% if emp.lop_deduction|default(0) > 0 %} + LOP: {{ emp.lop_deduction | inr }}{% endif %}">
+                {{ deductions | inr }}
+              </td>
+              <td class="pl-col-amount pl-amount" id="tip-inc-{{ emp.id }}" data-sort-value="{{ emp.tip_incentive|default(0) }}" title="Tip incentive for {{ month_name }} {{ sel_year }}">
+                {% if emp.tip_incentive|default(0) > 0 %}
+                {{ emp.tip_incentive | inr }}
+                {% else %}
+                <span class="pl-amount pl-amount--muted">—</span>
                 {% endif %}
-                {% if has_payroll_access('employee') and (has_payroll_access('attendance') or has_payroll_access('credit')) %}
-                <div class="act-sep"></div>
+              </td>
+              <td class="pl-col-amount pl-amount pl-amount--ok" id="net-{{ emp.id }}" data-sort-value="{{ emp.net }}">
+                {{ emp.net | inr }}
+              </td>
+              <td class="pl-col-amount" data-sort-value="{{ emp.credit_repayment|default(0) if emp.repayment_input_visible else -1 }}">
+                {% if emp.repayment_input_visible %}
+                <input type="number" class="inline-sal" id="cr-{{ emp.id }}"
+                       value="{{ emp.credit_repayment or '' }}"
+                       placeholder="0"
+                       data-emp="{{ emp.id }}" data-field="credit_repayment" max="{{ emp.repayment_max }}"
+                       {% if not emp.repayment_input_enabled %}disabled{% endif %}
+                       title="{% if emp.repayment_input_enabled %}Repayment for {{ payroll_state.label }} — max {{ emp.repayment_max | inr }}{% elif payroll_state.locked|default(false) %}{{ payroll_state.message }}{% elif emp.repayment_max <= 0 %}No payable net salary for {{ payroll_state.label }} yet{% else %}{{ payroll_state.message }}{% endif %}"
+                       onchange="saveSalary({{ emp.id }})"
+                       min="0" step="0.01">
+                {% else %}
+                <span class="pl-amount pl-amount--muted">—</span>
                 {% endif %}
-                {% if has_payroll_access('employee') %}
-                <a href="{{ url_for('edit_employee', emp_id=emp.id) }}"
-                   class="act-btn edit" data-tip="Edit">
-                  <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                </a>
-                <a href="{{ url_for('delete_employee', emp_id=emp.id) }}"
-                   class="act-btn del" data-tip="Delete"
-                   onclick="return confirm('Delete {{ emp.name }}? This cannot be undone.')">
-                  <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                </a>
-                {% endif %}
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+              </td>
+              <td id="cb-{{ emp.id }}" class="pl-col-amount pl-amount {% if emp.credit_total > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ emp.credit_total }}">
+                {{ emp.credit_total | inr(2) }}
+              </td>
+              <td class="tbl-sticky">
+                <div class="act-grp">
+                  {% if has_payroll_access('attendance') %}
+                  <a href="{{ url_for('attendance', emp_id=emp.id, year=sel_year, month=sel_month) }}"
+                     class="act-btn att" data-tip="Attendance">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  </a>
+                  {% endif %}
+                  {% if has_payroll_access('credit') %}
+                  <a href="{{ url_for('employee_credits', emp_id=emp.id, year=sel_year, month=sel_month) }}"
+                     class="act-btn cred" data-tip="Credits">
+                    <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                  </a>
+                  {% endif %}
+                  {% if has_payroll_access('employee') and (has_payroll_access('attendance') or has_payroll_access('credit')) %}
+                  <div class="act-sep"></div>
+                  {% endif %}
+                  {% if has_payroll_access('employee') %}
+                  <a href="{{ url_for('edit_employee', emp_id=emp.id) }}"
+                     class="act-btn edit" data-tip="Edit">
+                    <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  </a>
+                  <a href="{{ url_for('delete_employee', emp_id=emp.id) }}"
+                     class="act-btn del" data-tip="Delete"
+                     onclick="return confirm('Delete {{ emp.name }}? This cannot be undone.')">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                  </a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
+    <script>
+    (function initEmpTableSort(){
+      var table = document.getElementById('emp-main-table');
+      if (!table) return;
+      var tbody = table.tBodies[0];
+      if (!tbody) return;
+      var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+      var activeKey = '';
+      var ascending = true;
+
+      function cellSortValue(row, colIndex, type){
+        var cell = row.cells[colIndex];
+        if (!cell) return type === 'number' ? 0 : '';
+        var raw = cell.getAttribute('data-sort-value');
+        if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+        if (type === 'number') {
+          var n = Number(raw);
+          return isFinite(n) ? n : 0;
+        }
+        return String(raw).toLowerCase();
+      }
+
+      function sortBy(th){
+        var key = th.getAttribute('data-sort') || '';
+        var type = th.getAttribute('data-sort-type') || 'text';
+        var colIndex = Array.from(th.parentNode.children).indexOf(th);
+        if (colIndex < 0) return;
+
+        if (activeKey === key) ascending = !ascending;
+        else {
+          activeKey = key;
+          ascending = true;
+        }
+
+        var rows = Array.from(tbody.rows);
+        rows.sort(function(a, b){
+          var av = cellSortValue(a, colIndex, type);
+          var bv = cellSortValue(b, colIndex, type);
+          var cmp = 0;
+          if (type === 'number') cmp = av - bv;
+          else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+          return ascending ? cmp : -cmp;
+        });
+        rows.forEach(function(row){ tbody.appendChild(row); });
+
+        headers.forEach(function(header){
+          header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+          header.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+        th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+      }
+
+      headers.forEach(function(th){
+        th.addEventListener('click', function(){ sortBy(th); });
+        th.addEventListener('keydown', function(e){
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            sortBy(th);
+          }
+        });
+      });
+    })();
+    </script>
     {% else %}
-    <div class="empty-state">
-      <div style="font-size:32px;opacity:.25;margin-bottom:10px;">👥</div>
+    <div class="emp-empty">
       {% if search %}
         <p>No employees found matching <strong>"{{ search }}"</strong>.</p>
       {% else %}
@@ -2371,13 +2955,55 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       {% endif %}
     </div>
     {% endif %}
-  </div>
+  </article>
 
 {% endif %}
 
 </main>
 </div><!-- /main-wrapper -->
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=9"></script>
+{% if mode is defined and mode == 'credits' %}
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=7"></script>
+<script>
+(function(){
+  var form = document.getElementById('emp-credits-filter-form');
+  if (!form || !window.SalesDateRangePicker) return;
+  var dateFrom = document.getElementById('emp-credits-date-from');
+  var dateTo = document.getElementById('emp-credits-date-to');
+  SalesDateRangePicker.init({
+    wrapId: 'ec-date-range-wrap',
+    triggerId: 'ec-date-range-trigger',
+    backdropId: 'ec-date-range-backdrop',
+    panelId: 'ec-date-range-panel',
+    displayId: 'ec-date-range-display',
+    formId: 'emp-credits-filter-form',
+    fromInputId: 'emp-credits-date-from',
+    toInputId: 'emp-credits-date-to',
+    applyId: 'ec-date-range-apply',
+    prevId: 'ec-cal-prev',
+    nextId: 'ec-cal-next',
+    title0Id: 'ec-cal-title0',
+    title1Id: 'ec-cal-title1',
+    grid0Id: 'ec-cal-grid0',
+    grid1Id: 'ec-cal-grid1',
+    emptyLabel: 'Date',
+    onBeforeSubmit: function(){
+      if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+      if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+    }
+  });
+  var clearBtn = document.getElementById('ec-date-range-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      var clearUrl = form.getAttribute('data-clear-url') || form.action || '';
+      if (clearUrl) window.location.href = clearUrl;
+    });
+  }
+})();
+</script>
+{% endif %}
 </div><!-- /de-main-wrapper -->
 </div><!-- /de-app-shell -->
 </div><!-- /ep-workspace -->
@@ -2395,10 +3021,21 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 
     <div id="acm-err" style="display:none;background:var(--err-bg);border:1px solid rgba(220,38,38,.25);color:var(--err);padding:9px 13px;border-radius:var(--rs);font-size:12px;margin-bottom:12px;"></div>
 
-    <form id="add-credit-form" method="POST" action="{{ url_for('add_credit_global') }}">
+    <form id="add-credit-form" method="POST" action="{% if mode is defined and mode == 'credits' and emp is defined %}{{ url_for('add_credit', emp_id=emp.id) }}{% else %}{{ url_for('add_credit_global') }}{% endif %}">
       <input type="hidden" name="year" value="{{ sel_year }}">
       <input type="hidden" name="month" value="{{ sel_month }}">
       <input type="hidden" id="acm-type" name="transaction_type" value="credit">
+      {% if mode is defined and mode == 'credits' and emp is defined %}
+      <input type="hidden" id="acm-emp-hidden" name="employee_id" value="{{ emp.id }}">
+      <div class="acm-locked-emp" style="margin-bottom:14px;">
+        <label style="display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;">Employee</label>
+        <div style="display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border:1px solid #E5E7EB;border-radius:10px;background:#F8FAFD;">
+          <span class="pl-expense-code">{{ emp.emp_code }}</span>
+          <span style="font-weight:700;color:var(--txt);">{{ emp.name }}</span>
+          {% if emp.location %}<span style="color:var(--txt3);font-size:12px;">{{ emp.location }}</span>{% endif %}
+        </div>
+      </div>
+      {% else %}
       <!-- Employee selector -->
       {% set acm_emp_ns = namespace(options=[('', 'Select employee…')]) %}
       {% for e in all_employees|default([]) %}
@@ -2408,6 +3045,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       <div style="margin-bottom:14px;">
         {{ ep_listbox('employee_id', 'Employee', acm_emp_ns.options, '', placeholder='Select employee…', searchable=true, field_id='acm-emp-hidden') }}
       </div>
+      {% endif %}
 
       <!-- Date + Amount row -->
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
@@ -2718,12 +3356,16 @@ if(popup) popup.addEventListener('click', function(e){ if(e.target===popup) clos
 
 // ── Credit inline edit ──
 function showEditCredit(id){
-  document.getElementById('cr-row-'+id).style.display='none';
-  document.getElementById('cr-edit-'+id).style.display='';
+  var row = document.getElementById('cr-row-'+id);
+  var edit = document.getElementById('cr-edit-'+id);
+  if (row) row.hidden = true;
+  if (edit) edit.hidden = false;
 }
 function hideEditCredit(id){
-  document.getElementById('cr-row-'+id).style.display='';
-  document.getElementById('cr-edit-'+id).style.display='none';
+  var row = document.getElementById('cr-row-'+id);
+  var edit = document.getElementById('cr-edit-'+id);
+  if (row) row.hidden = false;
+  if (edit) edit.hidden = true;
 }
 function submitEditCredit(id){
   var form = document.createElement('form');
@@ -2744,7 +3386,7 @@ function submitEditCredit(id){
 }
 
 function submitPayrollLock(year, month, label){
-  if(!window.confirm('Lock ' + label + '? After locking, repayment changes for this month will become read-only.')) return;
+  if(!window.confirm('Lock ' + label + '? After locking, NO edits are allowed for this month — attendance, credits, repayments, tip incentive, and wage fields — including for administrators. This cannot be undone from here.')) return;
   var form = document.createElement('form');
   form.method = 'POST';
   form.action = '{{ url_for('lock_payroll_month') }}';
@@ -2758,34 +3400,6 @@ function submitPayrollLock(year, month, label){
   }
   document.body.appendChild(form);
   form.submit();
-}
-
-// ── Add credit / repayment ──
-function setCreditType(type){
-  var el = document.getElementById('cr_type');
-  if(el) el.value = type === 'repayment' ? 'repayment' : 'credit';
-}
-function addCredit(e){
-  e.preventDefault();
-  var dateVal=document.getElementById('cr_date').value;
-  var amtVal=document.getElementById('cr_amount').value;
-  var descVal=document.getElementById('cr_desc').value;
-  var typeVal=(document.getElementById('cr_type')||{value:'credit'}).value;
-  var msgEl=document.getElementById('credit-msg');
-  if(!dateVal||!amtVal||parseFloat(amtVal)<=0){
-    if(msgEl){ msgEl.style.display='block'; msgEl.style.background='var(--err-bg)'; msgEl.style.border='1px solid rgba(220,38,38,.3)'; msgEl.style.color='var(--err)'; msgEl.textContent='Please enter a valid date and amount.'; }
-    return false;
-  }
-  var form=document.createElement('form');
-  form.method='POST'; form.action='/add_credit/{{ emp.id if emp is defined else 0 }}';
-  var fields={date:dateVal,description:descVal,amount:amtVal,transaction_type:typeVal,year:'{{ sel_year }}',month:'{{ sel_month }}'};
-  for(var k in fields){
-    var inp=document.createElement('input');
-    inp.type='hidden'; inp.name=k; inp.value=fields[k];
-    form.appendChild(inp);
-  }
-  document.body.appendChild(form); form.submit();
-  return false;
 }
 
 // ── Credit Dashboard table filter ──
@@ -2803,35 +3417,32 @@ function filterCreditTable(){
     if(show) visible++;
   });
   var noRes = document.getElementById('cd-no-results');
-  if(noRes) noRes.style.display = (visible === 0 && rows.length > 0) ? 'block' : 'none';
+  if(noRes) noRes.hidden = !(visible === 0 && rows.length > 0);
   var badge = document.getElementById('cd-count-badge');
   if(badge) badge.textContent = visible + ' employee' + (visible !== 1 ? 's' : '');
-  var clearBtn = document.getElementById('cd-clear-btn');
-  if(clearBtn) clearBtn.style.display = (q || location) ? 'inline-flex' : 'none';
-}
-function clearCreditFilters(){
-  var s = document.getElementById('cd-search');   if(s) s.value = '';
-  if (typeof resetEpListbox === 'function') {
-    resetEpListbox('cd-location', '', 'All Departments');
-  }
-  filterCreditTable();
 }
 
 // ── Add Credit / Repayment Modal (Credit Dashboard) ──
 function openAddCreditModal(type){
   type = type === 'repayment' ? 'repayment' : 'credit';
-  // Set default date to today
+  var lockedEmp = document.querySelector('.acm-locked-emp');
   var today = new Date().toISOString().split('T')[0];
   document.getElementById('acm-type').value = type;
   document.getElementById('acm-date').value = today;
   document.getElementById('acm-amount').value = '';
   document.getElementById('acm-desc').value = type === 'repayment' ? 'Repayment' : '';
-  if (typeof resetEpListbox === 'function') resetEpListbox('acm-emp-hidden', '', 'Select employee…');
+  if (!lockedEmp && typeof resetEpListbox === 'function') {
+    resetEpListbox('acm-emp-hidden', '', 'Select employee…');
+  }
   document.getElementById('acm-err').style.display = 'none';
   document.getElementById('acm-title').textContent = type === 'repayment' ? 'Add Repayment' : 'Add Credit / Advance';
-  document.getElementById('acm-copy').textContent = type === 'repayment'
-    ? 'Select an employee and enter repayment details. The amount will reduce their credit balance.'
-    : 'Select an employee and enter the credit details. The entry will be added to their credit history.';
+  document.getElementById('acm-copy').textContent = lockedEmp
+    ? (type === 'repayment'
+      ? 'Enter repayment details. The amount will reduce this employee’s credit balance.'
+      : 'Enter the credit details. The entry will be added to this employee’s credit history.')
+    : (type === 'repayment'
+      ? 'Select an employee and enter repayment details. The amount will reduce their credit balance.'
+      : 'Select an employee and enter the credit details. The entry will be added to their credit history.');
   document.getElementById('acm-submit-label').textContent = type === 'repayment' ? 'Repayment' : 'Add Credit';
   document.getElementById('add-credit-modal').classList.add('active');
 }

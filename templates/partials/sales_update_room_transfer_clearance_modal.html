@@ -1,27 +1,27 @@
 <div class="modal-backdrop" id="rt-clearance-modal" aria-hidden="true">
-  <div class="staff-credit-box cp-modal-box" role="dialog" aria-modal="true" aria-labelledby="rt-clearance-title">
+  <div class="staff-credit-box cp-modal-box rt-clearance-box" role="dialog" aria-modal="true" aria-labelledby="rt-clearance-title">
     <div class="staff-credit-head">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
       <span id="rt-clearance-title">Payment Details</span>
     </div>
-    <p class="staff-credit-copy">Enter how this room transfer payment was made.</p>
+    <p class="staff-credit-copy">Enter how this payment was made. Split across modes when needed.</p>
     <div id="rt-clearance-error" class="staff-credit-error"></div>
     <div class="staff-field">
       <label for="rt-payment-date">Payment date *</label>
       <input id="rt-payment-date" class="staff-input" type="date" value="{{ today_iso }}">
     </div>
     <div class="staff-field">
-      <label>Payment mode *</label>
-      <div class="staff-credit-type-toggle" id="rt-method-toggle">
-        {% for method_key, method_label in credit_payment_methods %}
-        <button type="button" class="staff-credit-type-btn{% if method_key == 'cash' %} active{% endif %}" data-value="{{ method_key }}">{{ method_label }}</button>
-        {% endfor %}
+      <div class="rt-split-head">
+        <label>Payment mode *</label>
+        <button type="button" class="rt-link-btn" id="rt-add-split-btn">Split Payment</button>
       </div>
-      <input type="hidden" id="rt-payment-method" value="cash">
-    </div>
-    <div class="staff-field" id="rt-transaction-wrap" hidden>
-      <label for="rt-transaction-id">Transaction ID *</label>
-      <input id="rt-transaction-id" class="staff-input" type="text" placeholder="Bank transfer / UTR reference" autocomplete="off">
+      <div id="rt-payment-splits" class="rt-payment-splits" aria-label="Payment mode splits"></div>
+      <div class="rt-split-balance" id="rt-split-balance" hidden>
+        <span>Modes total</span>
+        <strong id="rt-split-total" data-amount="0">0</strong>
+        <span class="rt-split-vs">of</span>
+        <strong id="rt-split-target" data-amount="0">0</strong>
+      </div>
     </div>
     <div class="staff-field">
       <label for="rt-notes">Notes</label>
@@ -29,7 +29,7 @@
     </div>
     <div class="cp-alloc-wrap">
       <div class="cp-alloc-head">
-        <span>Selected transfers</span>
+        <span>Selected entries</span>
         <span id="rt-alloc-meta"></span>
       </div>
       <div class="cp-alloc-table-wrap">
@@ -55,3 +55,4 @@
     </div>
   </div>
 </div>
+<script id="rt-payment-methods-data" type="application/json">{{ room_transfer_payment_methods|tojson }}</script>

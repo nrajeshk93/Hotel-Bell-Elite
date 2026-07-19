@@ -102,9 +102,9 @@
           <span class="se-filter-chip-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
           </span>
-          <input type="hidden" id="pl-add-payment-input" value="cash">
+          <input type="hidden" id="pl-add-payment-input" value="">
           <button type="button" class="se-filter-chip-trigger" id="pl-add-payment-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pl-add-payment-list" aria-labelledby="pl-add-payment-label pl-add-payment-value">
-            <span class="se-filter-chip-value" id="pl-add-payment-value">Cash</span>
+            <span class="se-filter-chip-value staff-supplier-placeholder" id="pl-add-payment-value">Select payment type</span>
           </button>
           <span class="se-filter-chip-chev" aria-hidden="true">
             <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
@@ -112,7 +112,7 @@
         </div>
         <div class="se-filter-listbox" id="pl-add-payment-list" role="listbox" aria-labelledby="pl-add-payment-label" hidden>
           {% for payment_key, payment_label in expense_payment_types %}
-          <button type="button" class="se-filter-listbox-option{% if payment_key == 'cash' %} is-selected{% endif %}" role="option" data-value="{{ payment_key }}" aria-selected="{{ 'true' if payment_key == 'cash' else 'false' }}">{{ payment_label }}</button>
+          <button type="button" class="se-filter-listbox-option" role="option" data-value="{{ payment_key }}" aria-selected="false">{{ payment_label }}</button>
           {% endfor %}
         </div>
       </div>

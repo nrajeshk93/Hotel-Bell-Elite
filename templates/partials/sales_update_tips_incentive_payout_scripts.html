@@ -1,0 +1,607 @@
+<script>
+(function(){
+  var cfg = window.TIPS_INCENTIVE_PAYOUT || {};
+  var modal = document.getElementById('tips-incentive-payout-modal');
+  var openBtn = document.getElementById('tips-incentive-payout-btn');
+  var clearBtn = document.getElementById('tips-payout-clear');
+  var statusEl = document.getElementById('tips-payout-status');
+  var monthInput = document.getElementById('tips-payout-month');
+  var yearInput = document.getElementById('tips-payout-year');
+  var table = document.getElementById('tips-payout-table');
+  var tbody = document.getElementById('tips-payout-tbody');
+  var emptyEl = document.getElementById('tips-payout-empty');
+  var searchEmpty = document.getElementById('tips-payout-search-empty');
+  var searchInput = document.getElementById('tips-payout-search');
+  var errEl = document.getElementById('tips-payout-error');
+  var lockEl = document.getElementById('tips-payout-lock');
+  var totalEl = document.getElementById('tips-payout-total');
+  var allocatedEl = document.getElementById('tips-payout-allocated');
+  var allocatedLabelEl = document.getElementById('tips-payout-allocated-label');
+  var remainingEl = document.getElementById('tips-payout-remaining');
+  var poolTotal = 0;
+  var canEdit = true;
+  var sortKey = '';
+  var sortAsc = true;
+  var suppressAutosave = false;
+  var saveTimer = null;
+  var saveSeq = 0;
+  var lastSavedSnapshot = '';
+
+  function setAllocatedLabel(monthLabel){
+    if (!allocatedLabelEl) return;
+    var text = String(monthLabel || '').trim();
+    if (!text) {
+      allocatedLabelEl.textContent = 'This Month';
+      return;
+    }
+    // "July 2026" -> "July Allocated"
+    var monthName = text.split(/\s+/)[0] || 'This Month';
+    allocatedLabelEl.textContent = monthName + ' Allocated';
+  }
+
+  function setStatus(msg, kind){
+    if (!statusEl) return;
+    statusEl.textContent = msg || '';
+    statusEl.classList.remove('is-ok', 'is-error');
+    if (kind === 'ok') statusEl.classList.add('is-ok');
+    if (kind === 'error') statusEl.classList.add('is-error');
+  }
+
+  function closePeriodListbox(root){
+    if (!root) return;
+    var trigger = root.querySelector('.se-filter-chip-trigger');
+    var list = root.querySelector('.se-filter-listbox');
+    root.classList.remove('is-open');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    if (list) list.hidden = true;
+  }
+
+  function closeAllPeriodListboxes(except){
+    if (!modal) return;
+    modal.querySelectorAll('[data-se-listbox].is-open').forEach(function(root){
+      if (root !== except) closePeriodListbox(root);
+    });
+  }
+
+  function scrollPeriodSelectedToTop(list){
+    if (!list) return;
+    var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
+    if (!selected) return;
+    requestAnimationFrame(function(){
+      list.scrollTop = Math.max(0, selected.offsetTop);
+    });
+  }
+
+  function bindPeriodListbox(root){
+    if (!root) return;
+    var trigger = root.querySelector('.se-filter-chip-trigger');
+    var list = root.querySelector('.se-filter-listbox');
+    var hidden = root.querySelector('input[type="hidden"]');
+    var valueEl = root.querySelector('.se-filter-chip-value');
+    if (!trigger || !list || !hidden) return;
+
+    trigger.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      var open = root.classList.contains('is-open');
+      closeAllPeriodListboxes();
+      if (open) return;
+      root.classList.add('is-open');
+      trigger.setAttribute('aria-expanded', 'true');
+      list.hidden = false;
+      scrollPeriodSelectedToTop(list);
+    });
+
+    list.addEventListener('click', function(e){
+      var option = e.target.closest('.se-filter-listbox-option');
+      if (!option || !list.contains(option)) return;
+      e.preventDefault();
+      list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+        opt.classList.remove('is-selected');
+        opt.setAttribute('aria-selected', 'false');
+      });
+      option.classList.add('is-selected');
+      option.setAttribute('aria-selected', 'true');
+      hidden.value = option.getAttribute('data-value') || '';
+      if (valueEl) valueEl.textContent = (option.textContent || '').trim();
+      closePeriodListbox(root);
+      loadPayout();
+    });
+  }
+
+  function money(n){
+    var v = Number(n || 0);
+    if (!isFinite(v)) v = 0;
+    if (window.formatInr) return formatInr(v, 0);
+    return '₹' + v.toFixed(2);
+  }
+
+  function showError(msg){
+    if (!errEl) return;
+    if (msg) {
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    } else {
+      errEl.textContent = '';
+      errEl.style.display = 'none';
+    }
+  }
+
+  function cancelPendingSave(){
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+  }
+
+  function openModal(){
+    if (!modal) return;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeModal(){
+    if (!modal) return;
+    cancelPendingSave();
+    closeAllPeriodListboxes();
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    showError('');
+    setStatus('');
+    if (searchInput) searchInput.value = '';
+  }
+
+  function readPeriod(){
+    var year = parseInt(yearInput && yearInput.value, 10);
+    var month = parseInt(monthInput && monthInput.value, 10);
+    if (!isFinite(year)) year = cfg.year;
+    if (!isFinite(month)) month = cfg.month;
+    return { year: year, month: month };
+  }
+
+  var lastOverAlertAt = 0;
+
+  function showOverAllocationAlert(message){
+    var now = Date.now();
+    if (now - lastOverAlertAt < 700) return;
+    lastOverAlertAt = now;
+    window.alert(message);
+  }
+
+  function sumAllocatedExcept(exceptInput){
+    var total = 0;
+    if (!tbody) return 0;
+    tbody.querySelectorAll('.tips-payout-amount').forEach(function(input){
+      if (input === exceptInput) return;
+      var v = parseFloat(input.value);
+      if (!isFinite(v) || v < 0) v = 0;
+      total += v;
+    });
+    return Math.round(total * 100) / 100;
+  }
+
+  function enforceAmountCap(input, opts){
+    opts = opts || {};
+    if (!input || !canEdit) return false;
+    var others = sumAllocatedExcept(input);
+    var requested = parseFloat(input.value);
+    if (input.value === '' || input.value == null) {
+      recalc();
+      return false;
+    }
+    if (!isFinite(requested) || requested < 0) requested = 0;
+    var maxAllowed = Math.round((poolTotal - others) * 100) / 100;
+    if (maxAllowed < 0) maxAllowed = 0;
+    if (requested <= maxAllowed + 1e-9) {
+      recalc();
+      return false;
+    }
+    input.value = maxAllowed > 0 ? String(maxAllowed) : '';
+    if (opts.alert !== false) {
+      showOverAllocationAlert(
+        'Not allowed.\n\n' +
+        'You cannot enter more than the available tips.\n\n' +
+        'Available tips: ' + money(poolTotal) + '\n' +
+        'Already allocated to others: ' + money(others) + '\n' +
+        'Maximum for this employee: ' + money(maxAllowed)
+      );
+    }
+    recalc();
+    return true;
+  }
+
+  function updateClearButton(){
+    if (!clearBtn) return;
+    clearBtn.disabled = !canEdit;
+    clearBtn.title = canEdit
+      ? 'Clear all incentive amounts for this month'
+      : 'This payroll month is locked';
+  }
+
+  function recalc(){
+    var allocated = 0;
+    if (tbody) {
+      tbody.querySelectorAll('.tips-payout-amount').forEach(function(input){
+        var v = parseFloat(input.value);
+        if (!isFinite(v) || v < 0) v = 0;
+        allocated += v;
+        var cell = input.closest('td');
+        if (cell) cell.setAttribute('data-sort-value', String(v));
+      });
+    }
+    allocated = Math.round(allocated * 100) / 100;
+    var remainingRaw = Math.round((poolTotal - allocated) * 100) / 100;
+    var overAllocated = remainingRaw < -0.001;
+    var remaining = overAllocated ? 0 : remainingRaw;
+    if (totalEl) totalEl.textContent = money(poolTotal);
+    if (allocatedEl) {
+      allocatedEl.textContent = money(allocated);
+      allocatedEl.classList.toggle('is-over', overAllocated);
+    }
+    if (remainingEl) {
+      remainingEl.textContent = money(remaining);
+      remainingEl.classList.remove('is-over');
+    }
+    updateClearButton();
+    if (typeof scheduleFitKpiValues === 'function') scheduleFitKpiValues();
+    return { allocated: allocated, remaining: remaining, overAllocated: overAllocated };
+  }
+
+  function applySearch(){
+    if (!tbody) return;
+    var needle = String((searchInput && searchInput.value) || '').trim().toLowerCase();
+    var rows = Array.from(tbody.querySelectorAll('tr.tips-payout-row'));
+    var visible = 0;
+    rows.forEach(function(row){
+      if (!needle) {
+        row.hidden = false;
+        visible += 1;
+        return;
+      }
+      var hay = [
+        row.getAttribute('data-code') || '',
+        row.getAttribute('data-name') || '',
+        row.getAttribute('data-dept') || '',
+        row.getAttribute('data-id') || '',
+      ].join(' ');
+      var match = hay.indexOf(needle) !== -1;
+      row.hidden = !match;
+      if (match) visible += 1;
+    });
+    var hasRows = rows.length > 0;
+    if (emptyEl) emptyEl.hidden = hasRows;
+    if (searchEmpty) searchEmpty.hidden = !(hasRows && needle && visible === 0);
+    if (table) table.hidden = !!(hasRows && needle && visible === 0);
+  }
+
+  function cellSortValue(row, colIndex, type){
+    var cell = row.cells[colIndex];
+    if (!cell) return type === 'number' ? 0 : '';
+    var raw = cell.getAttribute('data-sort-value');
+    if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+    if (type === 'number') {
+      var n = Number(raw);
+      return isFinite(n) ? n : 0;
+    }
+    return String(raw).toLowerCase();
+  }
+
+  function updateSortIndicators(){
+    if (!table) return;
+    Array.from(table.querySelectorAll('th.pl-sortable')).forEach(function(header){
+      var key = header.getAttribute('data-sort') || '';
+      header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+      if (key && key === sortKey) {
+        header.classList.add(sortAsc ? 'is-sorted-asc' : 'is-sorted-desc');
+        header.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
+      } else {
+        header.setAttribute('aria-sort', 'none');
+      }
+    });
+  }
+
+  function sortBy(th){
+    if (!tbody || !th) return;
+    var key = th.getAttribute('data-sort') || '';
+    var type = th.getAttribute('data-sort-type') || 'text';
+    var colIndex = Array.from(th.parentNode.children).indexOf(th);
+    if (colIndex < 0) return;
+
+    if (sortKey === key) sortAsc = !sortAsc;
+    else {
+      sortKey = key;
+      sortAsc = true;
+    }
+
+    var rows = Array.from(tbody.rows);
+    rows.sort(function(a, b){
+      var av = cellSortValue(a, colIndex, type);
+      var bv = cellSortValue(b, colIndex, type);
+      var cmp = 0;
+      if (type === 'number') cmp = av - bv;
+      else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+      return sortAsc ? cmp : -cmp;
+    });
+    rows.forEach(function(row){ tbody.appendChild(row); });
+    updateSortIndicators();
+  }
+
+  function resetSort(){
+    sortKey = '';
+    sortAsc = true;
+    updateSortIndicators();
+  }
+
+  function collectAllocations(){
+    var rows = [];
+    if (!tbody) return rows;
+    tbody.querySelectorAll('.tips-payout-amount').forEach(function(input){
+      var empId = parseInt(input.getAttribute('data-emp-id'), 10);
+      var amount = parseFloat(input.value);
+      if (!isFinite(amount) || amount < 0) amount = 0;
+      rows.push({ employee_id: empId, amount: Math.round(amount * 100) / 100 });
+    });
+    return rows;
+  }
+
+  function allocationSnapshot(){
+    return JSON.stringify(collectAllocations());
+  }
+
+  function renderEmployees(employees){
+    if (!tbody) return;
+    suppressAutosave = true;
+    tbody.innerHTML = '';
+    var list = employees || [];
+    if (emptyEl) emptyEl.hidden = list.length > 0;
+    if (searchEmpty) searchEmpty.hidden = true;
+    if (table) table.hidden = false;
+    list.forEach(function(emp){
+      var tr = document.createElement('tr');
+      var amount = Number(emp.amount || 0);
+      var code = emp.emp_code || '';
+      var name = emp.name || '';
+      var dept = emp.location || '';
+      tr.className = 'tips-payout-row';
+      tr.setAttribute('data-id', String(emp.id || ''));
+      tr.setAttribute('data-code', String(code).toLowerCase());
+      tr.setAttribute('data-name', String(name).toLowerCase());
+      tr.setAttribute('data-dept', String(dept).toLowerCase());
+      tr.innerHTML =
+        '<td class="pl-col-code" data-sort-value=""></td>' +
+        '<td data-sort-value=""><div class="pl-name"></div></td>' +
+        '<td data-sort-value=""></td>' +
+        '<td class="pl-col-amount" data-sort-value="' + (amount > 0 ? amount : 0) + '">' +
+          '<input type="number" class="staff-input tips-payout-amount" min="0" step="0.01" data-emp-id="' + emp.id + '" value="' + (amount > 0 ? amount : '') + '" placeholder="0"' + (canEdit ? '' : ' disabled') + '>' +
+        '</td>';
+      tr.cells[0].setAttribute('data-sort-value', code);
+      tr.cells[0].innerHTML = '<span class="pl-expense-code"></span>';
+      tr.cells[0].querySelector('.pl-expense-code').textContent = code || '—';
+      tr.cells[1].setAttribute('data-sort-value', name);
+      tr.cells[1].querySelector('.pl-name').textContent = name;
+      tr.cells[2].setAttribute('data-sort-value', dept);
+      tr.cells[2].textContent = dept || '—';
+      tbody.appendChild(tr);
+    });
+    tbody.querySelectorAll('.tips-payout-amount').forEach(function(input){
+      input.addEventListener('input', onAmountFieldEvent);
+      input.addEventListener('change', onAmountFieldEvent);
+      input.addEventListener('blur', onAmountFieldEvent);
+    });
+    resetSort();
+    applySearch();
+    recalc();
+    lastSavedSnapshot = allocationSnapshot();
+    suppressAutosave = false;
+  }
+
+  function applyLockState(d){
+    canEdit = !!d.can_edit;
+    if (lockEl) {
+      if (!canEdit && d.message) {
+        lockEl.hidden = false;
+        lockEl.textContent = d.message;
+      } else {
+        lockEl.hidden = true;
+        lockEl.textContent = '';
+      }
+    }
+    updateClearButton();
+  }
+
+  function loadPayout(){
+    var period = readPeriod();
+    cancelPendingSave();
+    showError('');
+    setStatus('Loading…');
+    suppressAutosave = true;
+    var url = cfg.url +
+      '?company=' + encodeURIComponent(cfg.company || '') +
+      '&year=' + encodeURIComponent(period.year) +
+      '&month=' + encodeURIComponent(period.month);
+    return fetch(url, { headers: { 'Accept': 'application/json' } })
+      .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
+      .then(function(res){
+        var d = res.data || {};
+        if (!res.ok || d.ok === false) {
+          showError(d.error || 'Could not load incentive payout.');
+          setStatus('', 'error');
+          return;
+        }
+        poolTotal = Number(d.total_tips || 0);
+        setAllocatedLabel(d.month_label);
+        applyLockState(d);
+        if (allocatedEl) allocatedEl.textContent = money(d.allocated || 0);
+        renderEmployees(d.employees || []);
+        setStatus(canEdit ? 'Changes save automatically' : 'Read-only');
+      })
+      .catch(function(){
+        showError('Could not load incentive payout.');
+        setStatus('', 'error');
+      })
+      .then(function(){
+        suppressAutosave = false;
+      });
+  }
+
+  function savePayout(opts){
+    opts = opts || {};
+    if (!canEdit) {
+      if (opts.alertLocked) {
+        window.alert(
+          'Not allowed.\n\n' +
+          'This payroll month is locked. Tip incentive cannot be updated for locked months.'
+        );
+      }
+      return;
+    }
+    if (tbody) {
+      tbody.querySelectorAll('.tips-payout-amount').forEach(function(input){
+        enforceAmountCap(input, { alert: false });
+      });
+    }
+    var totals = recalc();
+    if (totals.overAllocated) {
+      showOverAllocationAlert(
+        'Not allowed.\n\n' +
+        'Allocated amount exceeds available tips (' + money(poolTotal) + ').'
+      );
+      showError('Allocated amount exceeds available tips.');
+      setStatus('Not saved — over available tips', 'error');
+      return;
+    }
+
+    var snapshot = allocationSnapshot();
+    if (!opts.force && snapshot === lastSavedSnapshot) {
+      setStatus('Saved', 'ok');
+      return;
+    }
+
+    var period = readPeriod();
+    var seq = ++saveSeq;
+    showError('');
+    setStatus('Saving…');
+    fetch(cfg.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        company: cfg.company,
+        year: period.year,
+        month: period.month,
+        allocations: collectAllocations()
+      })
+    })
+      .then(function(r){ return r.json().then(function(d){ return { ok: r.ok, data: d }; }); })
+      .then(function(res){
+        if (seq !== saveSeq) return;
+        var d = res.data || {};
+        if (!res.ok || d.ok === false) {
+          var msg = d.error || 'Could not save incentive payout.';
+          showError(msg);
+          setStatus('Save failed', 'error');
+          if (d.locked || /locked/i.test(msg)) {
+            applyLockState({ can_edit: false, message: msg });
+            if (tbody) {
+              tbody.querySelectorAll('.tips-payout-amount').forEach(function(input){
+                input.disabled = true;
+              });
+            }
+          }
+          return;
+        }
+        poolTotal = Number(d.total_tips != null ? d.total_tips : poolTotal);
+        applyLockState(d);
+        setAllocatedLabel(d.month_label);
+        lastSavedSnapshot = snapshot;
+        recalc();
+        setStatus('Saved', 'ok');
+      })
+      .catch(function(){
+        if (seq !== saveSeq) return;
+        showError('Could not save incentive payout.');
+        setStatus('Save failed', 'error');
+      });
+  }
+
+  function scheduleAutosave(){
+    if (!canEdit || suppressAutosave) return;
+    cancelPendingSave();
+    setStatus('Saving…');
+    saveTimer = setTimeout(function(){
+      saveTimer = null;
+      savePayout();
+    }, 450);
+  }
+
+  function onAmountFieldEvent(e){
+    if (!canEdit) return;
+    enforceAmountCap(e.target, { alert: true });
+    scheduleAutosave();
+  }
+
+  function clearAllAmounts(){
+    if (!canEdit) {
+      window.alert(
+        'Not allowed.\n\n' +
+        'This payroll month is locked. Tip incentive cannot be updated for locked months.'
+      );
+      return;
+    }
+    if (!tbody) return;
+    var hasValue = false;
+    tbody.querySelectorAll('.tips-payout-amount').forEach(function(input){
+      if (String(input.value || '').trim() !== '') hasValue = true;
+      input.value = '';
+    });
+    recalc();
+    if (!hasValue && allocationSnapshot() === lastSavedSnapshot) {
+      setStatus('Cleared', 'ok');
+      return;
+    }
+    cancelPendingSave();
+    savePayout({ force: true });
+  }
+
+  if (openBtn) {
+    openBtn.addEventListener('click', function(){
+      openModal();
+      loadPayout();
+    });
+  }
+  if (clearBtn) clearBtn.addEventListener('click', clearAllAmounts);
+  if (modal) {
+    modal.querySelectorAll('[data-se-listbox]').forEach(bindPeriodListbox);
+    modal.addEventListener('click', function(e){
+      if (e.target === modal) {
+        closeModal();
+        return;
+      }
+      modal.querySelectorAll('[data-se-listbox].is-open').forEach(function(root){
+        if (!root.contains(e.target)) closePeriodListbox(root);
+      });
+    });
+  }
+  if (searchInput) searchInput.addEventListener('input', applySearch);
+  if (table) {
+    Array.from(table.querySelectorAll('th.pl-sortable')).forEach(function(th){
+      th.addEventListener('click', function(){ sortBy(th); });
+      th.addEventListener('keydown', function(e){
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          sortBy(th);
+        }
+      });
+    });
+  }
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && modal && modal.classList.contains('open')) {
+      var openList = modal.querySelector('[data-se-listbox].is-open');
+      if (openList) {
+        closePeriodListbox(openList);
+        return;
+      }
+      closeModal();
+    }
+  });
+})();
+</script>

@@ -1,0 +1,86 @@
+<article class="card pl-list-panel st-panel" aria-label="Waiting approvals">
+  <div class="card-hdr">
+    <div class="card-title"><span>Waiting for you · {{ selected_outlet_label }}</span></div>
+    <span class="pl-count">{{ pending|length }}</span>
+  </div>
+  <div class="card-body" style="padding:0;">
+    {% if pending %}
+    <div class="pl-table-wrap">
+      <table class="pl-table">
+        <thead>
+          <tr>
+            <th>Indent</th>
+            <th>From</th>
+            <th>Items</th>
+            <th>Submitted</th>
+            <th>Decision</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for indent in pending %}
+          <tr>
+            <td>
+              <div class="pl-name">{{ indent.indent_no }}</div>
+              {% if indent.notes %}<div class="pl-meta">{{ indent.notes }}</div>{% endif %}
+              <a class="st-link" href="{{ url_for('stores_indent_detail', indent_id=indent.id, outlet=selected_outlet) }}">View items</a>
+            </td>
+            <td>{{ indent.created_by_name or '—' }}</td>
+            <td>{{ indent.line_count }}</td>
+            <td>{{ indent.submitted_at or indent.created_at }}</td>
+            <td>
+              <form method="post" action="{{ url_for('stores_indent_decide', indent_id=indent.id) }}" class="st-inline-form">
+                <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+                <input type="text" name="decision_note" placeholder="Reject reason (if rejecting)">
+                <button type="submit" class="btn btn-primary" name="decision" value="approved">Approve</button>
+                <button type="submit" class="btn" name="decision" value="rejected">Reject</button>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="pl-empty">
+      <strong>Nothing waiting</strong>
+      When someone sends an indent for {{ selected_outlet_label }}, it will appear here.
+    </div>
+    {% endif %}
+  </div>
+</article>
+
+<article class="card pl-list-panel st-panel" aria-label="Recent decisions">
+  <div class="card-hdr">
+    <div class="card-title"><span>Recent decisions</span></div>
+  </div>
+  <div class="card-body" style="padding:0;">
+    {% if recent %}
+    <div class="pl-table-wrap">
+      <table class="pl-table">
+        <thead>
+          <tr>
+            <th>Indent</th>
+            <th>Status</th>
+            <th>By</th>
+            <th>When</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for indent in recent %}
+          <tr>
+            <td class="pl-name">{{ indent.indent_no }}</td>
+            <td><span class="cp-status-pill cp-status-pill--{{ indent.status }}">{{ status_label(indent.status) }}</span></td>
+            <td>{{ indent.decided_by_name or '—' }}</td>
+            <td>{{ indent.decided_at or '—' }}</td>
+            <td>{{ indent.decision_note or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="pl-empty">No decisions yet.</div>
+    {% endif %}
+  </div>
+</article>

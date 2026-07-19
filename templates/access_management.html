@@ -2,13 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Access Management | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=11">
 <link rel="stylesheet" href="{{ url_for('static', filename='access_module_access.css') }}?v=3">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
 <script>
 (function(){
   try{
@@ -163,6 +164,7 @@ input[type="text"]:focus,input[type="password"]:focus{border-color:var(--acc);bo
                 <script type="application/json" id="ma-initial-user-access">{{ form.user_access_modules | tojson }}</script>
                 <script type="application/json" id="ma-initial-payroll">{{ form.payroll_modules | tojson }}</script>
                 <script type="application/json" id="ma-initial-accounts">{{ form.accounts_modules | default([]) | tojson }}</script>
+                <script type="application/json" id="ma-initial-stores">{{ form.stores_modules | default([]) | tojson }}</script>
                 <div id="ma-hidden-inputs" class="ma-hidden-inputs" aria-hidden="true"></div>
 
                 <div class="ma-access">
@@ -289,7 +291,7 @@ input[type="text"]:focus,input[type="password"]:focus{border-color:var(--acc);bo
                       <span>All modules</span>
                     </span>
                   {% else %}
-                    {% set raw_chips = user.dashboard_labels + user.sales_analytics_labels + user.user_access_labels + user.accounts_labels|default([]) + user.payroll_labels|default([]) %}
+                    {% set raw_chips = user.dashboard_labels + user.sales_analytics_labels + user.user_access_labels + user.accounts_labels|default([]) + user.payroll_labels|default([]) + user.stores_labels|default([]) %}
                     {% set chip_ns = namespace(chips=[], seen=[]) %}
                     {% for chip in raw_chips %}
                       {% if chip and chip not in chip_ns.seen %}

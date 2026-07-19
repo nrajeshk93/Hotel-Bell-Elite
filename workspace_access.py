@@ -8,6 +8,7 @@ _SALES_ANALYTICS_SUBMODULES = (
     {"key": "bar", "label": "Sales Update - Bar"},
     {"key": "restaurant", "label": "Sales Update - Restaurant"},
     {"key": "room_transfer", "label": "Room Transfer"},
+    {"key": "credit", "label": "Credit"},
 )
 
 _USER_ACCESS_SUBMODULES = (
@@ -17,17 +18,29 @@ _USER_ACCESS_SUBMODULES = (
 
 _PAYROLL_SUBMODULES = (
     {"key": "employee", "label": "Employee"},
-    {"key": "report", "label": "Report"},
     {"key": "attendance", "label": "Attendance"},
     {"key": "credit", "label": "Credit"},
+    {"key": "tips", "label": "Tips"},
+    {"key": "report", "label": "Report"},
 )
 
 _ACCOUNTS_SUBMODULES = (
     {"key": "purchase_ledger", "label": "Purchase Ledger"},
     {"key": "cash_ledger", "label": "Cash Ledger"},
-    {"key": "credit_payment", "label": "Credit Payment"},
     {"key": "purchase_verification", "label": "Purchase Verification"},
+    {"key": "credit_payment", "label": "Credit Payment"},
     {"key": "supplier_master", "label": "Supplier Master"},
+)
+
+_STORES_SUBMODULES = (
+    {"key": "product_master", "label": "Products"},
+    {"key": "indent", "label": "Indent"},
+    {"key": "approvals", "label": "Approvals"},
+    {"key": "purchase_requests", "label": "Purchases"},
+    {"key": "stock", "label": "Stock"},
+    {"key": "counter_transfer", "label": "Transfers"},
+    {"key": "stock_verification", "label": "Verification"},
+    {"key": "stock_issues", "label": "Issues"},
 )
 
 # Single registry aligned with the workspace sidebar and access-management UI.
@@ -61,6 +74,13 @@ _WORKSPACE_MODULE_REGISTRY = (
         "permission_field": "payroll_modules",
         "permission_children": _PAYROLL_SUBMODULES,
     },
+    {
+        "key": "stores",
+        "label": "Stores",
+        "permission_scope": "stores",
+        "permission_field": "stores_modules",
+        "permission_children": _STORES_SUBMODULES,
+    },
 )
 
 _DASHBOARD_MODULES = tuple(
@@ -89,11 +109,14 @@ _PAYROLL_SUBMODULE_LABELS = {
 _ACCOUNTS_SUBMODULE_LABELS = {
     item["key"]: item["label"] for item in _ACCOUNTS_SUBMODULES
 }
+_STORES_SUBMODULE_LABELS = {
+    item["key"]: item["label"] for item in _STORES_SUBMODULES
+}
 
 _ACCESS_MODULE_UI_META = {
     "sales_analytics": {
         "icon": "trending-up",
-        "description": "Daily sales updates, room transfers, and analytics dashboards.",
+        "description": "Daily sales updates, room transfers, hotel credit clearance, and analytics dashboards.",
     },
     "access_management": {
         "icon": "shield-check",
@@ -105,11 +128,50 @@ _ACCESS_MODULE_UI_META = {
     },
     "employee_payroll": {
         "icon": "users",
-        "description": "Manage employees, payroll reports, attendance, and credits.",
+        "description": "Manage employees, payroll reports, attendance, credits, and tip analytics.",
+    },
+    "stores": {
+        "icon": "store",
+        "description": "Simple indent-to-stock flow for Bar and Kitchen stores.",
     },
 }
 
-_PUBLIC_ENDPOINTS = {"index", "login", "logout", "static", "home"}
+_STORES_ENDPOINT_GROUPS = {
+    "product_master": {
+        "stores_product_master",
+    },
+    "indent": {
+        "stores_indent",
+        "stores_indent_submit",
+        "stores_indent_detail",
+    },
+    "approvals": {
+        "stores_approvals",
+        "stores_indent_decide",
+    },
+    "purchase_requests": {
+        "stores_purchase_requests",
+        "stores_pr_receive",
+        "stores_pr_detail",
+    },
+    "stock": {
+        "stores_stock",
+    },
+    "counter_transfer": {
+        "stores_counter_transfer",
+    },
+    "stock_verification": {
+        "stores_stock_verification",
+        "stores_verification_settings",
+    },
+    "stock_issues": {
+        "stores_stock_issues",
+    },
+}
+_STORES_PARENT_ENDPOINTS = set().union(*_STORES_ENDPOINT_GROUPS.values()) | {"stores"}
+_STORES_ENDPOINTS = _STORES_PARENT_ENDPOINTS
+
+_PUBLIC_ENDPOINTS = {"index", "login", "logout", "static", "home", "favicon"}
 
 _OUTLET_WRITE_ENDPOINTS = {
     "save_sales_update",
@@ -135,15 +197,28 @@ _SALES_ANALYTICS_ENDPOINT_GROUPS = {
         "save_hotel_ledger",
         "clear_hotel_ledger",
         "create_supplier",
+        "save_sales_update",
+        "sales_update_add_expense",
+        "sales_update_edit_expense",
+        "sales_update_delete_expense",
+        "sales_update_add_tip",
+        "sales_update_edit_tip",
+        "sales_update_delete_tip",
     },
     "bar": {
         "sales_update_bar",
         "sales_update",
         "sales_update_entry",
+        "sales_update_add_tip",
+        "sales_update_edit_tip",
+        "sales_update_delete_tip",
         *_OUTLET_WRITE_ENDPOINTS,
     },
     "restaurant": {
         "sales_update_restaurant",
+        "sales_update_add_tip",
+        "sales_update_edit_tip",
+        "sales_update_delete_tip",
         *_OUTLET_WRITE_ENDPOINTS,
     },
     "room_transfer": {
@@ -151,6 +226,11 @@ _SALES_ANALYTICS_ENDPOINT_GROUPS = {
         "save_room_transfer_status",
         "create_room_transfer_payment",
         "reverse_room_transfer_payment",
+    },
+    "credit": {
+        "sales_update_credit",
+        "create_sales_credit_payment",
+        "reverse_sales_credit_payment",
     },
 }
 
@@ -234,6 +314,11 @@ _PAYROLL_ENDPOINT_GROUPS = {
         "update_salary",
         "lock_payroll_month",
     },
+    "tips": {
+        "sales_update_tips_page",
+        "export_tips_report",
+        "tips_incentive_payout",
+    },
 }
 _PAYROLL_PARENT_ENDPOINTS = set().union(*_PAYROLL_ENDPOINT_GROUPS.values())
 
@@ -304,6 +389,7 @@ def load_user_permissions(conn, user_id):
     user_access = set()
     payroll_access = set()
     accounts_access = set()
+    stores_access = set()
     for row in rows:
         scope = (row["scope"] or "").strip()
         item_key = (row["item_key"] or "").strip()
@@ -317,10 +403,19 @@ def load_user_permissions(conn, user_id):
             payroll_access.add(item_key)
         elif scope == "accounts" and item_key:
             accounts_access.add(item_key)
+        elif scope == "stores" and item_key:
+            stores_access.add(item_key)
         elif scope == "dashboard" and item_key == "sales_update":
             # Legacy key from earlier builds.
             dashboard_access.add("sales_analytics")
-    return dashboard_access, sales_analytics_access, user_access, payroll_access, accounts_access
+    return (
+        dashboard_access,
+        sales_analytics_access,
+        user_access,
+        payroll_access,
+        accounts_access,
+        stores_access,
+    )
 
 
 def build_user_context(conn, row):
@@ -335,12 +430,14 @@ def build_user_context(conn, row):
         user_access,
         payroll_access,
         accounts_access,
+        stores_access,
     ) = load_user_permissions(conn, user["id"])
     user["dashboard_access"] = dashboard_access
     user["sales_analytics_access"] = sales_analytics_access
     user["user_access"] = user_access
     user["payroll_access"] = payroll_access
     user["accounts_access"] = accounts_access
+    user["stores_access"] = stores_access
     user["display_name"] = (user.get("full_name") or user.get("username") or "User").strip()
     return user
 
@@ -357,6 +454,8 @@ def user_can_access_dashboard(user, module_key):
     if module_key == "employee_payroll" and user.get("payroll_access", set()):
         return True
     if module_key == "accounts" and user.get("accounts_access", set()):
+        return True
+    if module_key == "stores" and user.get("stores_access", set()):
         return True
     return module_key in user.get("dashboard_access", set())
 
@@ -382,7 +481,13 @@ def user_can_access_payroll_submodule(user, submodule_key):
         return False
     if user.get("is_admin"):
         return True
-    return submodule_key in user.get("payroll_access", set())
+    access = user.get("payroll_access", set()) or set()
+    if submodule_key in access:
+        return True
+    # Tips analytics sits with Employee Payroll; grant to users who already had Credit.
+    if submodule_key == "tips" and "credit" in access:
+        return True
+    return False
 
 
 def _accounts_access_keys(user):
@@ -406,6 +511,27 @@ def user_can_access_accounts_submodule(user, submodule_key):
     if user.get("is_admin"):
         return True
     return submodule_key in _accounts_access_keys(user)
+
+
+def _stores_access_keys(user):
+    if not user:
+        return set()
+    if user.get("is_admin"):
+        return {item["key"] for item in _STORES_SUBMODULES}
+    access = set(user.get("stores_access", set()) or set())
+    if access:
+        return access
+    if "stores" in user.get("dashboard_access", set()):
+        return {item["key"] for item in _STORES_SUBMODULES}
+    return set()
+
+
+def user_can_access_stores_submodule(user, submodule_key):
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    return submodule_key in _stores_access_keys(user)
 
 
 def user_can_access_supplier_master(user):
@@ -432,6 +558,8 @@ def dashboard_access_list(user):
         dashboard_access.add("employee_payroll")
     if user.get("accounts_access", set()):
         dashboard_access.add("accounts")
+    if user.get("stores_access", set()):
+        dashboard_access.add("stores")
     return [item["key"] for item in _DASHBOARD_MODULES if item["key"] in dashboard_access]
 
 
@@ -440,10 +568,13 @@ def payroll_access_list(user):
         return []
     if user.get("is_admin"):
         return [item["key"] for item in _PAYROLL_SUBMODULES]
+    access = set(user.get("payroll_access", set()) or set())
+    if "credit" in access:
+        access.add("tips")
     return [
         item["key"]
         for item in _PAYROLL_SUBMODULES
-        if item["key"] in user.get("payroll_access", set())
+        if item["key"] in access
     ]
 
 
@@ -452,6 +583,13 @@ def accounts_access_list(user):
         return []
     unlocked = _accounts_access_keys(user)
     return [item["key"] for item in _ACCOUNTS_SUBMODULES if item["key"] in unlocked]
+
+
+def stores_access_list(user):
+    if not user:
+        return []
+    unlocked = _stores_access_keys(user)
+    return [item["key"] for item in _STORES_SUBMODULES if item["key"] in unlocked]
 
 
 def sales_analytics_access_list(user):
@@ -487,6 +625,8 @@ def get_endpoint_dashboard_module(endpoint):
         return "accounts"
     if endpoint in _PAYROLL_PARENT_ENDPOINTS:
         return "employee_payroll"
+    if endpoint in _STORES_ENDPOINTS:
+        return "stores"
     return None
 
 
@@ -502,6 +642,20 @@ def get_endpoint_accounts_submodule(endpoint):
         if endpoint in endpoints:
             return key
     return None
+
+
+def get_endpoint_stores_submodule(endpoint):
+    for key, endpoints in _STORES_ENDPOINT_GROUPS.items():
+        if endpoint in endpoints:
+            return key
+    return None
+
+
+def user_can_access_endpoint_stores(user, endpoint):
+    submodule = get_endpoint_stores_submodule(endpoint)
+    if not submodule:
+        return True
+    return user_can_access_stores_submodule(user, submodule)
 
 
 def get_endpoint_sales_analytics_submodules(endpoint):
@@ -557,6 +711,7 @@ def set_user_permissions(
     user_access_modules=None,
     payroll_modules=None,
     accounts_modules=None,
+    stores_modules=None,
 ):
     dashboard_modules = sorted({
         module for module in dashboard_modules if module in _DASHBOARD_MODULE_LABELS
@@ -581,6 +736,11 @@ def set_user_permissions(
         for module in (accounts_modules or [])
         if module in _ACCOUNTS_SUBMODULE_LABELS
     })
+    stores_modules = sorted({
+        module
+        for module in (stores_modules or [])
+        if module in _STORES_SUBMODULE_LABELS
+    })
 
     if sales_analytics_modules and "sales_analytics" not in dashboard_modules:
         dashboard_modules.append("sales_analytics")
@@ -593,6 +753,9 @@ def set_user_permissions(
         dashboard_modules = sorted(set(dashboard_modules))
     if accounts_modules and "accounts" not in dashboard_modules:
         dashboard_modules.append("accounts")
+        dashboard_modules = sorted(set(dashboard_modules))
+    if stores_modules and "stores" not in dashboard_modules:
+        dashboard_modules.append("stores")
         dashboard_modules = sorted(set(dashboard_modules))
 
     conn.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
@@ -625,6 +788,12 @@ def set_user_permissions(
                 "INSERT INTO user_permissions (user_id, scope, item_key) VALUES (?, ?, ?)",
                 (user_id, "accounts", module_key),
             )
+    if "stores" in dashboard_modules:
+        for module_key in stores_modules:
+            conn.execute(
+                "INSERT INTO user_permissions (user_id, scope, item_key) VALUES (?, ?, ?)",
+                (user_id, "stores", module_key),
+            )
 
 
 def fetch_access_management_users(conn, selected_user_id=None):
@@ -650,6 +819,9 @@ def fetch_access_management_users(conn, selected_user_id=None):
         user["accounts_labels"] = [
             _ACCOUNTS_SUBMODULE_LABELS[key] for key in accounts_access_list(user)
         ]
+        user["stores_labels"] = [
+            _STORES_SUBMODULE_LABELS[key] for key in stores_access_list(user)
+        ]
         users.append(user)
 
     selected_user = None
@@ -674,6 +846,7 @@ def validate_access_user_form(
     user_access_modules,
     payroll_modules=None,
     accounts_modules=None,
+    stores_modules=None,
 ):
     errors = []
     actor_is_admin = bool(actor and actor.get("is_admin"))
@@ -699,6 +872,10 @@ def validate_access_user_form(
     if "accounts" in dashboard_modules and not accounts_modules and not is_admin:
         errors.append(
             "Choose at least one Accounts submodule when Accounts access is enabled."
+        )
+    if "stores" in dashboard_modules and not stores_modules and not is_admin:
+        errors.append(
+            "Choose at least one Stores submodule when Stores access is enabled."
         )
 
     if not actor_is_admin:
@@ -756,6 +933,7 @@ def save_access_user_record(
     user_access_modules,
     payroll_modules=None,
     accounts_modules=None,
+    stores_modules=None,
     sql_now,
 ):
     if user_id:
@@ -793,5 +971,6 @@ def save_access_user_record(
         user_access_modules,
         payroll_modules,
         accounts_modules,
+        stores_modules,
     )
     return saved_user_id, result_flag

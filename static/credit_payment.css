@@ -31,6 +31,36 @@ body.su-module #credit-payment-filter-form.sr-topbar-filters{
   align-items:flex-end;
   flex-wrap:wrap;
 }
+body.su-module .cp-search-chip{
+  flex:1 1 200px;
+  min-width:170px;
+  max-width:280px;
+}
+body.su-module .cp-search-chip .se-filter-chip-label{color:#64748B}
+body.su-module .cp-search-chip .se-filter-chip-control{
+  background:#fff !important;
+  border-color:#E5E7EB !important;
+}
+body.su-module .cp-search-chip .se-filter-chip-icon{color:#64748B}
+body.su-module .cp-search-input{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:48px;
+  border:none;
+  background:transparent;
+  font:500 14px Inter,system-ui,sans-serif;
+  color:#111827;
+  padding:0 12px 0 4px;
+  outline:none;
+}
+body.su-module .cp-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+body.su-module .cp-search-input::placeholder{color:#94A3B8;font-weight:500}
+body.su-module .cp-search-chip.is-active .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  background:#EFF6FF !important;
+}
+body.su-module .cp-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
 body.su-module .cp-date-range-host{
   flex:0 0 auto;
   min-width:0;

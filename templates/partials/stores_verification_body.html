@@ -1,0 +1,114 @@
+<div class="st-split">
+  <article class="card pl-list-panel st-panel" aria-label="Verification status">
+    <div class="card-hdr">
+      <div class="card-title"><span>Status · {{ selected_outlet_label }}</span></div>
+      {% if verification_due.is_due %}
+      <span class="st-due st-due--late">Due</span>
+      {% else %}
+      <span class="st-due st-due--ok">On track</span>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <p style="margin:0 0 10px;color:#475569;font-size:13px;line-height:1.5;">
+        Verify stock every <strong>{{ verification_due.interval_days }}</strong> day(s).
+        Last verified: <strong>{{ verification_due.last_verified_at or 'never' }}</strong>.
+        Next due: <strong>{{ verification_due.due_on }}</strong>.
+      </p>
+      <form method="post" action="{{ url_for('stores_verification_settings') }}" class="st-inline-form">
+        <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+        <label for="st-interval" style="font-size:12px;font-weight:650;color:#475569;">Days</label>
+        <input id="st-interval" type="number" name="verification_interval_days" min="1" max="90" value="{{ verification_due.interval_days }}">
+        <button type="submit" class="btn">Save schedule</button>
+      </form>
+    </div>
+  </article>
+
+  <article class="card pl-list-panel st-panel" aria-label="Verification history">
+    <div class="card-hdr">
+      <div class="card-title"><span>Recent verifications</span></div>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if history %}
+      <div class="pl-table-wrap">
+        <table class="pl-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>By</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in history %}
+            <tr>
+              <td>{{ row.verified_at }}</td>
+              <td>{{ row.verified_by_name or '—' }}</td>
+              <td>{{ row.notes or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="pl-empty">No verifications recorded yet.</div>
+      {% endif %}
+    </div>
+  </article>
+</div>
+
+{% if show_form %}
+<article class="card pl-list-panel st-panel" aria-label="Count stock" style="margin-top:16px;">
+  <div class="card-hdr">
+    <div class="card-title"><span>Count stock now</span></div>
+  </div>
+  <div class="card-body">
+    {% if errors %}
+    <div class="st-flash st-flash--error">{% for err in errors %}{{ err }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+    {% endif %}
+    {% if stock_items %}
+    <form method="post" action="{{ url_for('stores_stock_verification', outlet=selected_outlet) }}">
+      <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+      <input type="hidden" name="action" value="save_verification">
+      <div class="pl-table-wrap">
+        <table class="pl-table">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>System</th>
+              <th>Counted</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in stock_items %}
+            <tr>
+              <td>
+                <div class="pl-name">{{ item.item_name }}</div>
+                <div class="pl-meta">{{ item.unit }}</div>
+              </td>
+              <td>{{ item.qty_on_hand }}</td>
+              <td>
+                <input type="number" name="count_{{ item.id }}" step="0.01" value="{{ item.qty_on_hand }}" style="width:120px;padding:8px 10px;border:1px solid #dbe3ee;border-radius:8px;font:inherit;font-size:13px;">
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="st-field" style="margin-top:14px;">
+        <label for="st-verify-notes">Note (optional)</label>
+        <textarea id="st-verify-notes" name="notes" placeholder="e.g. Month-end count"></textarea>
+      </div>
+      <div class="st-form-actions">
+        <a class="btn" href="{{ url_for('stores_stock_verification', outlet=selected_outlet) }}">Cancel</a>
+        <button type="submit" class="btn btn-primary">Save verification</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="pl-empty">
+      <strong>Nothing to count</strong>
+      Add stock by receiving a purchase request first.
+    </div>
+    {% endif %}
+  </div>
+</article>
+{% endif %}

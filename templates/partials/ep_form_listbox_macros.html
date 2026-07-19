@@ -40,7 +40,7 @@
 </div>
 {% endmacro %}
 
-{% macro ep_toolbar_listbox(name, label, options, selected='', placeholder='Select...', form_id='', extra_class='', searchable=false, field_id='', hide_label=false, change_handler='') %}
+{% macro ep_toolbar_listbox(name, label, options, selected='', placeholder='Select...', form_id='', extra_class='', searchable=false, field_id='', hide_label=false, change_handler='', chip='payment', icon='card') %}
 {% set fid = field_id or (name ~ '-' ~ (form_id or 'toolbar')) %}
 {% set ns = namespace(display=placeholder, has_value=false) %}
 {% for value, opt_label in options %}
@@ -49,10 +49,18 @@
     {% set ns.has_value = true %}
   {% endif %}
 {% endfor %}
-<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-toolbar-listbox{% if extra_class %} {{ extra_class }}{% endif %}" data-se-listbox{% if searchable %} data-se-listbox-searchable{% endif %}{% if form_id %} data-se-listbox-submit="{{ form_id }}"{% endif %}{% if change_handler %} data-se-listbox-change="{{ change_handler }}"{% endif %} id="{{ fid }}-listbox">
+<div class="se-filter-chip se-filter-chip--{{ chip }} se-filter-chip--listbox ep-toolbar-listbox{% if extra_class %} {{ extra_class }}{% endif %}" data-se-listbox{% if searchable %} data-se-listbox-searchable{% endif %}{% if form_id %} data-se-listbox-submit="{{ form_id }}"{% endif %}{% if change_handler %} data-se-listbox-change="{{ change_handler }}"{% endif %} id="{{ fid }}-listbox">
   {% if not hide_label %}<span class="se-filter-chip-label" id="{{ fid }}-label">{{ label }}</span>{% endif %}
   <div class="se-filter-chip-control">
-    <span class="se-filter-chip-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>
+    <span class="se-filter-chip-icon" aria-hidden="true">
+      {% if icon == 'calendar' %}
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+      {% elif icon == 'people' %}
+      <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      {% else %}
+      <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+      {% endif %}
+    </span>
     <input type="hidden" id="{{ fid }}" name="{{ name }}" value="{{ selected }}">
     <button type="button" class="se-filter-chip-trigger" id="{{ fid }}-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ fid }}-list"{% if not hide_label %} aria-labelledby="{{ fid }}-label {{ fid }}-value"{% else %} aria-label="{{ label }}" aria-labelledby="{{ fid }}-value"{% endif %}>
       <span class="se-filter-chip-value{% if not ns.has_value %} is-placeholder{% endif %}" id="{{ fid }}-value">{{ ns.display }}</span>

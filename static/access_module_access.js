@@ -67,6 +67,7 @@
       user_access_modules: parseJson(byId('ma-initial-user-access'), []),
       payroll_modules: parseJson(byId('ma-initial-payroll'), []),
       accounts_modules: parseJson(byId('ma-initial-accounts'), []),
+      stores_modules: parseJson(byId('ma-initial-stores'), []),
     };
 
     var scopeConfig = {};

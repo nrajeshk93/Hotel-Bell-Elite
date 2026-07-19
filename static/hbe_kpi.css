@@ -1,0 +1,216 @@
+/**
+ * Unified KPI cards:
+ * - Layout: Employee Payroll (left icon + stacked text)
+ * - Type: Purchase Ledger (label / value / meta)
+ * Values auto-shrink/wrap so long ₹ amounts fit the card.
+ */
+body.su-module .hbe-kpi-row,
+body.su-module .pl-summary-row,
+body.ep-module .hbe-kpi-row,
+body.ep-module .pl-summary-row,
+body.ep-module .kpi-grid,
+body.ep-module .emp-summary-row,
+.kpi-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:14px;
+  margin-bottom:16px;
+  width:100%;
+}
+body.ep-module .kpi-grid.kpi-grid--3,
+body.ep-module .pl-summary-row.cd-summary-row,
+.kpi-grid.kpi-grid--3{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+/* Cash ledger keeps its own 5-column row in cash_ledger.css */
+
+body.su-module .hbe-kpi-card,
+body.su-module .pl-summary-card,
+body.ep-module .hbe-kpi-card,
+body.ep-module .pl-summary-card,
+body.ep-module .kpi-card,
+body.ep-module .emp-summary-card,
+.kpi-card{
+  background:var(--card,#fff);
+  border:1px solid #EEF2F7;
+  border-radius:20px;
+  box-shadow:0 8px 30px rgba(15,23,42,.04);
+  max-width:none;
+  min-width:0;
+  overflow:hidden;
+  margin-bottom:0;
+}
+
+body.ep-module .kpi-card,
+.kpi-card{
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
+  padding:18px 20px;
+  box-sizing:border-box;
+  width:100%;
+}
+
+body.su-module .hbe-kpi-body,
+body.su-module .pl-summary-body,
+body.ep-module .hbe-kpi-body,
+body.ep-module .pl-summary-body{
+  display:flex;
+  align-items:flex-start;
+  gap:14px;
+  padding:18px 20px;
+  box-sizing:border-box;
+  width:100%;
+  min-width:0;
+}
+
+body.su-module .hbe-kpi-icon,
+body.ep-module .hbe-kpi-icon,
+body.ep-module .kpi-icon,
+.kpi-icon{
+  width:40px;
+  height:40px;
+  border-radius:9px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+  background:var(--acc-bg,#EEF5FF);
+  color:var(--acc,#1877F2);
+}
+body.su-module .hbe-kpi-icon svg,
+body.ep-module .hbe-kpi-icon svg,
+body.ep-module .kpi-icon svg,
+.kpi-icon svg{
+  width:19px;
+  height:19px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+body.su-module .hbe-kpi-icon--blue,
+body.ep-module .hbe-kpi-icon--blue,
+body.ep-module .kpi-icon.blue,
+.kpi-icon.blue{background:var(--acc-bg,#EEF5FF);color:var(--acc,#1877F2)}
+body.su-module .hbe-kpi-icon--green,
+body.ep-module .hbe-kpi-icon--green,
+body.ep-module .kpi-icon.green,
+.kpi-icon.green{background:var(--ok-bg,#F0FDF4);color:var(--ok,#16A34A)}
+body.su-module .hbe-kpi-icon--orange,
+body.ep-module .hbe-kpi-icon--orange,
+body.ep-module .kpi-icon.orange,
+.kpi-icon.orange{background:var(--warn-bg,#FFFBEB);color:var(--warn,#D97706)}
+body.su-module .hbe-kpi-icon--purple,
+body.ep-module .hbe-kpi-icon--purple,
+body.ep-module .kpi-icon.purple,
+.kpi-icon.purple{background:var(--pur-bg,#F5F3FF);color:var(--pur,#7C3AED)}
+body.su-module .hbe-kpi-icon--red,
+body.ep-module .hbe-kpi-icon--red,
+body.ep-module .kpi-icon.red,
+.kpi-icon.red{background:var(--err-bg,#FEF2F2);color:var(--err,#DC2626)}
+
+body.su-module .hbe-kpi-text,
+body.ep-module .hbe-kpi-text,
+body.ep-module .kpi-body,
+.kpi-body{
+  flex:1 1 auto;
+  min-width:0;
+  max-width:100%;
+  overflow:hidden;
+}
+
+body.su-module .hbe-kpi-label,
+body.su-module .pl-summary-label,
+body.ep-module .hbe-kpi-label,
+body.ep-module .pl-summary-label,
+body.ep-module .kpi-lbl,
+.kpi-lbl{
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.5px;
+  color:var(--txt3,#94A3B8);
+  margin:0 0 6px;
+  overflow-wrap:anywhere;
+}
+
+body.su-module .hbe-kpi-value,
+body.su-module .pl-summary-value,
+body.ep-module .hbe-kpi-value,
+body.ep-module .pl-summary-value,
+body.ep-module .kpi-val,
+.kpi-val{
+  margin:0;
+  font-size:clamp(15px,2.4vw,28px);
+  font-weight:800;
+  color:var(--txt,#1A202C);
+  line-height:1.15;
+  font-variant-numeric:tabular-nums;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  max-width:100%;
+}
+
+body.su-module .hbe-kpi-meta,
+body.su-module .pl-summary-meta,
+body.ep-module .hbe-kpi-meta,
+body.ep-module .pl-summary-meta,
+body.ep-module .kpi-meta,
+.kpi-meta{
+  margin-top:8px;
+  font-size:12px;
+  color:var(--txt3,#94A3B8);
+  font-weight:600;
+  overflow-wrap:anywhere;
+}
+
+body.ep-module .kpi-val.kpi-val--action,
+.kpi-val.kpi-val--action{
+  font-size:inherit;
+  font-weight:inherit;
+  line-height:1.3;
+  overflow:visible;
+}
+
+@media (max-width:1100px){
+  body.su-module .hbe-kpi-row,
+  body.su-module .pl-summary-row,
+  body.ep-module .hbe-kpi-row,
+  body.ep-module .pl-summary-row,
+  body.ep-module .kpi-grid,
+  body.ep-module .emp-summary-row,
+  .kpi-grid,
+  body.ep-module .kpi-grid.kpi-grid--3,
+  body.ep-module .pl-summary-row.cd-summary-row,
+  .kpi-grid.kpi-grid--3{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media (max-width:640px){
+  body.su-module .hbe-kpi-row,
+  body.su-module .pl-summary-row,
+  body.ep-module .hbe-kpi-row,
+  body.ep-module .pl-summary-row,
+  body.ep-module .kpi-grid,
+  body.ep-module .emp-summary-row,
+  .kpi-grid,
+  body.ep-module .kpi-grid.kpi-grid--3,
+  body.ep-module .pl-summary-row.cd-summary-row,
+  .kpi-grid.kpi-grid--3{
+    grid-template-columns:minmax(0,1fr);
+  }
+  body.su-module .hbe-kpi-value,
+  body.su-module .pl-summary-value,
+  body.ep-module .hbe-kpi-value,
+  body.ep-module .pl-summary-value,
+  body.ep-module .kpi-val,
+  .kpi-val{
+    font-size:clamp(16px,5.5vw,24px);
+  }
+  body.ep-module .kpi-val.kpi-val--action,
+  .kpi-val.kpi-val--action{font-size:inherit}
+}

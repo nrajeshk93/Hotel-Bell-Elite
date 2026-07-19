@@ -89,6 +89,339 @@ def ensure_cash_ledger_schema(conn):
     conn.commit()
 
 
+def ensure_stores_schema(conn):
+    """Create Stores inventory workflow tables if missing."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_settings (
+            outlet                      TEXT    NOT NULL PRIMARY KEY,
+            verification_interval_days  INTEGER NOT NULL DEFAULT 7,
+            updated_at                  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    for outlet in ("bar", "kitchen"):
+        cursor.execute(
+            "INSERT OR IGNORE INTO store_settings (outlet, verification_interval_days) VALUES (?, 7)",
+            (outlet,),
+        )
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_indents (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            outlet        TEXT    NOT NULL,
+            indent_no     TEXT    NOT NULL UNIQUE,
+            status        TEXT    NOT NULL DEFAULT 'draft',
+            notes         TEXT    NOT NULL DEFAULT '',
+            created_by    INTEGER,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            submitted_at  TEXT,
+            decided_by    INTEGER,
+            decided_at    TEXT,
+            decision_note TEXT    NOT NULL DEFAULT '',
+            FOREIGN KEY (created_by) REFERENCES users(id),
+            FOREIGN KEY (decided_by) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_indents_outlet_status
+        ON store_indents(outlet, status, created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_indent_lines (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            indent_id  INTEGER NOT NULL,
+            item_name  TEXT    NOT NULL,
+            quantity   REAL    NOT NULL DEFAULT 0,
+            unit       TEXT    NOT NULL DEFAULT 'pcs',
+            notes      TEXT    NOT NULL DEFAULT '',
+            FOREIGN KEY (indent_id) REFERENCES store_indents(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_purchase_requests (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            indent_id   INTEGER,
+            outlet      TEXT    NOT NULL,
+            pr_no       TEXT    NOT NULL UNIQUE,
+            status      TEXT    NOT NULL DEFAULT 'open',
+            notes       TEXT    NOT NULL DEFAULT '',
+            created_by  INTEGER,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            received_at TEXT,
+            FOREIGN KEY (indent_id) REFERENCES store_indents(id),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_prs_outlet_status
+        ON store_purchase_requests(outlet, status, created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_purchase_request_lines (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            pr_id   INTEGER NOT NULL,
+            item_name TEXT  NOT NULL,
+            quantity  REAL  NOT NULL DEFAULT 0,
+            unit      TEXT  NOT NULL DEFAULT 'pcs',
+            notes     TEXT  NOT NULL DEFAULT '',
+            FOREIGN KEY (pr_id) REFERENCES store_purchase_requests(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_stock_items (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            outlet      TEXT    NOT NULL,
+            item_name   TEXT    NOT NULL,
+            unit        TEXT    NOT NULL DEFAULT 'pcs',
+            qty_on_hand REAL    NOT NULL DEFAULT 0,
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            UNIQUE(outlet, item_name, unit)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_stock_outlet
+        ON store_stock_items(outlet, item_name)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_stock_movements (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            outlet        TEXT    NOT NULL,
+            item_name     TEXT    NOT NULL,
+            unit          TEXT    NOT NULL DEFAULT 'pcs',
+            qty_delta     REAL    NOT NULL,
+            movement_type TEXT    NOT NULL,
+            ref_type      TEXT    NOT NULL DEFAULT '',
+            ref_id        INTEGER,
+            notes         TEXT    NOT NULL DEFAULT '',
+            created_by    INTEGER,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_movements_outlet
+        ON store_stock_movements(outlet, created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_counter_transfers (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            outlet       TEXT    NOT NULL,
+            transfer_no  TEXT    NOT NULL UNIQUE,
+            notes        TEXT    NOT NULL DEFAULT '',
+            created_by   INTEGER,
+            created_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_counter_transfer_lines (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            transfer_id INTEGER NOT NULL,
+            item_name   TEXT    NOT NULL,
+            unit        TEXT    NOT NULL DEFAULT 'pcs',
+            quantity    REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (transfer_id) REFERENCES store_counter_transfers(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_stock_issues (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            outlet      TEXT    NOT NULL,
+            issue_no    TEXT    NOT NULL UNIQUE,
+            invoice_ref TEXT    NOT NULL DEFAULT '',
+            notes       TEXT    NOT NULL DEFAULT '',
+            created_by  INTEGER,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_stock_issue_lines (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            issue_id  INTEGER NOT NULL,
+            item_name TEXT    NOT NULL,
+            unit      TEXT    NOT NULL DEFAULT 'pcs',
+            quantity  REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (issue_id) REFERENCES store_stock_issues(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_stock_verifications (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            outlet      TEXT    NOT NULL,
+            verified_at TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            verified_by INTEGER,
+            notes       TEXT    NOT NULL DEFAULT '',
+            FOREIGN KEY (verified_by) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_verifications_outlet
+        ON store_stock_verifications(outlet, verified_at DESC)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_stock_verification_lines (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            verification_id INTEGER NOT NULL,
+            item_name       TEXT    NOT NULL,
+            unit            TEXT    NOT NULL DEFAULT 'pcs',
+            system_qty      REAL    NOT NULL DEFAULT 0,
+            counted_qty     REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (verification_id) REFERENCES store_stock_verifications(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_product_categories (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL UNIQUE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            is_active  INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_products (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id   INTEGER NOT NULL,
+            name          TEXT    NOT NULL,
+            default_unit  TEXT    NOT NULL DEFAULT 'kg',
+            is_active     INTEGER NOT NULL DEFAULT 1,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            UNIQUE(category_id, name),
+            FOREIGN KEY (category_id) REFERENCES store_product_categories(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_products_category
+        ON store_products(category_id, is_active, sort_order, name)
+    """)
+    _seed_store_product_master(cursor)
+    cursor.execute(
+        "UPDATE store_products SET default_unit = 'liter' WHERE lower(default_unit) = 'ltr'"
+    )
+    conn.commit()
+
+
+def _seed_store_product_master(cursor):
+    """Seed Hotel Bell Elite daily perishables catalogue (idempotent)."""
+    catalog = (
+        (
+            "Non-Veg",
+            10,
+            (
+                ("T.D. Chicken", "kg"),
+                ("Chicken Whole", "kg"),
+                ("Staff Chicken", "kg"),
+                ("B/L Chicken", "kg"),
+                ("Chi-Drumstick", "kg"),
+                ("Chi-Lolly Pop", "kg"),
+                ("Mutton", "kg"),
+                ("B/L Mutton", "kg"),
+                ("Prawns", "kg"),
+                ("Lobster", "kg"),
+                ("Crabs", "kg"),
+                ("B/L Fish", "kg"),
+                ("Staff Fish", "kg"),
+                ("Eggs", "pcs"),
+                ("Bread", "pcs"),
+            ),
+        ),
+        (
+            "Dairy Products",
+            20,
+            (
+                ("Fresh Paneer", "kg"),
+                ("Butter", "kg"),
+                ("Vanilla Ice Cream (1 Ltr)", "liter"),
+                ("Butter Scotch (1 Ltr)", "liter"),
+                ("Strawberry Ice Cream (1 Ltr)", "liter"),
+                ("Chocolate Ice Cream (1 Ltr)", "liter"),
+                ("Vanilla Ice Cream (4 Ltr)", "liter"),
+                ("Butter Scotch (4 Ltr)", "liter"),
+                ("Strawberry Ice Cream (4 Ltr)", "liter"),
+                ("Chocolate Ice Cream (4 Ltr)", "liter"),
+                ("Apple", "kg"),
+                ("Anar", "kg"),
+                ("Banana", "dozen"),
+                ("Curd", "kg"),
+                ("Coffee Powder 200 gm", "pcs"),
+                ("Besan Powder 1 Kg", "kg"),
+            ),
+        ),
+        (
+            "Vegetable",
+            30,
+            (
+                ("Arbi", "kg"),
+                ("Beet Root", "kg"),
+                ("Bitter Gourd", "kg"),
+                ("Brinjal", "kg"),
+                ("Carrot", "kg"),
+                ("Cauliflower", "kg"),
+                ("Capsicum", "kg"),
+                ("Capsicum R/Y", "kg"),
+                ("Cabbage", "kg"),
+                ("Coconut", "pcs"),
+                ("Cucumber", "kg"),
+                ("Curry Leaves", "bunch"),
+                ("Drum Stick", "kg"),
+                ("French Beans", "kg"),
+                ("French Fry", "kg"),
+                ("Green Chilly", "kg"),
+                ("Ginger", "kg"),
+                ("Garlic", "kg"),
+                ("Kundru", "kg"),
+                ("Long Beans", "kg"),
+                ("Lemon", "kg"),
+                ("Mint Leaves", "bunch"),
+                ("Mooli Bhaji", "kg"),
+                ("Pumpkin", "kg"),
+                ("Mursa Bhaji", "kg"),
+                ("Nali Bhaji", "kg"),
+                ("Onion", "kg"),
+                ("Potato", "kg"),
+                ("Palak Bhaji", "kg"),
+                ("Poi Bhaji", "kg"),
+                ("Potal", "kg"),
+                ("Ridge Gourd", "kg"),
+                ("Spring Onion", "kg"),
+                ("Snake Gourd", "kg"),
+                ("Tomato", "kg"),
+                ("Thupi", "kg"),
+                ("Coriander Leaves", "bunch"),
+                ("Raw Banana", "kg"),
+                ("Ladies Finger", "kg"),
+                ("Staff Veg.", "kg"),
+            ),
+        ),
+    )
+    for cat_name, cat_sort, products in catalog:
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO store_product_categories (name, sort_order, is_active)
+            VALUES (?, ?, 1)
+            """,
+            (cat_name, cat_sort),
+        )
+        row = cursor.execute(
+            "SELECT id FROM store_product_categories WHERE name = ?",
+            (cat_name,),
+        ).fetchone()
+        if not row:
+            continue
+        category_id = row["id"] if hasattr(row, "keys") else row[0]
+        for idx, (product_name, unit) in enumerate(products, start=1):
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO store_products
+                    (category_id, name, default_unit, is_active, sort_order)
+                VALUES (?, ?, ?, 1, ?)
+                """,
+                (category_id, product_name, unit, idx * 10),
+            )
+
+
 def init_db():
     conn = get_db()
     conn.execute("PRAGMA journal_mode=WAL")
@@ -344,6 +677,7 @@ def init_db():
         ON purchase_verification_allocations(expense_id)
     """)
     ensure_cash_ledger_schema(conn)
+    ensure_stores_schema(conn)
 
     existing_pv_cols = {
         row["name"] for row in cursor.execute("PRAGMA table_info(purchase_verifications)").fetchall()
@@ -510,6 +844,45 @@ def init_db():
             created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sales_update_tips (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            company      TEXT    NOT NULL,
+            location     TEXT    NOT NULL,
+            sales_date   TEXT    NOT NULL,
+            employee_id  INTEGER NOT NULL,
+            amount       REAL    NOT NULL DEFAULT 0,
+            description  TEXT    NOT NULL DEFAULT '',
+            created_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_sales_update_tips_scope
+        ON sales_update_tips(company, location, sales_date)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_sales_update_tips_employee
+        ON sales_update_tips(employee_id, sales_date)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tip_incentive_payouts (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            company      TEXT    NOT NULL,
+            year         INTEGER NOT NULL,
+            month        INTEGER NOT NULL,
+            employee_id  INTEGER NOT NULL,
+            amount       REAL    NOT NULL DEFAULT 0,
+            updated_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            UNIQUE(company, year, month, employee_id),
+            FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_tip_incentive_payouts_period
+        ON tip_incentive_payouts(company, year, month)
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS payroll_month_locks (

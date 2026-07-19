@@ -268,19 +268,39 @@
 
   var dateFrom = document.getElementById('purchase-ledger-date-from');
   var dateTo = document.getElementById('purchase-ledger-date-to');
-  function syncDateBounds(){
-    if (dateFrom && dateTo) {
-      dateFrom.max = dateTo.value || '';
-      dateTo.min = dateFrom.value || '';
-    }
+  if (window.SalesDateRangePicker) {
+    SalesDateRangePicker.init({
+      wrapId: 'pl-date-range-wrap',
+      triggerId: 'pl-date-range-trigger',
+      backdropId: 'pl-date-range-backdrop',
+      panelId: 'pl-date-range-panel',
+      displayId: 'pl-date-range-display',
+      formId: 'purchase-ledger-filter-form',
+      fromInputId: 'purchase-ledger-date-from',
+      toInputId: 'purchase-ledger-date-to',
+      applyId: 'pl-date-range-apply',
+      prevId: 'pl-cal-prev',
+      nextId: 'pl-cal-next',
+      title0Id: 'pl-cal-title0',
+      title1Id: 'pl-cal-title1',
+      grid0Id: 'pl-cal-grid0',
+      grid1Id: 'pl-cal-grid1',
+      emptyLabel: 'Date',
+      onBeforeSubmit: function(){
+        if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+        if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+      }
+    });
   }
-  function onDateChange(){
-    syncDateBounds();
-    submitScope();
+  var clearBtn = document.getElementById('pl-date-range-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      var clearUrl = f.getAttribute('data-clear-url') || f.action || '';
+      if (clearUrl) window.location.href = clearUrl;
+    });
   }
-  if (dateFrom) dateFrom.addEventListener('change', onDateChange);
-  if (dateTo) dateTo.addEventListener('change', onDateChange);
-  syncDateBounds();
 
   if (typeof formatInr === 'function') {
     var totalEl = document.getElementById('pl-total-amount');
@@ -289,6 +309,7 @@
       el.textContent = formatInr(el.getAttribute('data-amount'), 0);
     });
   }
+  if (typeof scheduleFitKpiValues === 'function') scheduleFitKpiValues();
 
   /* ---------- Sortable purchase table headers ---------- */
   (function initPurchaseTableSort(){

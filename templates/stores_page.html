@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ page_title }} | Stores | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=11">
+{% if page_key == 'indent' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=10">
+{% endif %}
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module{% if page_key == 'indent' %} st-indent-shell{% endif %}">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+            </div>
+            <h1>{{ page_title }}</h1>
+          </div>
+          <p>{{ page_subtitle }}</p>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        {% if page_key == 'indent' %}
+        <a class="st-header-secondary" href="{{ url_for('stores_product_master') }}">Product Master</a>
+        {% endif %}
+        {% if page_cta and page_cta_url and not (page_key == 'indent' and (show_form or detail)) %}
+        <a class="{% if page_key == 'indent' %}st-header-cta{% else %}btn btn-primary{% endif %}" href="{{ page_cta_url }}">
+          {% if page_key == 'indent' %}
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          {% endif %}
+          {{ page_cta }}
+        </a>
+        {% endif %}
+      </div>
+    </div>
+    {% if show_outlet_tabs and page_key != 'indent' %}
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="stores-outlet-filter-form" class="sr-topbar-filters st-outlet-filter-form" aria-label="Store outlet filter">
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" id="st-outlet-listbox">
+            <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+              </span>
+              <input type="hidden" id="st-outlet" name="outlet" value="{{ selected_outlet }}">
+              <button type="button" class="se-filter-chip-trigger" id="st-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-outlet-list" aria-labelledby="st-outlet-label st-outlet-value">
+                <span class="se-filter-chip-value" id="st-outlet-value">{{ selected_outlet_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
+              {% for outlet in stores_outlets %}
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+  </header>
+
+  <section class="content se-content">
+    {% if auth_notice %}
+    <div class="st-flash st-flash--ok">{{ auth_notice }}</div>
+    {% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+      <div class="st-flash st-flash--{{ 'ok' if category == 'ok' else 'error' }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    {% if page_key == 'product_master' %}
+      {% include 'partials/stores_product_master_body.html' %}
+    {% elif page_key == 'indent' %}
+      {% include 'partials/stores_indent_body.html' %}
+    {% elif page_key == 'approvals' %}
+      {% include 'partials/stores_approvals_body.html' %}
+    {% elif page_key == 'purchase_requests' %}
+      {% include 'partials/stores_pr_body.html' %}
+    {% elif page_key == 'stock' %}
+      {% include 'partials/stores_stock_body.html' %}
+    {% elif page_key == 'counter_transfer' %}
+      {% include 'partials/stores_transfer_body.html' %}
+    {% elif page_key == 'stock_verification' %}
+      {% include 'partials/stores_verification_body.html' %}
+    {% elif page_key == 'stock_issues' %}
+      {% include 'partials/stores_issues_body.html' %}
+    {% endif %}
+  </section>
+</div>
+{% include 'partials/de_workspace_shell_close.html' %}
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=8"></script>
+</body>
+</html>

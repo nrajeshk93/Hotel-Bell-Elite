@@ -1,0 +1,130 @@
+{% if detail %}
+<article class="card pl-list-panel st-panel" aria-label="Purchase request detail">
+  <div class="card-hdr">
+    <div class="card-title"><span>{{ detail.pr_no }}</span></div>
+    <span class="cp-status-pill cp-status-pill--{{ detail.status }}">{{ status_label(detail.status) }}</span>
+  </div>
+  <div class="card-body">
+    <p class="pl-meta">
+      {{ selected_outlet_label }}
+      {% if detail.indent_no %} · From indent {{ detail.indent_no }}{% endif %}
+      · {{ detail.created_at }}
+    </p>
+    <div class="pl-table-wrap" style="margin-top:14px;">
+      <table class="pl-table">
+        <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Note</th></tr></thead>
+        <tbody>
+          {% for line in detail_lines %}
+          <tr>
+            <td class="pl-name">{{ line.item_name }}</td>
+            <td>{{ line.quantity }}</td>
+            <td>{{ line.unit }}</td>
+            <td>{{ line.notes or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="st-form-actions" style="margin-top:14px;">
+      <a class="btn" href="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}">Back</a>
+      {% if detail.status == 'open' %}
+      <form method="post" action="{{ url_for('stores_pr_receive', pr_id=detail.id) }}">
+        <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+        <button type="submit" class="btn btn-primary">Receive into stock</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+</article>
+{% else %}
+<div class="st-split">
+  <article class="card pl-list-panel st-panel" aria-label="Ready to purchase">
+    <div class="card-hdr">
+      <div class="card-title"><span>Approved indents ready</span></div>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if approved_indents %}
+      <div class="pl-table-wrap">
+        <table class="pl-table">
+          <thead>
+            <tr>
+              <th>Indent</th>
+              <th>Approved</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for indent in approved_indents %}
+            <tr>
+              <td>
+                <div class="pl-name">{{ indent.indent_no }}</div>
+                {% if indent.notes %}<div class="pl-meta">{{ indent.notes }}</div>{% endif %}
+              </td>
+              <td>{{ indent.decided_at or '—' }}</td>
+              <td>
+                <form method="post" action="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}">
+                  <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+                  <input type="hidden" name="action" value="create_from_indent">
+                  <input type="hidden" name="indent_id" value="{{ indent.id }}">
+                  <button type="submit" class="btn btn-primary">Create purchase request</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="pl-empty">
+        <strong>No approved indents waiting</strong>
+        Approve an indent first, then create a purchase request here.
+      </div>
+      {% endif %}
+    </div>
+  </article>
+
+  <article class="card pl-list-panel st-panel" aria-label="Purchase requests">
+    <div class="card-hdr">
+      <div class="card-title"><span>Purchase requests</span></div>
+      <span class="pl-count">{{ purchase_requests|length }}</span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if purchase_requests %}
+      <div class="pl-table-wrap">
+        <table class="pl-table">
+          <thead>
+            <tr>
+              <th>PR</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pr in purchase_requests %}
+            <tr>
+              <td>
+                <div class="pl-name">{{ pr.pr_no }}</div>
+                <div class="pl-meta">{% if pr.indent_no %}{{ pr.indent_no }} · {% endif %}{{ pr.line_count }} items</div>
+              </td>
+              <td><span class="cp-status-pill cp-status-pill--{{ pr.status }}">{{ status_label(pr.status) }}</span></td>
+              <td class="st-actions">
+                <a class="st-link" href="{{ url_for('stores_pr_detail', pr_id=pr.id, outlet=selected_outlet) }}">Open</a>
+                {% if pr.status == 'open' %}
+                <form method="post" action="{{ url_for('stores_pr_receive', pr_id=pr.id) }}">
+                  <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+                  <button type="submit" class="st-link" style="background:none;border:0;padding:0;cursor:pointer;">Receive</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="pl-empty">No purchase requests yet.</div>
+      {% endif %}
+    </div>
+  </article>
+</div>
+{% endif %}

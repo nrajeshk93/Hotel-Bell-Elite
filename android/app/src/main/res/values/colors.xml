@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="hbe_blue">#0061FF</color>
+    <color name="hbe_bg">#F4F6F9</color>
+    <color name="hbe_text">#1A202C</color>
+    <color name="white">#FFFFFF</color>
+</resources>

@@ -95,23 +95,10 @@ def _insert_entry(conn, **overrides):
     return cur.lastrowid
 
 
-class RoomTransferPaymentTests(unittest.TestCase):
-    def test_validate_and_record_full_payment(self):
-        conn = _memory_conn()
-        entry_id = _insert_entry(conn)
-        payload, errors = app_module._validate_room_transfer_payment_payload(
-            conn,
-            {
-                "company": "HBE",
-                "payment_date": "2026-07-16",
-                "payment_method": "cash",
-                "notes": "Settled",
-                "allocations": [{"entry_id": entry_id, "amount": 1019}],
-            },
-        )
-        self.assertEqual(errors, [])
-        self.assertEqual(payload["total_amount"], 1019)
-
+def _record_payment(conn, payload):
+    payment_ids = []
+    touched = set()
+    for split in payload["payment_splits"]:
         cur = conn.execute(
             """INSERT INTO room_transfer_payments
                (company, payment_date, payment_method, transaction_id, total_amount, notes)
@@ -119,14 +106,18 @@ class RoomTransferPaymentTests(unittest.TestCase):
             (
                 payload["company"],
                 payload["payment_date"],
-                payload["payment_method"],
-                payload["transaction_id"],
-                payload["total_amount"],
+                split["payment_method"],
+                split["transaction_id"],
+                split["amount"],
                 payload["notes"],
             ),
         )
         payment_id = cur.lastrowid
-        for allocation in payload["allocations"]:
+        payment_ids.append(payment_id)
+        for allocation in app_module._proportion_room_transfer_allocations(
+            payload["allocations"],
+            split["amount"],
+        ):
             entry = allocation["entry"]
             conn.execute(
                 """INSERT INTO room_transfer_payment_allocations
@@ -143,7 +134,32 @@ class RoomTransferPaymentTests(unittest.TestCase):
                     entry.get("sales_date") or "",
                 ),
             )
-            app_module._sync_room_transfer_status_after_payment(conn, allocation["entry_id"])
+            touched.add(allocation["entry_id"])
+    for entry_id in touched:
+        app_module._sync_room_transfer_status_after_payment(conn, entry_id)
+    return payment_ids
+
+
+class RoomTransferPaymentTests(unittest.TestCase):
+    def test_validate_and_record_full_payment(self):
+        conn = _memory_conn()
+        entry_id = _insert_entry(conn)
+        payload, errors = app_module._validate_room_transfer_payment_payload(
+            conn,
+            {
+                "company": "HBE",
+                "payment_date": "2026-07-16",
+                "payment_method": "cash",
+                "notes": "Settled",
+                "allocations": [{"entry_id": entry_id, "amount": 1019}],
+            },
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(payload["total_amount"], 1019)
+        self.assertEqual(len(payload["payment_splits"]), 1)
+        self.assertEqual(payload["payment_splits"][0]["payment_method"], "cash")
+
+        _record_payment(conn, payload)
 
         row = conn.execute(
             "SELECT payment_status FROM room_transfer_entries WHERE id = ?",
@@ -159,12 +175,112 @@ class RoomTransferPaymentTests(unittest.TestCase):
             {
                 "company": "HBE",
                 "payment_date": date.today().isoformat(),
-                "payment_method": "card",
+                "payment_method": "bank_transfer",
                 "allocations": [{"entry_id": entry_id, "amount": 1019}],
             },
         )
         self.assertIsNone(payload)
         self.assertTrue(any("Transaction ID" in err for err in errors))
+
+    def test_split_payment_across_modes(self):
+        conn = _memory_conn()
+        entry_id = _insert_entry(conn, amount=1000)
+        payload, errors = app_module._validate_room_transfer_payment_payload(
+            conn,
+            {
+                "company": "HBE",
+                "payment_date": "2026-07-16",
+                "allocations": [{"entry_id": entry_id, "amount": 1000}],
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": 400},
+                    {"payment_method": "upi", "amount": 350},
+                    {
+                        "payment_method": "bank_transfer",
+                        "amount": 250,
+                        "transaction_id": "UTR123",
+                    },
+                ],
+            },
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(len(payload["payment_splits"]), 3)
+
+        payment_ids = _record_payment(conn, payload)
+        self.assertEqual(len(payment_ids), 3)
+
+        methods = {
+            row["payment_method"]: row["total_amount"]
+            for row in conn.execute(
+                "SELECT payment_method, total_amount FROM room_transfer_payments"
+            ).fetchall()
+        }
+        self.assertEqual(methods["cash"], 400)
+        self.assertEqual(methods["upi"], 350)
+        self.assertEqual(methods["bank_transfer"], 250)
+
+        row = conn.execute(
+            "SELECT payment_status FROM room_transfer_entries WHERE id = ?",
+            (entry_id,),
+        ).fetchone()
+        self.assertEqual(row["payment_status"], "paid")
+
+    def test_split_amounts_must_match_payment_total(self):
+        conn = _memory_conn()
+        entry_id = _insert_entry(conn, amount=1000)
+        payload, errors = app_module._validate_room_transfer_payment_payload(
+            conn,
+            {
+                "company": "HBE",
+                "payment_date": "2026-07-16",
+                "allocations": [{"entry_id": entry_id, "amount": 1000}],
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": 400},
+                    {"payment_method": "upi", "amount": 400},
+                ],
+            },
+        )
+        self.assertIsNone(payload)
+        self.assertTrue(any("equal the payment total" in err for err in errors))
+
+    def test_partial_then_remaining_with_modes(self):
+        conn = _memory_conn()
+        entry_id = _insert_entry(conn, amount=1000)
+        first, errors = app_module._validate_room_transfer_payment_payload(
+            conn,
+            {
+                "company": "HBE",
+                "payment_date": "2026-07-16",
+                "allocations": [{"entry_id": entry_id, "amount": 600}],
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": 300},
+                    {"payment_method": "card", "amount": 300},
+                ],
+            },
+        )
+        self.assertEqual(errors, [])
+        _record_payment(conn, first)
+        row = conn.execute(
+            "SELECT payment_status FROM room_transfer_entries WHERE id = ?",
+            (entry_id,),
+        ).fetchone()
+        self.assertEqual(row["payment_status"], "unpaid")
+
+        second, errors = app_module._validate_room_transfer_payment_payload(
+            conn,
+            {
+                "company": "HBE",
+                "payment_date": "2026-07-17",
+                "payment_method": "upi",
+                "allocations": [{"entry_id": entry_id, "amount": 400}],
+            },
+        )
+        self.assertEqual(errors, [])
+        _record_payment(conn, second)
+        row = conn.execute(
+            "SELECT payment_status FROM room_transfer_entries WHERE id = ?",
+            (entry_id,),
+        ).fetchone()
+        self.assertEqual(row["payment_status"], "paid")
 
     def test_reverse_restores_unpaid(self):
         conn = _memory_conn()

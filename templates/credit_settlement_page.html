@@ -2,15 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{{ page_title }} | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=11">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -44,7 +45,7 @@
             </div>
             <h1>{{ page_title }}</h1>
           </div>
-          <p>{{ page_subtitle }}</p>
+          {% if page_subtitle %}<p>{{ page_subtitle }}</p>{% endif %}
         </div>
       </div>
       <div class="su-header-tools">
@@ -108,6 +109,15 @@
                 {% endfor %}
               </div>
               <div class="pl-supplier-empty" id="credit-payment-supplier-empty" hidden>No suppliers match your search.</div>
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--search cp-search-chip">
+            <label class="se-filter-chip-label" for="credit-payment-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="credit-payment-search" class="cp-search-input" placeholder="Expense, supplier, invoice…" autocomplete="off" aria-label="Search credit payment entries">
             </div>
           </div>
           <div class="se-filter-chip-date-host cp-date-range-host" id="cp-date-range-host">
@@ -176,23 +186,28 @@
   <section class="content se-content">
     {% if selected_view == 'outstanding' %}
     <div class="pl-summary-row">
-      <article class="card pl-summary-card" aria-label="{{ settlement_labels.outstanding_panel_aria }} summary">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="{{ settlement_labels.outstanding_panel_aria }} summary">
         <div class="card-body pl-summary-body">
-          <div class="pl-summary-label">{{ settlement_labels.outstanding_summary_label }}</div>
-          <div class="pl-summary-value" id="cp-outstanding-total" data-amount="{{ outstanding_total }}">{{ outstanding_total }}</div>
-          <div class="pl-summary-meta">{{ outstanding_entries|length }} expense{{ '' if outstanding_entries|length == 1 else 's' }}</div>
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">{{ settlement_labels.outstanding_summary_label }}</div>
+            <div class="pl-summary-value" id="cp-outstanding-total" data-amount="{{ outstanding_total }}">{{ outstanding_total }}</div>
+            <div class="pl-summary-meta">{{ outstanding_entries|length }} expense{{ '' if outstanding_entries|length == 1 else 's' }}</div>
+          </div>
         </div>
       </article>
     </div>
 
-    <article class="card pl-list-panel" aria-label="{{ settlement_labels.outstanding_panel_aria }}">
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="{{ settlement_labels.outstanding_panel_aria }}">
       <div class="card-hdr">
         <div class="card-title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
           <span>{{ settlement_labels.outstanding_panel_title }}</span>
         </div>
         <div class="cp-panel-actions">
-          <span class="pl-count">{{ outstanding_entries|length }} entries</span>
+          <span class="pl-count" id="cp-entry-count">{{ outstanding_entries|length }} entries</span>
           {% if outstanding_entries %}
           <div class="cp-selection-bar" id="cp-selection-bar" hidden>
             <span id="cp-table-select-count">0 selected</span>
@@ -207,7 +222,7 @@
       </div>
       <div class="card-body pl-card-body--flush">
         {% if outstanding_entries %}
-        <div class="pl-table-wrap">
+        <div class="pl-table-wrap" tabindex="0" aria-label="{{ settlement_labels.outstanding_table_aria }}, scroll for more">
           <table class="pl-table cp-outstanding-table" id="cp-outstanding-table" aria-label="{{ settlement_labels.outstanding_table_aria }}">
             <thead>
               <tr>
@@ -226,6 +241,18 @@
             </thead>
             <tbody>
               {% for entry in outstanding_entries %}
+              {% set search_blob = [
+                entry.expense_code,
+                entry.sales_date,
+                entry.description,
+                expense_category_labels.get(entry.category, entry.category or ''),
+                entry.supplier_name,
+                entry.supplier_gst,
+                entry.invoice_number,
+                entry.amount,
+                entry.paid_amount,
+                entry.balance
+              ]|select|join(' ')|lower %}
               <tr class="cp-expense-row"
                   data-expense-id="{{ entry.id }}"
                   data-supplier-id="{{ entry.supplier_id or '' }}"
@@ -233,7 +260,8 @@
                   data-expense-code="{{ entry.expense_code or '' }}"
                   data-description="{{ entry.description or '' }}"
                   data-balance="{{ entry.balance }}"
-                  data-category="{{ entry.category or '' }}">
+                  data-category="{{ entry.category or '' }}"
+                  data-search="{{ search_blob|e }}">
                 <td class="cp-col-check">
                   <input type="checkbox" class="cp-expense-check cp-row-check" aria-label="Select {{ entry.expense_code or entry.id }}">
                 </td>
@@ -265,27 +293,32 @@
 
     {% else %}
     <div class="pl-summary-row">
-      <article class="card pl-summary-card" aria-label="{{ settlement_labels.history_panel_aria }} summary">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="{{ settlement_labels.history_panel_aria }} summary">
         <div class="card-body pl-summary-body">
-          <div class="pl-summary-label">{{ settlement_labels.history_summary_label }}</div>
-          <div class="pl-summary-value" id="cp-payment-total" data-amount="{{ payment_total }}">{{ payment_total }}</div>
-          <div class="pl-summary-meta">{{ payment_entries|length }} {{ settlement_labels.history_summary_unit }}{{ '' if payment_entries|length == 1 else 's' }}</div>
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">{{ settlement_labels.history_summary_label }}</div>
+            <div class="pl-summary-value" id="cp-payment-total" data-amount="{{ payment_total }}">{{ payment_total }}</div>
+            <div class="pl-summary-meta">{{ payment_entries|length }} {{ settlement_labels.history_summary_unit }}{{ '' if payment_entries|length == 1 else 's' }}</div>
+          </div>
         </div>
       </article>
     </div>
 
-    <article class="card pl-list-panel" aria-label="{{ settlement_labels.history_panel_aria }}">
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="{{ settlement_labels.history_panel_aria }}">
       <div class="card-hdr">
         <div class="card-title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg>
           <span>{{ settlement_labels.history_panel_title }}</span>
         </div>
-        <span class="pl-count">{{ payment_entries|length }} entries</span>
+        <span class="pl-count" id="cp-entry-count">{{ payment_entries|length }} entries</span>
       </div>
       <div class="card-body pl-card-body--flush">
         {% if payment_entries %}
-        <div class="pl-table-wrap">
-          <table class="pl-table cp-table" aria-label="{{ settlement_labels.history_table_aria }}">
+        <div class="pl-table-wrap" tabindex="0" aria-label="{{ settlement_labels.history_table_aria }}, scroll for more">
+          <table class="pl-table cp-table" id="cp-history-table" aria-label="{{ settlement_labels.history_table_aria }}">
             <thead>
               <tr>
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.history_date_column }}</th>
@@ -307,7 +340,18 @@
             </thead>
             <tbody>
               {% for entry in payment_entries %}
-              <tr data-payment-id="{{ entry.id }}">
+              {% set search_blob = [
+                entry.payment_date,
+                entry.supplier_name,
+                entry.supplier_gst,
+                credit_payment_method_labels.get(entry.payment_method, entry.payment_method),
+                entry.transaction_id,
+                entry.verification_account,
+                entry.expense_codes,
+                entry.total_amount,
+                entry.allocation_count
+              ]|select|join(' ')|lower %}
+              <tr class="cp-history-row" data-payment-id="{{ entry.id }}" data-search="{{ search_blob|e }}">
                 <td class="pl-col-date" data-sort-value="{{ entry.payment_date or '' }}">{{ entry.payment_date }}</td>
                 <td data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}

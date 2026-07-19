@@ -101,6 +101,23 @@ def _seed_expense(conn, supplier_id, amount, payment_type="credit", code="HBE-EX
     return cur.lastrowid
 
 
+def _seed_verification(conn, supplier_id, expense_id, amount, verification_date="2026-07-10"):
+    cur = conn.execute(
+        """INSERT INTO purchase_verifications
+           (company, supplier_id, verification_date, verification_method, verification_account, total_amount)
+           VALUES ('HBE', ?, ?, 'cash', 'administrator', ?)""",
+        (supplier_id, verification_date, amount),
+    )
+    verification_id = cur.lastrowid
+    conn.execute(
+        """INSERT INTO purchase_verification_allocations
+           (purchase_verification_id, expense_id, amount)
+           VALUES (?, ?, ?)""",
+        (verification_id, expense_id, amount),
+    )
+    return verification_id
+
+
 class CreditPaymentBalanceTests(unittest.TestCase):
     def test_balance_none_partial_full(self):
         self.assertEqual(app_module._credit_expense_balance(10000, 0), 10000)
@@ -143,6 +160,9 @@ class CreditPaymentValidationTests(unittest.TestCase):
         self.expense_cash = _seed_expense(
             self.conn, self.supplier_a, 2000, payment_type="cash", code="HBE-EX-4"
         )
+        _seed_verification(self.conn, self.supplier_a, self.expense_a1, 10000)
+        _seed_verification(self.conn, self.supplier_a, self.expense_a2, 5000)
+        _seed_verification(self.conn, self.supplier_b, self.expense_b1, 3000)
         self.conn.commit()
 
     def tearDown(self):
@@ -266,6 +286,31 @@ class CreditPaymentValidationTests(unittest.TestCase):
         ids = {entry["id"] for entry in entries}
         self.assertNotIn(self.expense_a1, ids)
         self.assertIn(self.expense_a2, ids)
+
+    def test_outstanding_excludes_unverified_credit_expenses(self):
+        unverified = _seed_expense(
+            self.conn, self.supplier_a, 2500, code="HBE-EX-UNVERIFIED", sales_date="2026-07-03"
+        )
+        self.conn.commit()
+
+        entries = app_module._outstanding_credit_expenses(
+            self.conn, date(2026, 7, 1), date(2026, 7, 31), supplier_id=self.supplier_a
+        )
+        ids = {entry["id"] for entry in entries}
+        self.assertNotIn(unverified, ids)
+        self.assertIn(self.expense_a1, ids)
+        self.assertIn(self.expense_a2, ids)
+
+    def test_reject_unverified_credit_expense(self):
+        unverified = _seed_expense(
+            self.conn, self.supplier_a, 2500, code="HBE-EX-UNVERIFIED", sales_date="2026-07-03"
+        )
+        self.conn.commit()
+        payload, errors = self._create_payment([
+            {"expense_id": unverified, "amount": 2500},
+        ])
+        self.assertIsNone(payload)
+        self.assertTrue(any("verified" in err.lower() for err in errors))
 
     def test_delete_restores_balance(self):
         cur = self.conn.execute(

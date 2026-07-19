@@ -3,36 +3,54 @@
 {% set status_labels = dict(room_transfer_payment_statuses) %}
 {% set allow_selection = status_filter in ('unpaid', 'paid') and room_transfer_entries %}
 {% set action_button_label = 'Clear Payment' if status_filter == 'unpaid' else 'Mark Un Paid' %}
+{% set panel_title = receivables_panel_title|default('Room transfers') %}
+{% set empty_noun = receivables_empty_noun|default('room transfers') %}
+{% set empty_import_hint = receivables_empty_import_hint|default('Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.') %}
 
 <div class="pl-summary-row rt-summary-row">
-  <article class="card pl-summary-card" aria-label="Total room transfers">
+  <article class="card pl-summary-card hbe-kpi-card" aria-label="Total {{ empty_noun }}">
     <div class="card-body pl-summary-body">
-      <div class="pl-summary-label">Total</div>
-      <div class="pl-summary-value pl-amount" id="room-transfer-total" data-amount="{{ summary.total_amount }}">{{ summary.total_amount }}</div>
-      <div class="pl-summary-meta" id="room-transfer-total-count">{{ summary.total_count }} transfer{{ '' if summary.total_count == 1 else 's' }}</div>
+      <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+      </div>
+      <div class="hbe-kpi-text">
+        <div class="pl-summary-label">Total</div>
+        <div class="pl-summary-value pl-amount" id="room-transfer-total" data-amount="{{ summary.total_amount }}">{{ summary.total_amount }}</div>
+        <div class="pl-summary-meta" id="room-transfer-total-count">{{ summary.total_count }} entr{{ 'y' if summary.total_count == 1 else 'ies' }}</div>
+      </div>
     </div>
   </article>
-  <article class="card pl-summary-card" aria-label="Paid room transfers">
+  <article class="card pl-summary-card hbe-kpi-card" aria-label="Paid {{ empty_noun }}">
     <div class="card-body pl-summary-body">
-      <div class="pl-summary-label">Paid</div>
-      <div class="pl-summary-value pl-amount" id="room-transfer-paid" data-amount="{{ summary.paid_amount }}">{{ summary.paid_amount }}</div>
-      <div class="pl-summary-meta" id="room-transfer-paid-count">{{ summary.paid_count }} transfer{{ '' if summary.paid_count == 1 else 's' }}</div>
+      <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </div>
+      <div class="hbe-kpi-text">
+        <div class="pl-summary-label">Paid</div>
+        <div class="pl-summary-value pl-amount" id="room-transfer-paid" data-amount="{{ summary.paid_amount }}">{{ summary.paid_amount }}</div>
+        <div class="pl-summary-meta" id="room-transfer-paid-count">{{ summary.paid_count }} entr{{ 'y' if summary.paid_count == 1 else 'ies' }}</div>
+      </div>
     </div>
   </article>
-  <article class="card pl-summary-card" aria-label="Unpaid room transfers">
+  <article class="card pl-summary-card hbe-kpi-card rt-summary-card--unpaid" aria-label="Unpaid {{ empty_noun }}">
     <div class="card-body pl-summary-body">
-      <div class="pl-summary-label">Un Paid</div>
-      <div class="pl-summary-value pl-amount" id="room-transfer-unpaid" data-amount="{{ summary.unpaid_amount }}">{{ summary.unpaid_amount }}</div>
-      <div class="pl-summary-meta" id="room-transfer-unpaid-count">{{ summary.unpaid_count }} transfer{{ '' if summary.unpaid_count == 1 else 's' }}</div>
+      <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+      </div>
+      <div class="hbe-kpi-text">
+        <div class="pl-summary-label">Un Paid</div>
+        <div class="pl-summary-value pl-amount" id="room-transfer-unpaid" data-amount="{{ summary.unpaid_amount }}">{{ summary.unpaid_amount }}</div>
+        <div class="pl-summary-meta" id="room-transfer-unpaid-count">{{ summary.unpaid_count }} entr{{ 'y' if summary.unpaid_count == 1 else 'ies' }}</div>
+      </div>
     </div>
   </article>
 </div>
 
-<article class="card pl-list-panel" id="room-transfer-panel" aria-label="Room transfer entries">
+<article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" id="room-transfer-panel" aria-label="{{ panel_title }} entries">
   <div class="card-hdr">
     <div class="card-title">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
-      <span>Room Transfers</span>
+      <span>{{ panel_title }}</span>
     </div>
     <div class="cp-panel-actions">
       <span class="pl-count" id="room-transfer-entry-count">{{ room_transfer_entries|length }} entries</span>
@@ -52,8 +70,8 @@
   </div>
   <div class="card-body pl-card-body--flush" id="room-transfer-wrap">
     {% if room_transfer_entries %}
-    <div class="pl-table-wrap">
-      <table class="pl-table" id="room-transfer-table" aria-label="Room transfer lines">
+    <div class="pl-table-wrap" tabindex="0" aria-label="{{ panel_title }} lines, scroll for more">
+      <table class="pl-table rt-table" id="room-transfer-table" aria-label="{{ panel_title }} lines">
         <thead>
           <tr>
             {% if allow_selection %}
@@ -62,21 +80,33 @@
             </th>
             {% endif %}
             <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
+            <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
             <th class="pl-sortable" data-sort="invoice" scope="col" tabindex="0" aria-sort="none">Invoice</th>
-            <th class="pl-sortable" data-sort="location" scope="col" tabindex="0" aria-sort="none">Location</th>
-            <th class="pl-sortable" data-sort="guest" scope="col" tabindex="0" aria-sort="none">Guest</th>
-            <th class="pl-sortable" data-sort="room" scope="col" tabindex="0" aria-sort="none">Room/Table</th>
+            <th class="pl-sortable" data-sort="detail" scope="col" tabindex="0" aria-sort="none">Detail</th>
+            <th class="pl-sortable" data-sort="guest" scope="col" tabindex="0" aria-sort="none">Description</th>
             <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
-            <th class="pl-sortable rt-col-status" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
           </tr>
         </thead>
         <tbody id="room-transfer-body">
           {% for entry in room_transfer_entries %}
+          {% set detail_text = [entry.location, entry.table_room, entry.outlet_name]|select|join(' · ') %}
+          {% set search_blob = [
+            entry.sales_date_label,
+            entry.invoice_number,
+            entry.location,
+            entry.table_room,
+            entry.outlet_name,
+            entry.guest_name,
+            entry.ledger_detail,
+            status_labels.get(entry.payment_status, entry.payment_status),
+            entry.balance if entry.balance is defined else entry.amount
+          ]|select|join(' ')|lower %}
           <tr data-entry-id="{{ entry.id }}"
               data-balance="{{ entry.balance if entry.balance is defined else entry.amount }}"
               data-invoice="{{ entry.invoice_number or '' }}"
               data-guest="{{ entry.guest_name or '' }}"
               data-location="{{ entry.location or '' }}"
+              data-search="{{ search_blob|e }}"
               class="room-transfer-row room-transfer-row--{{ entry.payment_status }}{% if allow_selection %} rt-selectable-row{% endif %}">
             {% if allow_selection %}
             <td class="cp-col-check">
@@ -84,20 +114,16 @@
             </td>
             {% endif %}
             <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date_label }}</td>
-            <td class="pl-col-code" data-sort-value="{{ entry.invoice_number or '' }}">
-              <span class="pl-expense-code">{{ entry.invoice_number or '—' }}</span>
-              {% if entry.outlet_name %}<div class="pl-meta">{{ entry.outlet_name }}</div>{% endif %}
+            <td class="rt-col-status" data-sort-value="{{ status_labels.get(entry.payment_status, entry.payment_status) }}">
+              <span class="rt-type-pill rt-type-pill--{{ entry.payment_status }}">{{ status_labels.get(entry.payment_status, entry.payment_status) }}</span>
             </td>
-            <td data-sort-value="{{ entry.location or '' }}">{{ entry.location or '—' }}</td>
+            <td class="pl-col-code" data-sort-value="{{ entry.invoice_number or '' }}">{{ entry.invoice_number or '—' }}</td>
+            <td data-sort-value="{{ detail_text }}">{{ detail_text or '—' }}</td>
             <td data-sort-value="{{ entry.guest_name or '' }}">
               <div class="pl-name">{{ entry.guest_name or '—' }}</div>
               {% if entry.ledger_detail %}<div class="pl-meta">{{ entry.ledger_detail }}</div>{% endif %}
             </td>
-            <td data-sort-value="{{ entry.table_room or '' }}">{{ entry.table_room or '—' }}</td>
-            <td class="pl-col-amount pl-amount" data-amount="{{ entry.balance if entry.balance is defined else entry.amount }}" data-sort-value="{{ entry.balance if entry.balance is defined else entry.amount }}">{{ entry.balance if entry.balance is defined else entry.amount }}</td>
-            <td class="rt-col-status" data-sort-value="{{ status_labels.get(entry.payment_status, entry.payment_status) }}">
-              <span class="cp-status-pill cp-status-pill--{{ 'cleared' if entry.payment_status == 'paid' else 'outstanding' }}" data-status-pill>{{ status_labels.get(entry.payment_status, entry.payment_status) }}</span>
-            </td>
+            <td class="pl-col-amount rt-amount pl-amount" data-amount="{{ entry.balance if entry.balance is defined else entry.amount }}" data-sort-value="{{ entry.balance if entry.balance is defined else entry.amount }}">{{ entry.balance if entry.balance is defined else entry.amount }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -107,11 +133,11 @@
     <div class="pl-empty" id="room-transfer-empty">
       {% set location_suffix = '' if selected_location|default('All') == 'All' else (' for ' ~ selected_location) %}
       {% if status_filter == 'paid' %}
-      No paid room transfers found{{ location_suffix }} for the selected dates.
+      No paid {{ empty_noun }} found{{ location_suffix }} for the selected dates.
       {% elif status_filter == 'unpaid' %}
-      No pending room transfers{{ location_suffix }} for the selected dates. Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.
+      No pending {{ empty_noun }}{{ location_suffix }} for the selected dates. {{ empty_import_hint }}
       {% else %}
-      No room transfers found{{ location_suffix }} for the selected dates. Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.
+      No {{ empty_noun }} found{{ location_suffix }} for the selected dates. {{ empty_import_hint }}
       {% endif %}
     </div>
     {% endif %}

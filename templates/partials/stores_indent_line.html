@@ -1,0 +1,74 @@
+{# Shared indent line row — expects fid, ufid, line, has_item, product_catalog, default_units #}
+{% set line_unit = line.unit or 'kg' %}
+<div class="st-line{% if has_item %} is-product-selected{% endif %}">
+  <span class="st-drag-handle" aria-hidden="true" title="Drag">
+    <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="1.4"/><circle cx="15" cy="7" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="17" r="1.4"/><circle cx="15" cy="17" r="1.4"/></svg>
+  </span>
+  <div class="st-field st-field--product">
+    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-product-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-change="stProductPicked" id="{{ fid }}-listbox">
+      <label class="se-filter-chip-label st-sr-only" id="{{ fid }}-label" for="{{ fid }}-trigger">Item</label>
+      <div class="se-filter-chip-control">
+        <span class="se-filter-chip-icon st-product-thumb" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+        </span>
+        <input type="hidden" id="{{ fid }}" name="item_name" value="{{ line.item_name }}">
+        <button type="button" class="se-filter-chip-trigger" id="{{ fid }}-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ fid }}-list" aria-labelledby="{{ fid }}-label {{ fid }}-value">
+          <span class="se-filter-chip-value{% if not has_item %} is-placeholder{% endif %}" id="{{ fid }}-value">{% if has_item %}{{ line.item_name }}{% else %}Select Product{% endif %}</span>
+        </button>
+        <span class="se-filter-chip-chev" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
+      <div class="se-filter-listbox" id="{{ fid }}-list" role="listbox" aria-labelledby="{{ fid }}-label" hidden>
+        <div class="ep-listbox-search-wrap">
+          <input type="search" class="ep-listbox-search" placeholder="Search..." autocomplete="off" aria-label="Search Item">
+        </div>
+        <div class="ep-listbox-options">
+          {% for cat in product_catalog or [] %}
+          {% for product in cat.products %}
+          <button type="button" class="se-filter-listbox-option{% if line.item_name == product.name %} is-selected{% endif %}" role="option" data-value="{{ product.name }}" data-name="{{ product.name|lower }} {{ cat.name|lower }}" data-label="{{ product.name }}" data-unit="{{ product.default_unit }}" aria-selected="{{ 'true' if line.item_name == product.name else 'false' }}">{{ product.name }}</button>
+          {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="st-field st-field--qty">
+    <label class="st-sr-only">Qty</label>
+    <div class="st-qty-stepper">
+      <button type="button" class="st-qty-btn" data-st-qty-dec aria-label="Decrease quantity">
+        <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+      </button>
+      <input type="number" name="quantity" min="0.01" step="0.01" value="{{ line.quantity }}" placeholder="0" aria-label="Qty">
+      <button type="button" class="st-qty-btn" data-st-qty-inc aria-label="Increase quantity">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="st-field st-field--unit">
+    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-unit-listbox" data-se-listbox data-st-unit-listbox id="{{ ufid }}-listbox">
+      <label class="se-filter-chip-label st-sr-only" id="{{ ufid }}-label" for="{{ ufid }}-trigger">Unit</label>
+      <div class="se-filter-chip-control">
+        <input type="hidden" id="{{ ufid }}" name="unit" value="{{ line_unit }}" data-st-unit>
+        <button type="button" class="se-filter-chip-trigger" id="{{ ufid }}-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ ufid }}-list" aria-labelledby="{{ ufid }}-label {{ ufid }}-value">
+          <span class="se-filter-chip-value{% if not has_item %} is-placeholder{% endif %}" id="{{ ufid }}-value">{% if has_item %}{{ line_unit }}{% else %}Select unit{% endif %}</span>
+        </button>
+        <span class="se-filter-chip-chev" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
+      <div class="se-filter-listbox" id="{{ ufid }}-list" role="listbox" aria-labelledby="{{ ufid }}-label" hidden>
+        {% for unit in default_units %}
+        <button type="button" class="se-filter-listbox-option{% if line_unit == unit %} is-selected{% endif %}" role="option" data-value="{{ unit }}" data-name="{{ unit }}" data-label="{{ unit }}" aria-selected="{{ 'true' if line_unit == unit else 'false' }}">{{ unit }}</button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="st-field st-field--note">
+    <label class="st-sr-only">Line note</label>
+    <input type="text" name="line_notes" value="{{ line.notes }}" placeholder="Optional" aria-label="Line note">
+  </div>
+  <button type="button" class="st-line-remove" data-st-remove-line aria-label="Remove line">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+  </button>
+</div>

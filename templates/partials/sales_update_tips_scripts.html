@@ -1,0 +1,394 @@
+<script>
+(function(){
+  const widget = document.getElementById('sales-entry-widget');
+  if (!widget || !widget.dataset.tipAddUrl) return;
+
+  const tipLocation = widget.dataset.location || '';
+  {% set tip_boot_entries = [] %}
+  {% if outlet_records is defined and selected_location and outlet_records.get(selected_location) %}
+    {% set tip_boot_entries = outlet_records[selected_location].tip_entries|default([]) %}
+  {% endif %}
+  const tipEmployees = {{ tip_employees|default([])|tojson }};
+  const salesEntryLocked = {{ 'true' if sales_entry_locked else 'false' }};
+  let tipEntries = {{ tip_boot_entries|tojson }};
+  let editingTipId = null;
+
+  const tipsModal = document.getElementById('sales-tips-modal');
+  const openTipsModalBtn = document.getElementById('open-sales-tips');
+  const cancelTipsModalBtn = document.getElementById('cancel-sales-tip');
+  const saveTipBtn = document.getElementById('save-sales-tip');
+  const salesTipsSubmitLabel = document.getElementById('sales-tips-submit-label');
+  const salesTipsValue = document.getElementById('sales-tips-value');
+  const salesTipsDescription = document.getElementById('sales-tips-description');
+  const salesTipsError = document.getElementById('sales-tips-error');
+  const salesTipsList = document.getElementById('sales-tips-list');
+  const salesTipsHistoryTotal = document.getElementById('sales-tips-history-total');
+  const salesTipsEmployeeListbox = document.getElementById('sales-tips-employee-listbox');
+  const salesTipsEmployeeInput = document.getElementById('sales-tips-employee-input');
+  const salesTipsEmployeeValue = document.getElementById('sales-tips-employee-value');
+  const salesTipsEmployeeTrigger = document.getElementById('sales-tips-employee-trigger');
+  const salesTipsEmployeeList = document.getElementById('sales-tips-employee-list');
+  const salesTipsEmployeeSearch = document.getElementById('sales-tips-employee-search');
+  const salesTipsEmployeeOptions = document.getElementById('sales-tips-employee-options');
+  const salesTipsEmployeeEmpty = document.getElementById('sales-tips-employee-empty');
+
+  const formatInrKpi = (value) => (typeof formatInr === 'function' ? formatInr(value, 0) : String(value || 0));
+  const formatAmount = (value) => {
+    const amount = Number(value || 0);
+    return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+  };
+
+  function escapeHtml(value){
+    return String(value || '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[ch]));
+  }
+
+  function tipsInput(){
+    return document.querySelector(`[data-sales-entry="tips"][data-sales-location="${tipLocation}"]`);
+  }
+
+  function updateTipsTotal(value){
+    const input = tipsInput();
+    if (input) input.value = formatAmount(value);
+  }
+
+  function buildLocationSalesEntries(){
+    const entries = {};
+    document.querySelectorAll(`[data-sales-entry][data-sales-location="${tipLocation}"]`).forEach((input) => {
+      const key = String(input.dataset.salesEntry || '');
+      entries[key] = Math.max(0, Math.round(Number(input.value || 0) * 100) / 100);
+    });
+    return entries;
+  }
+
+  async function persistTipsSalesTotal(){
+    if (!widget || !widget.dataset.saveUrl) return;
+    if (typeof window.seAfterTipMutation === 'function') {
+      await window.seAfterTipMutation();
+      return;
+    }
+    const resp = await fetch(widget.dataset.saveUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: widget.dataset.company,
+        location: tipLocation,
+        date: widget.dataset.date,
+        sales_entries: buildLocationSalesEntries(),
+        sales_only: true,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save tip total.');
+  }
+
+  function employeeLabelById(employeeId){
+    const match = tipEmployees.find((row) => String(row.id) === String(employeeId));
+    if (!match) return '';
+    const code = match.emp_code ? ` (${match.emp_code})` : '';
+    return `${match.name || 'Employee'}${code}`;
+  }
+
+  function getSelectedTipEmployeeId(){
+    return salesTipsEmployeeInput ? (salesTipsEmployeeInput.value || '') : '';
+  }
+
+  function closeTipsEmployeeListbox(){
+    if (!salesTipsEmployeeListbox) return;
+    salesTipsEmployeeListbox.classList.remove('is-open');
+    if (salesTipsEmployeeTrigger) salesTipsEmployeeTrigger.setAttribute('aria-expanded', 'false');
+    if (salesTipsEmployeeList) salesTipsEmployeeList.hidden = true;
+  }
+
+  function scoreTipEmployeeOption(option, needle){
+    if (!needle) return 0;
+    const name = (option.getAttribute('data-name') || '').toLowerCase();
+    const code = (option.getAttribute('data-code') || '').toLowerCase();
+    const value = (option.getAttribute('data-value') || '').toLowerCase();
+    const terms = needle.split(/\s+/).filter(Boolean);
+    let score = 0;
+    for (const term of terms) {
+      if (name === term || code === term || value === term) score += 120;
+      else if (name.startsWith(term) || code.startsWith(term)) score += 90;
+      else if (name.includes(term) || code.includes(term) || value.includes(term)) score += 60;
+      else return -1;
+    }
+    return score;
+  }
+
+  function filterTipsEmployeeOptions(query){
+    if (!salesTipsEmployeeOptions) return;
+    const needle = String(query || '').trim().toLowerCase();
+    const options = Array.from(salesTipsEmployeeOptions.querySelectorAll('.staff-tips-employee-option'));
+    const ranked = options.map((option) => ({
+      option,
+      score: scoreTipEmployeeOption(option, needle),
+    })).filter((entry) => !needle || entry.score >= 0);
+
+    ranked.sort((a, b) => {
+      if (needle) return b.score - a.score || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
+      return (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
+    });
+
+    const best = needle && ranked.length ? [ranked[0]] : ranked;
+    options.forEach((option) => option.classList.add('is-filtered-out'));
+    best.forEach(({ option }) => {
+      option.classList.remove('is-filtered-out');
+      salesTipsEmployeeOptions.appendChild(option);
+    });
+    if (salesTipsEmployeeEmpty) {
+      salesTipsEmployeeEmpty.hidden = !(needle && !best.length);
+      salesTipsEmployeeEmpty.textContent = tipEmployees.length
+        ? 'No employees match your search.'
+        : 'No active employees found.';
+    }
+  }
+
+  function openTipsEmployeeListbox(){
+    if (!salesTipsEmployeeListbox) return;
+    salesTipsEmployeeListbox.classList.add('is-open');
+    if (salesTipsEmployeeTrigger) salesTipsEmployeeTrigger.setAttribute('aria-expanded', 'true');
+    if (salesTipsEmployeeList) {
+      salesTipsEmployeeList.hidden = false;
+      filterTipsEmployeeOptions('');
+      if (salesTipsEmployeeSearch) {
+        salesTipsEmployeeSearch.value = '';
+        salesTipsEmployeeSearch.focus();
+      }
+    }
+  }
+
+  function toggleTipsEmployeeListbox(){
+    if (!salesTipsEmployeeListbox) return;
+    if (salesTipsEmployeeListbox.classList.contains('is-open')) closeTipsEmployeeListbox();
+    else openTipsEmployeeListbox();
+  }
+
+  function setTipEmployee(employeeId, options){
+    const opts = options || {};
+    const normalizedId = employeeId ? String(employeeId) : '';
+    const label = normalizedId ? employeeLabelById(normalizedId) : '';
+    if (salesTipsEmployeeInput) salesTipsEmployeeInput.value = normalizedId;
+    if (salesTipsEmployeeValue) {
+      salesTipsEmployeeValue.textContent = label || 'Select employee';
+      salesTipsEmployeeValue.classList.toggle('staff-supplier-placeholder', !label);
+    }
+    if (!opts.skipOptions && salesTipsEmployeeOptions) {
+      salesTipsEmployeeOptions.querySelectorAll('.staff-tips-employee-option').forEach((option) => {
+        const on = String(option.getAttribute('data-value') || '') === normalizedId;
+        option.classList.toggle('is-selected', on);
+        option.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+  }
+
+  function selectTipEmployeeOption(option){
+    if (!option) return;
+    setTipEmployee(option.getAttribute('data-value') || '');
+    closeTipsEmployeeListbox();
+    showSalesTipsError('');
+  }
+
+  function bindTipsEmployeeListbox(){
+    if (!salesTipsEmployeeListbox || !salesTipsEmployeeTrigger || !salesTipsEmployeeList) return;
+    salesTipsEmployeeTrigger.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleTipsEmployeeListbox();
+    });
+    if (salesTipsEmployeeSearch) {
+      salesTipsEmployeeSearch.addEventListener('input', () => {
+        filterTipsEmployeeOptions(salesTipsEmployeeSearch.value);
+      });
+      salesTipsEmployeeSearch.addEventListener('click', (event) => event.stopPropagation());
+      salesTipsEmployeeSearch.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeTipsEmployeeListbox();
+          if (salesTipsEmployeeTrigger) salesTipsEmployeeTrigger.focus();
+        } else if (event.key === 'Enter') {
+          event.preventDefault();
+          const firstMatch = salesTipsEmployeeOptions
+            ? salesTipsEmployeeOptions.querySelector('.staff-tips-employee-option:not(.is-filtered-out)')
+            : null;
+          if (firstMatch) selectTipEmployeeOption(firstMatch);
+        }
+      });
+    }
+    if (salesTipsEmployeeOptions) {
+      salesTipsEmployeeOptions.addEventListener('click', (event) => {
+        const option = event.target.closest('.staff-tips-employee-option');
+        if (!option || option.classList.contains('is-filtered-out')) return;
+        event.preventDefault();
+        selectTipEmployeeOption(option);
+      });
+    }
+  }
+
+  function renderTipEntries(entries, options){
+    const opts = options || {};
+    tipEntries = Array.isArray(entries) ? entries : [];
+    const total = tipEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    if (salesTipsHistoryTotal) salesTipsHistoryTotal.textContent = formatInrKpi(total);
+    if (tipEntries.length || opts.syncTotal) updateTipsTotal(total);
+    if (!salesTipsList) return;
+    if (!tipEntries.length) {
+      salesTipsList.innerHTML = '<div class="staff-credit-empty">No tips added for this date.</div>';
+      return;
+    }
+    salesTipsList.innerHTML = tipEntries.map((row) => {
+      const id = escapeHtml(row.id);
+      const name = escapeHtml(row.employee_name || 'Employee');
+      const code = row.employee_code ? escapeHtml(row.employee_code) : `ID ${escapeHtml(row.employee_id)}`;
+      const note = row.description ? escapeHtml(row.description) : '';
+      const meta = [code, note].filter(Boolean).join(' · ');
+      return `<div class="staff-credit-row" data-tip-id="${id}"><div class="staff-credit-info"><div class="staff-credit-name">${name}</div><div class="staff-credit-desc">${meta}</div></div><div class="staff-credit-amount">${formatInrKpi(row.amount)}</div><div class="staff-credit-controls"><button type="button" class="staff-credit-action" data-tip-action="edit" data-tip-id="${id}">Edit</button><button type="button" class="staff-credit-action danger" data-tip-action="delete" data-tip-id="${id}">Delete</button></div></div>`;
+    }).join('');
+  }
+
+  function showSalesTipsError(message){
+    if (!salesTipsError) return;
+    salesTipsError.textContent = message || '';
+    salesTipsError.style.display = message ? 'block' : 'none';
+  }
+
+  function resetTipForm(){
+    editingTipId = null;
+    if (salesTipsValue) salesTipsValue.value = '';
+    if (salesTipsDescription) salesTipsDescription.value = '';
+    setTipEmployee('');
+    if (salesTipsSubmitLabel) salesTipsSubmitLabel.textContent = 'Add tip';
+    showSalesTipsError('');
+  }
+
+  function openTipsModal(){
+    if (!tipsModal || salesEntryLocked) return;
+    resetTipForm();
+    renderTipEntries(tipEntries);
+    tipsModal.classList.add('open');
+    tipsModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeTipsModal(){
+    if (!tipsModal) return;
+    closeTipsEmployeeListbox();
+    tipsModal.classList.remove('open');
+    tipsModal.setAttribute('aria-hidden', 'true');
+    resetTipForm();
+  }
+
+  function editTip(tipId){
+    if (salesEntryLocked) return;
+    const row = tipEntries.find((item) => String(item.id) === String(tipId));
+    if (!row || !tipsModal) return;
+    editingTipId = row.id;
+    setTipEmployee(row.employee_id || '');
+    if (salesTipsValue) salesTipsValue.value = formatAmount(row.amount);
+    if (salesTipsDescription) salesTipsDescription.value = row.description || '';
+    if (salesTipsSubmitLabel) salesTipsSubmitLabel.textContent = 'Update tip';
+    tipsModal.classList.add('open');
+    tipsModal.setAttribute('aria-hidden', 'false');
+  }
+
+  async function performTipDelete(tipId){
+    if (!widget || !tipId) throw new Error('Missing tip id.');
+    const resp = await fetch(widget.dataset.tipDeleteUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: widget.dataset.company,
+        location: tipLocation,
+        date: widget.dataset.date,
+        id: tipId,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not delete tip.');
+    renderTipEntries(data.tip_entries || [], { syncTotal: true });
+    await persistTipsSalesTotal();
+  }
+
+  async function deleteTip(tipId){
+    if (!widget || salesEntryLocked || !tipId) return;
+    var ok = typeof window.deConfirm === 'function'
+      ? await window.deConfirm('Delete this tip line?')
+      : window.confirm('Delete this tip line?');
+    if (!ok) return;
+    try {
+      await performTipDelete(tipId);
+    } catch (err) {
+      showSalesTipsError(err.message);
+      openTipsModal();
+    }
+  }
+
+  async function submitTip(){
+    if (!widget || salesEntryLocked) return;
+    const employeeId = getSelectedTipEmployeeId();
+    const amountRaw = salesTipsValue ? salesTipsValue.value : '';
+    const description = salesTipsDescription ? salesTipsDescription.value.trim() : '';
+    if (!employeeId) {
+      showSalesTipsError('Please select an employee.');
+      return;
+    }
+    if (!amountRaw || Number(amountRaw) <= 0) {
+      showSalesTipsError('Please enter a tip amount greater than 0.');
+      return;
+    }
+    showSalesTipsError('');
+    if (saveTipBtn) saveTipBtn.disabled = true;
+    try {
+      const resp = await fetch(editingTipId ? widget.dataset.tipEditUrl : widget.dataset.tipAddUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          company: widget.dataset.company,
+          location: tipLocation,
+          date: widget.dataset.date,
+          id: editingTipId,
+          employee_id: employeeId,
+          amount: amountRaw,
+          description,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save tip.');
+      renderTipEntries(data.tip_entries || [], { syncTotal: true });
+      resetTipForm();
+      await persistTipsSalesTotal();
+    } catch (err) {
+      showSalesTipsError(err.message);
+    } finally {
+      if (saveTipBtn) saveTipBtn.disabled = false;
+    }
+  }
+
+  if (openTipsModalBtn) openTipsModalBtn.addEventListener('click', openTipsModal);
+  if (cancelTipsModalBtn) cancelTipsModalBtn.addEventListener('click', closeTipsModal);
+  if (saveTipBtn) saveTipBtn.addEventListener('click', submitTip);
+  bindTipsEmployeeListbox();
+  document.addEventListener('click', (event) => {
+    if (salesTipsEmployeeListbox && salesTipsEmployeeListbox.classList.contains('is-open') && !salesTipsEmployeeListbox.contains(event.target)) {
+      closeTipsEmployeeListbox();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeTipsEmployeeListbox();
+  });
+  if (tipsModal) {
+    tipsModal.addEventListener('click', (event) => {
+      if (event.target === tipsModal) closeTipsModal();
+    });
+  }
+  if (salesTipsList) {
+    salesTipsList.addEventListener('click', (event) => {
+      const action = event.target.closest('[data-tip-action]');
+      if (!action) return;
+      const tipId = action.dataset.tipId;
+      if (action.dataset.tipAction === 'edit') editTip(tipId);
+      if (action.dataset.tipAction === 'delete') deleteTip(tipId);
+    });
+  }
+  renderTipEntries(tipEntries);
+})();
+</script>

@@ -2,15 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Purchase Ledger | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
   try{
@@ -49,25 +51,10 @@
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <form id="purchase-ledger-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Purchase ledger filters">
-          <div class="se-filter-chip se-filter-chip--date">
-            <label class="se-filter-chip-label" for="purchase-ledger-date-from">From</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              </span>
-              <input type="date" id="purchase-ledger-date-from" name="date_from" class="pl-date-input" value="{{ date_from }}" max="{{ date_to }}">
-            </div>
-          </div>
-          <div class="se-filter-chip se-filter-chip--date">
-            <label class="se-filter-chip-label" for="purchase-ledger-date-to">To</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              </span>
-              <input type="date" id="purchase-ledger-date-to" name="date_to" class="pl-date-input" value="{{ date_to }}" min="{{ date_from }}">
-            </div>
-          </div>
+        <form id="purchase-ledger-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Purchase ledger filters"
+              data-clear-url="{{ purchase_ledger_clear_url }}">
+          <input type="hidden" id="purchase-ledger-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="purchase-ledger-date-to" name="date_to" value="{{ date_to }}">
           <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable>
             <span class="se-filter-chip-label" id="purchase-ledger-supplier-label">Supplier</span>
             <div class="se-filter-chip-control">
@@ -146,6 +133,64 @@
               {% endfor %}
             </div>
           </div>
+          <div class="se-filter-chip-date-host pl-date-range-host" id="pl-date-range-host">
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <span class="se-filter-chip-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                </span>
+                <div class="an-range-wrap an-range-wrap--sales" id="pl-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="pl-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="pl-date-range-panel">
+                    <span class="an-range-trigger-label">
+                      <span id="pl-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Date{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="pl-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="pl-date-range-panel" role="dialog" aria-labelledby="pl-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="pl-date-range-panel-title">Date range</div>
+                      <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="pl-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="pl-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="pl-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="pl-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="pl-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="pl-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="pl-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="pl-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
         </form>
       </div>
     </div>
@@ -153,37 +198,57 @@
 
   <section class="content se-content">
     <div class="pl-summary-row">
-      <article class="card pl-summary-card" aria-label="Total purchases">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total purchases">
         <div class="card-body pl-summary-body">
-          <div class="pl-summary-label">Total purchases</div>
-          <div class="pl-summary-value pl-amount" id="pl-total-amount" data-amount="{{ purchase_total }}">{{ purchase_total }}</div>
-          <div class="pl-summary-meta">{{ purchase_entries|length }} expense{{ '' if purchase_entries|length == 1 else 's' }}</div>
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Total purchases</div>
+            <div class="pl-summary-value pl-amount" id="pl-total-amount" data-amount="{{ purchase_total }}">{{ purchase_total }}</div>
+            <div class="pl-summary-meta">{{ purchase_entries|length }} expense{{ '' if purchase_entries|length == 1 else 's' }}</div>
+          </div>
         </div>
       </article>
-      <article class="card pl-summary-card" aria-label="Outstanding purchases">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Outstanding purchases">
         <div class="card-body pl-summary-body">
-          <div class="pl-summary-label">Outstanding</div>
-          <div class="pl-summary-value pl-amount" id="pl-outstanding-amount" data-amount="{{ outstanding_total }}">{{ outstanding_total }}</div>
-          <div class="pl-summary-meta">{{ outstanding_count }} expense{{ '' if outstanding_count == 1 else 's' }}</div>
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Outstanding</div>
+            <div class="pl-summary-value pl-amount" id="pl-outstanding-amount" data-amount="{{ outstanding_total }}">{{ outstanding_total }}</div>
+            <div class="pl-summary-meta">{{ outstanding_count }} expense{{ '' if outstanding_count == 1 else 's' }}</div>
+          </div>
         </div>
       </article>
-      <article class="card pl-summary-card" aria-label="Cleared purchases">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Cleared purchases">
         <div class="card-body pl-summary-body">
-          <div class="pl-summary-label">Cleared</div>
-          <div class="pl-summary-value pl-amount" id="pl-cleared-amount" data-amount="{{ cleared_total }}">{{ cleared_total }}</div>
-          <div class="pl-summary-meta">{{ cleared_count }} expense{{ '' if cleared_count == 1 else 's' }}</div>
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Cleared</div>
+            <div class="pl-summary-value pl-amount" id="pl-cleared-amount" data-amount="{{ cleared_total }}">{{ cleared_total }}</div>
+            <div class="pl-summary-meta">{{ cleared_count }} expense{{ '' if cleared_count == 1 else 's' }}</div>
+          </div>
         </div>
       </article>
-      <article class="card pl-summary-card" aria-label="Cash purchases">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Cash purchases">
         <div class="card-body pl-summary-body">
-          <div class="pl-summary-label">Cash</div>
-          <div class="pl-summary-value pl-amount" id="pl-cash-amount" data-amount="{{ cash_total }}">{{ cash_total }}</div>
-          <div class="pl-summary-meta">{{ cash_count }} expense{{ '' if cash_count == 1 else 's' }}</div>
+          <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Cash</div>
+            <div class="pl-summary-value pl-amount" id="pl-cash-amount" data-amount="{{ cash_total }}">{{ cash_total }}</div>
+            <div class="pl-summary-meta">{{ cash_count }} expense{{ '' if cash_count == 1 else 's' }}</div>
+          </div>
         </div>
       </article>
     </div>
 
-    <article class="card pl-list-panel" aria-label="Purchase entries">
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Purchase entries">
       <div class="card-hdr">
         <div class="card-title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
@@ -193,7 +258,7 @@
       </div>
       <div class="card-body pl-card-body--flush">
         {% if purchase_entries %}
-        <div class="pl-table-wrap">
+        <div class="pl-table-wrap" tabindex="0" aria-label="Purchase entries, scroll for more">
           <table class="pl-table" aria-label="Purchase ledger entries">
             <thead>
               <tr>
@@ -238,10 +303,12 @@
                 <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
                 <td class="pl-col-actions">
                   {% if entry.settlement_status == 'outstanding' %}
-                  <div class="pl-action-btns">
+                  <div class="act-grp pl-action-btns">
                     <button
                       type="button"
-                      class="pl-edit-btn"
+                      class="act-btn edit pl-edit-btn"
+                      data-tip="Edit"
+                      aria-label="Edit purchase"
                       data-expense-id="{{ entry.id }}"
                       data-date="{{ entry.sales_date }}"
                       data-description="{{ entry.description or '' }}"
@@ -253,14 +320,20 @@
                       data-supplier-name="{{ entry.supplier_name or '' }}"
                       data-payment-type="{{ entry.payment_type or 'credit' }}"
                       data-transaction-id="{{ entry.transaction_id or '' }}"
-                    >Edit</button>
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
                     <button
                       type="button"
-                      class="pl-delete-btn"
+                      class="act-btn del pl-delete-btn"
+                      data-tip="Delete"
+                      aria-label="Delete purchase"
                       data-expense-id="{{ entry.id }}"
                       data-expense-code="{{ entry.expense_code or entry.id }}"
                       data-date="{{ entry.sales_date }}"
-                    >Delete</button>
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
                   </div>
                   {% else %}
                   <span class="pl-action-muted">—</span>
@@ -280,6 +353,7 @@
 </div>
 {% include 'partials/purchase_ledger_add_modal.html' %}
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=7"></script>
 {% include 'partials/purchase_ledger_filter_scripts.html' %}
 {% include 'partials/purchase_ledger_add_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}

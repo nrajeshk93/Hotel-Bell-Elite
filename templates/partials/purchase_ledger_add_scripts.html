@@ -42,7 +42,7 @@
 
   function syncAvailableCashDisplay(){
     var paymentInput = document.getElementById('pl-add-payment-input');
-    var method = paymentInput ? paymentInput.value : 'cash';
+    var method = paymentInput ? (paymentInput.value || '') : '';
     var isCash = method === 'cash';
     if (availableWrap) availableWrap.hidden = !isCash;
     if (availableCashEl) availableCashEl.textContent = formatAvailableCash(availableCash);
@@ -227,7 +227,7 @@
 
   function syncTransactionVisibility(){
     var paymentInput = document.getElementById('pl-add-payment-input');
-    var method = paymentInput ? paymentInput.value : 'cash';
+    var method = paymentInput ? (paymentInput.value || '') : '';
     if (transactionWrap) transactionWrap.hidden = method !== 'bank_transfer';
     if (method !== 'bank_transfer' && transactionEl) transactionEl.value = '';
     syncAvailableCashDisplay();
@@ -273,7 +273,7 @@
     if (transactionEl) transactionEl.value = '';
     setListboxValue('pl-add-supplier', '', '', 'Select supplier');
     setListboxValue('pl-add-category', '', '', 'Select category');
-    setListboxValue('pl-add-payment', 'cash', paymentLabels.cash || 'Cash');
+    setListboxValue('pl-add-payment', '', '', 'Select payment type');
     syncTransactionVisibility();
     closeAllListboxes();
     refreshAvailableCash();
@@ -368,7 +368,7 @@
     var amountRaw = amountEl ? amountEl.value : '';
     var supplierId = document.getElementById('pl-add-supplier-input') ? document.getElementById('pl-add-supplier-input').value : '';
     var category = document.getElementById('pl-add-category-input') ? document.getElementById('pl-add-category-input').value : '';
-    var paymentType = document.getElementById('pl-add-payment-input') ? document.getElementById('pl-add-payment-input').value : 'cash';
+    var paymentType = document.getElementById('pl-add-payment-input') ? document.getElementById('pl-add-payment-input').value : '';
     var transactionId = transactionEl ? transactionEl.value.trim() : '';
     var invoiceNumber = invoiceEl ? invoiceEl.value.trim() : '';
 
@@ -390,6 +390,10 @@
     }
     if (!amountRaw || Number(amountRaw) <= 0) {
       setError('Please enter a value greater than 0.');
+      return;
+    }
+    if (!paymentType) {
+      setError('Please select a payment type.');
       return;
     }
     if (paymentType === 'bank_transfer' && !transactionId) {

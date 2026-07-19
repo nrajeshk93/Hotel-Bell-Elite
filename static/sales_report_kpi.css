@@ -141,6 +141,8 @@ a.sr-kpi-menu {
   flex: 1;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .sr-kpi-label {
@@ -155,12 +157,16 @@ a.sr-kpi-menu {
 
 .sr-kpi-value {
   margin: 0;
-  font-size: 32px;
+  font-size: clamp(16px, 2.6vw, 32px);
   font-weight: 800;
-  line-height: 1.05;
+  line-height: 1.15;
   color: #0F172A;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 .sr-kpi-foot {
@@ -339,7 +345,7 @@ a.sr-kpi-menu {
   }
 
   .sr-kpi-value {
-    font-size: 28px;
+    font-size: clamp(16px, 4vw, 28px);
   }
 
   .sr-kpi-card:nth-child(5):last-child {
@@ -361,6 +367,6 @@ a.sr-kpi-menu {
   }
 
   .sr-kpi-value {
-    font-size: 26px;
+    font-size: clamp(18px, 6vw, 26px);
   }
 }

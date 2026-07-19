@@ -2,16 +2,18 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Room Transfer | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=11">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=5">
-<link rel="stylesheet" href="{{ url_for('static', filename='room_transfer.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='room_transfer.css') }}?v=13">
 <script>
 (function(){
   try{
@@ -52,27 +54,19 @@
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <form id="room-transfer-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Room transfer filters">
+        <form id="room-transfer-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters rt-filter-form" aria-label="Room transfer filters"
+              data-clear-url="{{ url_for(receivables_page_endpoint, company=selected_company, location=selected_location, status=selected_payment_status) }}">
           <input type="hidden" name="company" value="{{ selected_company }}">
-          <div class="se-filter-chip se-filter-chip--date">
-            <label class="se-filter-chip-label" for="room-transfer-date-from">From</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              </span>
-              <input type="date" id="room-transfer-date-from" name="date_from" class="pl-date-input" value="{{ date_from }}" max="{{ date_to }}">
-            </div>
+          <input type="hidden" id="room-transfer-status" name="status" value="{{ selected_payment_status }}">
+          <div class="cp-view-tabs" role="tablist" aria-label="Payment status">
+            {% for status_key, status_label in room_transfer_filter_statuses %}
+            <a class="cp-view-tab{% if selected_payment_status == status_key %} is-active{% endif %}"
+               href="{{ url_for(receivables_page_endpoint, status=status_key, **room_transfer_status_tab_query) }}"
+               role="tab"
+               aria-selected="{{ 'true' if selected_payment_status == status_key else 'false' }}">{{ status_label }}</a>
+            {% endfor %}
           </div>
-          <div class="se-filter-chip se-filter-chip--date">
-            <label class="se-filter-chip-label" for="room-transfer-date-to">To</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-              </span>
-              <input type="date" id="room-transfer-date-to" name="date_to" class="pl-date-input" value="{{ date_to }}" min="{{ date_from }}">
-            </div>
-          </div>
-          <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox" data-se-listbox>
+          <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox rt-location-chip" data-se-listbox>
             <span class="se-filter-chip-label" id="room-transfer-location-label">Location</span>
             <div class="se-filter-chip-control">
               <span class="se-filter-chip-icon" aria-hidden="true">
@@ -92,14 +86,74 @@
               {% endfor %}
             </div>
           </div>
-          <input type="hidden" id="room-transfer-status" name="status" value="{{ selected_payment_status }}">
-          <div class="cp-view-tabs" role="tablist" aria-label="Payment status">
-            {% for status_key, status_label in room_transfer_filter_statuses %}
-            <a class="cp-view-tab{% if selected_payment_status == status_key %} is-active{% endif %}"
-               href="{{ url_for('sales_update_room_transfer', company=selected_company, date_from=date_from, date_to=date_to, location=selected_location, status=status_key) }}"
-               role="tab"
-               aria-selected="{{ 'true' if selected_payment_status == status_key else 'false' }}">{{ status_label }}</a>
-            {% endfor %}
+          <div class="se-filter-chip se-filter-chip--search rt-search-chip">
+            <label class="se-filter-chip-label" for="room-transfer-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="room-transfer-search" class="rt-search-input" placeholder="Invoice, guest, room…" autocomplete="off" aria-label="Search room transfers">
+            </div>
+          </div>
+          <input type="hidden" id="room-transfer-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="room-transfer-date-to" name="date_to" value="{{ date_to }}">
+          <div class="se-filter-chip-date-host rt-date-range-host" id="rt-date-range-host">
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <span class="se-filter-chip-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                </span>
+                <div class="an-range-wrap an-range-wrap--sales" id="rt-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="rt-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="rt-date-range-panel">
+                    <span class="an-range-trigger-label">
+                      <span id="rt-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Date{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="rt-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="rt-date-range-panel" role="dialog" aria-labelledby="rt-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="rt-date-range-panel-title">Date range</div>
+                      <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="rt-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="rt-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="rt-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="rt-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="rt-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="rt-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="rt-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="rt-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
           </div>
         </form>
       </div>
@@ -118,6 +172,7 @@
 </div>
 {% include 'partials/sales_update_filter_listbox_scripts.html' %}
 {% include 'partials/sales_update_room_transfer_clearance_modal.html' %}
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=6"></script>
 {% include 'partials/sales_update_room_transfer_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>

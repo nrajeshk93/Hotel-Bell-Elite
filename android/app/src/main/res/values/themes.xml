@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.HotelBellElite" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <item name="colorPrimary">@color/hbe_blue</item>
+        <item name="colorPrimaryVariant">@color/hbe_blue</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="android:statusBarColor">@color/hbe_blue</item>
+        <item name="android:navigationBarColor">@color/hbe_bg</item>
+        <item name="android:windowBackground">@color/hbe_bg</item>
+    </style>
+</resources>

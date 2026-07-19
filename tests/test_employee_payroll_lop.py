@@ -191,6 +191,16 @@ class AttendanceBadgeTests(unittest.TestCase):
                 payroll_year INTEGER,
                 payroll_month INTEGER
             );
+            CREATE TABLE tip_incentive_payouts (
+                id INTEGER PRIMARY KEY,
+                company TEXT NOT NULL,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                employee_id INTEGER NOT NULL,
+                amount REAL NOT NULL DEFAULT 0,
+                updated_at TEXT,
+                UNIQUE(company, year, month, employee_id)
+            );
             """
         )
         return conn

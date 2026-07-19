@@ -46,7 +46,24 @@ class WorkspaceAccessTests(unittest.TestCase):
     def test_registry_drives_access_tree(self):
         tree = access_module_tree_ui()
         labels = [node["label"] for node in tree]
-        self.assertEqual(labels, ["Sales Analytics", "User & Access", "Accounts", "Employee Payroll"])
+        self.assertEqual(
+            labels,
+            ["Sales Analytics", "User & Access", "Accounts", "Employee Payroll", "Stores"],
+        )
+        stores_children = [child["label"] for child in tree[4]["children"]]
+        self.assertEqual(
+            stores_children,
+            [
+                "Products",
+                "Indent",
+                "Approvals",
+                "Purchases",
+                "Stock",
+                "Transfers",
+                "Verification",
+                "Issues",
+            ],
+        )
         sales_children = [child["label"] for child in tree[0]["children"]]
         self.assertEqual(
             sales_children,
@@ -56,6 +73,7 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Sales Update - Bar",
                 "Sales Update - Restaurant",
                 "Room Transfer",
+                "Credit",
             ],
         )
         accounts_children = [child["label"] for child in tree[2]["children"]]
@@ -64,11 +82,14 @@ class WorkspaceAccessTests(unittest.TestCase):
             [
                 "Purchase Ledger",
                 "Cash Ledger",
-                "Credit Payment",
                 "Purchase Verification",
+                "Credit Payment",
                 "Supplier Master",
             ],
         )
+        stores = next(node for node in tree if node["label"] == "Stores")
+        self.assertEqual(stores["dashboardKey"], "stores")
+        self.assertEqual(len(stores["children"]), 8)
 
     def test_supplier_master_uses_accounts_access(self):
         user = {
@@ -166,7 +187,12 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("supplier_master"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("save_supplier"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_supplier_report"), "accounts")
-        self.assertEqual(get_endpoint_sales_analytics_submodules("save_sales_update"), ["bar", "restaurant"])
+        self.assertEqual(get_endpoint_dashboard_module("stores"), "stores")
+        self.assertEqual(get_endpoint_dashboard_module("stores_indent"), "stores")
+        self.assertEqual(
+            get_endpoint_sales_analytics_submodules("save_sales_update"),
+            ["hotel", "bar", "restaurant"],
+        )
 
 
 if __name__ == "__main__":

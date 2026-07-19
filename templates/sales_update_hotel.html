@@ -2,16 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Sales Update - Hotel | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=3">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
 <script>
 (function(){
   try{
@@ -52,6 +53,9 @@
           data-expense-add-url="{{ url_for('sales_update_add_expense') }}"
           data-expense-edit-url="{{ url_for('sales_update_edit_expense') }}"
           data-expense-delete-url="{{ url_for('sales_update_delete_expense') }}"
+          data-tip-add-url="{{ url_for('sales_update_add_tip') }}"
+          data-tip-edit-url="{{ url_for('sales_update_edit_tip') }}"
+          data-tip-delete-url="{{ url_for('sales_update_delete_tip') }}"
           data-supplier-create-url="{{ url_for('create_supplier') }}"
           data-available-cash="{{ available_cash }}"></div>
         {% include 'partials/sales_update_petty_section.html' %}
@@ -65,6 +69,7 @@
 {% include 'partials/sales_update_filter_scripts.html' %}
 {% include 'partials/sales_update_petty_scripts.html' %}
 {% include 'partials/sales_update_hotel_ledger_scripts.html' %}
+{% include 'partials/sales_update_tips_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

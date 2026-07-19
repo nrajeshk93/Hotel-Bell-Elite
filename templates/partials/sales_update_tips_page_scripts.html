@@ -1,0 +1,83 @@
+<script>
+(function(){
+  var form = document.getElementById('tips-filter-form');
+  var searchInput = document.getElementById('tips-search');
+  var rowCount = document.getElementById('tips-row-count');
+  var searchEmpty = document.getElementById('tips-search-empty');
+  var table = document.getElementById('tips-employee-table');
+  var dateFromInput = document.getElementById('tips-date-from');
+  var dateToInput = document.getElementById('tips-date-to');
+  var clearUrl = form ? String(form.getAttribute('data-clear-url') || form.action || '') : '';
+
+  if (window.SalesDateRangePicker) {
+    SalesDateRangePicker.init({
+      wrapId: 'tips-date-range-wrap',
+      triggerId: 'tips-date-range-trigger',
+      backdropId: 'tips-date-range-backdrop',
+      panelId: 'tips-date-range-panel',
+      displayId: 'tips-date-range-display',
+      formId: 'tips-filter-form',
+      fromInputId: 'tips-date-from',
+      toInputId: 'tips-date-to',
+      applyId: 'tips-date-range-apply',
+      prevId: 'tips-cal-prev',
+      nextId: 'tips-cal-next',
+      title0Id: 'tips-cal-title0',
+      title1Id: 'tips-cal-title1',
+      grid0Id: 'tips-cal-grid0',
+      grid1Id: 'tips-cal-grid1',
+      emptyLabel: 'Date',
+      onBeforeSubmit: function(){
+        if (dateFromInput && !dateFromInput.value) dateFromInput.removeAttribute('name');
+        if (dateToInput && !dateToInput.value) dateToInput.removeAttribute('name');
+      },
+    });
+  }
+
+  var clearBtn = document.getElementById('tips-date-range-clear');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', function(){
+      if (clearUrl) window.location.href = clearUrl;
+    });
+  }
+
+  function applySearch(){
+    if (!table) return;
+    var needle = String((searchInput && searchInput.value) || '').trim().toLowerCase();
+    var rows = Array.from(table.querySelectorAll('tbody tr.tips-employee-row'));
+    var visible = 0;
+    rows.forEach(function(row){
+      if (!needle) {
+        row.hidden = false;
+        visible += 1;
+        return;
+      }
+      var hay = [
+        row.getAttribute('data-name') || '',
+        row.getAttribute('data-code') || '',
+        row.getAttribute('data-id') || '',
+      ].join(' ');
+      var match = hay.indexOf(needle) !== -1;
+      row.hidden = !match;
+      if (match) visible += 1;
+    });
+    if (rowCount) {
+      rowCount.textContent = visible + ' employee' + (visible === 1 ? '' : 's');
+    }
+    if (searchEmpty) searchEmpty.hidden = !(needle && visible === 0);
+    var wrap = table.closest('.pl-table-wrap');
+    if (wrap) wrap.hidden = !!(needle && visible === 0);
+  }
+
+  if (searchInput) {
+    searchInput.addEventListener('input', applySearch);
+  }
+
+  document.querySelectorAll('.pl-amount[data-amount]').forEach(function(el){
+    if (typeof formatInr === 'function') {
+      el.textContent = formatInr(el.getAttribute('data-amount'), 0);
+    }
+  });
+  if (typeof scheduleFitKpiValues === 'function') scheduleFitKpiValues();
+})();
+</script>

@@ -44,9 +44,56 @@
     return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
   }
 
+  const KPI_VALUE_SELECTOR = [
+    '.kpi-val:not(.kpi-val--action)',
+    '.pl-summary-value',
+    '.hbe-kpi-value',
+    '.sr-kpi-value',
+    '.tips-payout-metric-value',
+  ].join(',');
+
+  function fitKpiValues(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    scope.querySelectorAll(KPI_VALUE_SELECTOR).forEach(function (el) {
+      el.style.fontSize = '';
+      el.style.whiteSpace = 'nowrap';
+      const computed = window.getComputedStyle(el);
+      let size = parseFloat(computed.fontSize) || 28;
+      const min = 12;
+      // Grow/shrink until the amount fits the card width.
+      while (size > min && el.scrollWidth > el.clientWidth + 1) {
+        size -= 1;
+        el.style.fontSize = size + 'px';
+      }
+      if (el.scrollWidth > el.clientWidth + 1) {
+        el.style.whiteSpace = 'normal';
+      }
+    });
+  }
+
+  let fitTimer = null;
+  function scheduleFitKpiValues() {
+    if (fitTimer) window.clearTimeout(fitTimer);
+    fitTimer = window.setTimeout(function () {
+      fitTimer = null;
+      fitKpiValues(document);
+    }, 50);
+  }
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', scheduleFitKpiValues);
+    } else {
+      scheduleFitKpiValues();
+    }
+    window.addEventListener('resize', scheduleFitKpiValues);
+  }
+
   global.formatIndianGroupedInteger = formatIndianGroupedInteger;
   global.formatNum = formatNum;
   global.formatInr = formatInr;
   global.fmtInr = formatInr;
   global.formatAmountRaw = formatAmountRaw;
+  global.fitKpiValues = fitKpiValues;
+  global.scheduleFitKpiValues = scheduleFitKpiValues;
 })(typeof window !== 'undefined' ? window : globalThis);

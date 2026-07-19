@@ -1,0 +1,179 @@
+{% if show_form %}
+<div class="st-split">
+  <article class="card pl-list-panel st-panel" aria-label="{{ 'Edit product' if editing else 'Add product' }}">
+    <div class="card-hdr">
+      <div class="card-title"><span>{{ 'Edit product' if editing else 'Add product' }}</span></div>
+    </div>
+    <div class="card-body">
+      {% if errors %}
+      <div class="st-flash st-flash--error">{% for err in errors %}{{ err }}{% if not loop.last %}<br>{% endif %}{% endfor %}</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('stores_product_master') }}" class="st-form-grid">
+        <input type="hidden" name="action" value="save_product">
+        {% if form.product_id %}
+        <input type="hidden" name="product_id" value="{{ form.product_id }}">
+        {% endif %}
+        <div class="st-field">
+          <label for="st-product-category">Category</label>
+          <select id="st-product-category" name="category_id" required>
+            <option value="">Select category</option>
+            {% for cat in categories %}
+            <option value="{{ cat.id }}"{% if form.category_id == (cat.id|string) %} selected{% endif %}>{{ cat.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="st-field">
+          <label for="st-product-name">Product</label>
+          <input id="st-product-name" type="text" name="name" value="{{ form.name }}" placeholder="e.g. Fresh Paneer" required>
+        </div>
+        <div class="st-field">
+          <label for="st-product-unit">Default unit</label>
+          <select id="st-product-unit" name="default_unit">
+            {% for unit in default_units %}
+            <option value="{{ unit }}"{% if form.default_unit == unit %} selected{% endif %}>{{ unit }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="st-form-actions">
+          <a class="btn" href="{{ url_for('stores_product_master') }}">Cancel</a>
+          <button type="submit" class="btn btn-primary">{{ 'Save changes' if editing else 'Save product' }}</button>
+        </div>
+      </form>
+    </div>
+  </article>
+
+  <article class="card pl-list-panel st-panel" aria-label="Add category">
+    <div class="card-hdr">
+      <div class="card-title"><span>Add category</span></div>
+    </div>
+    <div class="card-body">
+      <form method="post" action="{{ url_for('stores_product_master') }}" class="st-form-grid">
+        <input type="hidden" name="action" value="save_category">
+        <div class="st-field">
+          <label for="st-category-name">Category name</label>
+          <input id="st-category-name" type="text" name="category_name" placeholder="e.g. Dry Goods" required>
+        </div>
+        <div class="st-form-actions">
+          <button type="submit" class="btn btn-primary">Save category</button>
+        </div>
+      </form>
+    </div>
+  </article>
+</div>
+{% endif %}
+
+<article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel st-panel st-products-panel" aria-label="Product catalogue"{% if show_form %} style="margin-top:16px;"{% endif %}>
+  <div class="card-hdr">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+      <span>Products</span>
+    </div>
+    <span class="pl-count">{{ product_count }} product{% if product_count != 1 %}s{% endif %}</span>
+  </div>
+  <div class="card-body pl-card-body--flush" style="padding:0;">
+    {% if products %}
+    <div class="pl-table-wrap">
+      <table id="st-products-table" class="pl-table st-products-table" aria-label="Product records">
+        <thead>
+          <tr>
+            <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
+            <th class="pl-sortable" data-sort="product" scope="col" tabindex="0" aria-sort="none">Product</th>
+            <th class="pl-sortable" data-sort="unit" scope="col" tabindex="0" aria-sort="none">Unit</th>
+            <th class="pl-col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for product in products %}
+          <tr data-sort-row>
+            <td data-sort-value="{{ product.category_name }}">
+              <span class="st-cat-pill">{{ product.category_name }}</span>
+            </td>
+            <td class="pl-name" data-sort-value="{{ product.name }}">{{ product.name }}</td>
+            <td data-sort-value="{{ product.default_unit }}">{{ product.default_unit }}</td>
+            <td class="pl-col-actions">
+              <div class="act-grp">
+                <a href="{{ url_for('stores_product_master', edit=product.id) }}"
+                   class="act-btn edit" data-tip="Edit" aria-label="Edit {{ product.name }}">
+                  <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </a>
+                <a href="{{ url_for('stores_product_delete', product_id=product.id) }}"
+                   class="act-btn del" data-tip="Delete" aria-label="Delete {{ product.name }}"
+                   onclick="return confirm({{ ('Delete ' ~ product.name ~ '? This cannot be undone.')|tojson }})">
+                  <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </a>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <script>
+    (function initStProductsTableSort(){
+      var table = document.getElementById('st-products-table');
+      if (!table) return;
+      var tbody = table.tBodies[0];
+      if (!tbody) return;
+      var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+      var activeKey = '';
+      var ascending = true;
+
+      function cellSortValue(row, colIndex, type){
+        var cell = row.cells[colIndex];
+        if (!cell) return type === 'number' ? 0 : '';
+        var raw = cell.getAttribute('data-sort-value');
+        if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+        if (type === 'number') {
+          var n = Number(raw);
+          return isFinite(n) ? n : 0;
+        }
+        return String(raw).toLowerCase();
+      }
+
+      function sortBy(th){
+        var key = th.getAttribute('data-sort') || '';
+        var type = th.getAttribute('data-sort-type') || 'text';
+        var colIndex = Array.from(th.parentNode.children).indexOf(th);
+        if (colIndex < 0) return;
+
+        if (activeKey === key) ascending = !ascending;
+        else {
+          activeKey = key;
+          ascending = true;
+        }
+
+        var rows = Array.from(tbody.querySelectorAll('tr[data-sort-row]'));
+        rows.sort(function(a, b){
+          var av = cellSortValue(a, colIndex, type);
+          var bv = cellSortValue(b, colIndex, type);
+          var cmp = 0;
+          if (type === 'number') cmp = av - bv;
+          else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+          return ascending ? cmp : -cmp;
+        });
+        rows.forEach(function(row){ tbody.appendChild(row); });
+
+        headers.forEach(function(header){
+          header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+          header.setAttribute('aria-sort', 'none');
+        });
+        th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+        th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+      }
+
+      headers.forEach(function(th){
+        th.addEventListener('click', function(){ sortBy(th); });
+        th.addEventListener('keydown', function(e){
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortBy(th); }
+        });
+      });
+    })();
+    </script>
+    {% else %}
+    <div class="pl-empty">
+      <strong>No products yet</strong>
+      Add a category and products to use them on indents.
+    </div>
+    {% endif %}
+  </div>
+</article>
