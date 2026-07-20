@@ -4,7 +4,7 @@
   <span class="st-drag-handle" aria-hidden="true" title="Drag">
     <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="1.4"/><circle cx="15" cy="7" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="17" r="1.4"/><circle cx="15" cy="17" r="1.4"/></svg>
   </span>
-  <div class="st-field st-field--product">
+  <div class="st-field st-field--product" data-st-label="Item">
     <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-product-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-change="stProductPicked" id="{{ fid }}-listbox">
       <label class="se-filter-chip-label st-sr-only" id="{{ fid }}-label" for="{{ fid }}-trigger">Item</label>
       <div class="se-filter-chip-control">
@@ -26,14 +26,14 @@
         <div class="ep-listbox-options">
           {% for cat in product_catalog or [] %}
           {% for product in cat.products %}
-          <button type="button" class="se-filter-listbox-option{% if line.item_name == product.name %} is-selected{% endif %}" role="option" data-value="{{ product.name }}" data-name="{{ product.name|lower }} {{ cat.name|lower }}" data-label="{{ product.name }}" data-unit="{{ product.default_unit }}" aria-selected="{{ 'true' if line.item_name == product.name else 'false' }}">{{ product.name }}</button>
+          <button type="button" class="se-filter-listbox-option{% if line.item_name == product.name %} is-selected{% endif %}" role="option" data-value="{{ product.name }}" data-name="{{ product.name|lower }} {{ cat.name|lower }}" data-label="{{ product.name }}" data-unit="{{ product.default_unit }}" data-outlet="{{ product.outlet }}" data-price="{{ product.approximate_price_display }}" aria-selected="{{ 'true' if line.item_name == product.name else 'false' }}">{{ product.name }}</button>
           {% endfor %}
           {% endfor %}
         </div>
       </div>
     </div>
   </div>
-  <div class="st-field st-field--qty">
+  <div class="st-field st-field--qty" data-st-label="Qty">
     <label class="st-sr-only">Qty</label>
     <div class="st-qty-stepper">
       <button type="button" class="st-qty-btn" data-st-qty-dec aria-label="Decrease quantity">
@@ -45,7 +45,7 @@
       </button>
     </div>
   </div>
-  <div class="st-field st-field--unit">
+  <div class="st-field st-field--unit" data-st-label="Unit">
     <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-unit-listbox" data-se-listbox data-st-unit-listbox id="{{ ufid }}-listbox">
       <label class="se-filter-chip-label st-sr-only" id="{{ ufid }}-label" for="{{ ufid }}-trigger">Unit</label>
       <div class="se-filter-chip-control">
@@ -64,9 +64,9 @@
       </div>
     </div>
   </div>
-  <div class="st-field st-field--note">
-    <label class="st-sr-only">Line note</label>
-    <input type="text" name="line_notes" value="{{ line.notes }}" placeholder="Optional" aria-label="Line note">
+  <div class="st-field st-field--price" data-st-label="Approximate price">
+    <label class="st-sr-only">Approximate price</label>
+    <input type="number" name="approximate_price" min="0.01" step="0.01" inputmode="decimal" value="{% if line.approximate_price_display is defined %}{{ line.approximate_price_display }}{% elif line.approximate_price is not none %}{{ line.approximate_price }}{% endif %}" placeholder="₹ Price" aria-label="Approximate price" data-st-approx-price>
   </div>
   <button type="button" class="st-line-remove" data-st-remove-line aria-label="Remove line">
     <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>

@@ -27,12 +27,24 @@
           <input id="st-product-name" type="text" name="name" value="{{ form.name }}" placeholder="e.g. Fresh Paneer" required>
         </div>
         <div class="st-field">
+          <label for="st-product-outlet">Outlet</label>
+          <select id="st-product-outlet" name="outlet" required>
+            {% for outlet in product_outlets %}
+            <option value="{{ outlet.key }}"{% if form.outlet == outlet.key %} selected{% endif %}>{{ outlet.label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="st-field">
           <label for="st-product-unit">Default unit</label>
           <select id="st-product-unit" name="default_unit">
             {% for unit in default_units %}
             <option value="{{ unit }}"{% if form.default_unit == unit %} selected{% endif %}>{{ unit }}</option>
             {% endfor %}
           </select>
+        </div>
+        <div class="st-field">
+          <label for="st-product-approx-price">Approximate price (₹)</label>
+          <input id="st-product-approx-price" type="number" name="approximate_price" min="0" step="0.01" inputmode="decimal" value="{{ form.approximate_price }}" placeholder="Optional">
         </div>
         <div class="st-form-actions">
           <a class="btn" href="{{ url_for('stores_product_master') }}">Cancel</a>
@@ -78,7 +90,9 @@
           <tr>
             <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
             <th class="pl-sortable" data-sort="product" scope="col" tabindex="0" aria-sort="none">Product</th>
+            <th class="pl-sortable" data-sort="outlet" scope="col" tabindex="0" aria-sort="none">Outlet</th>
             <th class="pl-sortable" data-sort="unit" scope="col" tabindex="0" aria-sort="none">Unit</th>
+            <th class="pl-sortable" data-sort="approx-price" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Approximate Price</th>
             <th class="pl-col-actions">Actions</th>
           </tr>
         </thead>
@@ -89,7 +103,13 @@
               <span class="st-cat-pill">{{ product.category_name }}</span>
             </td>
             <td class="pl-name" data-sort-value="{{ product.name }}">{{ product.name }}</td>
+            <td data-sort-value="{{ product.outlet_label }}">
+              <span class="st-outlet-pill st-outlet-pill--{{ product.outlet }}">{{ product.outlet_label }}</span>
+            </td>
             <td data-sort-value="{{ product.default_unit }}">{{ product.default_unit }}</td>
+            <td class="st-approx-price" data-sort-value="{{ product.approximate_price if product.approximate_price is not none else '' }}">
+              {% if product.approximate_price_display %}₹{{ product.approximate_price_display }}{% else %}—{% endif %}
+            </td>
             <td class="pl-col-actions">
               <div class="act-grp">
                 <a href="{{ url_for('stores_product_master', edit=product.id) }}"

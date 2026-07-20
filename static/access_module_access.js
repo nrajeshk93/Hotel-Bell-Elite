@@ -125,7 +125,15 @@
       }
       var descendants = getPermissionDescendants(parent);
       var anyOn = descendants.some(function(child){ return nodeEnabled(child); });
-      state.enabled[parent.id] = anyOn;
+      if(anyOn){
+        state.enabled[parent.id] = true;
+        return;
+      }
+      // Module roots turn off when no child permissions remain. Submodule parents
+      // that also have their own fieldValue (e.g. Indent → Products) keep theirs.
+      if(parent.fieldName === 'dashboard_modules'){
+        state.enabled[parent.id] = false;
+      }
     }
 
     function clearScope(scopeType){

@@ -166,6 +166,22 @@ body.home-module .de-main-inner.db-main-inner--home{
     color:#6B7280;
     line-height:1.5;
   }
+  .db-home .db-notification-item--link{
+    display:block;
+    margin:0 -6px;
+    padding:10px 12px;
+    border-radius:12px;
+    text-decoration:none;
+    color:inherit;
+    transition:background .15s ease;
+  }
+  .db-home .db-notification-item--link:hover{
+    background:#F8FAFC;
+  }
+  .db-home .db-notification-item--link:focus-visible{
+    outline:2px solid rgba(37,99,235,.35);
+    outline-offset:2px;
+  }
   .db-home .db-profile-menu{
     top:calc(100% + 10px);
     z-index:100;
@@ -316,7 +332,9 @@ body.home-module .de-main-inner.db-main-inner--home{
     background:#2563EB;
     box-shadow:0 0 0 2px #FFFFFF;
     pointer-events:none;
+    display:none;
   }
+  .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot{display:block}
   .db-home .db-profile-trigger .db-avatar{
     width:40px;
     height:40px;

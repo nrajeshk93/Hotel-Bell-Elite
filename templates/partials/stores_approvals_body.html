@@ -1,38 +1,84 @@
-<article class="card pl-list-panel st-panel" aria-label="Waiting approvals">
-  <div class="card-hdr">
-    <div class="card-title"><span>Waiting for you · {{ selected_outlet_label }}</span></div>
-    <span class="pl-count">{{ pending|length }}</span>
+<article class="card pl-list-panel st-panel st-appr-card" aria-label="Waiting approvals">
+  <div class="st-appr-head">
+    <h2 class="st-appr-title">Indents awaiting your approval</h2>
+    <span class="st-appr-count" aria-label="{{ pending|length }} waiting">{{ pending|length }}</span>
   </div>
-  <div class="card-body" style="padding:0;">
+  <div class="st-appr-body">
     {% if pending %}
-    <div class="pl-table-wrap">
-      <table class="pl-table">
+    <div class="pl-table-wrap st-appr-table-wrap">
+      <table id="st-approvals-pending-table" class="pl-table st-appr-table" aria-label="Waiting approvals">
         <thead>
           <tr>
-            <th>Indent</th>
-            <th>From</th>
-            <th>Items</th>
-            <th>Submitted</th>
-            <th>Decision</th>
+            <th class="pl-sortable st-appr-col-indent" data-sort="indent" scope="col" tabindex="0" aria-sort="none">Indent</th>
+            <th class="pl-sortable st-appr-col-from" data-sort="from" scope="col" tabindex="0" aria-sort="none">From</th>
+            <th class="pl-sortable st-appr-col-items" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Items</th>
+            <th class="pl-sortable st-appr-col-price" data-sort="approx" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Approx. price</th>
+            <th class="pl-sortable st-appr-col-submitted" data-sort="submitted" scope="col" tabindex="0" aria-sort="none">Submitted</th>
+            <th class="st-appr-col-decision" scope="col">Decision</th>
           </tr>
         </thead>
         <tbody>
           {% for indent in pending %}
-          <tr>
-            <td>
-              <div class="pl-name">{{ indent.indent_no }}</div>
-              {% if indent.notes %}<div class="pl-meta">{{ indent.notes }}</div>{% endif %}
-              <a class="st-link" href="{{ url_for('stores_indent_detail', indent_id=indent.id, outlet=selected_outlet) }}">View items</a>
+          {% set submitted_raw = indent.submitted_at or indent.created_at %}
+          <tr data-sort-row>
+            <td class="st-appr-col-indent" data-sort-value="{{ indent.indent_no }}">
+              <div class="st-appr-indent">
+                <span class="st-appr-icon st-appr-icon--doc" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>
+                </span>
+                <div class="st-appr-indent-copy">
+                  <div class="st-appr-indent-no">{{ indent.indent_no }}</div>
+                  {% if indent.notes %}<div class="st-appr-indent-note">{{ indent.notes }}</div>{% endif %}
+                  <a class="st-appr-view" href="{{ url_for('stores_indent_detail', indent_id=indent.id, outlet=indent.outlet) }}">View items <span aria-hidden="true">→</span></a>
+                </div>
+              </div>
             </td>
-            <td>{{ indent.created_by_name or '—' }}</td>
-            <td>{{ indent.line_count }}</td>
-            <td>{{ indent.submitted_at or indent.created_at }}</td>
-            <td>
-              <form method="post" action="{{ url_for('stores_indent_decide', indent_id=indent.id) }}" class="st-inline-form">
-                <input type="hidden" name="outlet" value="{{ selected_outlet }}">
-                <input type="text" name="decision_note" placeholder="Reject reason (if rejecting)">
-                <button type="submit" class="btn btn-primary" name="decision" value="approved">Approve</button>
-                <button type="submit" class="btn" name="decision" value="rejected">Reject</button>
+            <td class="st-appr-col-from" data-sort-value="{{ indent.created_by_name or '' }}">
+              <div class="st-appr-from">
+                <span class="st-appr-icon st-appr-icon--user" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </span>
+                <span>{{ indent.created_by_name or '—' }}</span>
+              </div>
+            </td>
+            <td class="st-appr-col-items st-appr-num" data-sort-value="{{ indent.line_count }}">{{ indent.line_count }}</td>
+            <td class="st-appr-col-price st-appr-price" data-sort-value="{{ indent.approximate_total|default(0) }}">
+              {% if indent.approximate_total_display %}₹{{ indent.approximate_total_display }}{% else %}—{% endif %}
+            </td>
+            <td class="st-appr-col-submitted" data-sort-value="{{ submitted_raw }}">
+              <div class="st-appr-submitted">
+                <div class="st-appr-submitted-date">{{ stores_date(submitted_raw) }}</div>
+                {% set time_line = stores_time(submitted_raw) %}
+                {% if time_line %}
+                <div class="st-appr-submitted-time">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                  <span>{{ time_line }}</span>
+                </div>
+                {% endif %}
+              </div>
+            </td>
+            <td class="st-appr-col-decision">
+              <form method="post" action="{{ url_for('stores_indent_decide', indent_id=indent.id) }}" class="st-decide-form" data-st-decide-form>
+                <input type="hidden" name="outlet" value="{{ indent.outlet }}">
+                <div class="st-appr-decide">
+                  <button type="submit" class="st-appr-btn st-appr-btn--approve" name="decision" value="approved">
+                    <span class="st-appr-btn-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                    </span>
+                    Approve
+                  </button>
+                  <button type="button"
+                          class="st-appr-btn st-appr-btn--reject"
+                          data-st-reject-open
+                          data-st-reject-action="{{ url_for('stores_indent_decide', indent_id=indent.id) }}"
+                          data-st-reject-outlet="{{ indent.outlet }}"
+                          data-st-reject-no="{{ indent.indent_no }}">
+                    <span class="st-appr-btn-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+                    </span>
+                    Reject
+                  </button>
+                </div>
               </form>
             </td>
           </tr>
@@ -40,10 +86,13 @@
         </tbody>
       </table>
     </div>
+    <div class="st-appr-foot">
+      <span>Showing 1 to {{ pending|length }} of {{ pending|length }} {{ 'entry' if pending|length == 1 else 'entries' }}.</span>
+    </div>
     {% else %}
-    <div class="pl-empty">
+    <div class="st-appr-empty">
       <strong>Nothing waiting</strong>
-      When someone sends an indent for {{ selected_outlet_label }}, it will appear here.
+      <p>When someone sends an indent for {{ selected_outlet_label }}, it will appear here.</p>
     </div>
     {% endif %}
   </div>
@@ -56,24 +105,37 @@
   <div class="card-body" style="padding:0;">
     {% if recent %}
     <div class="pl-table-wrap">
-      <table class="pl-table">
+      <table id="st-approvals-recent-table" class="pl-table" aria-label="Recent decisions">
         <thead>
           <tr>
-            <th>Indent</th>
-            <th>Status</th>
-            <th>By</th>
-            <th>When</th>
-            <th>Note</th>
+            <th class="pl-sortable" data-sort="indent" scope="col" tabindex="0" aria-sort="none">Indent</th>
+            <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+            <th class="pl-sortable" data-sort="by" scope="col" tabindex="0" aria-sort="none">By</th>
+            <th class="pl-sortable" data-sort="when" scope="col" tabindex="0" aria-sort="none">When</th>
+            <th class="pl-sortable" data-sort="note" scope="col" tabindex="0" aria-sort="none">Note</th>
+            <th scope="col">Action</th>
           </tr>
         </thead>
         <tbody>
           {% for indent in recent %}
-          <tr>
-            <td class="pl-name">{{ indent.indent_no }}</td>
-            <td><span class="cp-status-pill cp-status-pill--{{ indent.status }}">{{ status_label(indent.status) }}</span></td>
-            <td>{{ indent.decided_by_name or '—' }}</td>
-            <td>{{ indent.decided_at or '—' }}</td>
-            <td>{{ indent.decision_note or '—' }}</td>
+          <tr data-sort-row>
+            <td class="pl-name" data-sort-value="{{ indent.indent_no }}">{{ indent.indent_no }}</td>
+            <td data-sort-value="{{ status_label(indent.status) }}">
+              <span class="cp-status-pill cp-status-pill--{{ indent.status }}">{{ status_label(indent.status) }}</span>
+            </td>
+            <td data-sort-value="{{ indent.decided_by_name or '' }}">{{ indent.decided_by_name or '—' }}</td>
+            <td data-sort-value="{{ indent.decided_at or '' }}">{{ stores_dt(indent.decided_at) or '—' }}</td>
+            <td data-sort-value="{{ indent.decision_note or '' }}">{{ indent.decision_note or '—' }}</td>
+            <td>
+              {% if indent.status == 'rejected' %}
+              <form method="post" action="{{ url_for('stores_indent_reopen', indent_id=indent.id) }}" class="st-inline-form">
+                <input type="hidden" name="outlet" value="{{ indent.outlet }}">
+                <button type="submit" class="st-link st-link-btn">Return to waiting</button>
+              </form>
+              {% else %}
+              <span class="st-card-sub">—</span>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -84,3 +146,23 @@
     {% endif %}
   </div>
 </article>
+
+<div class="modal-backdrop st-reject-modal" id="st-reject-modal" aria-hidden="true">
+  <div class="st-reject-box" role="dialog" aria-modal="true" aria-labelledby="st-reject-title">
+    <div class="st-reject-head">
+      <h2 class="st-reject-title" id="st-reject-title">Reject indent</h2>
+      <button type="button" class="st-reject-close" id="st-reject-close" aria-label="Close">×</button>
+    </div>
+    <form method="post" action="#" id="st-reject-form" class="st-reject-form">
+      <input type="hidden" name="outlet" id="st-reject-outlet" value="">
+      <input type="hidden" name="decision" value="rejected">
+      <p class="st-reject-sub">Rejecting <strong id="st-reject-indent-no">indent</strong>. Add a short reason.</p>
+      <label class="st-reject-label" for="st-reject-note">Reason for rejection</label>
+      <textarea id="st-reject-note" name="decision_note" rows="3" maxlength="200" required placeholder="Why is this indent being rejected?"></textarea>
+      <div class="st-reject-actions">
+        <button type="button" class="st-appr-btn st-appr-btn--cancel" id="st-reject-cancel">Cancel</button>
+        <button type="submit" class="st-appr-btn st-appr-btn--reject-confirm">Reject</button>
+      </div>
+    </form>
+  </div>
+</div>

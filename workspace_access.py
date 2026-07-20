@@ -25,7 +25,7 @@ _PAYROLL_SUBMODULES = (
 )
 
 _ACCOUNTS_SUBMODULES = (
-    {"key": "purchase_ledger", "label": "Purchase Ledger"},
+    {"key": "purchase_ledger", "label": "Expense Ledger"},
     {"key": "cash_ledger", "label": "Cash Ledger"},
     {"key": "purchase_verification", "label": "Purchase Verification"},
     {"key": "credit_payment", "label": "Credit Payment"},
@@ -33,15 +33,30 @@ _ACCOUNTS_SUBMODULES = (
 )
 
 _STORES_SUBMODULES = (
-    {"key": "product_master", "label": "Products"},
-    {"key": "indent", "label": "Indent"},
+    {
+        "key": "indent",
+        "label": "Indent",
+        "children": (
+            {"key": "product_master", "label": "Products"},
+        ),
+    },
     {"key": "approvals", "label": "Approvals"},
-    {"key": "purchase_requests", "label": "Purchases"},
+    {"key": "purchase_requests", "label": "Stock Inward"},
     {"key": "stock", "label": "Stock"},
-    {"key": "counter_transfer", "label": "Transfers"},
-    {"key": "stock_verification", "label": "Verification"},
-    {"key": "stock_issues", "label": "Issues"},
 )
+
+
+def _flatten_submodules(items):
+    """Flat key/label list for permission checks (nested UI children included)."""
+    flat = []
+    for item in items:
+        flat.append({"key": item["key"], "label": item["label"]})
+        for child in item.get("children") or ():
+            flat.append({"key": child["key"], "label": child["label"]})
+    return tuple(flat)
+
+
+_STORES_SUBMODULES_FLAT = _flatten_submodules(_STORES_SUBMODULES)
 
 # Single registry aligned with the workspace sidebar and access-management UI.
 # Add a new top-level module here and wire its endpoints to auto-include it everywhere.
@@ -76,7 +91,7 @@ _WORKSPACE_MODULE_REGISTRY = (
     },
     {
         "key": "stores",
-        "label": "Stores",
+        "label": "Procurement & Inventory",
         "permission_scope": "stores",
         "permission_field": "stores_modules",
         "permission_children": _STORES_SUBMODULES,
@@ -110,7 +125,7 @@ _ACCOUNTS_SUBMODULE_LABELS = {
     item["key"]: item["label"] for item in _ACCOUNTS_SUBMODULES
 }
 _STORES_SUBMODULE_LABELS = {
-    item["key"]: item["label"] for item in _STORES_SUBMODULES
+    item["key"]: item["label"] for item in _STORES_SUBMODULES_FLAT
 }
 
 _ACCESS_MODULE_UI_META = {
@@ -144,34 +159,36 @@ _STORES_ENDPOINT_GROUPS = {
         "stores_indent",
         "stores_indent_submit",
         "stores_indent_detail",
+        "stores_indent_delete",
+        "stores_indent_purchase_order",
     },
     "approvals": {
         "stores_approvals",
         "stores_indent_decide",
+        "stores_indent_reopen",
     },
     "purchase_requests": {
         "stores_purchase_requests",
         "stores_pr_receive",
         "stores_pr_detail",
+        "stores_confirm_stock_inward_expense",
     },
     "stock": {
         "stores_stock",
-    },
-    "counter_transfer": {
-        "stores_counter_transfer",
-    },
-    "stock_verification": {
-        "stores_stock_verification",
-        "stores_verification_settings",
-    },
-    "stock_issues": {
-        "stores_stock_issues",
     },
 }
 _STORES_PARENT_ENDPOINTS = set().union(*_STORES_ENDPOINT_GROUPS.values()) | {"stores"}
 _STORES_ENDPOINTS = _STORES_PARENT_ENDPOINTS
 
-_PUBLIC_ENDPOINTS = {"index", "login", "logout", "static", "home", "favicon"}
+_PUBLIC_ENDPOINTS = {
+    "index",
+    "login",
+    "logout",
+    "static",
+    "home",
+    "favicon",
+    "whatsapp_webhook",
+}
 
 _OUTLET_WRITE_ENDPOINTS = {
     "save_sales_update",
@@ -318,9 +335,49 @@ _PAYROLL_ENDPOINT_GROUPS = {
         "sales_update_tips_page",
         "export_tips_report",
         "tips_incentive_payout",
+        "sales_update_tips_delete_employee",
+        "sales_update_tips_employee_lines",
+        "sales_update_edit_tip",
     },
 }
 _PAYROLL_PARENT_ENDPOINTS = set().union(*_PAYROLL_ENDPOINT_GROUPS.values())
+
+
+def _permission_child_nodes(module_key, child_cfg, submodules, parent_key=None):
+    nodes = []
+    for child in submodules:
+        node = {
+            "key": child["key"],
+            "label": child["label"],
+            "scope": child_cfg["scope"],
+            "field_name": child_cfg["field_name"],
+            "parent_key": parent_key or module_key,
+            "permission_children": [],
+        }
+        nested = child.get("children") or ()
+        if nested:
+            node["permission_children"] = _permission_child_nodes(
+                module_key, child_cfg, nested, parent_key=child["key"]
+            )
+        nodes.append(node)
+    return nodes
+
+
+def _ui_child_nodes(module_key, child_cfg, submodules):
+    nodes = []
+    for child in submodules:
+        nested = child.get("children") or ()
+        nodes.append({
+            "id": f"{module_key}.{child['key']}",
+            "label": child["label"],
+            "icon": "folder" if nested else "dot",
+            "description": "",
+            "dashboardKey": module_key,
+            "fieldName": child_cfg["field_name"],
+            "fieldValue": child["key"],
+            "children": _ui_child_nodes(module_key, child_cfg, nested) if nested else [],
+        })
+    return nodes
 
 
 def access_module_tree():
@@ -333,14 +390,9 @@ def access_module_tree():
         }
         child_cfg = _ACCESS_MODULE_CHILDREN.get(module["key"])
         if child_cfg:
-            for child in child_cfg["submodules"]:
-                node["permission_children"].append({
-                    "key": child["key"],
-                    "label": child["label"],
-                    "scope": child_cfg["scope"],
-                    "field_name": child_cfg["field_name"],
-                    "parent_key": module["key"],
-                })
+            node["permission_children"] = _permission_child_nodes(
+                module["key"], child_cfg, child_cfg["submodules"]
+            )
         tree.append(node)
     return tree
 
@@ -364,17 +416,9 @@ def access_module_tree_ui():
         }
         child_cfg = _ACCESS_MODULE_CHILDREN.get(module["key"])
         if child_cfg:
-            for child in child_cfg["submodules"]:
-                node["children"].append({
-                    "id": f"{module['key']}.{child['key']}",
-                    "label": child["label"],
-                    "icon": "dot",
-                    "description": "",
-                    "dashboardKey": module["key"],
-                    "fieldName": child_cfg["field_name"],
-                    "fieldValue": child["key"],
-                    "children": [],
-                })
+            node["children"] = _ui_child_nodes(
+                module["key"], child_cfg, child_cfg["submodules"]
+            )
         tree.append(node)
     return tree
 
@@ -517,12 +561,12 @@ def _stores_access_keys(user):
     if not user:
         return set()
     if user.get("is_admin"):
-        return {item["key"] for item in _STORES_SUBMODULES}
+        return {item["key"] for item in _STORES_SUBMODULES_FLAT}
     access = set(user.get("stores_access", set()) or set())
     if access:
         return access
     if "stores" in user.get("dashboard_access", set()):
-        return {item["key"] for item in _STORES_SUBMODULES}
+        return {item["key"] for item in _STORES_SUBMODULES_FLAT}
     return set()
 
 
@@ -589,7 +633,7 @@ def stores_access_list(user):
     if not user:
         return []
     unlocked = _stores_access_keys(user)
-    return [item["key"] for item in _STORES_SUBMODULES if item["key"] in unlocked]
+    return [item["key"] for item in _STORES_SUBMODULES_FLAT if item["key"] in unlocked]
 
 
 def sales_analytics_access_list(user):
@@ -875,7 +919,7 @@ def validate_access_user_form(
         )
     if "stores" in dashboard_modules and not stores_modules and not is_admin:
         errors.append(
-            "Choose at least one Stores submodule when Stores access is enabled."
+            "Choose at least one Procurement & Inventory submodule when Procurement & Inventory access is enabled."
         )
 
     if not actor_is_admin:

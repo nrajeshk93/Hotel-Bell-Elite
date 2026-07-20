@@ -2,7 +2,7 @@
 {% set sales_view = de_nav_sales_view|default('') %}
 {% set access_view = de_nav_access_view|default('') %}
 {% set accounts_view = de_nav_accounts_view|default('') %}
-{% set payroll_view = de_nav_payroll_view|default('employee') %}
+{% set payroll_view = de_nav_payroll_view|default('') %}
 {% set stores_view = de_nav_stores_view|default('') %}
 {% set analytics_open = nav_section == 'analytics' %}
 {% set accounts_open = nav_section == 'accounts' %}
@@ -37,7 +37,7 @@
       </button>
       <div class="de-nav-sub" id="de-nav-accounts-sub">
         {% if has_accounts_access('purchase_ledger') %}
-        <a class="de-nav-subitem{% if accounts_view == 'purchase_ledger' %} is-active{% endif %}" id="de-nav-purchase-ledger" href="{{ url_for('purchase_ledger') }}"{% if accounts_view == 'purchase_ledger' %} aria-current="page"{% endif %}>Purchase Ledger</a>
+        <a class="de-nav-subitem{% if accounts_view == 'purchase_ledger' %} is-active{% endif %}" id="de-nav-purchase-ledger" href="{{ url_for('purchase_ledger') }}"{% if accounts_view == 'purchase_ledger' %} aria-current="page"{% endif %}>Expense Ledger</a>
         {% endif %}
         {% if has_accounts_access('cash_ledger') %}
         <a class="de-nav-subitem{% if accounts_view == 'cash_ledger' %} is-active{% endif %}" id="de-nav-cash-ledger" href="{{ url_for('cash_ledger') }}"{% if accounts_view == 'cash_ledger' %} aria-current="page"{% endif %}>Cash Ledger</a>
@@ -114,12 +114,9 @@
     <div class="de-nav-group{% if stores_open %} is-open is-child-active{% endif %}" id="de-nav-stores-group">
       <button type="button" class="de-nav-group-toggle" id="de-nav-stores-toggle" aria-expanded="{{ 'true' if stores_open else 'false' }}" aria-controls="de-nav-stores-sub" onclick="toggleDeNavGroup(event, 'de-nav-stores-group')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
-        <span>Stores</span>
+        <span class="de-nav-label-multiline">Procurement &amp;<br>Inventory</span>
       </button>
       <div class="de-nav-sub" id="de-nav-stores-sub">
-        {% if has_stores_access('product_master') %}
-        <a class="de-nav-subitem{% if stores_view == 'product_master' %} is-active{% endif %}" id="de-nav-stores-products" href="{{ url_for('stores_product_master') }}"{% if stores_view == 'product_master' %} aria-current="page"{% endif %}>Products</a>
-        {% endif %}
         {% if has_stores_access('indent') %}
         <a class="de-nav-subitem{% if stores_view == 'indent' %} is-active{% endif %}" id="de-nav-stores-indent" href="{{ url_for('stores_indent') }}"{% if stores_view == 'indent' %} aria-current="page"{% endif %}>Indent</a>
         {% endif %}
@@ -127,19 +124,10 @@
         <a class="de-nav-subitem{% if stores_view == 'approvals' %} is-active{% endif %}" id="de-nav-stores-approvals" href="{{ url_for('stores_approvals') }}"{% if stores_view == 'approvals' %} aria-current="page"{% endif %}>Approvals</a>
         {% endif %}
         {% if has_stores_access('purchase_requests') %}
-        <a class="de-nav-subitem{% if stores_view == 'purchase_requests' %} is-active{% endif %}" id="de-nav-stores-pr" href="{{ url_for('stores_purchase_requests') }}"{% if stores_view == 'purchase_requests' %} aria-current="page"{% endif %}>Purchases</a>
+        <a class="de-nav-subitem{% if stores_view == 'purchase_requests' %} is-active{% endif %}" id="de-nav-stores-pr" href="{{ url_for('stores_purchase_requests') }}"{% if stores_view == 'purchase_requests' %} aria-current="page"{% endif %}>Stock Inward</a>
         {% endif %}
         {% if has_stores_access('stock') %}
         <a class="de-nav-subitem{% if stores_view == 'stock' %} is-active{% endif %}" id="de-nav-stores-stock" href="{{ url_for('stores_stock') }}"{% if stores_view == 'stock' %} aria-current="page"{% endif %}>Stock</a>
-        {% endif %}
-        {% if has_stores_access('counter_transfer') %}
-        <a class="de-nav-subitem{% if stores_view == 'counter_transfer' %} is-active{% endif %}" id="de-nav-stores-transfer" href="{{ url_for('stores_counter_transfer') }}"{% if stores_view == 'counter_transfer' %} aria-current="page"{% endif %}>Transfers</a>
-        {% endif %}
-        {% if has_stores_access('stock_verification') %}
-        <a class="de-nav-subitem{% if stores_view == 'stock_verification' %} is-active{% endif %}" id="de-nav-stores-verify" href="{{ url_for('stores_stock_verification') }}"{% if stores_view == 'stock_verification' %} aria-current="page"{% endif %}>Verification</a>
-        {% endif %}
-        {% if has_stores_access('stock_issues') %}
-        <a class="de-nav-subitem{% if stores_view == 'stock_issues' %} is-active{% endif %}" id="de-nav-stores-issues" href="{{ url_for('stores_stock_issues') }}"{% if stores_view == 'stock_issues' %} aria-current="page"{% endif %}>Issues</a>
         {% endif %}
       </div>
     </div>

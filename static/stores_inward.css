@@ -1,0 +1,283 @@
+/* Stock Inward — cards extend Indent shell; table/steppers are page-specific */
+
+body.su-module.st-inward-shell .st-inward-header-filters{
+  display:flex;
+  align-items:flex-end;
+  flex-wrap:wrap;
+  gap:12px;
+}
+body.su-module.st-inward-shell .st-inward-indent-listbox{
+  min-width:min(240px,100%);
+}
+
+body.su-module .st-inward-page{
+  display:grid;
+  gap:24px;
+}
+body.su-module .st-inward-form{
+  display:grid;
+  gap:24px;
+  min-width:0;
+}
+
+body.su-module .st-card-icon--accent{
+  background:#EFF6FF;
+  border-color:#DBEAFE;
+  color:#2563EB;
+}
+
+body.su-module .st-inward-card-head{
+  align-items:flex-start;
+  flex-wrap:wrap;
+}
+body.su-module .st-inward-select-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-left:auto;
+}
+body.su-module .st-inward-indent-listbox{
+  min-width:min(280px,100%);
+}
+body.su-module .st-inward-listbox-empty{
+  padding:12px 14px;
+  font:500 12px Inter,system-ui,sans-serif;
+  color:#94A3B8;
+}
+
+body.su-module .st-inward-view-btn svg{
+  width:14px;
+  height:14px;
+}
+
+body.su-module .st-inward-items-tools{
+  display:inline-flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-left:auto;
+}
+
+body.su-module .st-inward-table-wrap{padding-top:16px}
+body.su-module .st-inward-table-wrap .st-detail-table-wrap{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+body.su-module .st-inward-table{
+  table-layout:fixed;
+  width:100%;
+  min-width:720px;
+}
+body.su-module .st-inward-table col.st-inward-col-check-w{width:48px}
+body.su-module .st-inward-table col.st-inward-col-item-w{width:auto}
+body.su-module .st-inward-table col.st-inward-col-qty-w{width:110px}
+body.su-module .st-inward-table col.st-inward-col-unit-w{width:88px}
+body.su-module .st-inward-table col.st-inward-col-rate-w{width:120px}
+body.su-module .st-inward-table col.st-inward-col-recv-w{width:148px}
+
+body.su-module .st-inward-table th,
+body.su-module .st-inward-table td{
+  vertical-align:middle;
+  box-sizing:border-box;
+}
+body.su-module .st-inward-table .st-inward-col-check{
+  width:48px;
+  text-align:center;
+}
+body.su-module .st-inward-table .st-inward-col-check input{
+  width:16px;
+  height:16px;
+  accent-color:#2563EB;
+  cursor:pointer;
+  margin:0;
+  vertical-align:middle;
+}
+body.su-module .st-inward-table .st-inward-col-item{
+  text-align:left;
+}
+body.su-module .st-inward-table .st-inward-col-qty,
+body.su-module .st-inward-table .st-inward-col-unit{
+  text-align:center;
+}
+body.su-module .st-inward-table .st-inward-col-rate{
+  text-align:right;
+  white-space:nowrap;
+}
+body.su-module .st-inward-table .st-inward-col-recv{
+  text-align:center;
+}
+body.su-module .st-inward-table .st-inward-col-recv .st-inward-stepper{
+  margin:0 auto;
+}
+body.su-module .st-inward-item{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  max-width:100%;
+}
+body.su-module .st-inward-item-name{
+  font:600 13px/1.3 Inter,system-ui,sans-serif;
+  color:#111827;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.su-module .st-inward-avatar{
+  flex:0 0 32px;
+  width:32px;
+  height:32px;
+  border-radius:10px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:#EFF6FF;
+  color:#2563EB;
+  font:700 12px Inter,system-ui,sans-serif;
+}
+
+body.su-module .st-inward-stepper{
+  display:inline-flex;
+  align-items:center;
+  gap:0;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  overflow:hidden;
+  background:#fff;
+}
+body.su-module .st-inward-step{
+  appearance:none;
+  width:32px;
+  height:34px;
+  border:0;
+  background:#F8FAFC;
+  color:#374151;
+  font:600 16px/1 Inter,system-ui,sans-serif;
+  cursor:pointer;
+  transition:background .15s, color .15s;
+}
+body.su-module .st-inward-step:hover{
+  background:#EFF6FF;
+  color:#2563EB;
+}
+body.su-module .st-inward-qty{
+  width:56px;
+  height:34px;
+  border:0;
+  border-left:1px solid #E5E7EB;
+  border-right:1px solid #E5E7EB;
+  text-align:center;
+  font:600 13px Inter,system-ui,sans-serif;
+  color:#111827;
+  background:#fff;
+  -moz-appearance:textfield;
+}
+body.su-module .st-inward-qty::-webkit-outer-spin-button,
+body.su-module .st-inward-qty::-webkit-inner-spin-button{
+  -webkit-appearance:none;
+  margin:0;
+}
+body.su-module .st-inward-row.is-deselected{
+  opacity:.55;
+}
+body.su-module .st-inward-row.is-deselected .st-inward-qty,
+body.su-module .st-inward-row.is-deselected .st-inward-step{
+  pointer-events:none;
+}
+
+body.su-module .st-inward-notes-head{
+  align-items:stretch;
+}
+body.su-module .st-inward-notes-field{
+  position:relative;
+  flex:1 1 320px;
+  min-width:min(360px,100%);
+  margin-left:auto;
+}
+body.su-module .st-inward-notes-field textarea{
+  width:100%;
+  min-height:96px;
+  resize:vertical;
+  box-sizing:border-box;
+  border:1px solid #E5E7EB;
+  border-radius:12px;
+  padding:12px 14px 28px;
+  font:400 13px/1.45 Inter,system-ui,sans-serif;
+  color:#111827;
+  background:#fff;
+}
+body.su-module .st-inward-notes-field textarea:focus{
+  outline:none;
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+body.su-module .st-inward-notes-field .st-notes-count{
+  position:absolute;
+  right:12px;
+  bottom:10px;
+  font:500 11px Inter,system-ui,sans-serif;
+  color:#94A3B8;
+  pointer-events:none;
+}
+
+body.su-module .st-inward-actions{
+  justify-content:space-between;
+}
+body.su-module .st-inward-actions .st-btn--primary:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+}
+
+body.su-module .st-sr-only{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}
+
+@media (max-width:900px){
+  body.su-module .st-inward-items-tools,
+  body.su-module .st-inward-notes-field{
+    margin-left:0;
+    width:100%;
+  }
+}
+
+/* Stock Inward expense confirm modal */
+body.su-module #st-inward-expense-modal .st-inward-expense-box{
+  overflow:visible;
+}
+body.su-module #st-inward-expense-modal .se-filter-chip{width:100%}
+body.su-module #st-inward-expense-modal .se-filter-chip-control{width:100%}
+body.su-module #st-inward-expense-modal .se-filter-listbox{
+  left:0;
+  right:0;
+  top:calc(100% + 8px);
+  bottom:auto;
+  min-width:100%;
+  z-index:80;
+}
+body.su-module #st-inward-expense-modal #st-inward-payment-listbox.is-open{
+  z-index:90;
+}
+body.su-module .st-inward-amount-warn{
+  display:block;
+  margin-top:8px;
+  padding:8px 11px;
+  border-radius:10px;
+  background:#FFFBEB;
+  border:1px solid rgba(217,119,6,.28);
+  color:#B45309;
+  font:600 12px/1.4 Inter,system-ui,sans-serif;
+}
+body.su-module .st-inward-amount-warn[hidden]{
+  display:none!important;
+}

@@ -82,21 +82,40 @@
     });
   }
 
+  function shouldUseFixedListbox(root){
+    if (!root) return false;
+    if (root.classList.contains('ep-toolbar-listbox')) return true;
+    // Indent edit (and similar) modals clip absolute menus via overflow:auto/hidden.
+    if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal')) {
+      return true;
+    }
+    return false;
+  }
+
   function positionFixedListbox(root, list){
-    if (!root || !list || !root.classList.contains('ep-toolbar-listbox')) return;
+    if (!root || !list || !shouldUseFixedListbox(root)) return;
     var control = root.querySelector('.se-filter-chip-control') || root;
     var rect = control.getBoundingClientRect();
     var width = Math.max(rect.width, 140);
     var left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 8));
-    var maxHeight = Math.min(260, Math.max(120, window.innerHeight - rect.bottom - 16));
+    var spaceBelow = window.innerHeight - rect.bottom - 12;
+    var spaceAbove = rect.top - 12;
+    var openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
+    var maxHeight = Math.min(260, Math.max(120, openUp ? spaceAbove : spaceBelow));
     list.style.position = 'fixed';
     list.style.left = left + 'px';
     list.style.right = 'auto';
-    list.style.top = (rect.bottom + 6) + 'px';
     list.style.width = width + 'px';
     list.style.minWidth = width + 'px';
     list.style.maxHeight = maxHeight + 'px';
-    list.style.zIndex = '4000';
+    list.style.zIndex = '10090';
+    if (openUp) {
+      list.style.top = 'auto';
+      list.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
+    } else {
+      list.style.bottom = 'auto';
+      list.style.top = (rect.bottom + 6) + 'px';
+    }
   }
 
   function clearFixedListbox(list){
@@ -105,6 +124,7 @@
     list.style.left = '';
     list.style.right = '';
     list.style.top = '';
+    list.style.bottom = '';
     list.style.width = '';
     list.style.minWidth = '';
     list.style.maxHeight = '';
@@ -228,7 +248,8 @@
   }
 
   function bindListbox(root){
-    if (!root || root.__epListboxBound) return;
+    // Skip chips already owned by sales filter listbox scripts (Tips / Cash / Room Transfer).
+    if (!root || root.__epListboxBound || root.__suFilterListboxBound) return;
     root.__epListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');
@@ -327,6 +348,15 @@
     if (e.key !== 'Escape') return;
     listboxRoots('[data-se-listbox].is-open').forEach(closeListbox);
   });
+
+  function repositionOpenFixedListboxes(){
+    listboxRoots('[data-se-listbox].is-open').forEach(function(root){
+      var list = root.querySelector('.se-filter-listbox');
+      if (list) positionFixedListbox(root, list);
+    });
+  }
+  window.addEventListener('resize', repositionOpenFixedListboxes);
+  document.addEventListener('scroll', repositionOpenFixedListboxes, true);
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initEpListboxes);

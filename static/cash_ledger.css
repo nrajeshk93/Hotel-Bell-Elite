@@ -58,27 +58,28 @@ body.su-module .cl-summary-card--available .pl-summary-value{color:#1D4ED8}
 body.su-module #cash-ledger-filter-form.cl-filter-form{
   display:flex;
   align-items:flex-end;
-  justify-content:flex-start;
+  justify-content:flex-end;
   flex:1 1 auto;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
   width:100%;
   min-width:0;
   gap:12px;
 }
 body.su-module .se-sales-header-filters:has(#cash-ledger-filter-form){
-  justify-content:flex-start;
+  justify-content:flex-end;
 }
 body.su-module .cl-location-chip{
   flex:0 0 auto;
   width:160px;
   min-width:148px;
   max-width:180px;
+  margin-left:0;
 }
 body.su-module .cl-date-range-host{
   flex:0 0 auto;
   min-width:0;
   z-index:30;
-  margin-left:auto;
+  margin-left:0;
 }
 body.su-module .cl-date-range-host .se-filter-chip--date-range{
   flex:none;
@@ -102,4 +103,9 @@ body.su-module .cl-date-range-host .an-range-actions{
   justify-content:flex-end;
   gap:8px;
   flex-wrap:wrap;
+}
+@media (max-width:640px){
+  body.su-module #cash-ledger-filter-form.cl-filter-form{
+    flex-wrap:wrap;
+  }
 }

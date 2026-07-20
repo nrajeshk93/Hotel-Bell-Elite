@@ -2,19 +2,33 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+import io
+import re
+from datetime import date, datetime
 from typing import Any
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
 
 from db import ensure_stores_schema, get_db
+from whatsapp_indent import notify_indent_pending_whatsapp
 from workspace_access import user_can_access_stores_submodule
 
 STORES_OUTLETS = (
     {"key": "bar", "label": "Bar"},
-    {"key": "kitchen", "label": "Kitchen"},
+    {"key": "restaurant", "label": "Restaurant"},
 )
 OUTLET_KEYS = {item["key"] for item in STORES_OUTLETS}
+# Indent filter can also use "All" (key stays "both" for existing URLs/data).
+STORES_FILTER_OUTLETS = (
+    {"key": "both", "label": "All"},
+) + STORES_OUTLETS
+PRODUCT_OUTLETS = (
+    {"key": "bar", "label": "Bar"},
+    {"key": "restaurant", "label": "Restaurant"},
+    {"key": "both", "label": "All"},
+)
+PRODUCT_OUTLET_KEYS = {item["key"] for item in PRODUCT_OUTLETS}
+FILTER_OUTLET_KEYS = {item["key"] for item in STORES_FILTER_OUTLETS}
 DEFAULT_UNITS = ("kg", "pcs", "liter", "dozen", "bunch", "bottle", "case", "pack")
 
 STATUS_LABELS = {
@@ -22,15 +36,36 @@ STATUS_LABELS = {
     "pending": "Waiting approval",
     "approved": "Approved",
     "rejected": "Rejected",
+    "stocked": "Stocked",
     "open": "Open",
     "received": "Received in stock",
     "cancelled": "Cancelled",
 }
 
+INDENT_LIST_VIEWS = (
+    ("pending", "Pending Approval"),
+    ("approved", "Approved"),
+    ("rejected", "Rejected"),
+)
+INDENT_LIST_VIEW_STATUSES = {
+    "pending": ("draft", "pending"),
+    "approved": ("approved",),
+    "rejected": ("rejected",),
+}
+EDITABLE_INDENT_STATUSES = ("draft", "pending", "rejected")
+
+
+def _parse_indent_list_view(raw: str | None) -> str:
+    key = (raw or "").strip().lower()
+    if key in INDENT_LIST_VIEW_STATUSES:
+        return key
+    return "pending"
+
+
 PAGE_META = {
     "product_master": {
         "title": "Products",
-        "subtitle": "Categories and products used when raising indents for Bar and Kitchen.",
+        "subtitle": "Categories and products used when raising indents for Bar and Restaurant.",
         "step": "Master",
         "list_endpoint": "stores_product_master",
         "cta": "Add product",
@@ -40,7 +75,7 @@ PAGE_META = {
     },
     "indent": {
         "title": "Indent",
-        "subtitle": "Ask for what the team needs. Keep it simple — item, quantity, unit.",
+        "subtitle": "",
         "step": "1 · Indent",
         "list_endpoint": "stores_indent",
         "cta": "New Indent",
@@ -49,15 +84,15 @@ PAGE_META = {
     },
     "approvals": {
         "title": "Approvals",
-        "subtitle": "Review waiting indents. Approve to buy, or reject with a short note.",
+        "subtitle": "Review waiting indents. Approve to buy, or reject.",
         "step": "2 · Approvals",
         "list_endpoint": "stores_approvals",
         "cta": None,
     },
     "purchase_requests": {
-        "title": "Purchases",
-        "subtitle": "Turn approved indents into purchases, then receive items into stock.",
-        "step": "3 · Purchases",
+        "title": "Stock Inward",
+        "subtitle": "",
+        "step": "3 · Stock Inward",
         "list_endpoint": "stores_purchase_requests",
         "cta": None,
     },
@@ -67,33 +102,6 @@ PAGE_META = {
         "step": "4 · Stock",
         "list_endpoint": "stores_stock",
         "cta": None,
-    },
-    "counter_transfer": {
-        "title": "Transfers",
-        "subtitle": "Move stock from store to the counter when the team needs it.",
-        "step": "5 · Transfers",
-        "list_endpoint": "stores_counter_transfer",
-        "cta": "New transfer",
-        "cta_endpoint": "stores_counter_transfer",
-        "cta_args": {"focus": "form"},
-    },
-    "stock_verification": {
-        "title": "Verification",
-        "subtitle": "Count stock on a schedule. Overdue counts show as Due.",
-        "step": "Verification",
-        "list_endpoint": "stores_stock_verification",
-        "cta": "Start verification",
-        "cta_endpoint": "stores_stock_verification",
-        "cta_args": {"focus": "form"},
-    },
-    "stock_issues": {
-        "title": "Issues",
-        "subtitle": "Reduce stock when goods are sold or used (invoice / issue).",
-        "step": "6 · Issues",
-        "list_endpoint": "stores_stock_issues",
-        "cta": "New issue",
-        "cta_endpoint": "stores_stock_issues",
-        "cta_args": {"focus": "form"},
     },
 }
 
@@ -113,16 +121,163 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _notify_indent_pending_whatsapp(conn, indent_id: int, outlet: str) -> None:
+    """Best-effort WhatsApp indent_approval notify; never blocks indent save."""
+    try:
+        ok, message = notify_indent_pending_whatsapp(
+            conn,
+            int(indent_id),
+            outlet_label=_outlet_label(outlet),
+        )
+        conn.commit()
+        if ok:
+            flash(message, "ok")
+        elif message:
+            flash(message, "error")
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        flash("Indent saved, but WhatsApp approval notify failed.", "error")
+
+
+def _format_stores_dt(value: Any) -> str:
+    """Display datetimes as ``19-July 10.05 AM`` (date-only → ``19-July``)."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text or text in {"—", "-", "never"}:
+        return text
+    parsed = _parse_stores_dt(text)
+    if parsed is None:
+        return text
+    day_month = f"{parsed.day}-{parsed.strftime('%B')}"
+    if len(text) <= 10:
+        return day_month
+    hour12 = parsed.hour % 12 or 12
+    ampm = "AM" if parsed.hour < 12 else "PM"
+    return f"{day_month} {hour12}.{parsed.minute:02d} {ampm}"
+
+
+def _parse_stores_dt(text: str) -> datetime | None:
+    for fmt, length in (
+        ("%Y-%m-%d %H:%M:%S", 19),
+        ("%Y-%m-%d %H:%M", 16),
+        ("%Y-%m-%d", 10),
+    ):
+        chunk = text[:length]
+        if len(chunk) < length:
+            continue
+        try:
+            return datetime.strptime(chunk, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _format_stores_date_line(value: Any) -> str:
+    """``19 July`` for multi-line submitted cells."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    parsed = _parse_stores_dt(text)
+    if parsed is None:
+        return text
+    return f"{parsed.day} {parsed.strftime('%B')}"
+
+
+def _format_stores_time_line(value: Any) -> str:
+    """``10:05 AM`` for multi-line submitted cells."""
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text or len(text) <= 10:
+        return ""
+    parsed = _parse_stores_dt(text)
+    if parsed is None:
+        return ""
+    hour12 = parsed.hour % 12 or 12
+    ampm = "AM" if parsed.hour < 12 else "PM"
+    return f"{hour12}:{parsed.minute:02d} {ampm}"
+
+
+def _parse_optional_price(raw: str | None) -> tuple[float | None, str | None]:
+    text = str(raw or "").strip().replace(",", "")
+    if not text:
+        return None, None
+    try:
+        value = float(text)
+    except (TypeError, ValueError):
+        return None, "Approximate price must be a number."
+    if value < 0:
+        return None, "Approximate price cannot be negative."
+    return round(value, 2), None
+
+
+def _format_optional_price(value: Any) -> str:
+    if value is None or value == "":
+        return ""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return ""
+    if number != number:  # NaN
+        return ""
+    if number == int(number):
+        return str(int(number))
+    return f"{number:.2f}".rstrip("0").rstrip(".")
+
+
+def _normalize_outlet_key(raw: str | None) -> str:
+    key = (raw or "").strip().lower()
+    # Legacy stores key — keep old bookmarks working.
+    if key == "kitchen":
+        return "restaurant"
+    return key
+
+
 def _parse_outlet(raw: str | None) -> str:
-    key = (raw or "bar").strip().lower()
+    """Operational outlet used for stock / saved indents (never 'both')."""
+    key = _normalize_outlet_key(raw or "bar")
     return key if key in OUTLET_KEYS else "bar"
 
 
+def _parse_outlet_filter(raw: str | None) -> str:
+    """Outlet filter for Stores list UI — All, Bar, or Restaurant. Defaults to All."""
+    if raw is None or not str(raw).strip():
+        return "both"
+    key = _normalize_outlet_key(raw)
+    return key if key in FILTER_OUTLET_KEYS else "both"
+
+
 def _outlet_label(outlet: str) -> str:
-    for item in STORES_OUTLETS:
+    for item in STORES_FILTER_OUTLETS:
         if item["key"] == outlet:
             return item["label"]
     return outlet.title()
+
+
+def _outlet_match_sql(column: str, outlet: str) -> tuple[str, tuple[Any, ...]]:
+    """SQL fragment + params for list filters (supports All)."""
+    if outlet == "both":
+        return f"{column} IN ('bar', 'restaurant')", ()
+    return f"{column} = ?", (outlet,)
+
+
+def _parse_product_outlet(raw: str | None) -> str:
+    key = _normalize_outlet_key(raw or "restaurant")
+    return key if key in PRODUCT_OUTLET_KEYS else "restaurant"
+
+
+def _product_outlet_label(outlet: str) -> str:
+    key = _parse_product_outlet(outlet)
+    for item in PRODUCT_OUTLETS:
+        if item["key"] == key:
+            return item["label"]
+    return "Restaurant"
 
 
 def _status_label(status: str) -> str:
@@ -150,7 +305,7 @@ def _parse_lines_from_form(form) -> list[dict[str, Any]]:
     names = form.getlist("item_name")
     qtys = form.getlist("quantity")
     units = form.getlist("unit")
-    notes = form.getlist("line_notes")
+    prices = form.getlist("approximate_price")
     lines = []
     for idx, name in enumerate(names):
         item_name = (name or "").strip()
@@ -164,12 +319,14 @@ def _parse_lines_from_form(form) -> list[dict[str, Any]]:
             continue
         unit = (units[idx] if idx < len(units) else "pcs") or "pcs"
         unit = unit.strip() or "pcs"
-        note = (notes[idx] if idx < len(notes) else "") or ""
+        price_raw = prices[idx] if idx < len(prices) else ""
+        approx_price, _price_err = _parse_optional_price(price_raw)
         lines.append({
             "item_name": item_name,
             "quantity": qty,
             "unit": unit,
-            "notes": note.strip(),
+            "notes": "",
+            "approximate_price": approx_price,
         })
     return lines
 
@@ -225,53 +382,30 @@ def _adjust_stock(conn, *, outlet, item_name, unit, qty_delta, movement_type, re
     )
 
 
-def _verification_due_info(conn, outlet: str) -> dict[str, Any]:
-    settings = conn.execute(
-        "SELECT verification_interval_days FROM store_settings WHERE outlet = ?",
-        (outlet,),
-    ).fetchone()
-    interval = int(settings["verification_interval_days"] if settings else 7)
-    last = conn.execute(
-        """
-        SELECT verified_at FROM store_stock_verifications
-        WHERE outlet = ?
-        ORDER BY verified_at DESC, id DESC
-        LIMIT 1
-        """,
-        (outlet,),
-    ).fetchone()
-    last_at = last["verified_at"] if last else None
-    due = True
-    due_on = date.today()
-    if last_at:
-        try:
-            last_dt = datetime.strptime(str(last_at)[:19], "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            try:
-                last_dt = datetime.strptime(str(last_at)[:10], "%Y-%m-%d")
-            except ValueError:
-                last_dt = None
-        if last_dt:
-            due_on = (last_dt + timedelta(days=interval)).date()
-            due = date.today() >= due_on
-    return {
-        "interval_days": interval,
-        "last_verified_at": last_at,
-        "due_on": due_on.isoformat(),
-        "is_due": due,
-    }
+def _load_product_catalog(conn, stores_outlet: str | None = None):
+    """Load product master.
 
-
-def _load_product_catalog(conn):
+    When stores_outlet is Bar/Restaurant, include that outlet's products plus Both.
+    When stores_outlet is Both (or omitted), include every active product.
+    """
+    filter_outlet = _parse_outlet_filter(stores_outlet) if stores_outlet else None
+    params: list[Any] = []
+    outlet_sql = ""
+    if filter_outlet and filter_outlet != "both":
+        outlet_sql = " AND lower(coalesce(p.outlet, '')) IN (?, 'both')"
+        params.append(filter_outlet)
     rows = conn.execute(
-        """
+        f"""
         SELECT c.id AS category_id, c.name AS category_name, c.sort_order AS category_sort,
-               p.id AS product_id, p.name AS product_name, p.default_unit, p.is_active, p.sort_order
+               p.id AS product_id, p.name AS product_name, p.default_unit, p.outlet,
+               p.approximate_price, p.is_active, p.sort_order
         FROM store_product_categories c
-        LEFT JOIN store_products p ON p.category_id = c.id AND p.is_active = 1
+        LEFT JOIN store_products p
+          ON p.category_id = c.id AND p.is_active = 1{outlet_sql}
         WHERE c.is_active = 1
         ORDER BY c.sort_order, c.name, p.sort_order, p.name
-        """
+        """,
+        params,
     ).fetchall()
     categories = []
     by_id = {}
@@ -290,14 +424,92 @@ def _load_product_catalog(conn):
                 "id": row["product_id"],
                 "name": row["product_name"],
                 "default_unit": row["default_unit"],
+                "outlet": _parse_product_outlet(row["outlet"]),
+                "outlet_label": _product_outlet_label(row["outlet"]),
+                "approximate_price": row["approximate_price"],
+                "approximate_price_display": _format_optional_price(row["approximate_price"]),
             })
+    if filter_outlet:
+        categories = [cat for cat in categories if cat["products"]]
     return categories
+
+
+def _product_names_for_outlet(conn, stores_outlet: str) -> set[str]:
+    catalog = _load_product_catalog(conn, stores_outlet=stores_outlet)
+    names: set[str] = set()
+    for cat in catalog:
+        for product in cat["products"]:
+            names.add(str(product["name"]).strip().lower())
+    return names
+
+
+def _indent_view_payload(conn, indents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Serialize indent rows + lines for the list-page view modal."""
+    if not indents:
+        return []
+    indent_ids = [int(row["id"]) for row in indents if row.get("id") is not None]
+    lines_by_id: dict[int, list[dict[str, Any]]] = {iid: [] for iid in indent_ids}
+    if indent_ids:
+        placeholders = ",".join("?" for _ in indent_ids)
+        line_rows = conn.execute(
+            f"""
+            SELECT indent_id, item_name, quantity, unit, notes, approximate_price
+            FROM store_indent_lines
+            WHERE indent_id IN ({placeholders})
+            ORDER BY id
+            """,
+            indent_ids,
+        ).fetchall()
+        for line in line_rows:
+            approx = line["approximate_price"] if "approximate_price" in line.keys() else None
+            lines_by_id.setdefault(int(line["indent_id"]), []).append({
+                "item_name": line["item_name"],
+                "quantity": line["quantity"],
+                "unit": line["unit"] or "",
+                "notes": line["notes"] or "",
+                "approximate_price": approx,
+                "approximate_price_display": _format_optional_price(approx),
+            })
+    payload = []
+    for row in indents:
+        iid = int(row["id"])
+        outlet_key = _parse_outlet(row.get("outlet"))
+        payload.append({
+            "id": iid,
+            "indent_no": row.get("indent_no") or "",
+            "outlet": outlet_key,
+            "outlet_label": _outlet_label(outlet_key),
+            "status": row.get("status") or "",
+            "status_label": _status_label(row.get("status") or ""),
+            "notes": row.get("notes") or "",
+            "decision_note": row.get("decision_note") or "",
+            "created_at": _format_stores_dt(row.get("created_at") or ""),
+            "created_by_name": row.get("created_by_name") or "",
+            "decided_at": _format_stores_dt(row.get("decided_at") or ""),
+            "decided_by_name": row.get("decided_by_name") or "",
+            "decided_by_username": row.get("decided_by_username") or "",
+            "line_count": int(row.get("line_count") or 0),
+            "total_qty": row.get("total_qty") or 0,
+            "lines": lines_by_id.get(iid, []),
+            "can_mutate": (row.get("status") or "") in EDITABLE_INDENT_STATUSES,
+            "can_download_po": (row.get("status") or "") == "approved",
+            "po_url": url_for("stores_indent_purchase_order", indent_id=iid)
+            if (row.get("status") or "") == "approved"
+            else "",
+            "edit_url": url_for(
+                "stores_indent",
+                outlet=outlet_key,
+                edit=iid,
+                focus="form",
+            ),
+        })
+    return payload
 
 
 def _load_flat_products(conn) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT p.id, p.name, p.default_unit, p.category_id,
+        SELECT p.id, p.name, p.default_unit, p.outlet, p.approximate_price, p.category_id,
                c.name AS category_name, c.sort_order AS category_sort, p.sort_order
         FROM store_products p
         JOIN store_product_categories c ON c.id = p.category_id
@@ -305,7 +517,14 @@ def _load_flat_products(conn) -> list[dict[str, Any]]:
         ORDER BY c.sort_order, c.name, p.sort_order, p.name
         """
     ).fetchall()
-    return [dict(row) for row in rows]
+    products = []
+    for row in rows:
+        item = dict(row)
+        item["outlet"] = _parse_product_outlet(item.get("outlet"))
+        item["outlet_label"] = _product_outlet_label(item["outlet"])
+        item["approximate_price_display"] = _format_optional_price(item.get("approximate_price"))
+        products.append(item)
+    return products
 
 
 def _first_stores_endpoint(user) -> str | None:
@@ -315,9 +534,6 @@ def _first_stores_endpoint(user) -> str | None:
         "approvals",
         "purchase_requests",
         "stock",
-        "counter_transfer",
-        "stock_verification",
-        "stock_issues",
     )
     endpoint_map = {
         "product_master": "stores_product_master",
@@ -325,9 +541,6 @@ def _first_stores_endpoint(user) -> str | None:
         "approvals": "stores_approvals",
         "purchase_requests": "stores_purchase_requests",
         "stock": "stores_stock",
-        "counter_transfer": "stores_counter_transfer",
-        "stock_verification": "stores_stock_verification",
-        "stock_issues": "stores_stock_issues",
     }
     for key in preferred:
         if user_can_access_stores_submodule(user, key):
@@ -337,21 +550,39 @@ def _first_stores_endpoint(user) -> str | None:
 
 def _page_render(page_key: str, **kwargs):
     user = _get_user() if _get_user else None
-    outlet = _parse_outlet(kwargs.pop("outlet", None) or request.args.get("outlet"))
+    raw_outlet = kwargs.pop("outlet", None) or request.args.get("outlet")
+    # List filters use All/Bar/Restaurant; product master keeps its own outlet field.
+    if page_key == "product_master":
+        outlet = _parse_outlet(raw_outlet)
+        outlets_for_ui = STORES_OUTLETS
+    else:
+        outlet = _parse_outlet_filter(raw_outlet)
+        outlets_for_ui = STORES_FILTER_OUTLETS
     meta = PAGE_META[page_key]
     cta_url = None
     if meta.get("cta_endpoint"):
         args = dict(meta.get("cta_args") or {})
-        args["outlet"] = outlet
+        if args.get("focus") == "form":
+            # Create forms need a concrete outlet — only carry Bar/Restaurant.
+            if outlet in OUTLET_KEYS:
+                args["outlet"] = outlet
+        else:
+            args["outlet"] = outlet
         cta_url = url_for(meta["cta_endpoint"], **args)
     kwargs.setdefault("auth_notice", _pop_auth_notice() if _pop_auth_notice else None)
+    if page_key == "indent":
+        kwargs.setdefault("indent_write_outlets", STORES_OUTLETS)
+    indent_form_unset = bool(kwargs.pop("indent_form_unset", False))
+    selected_outlet = "" if indent_form_unset else outlet
+    selected_outlet_label = "Select outlet" if indent_form_unset else _outlet_label(outlet)
     return render_template(
         "stores_page.html",
         de_nav_section="stores",
         de_nav_stores_view=page_key,
-        stores_outlets=STORES_OUTLETS,
-        selected_outlet=outlet,
-        selected_outlet_label=_outlet_label(outlet),
+        stores_outlets=outlets_for_ui,
+        selected_outlet=selected_outlet,
+        selected_outlet_label=selected_outlet_label,
+        indent_form_unset=indent_form_unset,
         page_key=page_key,
         page_title=meta["title"],
         page_subtitle=meta["subtitle"],
@@ -360,7 +591,11 @@ def _page_render(page_key: str, **kwargs):
         page_cta_url=cta_url,
         show_outlet_tabs=meta.get("show_outlet_tabs", True),
         status_label=_status_label,
+        stores_dt=_format_stores_dt,
+        stores_date=_format_stores_date_line,
+        stores_time=_format_stores_time_line,
         default_units=DEFAULT_UNITS,
+        product_outlets=PRODUCT_OUTLETS,
         current_user=user,
         **kwargs,
     )
@@ -385,6 +620,8 @@ def stores_product_master():
         "category_id": "",
         "name": "",
         "default_unit": "kg",
+        "outlet": "restaurant",
+        "approximate_price": "",
     }
 
     conn = get_db()
@@ -420,8 +657,11 @@ def stores_product_master():
             else:
                 form["name"] = (request.form.get("name") or "").strip()
                 form["default_unit"] = (request.form.get("default_unit") or "kg").strip() or "kg"
+                form["outlet"] = _parse_product_outlet(request.form.get("outlet"))
                 form["category_id"] = (request.form.get("category_id") or "").strip()
                 form["product_id"] = (request.form.get("product_id") or "").strip()
+                approx_price, price_error = _parse_optional_price(request.form.get("approximate_price"))
+                form["approximate_price"] = _format_optional_price(approx_price) if approx_price is not None else (request.form.get("approximate_price") or "").strip()
                 try:
                     category_id = int(form["category_id"])
                 except (TypeError, ValueError):
@@ -434,6 +674,8 @@ def stores_product_master():
                     errors.append("Product name is required.")
                 if not category_id:
                     errors.append("Choose a category.")
+                if price_error:
+                    errors.append(price_error)
                 if not errors:
                     exists = conn.execute(
                         """
@@ -456,13 +698,16 @@ def stores_product_master():
                             conn.execute(
                                 """
                                 UPDATE store_products
-                                SET category_id = ?, name = ?, default_unit = ?, updated_at = ?
+                                SET category_id = ?, name = ?, default_unit = ?, outlet = ?,
+                                    approximate_price = ?, updated_at = ?
                                 WHERE id = ?
                                 """,
                                 (
                                     category_id,
                                     form["name"],
                                     form["default_unit"],
+                                    form["outlet"],
+                                    approx_price,
                                     _now(),
                                     product_id,
                                 ),
@@ -481,13 +726,16 @@ def stores_product_master():
                         conn.execute(
                             """
                             INSERT INTO store_products
-                                (category_id, name, default_unit, is_active, sort_order, updated_at)
-                            VALUES (?, ?, ?, 1, ?, ?)
+                                (category_id, name, default_unit, outlet, approximate_price,
+                                 is_active, sort_order, updated_at)
+                            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                             """,
                             (
                                 category_id,
                                 form["name"],
                                 form["default_unit"],
+                                form["outlet"],
+                                approx_price,
                                 int(max_sort) + 10,
                                 _now(),
                             ),
@@ -499,7 +747,7 @@ def stores_product_master():
         if edit_id_int and request.method == "GET":
             row = conn.execute(
                 """
-                SELECT id, category_id, name, default_unit
+                SELECT id, category_id, name, default_unit, outlet, approximate_price
                 FROM store_products
                 WHERE id = ? AND is_active = 1
                 """,
@@ -510,6 +758,10 @@ def stores_product_master():
                 form["category_id"] = str(row["category_id"])
                 form["name"] = row["name"]
                 form["default_unit"] = row["default_unit"] or "kg"
+                form["outlet"] = _parse_product_outlet(row["outlet"] if "outlet" in row.keys() else None)
+                form["approximate_price"] = _format_optional_price(
+                    row["approximate_price"] if "approximate_price" in row.keys() else None
+                )
             else:
                 flash("Product not found.", "error")
                 return redirect(url_for("stores_product_master"))
@@ -573,20 +825,34 @@ def stores():
     user = _get_user()
     endpoint = _first_stores_endpoint(user)
     if not endpoint:
-        flash("No Stores pages are available for this account.", "error")
+        flash("No Procurement & Inventory pages are available for this account.", "error")
         return redirect(url_for("home"))
-    return redirect(url_for(endpoint, outlet=request.args.get("outlet") or "bar"))
+    return redirect(
+        url_for(endpoint, outlet=request.args.get("outlet") or "both")
+    )
 
 
 @stores_bp.route("/stores/indent", methods=["GET", "POST"])
 def stores_indent():
-    outlet = _parse_outlet(request.args.get("outlet") or request.form.get("outlet"))
+    outlet = _parse_outlet_filter(request.args.get("outlet") or request.form.get("outlet"))
+    list_view = _parse_indent_list_view(request.args.get("view") or request.form.get("view"))
     user = _get_user()
-    focus = request.args.get("focus") == "form" or request.method == "POST"
+    edit_raw = request.args.get("edit") or request.form.get("indent_id") or ""
+    try:
+        edit_id = int(edit_raw) if str(edit_raw).strip() else 0
+    except (TypeError, ValueError):
+        edit_id = 0
+    # Edit opens in a list-page modal; full-page form is for New Indent / POST errors.
+    focus = (
+        request.args.get("focus") == "form"
+        or request.method == "POST"
+    )
+    open_edit_id = 0
     errors: list[str] = []
     form = {
+        "indent_id": "",
         "notes": "",
-        "lines": [{"item_name": "", "quantity": "", "unit": "kg", "notes": ""}],
+        "lines": [{"item_name": "", "quantity": "", "unit": "kg", "notes": "", "approximate_price": ""}],
     }
 
     conn = get_db()
@@ -594,14 +860,131 @@ def stores_indent():
         ensure_stores_schema(conn)
         if request.method == "POST":
             form["notes"] = (request.form.get("notes") or "").strip()
+            form["indent_id"] = (request.form.get("indent_id") or "").strip()
             lines = _parse_lines_from_form(request.form)
-            form["lines"] = lines or [{"item_name": "", "quantity": "", "unit": "kg", "notes": ""}]
+            form["lines"] = lines or [{"item_name": "", "quantity": "", "unit": "kg", "notes": "", "approximate_price": ""}]
+            for line in form["lines"]:
+                line["approximate_price_display"] = _format_optional_price(line.get("approximate_price"))
             action = (request.form.get("action") or "save").strip()
+            form_outlet_raw = (request.form.get("outlet") or "").strip()
+            if not form_outlet_raw or _parse_outlet_filter(form_outlet_raw) == "both":
+                errors.append("Choose Bar or Restaurant before saving this indent.")
+                write_outlet = ""
+            else:
+                write_outlet = _parse_outlet(form_outlet_raw)
+            # Edit modal may send indent_id in the body and/or ?edit= on the action URL.
+            indent_id_raw = (
+                form.get("indent_id")
+                or request.form.get("indent_id")
+                or request.args.get("edit")
+                or ""
+            ).strip()
+            try:
+                indent_id = int(indent_id_raw) if indent_id_raw else 0
+            except (TypeError, ValueError):
+                indent_id = 0
+            form["indent_id"] = str(indent_id) if indent_id else ""
+            existing = None
+            if indent_id:
+                existing = conn.execute(
+                    "SELECT * FROM store_indents WHERE id = ?",
+                    (indent_id,),
+                ).fetchone()
+                if not existing:
+                    errors.append("Indent not found.")
+                    indent_id = 0
+                elif existing["status"] not in EDITABLE_INDENT_STATUSES:
+                    errors.append("Only draft, waiting, or rejected indents can be edited.")
+                else:
+                    write_outlet = _parse_outlet(existing["outlet"])
+                    outlet = write_outlet
             if not lines:
                 errors.append("Add at least one item with a quantity.")
-            if not errors:
-                indent_no = _next_doc_no(conn, "store_indents", "indent_no", "IND", outlet)
-                status = "pending" if action == "submit" else "draft"
+            else:
+                missing_price = [
+                    line["item_name"]
+                    for line in lines
+                    if line.get("approximate_price") is None
+                    or float(line.get("approximate_price") or 0) <= 0
+                ]
+                if missing_price:
+                    errors.append("Enter an approximate price greater than 0 for each item.")
+            if not errors and lines and write_outlet:
+                allowed = _product_names_for_outlet(conn, write_outlet)
+                if allowed:
+                    bad = sorted({
+                        line["item_name"]
+                        for line in lines
+                        if str(line.get("item_name") or "").strip().lower() not in allowed
+                    })
+                    if bad:
+                        errors.append(
+                            "These items are not in the "
+                            f"{_outlet_label(write_outlet)} product master: {', '.join(bad)}."
+                        )
+            if not errors and write_outlet:
+                # Create form: save=draft, submit=pending.
+                # Edit modal Save is the final save → always Waiting approval (pending).
+                if indent_id and existing:
+                    status = "pending"
+                else:
+                    status = "pending" if action == "submit" else "draft"
+                if indent_id and existing:
+                    conn.execute(
+                        """
+                        UPDATE store_indents
+                        SET notes = ?,
+                            status = ?,
+                            decided_by = NULL,
+                            decided_at = NULL,
+                            decision_note = '',
+                            submitted_at = CASE
+                                WHEN ? = 'pending' THEN COALESCE(submitted_at, ?)
+                                ELSE NULL
+                            END
+                        WHERE id = ?
+                        """,
+                        (
+                            form["notes"],
+                            status,
+                            status,
+                            _now(),
+                            indent_id,
+                        ),
+                    )
+                    conn.execute(
+                        "DELETE FROM store_indent_lines WHERE indent_id = ?",
+                        (indent_id,),
+                    )
+                    for line in lines:
+                        conn.execute(
+                            """
+                            INSERT INTO store_indent_lines
+                                (indent_id, item_name, quantity, unit, notes, approximate_price)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                indent_id,
+                                line["item_name"],
+                                line["quantity"],
+                                line["unit"],
+                                line.get("notes") or "",
+                                line.get("approximate_price"),
+                            ),
+                        )
+                    conn.commit()
+                    if (existing["status"] or "") == "rejected":
+                        msg = "Indent updated and sent for approval."
+                    elif (existing["status"] or "") != "pending":
+                        msg = "Indent sent for approval."
+                    else:
+                        msg = "Indent updated."
+                    flash(msg, "ok")
+                    if status == "pending":
+                        _notify_indent_pending_whatsapp(conn, indent_id, write_outlet)
+                    return redirect(url_for("stores_indent", outlet=write_outlet, view="pending"))
+
+                indent_no = _next_doc_no(conn, "store_indents", "indent_no", "IND", write_outlet)
                 cur = conn.execute(
                     """
                     INSERT INTO store_indents
@@ -609,7 +992,7 @@ def stores_indent():
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
-                        outlet,
+                        write_outlet,
                         indent_no,
                         status,
                         form["notes"],
@@ -618,46 +1001,271 @@ def stores_indent():
                         _now() if status == "pending" else None,
                     ),
                 )
-                indent_id = cur.lastrowid
+                new_id = cur.lastrowid
                 for line in lines:
                     conn.execute(
                         """
-                        INSERT INTO store_indent_lines (indent_id, item_name, quantity, unit, notes)
-                        VALUES (?, ?, ?, ?, ?)
+                        INSERT INTO store_indent_lines
+                            (indent_id, item_name, quantity, unit, notes, approximate_price)
+                        VALUES (?, ?, ?, ?, ?, ?)
                         """,
-                        (indent_id, line["item_name"], line["quantity"], line["unit"], line["notes"]),
+                        (
+                            new_id,
+                            line["item_name"],
+                            line["quantity"],
+                            line["unit"],
+                            line.get("notes") or "",
+                            line.get("approximate_price"),
+                        ),
                     )
                 conn.commit()
                 msg = "Indent sent for approval." if status == "pending" else "Indent saved as draft."
                 flash(msg, "ok")
-                return redirect(url_for("stores_indent", outlet=outlet))
+                if status == "pending":
+                    _notify_indent_pending_whatsapp(conn, new_id, write_outlet)
+                return redirect(
+                    url_for(
+                        "stores_indent",
+                        outlet=write_outlet,
+                        view="pending" if status == "pending" else list_view,
+                    )
+                )
 
-        catalog = _load_product_catalog(conn)
-        rows = conn.execute(
-            """
-            SELECT i.*, u.full_name AS created_by_name,
-                   (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
-                   (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
-            FROM store_indents i
-            LEFT JOIN users u ON u.id = i.created_by
-            WHERE i.outlet = ?
-            ORDER BY i.created_at DESC, i.id DESC
-            """,
-            (outlet,),
-        ).fetchall()
+        if edit_id and request.method == "GET":
+            row = conn.execute(
+                """
+                SELECT * FROM store_indents WHERE id = ?
+                """,
+                (edit_id,),
+            ).fetchone()
+            if not row:
+                flash("Indent not found.", "error")
+                return redirect(url_for("stores_indent", outlet=outlet, view=list_view))
+            if row["status"] not in EDITABLE_INDENT_STATUSES:
+                flash("Only draft, waiting, or rejected indents can be edited.", "error")
+                return redirect(url_for("stores_indent", outlet=row["outlet"], view="rejected" if row["status"] == "rejected" else "approved"))
+            outlet = _parse_outlet(row["outlet"])
+            open_edit_id = edit_id
+            list_view = "rejected" if row["status"] == "rejected" else "pending"
+
+        # Create form: no default outlet — user must pick Bar or Restaurant.
+        indent_form_unset = bool(
+            ((focus and not open_edit_id) or request.method == "POST")
+            and outlet == "both"
+            and not open_edit_id
+        )
+        if indent_form_unset:
+            catalog = []
+        else:
+            catalog = _load_product_catalog(conn, stores_outlet=outlet)
+        status_keys = INDENT_LIST_VIEW_STATUSES[list_view]
+        status_placeholders = ",".join("?" for _ in status_keys)
+        if outlet == "both":
+            rows = conn.execute(
+                f"""
+                SELECT i.*, u.full_name AS created_by_name,
+                       d.full_name AS decided_by_name,
+                       d.username AS decided_by_username,
+                       (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                       (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
+                FROM store_indents i
+                LEFT JOIN users u ON u.id = i.created_by
+                LEFT JOIN users d ON d.id = i.decided_by
+                WHERE i.outlet IN ('bar', 'restaurant')
+                  AND i.status IN ({status_placeholders})
+                ORDER BY i.created_at DESC, i.id DESC
+                """,
+                status_keys,
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                f"""
+                SELECT i.*, u.full_name AS created_by_name,
+                       d.full_name AS decided_by_name,
+                       d.username AS decided_by_username,
+                       (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                       (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
+                FROM store_indents i
+                LEFT JOIN users u ON u.id = i.created_by
+                LEFT JOIN users d ON d.id = i.decided_by
+                WHERE i.outlet = ?
+                  AND i.status IN ({status_placeholders})
+                ORDER BY i.created_at DESC, i.id DESC
+                """,
+                (outlet, *status_keys),
+            ).fetchall()
         indents = [dict(row) for row in rows]
+        indent_view_data = _indent_view_payload(conn, indents)
     finally:
         conn.close()
+
+    show_form = (focus and not open_edit_id) or bool(errors)
+    indent_form_unset = bool(show_form and outlet == "both" and not open_edit_id)
 
     return _page_render(
         "indent",
         outlet=outlet,
         indents=indents,
+        indent_view_data=indent_view_data,
         product_catalog=catalog,
-        show_form=focus or bool(errors),
+        show_form=show_form,
+        open_edit_id=open_edit_id,
+        indent_form_unset=indent_form_unset,
         form=form,
         errors=errors,
+        editing=bool(form.get("indent_id")),
+        indent_list_views=INDENT_LIST_VIEWS,
+        selected_indent_view=list_view,
     )
+
+
+def _build_indent_purchase_order_xlsx(indent: dict[str, Any], lines: list[dict[str, Any]]) -> io.BytesIO:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Purchase Order"
+
+    title_font = Font(bold=True, size=16)
+    header_font = Font(bold=True)
+    label_font = Font(bold=True)
+
+    ws["A1"] = "Hotel Bell Elite"
+    ws["A1"].font = title_font
+    ws["A2"] = "Purchase Order"
+    ws["A2"].font = Font(bold=True, size=13)
+
+    meta = [
+        ("Indent No", indent.get("indent_no") or ""),
+        ("Outlet", _outlet_label(_parse_outlet(indent.get("outlet")))),
+        ("Status", _status_label(indent.get("status") or "")),
+        ("Created", _format_stores_dt(indent.get("created_at"))),
+        ("Created by", indent.get("created_by_name") or ""),
+        ("Notes", indent.get("notes") or ""),
+    ]
+    row_idx = 4
+    for label, value in meta:
+        ws.cell(row=row_idx, column=1, value=label).font = label_font
+        ws.cell(row=row_idx, column=2, value=value)
+        row_idx += 1
+
+    row_idx += 1
+    headers = ("#", "Item", "Qty", "Unit", "Approx. price", "Amount")
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=row_idx, column=col, value=title)
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center" if col != 2 else "left")
+
+    total_amount = 0.0
+    has_amount = False
+    for idx, line in enumerate(lines, start=1):
+        row_idx += 1
+        qty = float(line.get("quantity") or 0)
+        price = line.get("approximate_price")
+        try:
+            price_num = float(price) if price is not None and price != "" else None
+        except (TypeError, ValueError):
+            price_num = None
+        amount = None
+        if price_num is not None:
+            amount = round(qty * price_num, 2)
+            total_amount += amount
+            has_amount = True
+        ws.cell(row=row_idx, column=1, value=idx)
+        ws.cell(row=row_idx, column=2, value=line.get("item_name") or "")
+        ws.cell(row=row_idx, column=3, value=qty)
+        ws.cell(row=row_idx, column=4, value=line.get("unit") or "")
+        ws.cell(row=row_idx, column=5, value=price_num if price_num is not None else "")
+        ws.cell(row=row_idx, column=6, value=amount if amount is not None else "")
+
+    if has_amount:
+        row_idx += 1
+        ws.cell(row=row_idx, column=5, value="Total").font = header_font
+        ws.cell(row=row_idx, column=6, value=round(total_amount, 2)).font = header_font
+
+    widths = (6, 32, 10, 10, 14, 12)
+    for idx, width in enumerate(widths, start=1):
+        ws.column_dimensions[chr(64 + idx)].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+@stores_bp.route("/stores/indent/<int:indent_id>/purchase-order")
+def stores_indent_purchase_order(indent_id: int):
+    """Excel purchase order for an approved indent."""
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        indent = conn.execute(
+            """
+            SELECT i.*, u.full_name AS created_by_name
+            FROM store_indents i
+            LEFT JOIN users u ON u.id = i.created_by
+            WHERE i.id = ?
+            """,
+            (indent_id,),
+        ).fetchone()
+        if not indent:
+            flash("Indent not found.", "error")
+            return redirect(url_for("stores_indent", view="approved"))
+        if indent["status"] != "approved":
+            flash("Purchase orders are available for approved indents only.", "error")
+            return redirect(url_for("stores_indent", outlet=indent["outlet"], view="pending"))
+        lines = [
+            dict(row)
+            for row in conn.execute(
+                """
+                SELECT item_name, quantity, unit, approximate_price, notes
+                FROM store_indent_lines
+                WHERE indent_id = ?
+                ORDER BY id
+                """,
+                (indent_id,),
+            ).fetchall()
+        ]
+        indent_data = dict(indent)
+    finally:
+        conn.close()
+
+    buf = _build_indent_purchase_order_xlsx(indent_data, lines)
+    safe_no = re.sub(r"[^\w.-]+", "_", str(indent_data.get("indent_no") or indent_id))
+    fname = f"PO_{safe_no}.xlsx"
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@stores_bp.route("/stores/indent/<int:indent_id>/delete", methods=["GET", "POST"])
+def stores_indent_delete(indent_id: int):
+    outlet = _parse_outlet_filter(request.args.get("outlet") or request.form.get("outlet"))
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        indent = conn.execute(
+            "SELECT id, indent_no, outlet, status FROM store_indents WHERE id = ?",
+            (indent_id,),
+        ).fetchone()
+        if not indent:
+            flash("Indent not found.", "error")
+            return redirect(url_for("stores_indent", outlet=outlet))
+        outlet = _parse_outlet(indent["outlet"])
+        if indent["status"] not in ("draft", "pending"):
+            flash("Only draft or waiting indents can be deleted.", "error")
+            return redirect(url_for("stores_indent", outlet=outlet))
+        conn.execute("DELETE FROM store_indent_lines WHERE indent_id = ?", (indent_id,))
+        conn.execute("DELETE FROM store_indents WHERE id = ?", (indent_id,))
+        conn.commit()
+        flash(f"Deleted {indent['indent_no']}.", "ok")
+    finally:
+        conn.close()
+    return redirect(url_for("stores_indent", outlet=outlet))
 
 
 @stores_bp.route("/stores/indent/<int:indent_id>")
@@ -668,7 +1276,9 @@ def stores_indent_detail(indent_id: int):
         ensure_stores_schema(conn)
         indent = conn.execute(
             """
-            SELECT i.*, u.full_name AS created_by_name, d.full_name AS decided_by_name
+            SELECT i.*, u.full_name AS created_by_name,
+                   d.full_name AS decided_by_name,
+                   d.username AS decided_by_username
             FROM store_indents i
             LEFT JOIN users u ON u.id = i.created_by
             LEFT JOIN users d ON d.id = i.decided_by
@@ -684,6 +1294,11 @@ def stores_indent_detail(indent_id: int):
             "SELECT * FROM store_indent_lines WHERE indent_id = ? ORDER BY id",
             (indent_id,),
         ).fetchall()
+        detail_lines = []
+        for line in lines:
+            item = dict(line)
+            item["approximate_price_display"] = _format_optional_price(item.get("approximate_price"))
+            detail_lines.append(item)
     finally:
         conn.close()
     return _page_render(
@@ -692,7 +1307,7 @@ def stores_indent_detail(indent_id: int):
         indents=[],
         show_form=False,
         detail=dict(indent),
-        detail_lines=[dict(line) for line in lines],
+        detail_lines=detail_lines,
         form=None,
         errors=[],
     )
@@ -724,47 +1339,66 @@ def stores_indent_submit(indent_id: int):
             (_now(), indent_id),
         )
         conn.commit()
+        flash("Indent sent for approval.", "ok")
+        _notify_indent_pending_whatsapp(conn, indent_id, outlet)
     finally:
         conn.close()
-    flash("Indent sent for approval.", "ok")
     return redirect(url_for("stores_indent", outlet=outlet))
 
 
 @stores_bp.route("/stores/approvals")
 def stores_approvals():
-    outlet = _parse_outlet(request.args.get("outlet"))
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
     conn = get_db()
     try:
         ensure_stores_schema(conn)
         pending = conn.execute(
-            """
+            f"""
             SELECT i.*, u.full_name AS created_by_name,
-                   (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count
+                   (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                   (SELECT COALESCE(SUM(
+                        COALESCE(l.quantity, 0) * COALESCE(l.approximate_price, 0)
+                    ), 0)
+                    FROM store_indent_lines l WHERE l.indent_id = i.id) AS approximate_total
             FROM store_indents i
             LEFT JOIN users u ON u.id = i.created_by
-            WHERE i.outlet = ? AND i.status = 'pending'
+            WHERE {outlet_sql} AND i.status = 'pending'
             ORDER BY i.submitted_at ASC, i.id ASC
             """,
-            (outlet,),
+            outlet_params,
         ).fetchall()
         recent = conn.execute(
-            """
+            f"""
             SELECT i.*, u.full_name AS created_by_name, d.full_name AS decided_by_name
             FROM store_indents i
             LEFT JOIN users u ON u.id = i.created_by
             LEFT JOIN users d ON d.id = i.decided_by
-            WHERE i.outlet = ? AND i.status IN ('approved', 'rejected')
+            WHERE {outlet_sql} AND i.status IN ('approved', 'rejected')
             ORDER BY i.decided_at DESC, i.id DESC
             LIMIT 20
             """,
-            (outlet,),
+            outlet_params,
         ).fetchall()
     finally:
         conn.close()
+    pending_rows = []
+    for row in pending:
+        item = dict(row)
+        total = item.get("approximate_total")
+        try:
+            total_num = float(total or 0)
+        except (TypeError, ValueError):
+            total_num = 0.0
+        item["approximate_total"] = total_num
+        item["approximate_total_display"] = (
+            _format_optional_price(total_num) if total_num > 0 else ""
+        )
+        pending_rows.append(item)
     return _page_render(
         "approvals",
         outlet=outlet,
-        pending=[dict(row) for row in pending],
+        pending=pending_rows,
         recent=[dict(row) for row in recent],
     )
 
@@ -805,9 +1439,46 @@ def stores_indent_decide(indent_id: int):
     return redirect(url_for("stores_approvals", outlet=outlet))
 
 
+@stores_bp.route("/stores/indent/<int:indent_id>/reopen", methods=["POST"])
+def stores_indent_reopen(indent_id: int):
+    """Return a rejected indent to Waiting for approval."""
+    outlet = _parse_outlet_filter(request.form.get("outlet") or request.args.get("outlet"))
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        indent = conn.execute(
+            "SELECT id, outlet, status, indent_no FROM store_indents WHERE id = ?",
+            (indent_id,),
+        ).fetchone()
+        if not indent:
+            flash("Indent not found.", "error")
+            return redirect(url_for("stores_approvals", outlet=outlet))
+        outlet = _parse_outlet(indent["outlet"])
+        if indent["status"] != "rejected":
+            flash("Only rejected indents can be returned to waiting.", "error")
+            return redirect(url_for("stores_approvals", outlet=outlet))
+        conn.execute(
+            """
+            UPDATE store_indents
+            SET status = 'pending',
+                decided_by = NULL,
+                decided_at = NULL,
+                decision_note = '',
+                submitted_at = COALESCE(submitted_at, ?)
+            WHERE id = ?
+            """,
+            (_now(), indent_id),
+        )
+        conn.commit()
+        flash(f"{indent['indent_no']} returned to waiting approval.", "ok")
+    finally:
+        conn.close()
+    return redirect(url_for("stores_approvals", outlet=outlet))
+
+
 @stores_bp.route("/stores/purchase-requests", methods=["GET", "POST"])
 def stores_purchase_requests():
-    outlet = _parse_outlet(request.args.get("outlet") or request.form.get("outlet"))
+    outlet = _parse_outlet_filter(request.args.get("outlet") or request.form.get("outlet"))
     user = _get_user()
 
     if request.method == "POST" and request.form.get("action") == "create_from_indent":
@@ -825,22 +1496,22 @@ def stores_purchase_requests():
             if not indent:
                 flash("Select an approved indent.", "error")
                 return redirect(url_for("stores_purchase_requests", outlet=outlet))
-            outlet = indent["outlet"]
+            write_outlet = _parse_outlet(indent["outlet"])
             existing = conn.execute(
                 "SELECT id FROM store_purchase_requests WHERE indent_id = ?",
                 (indent_id,),
             ).fetchone()
             if existing:
                 flash("A purchase request already exists for this indent.", "error")
-                return redirect(url_for("stores_purchase_requests", outlet=outlet))
+                return redirect(url_for("stores_purchase_requests", outlet=write_outlet))
             lines = conn.execute(
                 "SELECT * FROM store_indent_lines WHERE indent_id = ? ORDER BY id",
                 (indent_id,),
             ).fetchall()
             if not lines:
                 flash("This indent has no items.", "error")
-                return redirect(url_for("stores_purchase_requests", outlet=outlet))
-            pr_no = _next_doc_no(conn, "store_purchase_requests", "pr_no", "PR", outlet)
+                return redirect(url_for("stores_purchase_requests", outlet=write_outlet))
+            pr_no = _next_doc_no(conn, "store_purchase_requests", "pr_no", "PR", write_outlet)
             cur = conn.execute(
                 """
                 INSERT INTO store_purchase_requests
@@ -849,7 +1520,7 @@ def stores_purchase_requests():
                 """,
                 (
                     indent_id,
-                    outlet,
+                    write_outlet,
                     pr_no,
                     (request.form.get("notes") or "").strip(),
                     user["id"] if user else None,
@@ -869,40 +1540,279 @@ def stores_purchase_requests():
         finally:
             conn.close()
         flash("Purchase request created.", "ok")
-        return redirect(url_for("stores_purchase_requests", outlet=outlet))
+        return redirect(url_for("stores_purchase_requests", outlet=write_outlet))
+
+    if request.method == "POST" and request.form.get("action") == "confirm_stock_inward":
+        # Stock + expense must go through the expense modal / JSON endpoint.
+        flash("Confirm stock inward from the expense popup.", "error")
+        try:
+            indent_id = int(request.form.get("indent_id") or 0)
+        except (TypeError, ValueError):
+            indent_id = 0
+        redirect_kwargs = {"outlet": outlet}
+        if indent_id:
+            redirect_kwargs["indent"] = indent_id
+        return redirect(url_for("stores_purchase_requests", **redirect_kwargs))
+
+    outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
+    # Lazy import avoids circular import with app.register_stores
+    import app as app_module
 
     conn = get_db()
     try:
         ensure_stores_schema(conn)
-        approved = conn.execute(
-            """
-            SELECT i.*,
-                   (SELECT COUNT(*) FROM store_purchase_requests p WHERE p.indent_id = i.id) AS pr_count
+        approved_rows = conn.execute(
+            f"""
+            SELECT i.*, u.full_name AS created_by_name,
+                   d.full_name AS decided_by_name,
+                   d.username AS decided_by_username,
+                   (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                   (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
             FROM store_indents i
-            WHERE i.outlet = ? AND i.status = 'approved'
+            LEFT JOIN users u ON u.id = i.created_by
+            LEFT JOIN users d ON d.id = i.decided_by
+            WHERE {outlet_sql} AND i.status = 'approved'
             ORDER BY i.decided_at DESC, i.id DESC
             """,
-            (outlet,),
+            outlet_params,
         ).fetchall()
-        prs = conn.execute(
-            """
-            SELECT p.*, i.indent_no,
-                   (SELECT COUNT(*) FROM store_purchase_request_lines l WHERE l.pr_id = p.id) AS line_count
-            FROM store_purchase_requests p
-            LEFT JOIN store_indents i ON i.id = p.indent_id
-            WHERE p.outlet = ?
-            ORDER BY p.created_at DESC, p.id DESC
-            """,
-            (outlet,),
-        ).fetchall()
+        approved_indents = [dict(row) for row in approved_rows]
+        selected_indent = None
+        selected_lines: list[dict[str, Any]] = []
+        try:
+            selected_id = int(request.args.get("indent") or 0)
+        except (TypeError, ValueError):
+            selected_id = 0
+        if selected_id:
+            for row in approved_indents:
+                if int(row["id"]) == selected_id:
+                    selected_indent = row
+                    break
+        if selected_indent is None and len(approved_indents) == 1:
+            selected_indent = approved_indents[0]
+        if selected_indent is not None:
+            line_rows = conn.execute(
+                """
+                SELECT id, item_name, quantity, unit, notes, approximate_price
+                FROM store_indent_lines
+                WHERE indent_id = ?
+                ORDER BY id
+                """,
+                (int(selected_indent["id"]),),
+            ).fetchall()
+            for line in line_rows:
+                approx = line["approximate_price"]
+                try:
+                    qty_val = float(line["quantity"] or 0)
+                except (TypeError, ValueError):
+                    qty_val = 0.0
+                if abs(qty_val - round(qty_val)) < 0.0001:
+                    qty_display = str(int(round(qty_val)))
+                else:
+                    qty_display = ("%g" % qty_val)
+                try:
+                    rate_val = float(approx) if approx is not None and approx != "" else 0.0
+                except (TypeError, ValueError):
+                    rate_val = 0.0
+                selected_lines.append({
+                    "id": int(line["id"]),
+                    "item_name": line["item_name"],
+                    "quantity": qty_val,
+                    "quantity_display": qty_display,
+                    "unit": line["unit"] or "",
+                    "notes": line["notes"] or "",
+                    "approximate_price": approx,
+                    "approximate_price_display": _format_optional_price(approx),
+                    "rate_value": rate_val,
+                    "initial": (line["item_name"] or "?")[:1].upper(),
+                })
+            selected_indent = {
+                **selected_indent,
+                "outlet": _parse_outlet(selected_indent.get("outlet")),
+                "outlet_label": _outlet_label(_parse_outlet(selected_indent.get("outlet"))),
+            }
+        indent_view_data = _indent_view_payload(
+            conn,
+            [selected_indent] if selected_indent else [],
+        )
+        suppliers = app_module._all_suppliers(conn)
+        today = date.today()
+        available_cash = app_module._cash_ledger_available_as_of(
+            conn, app_module.DEFAULT_COMPANY, today
+        )
     finally:
         conn.close()
+
     return _page_render(
         "purchase_requests",
         outlet=outlet,
-        approved_indents=[dict(row) for row in approved if not row["pr_count"]],
-        purchase_requests=[dict(row) for row in prs],
+        approved_indents=approved_indents,
+        selected_indent=selected_indent,
+        selected_lines=selected_lines,
+        indent_view_data=indent_view_data,
+        suppliers=suppliers,
+        expense_categories=app_module.EXPENSE_CATEGORIES,
+        expense_payment_types=app_module.EXPENSE_PAYMENT_TYPES,
+        available_cash=available_cash,
+        available_cash_url=url_for("cash_ledger_available"),
+        supplier_create_url=url_for("create_supplier"),
+        default_company=app_module.DEFAULT_COMPANY,
+        default_location=app_module.OUTLET_HOTEL,
+        today_iso=today.isoformat(),
+        inward_confirm_url=url_for("stores_confirm_stock_inward_expense"),
     )
+
+
+@stores_bp.route("/stores/purchase-requests/confirm-with-expense", methods=["POST"])
+def stores_confirm_stock_inward_expense():
+    """Confirm stock inward and record Hotel expense in one transaction."""
+    user = _get_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+
+    import app as app_module
+
+    data = request.get_json(silent=True) or {}
+    try:
+        indent_id = int(data.get("indent_id") or 0)
+    except (TypeError, ValueError):
+        indent_id = 0
+    notes = (data.get("notes") or "").strip()[:500]
+    raw_lines = data.get("lines") or []
+    if not isinstance(raw_lines, list):
+        raw_lines = []
+
+    selected: dict[int, float] = {}
+    for raw in raw_lines:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            line_id = int(raw.get("line_id") or raw.get("id") or 0)
+            qty = float(raw.get("received_qty") or raw.get("quantity") or 0)
+        except (TypeError, ValueError):
+            continue
+        if line_id > 0 and qty > 0:
+            selected[line_id] = qty
+
+    if not indent_id:
+        return jsonify({"ok": False, "error": "Select an approved indent."}), 400
+    if not selected:
+        return jsonify({"ok": False, "error": "Select at least one item with a received quantity."}), 400
+
+    conn = get_db()
+    write_outlet = "bar"
+    try:
+        ensure_stores_schema(conn)
+        indent = conn.execute(
+            "SELECT * FROM store_indents WHERE id = ?",
+            (indent_id,),
+        ).fetchone()
+        if not indent or indent["status"] != "approved":
+            return jsonify({"ok": False, "error": "Select an approved indent."}), 400
+        write_outlet = _parse_outlet(indent["outlet"])
+        lines = conn.execute(
+            "SELECT * FROM store_indent_lines WHERE indent_id = ? ORDER BY id",
+            (indent_id,),
+        ).fetchall()
+        if not lines:
+            return jsonify({"ok": False, "error": "This indent has no items."}), 400
+
+        lines_by_id = {int(row["id"]): row for row in lines}
+        received_pairs: list[tuple[Any, float]] = []
+        for line_id, received_qty in selected.items():
+            line = lines_by_id.get(line_id)
+            if not line:
+                return jsonify({"ok": False, "error": "One or more selected lines were not found."}), 400
+            ordered = float(line["quantity"] or 0)
+            if received_qty - ordered > 0.0001:
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        f"Received quantity for {line['item_name']} cannot exceed "
+                        f"ordered qty ({ordered:g})."
+                    ),
+                }), 400
+            received_pairs.append((line, received_qty))
+
+        expense_data = {
+            "company": data.get("company") or app_module.DEFAULT_COMPANY,
+            "location": app_module.OUTLET_HOTEL,
+            "date": data.get("date") or date.today().isoformat(),
+            "description": (data.get("description") or "").strip()
+            or f"Stock inward {indent['indent_no']}",
+            "amount": data.get("amount"),
+            "payment_type": data.get("payment_type"),
+            "category": data.get("category"),
+            "transaction_id": data.get("transaction_id"),
+            "invoice_number": data.get("invoice_number"),
+            "supplier_id": data.get("supplier_id"),
+        }
+        expense_result, expense_error = app_module._create_sales_expense(
+            conn,
+            user,
+            expense_data,
+            default_location=app_module.OUTLET_HOTEL,
+        )
+        if expense_error:
+            conn.rollback()
+            return jsonify({"ok": False, "error": expense_error}), 400
+
+        payment_type = app_module._normalize_expense_payment_type(expense_data.get("payment_type"))
+        if payment_type == app_module.EXPENSE_PAYMENT_CREDIT:
+            verify_notes = f"Auto-verified from stock inward {indent['indent_no']}"
+            if notes:
+                verify_notes = f"{verify_notes}: {notes}"
+            _, verify_error = app_module._auto_verify_expense(
+                conn,
+                expense_id=expense_result["expense_id"],
+                supplier_id=expense_data["supplier_id"],
+                amount=app_module.parse_money(expense_data.get("amount")),
+                company=expense_data["company"],
+                user=user,
+                notes=verify_notes,
+            )
+            if verify_error:
+                conn.rollback()
+                return jsonify({"ok": False, "error": verify_error}), 400
+
+        movement_note = f"Stock inward from {indent['indent_no']}"
+        if notes:
+            movement_note = f"{movement_note}: {notes}"
+        for line, received_qty in received_pairs:
+            _adjust_stock(
+                conn,
+                outlet=write_outlet,
+                item_name=line["item_name"],
+                unit=line["unit"] or "",
+                qty_delta=received_qty,
+                movement_type="receive",
+                ref_type="stock_inward",
+                ref_id=indent_id,
+                notes=movement_note,
+                user_id=user["id"] if user else None,
+            )
+
+        conn.execute(
+            "UPDATE store_indents SET status = 'stocked' WHERE id = ?",
+            (indent_id,),
+        )
+        conn.commit()
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "redirect": url_for("stores_stock", outlet=write_outlet),
+        "expense_id": expense_result["expense_id"],
+        "expense_code": expense_result.get("expense_code"),
+        "message": "Stock inward and expense recorded.",
+    })
 
 
 @stores_bp.route("/stores/purchase-requests/<int:pr_id>")
@@ -933,8 +1843,6 @@ def stores_pr_detail(pr_id: int):
     return _page_render(
         "purchase_requests",
         outlet=outlet,
-        approved_indents=[],
-        purchase_requests=[],
         detail=dict(pr),
         detail_lines=[dict(line) for line in lines],
     )
@@ -989,30 +1897,31 @@ def stores_pr_receive(pr_id: int):
 
 @stores_bp.route("/stores/stock")
 def stores_stock():
-    outlet = _parse_outlet(request.args.get("outlet"))
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    outlet_sql, outlet_params = _outlet_match_sql("outlet", outlet)
+    outlet_sql_m, outlet_params_m = _outlet_match_sql("m.outlet", outlet)
     conn = get_db()
     try:
         ensure_stores_schema(conn)
         items = conn.execute(
-            """
+            f"""
             SELECT * FROM store_stock_items
-            WHERE outlet = ?
+            WHERE {outlet_sql}
             ORDER BY lower(item_name), lower(unit)
             """,
-            (outlet,),
+            outlet_params,
         ).fetchall()
         movements = conn.execute(
-            """
+            f"""
             SELECT m.*, u.full_name AS created_by_name
             FROM store_stock_movements m
             LEFT JOIN users u ON u.id = m.created_by
-            WHERE m.outlet = ?
+            WHERE {outlet_sql_m}
             ORDER BY m.created_at DESC, m.id DESC
             LIMIT 25
             """,
-            (outlet,),
+            outlet_params_m,
         ).fetchall()
-        due = _verification_due_info(conn, outlet)
     finally:
         conn.close()
     return _page_render(
@@ -1020,345 +1929,13 @@ def stores_stock():
         outlet=outlet,
         stock_items=[dict(row) for row in items],
         movements=[dict(row) for row in movements],
-        verification_due=due,
     )
-
-
-@stores_bp.route("/stores/counter-transfer", methods=["GET", "POST"])
-def stores_counter_transfer():
-    outlet = _parse_outlet(request.args.get("outlet") or request.form.get("outlet"))
-    user = _get_user()
-    focus = request.args.get("focus") == "form" or request.method == "POST"
-    errors: list[str] = []
-    form = {
-        "notes": "",
-        "lines": [{"item_name": "", "quantity": "", "unit": "pcs"}],
-    }
-
-    conn = get_db()
-    try:
-        ensure_stores_schema(conn)
-        stock_options = conn.execute(
-            """
-            SELECT item_name, unit, qty_on_hand FROM store_stock_items
-            WHERE outlet = ? AND qty_on_hand > 0
-            ORDER BY lower(item_name)
-            """,
-            (outlet,),
-        ).fetchall()
-
-        if request.method == "POST":
-            form["notes"] = (request.form.get("notes") or "").strip()
-            lines = _parse_lines_from_form(request.form)
-            form["lines"] = lines or [{"item_name": "", "quantity": "", "unit": "pcs"}]
-            if not lines:
-                errors.append("Add at least one item to transfer.")
-            if not errors:
-                try:
-                    transfer_no = _next_doc_no(
-                        conn, "store_counter_transfers", "transfer_no", "CT", outlet
-                    )
-                    cur = conn.execute(
-                        """
-                        INSERT INTO store_counter_transfers
-                            (outlet, transfer_no, notes, created_by, created_at)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (
-                            outlet,
-                            transfer_no,
-                            form["notes"],
-                            user["id"] if user else None,
-                            _now(),
-                        ),
-                    )
-                    transfer_id = cur.lastrowid
-                    for line in lines:
-                        conn.execute(
-                            """
-                            INSERT INTO store_counter_transfer_lines
-                                (transfer_id, item_name, unit, quantity)
-                            VALUES (?, ?, ?, ?)
-                            """,
-                            (transfer_id, line["item_name"], line["unit"], line["quantity"]),
-                        )
-                        _adjust_stock(
-                            conn,
-                            outlet=outlet,
-                            item_name=line["item_name"],
-                            unit=line["unit"],
-                            qty_delta=-float(line["quantity"]),
-                            movement_type="transfer_out",
-                            ref_type="counter_transfer",
-                            ref_id=transfer_id,
-                            notes=f"Counter transfer {transfer_no}",
-                            user_id=user["id"] if user else None,
-                        )
-                    conn.commit()
-                    flash("Counter transfer saved. Store stock reduced.", "ok")
-                    return redirect(url_for("stores_counter_transfer", outlet=outlet))
-                except ValueError as exc:
-                    conn.rollback()
-                    errors.append(str(exc))
-
-        transfers = conn.execute(
-            """
-            SELECT t.*,
-                   (SELECT COUNT(*) FROM store_counter_transfer_lines l WHERE l.transfer_id = t.id) AS line_count,
-                   (SELECT COALESCE(SUM(l.quantity), 0) FROM store_counter_transfer_lines l WHERE l.transfer_id = t.id) AS total_qty
-            FROM store_counter_transfers t
-            WHERE t.outlet = ?
-            ORDER BY t.created_at DESC, t.id DESC
-            """,
-            (outlet,),
-        ).fetchall()
-    finally:
-        conn.close()
-
-    return _page_render(
-        "counter_transfer",
-        outlet=outlet,
-        transfers=[dict(row) for row in transfers],
-        stock_options=[dict(row) for row in stock_options],
-        show_form=focus,
-        form=form,
-        errors=errors,
-    )
-
-
-@stores_bp.route("/stores/stock-issues", methods=["GET", "POST"])
-def stores_stock_issues():
-    outlet = _parse_outlet(request.args.get("outlet") or request.form.get("outlet"))
-    user = _get_user()
-    focus = request.args.get("focus") == "form" or request.method == "POST"
-    errors: list[str] = []
-    form = {
-        "invoice_ref": "",
-        "notes": "",
-        "lines": [{"item_name": "", "quantity": "", "unit": "pcs"}],
-    }
-
-    conn = get_db()
-    try:
-        ensure_stores_schema(conn)
-        stock_options = conn.execute(
-            """
-            SELECT item_name, unit, qty_on_hand FROM store_stock_items
-            WHERE outlet = ? AND qty_on_hand > 0
-            ORDER BY lower(item_name)
-            """,
-            (outlet,),
-        ).fetchall()
-
-        if request.method == "POST":
-            form["invoice_ref"] = (request.form.get("invoice_ref") or "").strip()
-            form["notes"] = (request.form.get("notes") or "").strip()
-            lines = _parse_lines_from_form(request.form)
-            form["lines"] = lines or [{"item_name": "", "quantity": "", "unit": "pcs"}]
-            if not lines:
-                errors.append("Add at least one item to issue.")
-            if not errors:
-                try:
-                    issue_no = _next_doc_no(conn, "store_stock_issues", "issue_no", "ISS", outlet)
-                    cur = conn.execute(
-                        """
-                        INSERT INTO store_stock_issues
-                            (outlet, issue_no, invoice_ref, notes, created_by, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        """,
-                        (
-                            outlet,
-                            issue_no,
-                            form["invoice_ref"],
-                            form["notes"],
-                            user["id"] if user else None,
-                            _now(),
-                        ),
-                    )
-                    issue_id = cur.lastrowid
-                    for line in lines:
-                        conn.execute(
-                            """
-                            INSERT INTO store_stock_issue_lines
-                                (issue_id, item_name, unit, quantity)
-                            VALUES (?, ?, ?, ?)
-                            """,
-                            (issue_id, line["item_name"], line["unit"], line["quantity"]),
-                        )
-                        _adjust_stock(
-                            conn,
-                            outlet=outlet,
-                            item_name=line["item_name"],
-                            unit=line["unit"],
-                            qty_delta=-float(line["quantity"]),
-                            movement_type="issue",
-                            ref_type="stock_issue",
-                            ref_id=issue_id,
-                            notes=form["invoice_ref"] or f"Issue {issue_no}",
-                            user_id=user["id"] if user else None,
-                        )
-                    conn.commit()
-                    flash("Stock reduced for this issue.", "ok")
-                    return redirect(url_for("stores_stock_issues", outlet=outlet))
-                except ValueError as exc:
-                    conn.rollback()
-                    errors.append(str(exc))
-
-        issues = conn.execute(
-            """
-            SELECT s.*,
-                   (SELECT COUNT(*) FROM store_stock_issue_lines l WHERE l.issue_id = s.id) AS line_count,
-                   (SELECT COALESCE(SUM(l.quantity), 0) FROM store_stock_issue_lines l WHERE l.issue_id = s.id) AS total_qty
-            FROM store_stock_issues s
-            WHERE s.outlet = ?
-            ORDER BY s.created_at DESC, s.id DESC
-            """,
-            (outlet,),
-        ).fetchall()
-    finally:
-        conn.close()
-
-    return _page_render(
-        "stock_issues",
-        outlet=outlet,
-        issues=[dict(row) for row in issues],
-        stock_options=[dict(row) for row in stock_options],
-        show_form=focus,
-        form=form,
-        errors=errors,
-    )
-
-
-@stores_bp.route("/stores/stock-verification", methods=["GET", "POST"])
-def stores_stock_verification():
-    outlet = _parse_outlet(request.args.get("outlet") or request.form.get("outlet"))
-    user = _get_user()
-    focus = request.args.get("focus") == "form"
-    errors: list[str] = []
-
-    conn = get_db()
-    try:
-        ensure_stores_schema(conn)
-        due = _verification_due_info(conn, outlet)
-        items = conn.execute(
-            """
-            SELECT * FROM store_stock_items
-            WHERE outlet = ?
-            ORDER BY lower(item_name)
-            """,
-            (outlet,),
-        ).fetchall()
-
-        if request.method == "POST" and request.form.get("action") == "save_verification":
-            notes = (request.form.get("notes") or "").strip()
-            if not items:
-                errors.append("No stock items to verify yet.")
-            else:
-                cur = conn.execute(
-                    """
-                    INSERT INTO store_stock_verifications
-                        (outlet, verified_at, verified_by, notes)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (outlet, _now(), user["id"] if user else None, notes),
-                )
-                verification_id = cur.lastrowid
-                for item in items:
-                    key = f"count_{item['id']}"
-                    raw = request.form.get(key)
-                    try:
-                        counted = float(raw) if raw not in (None, "") else float(item["qty_on_hand"])
-                    except (TypeError, ValueError):
-                        counted = float(item["qty_on_hand"])
-                    system_qty = float(item["qty_on_hand"])
-                    conn.execute(
-                        """
-                        INSERT INTO store_stock_verification_lines
-                            (verification_id, item_name, unit, system_qty, counted_qty)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (
-                            verification_id,
-                            item["item_name"],
-                            item["unit"],
-                            system_qty,
-                            counted,
-                        ),
-                    )
-                    variance = counted - system_qty
-                    if abs(variance) > 0.0001:
-                        _adjust_stock(
-                            conn,
-                            outlet=outlet,
-                            item_name=item["item_name"],
-                            unit=item["unit"],
-                            qty_delta=variance,
-                            movement_type="verification_adjust",
-                            ref_type="stock_verification",
-                            ref_id=verification_id,
-                            notes="Stock verification adjustment",
-                            user_id=user["id"] if user else None,
-                        )
-                conn.commit()
-                flash("Stock verification saved.", "ok")
-                return redirect(url_for("stores_stock_verification", outlet=outlet))
-
-        history = conn.execute(
-            """
-            SELECT v.*, u.full_name AS verified_by_name
-            FROM store_stock_verifications v
-            LEFT JOIN users u ON u.id = v.verified_by
-            WHERE v.outlet = ?
-            ORDER BY v.verified_at DESC, v.id DESC
-            LIMIT 15
-            """,
-            (outlet,),
-        ).fetchall()
-    finally:
-        conn.close()
-
-    return _page_render(
-        "stock_verification",
-        outlet=outlet,
-        verification_due=due,
-        stock_items=[dict(row) for row in items],
-        history=[dict(row) for row in history],
-        show_form=focus or bool(errors),
-        errors=errors,
-    )
-
-
-@stores_bp.route("/stores/stock-verification/settings", methods=["POST"])
-def stores_verification_settings():
-    outlet = _parse_outlet(request.form.get("outlet"))
-    try:
-        days = int(request.form.get("verification_interval_days") or 7)
-    except (TypeError, ValueError):
-        days = 7
-    days = max(1, min(days, 90))
-    conn = get_db()
-    try:
-        ensure_stores_schema(conn)
-        conn.execute(
-            """
-            INSERT INTO store_settings (outlet, verification_interval_days, updated_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(outlet) DO UPDATE SET
-                verification_interval_days = excluded.verification_interval_days,
-                updated_at = excluded.updated_at
-            """,
-            (outlet, days, _now()),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-    flash(f"Verification every {days} day(s) saved.", "ok")
-    return redirect(url_for("stores_stock_verification", outlet=outlet))
 
 
 def register_stores(app, *, pop_auth_notice, get_user):
     _bind_helpers(pop_auth_notice, get_user)
     app.register_blueprint(stores_bp)
+    app.jinja_env.filters["stores_dt"] = _format_stores_dt
     for rule in list(app.url_map.iter_rules()):
         if not rule.endpoint.startswith("stores."):
             continue

@@ -38,7 +38,7 @@ html.de-sidebar-wide-boot .de-sidebar .de-help-expanded{display:block!important}
 #dashboard.de-module .de-nav-subitem.is-navigating,
 #main-app.de-module .de-nav-item.is-navigating,
 #ep-workspace.de-module .de-nav-item.is-navigating,
-#dashboard.de-module .de-nav-item.is-navigating{opacity:.65}
+#dashboard.de-module .de-nav-item.is-navigating{opacity:1}
 body.de-open.ep-module{overflow:auto;}
 #ep-workspace.de-module .de-main-wrapper{flex:1;min-width:0;overflow:auto;height:100vh;background:#F4F6F9;}
 #ep-workspace.de-module .main-wrapper{margin-left:0;min-height:100vh;}
@@ -380,6 +380,28 @@ body.de-open.ep-module{overflow:auto;}
     outline:none;
     box-sizing:border-box;
   }
+  /* Let long group labels wrap (e.g. Procurement & Inventory). */
+  #main-app.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle,
+  #ep-workspace.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle,
+  #dashboard.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle{
+    height:auto;
+    min-height:48px;
+    padding-top:8px;
+    padding-bottom:8px;
+    align-items:flex-start;
+  }
+  #main-app.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle > svg:first-of-type,
+  #ep-workspace.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle > svg:first-of-type,
+  #dashboard.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle > svg:first-of-type{
+    margin-top:2px;
+  }
+  #main-app.de-module .de-nav-group-toggle span.de-nav-label-multiline,
+  #ep-workspace.de-module .de-nav-group-toggle span.de-nav-label-multiline,
+  #dashboard.de-module .de-nav-group-toggle span.de-nav-label-multiline{
+    white-space:normal;
+    line-height:1.2;
+    overflow:visible;
+  }
   #main-app.de-module .de-nav-group-toggle:focus-visible,
   #ep-workspace.de-module .de-nav-group-toggle:focus-visible,
   #dashboard.de-module .de-nav-group-toggle:focus-visible{
@@ -550,29 +572,37 @@ body.de-open.ep-module{overflow:auto;}
     padding:8px 12px 8px 22px;
     margin-left:0;
     border-radius:12px;
-    color:#64748B;
+    color:#1E293B;
     text-decoration:none;
     font-size:14px;
-    font-weight:400;
+    font-weight:500;
     line-height:1.35;
     background:transparent;
     box-shadow:none;
     transition:background .15s ease,color .15s ease,box-shadow .15s ease,transform .15s ease;
     cursor:pointer;
   }
+  #main-app.de-module .de-nav-subitem:visited,
+  #ep-workspace.de-module .de-nav-subitem:visited,
+  #dashboard.de-module .de-nav-subitem:visited{
+    color:#1E293B;
+  }
   #main-app.de-module .de-nav-subitem:hover,
   #ep-workspace.de-module .de-nav-subitem:hover,
   #dashboard.de-module .de-nav-subitem:hover{
     background:rgba(255,255,255,.65);
-    color:#334155;
+    color:#0F172A;
     transform:translateY(-1px);
   }
   #main-app.de-module .de-nav-subitem.is-active,
   #ep-workspace.de-module .de-nav-subitem.is-active,
-  #dashboard.de-module .de-nav-subitem.is-active{
+  #dashboard.de-module .de-nav-subitem.is-active,
+  #main-app.de-module .de-nav-subitem.is-active:visited,
+  #ep-workspace.de-module .de-nav-subitem.is-active:visited,
+  #dashboard.de-module .de-nav-subitem.is-active:visited{
     background:#FFFFFF;
-    color:#2563EB;
-    font-weight:500;
+    color:#1D4ED8;
+    font-weight:600;
     box-shadow:0 4px 14px rgba(15,23,42,.05);
   }
   #main-app.de-module .de-nav-subitem.is-active::before,
@@ -929,7 +959,7 @@ body.de-open.ep-module{overflow:auto;}
   #dashboard.de-module .de-nav-subitem.is-navigating,
   #main-app.de-module .de-nav-item.is-navigating,
   #ep-workspace.de-module .de-nav-item.is-navigating,
-  #dashboard.de-module .de-nav-item.is-navigating{opacity:.65}
+  #dashboard.de-module .de-nav-item.is-navigating{opacity:1}
 @media (prefers-reduced-motion: reduce){
     #main-app.de-module, #ep-workspace.de-module, #main-app.de-module, #ep-workspace.de-module, #dashboard.de-module .de-view-panel{transition:none}
 }
@@ -991,6 +1021,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-pinned .de-nav-group-toggle,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-group-toggle,
   #dashboard.de-module .de-sidebar.is-pinned .de-nav-group-toggle{width:100%;min-width:0;max-width:none;height:48px;min-height:48px;margin:0;}
+  #main-app.de-module .de-sidebar.is-pinned #de-nav-stores-toggle,
+  #ep-workspace.de-module .de-sidebar.is-pinned #de-nav-stores-toggle,
+  #dashboard.de-module .de-sidebar.is-pinned #de-nav-stores-toggle{height:auto;min-height:48px;}
   #main-app.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn,
   #dashboard.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn{width:100%;min-width:0;max-width:none;height:40px;min-height:40px;margin:0;}

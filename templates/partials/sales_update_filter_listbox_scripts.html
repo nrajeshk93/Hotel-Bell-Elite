@@ -8,7 +8,9 @@
 
   function submitScope(root){
     var form = closestFilterForm(root);
-    if (form) form.submit();
+    if (!form) return;
+    if (typeof window.deSoftSubmitForm === 'function' && window.deSoftSubmitForm(form)) return;
+    form.submit();
   }
 
   function closeListbox(root){
@@ -93,15 +95,27 @@
   }
 
   function bindListbox(root){
-    if (!root) return;
+    if (!root || root.__suFilterListboxBound || root.__epListboxBound) return;
+    root.__suFilterListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
+    var control = root.querySelector('.se-filter-chip-control');
     var list = root.querySelector('.se-filter-listbox');
     if (!trigger || !list) return;
-    trigger.addEventListener('click', function(e){
+
+    function onTriggerClick(e){
       e.preventDefault();
       e.stopPropagation();
       toggleListbox(root);
-    });
+    }
+    trigger.addEventListener('click', onTriggerClick);
+    // Icon / chevron sit outside the button — still open the menu.
+    if (control) {
+      control.addEventListener('click', function(e){
+        if (e.target.closest('.se-filter-chip-trigger')) return;
+        if (e.target.closest('.se-filter-listbox')) return;
+        onTriggerClick(e);
+      });
+    }
     trigger.addEventListener('keydown', function(e){
       if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -143,15 +157,24 @@
     });
   }
 
-  document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox]').forEach(bindListbox);
-  document.addEventListener('click', function(e){
-    document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox].is-open').forEach(function(root){
-      if (!root.contains(e.target)) closeListbox(root);
+  function initSuFilterListboxes(){
+    document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox]').forEach(bindListbox);
+  }
+
+  initSuFilterListboxes();
+  window.initSuFilterListboxes = initSuFilterListboxes;
+
+  if (!window.__suFilterListboxDocBound) {
+    window.__suFilterListboxDocBound = true;
+    document.addEventListener('click', function(e){
+      document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox].is-open').forEach(function(root){
+        if (!root.contains(e.target)) closeListbox(root);
+      });
     });
-  });
-  document.addEventListener('keydown', function(e){
-    if (e.key !== 'Escape') return;
-    document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox].is-open').forEach(closeListbox);
-  });
+    document.addEventListener('keydown', function(e){
+      if (e.key !== 'Escape') return;
+      document.querySelectorAll(LISTBOX_FORM_SELECTOR + ' [data-se-listbox].is-open').forEach(closeListbox);
+    });
+  }
 })();
 </script>

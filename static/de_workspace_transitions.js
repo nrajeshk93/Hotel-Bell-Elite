@@ -472,12 +472,18 @@
       ids = [];
     }
     if(!Array.isArray(ids)) return;
+    var idSet = {};
     ids.forEach(function(id){
-      var group = document.getElementById(id);
-      if(!group || !sidebar.contains(group)) return;
-      group.classList.add('is-open');
+      if(id) idSet[id] = true;
+    });
+    sidebar.querySelectorAll('.de-nav-group').forEach(function(group){
+      if(!group.id) return;
+      // Keep the current-page section open; otherwise match persisted ids exactly.
+      var shouldOpen = !!idSet[group.id] || group.classList.contains('is-child-active');
+      group.classList.toggle('is-open', shouldOpen);
+      if(!shouldOpen) group.classList.remove('is-flyout-active');
       var toggle = group.querySelector('.de-nav-group-toggle');
-      if(toggle) toggle.setAttribute('aria-expanded', 'true');
+      if(toggle) toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
     });
   }
 
@@ -489,7 +495,7 @@
    */
   function mergeMissingSidebarLinks(curSidebar, nextSidebar){
     if(!curSidebar || !nextSidebar) return false;
-    var addedTips = false;
+    var addedAny = false;
     nextSidebar.querySelectorAll('.de-nav-group').forEach(function(nextGroup){
       if(!nextGroup.id) return;
       var curGroup = document.getElementById(nextGroup.id);
@@ -528,21 +534,13 @@
           }
         }
         if(!placed) curSub.appendChild(imported);
-        if(imported.id === 'de-nav-payroll-tips') addedTips = true;
+        addedAny = true;
       });
     });
     // Tips moved from Sales Analytics → Employee Payroll; drop the old link if present.
     var legacyTips = document.getElementById('de-nav-sales-tips');
     if(legacyTips) legacyTips.remove();
-    if(addedTips){
-      var payrollGroup = document.getElementById('de-nav-payroll-group');
-      if(payrollGroup){
-        payrollGroup.classList.add('is-open');
-        var toggle = payrollGroup.querySelector('.de-nav-group-toggle');
-        if(toggle) toggle.setAttribute('aria-expanded', 'true');
-      }
-    }
-    return addedTips;
+    return addedAny;
   }
 
   /**
@@ -784,7 +782,7 @@
     try{
       path = new URL(link.href, window.location.href).pathname.toLowerCase();
     } catch(e){}
-    if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1 || path.indexOf('/report') !== -1) return true;
+    if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1 || path.indexOf('/report') !== -1 || path.indexOf('/purchase-order') !== -1) return true;
     if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path) || /\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(rawHref)){
       return true;
     }
@@ -869,8 +867,14 @@
   };
   window.deWorkspaceReinit = function(){
     initDeSidebarPageTransitions();
+    if(typeof window.initSuFilterListboxes === 'function'){
+      window.initSuFilterListboxes();
+    }
     if(typeof window.initEpListboxes === 'function'){
       window.initEpListboxes();
+    }
+    if(typeof window.initStoresPage === 'function'){
+      window.initStoresPage();
     }
     if(typeof window.initModuleAccess === 'function'){
       window.initModuleAccess();

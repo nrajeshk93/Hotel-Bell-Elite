@@ -57,6 +57,11 @@
         stop();
         return;
       }
+      // Actions sit on the right edge — edge-pan steals hover and hides data-tip tags.
+      if (e.target && e.target.closest && e.target.closest('.act-grp, .act-btn, .pl-col-actions')) {
+        stop();
+        return;
+      }
       var rect = wrap.getBoundingClientRect();
       var x = e.clientX - rect.left;
       var width = rect.width || 1;

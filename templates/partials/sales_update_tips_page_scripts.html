@@ -73,11 +73,300 @@
     searchInput.addEventListener('input', applySearch);
   }
 
+  (function initTipsEmployeeTableSort(){
+    if (!table) return;
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
+    if (!headers.length) return;
+    var activeKey = '';
+    var ascending = true;
+
+    function cellSortValue(row, colIndex, type){
+      var cell = row.cells[colIndex];
+      if (!cell) return type === 'number' ? 0 : '';
+      var raw = cell.getAttribute('data-sort-value');
+      if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+      if (type === 'number') {
+        var n = Number(raw);
+        return isFinite(n) ? n : 0;
+      }
+      return String(raw).toLowerCase();
+    }
+
+    function sortBy(th){
+      var key = th.getAttribute('data-sort') || '';
+      var type = th.getAttribute('data-sort-type') || 'text';
+      var colIndex = Array.from(th.parentNode.children).indexOf(th);
+      if (colIndex < 0) return;
+      if (activeKey === key) ascending = !ascending;
+      else { activeKey = key; ascending = true; }
+      headers.forEach(function(h){
+        h.classList.remove('is-sorted-asc', 'is-sorted-desc');
+        h.setAttribute('aria-sort', 'none');
+      });
+      th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+      th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+      var rows = Array.from(tbody.querySelectorAll('tr[data-sort-row]'));
+      rows.sort(function(a, b){
+        var av = cellSortValue(a, colIndex, type);
+        var bv = cellSortValue(b, colIndex, type);
+        if (av < bv) return ascending ? -1 : 1;
+        if (av > bv) return ascending ? 1 : -1;
+        return 0;
+      });
+      rows.forEach(function(row){ tbody.appendChild(row); });
+    }
+
+    headers.forEach(function(th){
+      th.addEventListener('click', function(){ sortBy(th); });
+      th.addEventListener('keydown', function(e){
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); sortBy(th); }
+      });
+    });
+  })();
+
   document.querySelectorAll('.pl-amount[data-amount]').forEach(function(el){
     if (typeof formatInr === 'function') {
       el.textContent = formatInr(el.getAttribute('data-amount'), 0);
     }
   });
   if (typeof scheduleFitKpiValues === 'function') scheduleFitKpiValues();
+
+  var editCfg = window.TIPS_EDIT_EMPLOYEE || {};
+  var editModal = document.getElementById('tips-edit-employee-modal');
+  var editTitle = document.getElementById('tips-edit-title');
+  var editCopy = document.getElementById('tips-edit-copy');
+  var editError = document.getElementById('tips-edit-error');
+  var editLines = document.getElementById('tips-edit-lines');
+  var editEmpty = document.getElementById('tips-edit-empty');
+  var editSave = document.getElementById('tips-edit-save');
+  var editCancel = document.getElementById('tips-edit-cancel');
+  var editState = { employeeId: null, lines: [] };
+
+  function closeEditModal(){
+    if (!editModal) return;
+    editModal.classList.remove('open');
+    editModal.setAttribute('aria-hidden', 'true');
+    if (editError) {
+      editError.textContent = '';
+      editError.style.display = 'none';
+    }
+  }
+
+  function showEditError(message){
+    if (!editError) return;
+    editError.textContent = message || 'Could not save tips.';
+    editError.style.display = 'block';
+  }
+
+  function escapeHtml(value){
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderEditLines(lines){
+    editState.lines = Array.isArray(lines) ? lines : [];
+    if (!editLines) return;
+    if (!editState.lines.length) {
+      editLines.innerHTML = '';
+      if (editEmpty) editEmpty.hidden = false;
+      if (editSave) editSave.disabled = true;
+      return;
+    }
+    if (editEmpty) editEmpty.hidden = true;
+    if (editSave) editSave.disabled = false;
+    editLines.innerHTML = editState.lines.map(function(line, index){
+      return '<tr data-tips-edit-row="' + index + '">'
+        + '<td>' + escapeHtml(line.sales_date) + '</td>'
+        + '<td>' + escapeHtml(line.location) + '</td>'
+        + '<td class="pl-col-amount"><input class="staff-input tips-edit-amount" type="number" min="0.01" step="0.01" value="' + escapeHtml(line.amount) + '" aria-label="Tip amount"></td>'
+        + '<td><input class="staff-input tips-edit-note" type="text" value="' + escapeHtml(line.description || '') + '" placeholder="Optional" aria-label="Note"></td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  function openEditModal(employeeId, employeeName){
+    if (!editModal || !editCfg.linesUrl) return;
+    editState.employeeId = employeeId;
+    if (editTitle) editTitle.textContent = 'Edit tips';
+    if (editCopy) editCopy.textContent = 'Update tip amounts for ' + (employeeName || 'this employee') + '.';
+    if (editError) {
+      editError.textContent = '';
+      editError.style.display = 'none';
+    }
+    if (editLines) editLines.innerHTML = '<tr><td colspan="4">Loading…</td></tr>';
+    if (editEmpty) editEmpty.hidden = true;
+    if (editSave) editSave.disabled = true;
+    editModal.classList.add('open');
+    editModal.setAttribute('aria-hidden', 'false');
+
+    fetch(editCfg.linesUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        company: editCfg.company || '',
+        location: editCfg.location || 'All',
+        date_from: editCfg.dateFrom || '',
+        date_to: editCfg.dateTo || '',
+        employee_id: employeeId,
+      }),
+    }).then(function(res){
+      return res.json().then(function(data){
+        return { status: res.status, data: data || {} };
+      }).catch(function(){
+        return { status: res.status, data: { ok: false, error: 'Could not load tip lines.' } };
+      });
+    }).then(function(result){
+      if (!result.data.ok) {
+        showEditError(result.data.error || 'Could not load tip lines.');
+        renderEditLines([]);
+        return;
+      }
+      var emp = result.data.employee || {};
+      if (editTitle) {
+        editTitle.textContent = 'Edit tips' + (emp.name ? (' — ' + emp.name) : '');
+      }
+      renderEditLines(result.data.lines || []);
+    }).catch(function(){
+      showEditError('Could not load tip lines.');
+      renderEditLines([]);
+    });
+  }
+
+  function saveEditModal(){
+    if (!editCfg.editUrl || !editState.employeeId || !editLines) return;
+    var rows = Array.from(editLines.querySelectorAll('tr[data-tips-edit-row]'));
+    if (!rows.length) return;
+    var payloadLines = [];
+    for (var i = 0; i < rows.length; i += 1) {
+      var row = rows[i];
+      var index = Number(row.getAttribute('data-tips-edit-row'));
+      var source = editState.lines[index];
+      if (!source) continue;
+      var amountInput = row.querySelector('.tips-edit-amount');
+      var noteInput = row.querySelector('.tips-edit-note');
+      var amount = Number(amountInput && amountInput.value);
+      if (!isFinite(amount) || amount <= 0) {
+        showEditError('Each tip amount must be greater than 0.');
+        if (amountInput) amountInput.focus();
+        return;
+      }
+      payloadLines.push({
+        id: source.id,
+        company: source.company,
+        location: source.location,
+        date: source.sales_date,
+        employee_id: source.employee_id,
+        amount: amount,
+        description: noteInput ? String(noteInput.value || '').trim() : '',
+      });
+    }
+    if (editSave) editSave.disabled = true;
+    if (editError) {
+      editError.textContent = '';
+      editError.style.display = 'none';
+    }
+
+    var chain = Promise.resolve();
+    payloadLines.forEach(function(line){
+      chain = chain.then(function(){
+        return fetch(editCfg.editUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify(line),
+        }).then(function(res){
+          return res.json().then(function(data){
+            return { status: res.status, data: data || {} };
+          }).catch(function(){
+            return { status: res.status, data: { ok: false, error: 'Could not save tip.' } };
+          });
+        }).then(function(result){
+          if (!result.data.ok) {
+            throw new Error(result.data.error || 'Could not save tip.');
+          }
+        });
+      });
+    });
+
+    chain.then(function(){
+      window.location.reload();
+    }).catch(function(err){
+      showEditError((err && err.message) || 'Could not save tips.');
+      if (editSave) editSave.disabled = false;
+    });
+  }
+
+  if (editCancel) editCancel.addEventListener('click', closeEditModal);
+  if (editSave) editSave.addEventListener('click', saveEditModal);
+  if (editModal) {
+    editModal.addEventListener('click', function(event){
+      if (event.target === editModal) closeEditModal();
+    });
+  }
+  document.addEventListener('keydown', function(event){
+    if (event.key === 'Escape' && editModal && editModal.classList.contains('open')) {
+      closeEditModal();
+    }
+  });
+
+  var deleteCfg = window.TIPS_DELETE_EMPLOYEE || {};
+  document.addEventListener('click', function(event){
+    var editBtn = event.target.closest('[data-tips-edit-employee]');
+    if (editBtn) {
+      event.preventDefault();
+      openEditModal(
+        editBtn.getAttribute('data-tips-edit-employee'),
+        editBtn.getAttribute('data-tips-employee-name') || ''
+      );
+      return;
+    }
+    var btn = event.target.closest('[data-tips-delete-employee]');
+    if (!btn || !deleteCfg.url) return;
+    event.preventDefault();
+    var empId = btn.getAttribute('data-tips-delete-employee');
+    var empName = btn.getAttribute('data-tips-employee-name') || 'this employee';
+    if (!empId) return;
+    var ok = window.confirm(
+      'Delete all tip lines for ' + empName + ' in the current filters?\n\n' +
+      'Related incentive payout for those months will also be cleared.'
+    );
+    if (!ok) return;
+    btn.disabled = true;
+    fetch(deleteCfg.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        company: deleteCfg.company || '',
+        location: deleteCfg.location || 'All',
+        date_from: deleteCfg.dateFrom || '',
+        date_to: deleteCfg.dateTo || '',
+        employee_id: empId,
+      }),
+    }).then(function(res){
+      return res.json().then(function(data){
+        return { status: res.status, data: data || {} };
+      }).catch(function(){
+        return { status: res.status, data: { ok: false, error: 'Could not delete tips.' } };
+      });
+    }).then(function(result){
+      if (!result.data.ok) {
+        window.alert(result.data.error || 'Could not delete tips.');
+        btn.disabled = false;
+        return;
+      }
+      window.location.reload();
+    }).catch(function(){
+      window.alert('Could not delete tips.');
+      btn.disabled = false;
+    });
+  });
 })();
 </script>

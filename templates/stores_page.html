@@ -3,19 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>{{ page_title }} | Stores | Hotel Bell Elite</title>
+<title>{{ page_title }} | Procurement &amp; Inventory | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=10">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=11">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=22">
 {% if page_key == 'indent' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=27">
+{% elif page_key == 'purchase_requests' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=10">
 {% endif %}
 <script>
 (function(){
@@ -27,7 +30,7 @@
 })();
 </script>
 </head>
-<body class="de-open su-module{% if page_key == 'indent' %} st-indent-shell{% endif %}">
+<body class="de-open su-module{% if page_key == 'indent' %} st-indent-shell{% elif page_key == 'purchase_requests' %} st-inward-shell{% endif %}">
 {% include 'partials/de_workspace_shell_open.html' %}
 <div class="main-wrapper">
   <header class="se-sales-header su-header" id="se-sales-header">
@@ -41,11 +44,15 @@
         <div class="su-title">
           <div class="su-title-row">
             <div class="su-title-icon" aria-hidden="true">
+              {% if page_key == 'purchase_requests' %}
+              <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              {% else %}
               <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+              {% endif %}
             </div>
             <h1>{{ page_title }}</h1>
           </div>
-          <p>{{ page_subtitle }}</p>
+          {% if page_subtitle %}<p>{{ page_subtitle }}</p>{% endif %}
         </div>
       </div>
       <div class="su-header-tools">
@@ -65,7 +72,7 @@
     {% if show_outlet_tabs and page_key != 'indent' %}
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <form id="stores-outlet-filter-form" class="sr-topbar-filters st-outlet-filter-form" aria-label="Store outlet filter">
+        <form id="stores-outlet-filter-form" class="sr-topbar-filters st-outlet-filter-form{% if page_key == 'purchase_requests' %} st-inward-header-filters{% endif %}" aria-label="{% if page_key == 'purchase_requests' %}Stock inward filters{% else %}Store outlet filter{% endif %}">
           <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" id="st-outlet-listbox">
             <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
             <div class="se-filter-chip-control">
@@ -86,6 +93,57 @@
               {% endfor %}
             </div>
           </div>
+          {% if page_key == 'purchase_requests' and not detail %}
+          <div
+            class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-inward-indent-listbox"
+            data-se-listbox
+            data-se-listbox-change="stInwardIndentChanged"
+            data-st-inward-endpoint="{{ url_for('stores_purchase_requests') }}"
+            data-st-inward-outlet="{{ selected_outlet }}"
+            id="st-inward-indent-listbox"
+          >
+            <span class="se-filter-chip-label" id="st-inward-indent-label">Indent</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+              </span>
+              <input type="hidden" id="st-inward-indent" value="{{ selected_indent.id if selected_indent else '' }}">
+              <button
+                type="button"
+                class="se-filter-chip-trigger"
+                id="st-inward-indent-trigger"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="st-inward-indent-list"
+                aria-labelledby="st-inward-indent-label st-inward-indent-value"
+              >
+                <span class="se-filter-chip-value{% if not selected_indent %} is-placeholder{% endif %}" id="st-inward-indent-value">
+                  {% if selected_indent %}{{ selected_indent.indent_no }}{% else %}Select indent{% endif %}
+                </span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-inward-indent-list" role="listbox" aria-labelledby="st-inward-indent-label" hidden>
+              {% if approved_indents %}
+                {% for indent in approved_indents %}
+                <button
+                  type="button"
+                  class="se-filter-listbox-option{% if selected_indent and selected_indent.id == indent.id %} is-selected{% endif %}"
+                  role="option"
+                  data-value="{{ indent.id }}"
+                  data-name="{{ indent.indent_no|lower }}"
+                  data-label="{{ indent.indent_no }}"
+                  aria-selected="{{ 'true' if selected_indent and selected_indent.id == indent.id else 'false' }}"
+                >{{ indent.indent_no }}</button>
+                {% endfor %}
+              {% else %}
+                <div class="st-inward-listbox-empty">No approved indents waiting</div>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
         </form>
       </div>
     </div>
@@ -112,17 +170,12 @@
       {% include 'partials/stores_pr_body.html' %}
     {% elif page_key == 'stock' %}
       {% include 'partials/stores_stock_body.html' %}
-    {% elif page_key == 'counter_transfer' %}
-      {% include 'partials/stores_transfer_body.html' %}
-    {% elif page_key == 'stock_verification' %}
-      {% include 'partials/stores_verification_body.html' %}
-    {% elif page_key == 'stock_issues' %}
-      {% include 'partials/stores_issues_body.html' %}
     {% endif %}
   </section>
 </div>
+{# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=31"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=8"></script>
 </body>
 </html>

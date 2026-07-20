@@ -20,12 +20,13 @@
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=10">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=23">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
 {% if mode is defined and mode == 'credits' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
@@ -384,6 +385,8 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 .act-btn.del:hover{background:var(--err-bg);color:var(--err);}
 .act-btn:disabled,.act-btn.is-disabled{opacity:.42;cursor:not-allowed;}
 .act-btn:disabled:hover,.act-btn.is-disabled:hover{background:transparent;color:var(--txt3);}
+.act-btn:disabled,.act-btn.is-disabled{opacity:.42;cursor:not-allowed;}
+.act-btn:disabled:hover,.act-btn.is-disabled:hover{background:transparent;color:var(--txt3);}
 .act-sep{width:1px;height:18px;background:var(--border);margin:0 2px;flex-shrink:0;}
 /* tooltip — below icon so sticky header / card overflow do not clip */
 .act-btn[data-tip]::after{content:attr(data-tip);position:absolute;top:calc(100% + 8px);left:50%;transform:translateX(-50%);background:#1A202C;color:#fff;font-size:10px;font-weight:600;white-space:nowrap;padding:4px 8px;border-radius:4px;pointer-events:none;opacity:0;visibility:hidden;z-index:30;box-shadow:0 4px 12px rgba(15,23,42,.18);transition:opacity .12s,visibility .12s;}
@@ -455,9 +458,9 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 <div id="page-transition"></div>
 {% include 'partials/de_fullscreen_script.html' %}
 {% include 'partials/de_fullscreen_bootstrap.html' %}
-<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=26"></script>
-<script src="{{ url_for('static', filename='hbe_table_scroll.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=29"></script>
+<script src="{{ url_for('static', filename='hbe_table_scroll.js') }}?v=2"></script>
 
 <div id="ep-workspace" class="de-module">
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox, ep_toolbar_listbox %}
@@ -733,8 +736,13 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Add Credit</button>
       <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Repayment</button>
       {% else %}
+      {% if payroll_state is defined and payroll_state.locked %}
+      <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Add Credit</button>
+      <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Repayment</button>
+      {% else %}
       <button type="button" class="btn btn-primary" onclick="openAddCreditModal('credit')">Add Credit</button>
       <button type="button" class="btn btn-primary" onclick="openAddCreditModal('repayment')">Repayment</button>
+      {% endif %}
       {% endif %}
     </div>
   </div>
@@ -867,28 +875,28 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Add Credit</button>
       <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Repayment</button>
       {% else %}
+      {% if payroll_state is defined and payroll_state.locked %}
+      <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Add Credit</button>
+      <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Repayment</button>
+      {% else %}
       <button type="button" class="btn btn-primary" onclick="openAddCreditModal('credit')">Add Credit</button>
       <button type="button" class="btn btn-primary" onclick="openAddCreditModal('repayment')">Repayment</button>
+      {% endif %}
       {% endif %}
     </div>
   </div>
   <div class="se-sales-header-card">
     <div class="se-sales-header-filters">
-      <div class="sr-topbar-filters cd-ledger-filters" aria-label="Credit dashboard filters">
-        <form method="GET" action="{{ url_for('credits_dashboard') }}" id="credits-dashboard-form" class="cd-period-form">
-          {{ ep_toolbar_listbox('month', 'Month', cd_month_opts.options, sel_month|string, cd_month_names[sel_month], 'credits-dashboard-form', icon='calendar') }}
-          {{ ep_toolbar_listbox('year', 'Year', cd_year_opts.options, sel_year|string, sel_year|string, 'credits-dashboard-form', icon='calendar') }}
-        </form>
-        <div class="se-filter-chip se-filter-chip--payment cd-search-chip" id="cd-search-chip">
-          <span class="se-filter-chip-label">Search</span>
-          <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-            </span>
-            <input type="search" id="cd-search" class="cd-search-input" placeholder="Employee or ID" autocomplete="off" aria-label="Search employees" oninput="filterCreditTable()">
-          </div>
+      <div class="ep-header-filters sr-topbar-filters" aria-label="Credit dashboard filters">
+        <div class="search-wrap">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="search" id="cd-search" placeholder="Search employee…" autocomplete="off" aria-label="Search employees" oninput="filterCreditTable()">
         </div>
-        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, '', 'All Departments', '', searchable=true, field_id='cd-location', change_handler='filterCreditTable', icon='people') }}
+        <form method="GET" action="{{ url_for('credits_dashboard') }}" id="credits-dashboard-form" class="ep-topbar-filter-form">
+          {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, '', 'All Departments', '', field_id='cd-location', change_handler='filterCreditTable') }}
+          {{ ep_toolbar_listbox('month', 'Month', cd_month_opts.options, sel_month|string, cd_month_names[sel_month], 'credits-dashboard-form') }}
+          {{ ep_toolbar_listbox('year', 'Year', cd_year_opts.options, sel_year|string, sel_year|string, 'credits-dashboard-form') }}
+        </form>
       </div>
     </div>
   </div>
@@ -954,7 +962,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
   <div class="se-sales-header-card">
     <div class="se-sales-header-filters">
       <div class="ep-header-filters sr-topbar-filters">
-        <div class="cp-view-tabs" role="tablist" aria-label="Employee status">
+        <div class="cp-view-tabs cp-view-tabs--end" role="tablist" aria-label="Employee status">
           <a class="cp-view-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
              href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default('')) }}"
              role="tab"
@@ -1947,6 +1955,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 
         <div class="form-sec-title">Basic Information</div>
         <input type="hidden" name="company" value="{{ form.get('company', 'Hotel Bell Elite') or 'Hotel Bell Elite' }}">
+        <input type="hidden" name="company" value="{{ form.get('company', 'Hotel Bell Elite') or 'Hotel Bell Elite' }}">
         <div class="form-grid three" style="margin-bottom:16px;">
           <div>
             <label for="emp_code">Employee ID</label>
@@ -1977,6 +1986,12 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
             {% set location_ns = namespace(options=[('', 'Select department...')]) %}
             {% for l in locations %}{% set location_ns.options = location_ns.options + [(l, l)] %}{% endfor %}
             {{ ep_listbox('location', 'Department', location_ns.options, form.get('location', ''), searchable=true) }}
+          </div>
+          <div>
+            <label for="total_off">Total Off</label>
+            <input type="number" id="total_off" name="total_off" value="{{ form.get('total_off', 0) }}" placeholder="e.g. 4" min="0" max="31" step="1"{% if payroll_fields_locked|default(false) %} disabled title="Locked payroll month — wage fields are read-only"{% endif %}>
+            {% if payroll_fields_locked|default(false) %}<input type="hidden" name="total_off" value="{{ form.get('total_off', 0) }}">{% endif %}
+            <div style="margin-top:5px;font-size:10.5px;color:var(--txt3);">{% if payroll_fields_locked|default(false) %}Locked payroll month — Total Off cannot be changed.{% else %}Paid weekday leave days per month. Extra leave is deducted at daily gross rate.{% endif %}</div>
           </div>
           <div>
             <label for="total_off">Total Off</label>
@@ -2614,11 +2629,17 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
                     <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   </a>
                   {% if cr.can_edit %}
+                  {% if cr.can_edit %}
                   <a href="{{ url_for('delete_credit', credit_id=cr.id, year=sel_year, month=sel_month) }}"
                      class="act-btn del" data-tip="Delete"
                      onclick="return confirm('Delete this entry?')">
                     <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                   </a>
+                  {% else %}
+                  <button type="button" class="act-btn del is-disabled" data-tip="Month locked" aria-label="Delete blocked — month locked" aria-disabled="true" tabindex="-1">
+                    <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  </button>
+                  {% endif %}
                   {% else %}
                   <button type="button" class="act-btn del is-disabled" data-tip="Month locked" aria-label="Delete blocked — month locked" aria-disabled="true" tabindex="-1">
                     <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
@@ -2961,7 +2982,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 
 </main>
 </div><!-- /main-wrapper -->
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=9"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=12"></script>
 {% if mode is defined and mode == 'credits' %}
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=7"></script>
 <script>

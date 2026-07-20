@@ -2,12 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Home | Hotel Bell Elite</title>
-{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=8">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=4">
 <script>
 (function(){
   try{
@@ -36,17 +35,26 @@
           <input id="dashboard-search" type="search" placeholder="Search applications..." autocomplete="off">
         </label>
 
-        <div class="db-notifications" id="dashboard-notifications">
+        <div class="db-notifications{% if home_notifications|default([]) %} has-unread{% endif %}" id="dashboard-notifications">
           <button class="db-home-bell" type="button" id="dashboard-notifications-trigger" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
             <span class="db-home-bell-dot" aria-hidden="true"></span>
           </button>
           <div class="db-notification-menu" role="menu" aria-label="Notifications">
             <div class="db-notification-title">Notifications</div>
+            {% if home_notifications|default([]) %}
+              {% for item in home_notifications %}
+              <a class="db-notification-item db-notification-item--link" role="menuitem" href="{{ item.href }}">
+                <strong>{{ item.title }}</strong>
+                <span>{{ item.body }}</span>
+              </a>
+              {% endfor %}
+            {% else %}
             <div class="db-notification-item">
               <strong>All caught up</strong>
               <span>No new notifications right now.</span>
             </div>
+            {% endif %}
           </div>
         </div>
 
@@ -56,10 +64,8 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <div class="db-profile-menu" role="menu" aria-label="Profile menu">
-            <div class="db-profile-meta">
-              <div class="db-profile-name">{{ display_name }}</div>
-              <div class="db-profile-role">{% if current_user and current_user.is_admin %}Administrator{% else %}User{% endif %}</div>
-            </div>
+            <div class="db-profile-name">{{ display_name }}</div>
+            <div class="db-profile-role">{% if current_user and current_user.is_admin %}Administrator{% else %}User{% endif %}</div>
             <a class="db-profile-logout" href="{{ url_for('logout') }}">Logout</a>
           </div>
         </div>
@@ -112,11 +118,11 @@
       {% endif %}
 
       {% if has_dashboard_access('stores') %}
-      <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('stores') }}" data-search="stores inventory stock warehouse materials indent bar kitchen" aria-label="Open Stores">
+      <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('stores') }}" data-search="procurement inventory purchase stores stock warehouse materials indent bar restaurant" aria-label="Open Procurement & Inventory">
         <div class="db-home-card-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
         </div>
-        <h2>Stores</h2>
+        <h2>Procurement &amp; Inventory</h2>
         <span class="db-home-card-arrow" aria-hidden="true">→</span>
         <p class="db-home-card-desc">Simple indent-to-stock flow for Bar and Kitchen.</p>
       </a>

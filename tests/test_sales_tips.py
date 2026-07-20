@@ -154,6 +154,44 @@ class SalesTipsAnalyticsTests(unittest.TestCase):
         self.assertEqual(len(bar_only), 2)
         self.assertTrue(all(row["location"] == "Bar" for row in bar_only))
 
+    def test_employee_lines_endpoint_for_edit_modal(self):
+        class _NoClose:
+            def __init__(self, conn):
+                self._conn = conn
+            def close(self):
+                return None
+            def __getattr__(self, name):
+                return getattr(self._conn, name)
+
+        app_module.app.config["TESTING"] = True
+        with app_module.app.test_request_context(
+            "/sales_update/tips/employee_lines",
+            method="POST",
+            json={
+                "company": "HBE",
+                "location": "All",
+                "date_from": "2026-07-01",
+                "date_to": "2026-07-31",
+                "employee_id": 1,
+            },
+        ):
+            original = app_module.get_db
+            app_module.get_db = lambda: _NoClose(self.conn)
+            try:
+                resp = app_module.sales_update_tips_employee_lines()
+                if isinstance(resp, tuple):
+                    body, status = resp
+                else:
+                    body, status = resp, 200
+                data = body.get_json()
+                self.assertEqual(status, 200)
+                self.assertTrue(data["ok"])
+                self.assertEqual(data["employee"]["name"], "Anita")
+                self.assertEqual(len(data["lines"]), 3)
+                self.assertTrue(all(line["employee_id"] == 1 for line in data["lines"]))
+            finally:
+                app_module.get_db = original
+
 
 if __name__ == "__main__":
     unittest.main()

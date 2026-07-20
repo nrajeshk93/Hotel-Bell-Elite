@@ -28,7 +28,7 @@ from flask import (
 )
 from werkzeug.security import check_password_hash
 
-from db import SQL_NOW, ensure_cash_ledger_schema, get_db, init_db
+from db import SQL_NOW, ensure_cash_ledger_schema, ensure_stores_schema, get_db, init_db
 from fo_invoice_tax_parser import parse_fo_invoice_tax_report
 from sales_report_parser import OUTLET_BAR, OUTLET_RESTAURANT, parse_sales_report
 from workspace_access import (
@@ -341,12 +341,24 @@ def _user_avatar_text(user):
     return name[:2].upper() or "U"
 
 
+@app.route("/webhook/whatsapp", methods=["GET", "POST"])
+def whatsapp_webhook():
+    """Meta WhatsApp Cloud API webhook (verify + indent Approve/Reject)."""
+    from whatsapp_webhook import handle_events_post, handle_verification_get
+
+    if request.method == "GET":
+        body, status, headers = handle_verification_get(request)
+        return body, status, headers
+    return handle_events_post(request, get_db, ensure_stores_schema)
+
+
 @app.before_request
 def enforce_access():
     endpoint = request.endpoint or ""
     if (
         endpoint in _PUBLIC_ENDPOINTS
         or request.path.startswith("/static/")
+        or request.path.startswith("/webhook/")
     ):
         return None
 
@@ -382,7 +394,7 @@ def enforce_access():
     if not user_can_access_endpoint_stores(user, endpoint):
         label = _STORES_SUBMODULE_LABELS.get(
             get_endpoint_stores_submodule(endpoint) or "",
-            "requested Stores section",
+            "requested Procurement & Inventory section",
         )
         return _permission_denied_response(f"You do not have access to {label}.")
 
@@ -1216,6 +1228,52 @@ def _available_tip_pool_total(conn, company, year=None, month=None):
     return round_half_up(max(0.0, tips_total - paid_total), 2)
 
 
+def _reconcile_tip_incentive_after_tip_delete(conn, company, sales_date, employee_id):
+    """Remove incentive payout tied to a deleted tip; keep month pool consistent.
+
+    Clears that employee's payout for the tip's payroll month. If remaining month
+    allocations still exceed the available tip pool, clears all payouts for the month.
+    """
+    from employee_payroll import _period_from_credit_date, _upsert_month_tip_incentive
+
+    year, month = _period_from_credit_date(sales_date)
+    if year is None or month is None or not employee_id:
+        return
+
+    _upsert_month_tip_incentive(conn, company, year, month, int(employee_id), 0)
+
+    available = _available_tip_pool_total(conn, company, year, month)
+    allocated_row = conn.execute(
+        """SELECT COALESCE(SUM(amount), 0) AS total
+           FROM tip_incentive_payouts
+           WHERE company=? AND year=? AND month=?""",
+        (company, int(year), int(month)),
+    ).fetchone()
+    allocated = float(allocated_row["total"] if allocated_row else 0)
+    if allocated > available + 0.001:
+        conn.execute(
+            """DELETE FROM tip_incentive_payouts
+               WHERE company=? AND year=? AND month=?""",
+            (company, int(year), int(month)),
+        )
+
+
+def _reconcile_tip_incentive_for_dates(conn, company, employee_id, sales_dates):
+    """Reconcile incentive payouts for every distinct month in sales_dates."""
+    from employee_payroll import _period_from_credit_date
+
+    seen = set()
+    for sales_date in sales_dates or []:
+        year, month = _period_from_credit_date(sales_date)
+        if year is None or month is None:
+            continue
+        key = (int(year), int(month))
+        if key in seen:
+            continue
+        seen.add(key)
+        _reconcile_tip_incentive_after_tip_delete(conn, company, sales_date, employee_id)
+
+
 def _load_tips_detail_entries(conn, company, date_from, date_to, location_filter=None):
     """Individual tip lines for Tips Report Excel (date / employee / outlet / amount)."""
     params = [company]
@@ -1831,6 +1889,54 @@ def _verification_user_account(user):
     if not user:
         return ""
     return (user.get("username") or user.get("full_name") or "").strip()
+
+
+def _auto_verify_expense(conn, *, expense_id, supplier_id, amount, company=None, user=None, notes=""):
+    """Mark a Hotel expense fully verified so it can go straight to Credit Payment.
+
+    Inserts a purchase_verifications header plus one full allocation.
+    Caller owns commit/rollback.
+    """
+    try:
+        expense_id = int(expense_id)
+        supplier_id = int(supplier_id)
+    except (TypeError, ValueError):
+        return None, "Invalid expense or supplier for verification."
+    total = round_half_up(amount, 2)
+    if total <= 0:
+        return None, "Verification amount must be greater than zero."
+    company = (company or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
+    account = _verification_user_account(user)
+    if not account:
+        return None, "You must be logged in to record a verification."
+    already = _purchase_verification_verified_total(conn, expense_id)
+    if already + 0.001 >= total:
+        return {"verification_id": None, "already_verified": True}, None
+    verification_date = date.today().isoformat()
+    cursor = conn.execute(
+        """INSERT INTO purchase_verifications
+           (company, supplier_id, verification_date, verification_method, verification_account,
+            transaction_id, total_amount, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            company,
+            supplier_id,
+            verification_date,
+            CREDIT_PAYMENT_METHOD_CASH,
+            account,
+            "",
+            total,
+            (notes or "").strip(),
+        ),
+    )
+    verification_id = cursor.lastrowid
+    conn.execute(
+        """INSERT INTO purchase_verification_allocations
+           (purchase_verification_id, expense_id, amount)
+           VALUES (?, ?, ?)""",
+        (verification_id, expense_id, total),
+    )
+    return {"verification_id": verification_id, "already_verified": False}, None
 
 
 def _purchase_verification_balance(amount, verified_total):
@@ -2790,7 +2896,34 @@ def home():
     return render_template(
         "home.html",
         de_nav_section="home",
+        home_notifications=_home_notifications(user),
     )
+
+
+def _home_notifications(user):
+    """Build home-page bell items for modules the current user can access."""
+    notifications = []
+    if not user:
+        return notifications
+    if user_can_access_stores_submodule(user, "approvals"):
+        conn = get_db()
+        try:
+            ensure_stores_schema(conn)
+            pending_count = conn.execute(
+                "SELECT COUNT(*) AS c FROM store_indents WHERE status = 'pending'"
+            ).fetchone()["c"]
+        finally:
+            conn.close()
+        pending_count = int(pending_count or 0)
+        if pending_count > 0:
+            label = "indent" if pending_count == 1 else "indents"
+            notifications.append({
+                "id": "stores-approvals-pending",
+                "title": "Indents awaiting approval",
+                "body": f"{pending_count} {label} waiting for your review.",
+                "href": url_for("stores_approvals"),
+            })
+    return notifications
 
 
 @app.route("/dashboard")
@@ -3213,8 +3346,8 @@ def purchase_ledger():
 
     return render_template(
         "purchase_ledger.html",
-        page_title="Purchase Ledger",
-        page_subtitle="Hotel expenses recorded in Sales Update — Hotel, with date, supplier, category, and payment filters.",
+        page_title="Expense Ledger",
+        page_subtitle="",
         filter_form_action=url_for("purchase_ledger"),
         date_from=filter_date_from,
         date_to=filter_date_to,
@@ -3298,7 +3431,7 @@ def export_purchase_ledger_report():
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Purchase Ledger"
+    ws.title = "Expense Ledger"
     header_font = Font(bold=True)
     headers = [
         "Expense ID",
@@ -3627,7 +3760,7 @@ def cash_ledger():
     return render_template(
         "cash_ledger.html",
         page_title="Cash Ledger",
-        page_subtitle="Track available cash from actual cash, loads, cash expenses, and transfers to bank or owner.",
+        page_subtitle="",
         filter_form_action=url_for("cash_ledger"),
         date_from=filter_date_from,
         date_to=filter_date_to,
@@ -5436,9 +5569,23 @@ def sales_update_delete_tip():
         payroll_lock_error = _check_payroll_month_date_lock(conn, sales_date)
         if payroll_lock_error:
             return jsonify({"ok": False, "error": payroll_lock_error, "locked": True}), 403
+        tip_row = conn.execute(
+            """SELECT id, company, employee_id, sales_date
+               FROM sales_update_tips
+               WHERE id=? AND company=? AND location=? AND sales_date=?""",
+            (tip_id, company, location, sales_date),
+        ).fetchone()
+        if not tip_row:
+            return jsonify({"ok": False, "error": "Tip entry not found."}), 404
         conn.execute(
             "DELETE FROM sales_update_tips WHERE id=? AND company=? AND location=? AND sales_date=?",
             (tip_id, company, location, sales_date),
+        )
+        _reconcile_tip_incentive_after_tip_delete(
+            conn,
+            tip_row["company"],
+            tip_row["sales_date"],
+            tip_row["employee_id"],
         )
         conn.commit()
         tip_total = _sales_tip_total(conn, company, location, sales_date)
@@ -5447,6 +5594,142 @@ def sales_update_delete_tip():
         conn.close()
 
     return jsonify({"ok": True, "tip_total": tip_total, "tip_entries": tip_entries})
+
+
+@app.route("/sales_update/tips/employee_lines", methods=["POST"])
+def sales_update_tips_employee_lines():
+    """List tip lines for one employee under the current Tips filters (for edit modal)."""
+    data = request.get_json(silent=True) or {}
+    company = data.get("company", DEFAULT_COMPANY)
+    if company not in SALES_COMPANY_LOCATIONS:
+        company = DEFAULT_COMPANY
+    try:
+        employee_id = int(data.get("employee_id") or 0)
+    except (TypeError, ValueError):
+        employee_id = 0
+    if employee_id <= 0:
+        return jsonify({"ok": False, "error": "Employee is required."}), 400
+
+    location_filter = (data.get("location") or TIPS_FILTER_ALL).strip()
+    if location_filter not in TIPS_FILTER_LOCATIONS:
+        location_filter = TIPS_FILTER_ALL
+    outlet_filter = location_filter if location_filter in TIP_OUTLET_LOCATIONS else None
+    date_from_raw = (data.get("date_from") or "").strip()
+    date_to_raw = (data.get("date_to") or "").strip()
+    date_filter_active = bool(date_from_raw and date_to_raw)
+
+    conn = get_db()
+    try:
+        emp = conn.execute(
+            "SELECT id, name, emp_code FROM employees WHERE id=?",
+            (employee_id,),
+        ).fetchone()
+        if not emp:
+            return jsonify({"ok": False, "error": "Employee not found."}), 404
+
+        params = [company, employee_id]
+        sql = """
+            SELECT id, company, location, sales_date, employee_id, amount, description
+            FROM sales_update_tips
+            WHERE company=? AND employee_id=?
+        """
+        if date_filter_active:
+            sql += " AND sales_date >= ? AND sales_date <= ?"
+            params.extend([date_from_raw, date_to_raw])
+        if outlet_filter:
+            sql += " AND location = ?"
+            params.append(outlet_filter)
+        sql += " ORDER BY sales_date DESC, id DESC"
+        rows = conn.execute(sql, params).fetchall()
+        lines = [{
+            "id": int(row["id"]),
+            "company": row["company"],
+            "location": row["location"],
+            "sales_date": row["sales_date"],
+            "employee_id": int(row["employee_id"]),
+            "amount": round_half_up(row["amount"], 2),
+            "description": row["description"] or "",
+        } for row in rows]
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "employee": {
+            "id": int(emp["id"]),
+            "name": emp["name"] or "Unknown",
+            "emp_code": emp["emp_code"] or "",
+        },
+        "lines": lines,
+    })
+
+
+@app.route("/sales_update/tips/delete_employee", methods=["POST"])
+def sales_update_tips_delete_employee():
+    """Delete all tip lines for one employee in the current Tips filters; clear payouts."""
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    company = data.get("company", DEFAULT_COMPANY)
+    if company not in SALES_COMPANY_LOCATIONS:
+        company = DEFAULT_COMPANY
+    try:
+        employee_id = int(data.get("employee_id") or 0)
+    except (TypeError, ValueError):
+        employee_id = 0
+    if employee_id <= 0:
+        return jsonify({"ok": False, "error": "Employee is required."}), 400
+
+    location_filter = (data.get("location") or TIPS_FILTER_ALL).strip()
+    if location_filter not in TIPS_FILTER_LOCATIONS:
+        location_filter = TIPS_FILTER_ALL
+    outlet_filter = location_filter if location_filter in TIP_OUTLET_LOCATIONS else None
+
+    date_from_raw = (data.get("date_from") or "").strip()
+    date_to_raw = (data.get("date_to") or "").strip()
+    date_filter_active = bool(date_from_raw and date_to_raw)
+
+    conn = get_db()
+    try:
+        params = [company, employee_id]
+        sql = """
+            SELECT id, sales_date
+            FROM sales_update_tips
+            WHERE company=? AND employee_id=?
+        """
+        if date_filter_active:
+            sql += " AND sales_date >= ? AND sales_date <= ?"
+            params.extend([date_from_raw, date_to_raw])
+        if outlet_filter:
+            sql += " AND location = ?"
+            params.append(outlet_filter)
+        tip_rows = conn.execute(sql, params).fetchall()
+        if not tip_rows:
+            return jsonify({"ok": False, "error": "No tip lines found for this employee."}), 404
+
+        for tip in tip_rows:
+            payroll_lock_error = _check_payroll_month_date_lock(conn, tip["sales_date"])
+            if payroll_lock_error:
+                return jsonify({"ok": False, "error": payroll_lock_error, "locked": True}), 403
+
+        tip_ids = [int(tip["id"]) for tip in tip_rows]
+        sales_dates = [tip["sales_date"] for tip in tip_rows]
+        placeholders = ",".join("?" for _ in tip_ids)
+        conn.execute(
+            f"DELETE FROM sales_update_tips WHERE id IN ({placeholders})",
+            tip_ids,
+        )
+        _reconcile_tip_incentive_for_dates(conn, company, employee_id, sales_dates)
+        conn.commit()
+        deleted = len(tip_ids)
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "deleted": deleted,
+        "employee_id": employee_id,
+        "message": f"Deleted {deleted} tip line{'s' if deleted != 1 else ''} and cleared related incentive payout.",
+    })
 
 
 @app.route("/sales_update/tips")
@@ -5508,6 +5791,9 @@ def sales_update_tips_page():
         tips_clear_url=url_for("sales_update_tips_page", **clear_query),
         tips_report_url=url_for("export_tips_report", **report_kwargs),
         tip_incentive_payout_url=url_for("tips_incentive_payout"),
+        tips_delete_employee_url=url_for("sales_update_tips_delete_employee"),
+        tips_employee_lines_url=url_for("sales_update_tips_employee_lines"),
+        tips_edit_tip_url=url_for("sales_update_edit_tip"),
         payout_year=payout_year,
         payout_month=payout_month,
         de_nav_section="payroll",

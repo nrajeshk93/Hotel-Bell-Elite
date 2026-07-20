@@ -1,23 +1,34 @@
+/* Keep Tips filters as one compact row in the right corner */
+body.su-module #tips-analytics-page .se-sales-header-filters{
+  display:flex;
+  justify-content:flex-end;
+  align-items:flex-end;
+  flex-wrap:nowrap;
+}
+body.su-module #tips-analytics-page .se-sales-header-filters .tips-filter-form,
 body.su-module .tips-filter-form{
   display:flex;
   align-items:flex-end;
-  justify-content:flex-start;
-  flex:1 1 auto;
-  flex-wrap:wrap;
-  width:100%;
+  justify-content:flex-end;
+  flex:0 0 auto;
+  flex-wrap:nowrap;
+  width:auto;
+  max-width:100%;
   min-width:0;
+  margin-left:auto;
   gap:12px;
 }
 body.su-module .tips-location-chip{
-  flex:0 0 auto;
+  flex:0 0 160px;
   width:160px;
-  min-width:148px;
-  max-width:180px;
+  min-width:160px;
+  max-width:160px;
 }
 body.su-module .tips-search-chip{
-  flex:0 1 220px;
-  min-width:180px;
-  max-width:260px;
+  flex:0 0 220px;
+  width:220px;
+  min-width:200px;
+  max-width:220px;
 }
 body.su-module .tips-search-input{
   width:100%;
@@ -34,22 +45,26 @@ body.su-module .tips-search-input::placeholder{
   color:var(--txt3);
   font-weight:500;
 }
+body.su-module #tips-analytics-page .tips-date-range-host,
+body.su-module #tips-analytics-page .tips-date-range-host:has(.se-filter-chip--date-range),
 body.su-module .tips-date-range-host{
   flex:0 0 auto;
-  min-width:0;
+  width:auto;
+  min-width:148px;
+  max-width:none;
   z-index:30;
-  margin-left:auto;
+  margin-left:0;
 }
 body.su-module .tips-date-range-host .se-filter-chip--date-range{
-  flex:none;
-  min-width:0;
+  flex:0 0 auto;
   width:auto;
+  min-width:148px;
   max-width:none;
 }
 body.su-module .tips-date-range-host .an-range-trigger{
   min-width:148px;
   width:auto;
-  max-width:min(340px,70vw);
+  max-width:min(280px,40vw);
 }
 body.su-module .tips-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
   border-color:#93C5FD;
@@ -67,6 +82,20 @@ body.su-module .tips-summary-row{
 @media (max-width:960px){
   body.su-module .tips-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+@media (max-width:720px){
+  body.su-module #tips-analytics-page .se-sales-header-filters,
+  body.su-module #tips-analytics-page .se-sales-header-filters .tips-filter-form,
+  body.su-module .tips-filter-form{
+    flex-wrap:wrap;
+  }
+  body.su-module .tips-location-chip,
+  body.su-module .tips-search-chip{
+    flex:1 1 160px;
+    width:auto;
+    min-width:148px;
+    max-width:none;
+  }
+}
 @media (max-width:480px){
   body.su-module .tips-summary-row{grid-template-columns:1fr}
 }
@@ -78,6 +107,49 @@ body.su-module .tips-note{
 }
 body.su-module .tips-total-cell{
   font-weight:700;
+}
+/* Keep Edit/Delete tip tags above the icons so the scroll wrap does not clip them. */
+body.su-module #tips-employee-table .pl-col-actions{
+  overflow:visible;
+}
+body.su-module #tips-employee-table .act-btn[data-tip]::after{
+  top:auto;
+  bottom:calc(100% + 8px);
+  left:auto;
+  right:0;
+  transform:none;
+}
+body.su-module .tips-edit-box{
+  width:min(760px,96vw);
+  max-width:96vw;
+  display:flex;
+  flex-direction:column;
+}
+body.su-module .tips-edit-table-wrap{
+  max-height:min(50vh,420px);
+  overflow:auto;
+  border:1px solid var(--border);
+  border-radius:10px;
+  margin-bottom:14px;
+}
+body.su-module .tips-edit-table{
+  margin:0;
+}
+body.su-module .tips-edit-table .tips-edit-amount{
+  width:110px;
+  height:38px;
+  text-align:right;
+  margin:0 0 0 auto;
+}
+body.su-module .tips-edit-table .tips-edit-note{
+  width:100%;
+  min-width:140px;
+  height:38px;
+}
+body.su-module .tips-edit-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
 }
 body.su-module .tips-payout-box{
   width:min(820px,96vw);

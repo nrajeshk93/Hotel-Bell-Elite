@@ -48,22 +48,25 @@ class WorkspaceAccessTests(unittest.TestCase):
         labels = [node["label"] for node in tree]
         self.assertEqual(
             labels,
-            ["Sales Analytics", "User & Access", "Accounts", "Employee Payroll", "Stores"],
+            ["Sales Analytics", "User & Access", "Accounts", "Employee Payroll", "Procurement & Inventory"],
         )
         stores_children = [child["label"] for child in tree[4]["children"]]
         self.assertEqual(
             stores_children,
             [
-                "Products",
                 "Indent",
                 "Approvals",
-                "Purchases",
+                "Stock Inward",
                 "Stock",
-                "Transfers",
-                "Verification",
-                "Issues",
             ],
         )
+        indent_node = next(child for child in tree[4]["children"] if child["label"] == "Indent")
+        self.assertEqual(
+            [child["label"] for child in indent_node["children"]],
+            ["Products"],
+        )
+        self.assertEqual(indent_node["children"][0]["id"], "stores.product_master")
+        self.assertEqual(indent_node["children"][0]["fieldValue"], "product_master")
         sales_children = [child["label"] for child in tree[0]["children"]]
         self.assertEqual(
             sales_children,
@@ -80,16 +83,16 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(
             accounts_children,
             [
-                "Purchase Ledger",
+                "Expense Ledger",
                 "Cash Ledger",
                 "Purchase Verification",
                 "Credit Payment",
                 "Supplier Master",
             ],
         )
-        stores = next(node for node in tree if node["label"] == "Stores")
+        stores = next(node for node in tree if node["label"] == "Procurement & Inventory")
         self.assertEqual(stores["dashboardKey"], "stores")
-        self.assertEqual(len(stores["children"]), 8)
+        self.assertEqual(len(stores["children"]), 4)
 
     def test_supplier_master_uses_accounts_access(self):
         user = {

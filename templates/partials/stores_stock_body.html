@@ -1,3 +1,4 @@
+{% if verification_due %}
 <div class="st-due-banner" role="status">
   {% if verification_due.is_due %}
   <span class="st-due st-due--late">Due</span>
@@ -8,16 +9,17 @@
   {% endif %}
   <a class="st-link" href="{{ url_for('stores_stock_verification', outlet=selected_outlet) }}" style="margin-left:auto;">Open verification</a>
 </div>
+{% endif %}
 
-<article class="card pl-list-panel st-panel" aria-label="Current stock">
+<article class="card st-panel" aria-label="Current stock">
   <div class="card-hdr">
     <div class="card-title"><span>Current stock · {{ selected_outlet_label }}</span></div>
-    <span class="pl-count">{{ stock_items|length }} items</span>
+    <span class="sm-count">{{ stock_items|length }} items</span>
   </div>
   <div class="card-body" style="padding:0;">
     {% if stock_items %}
-    <div class="pl-table-wrap">
-      <table class="pl-table">
+    <div class="st-table-wrap">
+      <table class="st-table">
         <thead>
           <tr>
             <th>Item</th>
@@ -29,7 +31,7 @@
         <tbody>
           {% for item in stock_items %}
           <tr>
-            <td class="pl-name">{{ item.item_name }}</td>
+            <td class="st-name">{{ item.item_name }}</td>
             <td>{{ item.qty_on_hand }}</td>
             <td>{{ item.unit }}</td>
             <td>{{ item.updated_at }}</td>
@@ -39,7 +41,7 @@
       </table>
     </div>
     {% else %}
-    <div class="pl-empty">
+    <div class="st-empty">
       <strong>Store is empty</strong>
       Receive a purchase request to add the first items.
     </div>
@@ -47,14 +49,14 @@
   </div>
 </article>
 
-<article class="card pl-list-panel st-panel" aria-label="Recent movements">
+<article class="card st-panel" aria-label="Recent movements">
   <div class="card-hdr">
     <div class="card-title"><span>Recent movements</span></div>
   </div>
   <div class="card-body" style="padding:0;">
     {% if movements %}
-    <div class="pl-table-wrap">
-      <table class="pl-table">
+    <div class="st-table-wrap">
+      <table class="st-table">
         <thead>
           <tr>
             <th>When</th>
@@ -67,10 +69,10 @@
         <tbody>
           {% for move in movements %}
           <tr>
-            <td>{{ move.created_at }}</td>
+            <td>{{ stores_dt(move.created_at) }}</td>
             <td>
-              <div class="pl-name">{{ move.item_name }}</div>
-              <div class="pl-meta">{{ move.unit }}</div>
+              <div class="st-name">{{ move.item_name }}</div>
+              <div class="st-meta">{{ move.unit }}</div>
             </td>
             <td>{{ move.qty_delta }}</td>
             <td>{{ move.movement_type.replace('_', ' ') }}</td>
@@ -81,7 +83,7 @@
       </table>
     </div>
     {% else %}
-    <div class="pl-empty">No stock movements yet.</div>
+    <div class="st-empty">No stock movements yet.</div>
     {% endif %}
   </div>
 </article>

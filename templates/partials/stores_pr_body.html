@@ -8,7 +8,7 @@
     <p class="pl-meta">
       {{ selected_outlet_label }}
       {% if detail.indent_no %} · From indent {{ detail.indent_no }}{% endif %}
-      · {{ detail.created_at }}
+      · {{ stores_dt(detail.created_at) }}
     </p>
     <div class="pl-table-wrap" style="margin-top:14px;">
       <table class="pl-table">
@@ -37,94 +37,327 @@
   </div>
 </article>
 {% else %}
-<div class="st-split">
-  <article class="card pl-list-panel st-panel" aria-label="Ready to purchase">
-    <div class="card-hdr">
-      <div class="card-title"><span>Approved indents ready</span></div>
-    </div>
-    <div class="card-body" style="padding:0;">
-      {% if approved_indents %}
-      <div class="pl-table-wrap">
-        <table class="pl-table">
-          <thead>
-            <tr>
-              <th>Indent</th>
-              <th>Approved</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for indent in approved_indents %}
-            <tr>
-              <td>
-                <div class="pl-name">{{ indent.indent_no }}</div>
-                {% if indent.notes %}<div class="pl-meta">{{ indent.notes }}</div>{% endif %}
-              </td>
-              <td>{{ indent.decided_at or '—' }}</td>
-              <td>
-                <form method="post" action="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}">
-                  <input type="hidden" name="outlet" value="{{ selected_outlet }}">
-                  <input type="hidden" name="action" value="create_from_indent">
-                  <input type="hidden" name="indent_id" value="{{ indent.id }}">
-                  <button type="submit" class="btn btn-primary">Create purchase request</button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="pl-empty">
-        <strong>No approved indents waiting</strong>
-        Approve an indent first, then create a purchase request here.
-      </div>
-      {% endif %}
-    </div>
-  </article>
+<section class="st-indent-page st-inward-page" id="st-inward-page" data-st-inward>
+  <form
+    method="post"
+    action="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}"
+    class="st-indent-form st-inward-form"
+    id="st-inward-form"
+  >
+    <input type="hidden" name="action" value="confirm_stock_inward">
+    <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+    <input type="hidden" name="indent_id" id="st-inward-indent-id" value="{{ selected_indent.id if selected_indent else '' }}">
 
-  <article class="card pl-list-panel st-panel" aria-label="Purchase requests">
-    <div class="card-hdr">
-      <div class="card-title"><span>Purchase requests</span></div>
-      <span class="pl-count">{{ purchase_requests|length }}</span>
-    </div>
-    <div class="card-body" style="padding:0;">
-      {% if purchase_requests %}
-      <div class="pl-table-wrap">
-        <table class="pl-table">
-          <thead>
-            <tr>
-              <th>PR</th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for pr in purchase_requests %}
-            <tr>
-              <td>
-                <div class="pl-name">{{ pr.pr_no }}</div>
-                <div class="pl-meta">{% if pr.indent_no %}{{ pr.indent_no }} · {% endif %}{{ pr.line_count }} items</div>
-              </td>
-              <td><span class="cp-status-pill cp-status-pill--{{ pr.status }}">{{ status_label(pr.status) }}</span></td>
-              <td class="st-actions">
-                <a class="st-link" href="{{ url_for('stores_pr_detail', pr_id=pr.id, outlet=selected_outlet) }}">Open</a>
-                {% if pr.status == 'open' %}
-                <form method="post" action="{{ url_for('stores_pr_receive', pr_id=pr.id) }}">
-                  <input type="hidden" name="outlet" value="{{ selected_outlet }}">
-                  <button type="submit" class="st-link" style="background:none;border:0;padding:0;cursor:pointer;">Receive</button>
-                </form>
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+    {% if selected_indent %}
+    {# —— Approved Items —— #}
+    <article class="st-card st-inward-card">
+      <div class="st-card-head st-inward-card-head">
+        <div class="st-card-title-wrap">
+          <div>
+            <h2 class="st-card-title">Approved Items</h2>
+          </div>
+        </div>
+        <div class="st-inward-items-tools">
+          <button type="button" class="st-btn st-btn--secondary st-inward-view-btn" data-st-view-indent="{{ selected_indent.id }}">
+            View Indent
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>
+          </button>
+        </div>
       </div>
-      {% else %}
-      <div class="pl-empty">No purchase requests yet.</div>
-      {% endif %}
+      <div class="st-card-body st-inward-table-wrap">
+        {% if selected_lines %}
+        <div class="st-detail-table-wrap">
+          <table class="st-detail-table st-inward-table">
+            <colgroup>
+              <col class="st-inward-col-check-w">
+              <col class="st-inward-col-item-w">
+              <col class="st-inward-col-qty-w">
+              <col class="st-inward-col-unit-w">
+              <col class="st-inward-col-rate-w">
+              <col class="st-inward-col-recv-w">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="st-inward-col-check" scope="col">
+                  <input type="checkbox" id="st-inward-select-all" checked title="Select all" aria-label="Select all items">
+                </th>
+                <th class="st-inward-col-item" scope="col">Item</th>
+                <th class="st-inward-col-qty" scope="col">Ordered Qty</th>
+                <th class="st-inward-col-unit" scope="col">Unit</th>
+                <th class="st-inward-col-rate" scope="col">Approx. price</th>
+                <th class="st-inward-col-recv" scope="col">Received Qty</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for line in selected_lines %}
+              <tr class="st-inward-row" data-st-inward-row data-ordered="{{ line.quantity_display }}" data-rate="{{ line.rate_value }}">
+                <td class="st-inward-col-check">
+                  <input
+                    type="checkbox"
+                    name="selected_line"
+                    value="{{ line.id }}"
+                    class="st-inward-row-check"
+                    checked
+                  >
+                </td>
+                <td class="st-inward-col-item">
+                  <div class="st-inward-item">
+                    <span class="st-inward-avatar" aria-hidden="true">{{ line.initial }}</span>
+                    <span class="st-inward-item-name">{{ line.item_name }}</span>
+                  </div>
+                </td>
+                <td class="st-inward-col-qty">{{ line.quantity_display }}</td>
+                <td class="st-inward-col-unit">{{ line.unit or '—' }}</td>
+                <td class="st-inward-col-rate">{% if line.approximate_price_display %}₹{{ line.approximate_price_display }}{% else %}—{% endif %}</td>
+                <td class="st-inward-col-recv">
+                  <div class="st-inward-stepper">
+                    <button type="button" class="st-inward-step" data-st-inward-step="-1" aria-label="Decrease received quantity">−</button>
+                    <input
+                      type="number"
+                      class="st-inward-qty"
+                      name="received_qty_{{ line.id }}"
+                      value="{{ line.quantity_display }}"
+                      min="0"
+                      max="{{ line.quantity_display }}"
+                      step="any"
+                      inputmode="decimal"
+                      data-st-inward-qty
+                      aria-label="Received quantity for {{ line.item_name }}"
+                    >
+                    <button type="button" class="st-inward-step" data-st-inward-step="1" aria-label="Increase received quantity">+</button>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">This indent has no items.</div>
+        {% endif %}
+      </div>
+    </article>
+
+    {# —— Additional Information —— #}
+    <article class="st-card st-inward-card">
+      <div class="st-card-head st-inward-card-head st-inward-notes-head">
+        <div class="st-card-title-wrap">
+          <span class="st-card-icon st-card-icon--accent" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+          </span>
+          <div>
+            <h2 class="st-card-title">Additional Information</h2>
+            <p class="st-card-sub">Add any additional details for this stock inward.</p>
+          </div>
+        </div>
+        <div class="st-inward-notes-field">
+          <label class="st-sr-only" for="st-inward-notes">Notes</label>
+          <textarea
+            id="st-inward-notes"
+            name="notes"
+            maxlength="500"
+            rows="3"
+            placeholder="Enter notes or additional information..."
+            data-st-notes-counter
+          ></textarea>
+          <div class="st-notes-count"><span data-st-notes-count>0</span> / 500</div>
+        </div>
+      </div>
+    </article>
+
+    <div class="st-sticky-actions st-inward-actions">
+      <a class="st-btn st-btn--secondary" href="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}" id="st-inward-cancel">Cancel</a>
+      <button type="button" class="st-btn st-btn--primary" id="st-inward-confirm" disabled
+        data-st-inward-confirm-url="{{ inward_confirm_url }}"
+        data-st-inward-indent-no="{{ selected_indent.indent_no }}"
+        data-st-default-company="{{ default_company }}"
+        data-st-default-location="{{ default_location }}"
+        data-st-available-cash="{{ available_cash|default(0) }}"
+        data-st-available-cash-url="{{ available_cash_url }}"
+        data-st-today="{{ today_iso }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+        Confirm Stock Inward
+      </button>
     </div>
-  </article>
-</div>
+    {% else %}
+    <article class="st-card st-inward-card">
+      <div class="st-card-body">
+        <div class="pl-empty">
+          {% if approved_indents %}
+          <strong>Select an indent</strong>
+          Choose an approved indent next to Outlet to begin stock inward.
+          {% else %}
+          <strong>No approved indents waiting</strong>
+          Approve an indent first, then return here to add items to stock.
+          {% endif %}
+        </div>
+      </div>
+    </article>
+    {% endif %}
+  </form>
+
+  <div class="modal-backdrop" id="st-indent-view-modal" aria-hidden="true">
+    <div class="st-indent-view-box" role="dialog" aria-modal="true" aria-labelledby="st-indent-view-title">
+      <div class="st-indent-view-head">
+        <div class="st-indent-view-title-wrap">
+          <h2 class="st-indent-view-title" id="st-indent-view-title">Indent</h2>
+          <p class="st-indent-view-sub" id="st-indent-view-sub"></p>
+        </div>
+        <span class="cp-status-pill" id="st-indent-view-status"></span>
+        <button type="button" class="st-indent-view-close" id="st-indent-view-close" aria-label="Close">×</button>
+      </div>
+      <div class="st-indent-view-body">
+        <p class="st-indent-view-notes" id="st-indent-view-notes" hidden></p>
+        <p class="st-indent-view-decision" id="st-indent-view-decision" hidden></p>
+        <div class="st-detail-table-wrap">
+          <table class="st-detail-table">
+            <thead>
+              <tr><th>Item</th><th>Qty</th><th>Unit</th><th>Approx. price</th></tr>
+            </thead>
+            <tbody id="st-indent-view-lines"></tbody>
+          </table>
+        </div>
+        <div class="st-indent-view-empty" id="st-indent-view-empty" hidden>No items on this indent.</div>
+      </div>
+      <div class="st-indent-view-actions">
+        <button type="button" class="st-btn st-btn--ghost" id="st-indent-view-dismiss">Close</button>
+        <a class="st-btn st-btn--primary" id="st-indent-view-po" href="#" download hidden>Download PO</a>
+        <button type="button" class="st-btn st-btn--primary" id="st-indent-view-edit" hidden>Edit</button>
+      </div>
+    </div>
+  </div>
+  <script id="st-indent-view-data" type="application/json">{{ indent_view_data|default([])|tojson }}</script>
+
+  {% if selected_indent %}
+  <div class="modal-backdrop" id="st-inward-expense-modal" aria-hidden="true">
+    <div class="staff-credit-box pl-add-purchase-box st-inward-expense-box" role="dialog" aria-modal="true" aria-labelledby="st-inward-expense-title">
+      <div class="staff-credit-head">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/><path d="M16 16v6"/><path d="M19 19h-6"/></svg>
+        <span id="st-inward-expense-title">Confirm stock &amp; expense</span>
+      </div>
+      <div class="se-expense-available-cash" id="st-inward-available-wrap" hidden>
+        <div class="se-expense-available-cash-card" aria-label="Available cash">
+          <span class="se-expense-available-cash-label">Available Cash</span>
+          <span class="se-expense-available-cash-value" id="st-inward-available-cash">{{ available_cash|default(0)|inr(0) }}</span>
+        </div>
+      </div>
+      <div id="st-inward-expense-error" class="staff-credit-error"></div>
+      <div class="staff-field">
+        <label for="st-inward-expense-date">Purchase date *</label>
+        <input id="st-inward-expense-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
+      </div>
+      <div class="staff-field">
+        <span class="staff-supplier-field-label">Supplier *</span>
+        <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox data-se-listbox-searchable id="st-inward-supplier-listbox">
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            </span>
+            <input type="hidden" id="st-inward-supplier-input" value="">
+            <button type="button" class="se-filter-chip-trigger" id="st-inward-supplier-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-inward-supplier-list" aria-labelledby="st-inward-supplier-label st-inward-supplier-value">
+              <span class="se-filter-chip-value staff-supplier-placeholder" id="st-inward-supplier-value">Select supplier</span>
+            </button>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+          <span class="visually-hidden" id="st-inward-supplier-label">Supplier</span>
+          <div class="se-filter-listbox staff-expense-supplier-panel" id="st-inward-supplier-list" role="listbox" aria-labelledby="st-inward-supplier-label" hidden>
+            <div class="staff-supplier-search-wrap">
+              <input type="search" class="staff-supplier-search ep-listbox-search" id="st-inward-supplier-search" placeholder="Search by name or GST..." autocomplete="off" aria-label="Search suppliers">
+            </div>
+            <div class="staff-supplier-options" id="st-inward-supplier-options">
+              {% for supplier in suppliers|default([]) %}
+              <button type="button" class="se-filter-listbox-option staff-supplier-option" role="option" data-value="{{ supplier.id }}" data-label="{{ supplier.name }}" data-name="{{ supplier.name|lower }}" data-gst="{{ (supplier.gst or '')|lower }}" aria-selected="false">
+                <span class="staff-supplier-option-name">{{ supplier.name }}</span>
+                <span class="staff-supplier-option-gst">{{ supplier.gst or '' }}</span>
+              </button>
+              {% endfor %}
+            </div>
+            <div class="staff-supplier-empty" id="st-inward-supplier-empty" hidden>No suppliers match your search.</div>
+          </div>
+        </div>
+      </div>
+      <div class="staff-grid pl-add-category-row">
+        <div class="staff-field staff-field--inline">
+          <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox data-se-listbox-searchable id="st-inward-category-listbox">
+            <span class="se-filter-chip-label" id="st-inward-category-label">Category *</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+              </span>
+              <input type="hidden" id="st-inward-category-input" value="">
+              <button type="button" class="se-filter-chip-trigger" id="st-inward-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-inward-category-list" aria-labelledby="st-inward-category-label st-inward-category-value">
+                <span class="se-filter-chip-value staff-supplier-placeholder" id="st-inward-category-value">Select category</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox staff-expense-supplier-panel" id="st-inward-category-list" role="listbox" aria-labelledby="st-inward-category-label" hidden>
+              <div class="staff-supplier-search-wrap">
+                <input type="search" class="staff-supplier-search ep-listbox-search" id="st-inward-category-search" placeholder="Search category..." autocomplete="off" aria-label="Search categories">
+              </div>
+              <div class="staff-supplier-options" id="st-inward-category-options">
+                {% for category_key, category_label in expense_categories|default([]) %}
+                <button type="button" class="se-filter-listbox-option staff-category-option" role="option" data-value="{{ category_key }}" data-label="{{ category_label }}" data-name="{{ category_label|lower }}" aria-selected="false">{{ category_label }}</button>
+                {% endfor %}
+              </div>
+              <div class="staff-supplier-empty" id="st-inward-category-empty" hidden>No categories match your search.</div>
+            </div>
+          </div>
+        </div>
+        <div class="staff-field staff-field--inline">
+          <label for="st-inward-invoice-number">Invoice number</label>
+          <input id="st-inward-invoice-number" class="staff-input" type="text" placeholder="e.g. INV-2026-0142" autocomplete="off">
+        </div>
+      </div>
+      <div class="staff-grid">
+        <div class="staff-field staff-field--inline">
+          <label for="st-inward-expense-description">Expense *</label>
+          <input id="st-inward-expense-description" class="staff-input" type="text" placeholder="e.g. Stock inward">
+        </div>
+        <div class="staff-field staff-field--inline">
+          <label for="st-inward-expense-amount">Value (₹) *</label>
+          <input id="st-inward-expense-amount" class="staff-input" type="number" min="0.01" step="0.01" placeholder="e.g. 250">
+          <div id="st-inward-amount-warn" class="st-inward-amount-warn" hidden role="status"></div>
+        </div>
+      </div>
+      <div class="staff-field">
+        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox staff-expense-payment-listbox" data-se-listbox data-se-listbox-change="stInwardPaymentChanged" id="st-inward-payment-listbox">
+          <span class="se-filter-chip-label" id="st-inward-payment-label">Payment type *</span>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+            </span>
+            <input type="hidden" id="st-inward-payment-input" value="">
+            <button type="button" class="se-filter-chip-trigger" id="st-inward-payment-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-inward-payment-list" aria-labelledby="st-inward-payment-label st-inward-payment-value">
+              <span class="se-filter-chip-value staff-supplier-placeholder" id="st-inward-payment-value">Select payment type</span>
+            </button>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+          <div class="se-filter-listbox" id="st-inward-payment-list" role="listbox" aria-labelledby="st-inward-payment-label" hidden>
+            {% for payment_key, payment_label in expense_payment_types|default([]) %}
+            <button type="button" class="se-filter-listbox-option" role="option" data-value="{{ payment_key }}" data-label="{{ payment_label }}" aria-selected="false">{{ payment_label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="staff-field" id="st-inward-transaction-wrap" hidden>
+        <label for="st-inward-transaction-id">Transaction ID *</label>
+        <input id="st-inward-transaction-id" class="staff-input" type="text" placeholder="e.g. UTR / reference number">
+      </div>
+      <div class="staff-credit-actions">
+        <button type="button" class="btn staff-primary" id="st-inward-expense-save">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+          <span>Confirm stock &amp; expense</span>
+        </button>
+        <button type="button" class="btn staff-secondary" id="st-inward-expense-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</section>
 {% endif %}

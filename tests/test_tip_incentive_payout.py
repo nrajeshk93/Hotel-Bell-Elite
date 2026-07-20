@@ -163,6 +163,154 @@ class TipIncentiveSaveTests(unittest.TestCase):
         _upsert_month_tip_incentive(self.conn, "HBE", 2026, 7, 1, 0)
         self.assertEqual(_get_month_tip_incentive(self.conn, 1, 2026, 7, company="HBE"), 0.0)
 
+    def test_delete_tip_clears_employee_incentive_payout(self):
+        tip_id = self.conn.execute(
+            "SELECT id FROM sales_update_tips WHERE company=? LIMIT 1",
+            ("HBE",),
+        ).fetchone()["id"]
+        _upsert_month_tip_incentive(self.conn, "HBE", 2026, 7, 1, 100)
+        self.conn.commit()
+        self.assertEqual(_get_month_tip_incentive(self.conn, 1, 2026, 7, company="HBE"), 100.0)
+
+        app_module.app.config["TESTING"] = True
+        admin = {
+            "id": 1,
+            "username": "admin",
+            "is_admin": True,
+            "is_active": True,
+        }
+        with app_module.app.test_request_context(
+            "/sales_update/delete_tip",
+            method="POST",
+            json={
+                "id": tip_id,
+                "company": "HBE",
+                "location": "Hotel",
+                "date": "2026-07-10",
+            },
+        ):
+            original_get_db = app_module.get_db
+            original_user = app_module.get_current_user
+            wrapped = _NoCloseConn(self.conn)
+            app_module.get_db = lambda: wrapped
+            app_module.get_current_user = lambda: admin
+            try:
+                resp = app_module.sales_update_delete_tip()
+                if isinstance(resp, tuple):
+                    body, status = resp
+                else:
+                    body, status = resp, 200
+                data = body.get_json()
+                self.assertEqual(status, 200)
+                self.assertTrue(data["ok"])
+                gone = self.conn.execute(
+                    "SELECT id FROM sales_update_tips WHERE id=?", (tip_id,)
+                ).fetchone()
+                self.assertIsNone(gone)
+                self.assertEqual(
+                    _get_month_tip_incentive(self.conn, 1, 2026, 7, company="HBE"),
+                    0.0,
+                )
+            finally:
+                app_module.get_db = original_get_db
+                app_module.get_current_user = original_user
+
+    def test_delete_employee_tips_clears_incentive_payout(self):
+        tip_count = self.conn.execute(
+            "SELECT COUNT(*) AS c FROM sales_update_tips WHERE employee_id=1 AND company=?",
+            ("HBE",),
+        ).fetchone()["c"]
+        self.assertGreaterEqual(tip_count, 1)
+        _upsert_month_tip_incentive(self.conn, "HBE", 2026, 7, 1, 100)
+        self.conn.commit()
+
+        app_module.app.config["TESTING"] = True
+        admin = {"id": 1, "username": "admin", "is_admin": True, "is_active": True}
+        with app_module.app.test_request_context(
+            "/sales_update/tips/delete_employee",
+            method="POST",
+            json={
+                "company": "HBE",
+                "location": "All",
+                "employee_id": 1,
+            },
+        ):
+            original_get_db = app_module.get_db
+            original_user = app_module.get_current_user
+            wrapped = _NoCloseConn(self.conn)
+            app_module.get_db = lambda: wrapped
+            app_module.get_current_user = lambda: admin
+            try:
+                resp = app_module.sales_update_tips_delete_employee()
+                if isinstance(resp, tuple):
+                    body, status = resp
+                else:
+                    body, status = resp, 200
+                data = body.get_json()
+                self.assertEqual(status, 200)
+                self.assertTrue(data["ok"])
+                remaining = self.conn.execute(
+                    "SELECT COUNT(*) AS c FROM sales_update_tips WHERE employee_id=1 AND company=?",
+                    ("HBE",),
+                ).fetchone()["c"]
+                self.assertEqual(remaining, 0)
+                self.assertEqual(
+                    _get_month_tip_incentive(self.conn, 1, 2026, 7, company="HBE"),
+                    0.0,
+                )
+            finally:
+                app_module.get_db = original_get_db
+                app_module.get_current_user = original_user
+
+    def test_delete_tip_clears_overallocated_month_payouts(self):
+        """If tip collector differs from payout recipient, clear month when pool breaks."""
+        self.conn.execute(
+            "INSERT INTO employees (emp_code, name, company, location) VALUES (?,?,?,?)",
+            ("HBE002", "Bob", "Hotel Bell Elite", "BAR"),
+        )
+        tip_id = self.conn.execute(
+            "SELECT id FROM sales_update_tips WHERE company=? LIMIT 1",
+            ("HBE",),
+        ).fetchone()["id"]
+        # Alice collected the tip; Bob received the incentive.
+        _upsert_month_tip_incentive(self.conn, "HBE", 2026, 7, 2, 100)
+        self.conn.commit()
+
+        app_module.app.config["TESTING"] = True
+        admin = {"id": 1, "username": "admin", "is_admin": True, "is_active": True}
+        with app_module.app.test_request_context(
+            "/sales_update/delete_tip",
+            method="POST",
+            json={
+                "id": tip_id,
+                "company": "HBE",
+                "location": "Hotel",
+                "date": "2026-07-10",
+            },
+        ):
+            original_get_db = app_module.get_db
+            original_user = app_module.get_current_user
+            wrapped = _NoCloseConn(self.conn)
+            app_module.get_db = lambda: wrapped
+            app_module.get_current_user = lambda: admin
+            try:
+                resp = app_module.sales_update_delete_tip()
+                if isinstance(resp, tuple):
+                    body, status = resp
+                else:
+                    body, status = resp, 200
+                data = body.get_json()
+                self.assertEqual(status, 200)
+                self.assertTrue(data["ok"])
+                # No tips left → available 0 → Bob's month payout must be cleared.
+                self.assertEqual(
+                    _get_month_tip_incentive(self.conn, 2, 2026, 7, company="HBE"),
+                    0.0,
+                )
+            finally:
+                app_module.get_db = original_get_db
+                app_module.get_current_user = original_user
+
     def test_route_rejects_over_allocation(self):
         app_module.app.config["TESTING"] = True
         with app_module.app.test_request_context(

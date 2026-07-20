@@ -93,18 +93,6 @@ def ensure_stores_schema(conn):
     """Create Stores inventory workflow tables if missing."""
     cursor = conn.cursor()
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS store_settings (
-            outlet                      TEXT    NOT NULL PRIMARY KEY,
-            verification_interval_days  INTEGER NOT NULL DEFAULT 7,
-            updated_at                  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
-        )
-    """)
-    for outlet in ("bar", "kitchen"):
-        cursor.execute(
-            "INSERT OR IGNORE INTO store_settings (outlet, verification_interval_days) VALUES (?, 7)",
-            (outlet,),
-        )
-    cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_indents (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             outlet        TEXT    NOT NULL,
@@ -127,14 +115,43 @@ def ensure_stores_schema(conn):
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_indent_lines (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            indent_id  INTEGER NOT NULL,
-            item_name  TEXT    NOT NULL,
-            quantity   REAL    NOT NULL DEFAULT 0,
-            unit       TEXT    NOT NULL DEFAULT 'pcs',
-            notes      TEXT    NOT NULL DEFAULT '',
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            indent_id          INTEGER NOT NULL,
+            item_name          TEXT    NOT NULL,
+            quantity           REAL    NOT NULL DEFAULT 0,
+            unit               TEXT    NOT NULL DEFAULT 'pcs',
+            notes              TEXT    NOT NULL DEFAULT '',
+            approximate_price  REAL,
             FOREIGN KEY (indent_id) REFERENCES store_indents(id) ON DELETE CASCADE
         )
+    """)
+    indent_line_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_indent_lines)").fetchall()
+    }
+    if "approximate_price" not in indent_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_indent_lines ADD COLUMN approximate_price REAL"
+        )
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_indent_whatsapp_messages (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            indent_id        INTEGER NOT NULL,
+            recipient_phone  TEXT    NOT NULL DEFAULT '',
+            wa_message_id    TEXT    NOT NULL DEFAULT '',
+            template_name    TEXT    NOT NULL DEFAULT '',
+            status           TEXT    NOT NULL DEFAULT '',
+            error_message    TEXT    NOT NULL DEFAULT '',
+            created_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (indent_id) REFERENCES store_indents(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_indent_wa_message
+        ON store_indent_whatsapp_messages(wa_message_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_indent_wa_indent
+        ON store_indent_whatsapp_messages(indent_id, created_at DESC)
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_purchase_requests (
@@ -202,74 +219,6 @@ def ensure_stores_schema(conn):
         ON store_stock_movements(outlet, created_at DESC)
     """)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS store_counter_transfers (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            outlet       TEXT    NOT NULL,
-            transfer_no  TEXT    NOT NULL UNIQUE,
-            notes        TEXT    NOT NULL DEFAULT '',
-            created_by   INTEGER,
-            created_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-            FOREIGN KEY (created_by) REFERENCES users(id)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS store_counter_transfer_lines (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            transfer_id INTEGER NOT NULL,
-            item_name   TEXT    NOT NULL,
-            unit        TEXT    NOT NULL DEFAULT 'pcs',
-            quantity    REAL    NOT NULL DEFAULT 0,
-            FOREIGN KEY (transfer_id) REFERENCES store_counter_transfers(id) ON DELETE CASCADE
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS store_stock_issues (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            outlet      TEXT    NOT NULL,
-            issue_no    TEXT    NOT NULL UNIQUE,
-            invoice_ref TEXT    NOT NULL DEFAULT '',
-            notes       TEXT    NOT NULL DEFAULT '',
-            created_by  INTEGER,
-            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-            FOREIGN KEY (created_by) REFERENCES users(id)
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS store_stock_issue_lines (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            issue_id  INTEGER NOT NULL,
-            item_name TEXT    NOT NULL,
-            unit      TEXT    NOT NULL DEFAULT 'pcs',
-            quantity  REAL    NOT NULL DEFAULT 0,
-            FOREIGN KEY (issue_id) REFERENCES store_stock_issues(id) ON DELETE CASCADE
-        )
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS store_stock_verifications (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            outlet      TEXT    NOT NULL,
-            verified_at TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-            verified_by INTEGER,
-            notes       TEXT    NOT NULL DEFAULT '',
-            FOREIGN KEY (verified_by) REFERENCES users(id)
-        )
-    """)
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_store_verifications_outlet
-        ON store_stock_verifications(outlet, verified_at DESC)
-    """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS store_stock_verification_lines (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            verification_id INTEGER NOT NULL,
-            item_name       TEXT    NOT NULL,
-            unit            TEXT    NOT NULL DEFAULT 'pcs',
-            system_qty      REAL    NOT NULL DEFAULT 0,
-            counted_qty     REAL    NOT NULL DEFAULT 0,
-            FOREIGN KEY (verification_id) REFERENCES store_stock_verifications(id) ON DELETE CASCADE
-        )
-    """)
-    cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_product_categories (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT    NOT NULL UNIQUE,
@@ -280,26 +229,61 @@ def ensure_stores_schema(conn):
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_products (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            category_id   INTEGER NOT NULL,
-            name          TEXT    NOT NULL,
-            default_unit  TEXT    NOT NULL DEFAULT 'kg',
-            is_active     INTEGER NOT NULL DEFAULT 1,
-            sort_order    INTEGER NOT NULL DEFAULT 0,
-            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-            updated_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id        INTEGER NOT NULL,
+            name               TEXT    NOT NULL,
+            default_unit       TEXT    NOT NULL DEFAULT 'kg',
+            outlet             TEXT    NOT NULL DEFAULT 'restaurant',
+            approximate_price  REAL,
+            is_active          INTEGER NOT NULL DEFAULT 1,
+            sort_order         INTEGER NOT NULL DEFAULT 0,
+            created_at         TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at         TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
             UNIQUE(category_id, name),
             FOREIGN KEY (category_id) REFERENCES store_product_categories(id)
         )
     """)
+    product_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_products)").fetchall()
+    }
+    if "outlet" not in product_cols:
+        cursor.execute(
+            "ALTER TABLE store_products ADD COLUMN outlet TEXT NOT NULL DEFAULT 'restaurant'"
+        )
+    if "approximate_price" not in product_cols:
+        cursor.execute(
+            "ALTER TABLE store_products ADD COLUMN approximate_price REAL"
+        )
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_products_category
         ON store_products(category_id, is_active, sort_order, name)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_products_outlet
+        ON store_products(outlet, is_active, name)
     """)
     _seed_store_product_master(cursor)
     cursor.execute(
         "UPDATE store_products SET default_unit = 'liter' WHERE lower(default_unit) = 'ltr'"
     )
+    cursor.execute(
+        """
+        UPDATE store_products
+        SET outlet = 'restaurant'
+        WHERE outlet IS NULL OR trim(outlet) = ''
+           OR lower(outlet) NOT IN ('bar', 'restaurant', 'both')
+        """
+    )
+    # Migrate legacy "kitchen" outlet key → "restaurant" across stores tables.
+    for table in (
+        "store_indents",
+        "store_purchase_requests",
+        "store_stock_items",
+        "store_stock_movements",
+    ):
+        cursor.execute(
+            f"UPDATE {table} SET outlet = 'restaurant' WHERE lower(outlet) = 'kitchen'"
+        )
     conn.commit()
 
 
@@ -415,8 +399,8 @@ def _seed_store_product_master(cursor):
             cursor.execute(
                 """
                 INSERT OR IGNORE INTO store_products
-                    (category_id, name, default_unit, is_active, sort_order)
-                VALUES (?, ?, ?, 1, ?)
+                    (category_id, name, default_unit, outlet, is_active, sort_order)
+                VALUES (?, ?, ?, 'restaurant', 1, ?)
                 """,
                 (category_id, product_name, unit, idx * 10),
             )
