@@ -1,19 +1,34 @@
 #page-transition{
+  /* Hard-nav only. Soft-nav must NOT use a full-screen veil — on AWS RTT it reads as a blank flash. */
   display:none;position:fixed;inset:0;z-index:8000;
-  /* Solid shell color — translucent veils flash empty/dark panels on slow (AWS) soft-nav. */
   background:#F8FAFC;
   opacity:0;pointer-events:none;
   transition:opacity .08s linear;
 }
+#de-soft-nav-progress{
+  display:none;position:fixed;top:0;left:0;right:0;height:2px;z-index:9000;
+  pointer-events:none;background:transparent;overflow:hidden;
+}
+#de-soft-nav-progress.is-active{display:block}
+#de-soft-nav-progress > span{
+  display:block;height:100%;width:32%;
+  background:linear-gradient(90deg,#3B82F6,#60A5FA);
+  transform:translateX(-120%);
+  animation:deSoftNavProgress 1.05s ease-in-out infinite;
+}
+@keyframes deSoftNavProgress{
+  0%{transform:translateX(-120%)}
+  50%{transform:translateX(180%)}
+  100%{transform:translateX(320%)}
+}
 .de-main-wrapper.is-soft-nav-loading{
-  /* Keep previous page sharp under the overlay; only block interaction. */
+  /* Keep previous page fully visible while HTML loads; only block clicks. */
   pointer-events:none;
 }
-/* Soft-nav injects pages that restart CSS enter animations from opacity:0 — suppress for one paint. */
+/* Suppress enter-from-opacity:0 animations only around the DOM swap frame. */
 html.de-soft-navigating .de-main-wrapper,
 html.de-soft-navigating .de-main-wrapper *{
   animation:none!important;
-  transition:none!important;
 }
 html.de-sidebar-wide-boot .de-sidebar{
   width:214px!important;min-width:214px!important;max-width:214px!important;

@@ -32,7 +32,7 @@
       try{ softNavAbort.abort(); } catch(e){}
     }
     softNavAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
-    document.documentElement.classList.add('de-soft-navigating');
+    // Do NOT add de-soft-navigating here — that freezes the old page and feels like a stall.
     return {
       token: softNavToken,
       signal: softNavAbort ? softNavAbort.signal : undefined
@@ -43,7 +43,29 @@
     return token == null || token === softNavToken;
   }
 
+  function ensureSoftNavProgress(){
+    var el = document.getElementById('de-soft-nav-progress');
+    if(el) return el;
+    el = document.createElement('div');
+    el.id = 'de-soft-nav-progress';
+    el.setAttribute('aria-hidden', 'true');
+    el.innerHTML = '<span></span>';
+    (document.body || document.documentElement).appendChild(el);
+    return el;
+  }
+
+  function showSoftNavProgress(){
+    var el = ensureSoftNavProgress();
+    el.classList.add('is-active');
+  }
+
+  function hideSoftNavProgress(){
+    var el = document.getElementById('de-soft-nav-progress');
+    if(el) el.classList.remove('is-active');
+  }
+
   function showOverlay(done){
+    // Full-screen veil is for hard navigations only (covers white flash of full reload).
     var ov = getOverlay();
     if(!ov || prefersReducedMotion()){
       if(done) done();
@@ -73,12 +95,14 @@
     }, HIDE_MS);
   }
 
-  /** Hide overlay after the browser has painted the swapped content (avoids empty-frame flash). */
-  function revealAfterPaint(done, token){
+  /** Finish soft-nav UI after the swapped content has painted (no blank veil). */
+  function finishSoftNavUi(done, token){
     requestAnimationFrame(function(){
       requestAnimationFrame(function(){
         if(!isCurrentSoftNav(token)) return;
         markMainLoading(false);
+        hideSoftNavProgress();
+        try{ sessionStorage.removeItem(NAV_FLAG); } catch(e){}
         if(typeof done === 'function') done();
       });
     });
@@ -247,7 +271,7 @@
     var fd = new FormData(form);
     appendSubmitter(fd, submitter);
 
-    showOverlay();
+    showSoftNavProgress();
     var postUrl = withPartialMain(actionUrl);
     var fetchOpts = {
       method: 'POST',
@@ -278,14 +302,14 @@
       // Swapped-in HTML brings its own fresh (unlocked) form, but unlock the
       // old node too in case anything still references it.
       unlockFormSubmit(form);
-      applySoftSwap(doc, result.url, hideOverlay, sidebarScroll, nav.token);
+      applySoftSwap(doc, result.url, hideSoftNavProgress, sidebarScroll, nav.token);
     }).catch(function(err){
       if(err && err.name === 'AbortError') return;
       if(!isCurrentSoftNav(nav.token)) return;
       markMainLoading(false);
       setSoftNavFlag(false);
       document.documentElement.classList.remove('de-soft-navigating');
-      hideOverlay();
+      hideSoftNavProgress();
       unlockFormSubmit(form);
       hardSubmitFallback(form, submitter);
     });
@@ -1283,23 +1307,24 @@
 
     if(curMain && nextMain){
       var content = collectNodesAndScripts(nextMain);
-      // Build off-DOM, then swap in one shot — never leave an empty main panel painted.
+      // Build off-DOM first; wait for new CSS; then swap in one shot under no veil.
       var frag = document.createDocumentFragment();
       content.nodes.forEach(function(node){
         frag.appendChild(document.importNode(node, true));
       });
-      document.documentElement.classList.add('de-soft-navigating');
-      if(typeof curMain.replaceChildren === 'function'){
-        curMain.replaceChildren(frag);
-      } else {
-        while(curMain.firstChild) curMain.removeChild(curMain.firstChild);
-        curMain.appendChild(frag);
-      }
-      scrollMainToTop();
-      restoreSidebarScroll(sidebarScroll);
 
       var finishSwap = function(){
         if(!isCurrentSoftNav(navToken)) return;
+        document.documentElement.classList.add('de-soft-navigating');
+        if(typeof curMain.replaceChildren === 'function'){
+          curMain.replaceChildren(frag);
+        } else {
+          while(curMain.firstChild) curMain.removeChild(curMain.firstChild);
+          curMain.appendChild(frag);
+        }
+        scrollMainToTop();
+        restoreSidebarScroll(sidebarScroll);
+
         var syncUrl = urlWithPosSettingsSection(url);
         try{
           var current = new URL(window.location.href);
@@ -1312,8 +1337,8 @@
             try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
           }
         }
-        // Reveal as soon as content is painted; scripts continue under the settled page.
-        revealAfterPaint(done, navToken);
+        // Old page stayed visible until this moment — finish UI without a blank veil.
+        finishSoftNavUi(done, navToken);
         runScriptNodes(content.scripts, function(){
           if(!isCurrentSoftNav(navToken)) return;
           finalizeSoftNav();
@@ -1411,6 +1436,7 @@
       markMainLoading(false);
       setSoftNavFlag(false);
       document.documentElement.classList.remove('de-soft-navigating');
+      hideSoftNavProgress();
       if(typeof done === 'function') done();
       // Soft-nav already pushState'd the target URL. Failing silently leaves a stale
       // page (month/year filters look broken until a manual refresh). Always hard-nav.
@@ -1460,8 +1486,10 @@
       if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
         window.deFullscreen.preserveForNavigation();
       }
-      showOverlay();
-      softNavigate(url, hideOverlay);
+      // Immediate sidebar feedback — old main stays visible until HTML arrives (no blank veil).
+      try{ syncSidebarActiveFromUrl(url); } catch(e){}
+      showSoftNavProgress();
+      softNavigate(url, hideSoftNavProgress);
       return;
     }
 
@@ -1621,14 +1649,14 @@
     }
 
     if(shouldSoftNavigate()){
-      showOverlay();
-      softNavigate(url, hideOverlay);
+      showSoftNavProgress();
+      softNavigate(url, hideSoftNavProgress);
       return;
     }
 
     if(window.deFullscreen && typeof window.deFullscreen.isPreferred === 'function' && window.deFullscreen.isPreferred()){
-      showOverlay();
-      softNavigate(url, hideOverlay);
+      showSoftNavProgress();
+      softNavigate(url, hideSoftNavProgress);
       return;
     }
 
