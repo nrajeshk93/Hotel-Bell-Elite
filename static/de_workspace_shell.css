@@ -1,13 +1,19 @@
 #page-transition{
   display:none;position:fixed;inset:0;z-index:8000;
-  background:rgba(246,249,255,.55);
+  /* Solid shell color — translucent veils flash empty/dark panels on slow (AWS) soft-nav. */
+  background:#F8FAFC;
   opacity:0;pointer-events:none;
-  transition:opacity .1s ease;
+  transition:opacity .08s linear;
 }
 .de-main-wrapper.is-soft-nav-loading{
-  opacity:.62;
+  /* Keep previous page sharp under the overlay; only block interaction. */
   pointer-events:none;
-  transition:opacity .12s ease;
+}
+/* Soft-nav injects pages that restart CSS enter animations from opacity:0 — suppress for one paint. */
+html.de-soft-navigating .de-main-wrapper,
+html.de-soft-navigating .de-main-wrapper *{
+  animation:none!important;
+  transition:none!important;
 }
 html.de-sidebar-wide-boot .de-sidebar{
   width:214px!important;min-width:214px!important;max-width:214px!important;

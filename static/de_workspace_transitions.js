@@ -1,7 +1,7 @@
 (function(){
-  var TRANSITION_MS = 40;
-  var OVERLAY_OPACITY = '.22';
-  var HIDE_MS = 80;
+  var TRANSITION_MS = 20;
+  var OVERLAY_OPACITY = '1';
+  var HIDE_MS = 70;
   var NAV_FLAG = 'de-nav-transition';
   var FS_KEY = 'de-fullscreen-active';
   var PREFETCH_TTL_MS = 45000;
@@ -13,6 +13,10 @@
   ];
   /** @type {Map<string, {html?: string, promise?: Promise<string>, ts: number}>} */
   var prefetchCache = new Map();
+  var softNavToken = 0;
+  /** @type {AbortController|null} */
+  var softNavAbort = null;
+  var overlayHideToken = 0;
 
   function prefersReducedMotion(){
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -22,12 +26,31 @@
     return document.getElementById('page-transition');
   }
 
+  function beginSoftNavGeneration(){
+    softNavToken += 1;
+    if(softNavAbort){
+      try{ softNavAbort.abort(); } catch(e){}
+    }
+    softNavAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    document.documentElement.classList.add('de-soft-navigating');
+    return {
+      token: softNavToken,
+      signal: softNavAbort ? softNavAbort.signal : undefined
+    };
+  }
+
+  function isCurrentSoftNav(token){
+    return token == null || token === softNavToken;
+  }
+
   function showOverlay(done){
     var ov = getOverlay();
     if(!ov || prefersReducedMotion()){
       if(done) done();
       return;
     }
+    overlayHideToken += 1;
+    ov.style.pointerEvents = 'auto';
     ov.style.display = 'block';
     ov.style.opacity = '0';
     requestAnimationFrame(function(){
@@ -41,10 +64,31 @@
   function hideOverlay(){
     var ov = getOverlay();
     if(!ov) return;
+    var token = ++overlayHideToken;
     ov.style.opacity = '0';
+    ov.style.pointerEvents = 'none';
     setTimeout(function(){
+      if(token !== overlayHideToken) return;
       ov.style.display = 'none';
     }, HIDE_MS);
+  }
+
+  /** Hide overlay after the browser has painted the swapped content (avoids empty-frame flash). */
+  function revealAfterPaint(done, token){
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        if(!isCurrentSoftNav(token)) return;
+        markMainLoading(false);
+        if(typeof done === 'function') done();
+      });
+    });
+  }
+
+  function endSoftNavigatingClass(){
+    // Keep suppression briefly so enter keyframes do not restart from opacity:0 after reveal.
+    setTimeout(function(){
+      document.documentElement.classList.remove('de-soft-navigating');
+    }, 120);
   }
 
   function isFullscreenActive(){
@@ -90,6 +134,8 @@
     if(form.hasAttribute('data-de-hard-nav')) return false;
     if(form.hasAttribute('data-md-full-nav') || form.closest('[data-md-full-nav]')) return false;
     if(form.closest('#md-master-modal, .md-master-modal, #md-master-modal-inject, .md-master-embed')) return false;
+    // Modal / dialog forms are handled by page JS (JSON APIs); soft-nav must not steal submit.
+    if(form.closest('.modal-overlay, [role="dialog"][aria-modal="true"]')) return false;
     var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
     if(method && method !== 'get' && method !== 'post') return false;
     var enctype = String(form.getAttribute('enctype') || form.enctype || '').toLowerCase();
@@ -184,6 +230,7 @@
 
     rememberSidebarState();
     try{ sessionStorage.setItem(NAV_FLAG, '1'); } catch(e){}
+    var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
     markMainLoading(true);
     var sidebarScroll = captureSidebarScroll();
@@ -202,7 +249,7 @@
 
     showOverlay();
     var postUrl = withPartialMain(actionUrl);
-    fetch(postUrl, {
+    var fetchOpts = {
       method: 'POST',
       body: fd,
       credentials: 'same-origin',
@@ -211,7 +258,9 @@
         'X-De-Partial': 'main'
       },
       redirect: 'follow'
-    }).then(function(response){
+    };
+    if(nav.signal) fetchOpts.signal = nav.signal;
+    fetch(postUrl, fetchOpts).then(function(response){
       if(!response.ok) throw new Error('post soft submit failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
       if(contentType.indexOf('text/html') === -1) throw new Error('non-html response');
@@ -220,6 +269,7 @@
         return { html: html, url: finalUrl };
       });
     }).then(function(result){
+      if(!isCurrentSoftNav(nav.token)) return;
       try{ history.pushState({ deSoftNav: true }, '', result.url); } catch(e){}
       if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
         window.deFullscreen.preserveForNavigation();
@@ -228,10 +278,13 @@
       // Swapped-in HTML brings its own fresh (unlocked) form, but unlock the
       // old node too in case anything still references it.
       unlockFormSubmit(form);
-      applySoftSwap(doc, result.url, hideOverlay, sidebarScroll);
-    }).catch(function(){
+      applySoftSwap(doc, result.url, hideOverlay, sidebarScroll, nav.token);
+    }).catch(function(err){
+      if(err && err.name === 'AbortError') return;
+      if(!isCurrentSoftNav(nav.token)) return;
       markMainLoading(false);
       setSoftNavFlag(false);
+      document.documentElement.classList.remove('de-soft-navigating');
       hideOverlay();
       unlockFormSubmit(form);
       hardSubmitFallback(form, submitter);
@@ -479,9 +532,7 @@
   }
 
   function mergeHeadAssets(sourceDoc){
-    document.head.querySelectorAll('style[data-de-soft-nav]').forEach(function(el){
-      el.parentNode.removeChild(el);
-    });
+    var addedLinks = [];
     sourceDoc.head.querySelectorAll('link[rel="stylesheet"]').forEach(function(link){
       var href = link.getAttribute('href');
       if(!href) return;
@@ -489,13 +540,39 @@
         return existing.getAttribute('href') === href;
       });
       if(exists) return;
-      document.head.appendChild(link.cloneNode(true));
+      var clone = link.cloneNode(true);
+      document.head.appendChild(clone);
+      addedLinks.push(clone);
     });
+    var oldSoftStyles = Array.from(document.head.querySelectorAll('style[data-de-soft-nav]'));
     sourceDoc.head.querySelectorAll('style').forEach(function(style){
       var clone = style.cloneNode(true);
       clone.setAttribute('data-de-soft-nav', '1');
       document.head.appendChild(clone);
     });
+    // Remove previous page inline styles only after new ones are attached (avoids FOUC/line flashes).
+    oldSoftStyles.forEach(function(el){
+      if(el.parentNode) el.parentNode.removeChild(el);
+    });
+    return addedLinks;
+  }
+
+  function waitForStylesheets(links, timeoutMs){
+    if(!links || !links.length) return Promise.resolve();
+    var limit = timeoutMs == null ? 350 : timeoutMs;
+    return Promise.race([
+      Promise.all(links.map(function(link){
+        return new Promise(function(resolve){
+          try{
+            if(link.sheet){ resolve(); return; }
+          } catch(e){}
+          var done = function(){ resolve(); };
+          link.addEventListener('load', done, { once: true });
+          link.addEventListener('error', done, { once: true });
+        });
+      })),
+      new Promise(function(resolve){ setTimeout(resolve, limit); })
+    ]);
   }
 
   function loadExternalScript(old){
@@ -1186,7 +1263,8 @@
     }, 600);
   }
 
-  function applySoftSwap(doc, url, done, sidebarScroll){
+  function applySoftSwap(doc, url, done, sidebarScroll, navToken){
+    if(!isCurrentSoftNav(navToken)) return;
     if(typeof window.closeMasterModal === 'function'){
       window.closeMasterModal();
     }
@@ -1199,21 +1277,29 @@
     if(doc.body && doc.body.className){
       document.body.className = doc.body.className;
     }
-    mergeHeadAssets(doc);
+    var addedLinks = mergeHeadAssets(doc);
     syncSidebarFromDoc(doc, url);
     restoreSidebarScroll(sidebarScroll);
 
     if(curMain && nextMain){
       var content = collectNodesAndScripts(nextMain);
-      curMain.classList.remove('is-soft-nav-loading');
-      curMain.innerHTML = '';
+      // Build off-DOM, then swap in one shot — never leave an empty main panel painted.
+      var frag = document.createDocumentFragment();
       content.nodes.forEach(function(node){
-        curMain.appendChild(document.importNode(node, true));
+        frag.appendChild(document.importNode(node, true));
       });
+      document.documentElement.classList.add('de-soft-navigating');
+      if(typeof curMain.replaceChildren === 'function'){
+        curMain.replaceChildren(frag);
+      } else {
+        while(curMain.firstChild) curMain.removeChild(curMain.firstChild);
+        curMain.appendChild(frag);
+      }
       scrollMainToTop();
       restoreSidebarScroll(sidebarScroll);
-      runScriptNodes(content.scripts, function(){
-        // URL already pushed during the click gesture; keep history in sync if needed.
+
+      var finishSwap = function(){
+        if(!isCurrentSoftNav(navToken)) return;
         var syncUrl = urlWithPosSettingsSection(url);
         try{
           var current = new URL(window.location.href);
@@ -1226,11 +1312,18 @@
             try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
           }
         }
-        finalizeSoftNav();
-        restoreSidebarScrollAfterLayout(sidebarScroll);
-        markMainLoading(false);
-        if(done) done();
-      });
+        // Reveal as soon as content is painted; scripts continue under the settled page.
+        revealAfterPaint(done, navToken);
+        runScriptNodes(content.scripts, function(){
+          if(!isCurrentSoftNav(navToken)) return;
+          finalizeSoftNav();
+          restoreSidebarScrollAfterLayout(sidebarScroll);
+          markMainLoading(false);
+          endSoftNavigatingClass();
+        });
+      };
+
+      waitForStylesheets(addedLinks).then(finishSwap);
       return;
     }
 
@@ -1270,6 +1363,7 @@
   }
 
   function softNavigate(url, done){
+    var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
     markMainLoading(true);
     var sidebarScroll = lockedSidebarScroll || captureSidebarScroll();
@@ -1279,14 +1373,17 @@
     }
 
     var prefetched = takePrefetchedHtml(url);
-    var htmlPromise = prefetched || fetch(withPartialMain(url), {
+    var fetchOpts = {
       credentials: 'same-origin',
       headers: {
         'Accept': 'text/html',
         'X-De-Partial': 'main'
       },
       redirect: 'follow'
-    }).then(function(response){
+    };
+    if(!prefetched && nav.signal) fetchOpts.signal = nav.signal;
+
+    var htmlPromise = prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
       if(contentType.indexOf('text/html') === -1){
@@ -1296,20 +1393,24 @@
     });
 
     htmlPromise.then(function(html){
+      if(!isCurrentSoftNav(nav.token)) return;
       if(!html) throw new Error('empty soft nav html');
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
       if(!doc.querySelector('.de-main-wrapper')){
         throw new Error('missing main wrapper for soft nav');
       }
-      applySoftSwap(doc, url, done, sidebarScroll);
-    }).catch(function(){
+      applySoftSwap(doc, url, done, sidebarScroll, nav.token);
+    }).catch(function(err){
+      if(err && err.name === 'AbortError') return;
+      if(!isCurrentSoftNav(nav.token)) return;
       // Keep captured rail scroll in sessionStorage for hard-nav boot restore.
       if(sidebarScroll){
         try{ sessionStorage.setItem(SIDEBAR_SCROLL_KEY, JSON.stringify(sidebarScroll)); } catch(e){}
       }
       markMainLoading(false);
       setSoftNavFlag(false);
+      document.documentElement.classList.remove('de-soft-navigating');
       if(typeof done === 'function') done();
       // Soft-nav already pushState'd the target URL. Failing silently leaves a stale
       // page (month/year filters look broken until a manual refresh). Always hard-nav.

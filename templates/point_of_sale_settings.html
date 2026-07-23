@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Settings | Restaurant | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=19">
 <script>
@@ -428,7 +428,7 @@
         <span id="pos-floor-props-title">Table</span>
       </h3>
       <p class="pos-floor-props-copy">Edit properties for the selected floor item. Changes save automatically.</p>
-      <form id="pos-floor-props-form" autocomplete="off">
+      <form id="pos-floor-props-form" autocomplete="off" data-de-hard-nav>
         <div class="pos-floor-props-field">
           <label for="pos-floor-prop-name">Name</label>
           <input type="text" id="pos-floor-prop-name">
@@ -481,7 +481,7 @@
       </h3>
       <p class="pos-floor-props-copy">Group menu items for the restaurant POS.</p>
       <div id="pos-menu-cat-err" class="pos-menu-modal-err" hidden></div>
-      <form id="pos-menu-cat-form" autocomplete="off">
+      <form id="pos-menu-cat-form" autocomplete="off" data-de-hard-nav>
         <input type="hidden" id="pos-menu-cat-id" value="">
         <div class="pos-floor-props-field">
           <label for="pos-menu-cat-name">Name *</label>
@@ -511,7 +511,7 @@
       </h3>
       <p class="pos-floor-props-copy" id="pos-menu-item-copy">Set the menu name and rate, then add ingredients with the quantity required.</p>
       <div id="pos-menu-item-err" class="pos-menu-modal-err" hidden></div>
-      <form id="pos-menu-item-form" autocomplete="off" novalidate>
+      <form id="pos-menu-item-form" autocomplete="off" novalidate data-de-hard-nav>
         <input type="hidden" id="pos-menu-item-id" value="">
         <input type="hidden" id="pos-menu-item-category-id" value="">
         <div class="pos-floor-props-field">
