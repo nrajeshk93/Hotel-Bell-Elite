@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from datetime import datetime
@@ -14,6 +15,1815 @@ def get_db():
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+def empty_pos_floor_payload():
+    """Empty floor layout when nothing is saved yet."""
+    return {"areas": [], "tables": []}
+
+
+def _normalize_pos_floor_payload(areas, tables):
+    """Return a lean, validated floor payload (areas + tables)."""
+    clean_areas = []
+    seen_area = set()
+    for raw in areas or []:
+        if not isinstance(raw, dict):
+            continue
+        area_id = str(raw.get("id") or "").strip()
+        name = str(raw.get("name") or "").strip() or "Area"
+        if not area_id or area_id in seen_area:
+            continue
+        seen_area.add(area_id)
+        clean_areas.append({"id": area_id, "type": "area", "name": name})
+
+    clean_tables = []
+    seen_table = set()
+    for raw in tables or []:
+        if not isinstance(raw, dict):
+            continue
+        table_id = str(raw.get("id") or "").strip()
+        if not table_id or table_id in seen_table:
+            continue
+        seen_table.add(table_id)
+        seats = raw.get("seats", 2)
+        try:
+            seats = max(1, int(seats))
+        except (TypeError, ValueError):
+            seats = 2
+        shape = str(raw.get("shape") or "square").strip() or "square"
+        status = str(raw.get("status") or "available").strip() or "available"
+        area_id = raw.get("areaId")
+        if area_id is not None:
+            area_id = str(area_id).strip() or None
+        clean_tables.append(
+            {
+                "id": table_id,
+                "type": "table",
+                "name": str(raw.get("name") or "").strip() or table_id,
+                "seats": seats,
+                "shape": shape,
+                "status": status,
+                "areaId": area_id,
+            }
+        )
+    return {"areas": clean_areas, "tables": clean_tables}
+
+
+def ensure_pos_schema(conn):
+    """Create lean POS floor, settings, and menu tables (soft migration)."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_floor_layout (
+            id          INTEGER PRIMARY KEY CHECK (id = 1),
+            payload     TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_restaurant_settings (
+            id          INTEGER PRIMARY KEY CHECK (id = 1),
+            payload     TEXT    NOT NULL DEFAULT '{}',
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_menu_categories (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT    NOT NULL,
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            is_visible  INTEGER NOT NULL DEFAULT 1,
+            is_active   INTEGER NOT NULL DEFAULT 1,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_menu_items (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id   INTEGER NOT NULL,
+            product_id    INTEGER,
+            name          TEXT    NOT NULL,
+            code          TEXT    NOT NULL DEFAULT '',
+            barcode       TEXT    NOT NULL DEFAULT '',
+            variant       TEXT    NOT NULL DEFAULT '',
+            rate          REAL    NOT NULL DEFAULT 0,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            is_active     INTEGER NOT NULL DEFAULT 1,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (category_id) REFERENCES pos_menu_categories(id)
+        )
+        """
+    )
+    item_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(pos_menu_items)").fetchall()
+    }
+    if "product_id" not in item_cols:
+        cursor.execute("ALTER TABLE pos_menu_items ADD COLUMN product_id INTEGER")
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_menu_items_category
+        ON pos_menu_items(category_id, is_active)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_menu_items_product
+        ON pos_menu_items(product_id, is_active)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_menu_recipe_lines (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_item_id  INTEGER NOT NULL,
+            product_id    INTEGER NOT NULL,
+            qty           REAL    NOT NULL,
+            unit          TEXT    NOT NULL DEFAULT 'g',
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (menu_item_id) REFERENCES pos_menu_items(id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_menu_recipe_item
+        ON pos_menu_recipe_lines(menu_item_id, sort_order)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_invoices (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_no         TEXT    NOT NULL,
+            saved_at         TEXT    NOT NULL,
+            order_date       TEXT    NOT NULL,
+            order_type       TEXT    NOT NULL DEFAULT 'dine_in',
+            table_label      TEXT    NOT NULL DEFAULT '',
+            captain          TEXT    NOT NULL DEFAULT '',
+            customer_name    TEXT    NOT NULL DEFAULT '',
+            customer_mobile  TEXT    NOT NULL DEFAULT '',
+            notes            TEXT    NOT NULL DEFAULT '',
+            discount_type    TEXT    NOT NULL DEFAULT 'pct',
+            discount_value   REAL    NOT NULL DEFAULT 0,
+            service_type     TEXT    NOT NULL DEFAULT 'pct',
+            service_value    REAL    NOT NULL DEFAULT 0,
+            tip_amount       REAL    NOT NULL DEFAULT 0,
+            coupon_code      TEXT    NOT NULL DEFAULT '',
+            subtotal         REAL    NOT NULL DEFAULT 0,
+            discount_amount  REAL    NOT NULL DEFAULT 0,
+            gst_amount       REAL    NOT NULL DEFAULT 0,
+            service_amount   REAL    NOT NULL DEFAULT 0,
+            tip              REAL    NOT NULL DEFAULT 0,
+            round_off        REAL    NOT NULL DEFAULT 0,
+            grand_total      REAL    NOT NULL DEFAULT 0,
+            created_by       TEXT    NOT NULL DEFAULT '',
+            is_active        INTEGER NOT NULL DEFAULT 1,
+            created_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_pos_invoices_order_no
+        ON pos_invoices(order_no)
+        WHERE is_active = 1
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_invoices_date
+        ON pos_invoices(order_date, is_active)
+        """
+    )
+    invoice_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(pos_invoices)").fetchall()
+    }
+    # Bill lifecycle ('open' -> 'closed') and KOT tracking — occupancy flips on the
+    # first KOT sent for an order, not on a plain save; closing a bill frees its table.
+    if "status" not in invoice_cols:
+        cursor.execute("ALTER TABLE pos_invoices ADD COLUMN status TEXT NOT NULL DEFAULT 'open'")
+    if "kot_sent" not in invoice_cols:
+        cursor.execute("ALTER TABLE pos_invoices ADD COLUMN kot_sent INTEGER NOT NULL DEFAULT 0")
+    if "first_kot_at" not in invoice_cols:
+        cursor.execute("ALTER TABLE pos_invoices ADD COLUMN first_kot_at TEXT NOT NULL DEFAULT ''")
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_invoices_table_open
+        ON pos_invoices(table_label, status, order_type, is_active)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_invoice_lines (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id    INTEGER NOT NULL,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            menu_item_id  INTEGER,
+            name          TEXT    NOT NULL DEFAULT '',
+            variant       TEXT    NOT NULL DEFAULT '',
+            rate          REAL    NOT NULL DEFAULT 0,
+            qty           REAL    NOT NULL DEFAULT 0,
+            line_total    REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (invoice_id) REFERENCES pos_invoices(id)
+        )
+        """
+    )
+    line_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(pos_invoice_lines)").fetchall()
+    }
+    if "sent_qty" not in line_cols:
+        cursor.execute("ALTER TABLE pos_invoice_lines ADD COLUMN sent_qty REAL NOT NULL DEFAULT 0")
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_invoice_lines_invoice
+        ON pos_invoice_lines(invoice_id, sort_order)
+        """
+    )
+    ensure_customers_schema(conn)
+    conn.commit()
+
+
+def _normalize_customer_mobile(value):
+    return "".join(ch for ch in str(value or "") if ch.isdigit())[:10]
+
+
+def _normalize_customer_first_name(value):
+    return " ".join(str(value or "").split()).strip()
+
+
+def ensure_customers_schema(conn):
+    """Customer Master table shared with POS Customer Details (unique mobile)."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS customers (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            first_name  TEXT    NOT NULL DEFAULT '',
+            mobile      TEXT    NOT NULL DEFAULT '',
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_mobile_unique
+        ON customers(mobile) WHERE mobile != ''
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_customers_name
+        ON customers(LOWER(first_name))
+        """
+    )
+    _backfill_customers_from_invoices(conn)
+
+
+def _backfill_customers_from_invoices(conn):
+    """Seed Customer Master once from existing POS invoices (latest name per mobile)."""
+    try:
+        count_row = conn.execute("SELECT COUNT(*) AS n FROM customers").fetchone()
+        if count_row and int(count_row["n"] if isinstance(count_row, dict) else count_row[0]):
+            return
+        # Prefer the most recent invoice name for each mobile.
+        rows = conn.execute(
+            """
+            SELECT customer_mobile, customer_name
+            FROM pos_invoices
+            WHERE TRIM(COALESCE(customer_mobile, '')) != ''
+              AND is_active = 1
+            ORDER BY id DESC
+            """
+        ).fetchall()
+    except Exception:
+        return
+
+    seen = set()
+    for row in rows:
+        mobile = _normalize_customer_mobile(row["customer_mobile"] if row else "")
+        if not mobile or mobile in seen:
+            continue
+        seen.add(mobile)
+        first_name = _normalize_customer_first_name(
+            row["customer_name"] if row else ""
+        ) or "Guest"
+        try:
+            conn.execute(
+                f"""
+                INSERT INTO customers (first_name, mobile, created_at, updated_at)
+                VALUES (?, ?, {SQL_NOW}, {SQL_NOW})
+                """,
+                (first_name, mobile),
+            )
+        except Exception:
+            continue
+
+
+def customer_row_to_dict(row):
+    if not row:
+        return None
+    return {
+        "id": row["id"],
+        "first_name": row["first_name"] or "",
+        "name": row["first_name"] or "",  # POS autocomplete expects .name
+        "mobile": row["mobile"] or "",
+    }
+
+
+def list_customers(conn):
+    ensure_customers_schema(conn)
+    rows = conn.execute(
+        """
+        SELECT id, first_name, mobile
+        FROM customers
+        ORDER BY LOWER(first_name), mobile, id
+        """
+    ).fetchall()
+    return [customer_row_to_dict(row) for row in rows]
+
+
+def get_customer(conn, customer_id):
+    ensure_customers_schema(conn)
+    if not customer_id:
+        return None
+    try:
+        customer_id = int(customer_id)
+    except (TypeError, ValueError):
+        return None
+    row = conn.execute(
+        "SELECT id, first_name, mobile FROM customers WHERE id = ?",
+        (customer_id,),
+    ).fetchone()
+    return customer_row_to_dict(row)
+
+
+def search_customers(conn, query, limit=8):
+    """Match by mobile digits prefix or first-name contains."""
+    ensure_customers_schema(conn)
+    q = str(query or "").strip()
+    digits = _normalize_customer_mobile(q)
+    name_q = _normalize_customer_first_name(q).lower()
+    if len(digits) < 2 and len(name_q) < 2:
+        return []
+    try:
+        limit = max(1, min(int(limit), 20))
+    except (TypeError, ValueError):
+        limit = 8
+
+    if len(digits) >= 2:
+        rows = conn.execute(
+            """
+            SELECT id, first_name, mobile
+            FROM customers
+            WHERE mobile != '' AND mobile LIKE ?
+            ORDER BY mobile ASC, LOWER(first_name) ASC, id ASC
+            LIMIT ?
+            """,
+            (digits + "%", limit),
+        ).fetchall()
+        return [customer_row_to_dict(row) for row in rows]
+
+    rows = conn.execute(
+        """
+        SELECT id, first_name, mobile
+        FROM customers
+        WHERE LOWER(first_name) LIKE ?
+        ORDER BY LOWER(first_name) ASC, mobile ASC, id ASC
+        LIMIT ?
+        """,
+        ("%" + name_q + "%", limit),
+    ).fetchall()
+    return [customer_row_to_dict(row) for row in rows]
+
+
+def upsert_customer(conn, first_name, mobile):
+    """Create or update Customer Master from POS (requires mobile). Returns customer dict or None."""
+    ensure_customers_schema(conn)
+    mobile = _normalize_customer_mobile(mobile)
+    first_name = _normalize_customer_first_name(first_name)
+    if not mobile:
+        return None
+    if not first_name:
+        first_name = "Guest"
+
+    existing = conn.execute(
+        "SELECT id, first_name, mobile FROM customers WHERE mobile = ?",
+        (mobile,),
+    ).fetchone()
+    if existing:
+        if (existing["first_name"] or "") != first_name:
+            conn.execute(
+                f"""
+                UPDATE customers
+                SET first_name = ?, updated_at = {SQL_NOW}
+                WHERE id = ?
+                """,
+                (first_name, existing["id"]),
+            )
+        return get_customer(conn, existing["id"])
+
+    cursor = conn.execute(
+        f"""
+        INSERT INTO customers (first_name, mobile, created_at, updated_at)
+        VALUES (?, ?, {SQL_NOW}, {SQL_NOW})
+        """,
+        (first_name, mobile),
+    )
+    return get_customer(conn, cursor.lastrowid)
+
+
+def save_customer_record(conn, first_name, mobile, customer_id=None):
+    """Insert/update Customer Master. Returns (saved_id, errors)."""
+    ensure_customers_schema(conn)
+    first_name = _normalize_customer_first_name(first_name)
+    mobile = _normalize_customer_mobile(mobile)
+    errors = []
+    if not first_name:
+        errors.append("First name is required.")
+    if not mobile:
+        errors.append("Mobile number is required.")
+    elif len(mobile) != 10:
+        errors.append("Mobile number must be a 10-digit number.")
+    else:
+        existing = conn.execute(
+            "SELECT id FROM customers WHERE mobile = ?",
+            (mobile,),
+        ).fetchone()
+        if existing and (customer_id is None or int(existing["id"]) != int(customer_id)):
+            errors.append("A customer with this mobile number already exists.")
+    if errors:
+        return None, errors
+
+    if customer_id:
+        conn.execute(
+            f"""
+            UPDATE customers
+            SET first_name = ?, mobile = ?, updated_at = {SQL_NOW}
+            WHERE id = ?
+            """,
+            (first_name, mobile, customer_id),
+        )
+        return customer_id, []
+
+    cursor = conn.execute(
+        f"""
+        INSERT INTO customers (first_name, mobile, created_at, updated_at)
+        VALUES (?, ?, {SQL_NOW}, {SQL_NOW})
+        """,
+        (first_name, mobile),
+    )
+    return int(cursor.lastrowid), []
+
+
+def delete_customer_record(conn, customer_id):
+    ensure_customers_schema(conn)
+    try:
+        customer_id = int(customer_id)
+    except (TypeError, ValueError):
+        return False
+    cursor = conn.execute("DELETE FROM customers WHERE id = ?", (customer_id,))
+    return cursor.rowcount > 0
+
+
+def list_pos_menu_categories(conn, include_inactive=False):
+    """Return menu categories with active item counts."""
+    ensure_pos_schema(conn)
+    where = "" if include_inactive else "WHERE c.is_active = 1"
+    rows = conn.execute(
+        f"""
+        SELECT
+            c.id,
+            c.name,
+            c.sort_order,
+            c.is_visible,
+            c.is_active,
+            COALESCE(SUM(CASE WHEN i.is_active = 1 THEN 1 ELSE 0 END), 0) AS item_count
+        FROM pos_menu_categories c
+        LEFT JOIN pos_menu_items i ON i.category_id = c.id
+        {where}
+        GROUP BY c.id
+        ORDER BY c.sort_order ASC, c.name COLLATE NOCASE ASC, c.id ASC
+        """
+    ).fetchall()
+    return [
+        {
+            "id": int(r["id"]),
+            "name": r["name"] or "",
+            "sort_order": int(r["sort_order"] or 0),
+            "is_visible": bool(r["is_visible"]),
+            "is_active": bool(r["is_active"]),
+            "item_count": int(r["item_count"] or 0),
+        }
+        for r in rows
+    ]
+
+
+def save_pos_menu_category(conn, *, category_id=None, name="", is_visible=True, sort_order=None):
+    """Create or update a menu category. Returns the saved row dict."""
+    ensure_pos_schema(conn)
+    clean_name = " ".join(str(name or "").split()).strip()
+    if not clean_name:
+        raise ValueError("Category name is required.")
+    if len(clean_name) > 80:
+        raise ValueError("Category name must be 80 characters or fewer.")
+
+    visible = 1 if is_visible else 0
+    if category_id:
+        existing = conn.execute(
+            "SELECT id FROM pos_menu_categories WHERE id = ? AND is_active = 1",
+            (int(category_id),),
+        ).fetchone()
+        if not existing:
+            raise ValueError("Category not found.")
+        dup = conn.execute(
+            """
+            SELECT id FROM pos_menu_categories
+            WHERE is_active = 1 AND id != ? AND lower(name) = lower(?)
+            """,
+            (int(category_id), clean_name),
+        ).fetchone()
+        if dup:
+            raise ValueError("A category with this name already exists.")
+        if sort_order is None:
+            conn.execute(
+                f"""
+                UPDATE pos_menu_categories
+                SET name = ?, is_visible = ?, updated_at = {SQL_NOW}
+                WHERE id = ?
+                """,
+                (clean_name, visible, int(category_id)),
+            )
+        else:
+            conn.execute(
+                f"""
+                UPDATE pos_menu_categories
+                SET name = ?, is_visible = ?, sort_order = ?, updated_at = {SQL_NOW}
+                WHERE id = ?
+                """,
+                (clean_name, visible, int(sort_order), int(category_id)),
+            )
+        saved_id = int(category_id)
+    else:
+        dup = conn.execute(
+            """
+            SELECT id FROM pos_menu_categories
+            WHERE is_active = 1 AND lower(name) = lower(?)
+            """,
+            (clean_name,),
+        ).fetchone()
+        if dup:
+            raise ValueError("A category with this name already exists.")
+        if sort_order is None:
+            max_row = conn.execute(
+                "SELECT COALESCE(MAX(sort_order), 0) AS m FROM pos_menu_categories WHERE is_active = 1"
+            ).fetchone()
+            sort_order = int(max_row["m"] or 0) + 10
+        cur = conn.execute(
+            f"""
+            INSERT INTO pos_menu_categories (name, sort_order, is_visible, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, 1, {SQL_NOW}, {SQL_NOW})
+            """,
+            (clean_name, int(sort_order), visible),
+        )
+        saved_id = int(cur.lastrowid)
+
+    row = conn.execute(
+        """
+        SELECT
+            c.id,
+            c.name,
+            c.sort_order,
+            c.is_visible,
+            c.is_active,
+            COALESCE(SUM(CASE WHEN i.is_active = 1 THEN 1 ELSE 0 END), 0) AS item_count
+        FROM pos_menu_categories c
+        LEFT JOIN pos_menu_items i ON i.category_id = c.id
+        WHERE c.id = ?
+        GROUP BY c.id
+        """,
+        (saved_id,),
+    ).fetchone()
+    return {
+        "id": int(row["id"]),
+        "name": row["name"] or "",
+        "sort_order": int(row["sort_order"] or 0),
+        "is_visible": bool(row["is_visible"]),
+        "is_active": bool(row["is_active"]),
+        "item_count": int(row["item_count"] or 0),
+    }
+
+
+def soft_delete_pos_menu_category(conn, category_id):
+    """Soft-delete a menu category (and its items)."""
+    ensure_pos_schema(conn)
+    existing = conn.execute(
+        "SELECT id FROM pos_menu_categories WHERE id = ? AND is_active = 1",
+        (int(category_id),),
+    ).fetchone()
+    if not existing:
+        raise ValueError("Category not found.")
+    conn.execute(
+        f"""
+        UPDATE pos_menu_items
+        SET is_active = 0, updated_at = {SQL_NOW}
+        WHERE category_id = ? AND is_active = 1
+        """,
+        (int(category_id),),
+    )
+    conn.execute(
+        """
+        DELETE FROM pos_menu_recipe_lines
+        WHERE menu_item_id IN (
+            SELECT id FROM pos_menu_items WHERE category_id = ?
+        )
+        """,
+        (int(category_id),),
+    )
+    conn.execute(
+        f"""
+        UPDATE pos_menu_categories
+        SET is_active = 0, updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (int(category_id),),
+    )
+    return True
+
+
+def _pos_menu_recipe_line_dict(row):
+    """Normalize a recipe join row."""
+    return {
+        "id": int(row["id"]),
+        "menu_item_id": int(row["menu_item_id"]),
+        "product_id": int(row["product_id"]),
+        "product_name": (row["product_name"] if "product_name" in row.keys() else None) or "",
+        "product_unit": (row["product_unit"] if "product_unit" in row.keys() else None) or "",
+        "qty": float(row["qty"] or 0),
+        "unit": (row["unit"] or "g").strip() or "g",
+        "sort_order": int(row["sort_order"] or 0),
+    }
+
+
+def list_pos_menu_recipe_lines(conn, menu_item_ids=None):
+    """Return recipe lines for one or many menu items (keyed later by caller)."""
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+    if menu_item_ids is None:
+        return []
+    if isinstance(menu_item_ids, (int, str)):
+        ids = [int(menu_item_ids)]
+    else:
+        ids = [int(x) for x in menu_item_ids if x is not None]
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"""
+        SELECT
+            r.id,
+            r.menu_item_id,
+            r.product_id,
+            r.qty,
+            r.unit,
+            r.sort_order,
+            p.name AS product_name,
+            p.default_unit AS product_unit
+        FROM pos_menu_recipe_lines r
+        LEFT JOIN store_products p ON p.id = r.product_id
+        WHERE r.menu_item_id IN ({placeholders})
+        ORDER BY r.menu_item_id ASC, r.sort_order ASC, r.id ASC
+        """,
+        ids,
+    ).fetchall()
+    return [_pos_menu_recipe_line_dict(r) for r in rows]
+
+
+def _attach_pos_menu_recipes(conn, items):
+    """Attach recipe[] onto each menu item dict."""
+    if not items:
+        return items
+    by_id = {int(it["id"]): it for it in items}
+    for it in items:
+        it["recipe"] = []
+    lines = list_pos_menu_recipe_lines(conn, list(by_id.keys()))
+    for line in lines:
+        mid = int(line["menu_item_id"])
+        if mid in by_id:
+            by_id[mid]["recipe"].append(line)
+    return items
+
+
+def _default_recipe_unit(product_unit):
+    """Weight/volume products default recipe qty to grams."""
+    unit = (product_unit or "").strip().lower()
+    if unit in ("kg", "liter", "ltr", "l", "litre"):
+        return "g"
+    return (product_unit or "g").strip() or "g"
+
+
+def replace_pos_menu_recipe_lines(conn, menu_item_id, recipe):
+    """Replace all recipe lines for a menu item. Returns the saved lines."""
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+    mid = int(menu_item_id)
+    existing = conn.execute(
+        "SELECT id FROM pos_menu_items WHERE id = ?",
+        (mid,),
+    ).fetchone()
+    if not existing:
+        raise ValueError("Menu item not found.")
+
+    conn.execute("DELETE FROM pos_menu_recipe_lines WHERE menu_item_id = ?", (mid,))
+
+    if not recipe:
+        return []
+    if not isinstance(recipe, list):
+        raise ValueError("Recipe must be a list of ingredients.")
+
+    seen = set()
+    sort_i = 0
+    for raw in recipe:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            product_id = int(raw.get("product_id"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid recipe product.") from exc
+        if product_id in seen:
+            raise ValueError("Each product can only appear once in the recipe.")
+        product_row = conn.execute(
+            """
+            SELECT id, name, default_unit
+            FROM store_products
+            WHERE id = ? AND is_active = 1
+            """,
+            (product_id,),
+        ).fetchone()
+        if not product_row:
+            raise ValueError("Recipe product not found in Product Master.")
+
+        try:
+            qty = float(raw.get("qty"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Recipe quantity must be a number.") from exc
+        if qty <= 0:
+            raise ValueError("Recipe quantity must be greater than zero.")
+
+        unit = " ".join(str(raw.get("unit") or "").split()).strip()
+        if not unit:
+            unit = _default_recipe_unit(product_row["default_unit"])
+        if len(unit) > 40:
+            raise ValueError("Recipe unit is too long.")
+
+        conn.execute(
+            """
+            INSERT INTO pos_menu_recipe_lines (menu_item_id, product_id, qty, unit, sort_order)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (mid, product_id, qty, unit, sort_i),
+        )
+        seen.add(product_id)
+        sort_i += 1
+
+    return list_pos_menu_recipe_lines(conn, mid)
+
+
+def _pos_menu_item_dict(row):
+    """Normalize a pos_menu_items join row to a JSON-friendly dict."""
+    product_id = row["product_id"]
+    rate = row["rate"]
+    return {
+        "id": int(row["id"]),
+        "category_id": int(row["category_id"]),
+        "product_id": int(product_id) if product_id not in (None, "") else None,
+        "product_name": (row["product_name"] if "product_name" in row.keys() else None) or "",
+        "product_unit": (row["product_unit"] if "product_unit" in row.keys() else None) or "",
+        "name": row["name"] or "",
+        "code": row["code"] or "",
+        "barcode": row["barcode"] or "",
+        "variant": row["variant"] or "",
+        "rate": float(rate or 0),
+        "sort_order": int(row["sort_order"] or 0),
+        "is_active": bool(row["is_active"]),
+        "recipe": [],
+    }
+
+
+def list_pos_menu_items(conn, category_id=None, include_inactive=False):
+    """Return menu items, optionally filtered by category."""
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+    clauses = []
+    params = []
+    if not include_inactive:
+        clauses.append("i.is_active = 1")
+    if category_id is not None:
+        clauses.append("i.category_id = ?")
+        params.append(int(category_id))
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = conn.execute(
+        f"""
+        SELECT
+            i.id,
+            i.category_id,
+            i.product_id,
+            i.name,
+            i.code,
+            i.barcode,
+            i.variant,
+            i.rate,
+            i.sort_order,
+            i.is_active,
+            p.name AS product_name,
+            p.default_unit AS product_unit
+        FROM pos_menu_items i
+        LEFT JOIN store_products p ON p.id = i.product_id
+        {where}
+        ORDER BY i.sort_order ASC, i.name COLLATE NOCASE ASC, i.id ASC
+        """,
+        params,
+    ).fetchall()
+    items = [_pos_menu_item_dict(r) for r in rows]
+    return _attach_pos_menu_recipes(conn, items)
+
+
+def save_pos_menu_item(
+    conn,
+    *,
+    item_id=None,
+    category_id=None,
+    product_id=None,
+    name="",
+    code="",
+    barcode="",
+    variant="",
+    rate=0,
+    sort_order=None,
+    recipe=None,
+):
+    """Create or update a menu item; optional recipe[] replaces ingredient lines."""
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+
+    try:
+        cat_id = int(category_id) if category_id not in (None, "") else None
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid category.") from exc
+    if not cat_id:
+        raise ValueError("Category is required.")
+    cat = conn.execute(
+        "SELECT id FROM pos_menu_categories WHERE id = ? AND is_active = 1",
+        (cat_id,),
+    ).fetchone()
+    if not cat:
+        raise ValueError("Category not found.")
+
+    prod_id = None
+    product_row = None
+    if product_id not in (None, ""):
+        try:
+            prod_id = int(product_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid product.") from exc
+        product_row = conn.execute(
+            """
+            SELECT id, name, default_unit, approximate_price, outlet
+            FROM store_products
+            WHERE id = ? AND is_active = 1
+            """,
+            (prod_id,),
+        ).fetchone()
+        if not product_row:
+            raise ValueError("Product not found in Product Master.")
+
+    clean_name = " ".join(str(name or "").split()).strip()
+    if not clean_name and product_row:
+        clean_name = (product_row["name"] or "").strip()
+    if not clean_name:
+        raise ValueError("Item name is required.")
+    if len(clean_name) > 120:
+        raise ValueError("Item name must be 120 characters or fewer.")
+
+    clean_code = " ".join(str(code or "").split()).strip()[:40]
+    clean_barcode = " ".join(str(barcode or "").split()).strip()[:64]
+    clean_variant = " ".join(str(variant or "").split()).strip()[:80]
+
+    try:
+        rate_val = float(rate if rate not in (None, "") else 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Rate must be a number.") from exc
+    if rate_val < 0:
+        raise ValueError("Rate cannot be negative.")
+    if rate_val == 0 and product_row and product_row["approximate_price"] is not None:
+        try:
+            approx = float(product_row["approximate_price"])
+            if approx > 0:
+                rate_val = approx
+        except (TypeError, ValueError):
+            pass
+
+    if item_id:
+        existing = conn.execute(
+            "SELECT id FROM pos_menu_items WHERE id = ? AND is_active = 1",
+            (int(item_id),),
+        ).fetchone()
+        if not existing:
+            raise ValueError("Menu item not found.")
+        if sort_order is None:
+            conn.execute(
+                f"""
+                UPDATE pos_menu_items
+                SET category_id = ?, product_id = ?, name = ?, code = ?, barcode = ?,
+                    variant = ?, rate = ?, updated_at = {SQL_NOW}
+                WHERE id = ?
+                """,
+                (
+                    cat_id,
+                    prod_id,
+                    clean_name,
+                    clean_code,
+                    clean_barcode,
+                    clean_variant,
+                    rate_val,
+                    int(item_id),
+                ),
+            )
+        else:
+            conn.execute(
+                f"""
+                UPDATE pos_menu_items
+                SET category_id = ?, product_id = ?, name = ?, code = ?, barcode = ?,
+                    variant = ?, rate = ?, sort_order = ?, updated_at = {SQL_NOW}
+                WHERE id = ?
+                """,
+                (
+                    cat_id,
+                    prod_id,
+                    clean_name,
+                    clean_code,
+                    clean_barcode,
+                    clean_variant,
+                    rate_val,
+                    int(sort_order),
+                    int(item_id),
+                ),
+            )
+        saved_id = int(item_id)
+    else:
+        if sort_order is None:
+            max_row = conn.execute(
+                """
+                SELECT COALESCE(MAX(sort_order), 0) AS m
+                FROM pos_menu_items
+                WHERE category_id = ? AND is_active = 1
+                """,
+                (cat_id,),
+            ).fetchone()
+            sort_order = int(max_row["m"] or 0) + 10
+        cur = conn.execute(
+            f"""
+            INSERT INTO pos_menu_items (
+                category_id, product_id, name, code, barcode, variant, rate,
+                sort_order, is_active, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, {SQL_NOW}, {SQL_NOW})
+            """,
+            (
+                cat_id,
+                prod_id,
+                clean_name,
+                clean_code,
+                clean_barcode,
+                clean_variant,
+                rate_val,
+                int(sort_order),
+            ),
+        )
+        saved_id = int(cur.lastrowid)
+
+    if recipe is not None:
+        replace_pos_menu_recipe_lines(conn, saved_id, recipe)
+    elif not item_id:
+        replace_pos_menu_recipe_lines(conn, saved_id, [])
+
+    row = conn.execute(
+        """
+        SELECT
+            i.id,
+            i.category_id,
+            i.product_id,
+            i.name,
+            i.code,
+            i.barcode,
+            i.variant,
+            i.rate,
+            i.sort_order,
+            i.is_active,
+            p.name AS product_name,
+            p.default_unit AS product_unit
+        FROM pos_menu_items i
+        LEFT JOIN store_products p ON p.id = i.product_id
+        WHERE i.id = ?
+        """,
+        (saved_id,),
+    ).fetchone()
+    item = _pos_menu_item_dict(row)
+    item["recipe"] = list_pos_menu_recipe_lines(conn, saved_id)
+    return item
+
+
+def soft_delete_pos_menu_item(conn, item_id):
+    """Soft-delete a menu item and clear its recipe lines."""
+    ensure_pos_schema(conn)
+    existing = conn.execute(
+        "SELECT id FROM pos_menu_items WHERE id = ? AND is_active = 1",
+        (int(item_id),),
+    ).fetchone()
+    if not existing:
+        raise ValueError("Menu item not found.")
+    conn.execute("DELETE FROM pos_menu_recipe_lines WHERE menu_item_id = ?", (int(item_id),))
+    conn.execute(
+        f"""
+        UPDATE pos_menu_items
+        SET is_active = 0, updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (int(item_id),),
+    )
+    return True
+
+
+def list_store_products_lite(conn, *, outlets=None, q=""):
+    """Active Product Master rows for pickers (id, name, unit, outlet, price)."""
+    ensure_stores_schema(conn)
+    clauses = ["p.is_active = 1"]
+    params = []
+    if outlets:
+        keys = [str(o or "").strip().lower() for o in outlets if str(o or "").strip()]
+        if keys:
+            placeholders = ",".join("?" for _ in keys)
+            clauses.append(f"lower(p.outlet) IN ({placeholders})")
+            params.extend(keys)
+    needle = " ".join(str(q or "").split()).strip().lower()
+    if needle:
+        clauses.append("lower(p.name) LIKE ?")
+        params.append(f"%{needle}%")
+    where = " AND ".join(clauses)
+    rows = conn.execute(
+        f"""
+        SELECT
+            p.id,
+            p.name,
+            p.default_unit,
+            p.outlet,
+            p.approximate_price,
+            c.name AS category_name
+        FROM store_products p
+        LEFT JOIN store_product_categories c
+          ON c.id = p.category_id AND c.is_active = 1
+        WHERE {where}
+        ORDER BY
+            CASE lower(p.outlet)
+                WHEN 'restaurant' THEN 0
+                WHEN 'both' THEN 1
+                ELSE 2
+            END,
+            p.name COLLATE NOCASE ASC,
+            p.id ASC
+        LIMIT 500
+        """,
+        params,
+    ).fetchall()
+    result = []
+    for r in rows:
+        price = r["approximate_price"]
+        try:
+            price_val = float(price) if price is not None else None
+        except (TypeError, ValueError):
+            price_val = None
+        result.append(
+            {
+                "id": int(r["id"]),
+                "name": r["name"] or "",
+                "default_unit": r["default_unit"] or "",
+                "outlet": (r["outlet"] or "").strip().lower() or "restaurant",
+                "approximate_price": price_val,
+                "category_name": r["category_name"] or "",
+            }
+        )
+    return result
+
+
+def get_pos_floor_layout(conn):
+    """Load floor areas/tables JSON; returns empty lists when unset."""
+    ensure_pos_schema(conn)
+    row = conn.execute("SELECT payload FROM pos_floor_layout WHERE id = 1").fetchone()
+    if not row:
+        return empty_pos_floor_payload()
+    try:
+        parsed = json.loads(row["payload"] or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    areas = parsed.get("areas")
+    tables = parsed.get("tables")
+    if not isinstance(areas, list) or not isinstance(tables, list):
+        return empty_pos_floor_payload()
+    return _normalize_pos_floor_payload(areas, tables)
+
+
+def save_pos_floor_layout(conn, areas, tables):
+    """Replace singleton floor layout payload."""
+    ensure_pos_schema(conn)
+    payload = _normalize_pos_floor_payload(areas, tables)
+    blob = json.dumps(payload, separators=(",", ":"))
+    conn.execute(
+        f"""
+        INSERT INTO pos_floor_layout (id, payload, updated_at)
+        VALUES (1, ?, {SQL_NOW})
+        ON CONFLICT(id) DO UPDATE SET
+            payload = excluded.payload,
+            updated_at = {SQL_NOW}
+        """
+    , (blob,))
+    return payload
+
+
+def get_pos_restaurant_settings(conn):
+    """Load restaurant settings JSON blob (empty dict when unset)."""
+    ensure_pos_schema(conn)
+    row = conn.execute("SELECT payload FROM pos_restaurant_settings WHERE id = 1").fetchone()
+    if not row:
+        return {}
+    try:
+        parsed = json.loads(row["payload"] or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def save_pos_restaurant_settings(conn, settings):
+    """Replace singleton restaurant settings JSON."""
+    ensure_pos_schema(conn)
+    if not isinstance(settings, dict):
+        settings = {}
+    blob = json.dumps(settings, separators=(",", ":"))
+    conn.execute(
+        f"""
+        INSERT INTO pos_restaurant_settings (id, payload, updated_at)
+        VALUES (1, ?, {SQL_NOW})
+        ON CONFLICT(id) DO UPDATE SET
+            payload = excluded.payload,
+            updated_at = {SQL_NOW}
+        """
+    , (blob,))
+    return settings
+
+
+POS_INVOICE_ORDER_TYPES = (
+    ("dine_in", "Dine In"),
+    ("takeaway", "Takeaway"),
+    ("delivery", "Delivery"),
+)
+POS_INVOICE_ORDER_TYPE_LABELS = dict(POS_INVOICE_ORDER_TYPES)
+
+
+def _pos_money(value, default=0.0):
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if n != n:  # NaN
+        return float(default)
+    return round(n, 2)
+
+
+def _normalize_pos_order_type(value):
+    key = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if key in ("dinein", "dine"):
+        key = "dine_in"
+    if key not in POS_INVOICE_ORDER_TYPE_LABELS:
+        return "dine_in"
+    return key
+
+
+def _pos_invoice_line_dicts(conn, invoice_id):
+    rows = conn.execute(
+        """
+        SELECT id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty
+        FROM pos_invoice_lines
+        WHERE invoice_id = ?
+        ORDER BY sort_order ASC, id ASC
+        """,
+        (int(invoice_id),),
+    ).fetchall()
+    lines = []
+    for row in rows:
+        qty = _pos_money(row["qty"])
+        sent_qty = _pos_money(row["sent_qty"])
+        if sent_qty > qty:
+            sent_qty = qty
+        lines.append(
+            {
+                "id": int(row["id"]),
+                "sort_order": int(row["sort_order"] or 0),
+                "menu_item_id": int(row["menu_item_id"]) if row["menu_item_id"] is not None else None,
+                "name": row["name"] or "",
+                "variant": row["variant"] or "",
+                "rate": _pos_money(row["rate"]),
+                "qty": qty,
+                "line_total": _pos_money(row["line_total"]),
+                "sent_qty": sent_qty,
+            }
+        )
+    return lines
+
+
+def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
+    if not row:
+        return None
+    invoice_id = int(row["id"])
+    order_type = _normalize_pos_order_type(row["order_type"])
+    item = {
+        "id": invoice_id,
+        "order_no": row["order_no"] or "",
+        "saved_at": row["saved_at"] or "",
+        "order_date": row["order_date"] or "",
+        "order_type": order_type,
+        "order_type_label": POS_INVOICE_ORDER_TYPE_LABELS.get(order_type, order_type),
+        "table": row["table_label"] or "",
+        "table_label": row["table_label"] or "",
+        "captain": row["captain"] or "",
+        "customer_name": row["customer_name"] or "",
+        "customer_mobile": row["customer_mobile"] or "",
+        "notes": row["notes"] or "",
+        "discount_type": row["discount_type"] or "pct",
+        "discount_value": _pos_money(row["discount_value"]),
+        "service_type": row["service_type"] or "pct",
+        "service_value": _pos_money(row["service_value"]),
+        "tip_amount": _pos_money(row["tip_amount"]),
+        "coupon_code": row["coupon_code"] or "",
+        "subtotal": _pos_money(row["subtotal"]),
+        "discount": _pos_money(row["discount_amount"]),
+        "gst": _pos_money(row["gst_amount"]),
+        "service": _pos_money(row["service_amount"]),
+        "tip": _pos_money(row["tip"]),
+        "round_off": _pos_money(row["round_off"]),
+        "grand_total": _pos_money(row["grand_total"]),
+        "created_by": row["created_by"] or "",
+        "created_at": row["created_at"] or "",
+        "updated_at": row["updated_at"] or "",
+        "status": row["status"] or "open",
+        "kot_sent": bool(row["kot_sent"]),
+        "first_kot_at": row["first_kot_at"] or "",
+        "item_count": int(row["item_count"]) if "item_count" in row.keys() else 0,
+    }
+    if include_lines:
+        item["lines"] = _pos_invoice_line_dicts(conn, invoice_id)
+        if not item["item_count"]:
+            item["item_count"] = len(item["lines"])
+    return item
+
+
+def _pos_floor_table_status(layout, table_label):
+    """Case-insensitive floor status lookup for a table name; None when not on the floor."""
+    needle = str(table_label or "").strip().lower()
+    if not needle:
+        return None
+    for t in (layout or {}).get("tables") or []:
+        if str(t.get("name") or "").strip().lower() == needle:
+            return str(t.get("status") or "available").strip().lower() or "available"
+    return None
+
+
+def _pos_mark_table_occupied(conn, table_label):
+    """Flip a table to occupied once the first KOT is sent for its dine-in bill
+    (best-effort, only advances tables that are currently available — never
+    overrides reserved/cleaning/inactive set deliberately from the Tables page)."""
+    needle = str(table_label or "").strip().lower()
+    if not needle:
+        return
+    layout = get_pos_floor_layout(conn)
+    tables = layout.get("tables") or []
+    changed = False
+    for t in tables:
+        if str(t.get("name") or "").strip().lower() == needle:
+            if str(t.get("status") or "available").strip().lower() in ("", "available"):
+                t["status"] = "occupied"
+                changed = True
+            break
+    if changed:
+        save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+
+
+def _pos_mark_table_available(conn, table_label):
+    """Free a table back to available — used when a bill is explicitly closed.
+    Unlike _pos_mark_table_occupied this is an unconditional override: closing a
+    bill is a deliberate staff action, so it wins over whatever status the table
+    was showing."""
+    needle = str(table_label or "").strip().lower()
+    if not needle:
+        return
+    layout = get_pos_floor_layout(conn)
+    tables = layout.get("tables") or []
+    changed = False
+    for t in tables:
+        if str(t.get("name") or "").strip().lower() == needle:
+            if str(t.get("status") or "").strip().lower() != "available":
+                t["status"] = "available"
+                changed = True
+            break
+    if changed:
+        save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+
+
+def get_open_pos_invoice_for_table(conn, table_label):
+    """Return the most recent open dine-in invoice for a table (with lines), or
+    None. This is the shared lookup behind 'resume this table's order' on both
+    the Tables page and the Create Invoice table picker."""
+    ensure_pos_schema(conn)
+    needle = str(table_label or "").strip()
+    if not needle:
+        return None
+    row = conn.execute(
+        """
+        SELECT
+            i.*,
+            (
+                SELECT COUNT(*) FROM pos_invoice_lines l WHERE l.invoice_id = i.id
+            ) AS item_count
+        FROM pos_invoices i
+        WHERE i.is_active = 1
+          AND i.status = 'open'
+          AND i.order_type = 'dine_in'
+          AND LOWER(i.table_label) = LOWER(?)
+        ORDER BY i.id DESC
+        LIMIT 1
+        """,
+        (needle,),
+    ).fetchone()
+    return _pos_invoice_row_to_dict(conn, row, include_lines=True)
+
+
+def close_pos_invoice_and_free_table(conn, invoice_id):
+    """Close a bill (status -> 'closed') and free its table, if any. Decoupled
+    from real payment for now — this is the 'Close & Free Table' action."""
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+    row = conn.execute(
+        "SELECT id, table_label, order_type FROM pos_invoices WHERE id = ? AND is_active = 1",
+        (invoice_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Invoice not found.")
+    conn.execute(
+        f"""
+        UPDATE pos_invoices SET status = 'closed', updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (invoice_id,),
+    )
+    table_label = row["table_label"] or ""
+    order_type = _normalize_pos_order_type(row["order_type"])
+    if table_label and order_type == "dine_in":
+        _pos_mark_table_available(conn, table_label)
+    return get_pos_invoice(conn, invoice_id)
+
+
+def clear_all_pos_tables(conn):
+    """Bulk-free every table on the floor back to available (Tables page 'Clear
+    all tables'). Also closes any dangling open dine-in bills tied to those
+    tables so a later resume lookup can't resurrect a stale order."""
+    ensure_pos_schema(conn)
+    layout = get_pos_floor_layout(conn)
+    tables = layout.get("tables") or []
+    for t in tables:
+        label = str(t.get("name") or "").strip()
+        if label:
+            conn.execute(
+                f"""
+                UPDATE pos_invoices SET status = 'closed', updated_at = {SQL_NOW}
+                WHERE is_active = 1 AND status = 'open' AND order_type = 'dine_in'
+                  AND LOWER(table_label) = LOWER(?)
+                """,
+                (label,),
+            )
+        t["status"] = "available"
+    return save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+
+
+def save_pos_invoice(conn, payload, *, created_by=""):
+    """Create or update a POS invoice by order_no. Returns the saved invoice dict."""
+    ensure_pos_schema(conn)
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid invoice payload.")
+
+    order_no = " ".join(str(payload.get("orderNo") or payload.get("order_no") or "").split()).strip()
+    if not order_no:
+        raise ValueError("Order number is required.")
+
+    customer_name = " ".join(
+        str(payload.get("customerName") or payload.get("customer_name") or "").split()
+    ).strip()
+    if not customer_name:
+        raise ValueError("Customer name is required.")
+
+    raw_lines = payload.get("lines")
+    if not isinstance(raw_lines, list) or not raw_lines:
+        raise ValueError("Add at least one item before saving.")
+
+    totals = payload.get("totals") if isinstance(payload.get("totals"), dict) else {}
+    order_type = _normalize_pos_order_type(payload.get("orderType") or payload.get("order_type"))
+    saved_at = str(payload.get("savedAt") or payload.get("saved_at") or "").strip()
+    if not saved_at:
+        saved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    order_date = str(payload.get("orderDate") or payload.get("order_date") or "").strip()
+    if not order_date:
+        # ISO or local datetime → date portion
+        order_date = saved_at[:10] if len(saved_at) >= 10 else datetime.now().strftime("%Y-%m-%d")
+    if "T" in order_date:
+        order_date = order_date.split("T", 1)[0]
+
+    customer_mobile = "".join(
+        ch for ch in str(payload.get("customerMobile") or payload.get("customer_mobile") or "") if ch.isdigit()
+    )[:10]
+    table_label = str(payload.get("table") or payload.get("table_label") or "").strip()
+    captain = str(payload.get("captain") or "").strip()
+    notes = str(payload.get("notes") or "").strip()
+    # Keep Customer Master in sync with POS Customer Details (unique mobile).
+    if customer_mobile:
+        upsert_customer(conn, customer_name, customer_mobile)
+    discount_type = str(
+        payload.get("discountType") or totals.get("discountType") or "pct"
+    ).strip().lower() or "pct"
+    if discount_type not in ("pct", "inr"):
+        discount_type = "pct"
+    service_type = str(
+        payload.get("serviceType") or totals.get("serviceType") or "pct"
+    ).strip().lower() or "pct"
+    if service_type not in ("pct", "inr"):
+        service_type = "pct"
+    discount_value = _pos_money(payload.get("discountValue", totals.get("discountValue")))
+    service_value = _pos_money(payload.get("serviceValue", totals.get("serviceValue")))
+    tip_amount = _pos_money(payload.get("tipAmount", totals.get("tip")))
+    coupon_code = str(payload.get("couponCode") or payload.get("coupon_code") or "").strip()
+
+    subtotal = _pos_money(totals.get("subtotal"))
+    discount_amount = _pos_money(totals.get("discount"))
+    gst_amount = _pos_money(totals.get("gst"))
+    service_amount = _pos_money(totals.get("service"))
+    tip = _pos_money(totals.get("tip", tip_amount))
+    round_off = _pos_money(totals.get("roundOff") or totals.get("round_off"))
+    grand_total = _pos_money(totals.get("total") or totals.get("grand_total"))
+
+    normalized_lines = []
+    computed_subtotal = 0.0
+    for idx, line in enumerate(raw_lines):
+        if not isinstance(line, dict):
+            continue
+        name = " ".join(str(line.get("name") or "").split()).strip()
+        if not name:
+            continue
+        rate = _pos_money(line.get("rate"))
+        qty = _pos_money(line.get("qty"))
+        if qty <= 0:
+            continue
+        line_total = _pos_money(rate * qty)
+        computed_subtotal += line_total
+        menu_item_id = line.get("menuId") if "menuId" in line else line.get("menu_item_id")
+        try:
+            menu_item_id = int(menu_item_id) if menu_item_id not in (None, "") else None
+        except (TypeError, ValueError):
+            menu_item_id = None
+        sent_qty = _pos_money(line.get("kotSentQty", line.get("sent_qty")))
+        if sent_qty < 0:
+            sent_qty = 0.0
+        if sent_qty > qty:
+            sent_qty = qty
+        normalized_lines.append(
+            {
+                "sort_order": idx,
+                "menu_item_id": menu_item_id,
+                "name": name,
+                "variant": str(line.get("variant") or "").strip(),
+                "rate": rate,
+                "qty": qty,
+                "line_total": line_total,
+                "sent_qty": sent_qty,
+            }
+        )
+    if not normalized_lines:
+        raise ValueError("Add at least one item before saving.")
+    if subtotal <= 0:
+        subtotal = _pos_money(computed_subtotal)
+
+    # A KOT send both persists the order and marks it as sent to the kitchen —
+    # that first send (not a plain save) is what flips the table to occupied.
+    kot_send = bool(payload.get("kotSend") or payload.get("kot_send"))
+
+    existing = conn.execute(
+        """
+        SELECT id, kot_sent, first_kot_at FROM pos_invoices
+        WHERE order_no = ? AND is_active = 1
+        LIMIT 1
+        """,
+        (order_no,),
+    ).fetchone()
+
+    # A brand-new dine-in bill must not be openable against a table the Tables
+    # page already shows as occupied — same floor/tables source of truth used
+    # there. Editing an already-saved order (existing order_no) is a resume of
+    # that same bill, so it is never blocked here.
+    if not existing and table_label and order_type == "dine_in":
+        floor_status = _pos_floor_table_status(get_pos_floor_layout(conn), table_label)
+        if floor_status == "occupied":
+            raise ValueError(
+                f'Table "{table_label}" is occupied. Free it on the Tables page or choose another table.'
+            )
+
+    was_kot_sent = bool(existing["kot_sent"]) if existing else False
+    next_kot_sent = 1 if (kot_send or was_kot_sent) else 0
+    first_kot_at = (existing["first_kot_at"] if existing else "") or ""
+    if kot_send and not first_kot_at:
+        first_kot_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    creator = str(created_by or "").strip()
+    if existing:
+        invoice_id = int(existing["id"])
+        conn.execute(
+            f"""
+            UPDATE pos_invoices SET
+                saved_at = ?,
+                order_date = ?,
+                order_type = ?,
+                table_label = ?,
+                captain = ?,
+                customer_name = ?,
+                customer_mobile = ?,
+                notes = ?,
+                discount_type = ?,
+                discount_value = ?,
+                service_type = ?,
+                service_value = ?,
+                tip_amount = ?,
+                coupon_code = ?,
+                subtotal = ?,
+                discount_amount = ?,
+                gst_amount = ?,
+                service_amount = ?,
+                tip = ?,
+                round_off = ?,
+                grand_total = ?,
+                kot_sent = ?,
+                first_kot_at = ?,
+                updated_at = {SQL_NOW}
+            WHERE id = ?
+            """,
+            (
+                saved_at,
+                order_date,
+                order_type,
+                table_label,
+                captain,
+                customer_name,
+                customer_mobile,
+                notes,
+                discount_type,
+                discount_value,
+                service_type,
+                service_value,
+                tip_amount,
+                coupon_code,
+                subtotal,
+                discount_amount,
+                gst_amount,
+                service_amount,
+                tip,
+                round_off,
+                grand_total,
+                next_kot_sent,
+                first_kot_at,
+                invoice_id,
+            ),
+        )
+        conn.execute("DELETE FROM pos_invoice_lines WHERE invoice_id = ?", (invoice_id,))
+    else:
+        cursor = conn.execute(
+            f"""
+            INSERT INTO pos_invoices (
+                order_no, saved_at, order_date, order_type, table_label, captain,
+                customer_name, customer_mobile, notes,
+                discount_type, discount_value, service_type, service_value,
+                tip_amount, coupon_code,
+                subtotal, discount_amount, gst_amount, service_amount, tip,
+                round_off, grand_total, created_by, status, kot_sent, first_kot_at,
+                is_active, created_at, updated_at
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, ?, ?,
+                ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, 'open', ?, ?,
+                1, {SQL_NOW}, {SQL_NOW}
+            )
+            """,
+            (
+                order_no,
+                saved_at,
+                order_date,
+                order_type,
+                table_label,
+                captain,
+                customer_name,
+                customer_mobile,
+                notes,
+                discount_type,
+                discount_value,
+                service_type,
+                service_value,
+                tip_amount,
+                coupon_code,
+                subtotal,
+                discount_amount,
+                gst_amount,
+                service_amount,
+                tip,
+                round_off,
+                grand_total,
+                creator,
+                next_kot_sent,
+                first_kot_at,
+            ),
+        )
+        invoice_id = int(cursor.lastrowid)
+
+    for line in normalized_lines:
+        conn.execute(
+            """
+            INSERT INTO pos_invoice_lines (
+                invoice_id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                invoice_id,
+                line["sort_order"],
+                line["menu_item_id"],
+                line["name"],
+                line["variant"],
+                line["rate"],
+                line["qty"],
+                line["line_total"],
+                line["sent_qty"],
+            ),
+        )
+
+    # Occupancy is now a KOT-driven signal: a table becomes occupied the moment
+    # its first KOT is confirmed to the kitchen, not merely when a bill is saved.
+    if kot_send and not was_kot_sent and table_label and order_type == "dine_in":
+        _pos_mark_table_occupied(conn, table_label)
+
+    return get_pos_invoice(conn, invoice_id)
+
+
+def get_pos_invoice(conn, invoice_id):
+    """Return one active invoice with lines, or None."""
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError):
+        return None
+    row = conn.execute(
+        """
+        SELECT
+            i.*,
+            (
+                SELECT COUNT(*) FROM pos_invoice_lines l WHERE l.invoice_id = i.id
+            ) AS item_count
+        FROM pos_invoices i
+        WHERE i.id = ? AND i.is_active = 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    return _pos_invoice_row_to_dict(conn, row, include_lines=True)
+
+
+def soft_delete_pos_invoice(conn, invoice_id):
+    """Soft-delete an invoice. Raises ValueError if missing."""
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+    row = conn.execute(
+        "SELECT id FROM pos_invoices WHERE id = ? AND is_active = 1",
+        (invoice_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Invoice not found.")
+    conn.execute(
+        f"""
+        UPDATE pos_invoices
+        SET is_active = 0, updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (invoice_id,),
+    )
+    return True
+
+
+def list_pos_invoices(
+    conn,
+    *,
+    date_from=None,
+    date_to=None,
+    order_type=None,
+    q="",
+):
+    """List active invoices with optional filters (newest first)."""
+    ensure_pos_schema(conn)
+    clauses = ["i.is_active = 1"]
+    params = []
+    if date_from:
+        clauses.append("i.order_date >= ?")
+        params.append(str(date_from))
+    if date_to:
+        clauses.append("i.order_date <= ?")
+        params.append(str(date_to))
+    if order_type and str(order_type).strip().lower() not in ("", "all"):
+        clauses.append("i.order_type = ?")
+        params.append(_normalize_pos_order_type(order_type))
+    needle = " ".join(str(q or "").split()).strip().lower()
+    if needle:
+        like = f"%{needle}%"
+        clauses.append(
+            """
+            (
+                lower(i.order_no) LIKE ?
+                OR lower(i.customer_name) LIKE ?
+                OR lower(i.customer_mobile) LIKE ?
+                OR lower(i.table_label) LIKE ?
+                OR lower(i.captain) LIKE ?
+            )
+            """
+        )
+        params.extend([like, like, like, like, like])
+    where = " AND ".join(clauses)
+    rows = conn.execute(
+        f"""
+        SELECT
+            i.*,
+            (
+                SELECT COUNT(*) FROM pos_invoice_lines l WHERE l.invoice_id = i.id
+            ) AS item_count
+        FROM pos_invoices i
+        WHERE {where}
+        ORDER BY i.order_date DESC, i.saved_at DESC, i.id DESC
+        """,
+        params,
+    ).fetchall()
+    return [_pos_invoice_row_to_dict(conn, row, include_lines=False) for row in rows]
+
+
+def pos_invoice_kpis(conn, invoices, *, today=None):
+    """Compute ledger KPIs from an already-filtered invoice list."""
+    ensure_pos_schema(conn)
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    else:
+        today = str(today)
+    total_sales = 0.0
+    today_sales = 0.0
+    today_count = 0
+    for inv in invoices or []:
+        amount = _pos_money(inv.get("grand_total"))
+        total_sales += amount
+        if str(inv.get("order_date") or "") == today:
+            today_sales += amount
+            today_count += 1
+    count = len(invoices or [])
+    average = (total_sales / count) if count else 0.0
+    return {
+        "total_sales": _pos_money(total_sales),
+        "invoice_count": count,
+        "average_bill": _pos_money(average),
+        "today_sales": _pos_money(today_sales),
+        "today_count": today_count,
+    }
 
 
 def _migrate_suppliers_optional_gst(cursor):
@@ -113,12 +1923,24 @@ def ensure_stores_schema(conn):
         CREATE INDEX IF NOT EXISTS idx_store_indents_outlet_status
         ON store_indents(outlet, status, created_at DESC)
     """)
+    indent_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_indents)").fetchall()
+    }
+    if "submission_token" not in indent_cols:
+        cursor.execute(
+            "ALTER TABLE store_indents ADD COLUMN submission_token TEXT NOT NULL DEFAULT ''"
+        )
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_store_indents_submission_token
+        ON store_indents(submission_token) WHERE submission_token != ''
+    """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_indent_lines (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
             indent_id          INTEGER NOT NULL,
             item_name          TEXT    NOT NULL,
             quantity           REAL    NOT NULL DEFAULT 0,
+            quantity_received  REAL    NOT NULL DEFAULT 0,
             unit               TEXT    NOT NULL DEFAULT 'pcs',
             notes              TEXT    NOT NULL DEFAULT '',
             approximate_price  REAL,
@@ -131,6 +1953,41 @@ def ensure_stores_schema(conn):
     if "approximate_price" not in indent_line_cols:
         cursor.execute(
             "ALTER TABLE store_indent_lines ADD COLUMN approximate_price REAL"
+        )
+    if "quantity_received" not in indent_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_indent_lines ADD COLUMN quantity_received REAL NOT NULL DEFAULT 0"
+        )
+        # Backfill from stock movements for partially received indents wrongly closed as stocked.
+        cursor.execute(
+            """
+            UPDATE store_indent_lines
+            SET quantity_received = COALESCE((
+                SELECT SUM(m.qty_delta)
+                FROM store_stock_movements m
+                WHERE m.ref_type = 'stock_inward'
+                  AND m.ref_id = store_indent_lines.indent_id
+                  AND m.item_name = store_indent_lines.item_name
+                  AND m.movement_type = 'receive'
+            ), 0)
+            WHERE EXISTS (
+                SELECT 1 FROM store_indents i
+                WHERE i.id = store_indent_lines.indent_id
+                  AND i.status = 'stocked'
+            )
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE store_indents
+            SET status = 'approved'
+            WHERE status = 'stocked'
+              AND EXISTS (
+                SELECT 1 FROM store_indent_lines l
+                WHERE l.indent_id = store_indents.id
+                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+              )
+            """
         )
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_indent_whatsapp_messages (
@@ -209,11 +2066,17 @@ def ensure_stores_schema(conn):
             ref_type      TEXT    NOT NULL DEFAULT '',
             ref_id        INTEGER,
             notes         TEXT    NOT NULL DEFAULT '',
+            unit_cost     REAL,
             created_by    INTEGER,
             created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (created_by) REFERENCES users(id)
         )
     """)
+    movement_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_stock_movements)").fetchall()
+    }
+    if "unit_cost" not in movement_cols:
+        cursor.execute("ALTER TABLE store_stock_movements ADD COLUMN unit_cost REAL")
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_movements_outlet
         ON store_stock_movements(outlet, created_at DESC)
@@ -227,6 +2090,16 @@ def ensure_stores_schema(conn):
             created_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_product_units (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            is_active  INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    _seed_store_product_units(cursor)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_products (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -263,6 +2136,7 @@ def ensure_stores_schema(conn):
         ON store_products(outlet, is_active, name)
     """)
     _seed_store_product_master(cursor)
+    _seed_store_product_units(cursor)  # re-run to sync units from seeded products
     cursor.execute(
         "UPDATE store_products SET default_unit = 'liter' WHERE lower(default_unit) = 'ltr'"
     )
@@ -285,6 +2159,45 @@ def ensure_stores_schema(conn):
             f"UPDATE {table} SET outlet = 'restaurant' WHERE lower(outlet) = 'kitchen'"
         )
     conn.commit()
+
+
+def _seed_store_product_units(cursor):
+    """Seed default product units used on Product Master (idempotent)."""
+    defaults = ("kg", "pcs", "liter", "dozen", "bunch", "bottle", "case", "pack")
+    for idx, name in enumerate(defaults, start=1):
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO store_product_units (name, sort_order, is_active)
+            VALUES (?, ?, 1)
+            """,
+            (name, idx * 10),
+        )
+    # Pull any units already used on products into the master list.
+    tables = {
+        row[0]
+        for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    }
+    if "store_products" not in tables:
+        return
+    for row in cursor.execute(
+        """
+        SELECT DISTINCT default_unit AS name
+        FROM store_products
+        WHERE default_unit IS NOT NULL AND trim(default_unit) != ''
+        """
+    ).fetchall():
+        unit_name = str(row["name"] if hasattr(row, "keys") else row[0] or "").strip()
+        if not unit_name:
+            continue
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO store_product_units (name, sort_order, is_active)
+            VALUES (?, ?, 1)
+            """,
+            (unit_name, 1000),
+        )
 
 
 def _seed_store_product_master(cursor):
@@ -500,6 +2413,20 @@ def init_db():
         ON sales_update_expenses(expense_code)
         WHERE expense_code != ''
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS expense_categories (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_key  TEXT    NOT NULL UNIQUE,
+            name          TEXT    NOT NULL COLLATE NOCASE,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            is_active     INTEGER NOT NULL DEFAULT 1,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_expense_categories_name
+        ON expense_categories(lower(name))
+    """)
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS suppliers (
@@ -662,6 +2589,7 @@ def init_db():
     """)
     ensure_cash_ledger_schema(conn)
     ensure_stores_schema(conn)
+    ensure_pos_schema(conn)
 
     existing_pv_cols = {
         row["name"] for row in cursor.execute("PRAGMA table_info(purchase_verifications)").fetchall()
@@ -825,10 +2753,16 @@ def init_db():
             entry_type  TEXT    NOT NULL DEFAULT 'manual',
             payroll_year INTEGER,
             payroll_month INTEGER,
+            expense_id  INTEGER,
             created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (employee_id) REFERENCES employees(id) ON DELETE CASCADE
         )
     """)
+    existing_credit_cols = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(credits)").fetchall()
+    }
+    if "expense_id" not in existing_credit_cols:
+        cursor.execute("ALTER TABLE credits ADD COLUMN expense_id INTEGER")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sales_update_tips (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,

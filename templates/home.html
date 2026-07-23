@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Home | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=10">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=5">
 <script>
 (function(){
   try{
@@ -117,6 +117,17 @@
       </a>
       {% endif %}
 
+      {% if has_dashboard_access('point_of_sale') %}
+      <a class="db-home-card db-home-card--indigo" role="listitem" href="{{ url_for('point_of_sale') }}" data-search="restaurant point of sale pos counter invoice billing" aria-label="Open Restaurant">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h2"/><path d="M15 9h2v6h-2z"/></svg>
+        </div>
+        <h2>Restaurant</h2>
+        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <p class="db-home-card-desc">Counter billing and guest invoices.</p>
+      </a>
+      {% endif %}
+
       {% if has_dashboard_access('stores') %}
       <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('stores') }}" data-search="procurement inventory purchase stores stock warehouse materials indent bar restaurant" aria-label="Open Procurement & Inventory">
         <div class="db-home-card-icon" aria-hidden="true">
@@ -128,7 +139,18 @@
       </a>
       {% endif %}
 
-      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('stores') %}
+      {% if has_dashboard_access('master') %}
+      <a class="db-home-card db-home-card--purple" role="listitem" href="{{ url_for('master') }}" data-search="master data records reference" aria-label="Open Master">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+        </div>
+        <h2>Master</h2>
+        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <p class="db-home-card-desc">Central master data for Hotel Bell Elite.</p>
+      </a>
+      {% endif %}
+
+      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('stores') and not has_dashboard_access('master') %}
       <div class="db-home-empty" role="status">
         <h2>No modules assigned yet</h2>
         <p>This account is active, but no dashboard modules have been assigned. Ask an administrator to grant access so your modules appear here.</p>

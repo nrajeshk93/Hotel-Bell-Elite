@@ -8,8 +8,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=11">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
@@ -45,7 +45,6 @@
             </div>
             <h1>{{ page_title }}</h1>
           </div>
-          {% if page_subtitle %}<p>{{ page_subtitle }}</p>{% endif %}
         </div>
       </div>
       <div class="su-header-tools">
@@ -81,6 +80,15 @@
           <input type="hidden" id="credit-payment-date-from" name="payment_date_from" value="{{ payment_date_from }}">
           <input type="hidden" id="credit-payment-date-to" name="payment_date_to" value="{{ payment_date_to }}">
           {% endif %}
+          <div class="se-filter-chip se-filter-chip--search cp-search-chip">
+            <label class="se-filter-chip-label" for="credit-payment-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="credit-payment-search" class="cp-search-input" placeholder="Expense, supplier, invoice…" autocomplete="off" aria-label="Search credit payment entries">
+            </div>
+          </div>
           <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable>
             <span class="se-filter-chip-label" id="credit-payment-supplier-label">Supplier</span>
             <div class="se-filter-chip-control">
@@ -109,15 +117,6 @@
                 {% endfor %}
               </div>
               <div class="pl-supplier-empty" id="credit-payment-supplier-empty" hidden>No suppliers match your search.</div>
-            </div>
-          </div>
-          <div class="se-filter-chip se-filter-chip--search cp-search-chip">
-            <label class="se-filter-chip-label" for="credit-payment-search">Search</label>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              </span>
-              <input type="search" id="credit-payment-search" class="cp-search-input" placeholder="Expense, supplier, invoice…" autocomplete="off" aria-label="Search credit payment entries">
             </div>
           </div>
           <div class="se-filter-chip-date-host cp-date-range-host" id="cp-date-range-host">

@@ -50,14 +50,28 @@
 
     {% if selected_indent %}
     {# —— Approved Items —— #}
-    <article class="st-card st-inward-card">
-      <div class="st-card-head st-inward-card-head">
+    <article class="st-card st-inward-card st-inward-approved">
+      <div class="st-card-head st-inward-card-head st-inward-approved-head">
         <div class="st-card-title-wrap">
+          <span class="st-card-icon st-card-icon--success" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+          </span>
           <div>
             <h2 class="st-card-title">Approved Items</h2>
+            <p class="st-card-sub">Items approved for stock inward.</p>
           </div>
         </div>
         <div class="st-inward-items-tools">
+          <div class="st-inward-head-stats" aria-live="polite">
+            <div class="st-inward-head-stat">
+              <span class="st-inward-head-stat-label">Approved qty</span>
+              <strong class="st-inward-head-stat-value" data-st-inward-stat-approved-qty>0</strong>
+            </div>
+            <div class="st-inward-head-stat">
+              <span class="st-inward-head-stat-label">Approved amount</span>
+              <strong class="st-inward-head-stat-value st-inward-head-stat-value--money" data-st-inward-stat-approved-amount>—</strong>
+            </div>
+          </div>
           <button type="button" class="st-btn st-btn--secondary st-inward-view-btn" data-st-view-indent="{{ selected_indent.id }}">
             View Indent
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>
@@ -74,23 +88,25 @@
               <col class="st-inward-col-qty-w">
               <col class="st-inward-col-unit-w">
               <col class="st-inward-col-rate-w">
-              <col class="st-inward-col-recv-w">
+              <col class="st-inward-col-tax-w">
+              <col class="st-inward-col-total-w">
             </colgroup>
             <thead>
               <tr>
                 <th class="st-inward-col-check" scope="col">
                   <input type="checkbox" id="st-inward-select-all" checked title="Select all" aria-label="Select all items">
                 </th>
-                <th class="st-inward-col-item" scope="col">Item</th>
-                <th class="st-inward-col-qty" scope="col">Ordered Qty</th>
+                <th class="st-inward-col-item" scope="col">Item details</th>
+                <th class="st-inward-col-qty" scope="col">Inward qty</th>
                 <th class="st-inward-col-unit" scope="col">Unit</th>
-                <th class="st-inward-col-rate" scope="col">Approx. price</th>
-                <th class="st-inward-col-recv" scope="col">Received Qty</th>
+                <th class="st-inward-col-rate" scope="col">Price</th>
+                <th class="st-inward-col-tax" scope="col">Tax %</th>
+                <th class="st-inward-col-total" scope="col">Total</th>
               </tr>
             </thead>
             <tbody>
               {% for line in selected_lines %}
-              <tr class="st-inward-row" data-st-inward-row data-ordered="{{ line.quantity_display }}" data-rate="{{ line.rate_value }}">
+              <tr class="st-inward-row" data-st-inward-row data-ordered="{{ line.remaining_display }}" data-rate="{{ line.rate_value }}">
                 <td class="st-inward-col-check">
                   <input
                     type="checkbox"
@@ -101,67 +117,132 @@
                   >
                 </td>
                 <td class="st-inward-col-item">
-                  <div class="st-inward-item">
-                    <span class="st-inward-avatar" aria-hidden="true">{{ line.initial }}</span>
-                    <span class="st-inward-item-name">{{ line.item_name }}</span>
+                  <span class="st-inward-item-name">{{ line.item_name }}</span>
+                </td>
+                <td class="st-inward-col-qty">
+                  <div class="st-inward-cell-stack">
+                    <div class="st-inward-cell-card">
+                      <input
+                        type="number"
+                        class="st-inward-qty"
+                        name="received_qty_{{ line.id }}"
+                        value="{{ line.remaining_display }}"
+                        min="0"
+                        max="{{ line.remaining_display }}"
+                        step="any"
+                        inputmode="decimal"
+                        data-st-inward-qty
+                        placeholder="0"
+                        aria-label="Inward quantity for {{ line.item_name }}"
+                      >
+                    </div>
+                    <span class="st-inward-cell-meta">Available {{ line.remaining_display }}</span>
                   </div>
                 </td>
-                <td class="st-inward-col-qty">{{ line.quantity_display }}</td>
-                <td class="st-inward-col-unit">{{ line.unit or '—' }}</td>
-                <td class="st-inward-col-rate">{% if line.approximate_price_display %}₹{{ line.approximate_price_display }}{% else %}—{% endif %}</td>
-                <td class="st-inward-col-recv">
-                  <div class="st-inward-stepper">
-                    <button type="button" class="st-inward-step" data-st-inward-step="-1" aria-label="Decrease received quantity">−</button>
-                    <input
-                      type="number"
-                      class="st-inward-qty"
-                      name="received_qty_{{ line.id }}"
-                      value="{{ line.quantity_display }}"
-                      min="0"
-                      max="{{ line.quantity_display }}"
-                      step="any"
-                      inputmode="decimal"
-                      data-st-inward-qty
-                      aria-label="Received quantity for {{ line.item_name }}"
-                    >
-                    <button type="button" class="st-inward-step" data-st-inward-step="1" aria-label="Increase received quantity">+</button>
+                <td class="st-inward-col-unit">
+                  <span class="st-inward-unit">{{ line.unit or '—' }}</span>
+                </td>
+                <td class="st-inward-col-rate">
+                  <div class="st-inward-cell-stack">
+                    <div class="st-inward-cell-card">
+                      <input
+                        type="number"
+                        class="st-inward-price"
+                        name="unit_price_{{ line.id }}"
+                        value=""
+                        min="0.01"
+                        step="0.01"
+                        inputmode="decimal"
+                        data-st-inward-price
+                        placeholder="₹ Price"
+                        aria-label="Inward price for {{ line.item_name }}"
+                      >
+                    </div>
+                    <span class="st-inward-cell-meta st-inward-approved-price" data-st-inward-approved-price hidden>{% if line.approximate_price_display %}₹{{ line.approximate_price_display }}{% else %}—{% endif %}</span>
+                  </div>
+                </td>
+                <td class="st-inward-col-tax">
+                  <div class="st-inward-cell-stack">
+                    <div class="st-inward-cell-card st-inward-cell-card--tax">
+                      <input
+                        type="number"
+                        class="st-inward-tax"
+                        name="tax_percent_{{ line.id }}"
+                        value=""
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        inputmode="decimal"
+                        data-st-inward-tax
+                        placeholder="0"
+                        aria-label="Tax percent for {{ line.item_name }}"
+                      >
+                    </div>
+                    <span class="st-inward-cell-meta st-inward-cell-meta--spacer" aria-hidden="true">&nbsp;</span>
+                  </div>
+                </td>
+                <td class="st-inward-col-total">
+                  <div class="st-inward-cell-stack">
+                    <div class="st-inward-total-card">
+                      <output class="st-inward-line-total is-empty" data-st-inward-line-total aria-live="polite"></output>
+                    </div>
+                    <span class="st-inward-cell-meta st-inward-cell-meta--spacer" aria-hidden="true">&nbsp;</span>
                   </div>
                 </td>
               </tr>
               {% endfor %}
             </tbody>
+            <tfoot>
+              <tr class="st-inward-summary" aria-live="polite">
+                <td class="st-inward-col-check"></td>
+                <td class="st-inward-col-item"></td>
+                <td class="st-inward-col-qty">
+                  <div class="st-inward-summary-qty-stack">
+                    <span class="st-inward-summary-stat-label">Total inward qty</span>
+                    <div class="st-inward-summary-stat st-inward-summary-qty-wrap">
+                      <strong class="st-inward-summary-stat-value" data-st-inward-stat-qty>0</strong>
+                    </div>
+                  </div>
+                </td>
+                <td class="st-inward-col-unit"></td>
+                <td class="st-inward-col-rate"></td>
+                <td class="st-inward-col-tax">
+                  <div class="st-inward-summary-tax-stack">
+                    <span class="st-inward-summary-stat-label">Tax %</span>
+                    <div class="st-inward-summary-stat st-inward-summary-tax-wrap">
+                      <div class="st-inward-summary-tax">
+                        <input
+                          type="number"
+                          class="st-inward-bulk-tax"
+                          id="st-inward-bulk-tax"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          inputmode="decimal"
+                          data-st-inward-bulk-tax
+                          placeholder="0"
+                          aria-label="Set tax percent for all selected line items"
+                          title="Apply tax % to all selected items"
+                        >
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td class="st-inward-col-total">
+                  <div class="st-inward-summary-total-stack">
+                    <span class="st-inward-summary-stat-label">Total</span>
+                    <div class="st-inward-summary-total">
+                      <output class="st-inward-grand-total" data-st-inward-grand-total aria-live="polite" aria-label="Grand total amount">—</output>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
         {% else %}
-        <div class="pl-empty">This indent has no items.</div>
+        <div class="pl-empty">No remaining items to inward for this indent.</div>
         {% endif %}
-      </div>
-    </article>
-
-    {# —— Additional Information —— #}
-    <article class="st-card st-inward-card">
-      <div class="st-card-head st-inward-card-head st-inward-notes-head">
-        <div class="st-card-title-wrap">
-          <span class="st-card-icon st-card-icon--accent" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
-          </span>
-          <div>
-            <h2 class="st-card-title">Additional Information</h2>
-            <p class="st-card-sub">Add any additional details for this stock inward.</p>
-          </div>
-        </div>
-        <div class="st-inward-notes-field">
-          <label class="st-sr-only" for="st-inward-notes">Notes</label>
-          <textarea
-            id="st-inward-notes"
-            name="notes"
-            maxlength="500"
-            rows="3"
-            placeholder="Enter notes or additional information..."
-            data-st-notes-counter
-          ></textarea>
-          <div class="st-notes-count"><span data-st-notes-count>0</span> / 500</div>
-        </div>
       </div>
     </article>
 
@@ -169,6 +250,7 @@
       <a class="st-btn st-btn--secondary" href="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}" id="st-inward-cancel">Cancel</a>
       <button type="button" class="st-btn st-btn--primary" id="st-inward-confirm" disabled
         data-st-inward-confirm-url="{{ inward_confirm_url }}"
+        data-st-inward-save-category-url="{{ inward_save_category_url }}"
         data-st-inward-indent-no="{{ selected_indent.indent_no }}"
         data-st-default-company="{{ default_company }}"
         data-st-default-location="{{ default_location }}"
@@ -201,18 +283,32 @@
       <div class="st-indent-view-head">
         <div class="st-indent-view-title-wrap">
           <h2 class="st-indent-view-title" id="st-indent-view-title">Indent</h2>
-          <p class="st-indent-view-sub" id="st-indent-view-sub"></p>
         </div>
-        <span class="cp-status-pill" id="st-indent-view-status"></span>
+        <div class="st-indent-view-head-stats" aria-live="polite">
+          <div class="st-indent-view-stat">
+            <span class="st-indent-view-stat-label">Approved qty</span>
+            <strong class="st-indent-view-stat-value" id="st-indent-view-approved-qty">0</strong>
+          </div>
+          <div class="st-indent-view-stat">
+            <span class="st-indent-view-stat-label">Approved amount</span>
+            <strong class="st-indent-view-stat-value st-indent-view-stat-value--money" id="st-indent-view-approved-amount">—</strong>
+          </div>
+        </div>
         <button type="button" class="st-indent-view-close" id="st-indent-view-close" aria-label="Close">×</button>
       </div>
       <div class="st-indent-view-body">
         <p class="st-indent-view-notes" id="st-indent-view-notes" hidden></p>
         <p class="st-indent-view-decision" id="st-indent-view-decision" hidden></p>
-        <div class="st-detail-table-wrap">
-          <table class="st-detail-table">
+        <div class="pl-table-wrap st-indent-view-table-wrap">
+          <table class="pl-table st-indent-view-table" id="st-indent-view-table" aria-label="Indent line items">
             <thead>
-              <tr><th>Item</th><th>Qty</th><th>Unit</th><th>Approx. price</th></tr>
+              <tr>
+                <th class="pl-sortable" data-sort="item" scope="col" tabindex="0" aria-sort="none">Item</th>
+                <th class="pl-sortable pl-col-amount" data-sort="qty" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Qty</th>
+                <th class="pl-sortable" data-sort="unit" scope="col" tabindex="0" aria-sort="none">Unit</th>
+                <th class="pl-sortable pl-col-amount" data-sort="unit_price" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Unit price</th>
+                <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Total</th>
+              </tr>
             </thead>
             <tbody id="st-indent-view-lines"></tbody>
           </table>
@@ -220,7 +316,6 @@
         <div class="st-indent-view-empty" id="st-indent-view-empty" hidden>No items on this indent.</div>
       </div>
       <div class="st-indent-view-actions">
-        <button type="button" class="st-btn st-btn--ghost" id="st-indent-view-dismiss">Close</button>
         <a class="st-btn st-btn--primary" id="st-indent-view-po" href="#" download hidden>Download PO</a>
         <button type="button" class="st-btn st-btn--primary" id="st-indent-view-edit" hidden>Edit</button>
       </div>
@@ -243,8 +338,21 @@
       </div>
       <div id="st-inward-expense-error" class="staff-credit-error"></div>
       <div class="staff-field">
-        <label for="st-inward-expense-date">Purchase date *</label>
-        <input id="st-inward-expense-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
+        <div class="se-filter-chip se-filter-chip--date st-inward-date-chip" id="st-inward-date-chip">
+          <span class="se-filter-chip-label" id="st-inward-expense-date-label">Purchase date *</span>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+            </span>
+            <input id="st-inward-expense-date"
+                   class="staff-input pl-date-input"
+                   type="date"
+                   value="{{ today_iso }}"
+                   max="{{ today_iso }}"
+                   required
+                   aria-labelledby="st-inward-expense-date-label">
+          </div>
+        </div>
       </div>
       <div class="staff-field">
         <span class="staff-supplier-field-label">Supplier *</span>
@@ -279,7 +387,16 @@
         </div>
       </div>
       <div class="staff-grid pl-add-category-row">
-        <div class="staff-field staff-field--inline">
+        <div class="staff-field staff-field--inline st-inward-cat-field">
+          <button type="button"
+                  class="st-add-category-btn"
+                  id="st-inward-add-category-btn"
+                  data-st-action="open-inward-category-modal"
+                  aria-label="Add category"
+                  aria-haspopup="dialog"
+                  aria-controls="st-inward-category-modal">
+            Add
+          </button>
           <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox data-se-listbox-searchable id="st-inward-category-listbox">
             <span class="se-filter-chip-label" id="st-inward-category-label">Category *</span>
             <div class="se-filter-chip-control">
@@ -319,7 +436,8 @@
         </div>
         <div class="staff-field staff-field--inline">
           <label for="st-inward-expense-amount">Value (₹) *</label>
-          <input id="st-inward-expense-amount" class="staff-input" type="number" min="0.01" step="0.01" placeholder="e.g. 250">
+          <input id="st-inward-expense-amount" class="staff-input" type="number" min="1" step="1" placeholder="e.g. 250">
+          <p id="st-inward-approved-hint" class="st-inward-approved-hint" hidden></p>
           <div id="st-inward-amount-warn" class="st-inward-amount-warn" hidden role="status"></div>
         </div>
       </div>
@@ -356,6 +474,47 @@
         </button>
         <button type="button" class="btn staff-secondary" id="st-inward-expense-cancel">Cancel</button>
       </div>
+    </div>
+  </div>
+
+  {# Category add modal — stacked above Confirm stock & expense (same pattern as Product Master) #}
+  <div class="modal-overlay st-category-modal st-inward-category-modal"
+       id="st-inward-category-modal"
+       role="dialog"
+       aria-modal="true"
+       aria-labelledby="st-inward-category-modal-title"
+       data-st-save-category-url="{{ inward_save_category_url }}">
+    <div class="modal-box st-category-modal-box">
+      <h3>
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--acc,#2563EB)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/>
+        </svg>
+        <span id="st-inward-category-modal-title">Add category</span>
+      </h3>
+
+      <div id="st-inward-category-modal-err" style="display:none;" class="st-product-modal-err"></div>
+
+      <form id="st-inward-add-category-form" class="st-category-modal-form">
+        <div class="st-product-modal-field" style="margin-bottom:18px;">
+          <label for="st-inward-category-name">Category name *</label>
+          <input id="st-inward-category-name"
+                 type="text"
+                 name="category_name"
+                 value=""
+                 placeholder="e.g. Packaging"
+                 maxlength="80"
+                 autocomplete="off"
+                 required>
+        </div>
+
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary" id="st-inward-category-submit">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Add category</span>
+          </button>
+          <button type="button" class="btn btn-secondary" data-st-action="close-inward-category-modal">Cancel</button>
+        </div>
+      </form>
     </div>
   </div>
   {% endif %}

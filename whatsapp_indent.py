@@ -12,9 +12,12 @@ from indent_approval_pdf import build_indent_approval_pdf, format_indent_total_a
 
 log = logging.getLogger(__name__)
 
+# Hard default: at most 10 successful indent-approval WhatsApp sends per rolling 24 hours.
+_DEFAULT_DAILY_CAP = 10
+
 
 def indent_approval_template_name() -> str:
-    return (os.environ.get("WHATSAPP_INDENT_APPROVAL_TEMPLATE") or "indent_approval").strip()
+    return (os.environ.get("WHATSAPP_INDENT_APPROVAL_TEMPLATE") or "indent_approval_v2").strip()
 
 
 def indent_approval_template_language() -> str:
@@ -28,7 +31,35 @@ def indent_approver_numbers() -> list[str]:
 
 
 def indent_approver_name() -> str:
-    return (os.environ.get("WHATSAPP_INDENT_APPROVER_NAME") or "Sir").strip() or "Sir"
+    return (os.environ.get("WHATSAPP_INDENT_APPROVER_NAME") or "Neeraj").strip() or "Neeraj"
+
+
+def indent_whatsapp_daily_cap() -> int:
+    """Max successful indent-approval WhatsApp sends allowed in a rolling 24-hour window."""
+    raw = (os.environ.get("WHATSAPP_INDENT_DAILY_CAP") or str(_DEFAULT_DAILY_CAP)).strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return _DEFAULT_DAILY_CAP
+
+
+def count_todays_indent_whatsapp_sends(conn) -> int:
+    """Successful approval sends in the last 24 hours (local), including later-superseded ones."""
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS c
+        FROM store_indent_whatsapp_messages
+        WHERE status IN ('sent', 'superseded')
+          AND datetime(created_at) >= datetime('now', 'localtime', '-24 hours')
+        """
+    ).fetchone()
+    return int(row["c"] if row and row["c"] is not None else 0)
+
+
+def remaining_indent_whatsapp_daily_quota(conn) -> int:
+    cap = indent_whatsapp_daily_cap()
+    used = count_todays_indent_whatsapp_sends(conn)
+    return max(0, cap - used)
 
 
 def _record_send(
@@ -58,13 +89,59 @@ def _record_send(
     )
 
 
+def _already_sent_approval(
+    conn,
+    *,
+    indent_id: int,
+    recipient_phone: str,
+) -> bool:
+    """True if this indent+approver already got a successful send for the current round."""
+    phone = (recipient_phone or "").strip()
+    if not phone:
+        return False
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM store_indent_whatsapp_messages
+        WHERE indent_id = ?
+          AND recipient_phone = ?
+          AND status = 'sent'
+        LIMIT 1
+        """,
+        (indent_id, phone),
+    ).fetchone()
+    return row is not None
+
+
+def supersede_indent_whatsapp_sends(conn, indent_id: int) -> None:
+    """Mark prior successful sends as superseded so a new approval round can notify again."""
+    conn.execute(
+        """
+        UPDATE store_indent_whatsapp_messages
+        SET status = 'superseded'
+        WHERE indent_id = ?
+          AND status = 'sent'
+        """,
+        (indent_id,),
+    )
+
+
 def notify_indent_pending_whatsapp(
     conn,
     indent_id: int,
     *,
     outlet_label: str = "",
+    force: bool = False,
 ) -> tuple[bool, str]:
     """Build PDF + send indent_approval template to configured approvers.
+
+    Idempotent per indent+approver for the current approval round: skips recipients
+    that already have a successful ``sent`` row unless ``force`` is True.
+    Callers starting a new round (e.g. reject → resubmit) should call
+    ``supersede_indent_whatsapp_sends`` first.
+
+    Enforces a rolling 24-hour send cap (default 10; ``WHATSAPP_INDENT_DAILY_CAP``).
+    Extra indents can still be created; only WhatsApp notify is blocked past the cap.
 
     Returns (ok, message). Caller owns commit. Failures do not raise.
     """
@@ -87,6 +164,43 @@ def notify_indent_pending_whatsapp(
         return False, "Indent not found."
     if (indent["status"] or "") != "pending":
         return False, "Indent is not waiting for approval."
+
+    if not force:
+        recipients = [
+            phone
+            for phone in recipients
+            if not _already_sent_approval(
+                conn,
+                indent_id=indent_id,
+                recipient_phone=phone,
+            )
+        ]
+    if not recipients:
+        return True, "WhatsApp approval request already sent."
+
+    remaining = remaining_indent_whatsapp_daily_quota(conn)
+    cap = indent_whatsapp_daily_cap()
+    if remaining <= 0:
+        log.warning(
+            "WhatsApp indent approval blocked by daily cap indent_id=%s used=%s cap=%s",
+            indent_id,
+            count_todays_indent_whatsapp_sends(conn),
+            cap,
+        )
+        return (
+            False,
+            f"WhatsApp indent approval limit reached ({cap} messages / 24 hours). "
+            "More indents can still be created; WhatsApp notify resumes after the window resets "
+            "or raise WHATSAPP_INDENT_DAILY_CAP.",
+        )
+    if len(recipients) > remaining:
+        # Prefer sending what quota allows rather than failing the whole notify.
+        recipients = recipients[:remaining]
+        log.warning(
+            "WhatsApp indent approval truncated to remaining daily quota indent_id=%s remaining=%s",
+            indent_id,
+            remaining,
+        )
 
     lines = [
         dict(row)
@@ -121,6 +235,9 @@ def notify_indent_pending_whatsapp(
     }
 
     tmp_path = ""
+    sent = 0
+    failed = 0
+    last_error = ""
     try:
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
             tmp.write(pdf_bytes)
@@ -142,9 +259,6 @@ def notify_indent_pending_whatsapp(
         if not media_id:
             return False, "WhatsApp media upload returned no media id."
 
-        sent = 0
-        failed = 0
-        last_error = ""
         for phone in recipients:
             ok_send, send_err, send_body = wa.send_template_message(
                 phone,

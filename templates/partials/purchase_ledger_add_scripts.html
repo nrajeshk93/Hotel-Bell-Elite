@@ -172,6 +172,9 @@
   }
 
   function bindListbox(root){
+    if (!root || root.__plAddListboxBound) return;
+    root.__plAddListboxBound = true;
+    root.__suFilterListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var list = root.querySelector('.se-filter-listbox');
     var hidden = root.querySelector('input[type="hidden"]');

@@ -87,12 +87,104 @@
     }
   }
 
+  function prefersReducedMotion(){
+    try{
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch(e){
+      return false;
+    }
+  }
+
+  function findScrollParent(el){
+    if(!el || !el.parentElement) return null;
+    var node = el.parentElement;
+    while(node && node !== document.body && node !== document.documentElement){
+      var style = window.getComputedStyle(node);
+      var overflowY = style.overflowY;
+      if(overflowY === 'auto' || overflowY === 'scroll'){
+        return node;
+      }
+      node = node.parentElement;
+    }
+    var sidebar = el.closest ? el.closest('.de-sidebar') : null;
+    if(sidebar){
+      var nav = sidebar.querySelector('.de-sb-nav');
+      if(nav) return nav;
+    }
+    return null;
+  }
+
+  function ensureVisibleInScroller(el, opts){
+    if(!el || !el.getBoundingClientRect) return;
+    // Soft-nav restores a captured scrollTop; do not fight it mid-swap.
+    if(window.__deSoftNavInProgress) return;
+    opts = opts || {};
+    var scroller = opts.scroller || findScrollParent(el);
+    if(!scroller) return;
+    // Never scroll the window/body for sidebar items — only the rail scroller.
+    if(scroller === document.body || scroller === document.documentElement) return;
+
+    var pad = typeof opts.padding === 'number' ? opts.padding : 8;
+    var elRect = el.getBoundingClientRect();
+    var scRect = scroller.getBoundingClientRect();
+    var topGap = elRect.top - scRect.top;
+    var bottomGap = elRect.bottom - scRect.bottom;
+    var delta = 0;
+
+    // Prefer keeping the top (toggle) visible; then bring as much of the bottom into view.
+    if(topGap < pad){
+      delta = topGap - pad;
+    } else if(bottomGap > -pad){
+      delta = Math.min(bottomGap + pad, topGap - pad);
+    }
+
+    if(!delta) return;
+
+    var nextTop = scroller.scrollTop + delta;
+    var maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    nextTop = Math.max(0, Math.min(maxTop, nextTop));
+    if(Math.abs(nextTop - scroller.scrollTop) < 1) return;
+
+    var behavior = opts.behavior;
+    if(!behavior){
+      behavior = prefersReducedMotion() ? 'auto' : 'smooth';
+    }
+    if(typeof scroller.scrollTo === 'function'){
+      try{
+        scroller.scrollTo({ top: nextTop, behavior: behavior });
+        return;
+      } catch(e){}
+    }
+    scroller.scrollTop = nextTop;
+  }
+
+  function scheduleEnsureNavGroupVisible(group){
+    if(!group) return;
+    // Flyouts sit outside the nav scroller; scrolling the rail does not help.
+    if(group.classList.contains('is-flyout-active')) return;
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        if(!group.classList.contains('is-open')) return;
+        if(group.classList.contains('is-flyout-active')) return;
+        ensureVisibleInScroller(group);
+      });
+    });
+  }
+
   function scheduleDeSidebarCollapse(sidebar){
     clearDeSidebarCollapseTimer();
     sidebar = sidebar || getSidebar();
     if(!sidebar || isDeSidebarPinned(sidebar) || hasActiveDeFlyout(sidebar)) return;
+    if(window.__deSoftNavInProgress) return;
+    if(window.deFullscreen && typeof window.deFullscreen.isSoftNavInProgress === 'function' && window.deFullscreen.isSoftNavInProgress()){
+      return;
+    }
     window._deSidebarCollapseTimer = setTimeout(function(){
       window._deSidebarCollapseTimer = null;
+      if(window.__deSoftNavInProgress) return;
+      if(window.deFullscreen && typeof window.deFullscreen.isSoftNavInProgress === 'function' && window.deFullscreen.isSoftNavInProgress()){
+        return;
+      }
       if(isDeSidebarPinned(sidebar) || hasActiveDeFlyout(sidebar)) return;
       setDeSidebarExpanded(false, sidebar);
       closeDeNavFlyouts(sidebar);
@@ -167,6 +259,7 @@
       });
       sessionStorage.setItem('de-nav-open-groups', JSON.stringify(openIds));
     } catch(e){}
+    if(opening) scheduleEnsureNavGroupVisible(group);
   }
 
   function closeDeNavFlyouts(sidebar){
@@ -361,6 +454,8 @@
   window.setDeSidebarExpanded = setDeSidebarExpanded;
   window.applyDeSidebarBootState = applyDeSidebarBootState;
   window.reinitDeWorkspaceSidebar = reinitDeWorkspaceSidebar;
+  window.findScrollParent = findScrollParent;
+  window.ensureVisibleInScroller = ensureVisibleInScroller;
 
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', initDeWorkspaceSidebar);

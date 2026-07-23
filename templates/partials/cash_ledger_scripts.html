@@ -81,6 +81,42 @@
     });
   }
 
+  /* Client-side search (Expense Ledger pattern; soft-nav safe via data-bound guard) */
+  (function initCashLedgerSearch(){
+    var searchInput = document.getElementById('cash-ledger-search');
+    if (!searchInput || searchInput.getAttribute('data-cl-search-bound') === '1') return;
+    searchInput.setAttribute('data-cl-search-bound', '1');
+    var searchChip = searchInput.closest('.cl-search-chip');
+    var entryCountEl = document.getElementById('cl-entry-count');
+
+    function applyCashLedgerSearch(){
+      var needle = String(searchInput.value || '').trim().toLowerCase();
+      if (searchChip) searchChip.classList.toggle('is-active', !!needle);
+      var rows = Array.from(document.querySelectorAll('#cl-ledger-table tbody tr.cl-ledger-row'));
+      var visible = 0;
+      rows.forEach(function(row){
+        var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
+        var match = !needle || hay.indexOf(needle) !== -1;
+        row.hidden = !match;
+        if (match) visible += 1;
+      });
+      if (entryCountEl) {
+        entryCountEl.textContent = visible + ' entr' + (visible === 1 ? 'y' : 'ies');
+      }
+    }
+
+    searchInput.addEventListener('input', applyCashLedgerSearch);
+    searchInput.addEventListener('keydown', function(e){
+      if (e.key === 'Escape') {
+        searchInput.value = '';
+        applyCashLedgerSearch();
+        searchInput.blur();
+      }
+      if (e.key === 'Enter') e.preventDefault();
+    });
+    applyCashLedgerSearch();
+  })();
+
   function openModal(el){
     if (!el) return;
     el.classList.add('open');

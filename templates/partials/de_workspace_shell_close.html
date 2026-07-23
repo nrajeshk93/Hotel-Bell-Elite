@@ -1,6 +1,10 @@
+{% if is_partial_main|default(false) %}
+</div><!-- /.de-main-wrapper (partial) -->
+{% else %}
 </div><!-- /.de-main-wrapper -->
 </div><!-- /.de-app-shell -->
 </div><!-- /#ep-workspace -->
-<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=11"></script>
-<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=29"></script>
-<script src="{{ url_for('static', filename='hbe_table_scroll.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=49"></script>
+<script src="{{ url_for('static', filename='hbe_table_scroll.js') }}?v=3"></script>
+{% endif %}

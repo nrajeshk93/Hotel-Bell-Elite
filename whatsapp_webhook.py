@@ -120,7 +120,7 @@ def _lookup_indent_id(
         row = conn.execute(
             """
             SELECT indent_id FROM store_indent_whatsapp_messages
-            WHERE wa_message_id = ? AND status = 'sent'
+            WHERE wa_message_id = ?
             ORDER BY id DESC LIMIT 1
             """,
             (context_message_id,),

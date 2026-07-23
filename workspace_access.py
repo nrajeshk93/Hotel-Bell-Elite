@@ -90,11 +90,27 @@ _WORKSPACE_MODULE_REGISTRY = (
         "permission_children": _PAYROLL_SUBMODULES,
     },
     {
+        "key": "point_of_sale",
+        "label": "Restaurant",
+        # Dashboard module with sidebar sub-pages (Tables, Invoice, Settings); access is module-level.
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
+    },
+    {
         "key": "stores",
         "label": "Procurement & Inventory",
         "permission_scope": "stores",
         "permission_field": "stores_modules",
         "permission_children": _STORES_SUBMODULES,
+    },
+    {
+        "key": "master",
+        "label": "Master",
+        # Dashboard module shell; access is module-level until sub-pages are added.
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
     },
 )
 
@@ -145,10 +161,38 @@ _ACCESS_MODULE_UI_META = {
         "icon": "users",
         "description": "Manage employees, payroll reports, attendance, credits, and tip analytics.",
     },
+    "point_of_sale": {
+        "icon": "receipt",
+        "description": "Counter billing and invoice workspace for guest sales.",
+    },
     "stores": {
         "icon": "store",
         "description": "Simple indent-to-stock flow for Bar and Kitchen stores.",
     },
+    "master": {
+        "icon": "database",
+        "description": "Central master data for Hotel Bell Elite.",
+    },
+}
+
+# Point of Sale workspace routes (Tables + POS + Invoice Ledger + Settings). Not Sales Analytics.
+_POINT_OF_SALE_ENDPOINTS = {
+    "point_of_sale",
+    "point_of_sale_invoice",
+    "point_of_sale_invoice_ledger",
+    "point_of_sale_settings",
+    "export_pos_invoice_ledger_report",
+    "point_of_sale_api_floor",
+    "point_of_sale_api_settings",
+    "point_of_sale_api_menu_categories",
+    "point_of_sale_api_menu_category_delete",
+    "point_of_sale_api_menu_items",
+    "point_of_sale_api_menu_item_delete",
+    "point_of_sale_api_menu_products",
+    "point_of_sale_api_invoices_save",
+    "point_of_sale_api_invoice_detail",
+    "point_of_sale_api_invoice_delete",
+    "point_of_sale_api_customers",
 }
 
 _STORES_ENDPOINT_GROUPS = {
@@ -172,6 +216,7 @@ _STORES_ENDPOINT_GROUPS = {
         "stores_pr_receive",
         "stores_pr_detail",
         "stores_confirm_stock_inward_expense",
+        "stores_save_expense_category",
     },
     "stock": {
         "stores_stock",
@@ -179,6 +224,14 @@ _STORES_ENDPOINT_GROUPS = {
 }
 _STORES_PARENT_ENDPOINTS = set().union(*_STORES_ENDPOINT_GROUPS.values()) | {"stores"}
 _STORES_ENDPOINTS = _STORES_PARENT_ENDPOINTS
+
+_MASTER_ENDPOINTS = {
+    "master",
+    "customer_master",
+    "save_customer",
+    "delete_customer",
+    "export_customer_report",
+}
 
 _PUBLIC_ENDPOINTS = {
     "index",
@@ -588,6 +641,19 @@ def user_can_access_supplier_master(user):
     return "suppliers" in user.get("sales_analytics_access", set())
 
 
+def user_can_access_customer_master(user):
+    """Customer Master is available to Master hub and Restaurant/POS users."""
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    if user_can_access_dashboard(user, "master"):
+        return True
+    if user_can_access_dashboard(user, "point_of_sale"):
+        return True
+    return False
+
+
 def dashboard_access_list(user):
     if not user:
         return []
@@ -669,8 +735,12 @@ def get_endpoint_dashboard_module(endpoint):
         return "accounts"
     if endpoint in _PAYROLL_PARENT_ENDPOINTS:
         return "employee_payroll"
+    if endpoint in _POINT_OF_SALE_ENDPOINTS:
+        return "point_of_sale"
     if endpoint in _STORES_ENDPOINTS:
         return "stores"
+    if endpoint in _MASTER_ENDPOINTS:
+        return "master"
     return None
 
 

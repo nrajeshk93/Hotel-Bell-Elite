@@ -90,10 +90,18 @@ class StoresFlowTests(unittest.TestCase):
         self.assertIn(b"Products", page.data)
         self.assertIn(b"Non-Veg", page.data)
         self.assertIn(b"Outlet", page.data)
+        self.assertIn(b'id="st-outlet-listbox"', page.data)
+        self.assertIn(b"All", page.data)
         self.assertIn(b"Approximate Price", page.data)
         self.assertIn(b"Restaurant", page.data)
         self.assertIn(b"Edit", page.data)
         self.assertIn(b"Delete", page.data)
+
+        bar_page = self.client.get("/stores/product-master?outlet=bar")
+        self.assertEqual(bar_page.status_code, 200)
+        self.assertIn(b'id="st-outlet-listbox"', bar_page.data)
+        self.assertIn(b'data-value="bar"', bar_page.data)
+        self.assertRegex(bar_page.data, rb'id="st-outlet-value"[^>]*>\s*Bar')
 
         conn = db_mod.get_db()
         try:
@@ -354,11 +362,11 @@ class StoresFlowTests(unittest.TestCase):
                 "notes": "Received evening delivery",
                 "lines": [
                     {"line_id": line_ids[0], "received_qty": 10},
-                    {"line_id": line_ids[1], "received_qty": 20},
+                    {"line_id": line_ids[1], "received_qty": 24},
                 ],
                 "date": date.today().isoformat(),
                 "description": "Stock inward cash",
-                "amount": 700,
+                "amount": 780,
                 "payment_type": "cash",
                 "category": "grocery",
                 "supplier_id": supplier_id,
@@ -382,7 +390,7 @@ class StoresFlowTests(unittest.TestCase):
                 ).fetchall()
             }
             self.assertEqual(stock[("Onion", "kg")], 10.0)
-            self.assertEqual(stock[("Potato", "kg")], 20.0)
+            self.assertEqual(stock[("Potato", "kg")], 24.0)
             movement = conn.execute(
                 """
                 SELECT COUNT(*) AS c FROM store_stock_movements
@@ -400,10 +408,164 @@ class StoresFlowTests(unittest.TestCase):
                 (payload["expense_id"],),
             ).fetchone()
             self.assertIsNotNone(expense)
-            self.assertEqual(float(expense["amount"]), 700.0)
+            self.assertEqual(float(expense["amount"]), 780.0)
             self.assertEqual(expense["payment_type"], "cash")
             self.assertEqual(expense["location"], "Hotel")
             self.assertIn("Stock inward cash", expense["description"])
+        finally:
+            conn.close()
+
+        gone = self.client.get(
+            f"/stores/purchase-requests?outlet=bar&indent={indent_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(gone.status_code, 200)
+        self.assertIn(b"No approved indents waiting", gone.data)
+
+    def test_stock_inward_partial_keeps_remaining_on_page(self):
+        from datetime import date
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name) VALUES (?)",
+                ("Inward Partial Supplier",),
+            )
+            supplier_id = conn.execute(
+                "SELECT id FROM suppliers WHERE name = 'Inward Partial Supplier'"
+            ).fetchone()["id"]
+            conn.execute(
+                "INSERT INTO cash_ledger_loads (company, load_date, description, amount) VALUES (?,?,?,?)",
+                ("HBE", date.today().isoformat(), "Partial inward float", 5000),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "Partial inward indent",
+                "item_name": ["Onion", "Potato"],
+                "quantity": ["10", "24"],
+                "unit": ["kg", "kg"],
+                "approximate_price": ["30", "20"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            indent = conn.execute(
+                "SELECT id FROM store_indents WHERE notes = 'Partial inward indent' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            indent_id = indent["id"]
+            lines = conn.execute(
+                "SELECT id, item_name FROM store_indent_lines WHERE indent_id = ? ORDER BY id",
+                (indent_id,),
+            ).fetchall()
+            line_ids = [int(row["id"]) for row in lines]
+        finally:
+            conn.close()
+
+        decide = self.client.post(
+            f"/stores/indent/{indent_id}/decide",
+            data={"outlet": "bar", "decision": "approved", "decision_note": ""},
+            follow_redirects=False,
+        )
+        self.assertEqual(decide.status_code, 302)
+
+        # Receive only first line fully; leave Potato pending.
+        partial = self.client.post(
+            "/stores/purchase-requests/confirm-with-expense",
+            json={
+                "indent_id": indent_id,
+                "notes": "First delivery",
+                "lines": [{"line_id": line_ids[0], "received_qty": 10}],
+                "date": date.today().isoformat(),
+                "description": "Partial stock inward",
+                "amount": 300,
+                "payment_type": "cash",
+                "category": "grocery",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(partial.status_code, 200)
+        payload = partial.get_json()
+        self.assertTrue(payload.get("ok"))
+        self.assertTrue(payload.get("partial"))
+        self.assertIn("/stores/purchase-requests", payload.get("redirect", ""))
+
+        conn = db_mod.get_db()
+        try:
+            status = conn.execute(
+                "SELECT status FROM store_indents WHERE id = ?", (indent_id,)
+            ).fetchone()["status"]
+            self.assertEqual(status, "approved")
+            rows = {
+                int(row["id"]): float(row["quantity_received"] or 0)
+                for row in conn.execute(
+                    "SELECT id, quantity_received FROM store_indent_lines WHERE indent_id = ?",
+                    (indent_id,),
+                ).fetchall()
+            }
+            self.assertEqual(rows[line_ids[0]], 10.0)
+            self.assertEqual(rows[line_ids[1]], 0.0)
+        finally:
+            conn.close()
+
+        page = self.client.get(
+            f"/stores/purchase-requests?outlet=bar&indent={indent_id}",
+            follow_redirects=True,
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'st-inward-item-name">Potato', page.data)
+        self.assertNotIn(b'st-inward-item-name">Onion', page.data)
+
+        # Over-remaining should fail.
+        over = self.client.post(
+            "/stores/purchase-requests/confirm-with-expense",
+            json={
+                "indent_id": indent_id,
+                "lines": [{"line_id": line_ids[1], "received_qty": 25}],
+                "date": date.today().isoformat(),
+                "description": "Too much",
+                "amount": 500,
+                "payment_type": "cash",
+                "category": "grocery",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(over.status_code, 400)
+
+        # Finish remaining.
+        finish = self.client.post(
+            "/stores/purchase-requests/confirm-with-expense",
+            json={
+                "indent_id": indent_id,
+                "lines": [{"line_id": line_ids[1], "received_qty": 24}],
+                "date": date.today().isoformat(),
+                "description": "Remainder stock inward",
+                "amount": 480,
+                "payment_type": "cash",
+                "category": "grocery",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(finish.status_code, 200)
+        finish_payload = finish.get_json()
+        self.assertTrue(finish_payload.get("ok"))
+        self.assertFalse(finish_payload.get("partial"))
+        self.assertIn("/stores/stock", finish_payload.get("redirect", ""))
+
+        conn = db_mod.get_db()
+        try:
+            status = conn.execute(
+                "SELECT status FROM store_indents WHERE id = ?", (indent_id,)
+            ).fetchone()["status"]
+            self.assertEqual(status, "stocked")
         finally:
             conn.close()
 
@@ -518,6 +680,104 @@ class StoresFlowTests(unittest.TestCase):
                 """
             ).fetchone()["qty_on_hand"]
             self.assertEqual(float(stock_qty), 5.0)
+        finally:
+            conn.close()
+
+    def test_stock_inward_credit_over_approved_goes_to_purchase_verification(self):
+        from datetime import date
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name) VALUES (?)",
+                ("Inward Over Approved Supplier",),
+            )
+            supplier_id = conn.execute(
+                "SELECT id FROM suppliers WHERE name = 'Inward Over Approved Supplier'"
+            ).fetchone()["id"]
+            conn.commit()
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "Inward over approved",
+                "item_name": ["Potato"],
+                "quantity": ["5"],
+                "unit": ["kg"],
+                "approximate_price": ["40"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            indent = conn.execute(
+                "SELECT id FROM store_indents WHERE notes = 'Inward over approved' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            indent_id = indent["id"]
+            line_id = conn.execute(
+                "SELECT id FROM store_indent_lines WHERE indent_id = ?",
+                (indent_id,),
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+        decide = self.client.post(
+            f"/stores/indent/{indent_id}/decide",
+            data={"outlet": "bar", "decision": "approved", "decision_note": ""},
+            follow_redirects=False,
+        )
+        self.assertEqual(decide.status_code, 302)
+
+        # Approved total = 5 × 40 = 200; amount 201 must not auto-verify.
+        confirm = self.client.post(
+            "/stores/purchase-requests/confirm-with-expense",
+            json={
+                "indent_id": indent_id,
+                "notes": "over price delivery",
+                "lines": [{"line_id": int(line_id), "received_qty": 5}],
+                "date": date.today().isoformat(),
+                "description": "Stock inward over approved",
+                "amount": 201,
+                "payment_type": "credit",
+                "category": "grocery",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(confirm.status_code, 200)
+        payload = confirm.get_json()
+        self.assertTrue(payload.get("ok"))
+        expense_id = payload["expense_id"]
+
+        conn = db_mod.get_db()
+        try:
+            status = conn.execute(
+                "SELECT status FROM store_indents WHERE id = ?", (indent_id,)
+            ).fetchone()["status"]
+            self.assertEqual(status, "stocked")
+            expense = conn.execute(
+                "SELECT amount, payment_type FROM sales_update_expenses WHERE id = ?",
+                (expense_id,),
+            ).fetchone()
+            self.assertEqual(float(expense["amount"]), 201.0)
+            self.assertEqual(expense["payment_type"], "credit")
+            verified = conn.execute(
+                """
+                SELECT COALESCE(SUM(amount), 0) AS total
+                FROM purchase_verification_allocations
+                WHERE expense_id = ?
+                """,
+                (expense_id,),
+            ).fetchone()["total"]
+            self.assertEqual(float(verified), 0.0)
+            pending = self.app_mod._pending_purchase_verifications(conn)
+            self.assertTrue(any(int(row["id"]) == int(expense_id) for row in pending))
+            outstanding = self.app_mod._outstanding_credit_expenses(conn)
+            self.assertFalse(any(int(row["id"]) == int(expense_id) for row in outstanding))
         finally:
             conn.close()
 

@@ -28,7 +28,41 @@ from flask import (
 )
 from werkzeug.security import check_password_hash
 
-from db import SQL_NOW, ensure_cash_ledger_schema, ensure_stores_schema, get_db, init_db
+from db import (
+    SQL_NOW,
+    POS_INVOICE_ORDER_TYPES,
+    POS_INVOICE_ORDER_TYPE_LABELS,
+    clear_all_pos_tables,
+    close_pos_invoice_and_free_table,
+    delete_customer_record,
+    ensure_cash_ledger_schema,
+    ensure_customers_schema,
+    ensure_pos_schema,
+    ensure_stores_schema,
+    get_customer,
+    get_db,
+    get_open_pos_invoice_for_table,
+    get_pos_floor_layout,
+    get_pos_invoice,
+    get_pos_restaurant_settings,
+    init_db,
+    list_customers,
+    list_pos_invoices,
+    list_pos_menu_categories,
+    list_pos_menu_items,
+    list_store_products_lite,
+    pos_invoice_kpis,
+    save_customer_record,
+    save_pos_floor_layout,
+    save_pos_invoice,
+    save_pos_menu_category,
+    save_pos_menu_item,
+    save_pos_restaurant_settings,
+    search_customers,
+    soft_delete_pos_invoice,
+    soft_delete_pos_menu_category,
+    soft_delete_pos_menu_item,
+)
 from fo_invoice_tax_parser import parse_fo_invoice_tax_report
 from sales_report_parser import OUTLET_BAR, OUTLET_RESTAURANT, parse_sales_report
 from workspace_access import (
@@ -67,10 +101,13 @@ from workspace_access import (
     user_can_access_sales_analytics_submodule,
     user_can_access_stores_submodule,
     user_can_access_supplier_master,
+    user_can_access_customer_master,
     user_can_access_user_access_submodule,
     validate_access_user_form,
 )
 from employee_payroll import register_employee_payroll
+from embed_helpers import is_embed_request, is_partial_main_request
+from masters import build_masters_dashboard
 from stores import register_stores
 
 app = Flask(__name__)
@@ -223,6 +260,50 @@ EXPENSE_CATEGORIES = _sorted_label_choices((
 ))
 EXPENSE_CATEGORY_LABELS = dict(EXPENSE_CATEGORIES)
 
+
+def _slugify_expense_category_key(name):
+    """Build a stable expense category key from a display name."""
+    import re
+    value = (name or "").strip().lower()
+    value = value.replace("&", " and ")
+    value = re.sub(r"[^a-z0-9]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    if not value:
+        return ""
+    if value[0].isdigit():
+        value = "cat_" + value
+    return value[:80]
+
+
+def _expense_category_choices(conn=None):
+    """Builtin + custom expense categories for dropdowns."""
+    items = list(EXPENSE_CATEGORIES)
+    seen = {key for key, _label in items}
+    if conn is not None:
+        try:
+            rows = conn.execute(
+                """
+                SELECT category_key, name
+                FROM expense_categories
+                WHERE is_active = 1
+                ORDER BY sort_order, lower(name), id
+                """
+            ).fetchall()
+        except Exception:
+            rows = []
+        for row in rows:
+            key = (row["category_key"] or "").strip()
+            label = (row["name"] or "").strip()
+            if not key or not label or key in seen:
+                continue
+            items.append((key, label))
+            seen.add(key)
+    return _sorted_label_choices(items)
+
+
+def _expense_category_labels(conn=None):
+    return dict(_expense_category_choices(conn))
+
 HOTEL_IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit")
 ROOM_TRANSFER_PAYMENT_STATUSES = _sorted_label_choices((
     ("unpaid", "Un Paid"),
@@ -300,6 +381,7 @@ register_employee_payroll(
     pop_auth_notice=_pop_auth_notice,
     permission_denied_response=_permission_denied_response,
     get_user=get_current_user,
+    queue_auth_notice=_queue_auth_notice,
 )
 register_stores(
     app,
@@ -405,6 +487,7 @@ def enforce_access():
 def inject_auth_context():
     user = get_current_user()
     return {
+        "is_partial_main": is_partial_main_request(),
         "current_user": user,
         "user_can_access_dashboard": user_can_access_dashboard,
         "display_name": _user_display_name(user),
@@ -424,6 +507,7 @@ def inject_auth_context():
         "has_accounts_access": lambda key: user_can_access_accounts_submodule(user, key),
         "has_stores_access": lambda key: user_can_access_stores_submodule(user, key),
         "has_supplier_master_access": lambda: user_can_access_supplier_master(user),
+        "has_customer_master_access": lambda: user_can_access_customer_master(user),
         "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
         "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
         "sales_analytics_submodule_labels": _SALES_ANALYTICS_SUBMODULE_LABELS,
@@ -2359,7 +2443,7 @@ def _parse_purchase_ledger_category(value):
     if not raw or raw == PURCHASE_LEDGER_FILTER_ALL:
         return PURCHASE_LEDGER_FILTER_ALL, None
     normalized = _normalize_expense_category(raw)
-    if normalized in EXPENSE_CATEGORY_LABELS:
+    if normalized:
         return normalized, normalized
     return PURCHASE_LEDGER_FILTER_ALL, None
 
@@ -2384,7 +2468,9 @@ def _normalize_expense_payment_type(payment_type):
 
 
 def _normalize_expense_category(category):
+    import re
     value = (category or "").strip().lower().replace(" ", "_").replace("-", "_")
+    value = re.sub(r"_+", "_", value).strip("_")
     aliases = {
         "grocery": "grocery",
         "vegetables": "vegetables",
@@ -2414,7 +2500,14 @@ def _normalize_expense_category(category):
         "diesel": "fuel",
         "other": "other",
     }
-    return aliases.get(value, "")
+    if value in aliases:
+        return aliases[value]
+    if value in EXPENSE_CATEGORY_LABELS:
+        return value
+    # Custom categories saved via Add (or freeform keys already stored on expenses).
+    if value and re.fullmatch(r"[a-z][a-z0-9_]{0,79}", value):
+        return value
+    return ""
 
 
 def _normalize_invoice_number(value):
@@ -2900,6 +2993,549 @@ def home():
     )
 
 
+@app.route("/master")
+def master():
+    """Master data workspace hub."""
+    conn = get_db()
+    payload = build_masters_dashboard(url_for, conn)
+    return render_template(
+        "master.html",
+        de_nav_section="master",
+        de_nav_master_view="home",
+        **payload,
+    )
+
+
+@app.route("/point-of-sale")
+def point_of_sale():
+    """Point of Sale Tables floor — counter workspace (not Sales Analytics)."""
+    return render_template(
+        "point_of_sale.html",
+        de_nav_section="pos",
+        de_nav_pos_view="tables",
+    )
+
+
+@app.route("/point-of-sale/invoice")
+def point_of_sale_invoice():
+    """POS Invoice workspace."""
+    return render_template(
+        "point_of_sale_invoice.html",
+        de_nav_section="pos",
+        de_nav_pos_view="invoice",
+    )
+
+
+@app.route("/point-of-sale/settings")
+def point_of_sale_settings():
+    """Restaurant Settings — floor layout and outlet configuration."""
+    return render_template(
+        "point_of_sale_settings.html",
+        de_nav_section="pos",
+        de_nav_pos_view="settings",
+    )
+
+
+def _pos_invoice_ledger_filters(args):
+    """Parse invoice ledger GET filters (shared by page + export)."""
+    today = date.today()
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        args, "date_from", "date_to"
+    )
+    query_date_from = date_from if date_filter_active else date(2000, 1, 1)
+    query_date_to = date_to if date_filter_active else today
+
+    selected_order_type = (args.get("order_type") or "all").strip().lower()
+    if selected_order_type not in ("all",) and selected_order_type not in POS_INVOICE_ORDER_TYPE_LABELS:
+        selected_order_type = "all"
+    order_type_filter = None if selected_order_type == "all" else selected_order_type
+
+    return {
+        "today": today,
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_filter_active": date_filter_active,
+        "query_date_from": query_date_from,
+        "query_date_to": query_date_to,
+        "selected_order_type": selected_order_type,
+        "order_type_filter": order_type_filter,
+    }
+
+
+@app.route("/point-of-sale/invoice-ledger")
+def point_of_sale_invoice_ledger():
+    """POS Invoice Ledger — saved invoices with KPIs (Expense Ledger–style)."""
+    filters = _pos_invoice_ledger_filters(request.args)
+
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        invoices = list_pos_invoices(
+            conn,
+            date_from=filters["query_date_from"].isoformat(),
+            date_to=filters["query_date_to"].isoformat(),
+            order_type=filters["order_type_filter"],
+        )
+        kpis = pos_invoice_kpis(conn, invoices, today=filters["today"].isoformat())
+    finally:
+        conn.close()
+
+    selected_order_type = filters["selected_order_type"]
+    selected_order_type_label = "All order types"
+    if selected_order_type != "all":
+        selected_order_type_label = POS_INVOICE_ORDER_TYPE_LABELS.get(
+            selected_order_type, selected_order_type
+        )
+
+    clear_kwargs = {}
+    if selected_order_type != "all":
+        clear_kwargs["order_type"] = selected_order_type
+
+    report_kwargs = {"order_type": selected_order_type}
+    if filters["date_filter_active"]:
+        report_kwargs["date_from"] = filters["date_from"].isoformat()
+        report_kwargs["date_to"] = filters["date_to"].isoformat()
+
+    return render_template(
+        "point_of_sale_invoice_ledger.html",
+        page_title="Invoice Ledger",
+        invoices=invoices,
+        kpis=kpis,
+        order_types=POS_INVOICE_ORDER_TYPES,
+        selected_order_type=selected_order_type,
+        selected_order_type_label=selected_order_type_label,
+        date_from=filters["date_from"].isoformat() if filters["date_from"] else "",
+        date_to=filters["date_to"].isoformat() if filters["date_to"] else "",
+        today_iso=filters["today"].isoformat(),
+        active_date_filter=filters["date_filter_active"],
+        filter_form_action=url_for("point_of_sale_invoice_ledger"),
+        invoice_ledger_clear_url=url_for("point_of_sale_invoice_ledger", **clear_kwargs),
+        invoice_ledger_report_url=url_for("export_pos_invoice_ledger_report", **report_kwargs),
+        new_invoice_url=url_for("point_of_sale_invoice"),
+        de_nav_section="pos",
+        de_nav_pos_view="invoice_ledger",
+    )
+
+
+@app.route("/point-of-sale/invoice-ledger/report")
+def export_pos_invoice_ledger_report():
+    """Excel download of saved POS invoices for the selected filters."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    filters = _pos_invoice_ledger_filters(request.args)
+
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        invoices = list_pos_invoices(
+            conn,
+            date_from=filters["query_date_from"].isoformat(),
+            date_to=filters["query_date_to"].isoformat(),
+            order_type=filters["order_type_filter"],
+        )
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Invoice Ledger"
+    header_font = Font(bold=True)
+    headers = [
+        "Order No",
+        "Date",
+        "Saved At",
+        "Customer",
+        "Mobile",
+        "Order Type",
+        "Table",
+        "Captain",
+        "Items",
+        "Subtotal",
+        "Discount",
+        "GST",
+        "Service",
+        "Tip",
+        "Total",
+    ]
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = header_font
+
+    for idx, inv in enumerate(invoices, start=2):
+        ws.cell(row=idx, column=1, value=inv.get("order_no") or "")
+        ws.cell(row=idx, column=2, value=inv.get("order_date") or "")
+        ws.cell(row=idx, column=3, value=inv.get("saved_at") or "")
+        ws.cell(row=idx, column=4, value=inv.get("customer_name") or "")
+        ws.cell(row=idx, column=5, value=inv.get("customer_mobile") or "")
+        ws.cell(
+            row=idx,
+            column=6,
+            value=inv.get("order_type_label") or inv.get("order_type") or "",
+        )
+        ws.cell(row=idx, column=7, value=inv.get("table_label") or inv.get("table") or "")
+        ws.cell(row=idx, column=8, value=inv.get("captain") or "")
+        ws.cell(row=idx, column=9, value=int(inv.get("item_count") or 0))
+        ws.cell(row=idx, column=10, value=round_half_up(inv.get("subtotal"), 2))
+        ws.cell(row=idx, column=11, value=round_half_up(inv.get("discount"), 2))
+        ws.cell(row=idx, column=12, value=round_half_up(inv.get("gst"), 2))
+        ws.cell(row=idx, column=13, value=round_half_up(inv.get("service"), 2))
+        ws.cell(row=idx, column=14, value=round_half_up(inv.get("tip"), 2))
+        ws.cell(row=idx, column=15, value=round_half_up(inv.get("grand_total"), 2))
+
+    for column_cells in ws.columns:
+        width = 12
+        for cell in column_cells:
+            value = "" if cell.value is None else str(cell.value)
+            width = max(width, min(len(value) + 2, 40))
+        ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    if filters["date_filter_active"]:
+        fname = (
+            f"invoice_ledger_{filters['query_date_from'].isoformat()}_to_"
+            f"{filters['query_date_to'].isoformat()}.xlsx"
+        )
+    else:
+        fname = "invoice_ledger_all.xlsx"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/point-of-sale/api/invoices", methods=["POST"])
+def point_of_sale_api_invoices_save():
+    """Create or update a POS invoice from the Create Invoice workspace."""
+    data = request.get_json(silent=True) or {}
+    user = get_current_user()
+    created_by = ""
+    if user:
+        created_by = (
+            str(user.get("full_name") or user.get("username") or user.get("id") or "").strip()
+        )
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            saved = save_pos_invoice(conn, data, created_by=created_by)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": f"Could not save invoice: {exc}"}), 500
+        return jsonify({"ok": True, "invoice": saved})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>", methods=["GET"])
+def point_of_sale_api_invoice_detail(invoice_id):
+    """Return one saved POS invoice with line items."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        invoice = get_pos_invoice(conn, invoice_id)
+        if not invoice:
+            return jsonify({"ok": False, "error": "Invoice not found."}), 404
+        return jsonify({"ok": True, "invoice": invoice})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/invoices/by-table", methods=["GET"])
+def point_of_sale_api_invoice_by_table():
+    """Look up the open dine-in order for a table, if any — shared by the Tables
+    page tile tap and the Create Invoice table picker to resume a bill instead
+    of blocking on 'occupied'."""
+    table = (request.args.get("table") or "").strip()
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        invoice = get_open_pos_invoice_for_table(conn, table) if table else None
+        return jsonify({"ok": True, "invoice": invoice})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/close", methods=["POST"])
+def point_of_sale_api_invoice_close(invoice_id):
+    """Close a bill and free its table — the lightweight 'Close & Free Table'
+    action (decoupled from real payment)."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            invoice = close_pos_invoice_and_free_table(conn, invoice_id)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "invoice": invoice})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"])
+def point_of_sale_api_invoice_delete(invoice_id):
+    """Soft-delete a saved POS invoice."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            soft_delete_pos_invoice(conn, invoice_id)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/customers", methods=["GET"])
+def point_of_sale_api_customers():
+    """Search Customer Master for POS Customer Details autocomplete."""
+    query = request.args.get("q") or request.args.get("mobile") or ""
+    conn = get_db()
+    try:
+        ensure_customers_schema(conn)
+        customers = search_customers(conn, query, limit=8)
+        conn.commit()
+        return jsonify({"ok": True, "customers": customers})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/floor", methods=["GET", "PUT", "POST"])
+def point_of_sale_api_floor():
+    """Load or replace restaurant floor layout (areas + tables) in SQLite."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        if request.method == "GET":
+            payload = get_pos_floor_layout(conn)
+            conn.commit()
+            return jsonify({"ok": True, **payload})
+
+        data = request.get_json(silent=True) or {}
+        areas = data.get("areas")
+        tables = data.get("tables")
+        if not isinstance(areas, list) or not isinstance(tables, list):
+            return jsonify({"ok": False, "error": "areas and tables arrays are required."}), 400
+        payload = save_pos_floor_layout(conn, areas, tables)
+        conn.commit()
+        return jsonify({"ok": True, **payload})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/floor/clear-all", methods=["POST"])
+def point_of_sale_api_floor_clear_all():
+    """Free every table back to available in one shot (Tables page 'Clear all
+    tables' — day close / demo reset). Also closes any dangling open bills."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        payload = clear_all_pos_tables(conn)
+        conn.commit()
+        return jsonify({"ok": True, **payload})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/settings", methods=["GET", "PUT", "POST"])
+def point_of_sale_api_settings():
+    """Load or replace restaurant settings JSON blob in SQLite."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        if request.method == "GET":
+            settings = get_pos_restaurant_settings(conn)
+            return jsonify({"ok": True, "settings": settings})
+
+        data = request.get_json(silent=True) or {}
+        if "settings" in data:
+            settings = data.get("settings")
+        else:
+            settings = data
+        if not isinstance(settings, dict):
+            return jsonify({"ok": False, "error": "settings object is required."}), 400
+        saved = save_pos_restaurant_settings(conn, settings)
+        conn.commit()
+        return jsonify({"ok": True, "settings": saved})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/menu/categories", methods=["GET", "POST", "PUT"])
+def point_of_sale_api_menu_categories():
+    """List or create/update restaurant menu categories."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        if request.method == "GET":
+            categories = list_pos_menu_categories(conn)
+            conn.commit()
+            return jsonify({"ok": True, "categories": categories})
+
+        data = request.get_json(silent=True) or {}
+        category_id = data.get("id")
+        try:
+            category_id = int(category_id) if category_id not in (None, "") else None
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid category id."}), 400
+        try:
+            saved = save_pos_menu_category(
+                conn,
+                category_id=category_id,
+                name=data.get("name"),
+                is_visible=bool(data.get("is_visible", True)),
+                sort_order=data.get("sort_order"),
+            )
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "category": saved, "categories": list_pos_menu_categories(conn)})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/menu/categories/<int:category_id>/delete", methods=["POST", "DELETE"])
+def point_of_sale_api_menu_category_delete(category_id):
+    """Soft-delete a menu category."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            soft_delete_pos_menu_category(conn, category_id)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        return jsonify({"ok": True, "categories": list_pos_menu_categories(conn)})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/menu/items", methods=["GET", "POST", "PUT"])
+def point_of_sale_api_menu_items():
+    """List or create/update restaurant menu items with optional recipe ingredients."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        ensure_stores_schema(conn)
+        if request.method == "GET":
+            category_id = request.args.get("category_id")
+            try:
+                category_id = int(category_id) if category_id not in (None, "") else None
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "Invalid category id."}), 400
+            items = list_pos_menu_items(conn, category_id=category_id)
+            conn.commit()
+            return jsonify({"ok": True, "items": items, "category_id": category_id})
+
+        data = request.get_json(silent=True) or {}
+        item_id = data.get("id")
+        try:
+            item_id = int(item_id) if item_id not in (None, "") else None
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error": "Invalid item id."}), 400
+        try:
+            saved = save_pos_menu_item(
+                conn,
+                item_id=item_id,
+                category_id=data.get("category_id"),
+                product_id=data.get("product_id"),
+                name=data.get("name"),
+                code=data.get("code"),
+                barcode=data.get("barcode"),
+                variant=data.get("variant"),
+                rate=data.get("rate"),
+                sort_order=data.get("sort_order"),
+                recipe=data["recipe"] if "recipe" in data else None,
+            )
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": f"Could not save menu item: {exc}"}), 500
+        category_id = saved.get("category_id")
+        return jsonify(
+            {
+                "ok": True,
+                "item": saved,
+                "items": list_pos_menu_items(conn, category_id=category_id),
+                "categories": list_pos_menu_categories(conn),
+            }
+        )
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/menu/items/<int:item_id>/delete", methods=["POST", "DELETE"])
+def point_of_sale_api_menu_item_delete(item_id):
+    """Soft-delete a menu item."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            soft_delete_pos_menu_item(conn, item_id)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        category_id = request.args.get("category_id") or (request.get_json(silent=True) or {}).get(
+            "category_id"
+        )
+        try:
+            category_id = int(category_id) if category_id not in (None, "") else None
+        except (TypeError, ValueError):
+            category_id = None
+        payload = {
+            "ok": True,
+            "categories": list_pos_menu_categories(conn),
+        }
+        if category_id is not None:
+            payload["items"] = list_pos_menu_items(conn, category_id=category_id)
+            payload["category_id"] = category_id
+        return jsonify(payload)
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/menu/products", methods=["GET"])
+@app.route("/stores/api/products-lite", methods=["GET"])
+def point_of_sale_api_menu_products():
+    """Lite Product Master list for menu item pickers."""
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        q = (request.args.get("q") or "").strip()
+        outlet = (request.args.get("outlet") or "").strip().lower()
+        if outlet == "restaurant":
+            outlets = ["restaurant", "both"]
+        elif outlet == "bar":
+            outlets = ["bar", "both"]
+        elif outlet == "both":
+            outlets = ["both"]
+        else:
+            outlets = None
+        products = list_store_products_lite(conn, outlets=outlets, q=q)
+        return jsonify({"ok": True, "products": products})
+    finally:
+        conn.close()
+
+
 def _home_notifications(user):
     """Build home-page bell items for modules the current user can access."""
     notifications = []
@@ -3276,13 +3912,15 @@ def purchase_ledger():
     )
 
     conn = get_db()
+    expense_categories = EXPENSE_CATEGORIES
+    expense_category_labels = EXPENSE_CATEGORY_LABELS
     try:
         suppliers = _all_suppliers(conn)
         supplier_lookup = {str(s["id"]): s for s in suppliers}
         if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
             selected_supplier = PURCHASE_LEDGER_FILTER_ALL
             supplier_id = None
-        if selected_category != PURCHASE_LEDGER_FILTER_ALL and selected_category not in EXPENSE_CATEGORY_LABELS:
+        if selected_category != PURCHASE_LEDGER_FILTER_ALL and not _normalize_expense_category(selected_category):
             selected_category = PURCHASE_LEDGER_FILTER_ALL
             category = None
         if selected_payment != PURCHASE_LEDGER_FILTER_ALL and selected_payment not in EXPENSE_PAYMENT_LABELS:
@@ -3297,6 +3935,8 @@ def purchase_ledger():
             payment_type=payment_type,
         )
         available_cash = _cash_ledger_available_as_of(conn, DEFAULT_COMPANY, today)
+        expense_categories = _expense_category_choices(conn)
+        expense_category_labels = _expense_category_labels(conn)
     finally:
         conn.close()
 
@@ -3323,7 +3963,9 @@ def purchase_ledger():
             selected_supplier_label = match["name"]
     selected_category_label = "All categories"
     if selected_category != PURCHASE_LEDGER_FILTER_ALL:
-        selected_category_label = EXPENSE_CATEGORY_LABELS.get(selected_category, selected_category_label)
+        selected_category_label = expense_category_labels.get(
+            selected_category, selected_category.replace("_", " ").title()
+        )
     selected_payment_label = "All payments"
     if selected_payment != PURCHASE_LEDGER_FILTER_ALL:
         selected_payment_label = EXPENSE_PAYMENT_LABELS.get(selected_payment, selected_payment_label)
@@ -3370,8 +4012,8 @@ def purchase_ledger():
         expense_payment_types=EXPENSE_PAYMENT_TYPES,
         expense_payment_labels=EXPENSE_PAYMENT_LABELS,
         purchase_ledger_payment_labels=PURCHASE_LEDGER_PAYMENT_LABELS,
-        expense_categories=EXPENSE_CATEGORIES,
-        expense_category_labels=EXPENSE_CATEGORY_LABELS,
+        expense_categories=expense_categories,
+        expense_category_labels=expense_category_labels,
         credit_settlement_status_labels=CREDIT_SETTLEMENT_STATUS_LABELS,
         purchase_add_url=url_for("purchase_ledger_add"),
         purchase_edit_url=url_for("purchase_ledger_edit"),
@@ -4796,13 +5438,18 @@ def _render_room_transfer_receivables_page(
     receivables_panel_title,
     receivables_empty_noun,
     receivables_empty_import_hint,
+    fixed_location=None,
 ):
     today = date.today()
     selected_company = request.args.get("company", DEFAULT_COMPANY)
     selected_payment_status = _normalize_room_transfer_filter_status(request.args.get("status"))
     if selected_payment_status == "all":
         selected_payment_status = "unpaid"
-    selected_location = request.args.get("location", ROOM_TRANSFER_FILTER_ALL)
+    selected_location = (
+        fixed_location
+        if fixed_location is not None
+        else request.args.get("location", ROOM_TRANSFER_FILTER_ALL)
+    )
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
         request.args, "date_from", "date_to"
     )
@@ -4842,8 +5489,9 @@ def _render_room_transfer_receivables_page(
 
     status_tab_query = {
         "company": selected_company,
-        "location": selected_location,
     }
+    if fixed_location is None:
+        status_tab_query["location"] = selected_location
     if date_filter_active:
         status_tab_query["date_from"] = filter_date_from
         status_tab_query["date_to"] = filter_date_to
@@ -5000,6 +5648,7 @@ def sales_update_room_transfer():
         receivables_panel_title="Room transfers",
         receivables_empty_noun="room transfers",
         receivables_empty_import_hint="Upload a Collections report on Sales Update - Bar or Restaurant to import room credit lines.",
+        fixed_location=ROOM_TRANSFER_FILTER_ALL,
     )
 
 
@@ -6288,7 +6937,7 @@ def supplier_master():
         success_message = "Supplier deleted successfully."
 
     return _supplier_page_render(
-        "supplier_master.html",
+        "partials/master_embed/supplier.html" if is_embed_request() else "supplier_master.html",
         suppliers=suppliers,
         form=form,
         selected_supplier=selected_supplier,
@@ -6297,6 +6946,7 @@ def supplier_master():
         form_focus=form_focus or bool(selected_supplier),
         show_form=form_focus or bool(selected_supplier),
         supplier_report_url=url_for("export_supplier_report"),
+        embed_mode=is_embed_request(),
     )
 
 
@@ -6452,6 +7102,192 @@ def create_supplier():
         conn.close()
 
     return jsonify({"ok": True, "supplier": supplier, "suppliers": suppliers})
+
+
+def _customer_form_payload(source=None):
+    source = source or {}
+    mobile = "".join(ch for ch in str(source.get("mobile") or "") if ch.isdigit())[:10]
+    return {
+        "first_name": " ".join(str(source.get("first_name") or "").split()).strip(),
+        "mobile": mobile,
+    }
+
+
+def _customer_page_render(template, **kwargs):
+    kwargs.setdefault("auth_notice", _pop_auth_notice())
+    kwargs.setdefault("de_nav_section", "master")
+    kwargs.setdefault("de_nav_master_view", "customer_master")
+    return render_template(template, **kwargs)
+
+
+@app.route("/customers")
+def customer_master():
+    user = get_current_user()
+    if not user_can_access_customer_master(user):
+        return _permission_denied_response("You do not have access to Customer Master.")
+
+    selected_customer_id = request.args.get("customer_id", "").strip()
+    saved_flag = request.args.get("saved", "").strip()
+    form_focus = request.args.get("focus", "").strip() == "form"
+
+    conn = get_db()
+    try:
+        ensure_customers_schema(conn)
+        customers = list_customers(conn)
+        selected_customer = get_customer(conn, selected_customer_id) if selected_customer_id else None
+        conn.commit()
+    finally:
+        conn.close()
+
+    if selected_customer:
+        form = {
+            "id": selected_customer["id"],
+            "first_name": selected_customer.get("first_name") or "",
+            "mobile": selected_customer.get("mobile") or "",
+        }
+    else:
+        form = {"id": "", **_customer_form_payload()}
+
+    success_message = ""
+    if saved_flag == "created":
+        success_message = "Customer created successfully."
+    elif saved_flag == "updated":
+        success_message = "Customer updated successfully."
+    elif saved_flag == "deleted":
+        success_message = "Customer deleted successfully."
+
+    return _customer_page_render(
+        "partials/master_embed/customer.html" if is_embed_request() else "customer_master.html",
+        customers=customers,
+        form=form,
+        selected_customer=selected_customer,
+        errors=[],
+        success_message=success_message,
+        form_focus=form_focus or bool(selected_customer),
+        show_form=form_focus or bool(selected_customer),
+        customer_report_url=url_for("export_customer_report"),
+        embed_mode=is_embed_request(),
+    )
+
+
+@app.route("/customers/report")
+def export_customer_report():
+    """Excel download of all customers from Customer Master."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    user = get_current_user()
+    if not user_can_access_customer_master(user):
+        return _permission_denied_response("You do not have access to Customer Master.")
+
+    conn = get_db()
+    try:
+        ensure_customers_schema(conn)
+        customers = list_customers(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Customers"
+    header_font = Font(bold=True)
+    headers = ["First Name", "Mobile"]
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = header_font
+
+    for idx, customer in enumerate(customers, start=2):
+        ws.cell(row=idx, column=1, value=customer.get("first_name") or "")
+        ws.cell(row=idx, column=2, value=customer.get("mobile") or "")
+
+    for column_cells in ws.columns:
+        width = 12
+        for cell in column_cells:
+            value = "" if cell.value is None else str(cell.value)
+            width = max(width, min(len(value) + 2, 40))
+        ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    fname = f"customer_report_{date.today().isoformat()}.xlsx"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/customers/save", methods=["POST"])
+def save_customer():
+    user = get_current_user()
+    if not user_can_access_customer_master(user):
+        return _permission_denied_response("You do not have access to Customer Master.")
+
+    customer_id_raw = request.form.get("customer_id", "").strip()
+    customer_id = int(customer_id_raw) if customer_id_raw else None
+    payload = _customer_form_payload(request.form)
+
+    conn = get_db()
+    try:
+        saved_id, errors = save_customer_record(
+            conn,
+            payload.get("first_name"),
+            payload.get("mobile"),
+            customer_id=customer_id,
+        )
+        if errors:
+            customers = list_customers(conn)
+            selected_customer = get_customer(conn, customer_id) if customer_id else None
+            form = dict(payload)
+            form["id"] = customer_id or ""
+            return _customer_page_render(
+                "partials/master_embed/customer.html" if is_embed_request() else "customer_master.html",
+                customers=customers,
+                form=form,
+                selected_customer=selected_customer,
+                errors=errors,
+                success_message="",
+                form_focus=True,
+                show_form=True,
+                customer_report_url=url_for("export_customer_report"),
+                embed_mode=is_embed_request(),
+            ), 400
+        conn.commit()
+    finally:
+        conn.close()
+
+    result_flag = "updated" if customer_id else "created"
+    redirect_kwargs = {"saved": result_flag}
+    if is_embed_request():
+        redirect_kwargs["embed"] = 1
+    return redirect(url_for("customer_master", **redirect_kwargs))
+
+
+@app.route("/customers/delete", methods=["POST"])
+def delete_customer():
+    user = get_current_user()
+    if not user_can_access_customer_master(user):
+        return _permission_denied_response("You do not have access to Customer Master.")
+
+    customer_id = request.form.get("customer_id", "").strip()
+    if not customer_id:
+        _queue_auth_notice("Customer not found.")
+        return redirect(url_for("customer_master"))
+
+    conn = get_db()
+    try:
+        deleted = delete_customer_record(conn, customer_id)
+        if not deleted:
+            _queue_auth_notice("Customer not found.")
+            return redirect(url_for("customer_master"))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return redirect(url_for("customer_master", saved="deleted"))
 
 
 @app.route("/access-management")

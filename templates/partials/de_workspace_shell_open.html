@@ -1,3 +1,6 @@
+{% if is_partial_main|default(false) %}
+<div class="de-main-wrapper" data-de-partial="main">
+{% else %}
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=3">
 <div id="page-transition"></div>
@@ -8,3 +11,4 @@
 <div class="de-app-shell">
 {% include 'partials/de_workspace_sidebar.html' %}
 <div class="de-main-wrapper">
+{% endif %}

@@ -1,9 +1,6 @@
 {# Shared indent line row — expects fid, ufid, line, has_item, product_catalog, default_units #}
 {% set line_unit = line.unit or 'kg' %}
 <div class="st-line{% if has_item %} is-product-selected{% endif %}">
-  <span class="st-drag-handle" aria-hidden="true" title="Drag">
-    <svg viewBox="0 0 24 24"><circle cx="9" cy="7" r="1.4"/><circle cx="15" cy="7" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="17" r="1.4"/><circle cx="15" cy="17" r="1.4"/></svg>
-  </span>
   <div class="st-field st-field--product" data-st-label="Item">
     <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-product-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-change="stProductPicked" id="{{ fid }}-listbox">
       <label class="se-filter-chip-label st-sr-only" id="{{ fid }}-label" for="{{ fid }}-trigger">Item</label>
@@ -35,15 +32,7 @@
   </div>
   <div class="st-field st-field--qty" data-st-label="Qty">
     <label class="st-sr-only">Qty</label>
-    <div class="st-qty-stepper">
-      <button type="button" class="st-qty-btn" data-st-qty-dec aria-label="Decrease quantity">
-        <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
-      </button>
-      <input type="number" name="quantity" min="0.01" step="0.01" value="{{ line.quantity }}" placeholder="0" aria-label="Qty">
-      <button type="button" class="st-qty-btn" data-st-qty-inc aria-label="Increase quantity">
-        <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-      </button>
-    </div>
+    <input type="number" name="quantity" min="0.01" step="0.01" inputmode="decimal" value="{{ line.quantity }}" placeholder="0" aria-label="Qty">
   </div>
   <div class="st-field st-field--unit" data-st-label="Unit">
     <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-unit-listbox" data-se-listbox data-st-unit-listbox id="{{ ufid }}-listbox">
@@ -64,9 +53,13 @@
       </div>
     </div>
   </div>
-  <div class="st-field st-field--price" data-st-label="Approximate price">
-    <label class="st-sr-only">Approximate price</label>
-    <input type="number" name="approximate_price" min="0.01" step="0.01" inputmode="decimal" value="{% if line.approximate_price_display is defined %}{{ line.approximate_price_display }}{% elif line.approximate_price is not none %}{{ line.approximate_price }}{% endif %}" placeholder="₹ Price" aria-label="Approximate price" data-st-approx-price>
+  <div class="st-field st-field--price" data-st-label="Price / qty">
+    <label class="st-sr-only">Approx. price / qty</label>
+    <input type="number" name="approximate_price" min="0.01" step="0.01" inputmode="decimal" value="{% if line.approximate_price_display is defined %}{{ line.approximate_price_display }}{% elif line.approximate_price is not none %}{{ line.approximate_price }}{% endif %}" placeholder="₹ Price" aria-label="Approx. price per quantity" data-st-approx-price>
+  </div>
+  <div class="st-field st-field--line-total" data-st-label="Total">
+    <label class="st-sr-only">Line total</label>
+    <output class="st-line-total" data-st-line-total aria-live="polite">—</output>
   </div>
   <button type="button" class="st-line-remove" data-st-remove-line aria-label="Remove line">
     <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>

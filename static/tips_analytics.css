@@ -1,21 +1,23 @@
-/* Keep Tips filters as one compact row in the right corner */
+/* Keep Tips filters as one compact row; search grows to fill space */
 body.su-module #tips-analytics-page .se-sales-header-filters{
   display:flex;
-  justify-content:flex-end;
+  justify-content:stretch;
   align-items:flex-end;
   flex-wrap:nowrap;
+  width:100%;
+  min-width:0;
 }
 body.su-module #tips-analytics-page .se-sales-header-filters .tips-filter-form,
 body.su-module .tips-filter-form{
   display:flex;
   align-items:flex-end;
   justify-content:flex-end;
-  flex:0 0 auto;
+  flex:1 1 auto;
   flex-wrap:nowrap;
-  width:auto;
+  width:100%;
   max-width:100%;
   min-width:0;
-  margin-left:auto;
+  margin-left:0;
   gap:12px;
 }
 body.su-module .tips-location-chip{
@@ -25,12 +27,18 @@ body.su-module .tips-location-chip{
   max-width:160px;
 }
 body.su-module .tips-search-chip{
-  flex:0 0 220px;
-  width:220px;
-  min-width:200px;
-  max-width:220px;
+  position:relative;
+  flex:1 1 200px;
+  width:auto;
+  min-width:min(100%,160px);
+  max-width:100%;
+  z-index:20;
+}
+body.su-module .tips-search-chip .se-filter-chip-control{
+  width:100%;
 }
 body.su-module .tips-search-input{
+  flex:1 1 auto;
   width:100%;
   border:0;
   background:transparent;
@@ -88,12 +96,18 @@ body.su-module .tips-summary-row{
   body.su-module .tips-filter-form{
     flex-wrap:wrap;
   }
-  body.su-module .tips-location-chip,
-  body.su-module .tips-search-chip{
+  body.su-module .tips-location-chip{
     flex:1 1 160px;
     width:auto;
     min-width:148px;
     max-width:none;
+  }
+  body.su-module .tips-search-chip{
+    flex:1 1 100%;
+    width:100%;
+    min-width:0;
+    max-width:none;
+    order:-1;
   }
 }
 @media (max-width:480px){

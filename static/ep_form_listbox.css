@@ -1,11 +1,10 @@
 /* Employee payroll form listboxes — matches Purchase Ledger payment dropdown */
-body.ep-module .ep-form-listbox, body.su-module .ep-form-listbox,
-body.ep-module .ep-toolbar-listbox, body.su-module .ep-toolbar-listbox{
+body.ep-module .ep-form-listbox, body.su-module .ep-form-listbox, body.pos-module .ep-form-listbox,
+body.ep-module .ep-toolbar-listbox, body.su-module .ep-toolbar-listbox, body.pos-module .ep-toolbar-listbox{
   width:100%;
   position:relative;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-label, body.su-module .ep-form-listbox .se-filter-chip-label,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-toolbar-listbox .se-filter-chip-label{
+body.ep-module .ep-form-listbox .se-filter-chip-label, body.su-module .ep-form-listbox .se-filter-chip-label, body.pos-module .ep-form-listbox .se-filter-chip-label{
   display:block;
   margin-bottom:5px;
   font-size:11px;
@@ -15,8 +14,18 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-too
   letter-spacing:.4px;
   line-height:1.2;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-control, body.su-module .ep-form-listbox .se-filter-chip-control,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-control, body.su-module .ep-toolbar-listbox .se-filter-chip-control{
+body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-toolbar-listbox .se-filter-chip-label, body.pos-module .ep-toolbar-listbox .se-filter-chip-label{
+  display:block;
+  margin-bottom:8px;
+  font-size:12px;
+  font-weight:500;
+  color:#6B7280;
+  text-transform:none;
+  letter-spacing:0;
+  line-height:1;
+}
+body.ep-module .ep-form-listbox .se-filter-chip-control, body.su-module .ep-form-listbox .se-filter-chip-control, body.pos-module .ep-form-listbox .se-filter-chip-control,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-control, body.su-module .ep-toolbar-listbox .se-filter-chip-control, body.pos-module .ep-toolbar-listbox .se-filter-chip-control{
   width:100%;
   min-height:44px;
   background:#fff;
@@ -27,8 +36,8 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-control, body.su-module .ep-t
   overflow:hidden;
   transition:border-color .15s, box-shadow .15s;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-icon, body.su-module .ep-form-listbox .se-filter-chip-icon,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-icon, body.su-module .ep-toolbar-listbox .se-filter-chip-icon{
+body.ep-module .ep-form-listbox .se-filter-chip-icon, body.su-module .ep-form-listbox .se-filter-chip-icon, body.pos-module .ep-form-listbox .se-filter-chip-icon,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-icon, body.su-module .ep-toolbar-listbox .se-filter-chip-icon, body.pos-module .ep-toolbar-listbox .se-filter-chip-icon{
   flex-shrink:0;
   display:flex;
   align-items:center;
@@ -37,8 +46,8 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-icon, body.su-module .ep-tool
   align-self:stretch;
   color:#64748B;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-icon svg, body.su-module .ep-form-listbox .se-filter-chip-icon svg,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-icon svg, body.su-module .ep-toolbar-listbox .se-filter-chip-icon svg{
+body.ep-module .ep-form-listbox .se-filter-chip-icon svg, body.su-module .ep-form-listbox .se-filter-chip-icon svg, body.pos-module .ep-form-listbox .se-filter-chip-icon svg,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-icon svg, body.su-module .ep-toolbar-listbox .se-filter-chip-icon svg, body.pos-module .ep-toolbar-listbox .se-filter-chip-icon svg{
   width:18px;
   height:18px;
   stroke:currentColor;
@@ -47,8 +56,8 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-icon svg, body.su-module .ep-
   stroke-linecap:round;
   stroke-linejoin:round;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-trigger, body.su-module .ep-form-listbox .se-filter-chip-trigger,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-trigger, body.su-module .ep-toolbar-listbox .se-filter-chip-trigger{
+body.ep-module .ep-form-listbox .se-filter-chip-trigger, body.su-module .ep-form-listbox .se-filter-chip-trigger, body.pos-module .ep-form-listbox .se-filter-chip-trigger,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-trigger, body.su-module .ep-toolbar-listbox .se-filter-chip-trigger, body.pos-module .ep-toolbar-listbox .se-filter-chip-trigger{
   flex:1 1 auto;
   min-width:0;
   border:0;
@@ -61,19 +70,19 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-trigger, body.su-module .ep-t
   padding:10px 8px 10px 0;
   cursor:pointer;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-value, body.su-module .ep-form-listbox .se-filter-chip-value,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-value, body.su-module .ep-toolbar-listbox .se-filter-chip-value{
+body.ep-module .ep-form-listbox .se-filter-chip-value, body.su-module .ep-form-listbox .se-filter-chip-value, body.pos-module .ep-form-listbox .se-filter-chip-value,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-value, body.su-module .ep-toolbar-listbox .se-filter-chip-value, body.pos-module .ep-toolbar-listbox .se-filter-chip-value{
   display:block;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.su-module .ep-form-listbox .se-filter-chip-value.is-placeholder,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.su-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder{
+body.ep-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.su-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.pos-module .ep-form-listbox .se-filter-chip-value.is-placeholder,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.su-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.pos-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder{
   color:var(--txt3,#94A3B8);
 }
-body.ep-module .ep-form-listbox .se-filter-chip-chev, body.su-module .ep-form-listbox .se-filter-chip-chev,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-chev, body.su-module .ep-toolbar-listbox .se-filter-chip-chev{
+body.ep-module .ep-form-listbox .se-filter-chip-chev, body.su-module .ep-form-listbox .se-filter-chip-chev, body.pos-module .ep-form-listbox .se-filter-chip-chev,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-chev, body.su-module .ep-toolbar-listbox .se-filter-chip-chev, body.pos-module .ep-toolbar-listbox .se-filter-chip-chev{
   flex-shrink:0;
   display:flex;
   align-items:center;
@@ -81,8 +90,8 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-chev, body.su-module .ep-tool
   width:34px;
   color:#94A3B8;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-chev svg, body.su-module .ep-form-listbox .se-filter-chip-chev svg,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.su-module .ep-toolbar-listbox .se-filter-chip-chev svg{
+body.ep-module .ep-form-listbox .se-filter-chip-chev svg, body.su-module .ep-form-listbox .se-filter-chip-chev svg, body.pos-module .ep-form-listbox .se-filter-chip-chev svg,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.su-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.pos-module .ep-toolbar-listbox .se-filter-chip-chev svg{
   width:16px;
   height:16px;
   stroke:currentColor;
@@ -91,21 +100,21 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.su-module .ep-
   stroke-linecap:round;
   stroke-linejoin:round;
 }
-body.ep-module .ep-form-listbox.is-open, body.su-module .ep-form-listbox.is-open,
-body.ep-module .ep-toolbar-listbox.is-open, body.su-module .ep-toolbar-listbox.is-open{
+body.ep-module .ep-form-listbox.is-open, body.su-module .ep-form-listbox.is-open, body.pos-module .ep-form-listbox.is-open,
+body.ep-module .ep-toolbar-listbox.is-open, body.su-module .ep-toolbar-listbox.is-open, body.pos-module .ep-toolbar-listbox.is-open{
   z-index:80;
 }
-body.ep-module .ep-form-listbox.is-open .se-filter-chip-control, body.su-module .ep-form-listbox.is-open .se-filter-chip-control,
-body.ep-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.su-module .ep-toolbar-listbox.is-open .se-filter-chip-control{
+body.ep-module .ep-form-listbox.is-open .se-filter-chip-control, body.su-module .ep-form-listbox.is-open .se-filter-chip-control, body.pos-module .ep-form-listbox.is-open .se-filter-chip-control,
+body.ep-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.su-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.pos-module .ep-toolbar-listbox.is-open .se-filter-chip-control{
   border-color:#93C5FD;
   box-shadow:0 0 0 3px rgba(24,119,242,.08);
 }
-body.ep-module .ep-form-listbox.is-open .se-filter-chip-chev, body.su-module .ep-form-listbox.is-open .se-filter-chip-chev,
-body.ep-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.su-module .ep-toolbar-listbox.is-open .se-filter-chip-chev{
+body.ep-module .ep-form-listbox.is-open .se-filter-chip-chev, body.su-module .ep-form-listbox.is-open .se-filter-chip-chev, body.pos-module .ep-form-listbox.is-open .se-filter-chip-chev,
+body.ep-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.su-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.pos-module .ep-toolbar-listbox.is-open .se-filter-chip-chev{
   transform:rotate(180deg);
 }
-body.ep-module .ep-form-listbox .se-filter-listbox, body.su-module .ep-form-listbox .se-filter-listbox,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox, body.su-module .ep-toolbar-listbox .se-filter-listbox{
+body.ep-module .ep-form-listbox .se-filter-listbox, body.su-module .ep-form-listbox .se-filter-listbox, body.pos-module .ep-form-listbox .se-filter-listbox,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox, body.su-module .ep-toolbar-listbox .se-filter-listbox, body.pos-module .ep-toolbar-listbox .se-filter-listbox{
   position:absolute;
   left:0;
   right:0;
@@ -119,16 +128,16 @@ body.ep-module .ep-toolbar-listbox .se-filter-listbox, body.su-module .ep-toolba
   box-shadow:0 10px 30px rgba(15,23,42,.12);
   padding:6px;
 }
-body.ep-module .ep-form-listbox .ep-listbox-search-wrap, body.su-module .ep-form-listbox .ep-listbox-search-wrap,
-body.ep-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.su-module .ep-toolbar-listbox .ep-listbox-search-wrap{
+body.ep-module .ep-form-listbox .ep-listbox-search-wrap, body.su-module .ep-form-listbox .ep-listbox-search-wrap, body.pos-module .ep-form-listbox .ep-listbox-search-wrap,
+body.ep-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.su-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.pos-module .ep-toolbar-listbox .ep-listbox-search-wrap{
   padding:4px 4px 6px;
   position:sticky;
   top:0;
   background:#fff;
   z-index:1;
 }
-body.ep-module .ep-form-listbox .ep-listbox-search, body.su-module .ep-form-listbox .ep-listbox-search,
-body.ep-module .ep-toolbar-listbox .ep-listbox-search, body.su-module .ep-toolbar-listbox .ep-listbox-search{
+body.ep-module .ep-form-listbox .ep-listbox-search, body.su-module .ep-form-listbox .ep-listbox-search, body.pos-module .ep-form-listbox .ep-listbox-search,
+body.ep-module .ep-toolbar-listbox .ep-listbox-search, body.su-module .ep-toolbar-listbox .ep-listbox-search, body.pos-module .ep-toolbar-listbox .ep-listbox-search{
   width:100%;
   border:1px solid var(--border,#E2E8F0);
   border-radius:8px;
@@ -137,12 +146,12 @@ body.ep-module .ep-toolbar-listbox .ep-listbox-search, body.su-module .ep-toolba
   font-family:inherit;
   outline:none;
 }
-body.ep-module .ep-form-listbox .ep-listbox-search:focus, body.su-module .ep-form-listbox .ep-listbox-search:focus,
-body.ep-module .ep-toolbar-listbox .ep-listbox-search:focus, body.su-module .ep-toolbar-listbox .ep-listbox-search:focus{
+body.ep-module .ep-form-listbox .ep-listbox-search:focus, body.su-module .ep-form-listbox .ep-listbox-search:focus, body.pos-module .ep-form-listbox .ep-listbox-search:focus,
+body.ep-module .ep-toolbar-listbox .ep-listbox-search:focus, body.su-module .ep-toolbar-listbox .ep-listbox-search:focus, body.pos-module .ep-toolbar-listbox .ep-listbox-search:focus{
   border-color:#93C5FD;
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option, body.su-module .ep-form-listbox .se-filter-listbox-option,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option, body.su-module .ep-toolbar-listbox .se-filter-listbox-option{
+body.ep-module .ep-form-listbox .se-filter-listbox-option, body.su-module .ep-form-listbox .se-filter-listbox-option, body.pos-module .ep-form-listbox .se-filter-listbox-option,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option, body.su-module .ep-toolbar-listbox .se-filter-listbox-option, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option{
   display:block;
   width:100%;
   border:0;
@@ -155,63 +164,119 @@ body.ep-module .ep-toolbar-listbox .se-filter-listbox-option, body.su-module .ep
   color:var(--txt,#1A202C);
   cursor:pointer;
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option:hover, body.su-module .ep-form-listbox .se-filter-listbox-option:hover,
-body.ep-module .ep-form-listbox .se-filter-listbox-option:focus, body.su-module .ep-form-listbox .se-filter-listbox-option:focus,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.su-module .ep-toolbar-listbox .se-filter-listbox-option:hover,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.su-module .ep-toolbar-listbox .se-filter-listbox-option:focus{
+body.ep-module .ep-form-listbox .se-filter-listbox-option:hover, body.su-module .ep-form-listbox .se-filter-listbox-option:hover, body.pos-module .ep-form-listbox .se-filter-listbox-option:hover,
+body.ep-module .ep-form-listbox .se-filter-listbox-option:focus, body.su-module .ep-form-listbox .se-filter-listbox-option:focus, body.pos-module .ep-form-listbox .se-filter-listbox-option:focus,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.su-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option:hover,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.su-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option:focus{
   background:#F3F4F6;
   outline:none;
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-form-listbox .se-filter-listbox-option.is-selected,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected{
+body.ep-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-selected,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected{
   background:#EEF5FF;
   color:#1877F2;
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.su-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out{
+body.ep-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.su-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out{
   display:none!important;
 }
-body.ep-module .ep-toolbar-listbox, body.su-module .ep-toolbar-listbox{
-  min-width:120px;
-  flex:1 1 120px;
-  max-width:180px;
+/* Disabled options (e.g. an occupied table) stay visible with a status pill but
+   cannot be selected — see ep_form_listbox.js isOptionDisabled(). */
+body.ep-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"], body.su-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"], body.pos-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"],
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"], body.su-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"], body.pos-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  cursor:not-allowed;
+  color:#94A3B8;
 }
-body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-toolbar-listbox .se-filter-chip-label{
-  font-size:10px;
-  margin-bottom:4px;
+body.ep-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.su-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.pos-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.su-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover{
+  background:transparent;
 }
-body.ep-module .ep-toolbar-listbox .se-filter-chip-control, body.su-module .ep-toolbar-listbox .se-filter-chip-control{
-  min-height:36px;
+/* Occupied options (e.g. a table with an open order) stay fully selectable —
+   picking one resumes that order instead of starting a new bill. See
+   posInvTableChanged() in pos_invoice.js. Only the status pill differs. */
+body.ep-module .ep-form-listbox .se-filter-listbox-option.is-occupied, body.su-module .ep-form-listbox .se-filter-listbox-option.is-occupied, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-occupied,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
 }
-body.ep-module .ep-toolbar-listbox .se-filter-chip-trigger, body.su-module .ep-toolbar-listbox .se-filter-chip-trigger{
+/* Shown while async data (e.g. floor tables) hasn't loaded yet — keeps the
+   listbox from ever appearing blank/unresponsive on first open. */
+body.ep-module .se-filter-listbox-status, body.su-module .se-filter-listbox-status, body.pos-module .se-filter-listbox-status{
+  padding:10px 12px;
+  font-size:12.5px;
+  font-style:italic;
+  color:#94A3B8;
+}
+body.ep-module .se-filter-listbox-option-status, body.su-module .se-filter-listbox-option-status, body.pos-module .se-filter-listbox-option-status{
+  flex-shrink:0;
+  font-size:10.5px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  color:#C2410C;
+  background:#FFEDD5;
+  border-radius:999px;
+  padding:2px 8px;
+}
+body.ep-module .ep-toolbar-listbox, body.su-module .ep-toolbar-listbox, body.pos-module .ep-toolbar-listbox{
+  min-width:140px;
+  flex:1 1 140px;
+  max-width:220px;
+}
+/* Match Purchase Ledger filter chip type (sentence case, 12px label / 14px value) */
+body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-toolbar-listbox .se-filter-chip-label, body.pos-module .ep-toolbar-listbox .se-filter-chip-label{
   font-size:12px;
-  padding:8px 6px 8px 0;
+  font-weight:500;
+  text-transform:none;
+  letter-spacing:0;
+  color:#6B7280;
+  margin-bottom:8px;
 }
-body.ep-module .ep-toolbar-listbox .se-filter-chip-icon, body.su-module .ep-toolbar-listbox .se-filter-chip-icon{
-  width:32px;
+body.ep-module .ep-toolbar-listbox .se-filter-chip-control, body.su-module .ep-toolbar-listbox .se-filter-chip-control, body.pos-module .ep-toolbar-listbox .se-filter-chip-control{
+  min-height:48px;
+  border-radius:12px;
 }
-body.ep-module .ep-inline-listbox .se-filter-chip-control, body.su-module .ep-inline-listbox .se-filter-chip-control{
+body.ep-module .ep-toolbar-listbox .se-filter-chip-trigger, body.su-module .ep-toolbar-listbox .se-filter-chip-trigger, body.pos-module .ep-toolbar-listbox .se-filter-chip-trigger{
+  font-size:14px;
+  font-weight:500;
+  color:#111827;
+  padding:10px 8px 10px 0;
+}
+body.ep-module .ep-toolbar-listbox .se-filter-chip-icon, body.su-module .ep-toolbar-listbox .se-filter-chip-icon, body.pos-module .ep-toolbar-listbox .se-filter-chip-icon{
+  width:40px;
+}
+body.ep-module .ep-toolbar-listbox .se-filter-chip-value, body.su-module .ep-toolbar-listbox .se-filter-chip-value, body.pos-module .ep-toolbar-listbox .se-filter-chip-value{
+  font-weight:600;
+  color:#111827;
+}
+body.ep-module .ep-inline-listbox .se-filter-chip-control, body.su-module .ep-inline-listbox .se-filter-chip-control, body.pos-module .ep-inline-listbox .se-filter-chip-control{
   min-height:32px;
 }
-body.ep-module .ep-inline-listbox .se-filter-chip-trigger, body.su-module .ep-inline-listbox .se-filter-chip-trigger{
+body.ep-module .ep-inline-listbox .se-filter-chip-trigger, body.su-module .ep-inline-listbox .se-filter-chip-trigger, body.pos-module .ep-inline-listbox .se-filter-chip-trigger{
   font-size:12px;
   padding:6px 4px 6px 0;
 }
-body.ep-module .ep-inline-listbox .se-filter-chip-label, body.su-module .ep-inline-listbox .se-filter-chip-label{
+body.ep-module .ep-inline-listbox .se-filter-chip-label, body.su-module .ep-inline-listbox .se-filter-chip-label, body.pos-module .ep-inline-listbox .se-filter-chip-label{
   display:none;
 }
-body.ep-module .ep-table-listbox, body.su-module .ep-table-listbox{
+body.ep-module .ep-table-listbox, body.su-module .ep-table-listbox, body.pos-module .ep-table-listbox{
   margin:0;
 }
-body.ep-module .filter-bar .ep-toolbar-listbox, body.su-module .filter-bar .ep-toolbar-listbox{
+body.ep-module .filter-bar .ep-toolbar-listbox, body.su-module .filter-bar .ep-toolbar-listbox, body.pos-module .filter-bar .ep-toolbar-listbox{
   min-width:130px;
   flex:0 1 auto;
   max-width:none;
 }
-body.ep-module .topbar-actions .ep-toolbar-listbox, body.su-module .topbar-actions .ep-toolbar-listbox{
+body.ep-module .topbar-actions .ep-toolbar-listbox, body.su-module .topbar-actions .ep-toolbar-listbox, body.pos-module .topbar-actions .ep-toolbar-listbox{
   min-width:110px;
 }
-body.ep-module .topbar-actions form, body.su-module .topbar-actions form,
-body.ep-module .ep-topbar-filter-form, body.su-module .ep-topbar-filter-form{
+body.ep-module .topbar-actions form, body.su-module .topbar-actions form, body.pos-module .topbar-actions form,
+body.ep-module .ep-topbar-filter-form, body.su-module .ep-topbar-filter-form, body.pos-module .ep-topbar-filter-form{
   align-items:flex-end;
 }

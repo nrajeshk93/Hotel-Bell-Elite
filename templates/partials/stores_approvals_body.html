@@ -1,11 +1,11 @@
-<article class="card pl-list-panel st-panel st-appr-card" aria-label="Waiting approvals">
+<article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel st-panel st-appr-card" aria-label="Waiting approvals">
   <div class="st-appr-head">
     <h2 class="st-appr-title">Indents awaiting your approval</h2>
     <span class="st-appr-count" aria-label="{{ pending|length }} waiting">{{ pending|length }}</span>
   </div>
   <div class="st-appr-body">
     {% if pending %}
-    <div class="pl-table-wrap st-appr-table-wrap">
+    <div class="pl-table-wrap st-appr-table-wrap" tabindex="0" aria-label="Waiting approvals, scroll for more">
       <table id="st-approvals-pending-table" class="pl-table st-appr-table" aria-label="Waiting approvals">
         <thead>
           <tr>
@@ -98,13 +98,13 @@
   </div>
 </article>
 
-<article class="card pl-list-panel st-panel" aria-label="Recent decisions">
+<article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel st-panel" aria-label="Recent decisions">
   <div class="card-hdr">
     <div class="card-title"><span>Recent decisions</span></div>
   </div>
   <div class="card-body" style="padding:0;">
     {% if recent %}
-    <div class="pl-table-wrap">
+    <div class="pl-table-wrap" tabindex="0" aria-label="Recent decisions, scroll for more">
       <table id="st-approvals-recent-table" class="pl-table" aria-label="Recent decisions">
         <thead>
           <tr>

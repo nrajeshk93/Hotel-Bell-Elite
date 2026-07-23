@@ -23,6 +23,7 @@ body.su-module.st-indent-shell .su-header{
 body.su-module.st-indent-shell .su-header-top{
   align-items:center;
   gap:20px;
+  flex-wrap:nowrap;
 }
 
 /* Match Purchase Ledger / su-module header type */
@@ -67,54 +68,26 @@ body.su-module.st-indent-shell .su-header-tools{
   display:flex;
   align-items:center;
   gap:10px;
+  flex:0 0 auto;
+  flex-wrap:nowrap;
+  margin-left:auto;
+  justify-content:flex-end;
 }
 
-/* Size matches Purchase Ledger .btn / .btn-primary; colors stay Indent-specific */
-body.su-module.st-indent-shell .st-header-cta,
-body.su-module.st-indent-shell .st-header-secondary{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  gap:6px;
-  min-height:32px;
-  height:auto;
+/* Match Supplier Master .btn / .btn-primary header actions (~34px) */
+body.su-module.st-indent-shell .su-header-tools .btn{
+  min-height:34px;
+  height:34px;
   padding:7px 14px;
-  border-radius:var(--rs);
-  text-decoration:none;
-  font:600 12px Inter,system-ui,sans-serif;
-  cursor:pointer;
-  white-space:nowrap;
-  transition:background .2s, transform .15s, box-shadow .2s, border-color .2s, color .2s;
+  border-radius:6px;
+  font:600 12px/1.2 Inter,system-ui,sans-serif;
+  box-sizing:border-box;
 }
-body.su-module.st-indent-shell .st-header-cta{
-  background:#2563EB;
-  color:#fff;
-  border:0;
-  box-shadow:0 8px 20px rgba(37,99,235,.18);
-}
-body.su-module.st-indent-shell .st-header-cta:hover{background:#1D4ED8}
-body.su-module.st-indent-shell .st-header-cta:active{transform:translateY(1px)}
-body.su-module.st-indent-shell .st-header-cta svg{
+body.su-module.st-indent-shell .su-header-tools .btn svg{
   width:14px;
   height:14px;
-  stroke:currentColor;
-  fill:none;
-  stroke-width:2;
-  stroke-linecap:round;
-  stroke-linejoin:round;
   flex-shrink:0;
 }
-body.su-module.st-indent-shell .st-header-secondary{
-  background:#fff;
-  color:#374151;
-  border:1px solid #E5E7EB;
-}
-body.su-module.st-indent-shell .st-header-secondary:hover{
-  background:#F9FAFB;
-  border-color:#D1D5DB;
-  color:#111827;
-}
-body.su-module.st-indent-shell .st-header-secondary:active{transform:translateY(1px)}
 
 /* Fullscreen control uses shared de-fullscreen-btn size (40px), same as Purchase Ledger */
 
@@ -222,87 +195,155 @@ body.su-module .st-intro-card--outlet-only{
   justify-content:flex-end;
 }
 body.su-module .st-intro-card--indent-filters{
-  justify-content:space-between;
+  display:flex;
+  justify-content:stretch;
   align-items:flex-end;
-  gap:16px;
-  flex-wrap:wrap;
+  gap:12px;
+  flex-wrap:nowrap;
 }
-body.su-module .st-indent-view-tabs{
-  margin-right:0;
+body.su-module .st-indent-filter-bar{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:flex-end;
+  justify-content:flex-start;
+  gap:12px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin-left:0;
+}
+body.su-module .st-indent-search-chip{
+  position:relative;
+  flex:1 1 200px;
+  width:auto;
+  min-width:min(100%,180px);
+  max-width:100%;
+  z-index:20;
+}
+body.su-module .st-indent-search-chip .se-filter-chip-label{
+  display:block;
+  width:100%;
+  color:#64748B;
+  margin-bottom:8px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  line-height:1;
+  text-align:left;
+}
+body.su-module .st-indent-search-chip .se-filter-chip-control{
+  min-height:48px;
+  border-radius:12px;
+  border:1px solid #E5E7EB !important;
+  background:#fff !important;
+  display:flex;
+  align-items:center;
+  overflow:visible;
+  width:100%;
+}
+body.su-module .st-indent-search-chip .se-filter-chip-icon{
+  width:44px;
+  color:var(--acc,#2563EB);
+  flex-shrink:0;
+}
+body.su-module .st-indent-search-chip .se-filter-chip-icon svg{
+  width:20px;
+  height:20px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+body.su-module .st-indent-search-input{
   flex:1 1 auto;
   min-width:0;
+  width:100%;
+  height:48px;
+  border:none;
+  background:transparent;
+  font:500 14px Inter,system-ui,sans-serif;
+  color:#111827;
+  padding:0 12px 0 4px;
+  outline:none;
+}
+body.su-module .st-indent-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+body.su-module .st-indent-search-input::placeholder{color:#94A3B8;font-weight:500}
+body.su-module .st-indent-search-chip.is-active .se-filter-chip-control,
+body.su-module .st-indent-search-chip .se-filter-chip-control:focus-within{
+  border-color:#93C5FD !important;
+  background:#EFF6FF !important;
+}
+body.su-module .st-indent-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
+body.su-module .st-indent-filter-bar-end{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:flex-end;
+  justify-content:flex-end;
+  gap:12px;
+  flex:0 0 auto;
+  min-width:0;
+  margin-left:auto;
+}
+body.su-module .st-indent-status-tabs{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  flex:0 0 auto;
+  min-width:0;
+}
+body.su-module .st-indent-status-tabs > .se-filter-chip-label{
+  visibility:hidden;
+  user-select:none;
+  text-align:center;
+  margin-bottom:8px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  line-height:1;
+}
+body.su-module .st-indent-view-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  height:48px;
+  margin:0;
+  padding:4px;
+  box-sizing:border-box;
+  flex-shrink:0;
+}
+body.su-module .st-indent-view-tabs .cp-view-tab{
+  height:40px;
 }
 body.su-module .st-intro-card--outlet-only .st-intro-outlet{
-  width:min(280px,100%);
-}
-body.su-module .st-intro-left{
-  display:flex;
-  align-items:center;
-  gap:20px;
-  flex:1 1 70%;
-  min-width:0;
-  padding-right:28px;
-}
-body.su-module .st-intro-art{
-  flex:0 0 72px;
-  width:72px;
-  height:72px;
-  max-width:80px;
-  max-height:80px;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-}
-body.su-module .st-intro-art svg{
-  width:72px;
-  height:72px;
-  max-width:80px;
-  max-height:80px;
-  display:block;
-}
-body.su-module .st-intro-copy{min-width:0}
-body.su-module .st-intro-title{
-  margin:0;
-  font:700 18px/1.25 Inter,system-ui,sans-serif;
-  color:#111827;
-  letter-spacing:-.01em;
-}
-body.su-module .st-intro-desc{
-  margin:6px 0 0;
-  font:400 13px/1.45 Inter,system-ui,sans-serif;
-  color:#6B7280;
-  max-width:46ch;
-}
-body.su-module .st-intro-divider{
-  flex:0 0 1px;
-  align-self:stretch;
-  width:1px;
-  background:#E8EDF5;
-  margin:4px 28px;
+  width:auto;
+  max-width:none;
 }
 body.su-module .st-intro-outlet{
   flex:0 0 auto;
-  width:min(320px,100%);
-  max-width:320px;
+  width:auto;
+  max-width:none;
   display:flex;
-  align-items:center;
+  align-items:flex-end;
 }
 body.su-module .st-intro-outlet .st-outlet-listbox{
-  width:100%;
-  max-width:320px;
-  flex:none;
-  min-width:0;
+  width:160px;
+  min-width:140px;
+  max-width:180px;
+  flex:0 0 auto;
 }
 body.su-module .st-intro-outlet .se-filter-chip-label{
   display:block;
   width:100%;
-  color:#6B7280;
+  color:#64748B;
   margin-bottom:8px;
-  font-size:12px;
-  font-weight:500;
-  text-align:left;
-  text-transform:none;
-  letter-spacing:0;
+  font-size:11px;
+  font-weight:700;
+  text-align:center;
+  text-transform:uppercase;
+  letter-spacing:.06em;
 }
 body.su-module .st-intro-outlet .se-filter-chip-control{
   min-height:48px;
@@ -328,29 +369,40 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-wrap{
   container-type:inline-size;
   container-name:st-indent-lines;
 }
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head,
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line{
-  --st-line-drag:28px;
-  --st-line-qty:minmax(112px,140px);
-  --st-line-unit:minmax(96px,120px);
-  --st-line-price:minmax(120px,1fr);
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line,
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer,
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row{
+  --st-line-qty:minmax(96px,120px);
+  --st-line-unit:minmax(88px,110px);
+  --st-line-price:minmax(110px,1fr);
+  --st-line-total:minmax(110px,1fr);
   --st-line-action:44px;
-  --st-line-gap:16px;
+  --st-line-gap:14px;
   display:grid;
   grid-template-columns:
-    var(--st-line-drag)
-    minmax(0,1.7fr)
+    minmax(0,1.8fr)
     var(--st-line-qty)
     var(--st-line-unit)
     var(--st-line-price)
+    var(--st-line-total)
     var(--st-line-action);
   gap:var(--st-line-gap);
   align-items:center;
 }
 
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:10px;
   margin-bottom:10px;
   padding:0 4px;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row{
+  align-items:end;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row--group{
+  margin-top:-4px;
+  margin-bottom:2px;
 }
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head span{
   font:700 10px Inter,system-ui,sans-serif;
@@ -360,8 +412,56 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head span{
   text-align:center;
   min-width:0;
 }
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head span:nth-child(2){text-align:left}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row--cols span:first-child{text-align:left}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head span.st-lines-head-approx{
+  grid-column:4 / 6;
+  text-align:center;
+  font-size:12px;
+  line-height:1.25;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-spacer{
+  min-height:0;
+}
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines{display:grid;gap:14px}
+
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer{
+  margin-top:14px;
+  padding:12px 4px 0;
+  border-top:1px solid #E8EDF5;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-label{
+  grid-column:1 / 5;
+  justify-self:end;
+  font:650 12px Inter,system-ui,sans-serif;
+  color:#64748B;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-value{
+  grid-column:5;
+  justify-self:stretch;
+  text-align:right;
+  font:700 15px Inter,system-ui,sans-serif;
+  color:#0F172A;
+  padding-right:4px;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-total{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:52px;
+  padding:0 12px;
+  border-radius:12px;
+  border:1px solid #E5E7EB;
+  background:#F8FAFC;
+  color:#0F172A;
+  font:600 14px Inter,system-ui,sans-serif;
+  text-align:center;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-total:empty,
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-total.is-empty{
+  color:#94A3B8;
+}
 
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line{
   padding:4px 0;
@@ -372,19 +472,6 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.is-prod
   visibility:visible;
   pointer-events:none;
   opacity:.55;
-}
-
-body.su-module .st-drag-handle{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  color:#CBD5E1;
-  cursor:grab;
-}
-body.su-module .st-drag-handle svg{
-  width:16px;
-  height:16px;
-  fill:currentColor;
 }
 
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field{min-width:0;position:relative}
@@ -428,56 +515,8 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .ep-form-listbox .se-
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-filter-chip-icon{display:none}
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-filter-chip-trigger{padding-left:14px}
 
-/* Qty stepper */
-body.su-module .st-qty-stepper{
-  display:grid;
-  grid-template-columns:40px minmax(0,1fr) 40px;
-  align-items:center;
-  height:52px;
-  border:1px solid #E5E7EB;
-  border-radius:12px;
-  background:#fff;
-  overflow:hidden;
-  transition:border-color .2s, box-shadow .2s;
-}
-body.su-module .st-qty-stepper:focus-within{
-  border-color:#93C5FD;
-  box-shadow:0 0 0 4px rgba(37,99,235,.1);
-}
-body.su-module .st-qty-btn{
-  appearance:none;
-  border:0;
-  background:#F8FAFC;
-  color:#64748B;
-  height:100%;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  cursor:pointer;
-  transition:background .2s, color .2s;
-}
-body.su-module .st-qty-btn:hover{background:#EFF6FF;color:#2563EB}
-body.su-module .st-qty-btn svg{
-  width:16px;height:16px;
-  stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;
-}
-body.su-module .st-qty-stepper input[type="number"]{
-  width:100%;
-  height:100%;
-  border:0;
-  background:transparent;
-  text-align:center;
-  font:600 13px Inter,system-ui,sans-serif;
-  color:#111827;
-  padding:0;
-  -moz-appearance:textfield;
-}
-body.su-module .st-qty-stepper input[type="number"]::-webkit-outer-spin-button,
-body.su-module .st-qty-stepper input[type="number"]::-webkit-inner-spin-button{
-  -webkit-appearance:none;
-  margin:0;
-}
-
+/* Qty + price number fields */
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty input[type="number"],
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price input[type="number"]{
   width:100%;
   height:52px;
@@ -485,18 +524,26 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price inpu
   border-radius:12px;
   background:#fff;
   padding:0 14px;
-  font:400 13px Inter,system-ui,sans-serif;
-  color:#111827;
+  font:600 14px Inter,system-ui,sans-serif;
+  color:#0F172A;
   text-align:center;
   box-sizing:border-box;
   transition:border-color .2s, box-shadow .2s;
   -moz-appearance:textfield;
 }
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty input[type="number"]::placeholder,
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price input[type="number"]::placeholder{
+  color:#94A3B8;
+  font-weight:500;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty input[type="number"]::-webkit-outer-spin-button,
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty input[type="number"]::-webkit-inner-spin-button,
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price input[type="number"]::-webkit-outer-spin-button,
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price input[type="number"]::-webkit-inner-spin-button{
   -webkit-appearance:none;
   margin:0;
 }
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty input[type="number"]:focus,
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price input[type="number"]:focus{
   outline:none;
   border-color:#93C5FD;
@@ -830,22 +877,160 @@ body.su-module .st-flash--error{
 
 @media (max-width:1100px){
   body.su-module .st-intro-card{flex-direction:column;align-items:stretch;min-height:0;gap:20px}
-  body.su-module .st-intro-left{padding-right:0;flex:1 1 auto}
-  body.su-module .st-intro-divider{width:100%;height:1px;margin:0}
-  body.su-module .st-intro-outlet{width:100%;max-width:none}
+  body.su-module .st-intro-card--indent-filters,
+  body.su-module .st-indent-filter-bar{flex-wrap:wrap;justify-content:stretch}
+  body.su-module .st-indent-search-chip{flex:1 1 100%;max-width:none}
+  body.su-module .st-indent-filter-bar-end{
+    flex:1 1 auto;
+    width:100%;
+    margin-left:0;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+  }
+  body.su-module .st-intro-outlet{width:auto;max-width:none}
   body.su-module .st-intro-title{font-size:16px}
   body.su-module .st-intro-desc{font-size:13px}
   body.su-module .st-items-notes{grid-template-columns:1fr}
 }
 
-/* Indent view / edit modals — above fullscreen chrome when hosted on #de-fs-app */
+/* Indent view / edit / ledger modals — above fullscreen chrome when hosted on #de-fs-app */
 body.su-module #st-indent-view-modal,
-body.su-module #st-indent-edit-modal{
+body.su-module #st-indent-edit-modal,
+body.su-module #st-stores-ledger-modal,
+body.su-module #st-ledger-pending-modal,
+body.su-module #st-approvals-modal{
   z-index:10080;
+}
+body.su-module #st-ledger-pending-modal,
+body.su-module #st-reject-modal{
+  z-index:10090;
 }
 
 /* Indent view modal */
-body.su-module #st-indent-view-modal .st-indent-view-box{
+body.su-module #st-indent-view-modal .st-indent-view-box,
+body.su-module #st-stores-ledger-modal .st-stores-ledger-box{
+  width:min(760px,100%);
+  max-height:calc(100vh - 48px);
+  overflow:auto;
+  background:#fff;
+  border:1px solid #E5E7EB;
+  border-radius:20px;
+  box-shadow:0 16px 40px rgba(15,23,42,.18);
+  display:flex;
+  flex-direction:column;
+}
+body.su-module #st-stores-ledger-modal .st-stores-ledger-box{
+  width:min(1120px,100%);
+  height:min(780px, calc(100vh - 40px));
+  max-height:calc(100vh - 40px);
+  min-height:min(560px, calc(100vh - 40px));
+  overflow:hidden;
+}
+body.su-module #st-approvals-modal .st-approvals-modal-box{
+  width:min(1120px,100%);
+  height:min(820px, calc(100vh - 40px));
+  max-height:calc(100vh - 40px);
+  min-height:min(520px, calc(100vh - 40px));
+  overflow:hidden;
+  background:#fff;
+  border:1px solid #E5E7EB;
+  border-radius:20px;
+  box-shadow:0 16px 40px rgba(15,23,42,.18);
+  display:flex;
+  flex-direction:column;
+}
+body.su-module #st-approvals-modal .st-approvals-modal-filters{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  flex:0 0 auto;
+  margin-left:4px;
+}
+body.su-module #st-approvals-modal .st-approvals-filter-listbox{
+  width:150px;
+  min-width:132px;
+  max-width:170px;
+  flex:0 0 auto;
+}
+body.su-module #st-approvals-modal .st-approvals-filter-listbox .se-filter-chip-label{
+  display:block;
+  width:100%;
+  color:#64748B;
+  margin-bottom:6px;
+  font-size:11px;
+  font-weight:700;
+  text-align:center;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+body.su-module #st-approvals-modal .st-approvals-filter-listbox .se-filter-chip-control{
+  min-height:48px;
+  height:48px;
+  border-radius:12px;
+  background:#FFFFFF;
+  border:1px solid #E5E7EB;
+  box-shadow:none;
+}
+body.su-module #st-approvals-modal .st-approvals-filter-listbox.is-open .se-filter-chip-control,
+body.su-module #st-approvals-modal .st-approvals-filter-listbox .se-filter-chip-control:focus-within{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.1);
+}
+body.su-module #st-approvals-modal .st-approvals-filter-listbox .se-filter-chip-icon{color:#64748B}
+body.su-module #st-approvals-modal .st-approvals-filter-listbox .se-filter-chip-value{
+  font:600 13px Inter,system-ui,sans-serif;
+  color:#111827;
+}
+@media (max-width:900px){
+  body.su-module #st-approvals-modal .st-indent-view-head{
+    flex-wrap:wrap;
+  }
+  body.su-module #st-approvals-modal .st-approvals-modal-filters{
+    order:3;
+    width:100%;
+    justify-content:stretch;
+    margin-left:0;
+  }
+  body.su-module #st-approvals-modal .st-approvals-filter-listbox{
+    flex:1 1 140px;
+    max-width:none;
+  }
+}
+body.su-module #st-approvals-modal .st-approvals-modal-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  display:grid;
+  gap:16px;
+  align-content:start;
+  padding:16px 18px 8px;
+}
+body.su-module #st-approvals-modal .st-approvals-modal-loading,
+body.su-module #st-approvals-modal .st-approvals-modal-error{
+  padding:28px 12px;
+  text-align:center;
+  color:#64748B;
+  font-size:14px;
+  font-weight:600;
+}
+body.su-module #st-approvals-modal .st-approvals-modal-error{color:#B91C1C}
+body.su-module #st-approvals-modal .st-panel,
+body.su-module #st-approvals-modal .st-appr-card{
+  margin:0;
+}
+body.su-module #st-approvals-modal .st-reject-modal{
+  /* Reject dialog is remounted on #de-fs-app; keep markup inert while nested. */
+  display:none !important;
+}
+body.su-module #st-stores-ledger-modal .st-stores-ledger-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+}
+body.su-module #st-stores-ledger-modal .st-stores-ledger-body .st-indent-view-table-wrap{
+  min-height:100%;
+}
+body.su-module #st-ledger-pending-modal .st-ledger-pending-box{
   width:min(720px,100%);
   max-height:calc(100vh - 48px);
   overflow:auto;
@@ -856,9 +1041,155 @@ body.su-module #st-indent-view-modal .st-indent-view-box{
   display:flex;
   flex-direction:column;
 }
+body.su-module #st-stores-ledger-modal .st-ledger-pending-btn{
+  appearance:none;
+  -webkit-appearance:none;
+  border:0;
+  background:transparent;
+  padding:0;
+  margin:0;
+  font:inherit;
+  font-weight:700;
+  color:#1D4ED8;
+  text-decoration:underline;
+  text-underline-offset:2px;
+  cursor:pointer;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-pending-btn:hover{
+  color:#1E40AF;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-pending-btn:focus-visible{
+  outline:2px solid #93C5FD;
+  outline-offset:2px;
+  border-radius:4px;
+}
+body.su-module #st-stores-ledger-modal .st-indent-view-title-wrap{
+  flex:0 1 auto;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-search-chip{
+  position:relative;
+  flex:1 1 220px;
+  width:auto;
+  min-width:min(100%,160px);
+  max-width:100%;
+  margin:0 4px;
+  z-index:2;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-search-chip .se-filter-chip-label{
+  display:block;
+  width:100%;
+  color:#64748B;
+  margin-bottom:6px;
+  font-size:11px;
+  font-weight:700;
+  text-align:left;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-search-chip .se-filter-chip-control{
+  min-height:48px;
+  height:48px;
+  border-radius:12px;
+  border:1px solid #E5E7EB;
+  background:#fff;
+  display:flex;
+  align-items:center;
+  width:100%;
+  box-shadow:none;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-search-chip .se-filter-chip-icon{
+  width:40px;
+  color:#64748B;
+  flex-shrink:0;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-search-input{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:48px;
+  border:none;
+  background:transparent;
+  font:500 14px Inter,system-ui,sans-serif;
+  color:#111827;
+  outline:none;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+body.su-module #st-stores-ledger-modal .st-ledger-search-input::placeholder{color:#94A3B8;font-weight:500}
+body.su-module #st-stores-ledger-modal .st-ledger-search-chip.is-active .se-filter-chip-control,
+body.su-module #st-stores-ledger-modal .st-ledger-search-chip .se-filter-chip-control:focus-within{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.1);
+}
+body.su-module #st-stores-ledger-modal .st-ledger-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
+body.su-module #st-stores-ledger-modal .st-stores-ledger-filters{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  flex:0 0 auto;
+  margin-left:4px;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-filter-listbox{
+  width:150px;
+  min-width:132px;
+  max-width:170px;
+  flex:0 0 auto;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-filter-listbox .se-filter-chip-label{
+  display:block;
+  width:100%;
+  color:#64748B;
+  margin-bottom:6px;
+  font-size:11px;
+  font-weight:700;
+  text-align:center;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-filter-listbox .se-filter-chip-control{
+  min-height:48px;
+  height:48px;
+  border-radius:12px;
+  background:#FFFFFF;
+  border:1px solid #E5E7EB;
+  box-shadow:none;
+}
+body.su-module #st-stores-ledger-modal .st-ledger-filter-listbox.is-open .se-filter-chip-control,
+body.su-module #st-stores-ledger-modal .st-ledger-filter-listbox .se-filter-chip-control:focus-within{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.1);
+}
+body.su-module #st-stores-ledger-modal .st-ledger-filter-listbox .se-filter-chip-icon{color:#64748B}
+body.su-module #st-stores-ledger-modal .st-ledger-filter-listbox .se-filter-chip-value{
+  font:600 13px Inter,system-ui,sans-serif;
+  color:#111827;
+}
+body.su-module #st-stores-ledger-modal .st-indent-view-table{
+  min-width:820px;
+}
+@media (max-width:900px){
+  body.su-module #st-stores-ledger-modal .st-indent-view-head{
+    flex-wrap:wrap;
+  }
+  body.su-module #st-stores-ledger-modal .st-ledger-search-chip{
+    order:3;
+    flex:1 1 100%;
+    max-width:none;
+    margin:0;
+  }
+  body.su-module #st-stores-ledger-modal .st-stores-ledger-filters{
+    order:4;
+    width:100%;
+    justify-content:stretch;
+    margin-left:0;
+  }
+  body.su-module #st-stores-ledger-modal .st-ledger-filter-listbox{
+    flex:1 1 140px;
+    max-width:none;
+  }
+}
 body.su-module .st-indent-view-head{
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   gap:12px;
   padding:18px 20px;
   border-bottom:1px solid #EEF2F7;
@@ -866,6 +1197,38 @@ body.su-module .st-indent-view-head{
 body.su-module .st-indent-view-title-wrap{
   flex:1 1 auto;
   min-width:0;
+}
+body.su-module .st-indent-view-head-stats{
+  display:inline-flex;
+  align-items:stretch;
+  gap:10px;
+  flex-shrink:0;
+}
+body.su-module .st-indent-view-stat{
+  min-width:92px;
+  min-height:52px;
+  padding:8px 12px;
+  border:1px solid #E8EDF5;
+  border-radius:12px;
+  background:#F8FAFC;
+  text-align:center;
+  box-sizing:border-box;
+}
+body.su-module .st-indent-view-stat-label{
+  display:block;
+  font:700 10px/1.2 Inter,system-ui,sans-serif;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:#94A3B8;
+}
+body.su-module .st-indent-view-stat-value{
+  display:block;
+  margin-top:4px;
+  font:700 15px/1.2 Inter,system-ui,sans-serif;
+  color:#0F172A;
+}
+body.su-module .st-indent-view-stat-value--money{
+  color:#059669;
 }
 body.su-module .st-indent-view-title{
   margin:0;
@@ -894,17 +1257,26 @@ body.su-module .st-indent-view-close:hover{
   background:#F8FAFC;
 }
 body.su-module .st-indent-view-body{
-  padding:18px 20px;
+  padding:18px 0 8px;
   flex:1 1 auto;
   min-height:0;
+  overflow:auto;
 }
 body.su-module .st-indent-view-notes,
 body.su-module .st-indent-view-decision{
-  margin:0 0 14px;
+  margin:0 20px 14px;
   font:400 14px/1.5 Inter,system-ui,sans-serif;
   color:#374151;
 }
 body.su-module .st-indent-view-decision{color:#6B7280;font-size:13px}
+body.su-module .st-indent-view-table-wrap{
+  margin:0;
+  border-radius:0;
+  overflow:auto;
+}
+body.su-module .st-indent-view-table{
+  min-width:560px;
+}
 body.su-module .st-indent-view-empty{
   padding:20px;
   text-align:center;
@@ -988,20 +1360,26 @@ body.su-module #st-indent-edit-modal .st-indent-edit-actions{
 /* Mid width: tighten columns before stacking (viewport + modal container). */
 @media (max-width:1100px){
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer{
     --st-line-gap:12px;
     --st-line-qty:minmax(100px,120px);
     --st-line-unit:minmax(88px,104px);
-    --st-line-price:minmax(110px,.9fr);
+    --st-line-price:minmax(100px,.9fr);
+    --st-line-total:minmax(100px,.9fr);
   }
 }
 @container st-indent-lines (max-width:820px){
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer{
     --st-line-gap:12px;
     --st-line-qty:minmax(100px,120px);
     --st-line-unit:minmax(88px,104px);
-    --st-line-price:minmax(110px,.9fr);
+    --st-line-price:minmax(100px,.9fr);
+    --st-line-total:minmax(100px,.9fr);
   }
 }
 
@@ -1021,14 +1399,28 @@ body.su-module #st-indent-edit-modal .st-indent-edit-actions{
     border-radius:16px;
     background:#FCFCFD;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-drag-handle{display:none}
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--product{grid-column:1 / -1}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price{grid-column:1 / -1}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price{grid-column:1 / 2}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--line-total{grid-column:2 / 3}
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove{grid-column:1 / -1;width:100%}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer{
+    grid-template-columns:1fr auto;
+    gap:12px;
+    padding:12px 4px 0;
+  }
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-label{
+    grid-column:1;
+    justify-self:start;
+  }
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-value{
+    grid-column:2;
+    justify-self:end;
+  }
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--product::before,
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty::before,
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--unit::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price::before{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--line-total::before{
     content:attr(data-st-label);
     display:block;
     margin:0 0 6px;
@@ -1053,14 +1445,27 @@ body.su-module #st-indent-edit-modal .st-indent-edit-actions{
     border-radius:16px;
     background:#FCFCFD;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-drag-handle{display:none}
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--product{grid-column:1 / -1}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price{grid-column:1 / -1}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price{grid-column:1 / 2}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--line-total{grid-column:2 / 3}
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove{grid-column:1 / -1;width:100%}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer{
+    grid-template-columns:1fr auto;
+    gap:12px;
+  }
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-label{
+    grid-column:1;
+    justify-self:start;
+  }
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-value{
+    grid-column:2;
+    justify-self:end;
+  }
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--product::before,
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty::before,
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--unit::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price::before{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--line-total::before{
     content:attr(data-st-label);
     display:block;
     margin:0 0 6px;

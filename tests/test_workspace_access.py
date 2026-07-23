@@ -48,9 +48,17 @@ class WorkspaceAccessTests(unittest.TestCase):
         labels = [node["label"] for node in tree]
         self.assertEqual(
             labels,
-            ["Sales Analytics", "User & Access", "Accounts", "Employee Payroll", "Procurement & Inventory"],
+            [
+                "Sales Analytics",
+                "User & Access",
+                "Accounts",
+                "Employee Payroll",
+                "Restaurant",
+                "Procurement & Inventory",
+                "Master",
+            ],
         )
-        stores_children = [child["label"] for child in tree[4]["children"]]
+        stores_children = [child["label"] for child in tree[5]["children"]]
         self.assertEqual(
             stores_children,
             [
@@ -60,7 +68,7 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Stock",
             ],
         )
-        indent_node = next(child for child in tree[4]["children"] if child["label"] == "Indent")
+        indent_node = next(child for child in tree[5]["children"] if child["label"] == "Indent")
         self.assertEqual(
             [child["label"] for child in indent_node["children"]],
             ["Products"],
@@ -90,9 +98,15 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Supplier Master",
             ],
         )
+        pos = next(node for node in tree if node["label"] == "Restaurant")
+        self.assertEqual(pos["dashboardKey"], "point_of_sale")
+        self.assertEqual(pos["children"], [])
         stores = next(node for node in tree if node["label"] == "Procurement & Inventory")
         self.assertEqual(stores["dashboardKey"], "stores")
         self.assertEqual(len(stores["children"]), 4)
+        master = next(node for node in tree if node["label"] == "Master")
+        self.assertEqual(master["dashboardKey"], "master")
+        self.assertEqual(master["children"], [])
 
     def test_supplier_master_uses_accounts_access(self):
         user = {
@@ -192,6 +206,20 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("export_supplier_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("stores"), "stores")
         self.assertEqual(get_endpoint_dashboard_module("stores_indent"), "stores")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_invoice"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_invoice_ledger"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("export_pos_invoice_ledger_report"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_settings"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_floor"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_settings"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_menu_categories"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_menu_items"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_menu_products"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_invoices_save"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_invoice_detail"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_invoice_delete"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("master"), "master")
         self.assertEqual(
             get_endpoint_sales_analytics_submodules("save_sales_update"),
             ["hotel", "bar", "restaurant"],

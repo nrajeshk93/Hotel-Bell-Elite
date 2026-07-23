@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice | Restaurant | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=22">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open pos-module pos-invoice-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+{% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox %}
+
+<div class="de-main-inner pos-invoice-page" id="pos-invoice-page" data-pos-invoice>
+  <header class="pos-inv-header">
+    <div class="pos-inv-header-title-row">
+      <span class="pos-inv-header-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+      </span>
+      <h1>Create Invoice</h1>
+    </div>
+    <div class="pos-inv-header-actions">
+      <!-- Fullscreen/expand control is mounted here by de_fullscreen.js; stays on the title row. -->
+    </div>
+    <div class="pos-inv-header-pills">
+      {{ ep_toolbar_listbox('table', 'Table', [], '', placeholder='Select table…', hide_label=true, field_id='pos-inv-table', extra_class='pos-inv-header-listbox', change_handler='posInvTableChanged', icon='table') }}
+      {{ ep_toolbar_listbox('order_type', 'Order type', [
+        ('dine_in', 'Dine In'),
+        ('takeaway', 'Takeaway'),
+        ('delivery', 'Delivery')
+      ], 'dine_in', placeholder='Order type', hide_label=true, field_id='pos-inv-order-type-header', extra_class='pos-inv-header-listbox', change_handler='posInvOrderTypeChanged', icon='utensils') }}
+    </div>
+    <div class="pos-inv-header-buttons">
+      <div class="pos-inv-more-wrap">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="pos-inv-more-menu" title="More actions">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          <span>More Actions</span>
+        </button>
+        <div class="pos-inv-more-menu" id="pos-inv-more-menu" role="menu" hidden>
+          <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="hold">Hold Order</button>
+          <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="clear">Clear Items</button>
+          <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="duplicate">Duplicate Order</button>
+        </div>
+      </div>
+      <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-save" data-inv-action="save" title="Save order">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+        <span>Save</span>
+      </button>
+      <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-close-table" data-inv-action="close-table" title="Close this bill and free the table for new guests" hidden>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12 3 3 5-6"/><circle cx="12" cy="12" r="9"/></svg>
+        <span>Close &amp; Free Table</span>
+      </button>
+      <button type="button" class="pos-inv-btn pos-inv-btn--kitchen pos-inv-kot-btn" id="pos-inv-send-kot" data-inv-action="send-kot" title="Confirm order and send new items to the kitchen" disabled>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/><path d="M10.5 17a1.5 1.5 0 0 0 3 0"/></svg>
+        <span>Send to Kitchen</span>
+        <span class="pos-inv-kot-count" id="pos-inv-send-kot-count" hidden>0</span>
+      </button>
+      <span class="pos-sr-only" id="pos-inv-kot-status" aria-live="polite"></span>
+      <button type="button" class="pos-inv-icon-btn pos-inv-header-info" id="pos-inv-header-info" title="Send to Kitchen sends only new or updated items since the last KOT." aria-label="About Send to Kitchen">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4.5M12 8.2v.01"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="pos-inv-layout">
+    <div class="pos-inv-main">
+      <section class="pos-inv-card pos-inv-search-card" aria-label="Search and order details">
+        <div class="pos-inv-search-wrap" id="pos-inv-search-wrap">
+          <label class="pos-inv-search" for="pos-inv-search">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="search" id="pos-inv-search" placeholder="Search menu items by name or code…" autocomplete="off" aria-autocomplete="list" aria-controls="pos-inv-suggest" aria-expanded="false" spellcheck="false">
+            <button type="button" class="pos-inv-search-clear" id="pos-inv-search-clear" hidden aria-label="Clear search">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </label>
+          <div class="pos-inv-suggest" id="pos-inv-suggest" role="listbox" hidden></div>
+        </div>
+
+        <div class="pos-inv-meta" aria-label="Order details">
+          <div class="pos-inv-meta-item pos-inv-meta-item--stat pos-inv-meta-item--order">
+            <span class="pos-inv-meta-stat-label">Order No.</span>
+            <div class="pos-inv-meta-stat-body">
+              <span class="pos-inv-meta-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>
+              </span>
+              <span class="pos-inv-meta-stat-value pos-inv-meta-stat-value--order">
+                <span id="pos-inv-meta-order-no">—</span>
+                <button type="button" class="pos-inv-icon-btn" id="pos-inv-edit-order-no" title="Edit order number" aria-label="Edit order number">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20h9"/><path d="m16.5 3.5 3.5 3.5L7 20l-4 1 1-4Z"/></svg>
+                </button>
+              </span>
+            </div>
+          </div>
+          <div class="pos-inv-meta-item pos-inv-meta-item--stat pos-inv-meta-item--date">
+            <span class="pos-inv-meta-stat-label">Date</span>
+            <div class="pos-inv-meta-stat-body">
+              <span class="pos-inv-meta-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              </span>
+              <span class="pos-inv-meta-stat-value" id="pos-inv-meta-date">—</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pos-inv-card pos-inv-lines-card" aria-label="Order items">
+        <div class="pos-inv-table-wrap">
+          <table class="pos-inv-table" id="pos-inv-table-lines">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col" class="pos-inv-col-qty">Qty</th>
+                <th scope="col" class="pos-inv-col-rate">Rate (₹)</th>
+                <th scope="col" class="pos-inv-col-amt">Amount (₹)</th>
+                <th scope="col" class="pos-inv-col-act"><span class="pos-sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="pos-inv-lines-body"></tbody>
+          </table>
+          <div class="pos-inv-empty" id="pos-inv-empty" hidden>
+            <div class="pos-inv-empty-art" aria-hidden="true">
+              <svg viewBox="0 0 64 64" fill="none">
+                <rect x="14" y="8" width="36" height="48" rx="6" stroke="currentColor" stroke-width="2"/>
+                <path d="M22 20h20M22 28h16M22 36h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="44" cy="46" r="10" fill="#2563EB"/>
+                <path d="M44 41v10M39 46h10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <p class="pos-inv-empty-title">Search and add items to begin billing</p>
+            <p class="pos-inv-empty-copy">Search for menu items above. Selected items will appear here.</p>
+          </div>
+        </div>
+        <div class="pos-inv-lines-footer">
+          <button type="button" class="pos-inv-btn pos-inv-btn--outline" id="pos-inv-add-custom" data-inv-action="add-custom">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            Add Custom Item
+          </button>
+        </div>
+      </section>
+
+      <section class="pos-inv-card pos-inv-notes-card" aria-label="Order notes">
+        <div class="pos-inv-notes-head">
+          <label class="pos-inv-notes-label" for="pos-inv-notes">Order Notes (Optional)</label>
+          <span class="pos-inv-notes-count" id="pos-inv-notes-count" aria-live="polite">0 / 200</span>
+        </div>
+        <div class="pos-inv-notes-wrap">
+          <textarea id="pos-inv-notes" rows="3" maxlength="200" placeholder="Add special instructions for the kitchen or guest…"></textarea>
+          <button type="button" class="pos-inv-icon-btn pos-inv-notes-history" id="pos-inv-notes-history" title="Note templates" aria-label="Note templates" data-inv-action="note-templates">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>
+          </button>
+        </div>
+      </section>
+    </div>
+
+    <aside class="pos-inv-aside" aria-label="Customer and bill">
+      <section class="pos-inv-card pos-inv-customer-card" aria-label="Customer details">
+        <h2>Customer Details</h2>
+
+        <div class="pos-inv-mobile-wrap" id="pos-inv-mobile-wrap">
+          <label class="pos-inv-field" for="pos-inv-customer-mobile">
+            <span>Mobile</span>
+            <span class="pos-inv-mobile">
+              <span class="pos-inv-mobile-prefix" aria-hidden="true">+91</span>
+              <input type="tel" id="pos-inv-customer-mobile" name="customer_mobile" inputmode="numeric" maxlength="10" placeholder="10-digit number" autocomplete="tel-national" aria-autocomplete="list" aria-controls="pos-inv-customer-suggest" aria-expanded="false">
+            </span>
+          </label>
+          <div class="pos-inv-customer-suggest" id="pos-inv-customer-suggest" role="listbox" hidden></div>
+        </div>
+
+        <label class="pos-inv-field" for="pos-inv-customer-name">
+          <span>First name <abbr title="required">*</abbr></span>
+          <input type="text" id="pos-inv-customer-name" name="customer_name" placeholder="Guest first name" autocomplete="given-name" required>
+        </label>
+      </section>
+
+      <section class="pos-inv-card pos-inv-summary" aria-label="Bill summary">
+        <h2>Bill Summary</h2>
+        <dl class="pos-inv-summary-list">
+          <div class="pos-inv-summary-row">
+            <dt>Subtotal</dt>
+            <dd id="pos-inv-sum-subtotal">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>Discount <span class="pos-inv-summary-muted" id="pos-inv-sum-discount-hint"></span></dt>
+            <dd id="pos-inv-sum-discount">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>GST <span class="pos-inv-summary-muted">(5%)</span></dt>
+            <dd id="pos-inv-sum-gst">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>Service Charge <span class="pos-inv-summary-muted" id="pos-inv-sum-service-hint"></span></dt>
+            <dd id="pos-inv-sum-service">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>Tip</dt>
+            <dd id="pos-inv-sum-tip">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>Round Off</dt>
+            <dd id="pos-inv-sum-round">₹0.00</dd>
+          </div>
+        </dl>
+        <div class="pos-inv-summary-total">
+          <span>Total</span>
+          <strong id="pos-inv-sum-total">₹0.00</strong>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <div class="pos-inv-toolbar" role="toolbar" aria-label="Invoice actions">
+    <div class="pos-inv-toolbar-tools">
+      <button type="button" class="pos-inv-tool" data-inv-action="discount" title="Add discount">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="2"/><circle cx="15" cy="15" r="2"/><path d="m7.5 16.5 9-9"/><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
+        <span>Add Discount</span>
+      </button>
+      <button type="button" class="pos-inv-tool" data-inv-action="service" title="Service charge">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Service Charge</span>
+      </button>
+      <button type="button" class="pos-inv-tool" data-inv-action="tip" title="Add tip">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 12.5c1.5-1.6 2-3.4 1.2-5.1C19.5 4.8 16.6 3.5 14 5c-1 .6-1.6 1.5-2 2.4-.4-.9-1-1.8-2-2.4-2.6-1.5-5.5-.2-6.7 2.4-.8 1.7-.3 3.5 1.2 5.1L12 20l7.5-7.5Z"/></svg>
+        <span>Add Tip</span>
+      </button>
+      <button type="button" class="pos-inv-tool" data-inv-action="coupon" title="Apply coupon">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9a2 2 0 0 0 2-2V5h14v2a2 2 0 1 0 0 4v2a2 2 0 1 0 0 4v2H5v-2a2 2 0 1 0 0-4V9Z"/><path d="M12 5v14"/></svg>
+        <span>Apply Coupon</span>
+      </button>
+      <button type="button" class="pos-inv-tool" data-inv-action="print" title="Print">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>
+        <span>Print</span>
+      </button>
+      <button type="button" class="pos-inv-tool" data-inv-action="pdf" title="PDF">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-6Z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+        <span>PDF</span>
+      </button>
+      <button type="button" class="pos-inv-tool" data-inv-action="share" title="Share">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
+        <span>Share</span>
+      </button>
+    </div>
+    <button type="button" class="pos-inv-btn pos-inv-btn--primary pos-inv-toolbar-primary" id="pos-inv-send-customer" data-inv-action="send" title="Save and generate the customer bill">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg>
+      Send to Customer
+    </button>
+  </div>
+
+  <div class="pos-inv-toast" id="pos-inv-toast" role="status" aria-live="polite" hidden></div>
+
+  <div class="pos-inv-modal" id="pos-inv-custom-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-inv-modal-close="custom"></div>
+    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-custom-title">
+      <h3 id="pos-inv-custom-title">Add Custom Item</h3>
+      <label class="pos-inv-field">
+        <span>Item name</span>
+        <input type="text" id="pos-inv-custom-name" autocomplete="off">
+      </label>
+      <label class="pos-inv-field">
+        <span>Rate (₹)</span>
+        <input type="number" id="pos-inv-custom-rate" min="0" step="0.01" value="0">
+      </label>
+      <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-inv-modal-close="custom">Cancel</button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-inv-custom-save">Add Item</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pos-inv-modal" id="pos-inv-discount-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-inv-modal-close="discount"></div>
+    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-discount-title">
+      <h3 id="pos-inv-discount-title">Add Discount</h3>
+      <p class="pos-inv-modal-lead">Update the discount applied to this bill.</p>
+      <div class="pos-inv-field">
+        <span>Discount type</span>
+        <div class="pos-inv-seg" role="group" aria-label="Discount type">
+          <button type="button" class="pos-inv-seg-btn is-active" data-inv-adj-type="pct" data-inv-adj-for="discount">%</button>
+          <button type="button" class="pos-inv-seg-btn" data-inv-adj-type="inr" data-inv-adj-for="discount">₹</button>
+        </div>
+      </div>
+      <label class="pos-inv-field">
+        <span id="pos-inv-discount-amount-label">Amount (%)</span>
+        <input type="number" id="pos-inv-discount-amount" min="0" step="0.01" value="0" inputmode="decimal">
+      </label>
+      <p class="pos-inv-modal-preview" id="pos-inv-discount-preview">Discount: ₹0.00</p>
+      <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-inv-modal-close="discount">Cancel</button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-inv-discount-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pos-inv-modal" id="pos-inv-service-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-inv-modal-close="service"></div>
+    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-service-title">
+      <h3 id="pos-inv-service-title">Service Charge</h3>
+      <p class="pos-inv-modal-lead">Set service charge as a percent or fixed amount.</p>
+      <div class="pos-inv-field">
+        <span>Charge type</span>
+        <div class="pos-inv-seg" role="group" aria-label="Service charge type">
+          <button type="button" class="pos-inv-seg-btn is-active" data-inv-adj-type="pct" data-inv-adj-for="service">%</button>
+          <button type="button" class="pos-inv-seg-btn" data-inv-adj-type="inr" data-inv-adj-for="service">₹</button>
+        </div>
+      </div>
+      <label class="pos-inv-field">
+        <span id="pos-inv-service-amount-label">Amount (%)</span>
+        <input type="number" id="pos-inv-service-amount" min="0" step="0.01" value="5" inputmode="decimal">
+      </label>
+      <p class="pos-inv-modal-preview" id="pos-inv-service-preview">Service charge: ₹0.00</p>
+      <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-inv-modal-close="service">Cancel</button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-inv-service-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pos-inv-modal" id="pos-inv-tip-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-inv-modal-close="tip"></div>
+    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-tip-title">
+      <h3 id="pos-inv-tip-title">Add Tip</h3>
+      <p class="pos-inv-modal-lead">Enter tip amount to include on this bill.</p>
+      <label class="pos-inv-field">
+        <span>Tip amount (₹)</span>
+        <input type="number" id="pos-inv-tip-amount" min="0" step="0.01" value="0" inputmode="decimal">
+      </label>
+      <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-inv-modal-close="tip">Cancel</button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-inv-tip-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pos-inv-modal" id="pos-inv-coupon-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-inv-modal-close="coupon"></div>
+    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-coupon-title">
+      <h3 id="pos-inv-coupon-title">Apply Coupon</h3>
+      <p class="pos-inv-modal-lead">Enter a coupon code to update this bill.</p>
+      <label class="pos-inv-field">
+        <span>Coupon code</span>
+        <input type="text" id="pos-inv-coupon-code" autocomplete="off" placeholder="e.g. SAVE10">
+      </label>
+      <p class="pos-inv-modal-preview" id="pos-inv-coupon-preview">Coupon validation is not configured yet.</p>
+      <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-inv-modal-close="coupon">Cancel</button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-inv-coupon-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=21"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=21"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

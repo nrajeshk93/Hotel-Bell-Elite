@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from flask import Blueprint, has_request_context, jsonify, redirect, render_template, request, send_file, session, url_for
 
 from db import SQL_NOW, get_db
+from embed_helpers import is_embed_request
 from workspace_access import user_can_access_payroll_submodule
 
 payroll_bp = Blueprint("payroll", __name__)
@@ -44,15 +45,25 @@ REPORTING_PERIOD_SESSION_KEY = "reporting_period"
 
 # Injected from app at registration time
 _pop_auth_notice = None
+_queue_auth_notice = None
 _permission_denied_response = None
 get_current_user = None
 
+_STAFF_ADVANCES_SUPPLIER_NAME = "Staff Advances"
+_STAFF_ADVANCE_EXPENSE_CATEGORY = "salary"
 
-def _bind_app_helpers(pop_auth_notice, permission_denied_response, get_user):
-    global _pop_auth_notice, _permission_denied_response, get_current_user
+
+def _bind_app_helpers(pop_auth_notice, permission_denied_response, get_user, queue_auth_notice=None):
+    global _pop_auth_notice, _queue_auth_notice, _permission_denied_response, get_current_user
     _pop_auth_notice = pop_auth_notice
+    _queue_auth_notice = queue_auth_notice
     _permission_denied_response = permission_denied_response
     get_current_user = get_user
+
+
+def _notify(message):
+    if _queue_auth_notice and message:
+        _queue_auth_notice(message)
 
 
 def _round_half_up(value, dec=0):
@@ -375,6 +386,200 @@ def _annotate_credit_editability(conn, items):
         row['can_edit'] = not _is_credit_date_locked(conn, row.get('date'))
         annotated.append(row)
     return annotated
+
+
+def _ensure_staff_advances_supplier(conn):
+    """Return supplier id for employee-advance expense posts (create if missing)."""
+    row = conn.execute(
+        "SELECT id FROM suppliers WHERE LOWER(TRIM(name)) = LOWER(?) LIMIT 1",
+        (_STAFF_ADVANCES_SUPPLIER_NAME,),
+    ).fetchone()
+    if row:
+        return int(row["id"])
+    cursor = conn.execute(
+        "INSERT INTO suppliers (name, gst) VALUES (?, '')",
+        (_STAFF_ADVANCES_SUPPLIER_NAME,),
+    )
+    return int(cursor.lastrowid)
+
+
+def _staff_advance_expense_description(employee_name, description):
+    name = (employee_name or "").strip() or "Employee"
+    note = (description or "").strip()
+    if note:
+        return f"Staff advance — {name}: {note}"
+    return f"Staff advance — {name}"
+
+
+def _parse_credit_expense_payment(form):
+    """Return (payment_type, transaction_id) for a staff-advance expense post."""
+    import app as app_module
+
+    raw = (form.get("payment_type") or app_module.EXPENSE_PAYMENT_CASH).strip()
+    payment_type = app_module._normalize_expense_payment_type(raw)
+    if payment_type not in (
+        app_module.EXPENSE_PAYMENT_CASH,
+        app_module.EXPENSE_PAYMENT_BANK,
+    ):
+        payment_type = app_module.EXPENSE_PAYMENT_CASH
+    transaction_id = (form.get("transaction_id") or "").strip()
+    if payment_type != app_module.EXPENSE_PAYMENT_BANK:
+        transaction_id = ""
+    return payment_type, transaction_id
+
+
+def _post_credit_advance_expense(
+    conn,
+    user,
+    *,
+    employee,
+    credit_id,
+    cr_date,
+    description,
+    amount,
+    payment_type,
+    transaction_id="",
+):
+    """Create Expense Ledger row for a positive employee credit advance."""
+    import app as app_module
+
+    user = user or get_current_user() or {"is_admin": True}
+    supplier_id = _ensure_staff_advances_supplier(conn)
+    emp_name = ""
+    if employee is not None:
+        try:
+            emp_name = employee["name"]
+        except (KeyError, IndexError, TypeError):
+            emp_name = getattr(employee, "name", "") or ""
+    expense_data = {
+        "company": app_module.DEFAULT_COMPANY,
+        "location": app_module.OUTLET_HOTEL,
+        "date": cr_date,
+        "description": _staff_advance_expense_description(emp_name, description),
+        "amount": amount,
+        "payment_type": payment_type,
+        "category": _STAFF_ADVANCE_EXPENSE_CATEGORY,
+        "transaction_id": transaction_id,
+        "invoice_number": f"EMP-ADV-{int(credit_id)}",
+        "supplier_id": supplier_id,
+    }
+    result, error = app_module._create_sales_expense(
+        conn,
+        user,
+        expense_data,
+        default_location=app_module.OUTLET_HOTEL,
+    )
+    if error:
+        return None, error
+    conn.execute(
+        "UPDATE credits SET expense_id = ? WHERE id = ?",
+        (result["expense_id"], credit_id),
+    )
+    return result, None
+
+
+def _sync_credit_advance_expense(conn, user, *, expense_id, cr_date, description, amount, employee_name):
+    """Update linked Expense Ledger row when a credit advance is edited."""
+    import app as app_module
+
+    user = user or get_current_user() or {"is_admin": True}
+    try:
+        expense_id = int(expense_id)
+    except (TypeError, ValueError):
+        return None
+    existing = conn.execute(
+        """SELECT id, company, location, sales_date, payment_type, transaction_id,
+                  supplier_id, category, invoice_number
+           FROM sales_update_expenses WHERE id = ?""",
+        (expense_id,),
+    ).fetchone()
+    if not existing:
+        return None
+    existing = dict(existing)
+    company = existing.get("company") or app_module.DEFAULT_COMPANY
+    location = existing.get("location") or app_module.OUTLET_HOTEL
+    payment_type = existing.get("payment_type") or app_module.EXPENSE_PAYMENT_CASH
+    amount_val = abs(float(amount or 0))
+    if amount_val <= 0:
+        return "Expense amount must be greater than 0."
+
+    lock_error = app_module._check_sales_date_lock(user, company, location, cr_date)
+    if lock_error:
+        return lock_error
+    if cr_date != existing.get("sales_date"):
+        prior_lock = app_module._check_sales_date_lock(
+            user, company, location, existing.get("sales_date")
+        )
+        if prior_lock:
+            return prior_lock
+
+    cash_error = app_module._validate_cash_expense_against_available(
+        conn,
+        company,
+        cr_date,
+        amount_val,
+        payment_type,
+        exclude_expense_id=expense_id,
+    )
+    if cash_error:
+        return cash_error
+
+    conn.execute(
+        f"""UPDATE sales_update_expenses
+           SET sales_date = ?, description = ?, amount = ?, updated_at = {SQL_NOW}
+           WHERE id = ?""",
+        (
+            cr_date,
+            _staff_advance_expense_description(employee_name, description),
+            amount_val,
+            expense_id,
+        ),
+    )
+    return None
+
+
+def _delete_credit_advance_expense(conn, user, expense_id):
+    """Delete linked Expense Ledger row when a credit advance is removed."""
+    import app as app_module
+
+    user = user or get_current_user() or {"is_admin": True}
+    try:
+        expense_id = int(expense_id)
+    except (TypeError, ValueError):
+        return None
+    existing = conn.execute(
+        "SELECT id, company, location, sales_date FROM sales_update_expenses WHERE id = ?",
+        (expense_id,),
+    ).fetchone()
+    if not existing:
+        return None
+    existing = dict(existing)
+    company = existing.get("company") or app_module.DEFAULT_COMPANY
+    location = existing.get("location") or app_module.OUTLET_HOTEL
+    lock_error = app_module._check_sales_date_lock(
+        user, company, location, existing.get("sales_date") or ""
+    )
+    if lock_error:
+        return lock_error
+
+    tables = {
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+    }
+    if "credit_payment_allocations" in tables:
+        conn.execute(
+            "DELETE FROM credit_payment_allocations WHERE expense_id = ?",
+            (expense_id,),
+        )
+    if "purchase_verification_allocations" in tables:
+        conn.execute(
+            "DELETE FROM purchase_verification_allocations WHERE expense_id = ?",
+            (expense_id,),
+        )
+    conn.execute("DELETE FROM sales_update_expenses WHERE id = ?", (expense_id,))
+    return None
 
 
 def _employee_has_locked_month_data(conn, emp_id):
@@ -853,6 +1058,15 @@ def _emp_render(template, **kwargs):
     kwargs.setdefault('de_nav_host', 'payroll')
     kwargs.setdefault('de_nav_section', 'payroll')
     kwargs.setdefault('de_nav_payroll_view', _payroll_nav_view(kwargs.get('mode')))
+    if kwargs.get('mode') in ('credits', 'credits_dashboard'):
+        import app as app_module
+        kwargs.setdefault(
+            'credit_expense_payment_types',
+            [
+                (app_module.EXPENSE_PAYMENT_CASH, "Cash"),
+                (app_module.EXPENSE_PAYMENT_BANK, "Bank Transfer"),
+            ],
+        )
     sel_year = kwargs.get('sel_year')
     sel_month = kwargs.get('sel_month')
     if sel_year and sel_month and 'payroll_state' not in kwargs:
@@ -1162,6 +1376,25 @@ def employees():
                            'location': r['location'] or ''}
                          for r in ac_rows]
     conn.close()
+    if is_embed_request():
+        return _emp_render(
+            "partials/master_embed/employees.html",
+            employees=emps,
+            search=q,
+            sel_year=year,
+            sel_month=month,
+            month_name=calendar.month_name[month],
+            payroll_state=payroll_state,
+            sel_status=status,
+            sel_location=location,
+            sel_sort=sort_by,
+            total_employees=total_employees,
+            kpi_att_tracked=kpi_att_tracked,
+            kpi_att_pct=kpi_att_pct,
+            kpi_net=round(kpi_net, 2),
+            kpi_credits=round(kpi_credits, 2),
+            autocomplete_emps=autocomplete_emps,
+        )
     return _emp_render('employees.html', employees=emps, search=q,
                        sel_year=year, sel_month=month,
                        month_name=calendar.month_name[month],
@@ -1347,6 +1580,14 @@ def add_employee():
     conn = get_db()
     next_code = _next_emp_code(conn)
     conn.close()
+    if is_embed_request():
+        return _emp_render(
+            "partials/master_embed/employees.html",
+            mode='add',
+            employees=[],
+            search='',
+            form={'emp_code': next_code},
+        )
     return _emp_render('employees.html', mode='add', employees=[], search='',
                        form={'emp_code': next_code})
 
@@ -1486,6 +1727,15 @@ def edit_employee(emp_id):
 
     payroll_fields_locked = _employee_has_locked_month_data(conn, emp_id)
     conn.close()
+    if is_embed_request():
+        return _emp_render(
+            "partials/master_embed/employees.html",
+            mode='edit',
+            form=dict(existing),
+            employees=[],
+            search='',
+            payroll_fields_locked=payroll_fields_locked,
+        )
     return _emp_render('employees.html', mode='edit', form=dict(existing), employees=[], search='',
                        payroll_fields_locked=payroll_fields_locked)
 
@@ -1974,18 +2224,54 @@ def add_credit_global():
     if is_repayment and not description:
         description = 'Repayment'
 
+    payment_type, transaction_id = _parse_credit_expense_payment(request.form)
+    if not is_repayment:
+        import app as app_module
+        if (
+            payment_type == app_module.EXPENSE_PAYMENT_BANK
+            and not transaction_id
+        ):
+            _notify("Transaction ID is required for bank transfer advances.")
+            return redirect(url_for('credits_dashboard', year=year, month=month))
+
     conn = get_db()
-    if _is_credit_date_locked(conn, cr_date):
-        conn.close()
-        return redirect(url_for('credits_dashboard', year=year, month=month))
-    emp = conn.execute("SELECT id FROM employees WHERE id=?", (emp_id_val,)).fetchone()
-    if emp:
-        conn.execute(
+    user = get_current_user()
+    try:
+        if _is_credit_date_locked(conn, cr_date):
+            return redirect(url_for('credits_dashboard', year=year, month=month))
+        emp = conn.execute(
+            "SELECT id, name FROM employees WHERE id=?", (emp_id_val,)
+        ).fetchone()
+        if not emp:
+            return redirect(url_for('credits_dashboard', year=year, month=month))
+
+        cursor = conn.execute(
             "INSERT INTO credits (employee_id, date, description, amount, entry_type) VALUES (?,?,?,?,?)",
             (emp_id_val, cr_date, description, amount_val, entry_type)
         )
+        credit_id = cursor.lastrowid
+        if not is_repayment:
+            _, expense_error = _post_credit_advance_expense(
+                conn,
+                user,
+                employee=emp,
+                credit_id=credit_id,
+                cr_date=cr_date,
+                description=description,
+                amount=raw_amount,
+                payment_type=payment_type,
+                transaction_id=transaction_id,
+            )
+            if expense_error:
+                conn.rollback()
+                _notify(expense_error)
+                return redirect(url_for('credits_dashboard', year=year, month=month))
         conn.commit()
-    conn.close()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     return redirect(url_for('credits_dashboard', year=year, month=month))
 
 
@@ -2055,16 +2341,54 @@ def add_credit(emp_id):
     if is_repayment and not description:
         description = 'Repayment'
 
+    payment_type, transaction_id = _parse_credit_expense_payment(request.form)
+    if not is_repayment:
+        import app as app_module
+        if (
+            payment_type == app_module.EXPENSE_PAYMENT_BANK
+            and not transaction_id
+        ):
+            _notify("Transaction ID is required for bank transfer advances.")
+            return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
+
     conn = get_db()
-    if _is_credit_date_locked(conn, cr_date):
+    user = get_current_user()
+    try:
+        if _is_credit_date_locked(conn, cr_date):
+            return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
+        emp = conn.execute(
+            "SELECT id, name FROM employees WHERE id=?", (emp_id,)
+        ).fetchone()
+        if not emp:
+            return redirect(url_for('employees'))
+
+        cursor = conn.execute(
+            "INSERT INTO credits (employee_id, date, description, amount, entry_type) VALUES (?,?,?,?,?)",
+            (emp_id, cr_date, description, amount_val, entry_type)
+        )
+        credit_id = cursor.lastrowid
+        if not is_repayment:
+            _, expense_error = _post_credit_advance_expense(
+                conn,
+                user,
+                employee=emp,
+                credit_id=credit_id,
+                cr_date=cr_date,
+                description=description,
+                amount=raw_amount,
+                payment_type=payment_type,
+                transaction_id=transaction_id,
+            )
+            if expense_error:
+                conn.rollback()
+                _notify(expense_error)
+                return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
         conn.close()
-        return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
-    conn.execute(
-        "INSERT INTO credits (employee_id, date, description, amount, entry_type) VALUES (?,?,?,?,?)",
-        (emp_id, cr_date, description, amount_val, entry_type)
-    )
-    conn.commit()
-    conn.close()
     return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
 
 
@@ -2082,23 +2406,57 @@ def edit_credit(credit_id):
         amount_val = 0
 
     conn = get_db()
-    row = conn.execute(
-        "SELECT employee_id, date FROM credits WHERE id=?", (credit_id,)
-    ).fetchone()
-    if row and cr_date and amount_val != 0:
+    user = get_current_user()
+    try:
+        row = conn.execute(
+            "SELECT employee_id, date, amount, expense_id, entry_type FROM credits WHERE id=?",
+            (credit_id,),
+        ).fetchone()
+        if not (row and cr_date and amount_val != 0):
+            return redirect(url_for('employees'))
+
         emp_id = row['employee_id']
         if _is_credit_date_locked(conn, row['date']) or _is_credit_date_locked(conn, cr_date):
-            conn.close()
             return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
+
+        # Keep advance vs repayment sign stable when editing.
+        if (row['entry_type'] or 'manual') in ('manual_repayment', 'salary_repayment'):
+            amount_val = -abs(amount_val)
+        elif (row['entry_type'] or 'manual') == 'manual' or float(row['amount'] or 0) > 0:
+            amount_val = abs(amount_val)
+
+        emp = conn.execute(
+            "SELECT name FROM employees WHERE id=?", (emp_id,)
+        ).fetchone()
+        emp_name = emp['name'] if emp else ''
+
+        expense_id = row['expense_id']
+        if expense_id and amount_val > 0:
+            sync_error = _sync_credit_advance_expense(
+                conn,
+                user,
+                expense_id=expense_id,
+                cr_date=cr_date,
+                description=description,
+                amount=amount_val,
+                employee_name=emp_name,
+            )
+            if sync_error:
+                conn.rollback()
+                _notify(sync_error)
+                return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
+
         conn.execute(
             "UPDATE credits SET date=?, description=?, amount=? WHERE id=?",
             (cr_date, description, amount_val, credit_id)
         )
         conn.commit()
-        conn.close()
         return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
-    conn.close()
-    return redirect(url_for('employees'))
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 @payroll_bp.route('/delete_credit/<int:credit_id>')
@@ -2106,20 +2464,34 @@ def delete_credit(credit_id):
     """Delete a credit entry."""
     year, month = _period_from_source(request.args)
     conn = get_db()
-    row = conn.execute(
-        "SELECT employee_id, date FROM credits WHERE id=?", (credit_id,)
-    ).fetchone()
-    if row:
+    user = get_current_user()
+    try:
+        row = conn.execute(
+            "SELECT employee_id, date, expense_id FROM credits WHERE id=?",
+            (credit_id,),
+        ).fetchone()
+        if not row:
+            return redirect(url_for('employees'))
+
         emp_id = row['employee_id']
         if _is_credit_date_locked(conn, row['date']):
-            conn.close()
             return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
+
+        if row['expense_id']:
+            delete_error = _delete_credit_advance_expense(conn, user, row['expense_id'])
+            if delete_error:
+                conn.rollback()
+                _notify(delete_error)
+                return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
+
         conn.execute("DELETE FROM credits WHERE id=?", (credit_id,))
         conn.commit()
-        conn.close()
         return redirect(url_for('employee_credits', emp_id=emp_id, year=year, month=month))
-    conn.close()
-    return redirect(url_for('employees'))
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 @payroll_bp.route('/download_employee_template')
@@ -3636,8 +4008,20 @@ def update_salary(emp_id):
         'locked': payroll_state['locked'],
     })
 
-def register_employee_payroll(app, *, pop_auth_notice, permission_denied_response, get_user):
-    _bind_app_helpers(pop_auth_notice, permission_denied_response, get_user)
+def register_employee_payroll(
+    app,
+    *,
+    pop_auth_notice,
+    permission_denied_response,
+    get_user,
+    queue_auth_notice=None,
+):
+    _bind_app_helpers(
+        pop_auth_notice,
+        permission_denied_response,
+        get_user,
+        queue_auth_notice=queue_auth_notice,
+    )
     app.register_blueprint(payroll_bp)
     for rule in list(app.url_map.iter_rules()):
         if not rule.endpoint.startswith("payroll."):

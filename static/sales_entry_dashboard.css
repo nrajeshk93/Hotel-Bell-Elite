@@ -583,7 +583,9 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .staff-expense-supplier-listbox{width:100%}
 .staff-expense-supplier-listbox .se-filter-chip-control{width:100%;min-height:48px;border-radius:12px}
 .staff-expense-supplier-listbox.is-open{z-index:60}
-.staff-supplier-placeholder{color:#94A3B8;font-weight:600}
+.staff-supplier-placeholder,
+.se-filter-chip-value.is-placeholder{color:#94A3B8;font-weight:600}
+.se-filter-chip-value:not(.staff-supplier-placeholder):not(.is-placeholder){color:#111827;font-weight:600}
 #sales-expense-modal .staff-expense-supplier-listbox .se-filter-listbox{z-index:70;left:0;right:0;padding:6px}
 .staff-expense-supplier-listbox .staff-supplier-search-wrap{padding:0 0 6px;margin:0 0 6px;border-bottom:1px solid #EEF2F7;background:#fff;position:sticky;top:0;z-index:1}
 .staff-expense-supplier-listbox .staff-supplier-search{width:100%;height:40px;border:1px solid #E5E7EB;border-radius:10px;padding:0 12px;font:500 14px Inter,system-ui,sans-serif;color:#111827;background:#F8FAFC;outline:none}

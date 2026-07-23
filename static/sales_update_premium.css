@@ -64,8 +64,8 @@ body.su-module .nav-item.active::before{display:none}
 body.su-module .menu-btn{display:none!important}
 body.su-module .sb-pin-btn{display:flex}
 body.su-module.sb-off .sb-pin-btn svg{transform:rotate(180deg)}
-body.su-module .su-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px;flex-wrap:wrap}
-body.su-module .su-header-left{display:flex;align-items:flex-start;gap:16px;min-width:0;flex:1 1 260px}
+body.su-module .su-header-top{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;margin-bottom:24px;flex-wrap:nowrap}
+body.su-module .su-header-left{display:flex;align-items:flex-start;gap:16px;min-width:0;flex:1 1 auto}
 body.su-module .su-header-nav{display:flex;align-items:center;gap:10px;flex-shrink:0}
 body.su-module .menu-btn,
 body.su-module .sb-pin-btn{
@@ -87,10 +87,17 @@ body.su-module .su-title-icon svg,
 body.su-module .su-title-icon i svg{width:24px;height:24px;stroke-width:1.75}
 body.su-module .su-title h1{font-size:34px;line-height:1.15;font-weight:700;color:#111827;letter-spacing:-.03em;margin:0}
 body.su-module .su-title p{margin-top:8px;font-size:16px;font-weight:400;color:#6B7280;line-height:1.5;max-width:62ch}
-body.su-module .su-header-tools{display:flex;align-items:center;gap:10px;flex:0 1 auto;flex-wrap:wrap;max-width:100%;justify-content:flex-end}
+body.su-module .su-header-tools{
+  display:flex;align-items:center;gap:10px;
+  flex:0 0 auto;flex-wrap:nowrap;margin-left:auto;
+  max-width:100%;min-width:0;justify-content:flex-end;
+}
 body.su-module .su-header-tools .btn{
   white-space:nowrap;
-  max-width:100%;
+  flex-shrink:0;
+}
+body.su-module .su-header-tools .de-fullscreen-btn{
+  flex-shrink:0;
 }
 body.su-module .su-home-btn{
   display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;
@@ -476,7 +483,8 @@ body.su-module .se-sales-outlet-panel .entry-table thead th .se-particulars-head
 @media(max-width:1100px){
   body.su-module header.se-sales-header.su-header{padding:28px 20px 0}
   body.su-module .content.se-content{padding:20px 20px 40px}
-  body.su-module .su-header-tools{width:100%;justify-content:flex-end}
+  /* Keep tools on the same top row, flush right (no full-width wrap under title) */
+  body.su-module .su-header-tools{margin-left:auto;justify-content:flex-end}
   body.su-module .su-title h1{font-size:30px}
 }
 @media(max-width:760px){
@@ -494,8 +502,12 @@ body.su-module .se-sales-outlet-panel .entry-table thead th .se-particulars-head
   body.su-module .sb-pin-btn{display:none!important}
   body.su-module.sb-off .sidebar{transform:translateX(calc(-1 * var(--ba-sidebar-open) - 12px))!important}
   body.su-module header.se-sales-header.su-header{padding:24px 16px 0}
-  body.su-module .su-header-top{flex-direction:column;gap:16px}
-  body.su-module .su-header-tools{align-self:stretch;justify-content:flex-start}
+  body.su-module .su-header-top{flex-direction:column;gap:16px;flex-wrap:nowrap}
+  body.su-module .su-header-tools{
+    align-self:stretch;justify-content:flex-start;margin-left:0;
+    flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    max-width:100%;
+  }
   body.su-module .su-title h1{font-size:28px}
   body.su-module .content.se-content{padding:16px 16px 32px}
   body.su-module .se-sales-header-filters{padding:16px}

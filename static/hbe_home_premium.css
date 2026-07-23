@@ -22,6 +22,20 @@ body.home-module .de-main-inner{
 body.home-module .de-main-inner.db-main-inner--home{
   display:block;
 }
+.pos-invoice-header{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  min-height:40px;
+  margin:0 0 8px;
+}
+.pos-header-tools{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  flex-shrink:0;
+}
 .db-coming-soon{
   width:100%;
   max-width:560px;

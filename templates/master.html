@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Masters | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module master-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+  <header class="se-sales-header su-header md-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
+            </div>
+            <h1>Masters</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <button type="button" class="btn btn-primary" id="md-new-master-btn" aria-haspopup="dialog" aria-controls="md-create-modal">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          + New Master
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content md-content" aria-label="Masters dashboard">
+    <div class="md-search-row">
+      <label class="md-search" for="md-search-input">
+        <span class="md-search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </span>
+        <input type="search" id="md-search-input" class="md-search-input" placeholder="Search masters..." autocomplete="off" aria-label="Search masters">
+        <button type="button" class="md-search-filter" id="md-search-filter" aria-label="Reset filters" title="Reset filters">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+        </button>
+      </label>
+    </div>
+
+    <div class="md-kpi-row" aria-label="Master summary">
+      <article class="md-kpi-card">
+        <div class="md-kpi-icon md-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg>
+        </div>
+        <div class="md-kpi-text">
+          <div class="md-kpi-value" data-md-kpi="total_masters">{{ "{:,}".format(masters_kpis.total_masters) }}</div>
+          <div class="md-kpi-label">Total Masters</div>
+        </div>
+      </article>
+      <article class="md-kpi-card">
+        <div class="md-kpi-icon md-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        </div>
+        <div class="md-kpi-text">
+          <div class="md-kpi-value" data-md-kpi="active_masters">{{ "{:,}".format(masters_kpis.active_masters) }}</div>
+          <div class="md-kpi-label">Active Masters</div>
+        </div>
+      </article>
+      <article class="md-kpi-card">
+        <div class="md-kpi-icon md-kpi-icon--slate" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="md-kpi-text">
+          <div class="md-kpi-value" data-md-kpi="total_records">{{ "{:,}".format(masters_kpis.total_records) }}</div>
+          <div class="md-kpi-label">Total Records</div>
+        </div>
+      </article>
+      <article class="md-kpi-card">
+        <div class="md-kpi-icon md-kpi-icon--amber" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        </div>
+        <div class="md-kpi-text">
+          <div class="md-kpi-value" data-md-kpi="recently_updated">{{ "{:,}".format(masters_kpis.recently_updated) }}</div>
+          <div class="md-kpi-label">Recently Updated</div>
+        </div>
+      </article>
+    </div>
+
+    <div class="md-category-pills" role="tablist" aria-label="Filter by category" id="md-category-pills">
+      {% for cat in master_categories %}
+      <button type="button"
+              class="md-category-pill{% if cat.key == 'all' %} is-active{% endif %}"
+              role="tab"
+              aria-selected="{{ 'true' if cat.key == 'all' else 'false' }}"
+              data-md-category="{{ cat.key }}">{{ cat.label }}</button>
+      {% endfor %}
+    </div>
+
+    <div class="md-grid" id="md-master-grid" role="list" aria-label="Master modules">
+      {% for master in masters %}
+      <a class="md-master-card"
+         role="listitem"
+         href="#"
+         data-de-no-soft-nav="1"
+         data-master-href="{{ master.href }}"
+         data-master-id="{{ master.id }}"
+         data-master-name="{{ master.name }}"
+         data-master-category="{{ master.category }}"
+         {% if master.href == '#' %}data-md-stub="1"{% endif %}
+         aria-label="Open {{ master.name }}">
+        <div class="md-master-card-icon md-master-card-icon--{{ master.icon_tone }}" aria-hidden="true">
+          {% include 'partials/masters_card_icon.html' with context %}
+        </div>
+        <h2 class="md-master-card-title">{{ master.name }}</h2>
+        <div class="md-master-card-foot">
+          <span class="md-master-card-records">{{ "{:,}".format(master.record_count) }} Records</span>
+          <span class="md-master-card-arrow" aria-hidden="true">→</span>
+        </div>
+      </a>
+      {% endfor %}
+
+      <button type="button" class="md-master-card md-master-card--add" id="md-add-card" role="listitem" aria-label="Add new master">
+        <div class="md-master-card-add-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        </div>
+        <h2 class="md-master-card-title">Add New Master</h2>
+        <div class="md-master-card-foot">
+          <span class="md-master-card-create">Create →</span>
+        </div>
+      </button>
+    </div>
+
+    <p class="md-empty" id="md-empty-state" hidden>No masters match your search.</p>
+  </section>
+</div>
+
+<div class="modal-backdrop" id="md-create-modal" aria-hidden="true">
+  <div class="staff-credit-box md-create-box" role="dialog" aria-modal="true" aria-labelledby="md-create-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+      <span id="md-create-title">Create Master</span>
+    </div>
+    <div class="staff-field">
+      <label for="md-create-name">Master name</label>
+      <input id="md-create-name" class="staff-input" type="text" placeholder="e.g. Room Type Master" autocomplete="off">
+    </div>
+    <div class="staff-field">
+      <label for="md-create-category">Category</label>
+      <select id="md-create-category" class="staff-input">
+        {% for cat in master_categories if cat.key != 'all' %}
+        <option value="{{ cat.key }}">{{ cat.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn" id="md-create-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="md-create-submit">Create</button>
+    </div>
+  </div>
+</div>
+
+<div class="md-toast" id="md-toast" role="status" aria-live="polite" hidden></div>
+
+<div class="modal-backdrop md-master-modal" id="md-master-modal" aria-hidden="true">
+  <div class="md-master-dialog" role="dialog" aria-modal="true" aria-labelledby="md-master-modal-title">
+    <header class="md-master-dialog-hdr">
+      <h2 class="md-master-dialog-title" id="md-master-modal-title">Master</h2>
+      <button type="button" class="md-master-modal-close" id="md-master-modal-close" aria-label="Close master">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </header>
+    <div class="md-master-dialog-body">
+      <div class="md-master-modal-loading" id="md-master-modal-loading" hidden>
+        <span class="md-master-modal-spinner" aria-hidden="true"></span>
+        <span>Loading master…</span>
+      </div>
+      <div class="md-master-modal-inject" id="md-master-modal-inject" hidden></div>
+      <div class="md-master-modal-empty" id="md-master-modal-empty" hidden>
+        <div class="md-master-modal-empty-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        </div>
+        <p class="md-master-modal-empty-title">Coming soon</p>
+        <p class="md-master-modal-empty-copy">This master is not available yet.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
+<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='masters_dashboard.js') }}?v=8"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

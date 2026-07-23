@@ -51,9 +51,9 @@ class WhatsAppIndentTests(unittest.TestCase):
                 "WHATSAPP_ACCESS_TOKEN": "test-token",
                 "WHATSAPP_PHONE_NUMBER_ID": "1241737459022736",
                 "WHATSAPP_GRAPH_API_VERSION": "v21.0",
-                "WHATSAPP_INDENT_APPROVAL_TEMPLATE": "indent_approval",
+                "WHATSAPP_INDENT_APPROVAL_TEMPLATE": "indent_approval_v2",
                 "WHATSAPP_INDENT_APPROVER_NUMBERS": "8940651222",
-                "WHATSAPP_INDENT_APPROVER_NAME": "Rajesh",
+                "WHATSAPP_INDENT_APPROVER_NAME": "Neeraj",
                 "WHATSAPP_VERIFY_TOKEN": "verify-me",
             },
             clear=False,
@@ -107,10 +107,11 @@ class WhatsAppIndentTests(unittest.TestCase):
         send_mock.assert_called()
         args, kwargs = send_mock.call_args
         self.assertEqual(args[0], "918940651222")
-        self.assertEqual(args[1], "indent_approval")
+        self.assertEqual(args[1], "indent_approval_v2")
+        self.assertEqual(args[3].get("approver_name"), "Neeraj")
         self.assertEqual(kwargs.get("header_document_id"), "media-1")
         body = args[3]
-        self.assertEqual(body["approver_name"], "Rajesh")
+        self.assertEqual(body["approver_name"], "Neeraj")
         self.assertEqual(body["indent_id"], indent["indent_no"])
         self.assertEqual(body["total_amount"], "100")
 
@@ -300,8 +301,293 @@ class WhatsAppIndentTests(unittest.TestCase):
         finally:
             conn.close()
 
+    @mock.patch("whatsapp_indent.wa.send_template_message")
+    @mock.patch("whatsapp_indent.wa.upload_media_file")
+    def test_edit_pending_indent_does_not_resend_whatsapp(self, upload_mock, send_mock):
+        """Saving an already-pending indent must not spam another approval request."""
+        upload_mock.return_value = (True, "", {"id": "media-1"})
+        send_mock.return_value = (True, "", {"messages": [{"id": "wamid.ONCE"}]})
+
+        indent = self._create_pending_indent()
+        self.assertEqual(send_mock.call_count, 1)
+
+        update = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "indent_id": str(indent["id"]),
+                "action": "save",
+                "notes": "Tweaked while waiting",
+                "item_name": ["Onion"],
+                "quantity": ["3"],
+                "unit": ["kg"],
+                "approximate_price": ["50"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(update.status_code, 302)
+        self.assertEqual(send_mock.call_count, 1)
+        self.assertEqual(upload_mock.call_count, 1)
+
+        conn = db_mod.get_db()
+        try:
+            count = conn.execute(
+                """
+                SELECT COUNT(*) AS c
+                FROM store_indent_whatsapp_messages
+                WHERE indent_id = ? AND status = 'sent'
+                """,
+                (indent["id"],),
+            ).fetchone()["c"]
+            self.assertEqual(count, 1)
+            status = conn.execute(
+                "SELECT status, notes FROM store_indents WHERE id = ?",
+                (indent["id"],),
+            ).fetchone()
+            self.assertEqual(status["status"], "pending")
+            self.assertEqual(status["notes"], "Tweaked while waiting")
+        finally:
+            conn.close()
+
+    @mock.patch("whatsapp_indent.wa.send_template_message")
+    @mock.patch("whatsapp_indent.wa.upload_media_file")
+    def test_notify_is_idempotent_for_same_indent_approver(self, upload_mock, send_mock):
+        """Direct re-notify for the same pending round must not re-send."""
+        upload_mock.return_value = (True, "", {"id": "media-1"})
+        send_mock.return_value = (True, "", {"messages": [{"id": "wamid.IDEM"}]})
+
+        indent = self._create_pending_indent()
+        self.assertEqual(send_mock.call_count, 1)
+
+        import whatsapp_indent as wi
+
+        conn = db_mod.get_db()
+        try:
+            ok, msg = wi.notify_indent_pending_whatsapp(conn, indent["id"], outlet_label="Bar")
+            conn.commit()
+            self.assertTrue(ok)
+            self.assertIn("already sent", msg.lower())
+            self.assertEqual(send_mock.call_count, 1)
+            self.assertEqual(upload_mock.call_count, 1)
+        finally:
+            conn.close()
+
+    @mock.patch("whatsapp_indent.wa.send_template_message")
+    @mock.patch("whatsapp_indent.wa.upload_media_file")
+    def test_reject_then_resubmit_sends_whatsapp_again(self, upload_mock, send_mock):
+        """A new approval round after reject should notify again."""
+        upload_mock.return_value = (True, "", {"id": "media-1"})
+        send_mock.side_effect = [
+            (True, "", {"messages": [{"id": "wamid.FIRST"}]}),
+            (True, "", {"messages": [{"id": "wamid.SECOND"}]}),
+        ]
+
+        indent = self._create_pending_indent()
+        self.assertEqual(send_mock.call_count, 1)
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                UPDATE store_indents
+                SET status = 'rejected', decision_note = 'Rejected via test', decided_at = ?
+                WHERE id = ?
+                """,
+                ("2026-07-21 10:00:00", indent["id"]),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        resubmit = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "indent_id": str(indent["id"]),
+                "action": "save",
+                "notes": "Resubmitted after reject",
+                "item_name": ["Onion"],
+                "quantity": ["2"],
+                "unit": ["kg"],
+                "approximate_price": ["50"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(resubmit.status_code, 302)
+        self.assertEqual(send_mock.call_count, 2)
+
+        conn = db_mod.get_db()
+        try:
+            rows = conn.execute(
+                """
+                SELECT status, wa_message_id
+                FROM store_indent_whatsapp_messages
+                WHERE indent_id = ?
+                ORDER BY id
+                """,
+                (indent["id"],),
+            ).fetchall()
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["status"], "superseded")
+            self.assertEqual(rows[0]["wa_message_id"], "wamid.FIRST")
+            self.assertEqual(rows[1]["status"], "sent")
+            self.assertEqual(rows[1]["wa_message_id"], "wamid.SECOND")
+            row = conn.execute(
+                "SELECT status FROM store_indents WHERE id = ?",
+                (indent["id"],),
+            ).fetchone()
+            self.assertEqual(row["status"], "pending")
+        finally:
+            conn.close()
+
+    @mock.patch("whatsapp_indent.wa.send_template_message")
+    @mock.patch("whatsapp_indent.wa.upload_media_file")
+    def test_double_submit_same_token_creates_one_indent_and_one_whatsapp_send(
+        self, upload_mock, send_mock
+    ):
+        """A repeated POST for the same rendered form (double-click, soft-nav
+        retry, browser resubmit) must not create a second indent or fire a
+        second WhatsApp approval request — this is the 'multiple indent
+        approval request' bug."""
+        upload_mock.return_value = (True, "", {"id": "media-1"})
+        send_mock.return_value = (True, "", {"messages": [{"id": "wamid.DUP"}]})
+
+        payload = {
+            "outlet": "bar",
+            "action": "submit",
+            "notes": "Need stock urgently",
+            "submission_token": "test-token-abc123",
+            "item_name": ["Onion"],
+            "quantity": ["2"],
+            "unit": ["kg"],
+            "approximate_price": ["50"],
+        }
+
+        first = self.client.post("/stores/indent?outlet=bar", data=payload, follow_redirects=False)
+        self.assertEqual(first.status_code, 302)
+        second = self.client.post("/stores/indent?outlet=bar", data=payload, follow_redirects=False)
+        self.assertEqual(second.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            rows = conn.execute(
+                "SELECT id, status FROM store_indents WHERE submission_token = ?",
+                ("test-token-abc123",),
+            ).fetchall()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["status"], "pending")
+
+            wa_rows = conn.execute(
+                "SELECT COUNT(*) AS c FROM store_indent_whatsapp_messages WHERE indent_id = ? AND status = 'sent'",
+                (rows[0]["id"],),
+            ).fetchone()
+            self.assertEqual(wa_rows["c"], 1)
+        finally:
+            conn.close()
+
+        self.assertEqual(send_mock.call_count, 1)
+        self.assertEqual(upload_mock.call_count, 1)
+
+    @mock.patch("whatsapp_indent.wa.send_template_message")
+    @mock.patch("whatsapp_indent.wa.upload_media_file")
+    def test_daily_cap_blocks_whatsapp_after_15_sends(self, upload_mock, send_mock):
+        """No more than 10 successful indent-approval WhatsApp sends per rolling 24h."""
+        upload_mock.return_value = (True, "", {"id": "media-1"})
+        send_mock.return_value = (True, "", {"messages": [{"id": "wamid.CAP"}]})
+
+        import whatsapp_indent as wi
+
+        with mock.patch.dict(os.environ, {"WHATSAPP_INDENT_DAILY_CAP": "10"}, clear=False):
+            self.assertEqual(wi.indent_whatsapp_daily_cap(), 10)
+
+            conn = db_mod.get_db()
+            try:
+                conn.execute("PRAGMA foreign_keys = OFF")
+                for i in range(10):
+                    conn.execute(
+                        """
+                        INSERT INTO store_indent_whatsapp_messages
+                            (indent_id, recipient_phone, wa_message_id, template_name, status, error_message)
+                        VALUES (?, ?, ?, ?, 'sent', '')
+                        """,
+                        (9000 + i, "918940651222", f"wamid.PRE{i}", "indent_approval_v2"),
+                    )
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.commit()
+                self.assertEqual(wi.count_todays_indent_whatsapp_sends(conn), 10)
+                self.assertEqual(wi.remaining_indent_whatsapp_daily_quota(conn), 0)
+            finally:
+                conn.close()
+
+            indent = self._create_pending_indent()
+            self.assertEqual(indent["status"], "pending")
+            # Cap already full — create should not send another WhatsApp.
+            self.assertEqual(send_mock.call_count, 0)
+            self.assertEqual(upload_mock.call_count, 0)
+
+            conn = db_mod.get_db()
+            try:
+                ok, msg = wi.notify_indent_pending_whatsapp(
+                    conn, indent["id"], outlet_label="Bar"
+                )
+                conn.commit()
+                self.assertFalse(ok)
+                self.assertIn("WhatsApp indent approval limit", msg)
+                self.assertIn("10 messages / 24 hours", msg)
+                self.assertEqual(send_mock.call_count, 0)
+            finally:
+                conn.close()
+
+    @mock.patch("whatsapp_indent.wa.send_template_message")
+    @mock.patch("whatsapp_indent.wa.upload_media_file")
+    def test_daily_cap_allows_send_when_under_limit(self, upload_mock, send_mock):
+        upload_mock.return_value = (True, "", {"id": "media-1"})
+        send_mock.return_value = (True, "", {"messages": [{"id": "wamid.UNDER"}]})
+
+        import whatsapp_indent as wi
+
+        with mock.patch.dict(os.environ, {"WHATSAPP_INDENT_DAILY_CAP": "10"}, clear=False):
+            conn = db_mod.get_db()
+            try:
+                conn.execute("PRAGMA foreign_keys = OFF")
+                for i in range(9):
+                    conn.execute(
+                        """
+                        INSERT INTO store_indent_whatsapp_messages
+                            (indent_id, recipient_phone, wa_message_id, template_name, status, error_message)
+                        VALUES (?, ?, ?, ?, 'sent', '')
+                        """,
+                        (9100 + i, "918940651222", f"wamid.U{i}", "indent_approval_v2"),
+                    )
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.commit()
+                self.assertEqual(wi.remaining_indent_whatsapp_daily_quota(conn), 1)
+            finally:
+                conn.close()
+
+            indent = self._create_pending_indent()
+            self.assertEqual(send_mock.call_count, 1)
+            self.assertEqual(upload_mock.call_count, 1)
+
+            conn = db_mod.get_db()
+            try:
+                self.assertEqual(wi.count_todays_indent_whatsapp_sends(conn), 10)
+                self.assertEqual(wi.remaining_indent_whatsapp_daily_quota(conn), 0)
+                # Indent itself still saved as pending even when later notifies are blocked.
+                row = conn.execute(
+                    "SELECT status FROM store_indents WHERE id = ?",
+                    (indent["id"],),
+                ).fetchone()
+                self.assertEqual(row["status"], "pending")
+            finally:
+                conn.close()
+
     def test_indent_pdf_builds(self):
-        from indent_approval_pdf import build_indent_approval_pdf
+        from indent_approval_pdf import build_indent_approval_pdf, _money
+
+        self.assertEqual(_money(50), "Rs. 50")
+        self.assertEqual(_money(50.5), "Rs. 50.50")
+        self.assertNotIn("₹", _money(100))
 
         pdf = build_indent_approval_pdf(
             {
@@ -316,6 +602,7 @@ class WhatsAppIndentTests(unittest.TestCase):
         )
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(pdf), 500)
+        self.assertNotIn("₹".encode("utf-8"), pdf)
 
 
 if __name__ == "__main__":

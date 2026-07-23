@@ -26,7 +26,7 @@
       {% if detail.decision_note %}<p class="st-card-sub">Decision note: {{ detail.decision_note }}</p>{% endif %}
       <div class="st-detail-table-wrap">
         <table class="st-detail-table">
-          <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Approx. price</th></tr></thead>
+          <thead><tr><th>Item</th><th>Qty</th><th>Unit</th><th>Unit price</th><th>Total</th></tr></thead>
           <tbody>
             {% for line in detail_lines %}
             <tr>
@@ -34,6 +34,11 @@
               <td>{{ line.quantity }}</td>
               <td>{{ line.unit }}</td>
               <td>{% if line.approximate_price_display %}₹{{ line.approximate_price_display }}{% else %}—{% endif %}</td>
+              <td>
+                {% set qty = line.quantity|float(default=0) %}
+                {% set price = line.approximate_price|float(default=0) if line.approximate_price is not none else 0 %}
+                {% if qty > 0 and price > 0 %}₹{{ '%.2f'|format(qty * price) }}{% else %}—{% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -70,6 +75,9 @@
     <input type="hidden" name="outlet" value="{{ selected_outlet }}">
     {% if form.indent_id %}
     <input type="hidden" name="indent_id" value="{{ form.indent_id }}">
+    {% endif %}
+    {% if form.submission_token %}
+    <input type="hidden" name="submission_token" value="{{ form.submission_token }}">
     {% endif %}
 
     <article class="st-intro-card st-intro-card--outlet-only" aria-label="Indent outlet">
@@ -125,12 +133,21 @@
         {% endif %}
 
         <div class="st-lines-head" aria-hidden="true">
-          <span class="st-lines-head-drag"></span>
-          <span>Item</span>
-          <span>Qty</span>
-          <span>Unit</span>
-          <span>Approximate price</span>
-          <span>Action</span>
+          <div class="st-lines-head-row st-lines-head-row--group">
+            <span class="st-lines-head-spacer"></span>
+            <span class="st-lines-head-spacer"></span>
+            <span class="st-lines-head-spacer"></span>
+            <span class="st-lines-head-approx">Approximate Price</span>
+            <span class="st-lines-head-spacer"></span>
+          </div>
+          <div class="st-lines-head-row st-lines-head-row--cols">
+            <span>Item</span>
+            <span>Qty</span>
+            <span>Unit</span>
+            <span>Price / qty</span>
+            <span>Total</span>
+            <span>Action</span>
+          </div>
         </div>
 
         <div class="st-lines">
@@ -140,6 +157,10 @@
           {% set has_item = line.item_name|default('')|length > 0 %}
           {% include 'partials/stores_indent_line.html' %}
           {% endfor %}
+        </div>
+        <div class="st-lines-footer" aria-live="polite">
+          <span class="st-lines-footer-label">Total</span>
+          <strong class="st-lines-footer-value" id="st-indent-grand-total" data-st-indent-grand-total>—</strong>
         </div>
 
         <template>
@@ -184,33 +205,49 @@
 <section class="st-indent-page">
   {% set indent_view = selected_indent_view|default('pending') %}
   <article class="st-intro-card st-intro-card--outlet-only st-intro-card--indent-filters" aria-label="Indent filters">
-    <div class="cp-view-tabs st-indent-view-tabs" role="tablist" aria-label="Indent status">
-      {% for view_key, view_label in indent_list_views|default([('pending', 'Pending Approval'), ('approved', 'Approved'), ('rejected', 'Rejected')]) %}
-      <a class="cp-view-tab{% if indent_view == view_key %} is-active{% endif %}"
-         href="{{ url_for('stores_indent', outlet=selected_outlet, view=view_key) }}"
-         role="tab"
-         aria-selected="{{ 'true' if indent_view == view_key else 'false' }}">{{ view_label }}</a>
-      {% endfor %}
-    </div>
-    <div class="st-intro-outlet">
-      <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" data-st-indent-view="{{ indent_view }}" id="st-outlet-listbox">
-        <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
+    <div class="st-indent-filter-bar">
+      <div class="se-filter-chip se-filter-chip--search st-indent-search-chip" id="st-indent-search-chip">
+        <label class="se-filter-chip-label" for="st-indent-search">Search</label>
         <div class="se-filter-chip-control">
           <span class="se-filter-chip-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           </span>
-          <input type="hidden" id="st-outlet" value="{{ selected_outlet }}">
-          <button type="button" class="se-filter-chip-trigger" id="st-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-outlet-list" aria-labelledby="st-outlet-label st-outlet-value">
-            <span class="se-filter-chip-value" id="st-outlet-value">{{ selected_outlet_label }}</span>
-          </button>
-          <span class="se-filter-chip-chev" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-          </span>
+          <input type="search" id="st-indent-search" class="st-indent-search-input" placeholder="Indent, notes, status, person…" autocomplete="off" aria-label="Search indents">
         </div>
-        <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
-          {% for outlet in stores_outlets %}
-          <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
-          {% endfor %}
+      </div>
+      <div class="st-indent-filter-bar-end">
+        <div class="st-indent-status-tabs">
+          <span class="se-filter-chip-label" aria-hidden="true">Status</span>
+          <div class="cp-view-tabs st-indent-view-tabs" role="tablist" aria-label="Indent status">
+            {% for view_key, view_label in indent_list_views|default([('pending', 'Pending Approval'), ('approved', 'Approved'), ('rejected', 'Rejected')]) %}
+            <a class="cp-view-tab{% if indent_view == view_key %} is-active{% endif %}"
+               href="{{ url_for('stores_indent', outlet=selected_outlet, view=view_key) }}"
+               role="tab"
+               aria-selected="{{ 'true' if indent_view == view_key else 'false' }}">{{ view_label }}</a>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="st-intro-outlet">
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" data-st-indent-view="{{ indent_view }}" id="st-outlet-listbox">
+            <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+              </span>
+              <input type="hidden" id="st-outlet" value="{{ selected_outlet }}">
+              <button type="button" class="se-filter-chip-trigger" id="st-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-outlet-list" aria-labelledby="st-outlet-label st-outlet-value">
+                <span class="se-filter-chip-value" id="st-outlet-value">{{ selected_outlet_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
+              {% for outlet in stores_outlets %}
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+              {% endfor %}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -224,7 +261,7 @@
         </span>
         <h2 class="st-card-title">
           {% if indent_view == 'approved' %}Approved{% elif indent_view == 'rejected' %}Rejected{% else %}Pending Approval{% endif %}
-          · {{ indents|length }}
+          · <span id="st-indent-list-count">{{ indents|length }}</span>
         </h2>
       </div>
     </div>
@@ -245,7 +282,8 @@
             {% for indent in indents %}
             {% set indent_outlet = indent.outlet or selected_outlet %}
             {% set can_mutate = indent.status in ('draft', 'pending', 'rejected') %}
-            <tr data-sort-row>
+            {% set approver_name = indent.decided_by_name or indent.decided_by_username %}
+            <tr data-sort-row data-search="{{ [indent.indent_no or '', indent.notes or '', status_label(indent.status), indent.created_by_name or '', approver_name or '', indent.decision_note or '', indent_outlet or '', selected_outlet_label or '']|join(' ')|lower }}">
               <td data-sort-value="{{ indent.indent_no }}">
                 <div class="st-list-name">{{ indent.indent_no }}</div>
                 {% if indent.notes %}<div class="st-card-sub">{{ indent.notes }}</div>{% endif %}
@@ -258,7 +296,6 @@
               </td>
               <td data-sort-value="{{ indent.line_count }}">{{ indent.line_count }} · qty {{ indent.total_qty }}</td>
               {% if indent_view == 'approved' %}
-              {% set approver_name = indent.decided_by_name or indent.decided_by_username %}
               <td data-sort-value="{{ indent.decided_at or '' }}">
                 {% if approver_name %}<div>{{ approver_name }}</div>{% endif %}
                 <div{% if approver_name %} class="st-card-sub"{% endif %}>{{ stores_dt(indent.decided_at) or '—' }}</div>
@@ -314,6 +351,10 @@
           </tbody>
         </table>
       </div>
+      <div class="pl-empty" id="st-indent-search-empty" hidden>
+        <strong>No matching indents</strong>
+        <p>Try a different search term.</p>
+      </div>
       {% else %}
       <div class="st-empty">
         {% if indent_view == 'approved' %}
@@ -336,18 +377,32 @@
       <div class="st-indent-view-head">
         <div class="st-indent-view-title-wrap">
           <h2 class="st-indent-view-title" id="st-indent-view-title">Indent</h2>
-          <p class="st-indent-view-sub" id="st-indent-view-sub"></p>
         </div>
-        <span class="cp-status-pill" id="st-indent-view-status"></span>
+        <div class="st-indent-view-head-stats" aria-live="polite">
+          <div class="st-indent-view-stat">
+            <span class="st-indent-view-stat-label">Approved qty</span>
+            <strong class="st-indent-view-stat-value" id="st-indent-view-approved-qty">0</strong>
+          </div>
+          <div class="st-indent-view-stat">
+            <span class="st-indent-view-stat-label">Approved amount</span>
+            <strong class="st-indent-view-stat-value st-indent-view-stat-value--money" id="st-indent-view-approved-amount">—</strong>
+          </div>
+        </div>
         <button type="button" class="st-indent-view-close" id="st-indent-view-close" aria-label="Close">×</button>
       </div>
       <div class="st-indent-view-body">
         <p class="st-indent-view-notes" id="st-indent-view-notes" hidden></p>
         <p class="st-indent-view-decision" id="st-indent-view-decision" hidden></p>
-        <div class="st-detail-table-wrap">
-          <table class="st-detail-table">
+        <div class="pl-table-wrap st-indent-view-table-wrap">
+          <table class="pl-table st-indent-view-table" id="st-indent-view-table" aria-label="Indent line items">
             <thead>
-              <tr><th>Item</th><th>Qty</th><th>Unit</th><th>Approx. price</th></tr>
+              <tr>
+                <th class="pl-sortable" data-sort="item" scope="col" tabindex="0" aria-sort="none">Item</th>
+                <th class="pl-sortable pl-col-amount" data-sort="qty" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Qty</th>
+                <th class="pl-sortable" data-sort="unit" scope="col" tabindex="0" aria-sort="none">Unit</th>
+                <th class="pl-sortable pl-col-amount" data-sort="unit_price" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Unit price</th>
+                <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Total</th>
+              </tr>
             </thead>
             <tbody id="st-indent-view-lines"></tbody>
           </table>
@@ -355,7 +410,6 @@
         <div class="st-indent-view-empty" id="st-indent-view-empty" hidden>No items on this indent.</div>
       </div>
       <div class="st-indent-view-actions">
-        <button type="button" class="st-btn st-btn--ghost" id="st-indent-view-dismiss">Close</button>
         <a class="st-btn st-btn--primary" id="st-indent-view-po" href="#" download hidden>Download PO</a>
         <button type="button" class="st-btn st-btn--primary" id="st-indent-view-edit" hidden>Edit</button>
       </div>
@@ -390,14 +444,27 @@
             </div>
             <div class="st-card-body st-lines-wrap">
               <div class="st-lines-head" aria-hidden="true">
-                <span class="st-lines-head-drag"></span>
-                <span>Item</span>
-                <span>Qty</span>
-                <span>Unit</span>
-                <span>Approximate price</span>
-                <span>Action</span>
+                <div class="st-lines-head-row st-lines-head-row--group">
+                  <span class="st-lines-head-spacer"></span>
+                  <span class="st-lines-head-spacer"></span>
+                  <span class="st-lines-head-spacer"></span>
+                  <span class="st-lines-head-approx">Approximate Price</span>
+                  <span class="st-lines-head-spacer"></span>
+                </div>
+                <div class="st-lines-head-row st-lines-head-row--cols">
+                  <span>Item</span>
+                  <span>Qty</span>
+                  <span>Unit</span>
+                  <span>Price / qty</span>
+                  <span>Total</span>
+                  <span>Action</span>
+                </div>
               </div>
               <div class="st-lines" id="st-indent-edit-lines"></div>
+              <div class="st-lines-footer" aria-live="polite">
+                <span class="st-lines-footer-label">Total</span>
+                <strong class="st-lines-footer-value" id="st-indent-edit-grand-total" data-st-indent-grand-total>—</strong>
+              </div>
               <template id="st-indent-edit-line-template">
                 {% set fid = 'st-edit-item-new' %}
                 {% set ufid = 'st-edit-unit-new' %}
@@ -431,5 +498,176 @@
     </div>
   </div>
   <script id="st-indent-view-data" type="application/json">{{ indent_view_data|default([])|tojson }}</script>
+
+  <div class="modal-backdrop" id="st-stores-ledger-modal" aria-hidden="true">
+    <div class="st-indent-view-box st-stores-ledger-box" role="dialog" aria-modal="true" aria-labelledby="st-stores-ledger-title">
+      <div class="st-indent-view-head">
+        <div class="st-indent-view-title-wrap">
+          <h2 class="st-indent-view-title" id="st-stores-ledger-title">Indent ledger</h2>
+        </div>
+        <div class="se-filter-chip se-filter-chip--search st-ledger-search-chip" id="st-ledger-search-chip">
+          <label class="se-filter-chip-label" for="st-ledger-search">Search</label>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3-3"/></svg>
+            </span>
+            <input type="search" id="st-ledger-search" class="st-ledger-search-input" placeholder="Indent, product, outlet, status…" autocomplete="off" aria-label="Search indent ledger">
+          </div>
+        </div>
+        <div class="st-stores-ledger-filters" aria-label="Ledger filters">
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox st-ledger-filter-listbox" data-se-listbox data-se-listbox-change="stLedgerFilterChanged" id="st-ledger-outlet-listbox">
+            <span class="se-filter-chip-label" id="st-ledger-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+              </span>
+              <input type="hidden" id="st-ledger-outlet" value="{{ selected_outlet }}">
+              <button type="button" class="se-filter-chip-trigger" id="st-ledger-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-ledger-outlet-list" aria-labelledby="st-ledger-outlet-label st-ledger-outlet-value">
+                <span class="se-filter-chip-value" id="st-ledger-outlet-value">{{ selected_outlet_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-ledger-outlet-list" role="listbox" aria-labelledby="st-ledger-outlet-label" hidden>
+              {% for outlet in stores_outlets %}
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox st-ledger-filter-listbox" data-se-listbox data-se-listbox-change="stLedgerFilterChanged" id="st-ledger-status-listbox">
+            <span class="se-filter-chip-label" id="st-ledger-status-label">Status</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h6"/></svg>
+              </span>
+              <input type="hidden" id="st-ledger-status" value="all">
+              <button type="button" class="se-filter-chip-trigger" id="st-ledger-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-ledger-status-list" aria-labelledby="st-ledger-status-label st-ledger-status-value">
+                <span class="se-filter-chip-value" id="st-ledger-status-value">All</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-ledger-status-list" role="listbox" aria-labelledby="st-ledger-status-label" hidden>
+              <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="all" data-name="all" data-label="All" aria-selected="true">All</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="pending" data-name="pending approval" data-label="Pending Approval" aria-selected="false">Pending Approval</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="approved" data-name="approved" data-label="Approved" aria-selected="false">Approved</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="rejected" data-name="rejected" data-label="Rejected" aria-selected="false">Rejected</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="stocked" data-name="stocked" data-label="Stocked" aria-selected="false">Stocked</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="st-indent-view-close" id="st-stores-ledger-close" aria-label="Close">×</button>
+      </div>
+      <div class="st-indent-view-body st-stores-ledger-body">
+        <div class="pl-table-wrap st-indent-view-table-wrap">
+          <table class="pl-table st-indent-view-table" id="st-stores-ledger-table" aria-label="Stores indent ledger">
+            <thead>
+              <tr>
+                <th class="pl-sortable" data-sort="indent" scope="col" tabindex="0" aria-sort="none">Indent</th>
+                <th class="pl-sortable" data-sort="outlet" scope="col" tabindex="0" aria-sort="none">Outlet</th>
+                <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+                <th class="pl-sortable" data-sort="created" scope="col" tabindex="0" aria-sort="none">Created</th>
+                <th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Items</th>
+                <th class="pl-sortable pl-col-amount" data-sort="ordered" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Ordered</th>
+                <th class="pl-sortable pl-col-amount" data-sort="received" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Received</th>
+                <th class="pl-sortable pl-col-amount" data-sort="pending" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Pending</th>
+              </tr>
+            </thead>
+            <tbody id="st-stores-ledger-lines"></tbody>
+          </table>
+        </div>
+        <div class="st-indent-view-empty" id="st-stores-ledger-empty" hidden>No indents found for this outlet.</div>
+      </div>
+      <div class="st-indent-view-actions">
+        <button type="button" class="st-btn st-btn--ghost" id="st-stores-ledger-dismiss">Close</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-backdrop" id="st-ledger-pending-modal" aria-hidden="true">
+    <div class="st-indent-view-box st-ledger-pending-box" role="dialog" aria-modal="true" aria-labelledby="st-ledger-pending-title">
+      <div class="st-indent-view-head">
+        <div class="st-indent-view-title-wrap">
+          <h2 class="st-indent-view-title" id="st-ledger-pending-title">Pending inward</h2>
+          <p class="st-indent-view-sub" id="st-ledger-pending-sub"></p>
+        </div>
+        <div class="st-indent-view-head-stats" aria-live="polite">
+          <div class="st-indent-view-stat">
+            <span class="st-indent-view-stat-label">Items</span>
+            <strong class="st-indent-view-stat-value" id="st-ledger-pending-stat-items">0</strong>
+          </div>
+          <div class="st-indent-view-stat">
+            <span class="st-indent-view-stat-label" data-st-ledger-detail-qty-label>Qty pending</span>
+            <strong class="st-indent-view-stat-value" id="st-ledger-pending-stat-qty">0</strong>
+          </div>
+        </div>
+        <button type="button" class="st-indent-view-close" id="st-ledger-pending-close" aria-label="Close">×</button>
+      </div>
+      <div class="st-indent-view-body st-ledger-pending-body">
+        <div class="pl-table-wrap st-indent-view-table-wrap">
+          <table class="pl-table st-indent-view-table" id="st-ledger-pending-table" aria-label="Pending inward items">
+            <thead>
+              <tr>
+                <th class="pl-sortable" data-sort="item" scope="col" tabindex="0" aria-sort="none">Item</th>
+                <th class="pl-sortable" data-sort="unit" scope="col" tabindex="0" aria-sort="none">Unit</th>
+                <th class="pl-sortable pl-col-amount" data-sort="ordered" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Ordered</th>
+                <th class="pl-sortable pl-col-amount" data-sort="received" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Received</th>
+                <th class="pl-sortable pl-col-amount" data-sort="pending" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Pending</th>
+              </tr>
+            </thead>
+            <tbody id="st-ledger-pending-lines"></tbody>
+          </table>
+        </div>
+        <div class="st-indent-view-empty" id="st-ledger-pending-empty" hidden>No pending items for this indent.</div>
+      </div>
+      <div class="st-indent-view-actions">
+        <a class="st-btn st-btn--secondary" id="st-ledger-pending-inward" href="#" hidden>Open Stock Inward</a>
+        <button type="button" class="st-btn st-btn--ghost" id="st-ledger-pending-dismiss">Close</button>
+      </div>
+    </div>
+  </div>
+  <script id="st-stores-ledger-data" type="application/json">{{ stores_ledger_data|default({"summary": {}, "rows": []})|tojson }}</script>
 </section>
 {% endif %}
+
+{# Approvals overlay — available on all Indent views (list / form / detail). #}
+<div class="modal-backdrop" id="st-approvals-modal" aria-hidden="true">
+  <div class="st-indent-view-box st-approvals-modal-box" role="dialog" aria-modal="true" aria-labelledby="st-approvals-modal-title">
+    <div class="st-indent-view-head">
+      <div class="st-indent-view-title-wrap">
+        <h2 class="st-indent-view-title" id="st-approvals-modal-title">Approvals</h2>
+        <p class="st-indent-view-sub">Review waiting indents. Approve to buy, or reject.</p>
+      </div>
+      <div class="st-approvals-modal-filters" aria-label="Approvals filters">
+        <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox st-approvals-filter-listbox" data-se-listbox data-se-listbox-change="stApprovalsOutletChanged" id="st-approvals-outlet-listbox">
+          <span class="se-filter-chip-label" id="st-approvals-outlet-label">Outlet</span>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+            </span>
+            <input type="hidden" id="st-approvals-outlet" value="{{ selected_outlet }}">
+            <button type="button" class="se-filter-chip-trigger" id="st-approvals-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-approvals-outlet-list" aria-labelledby="st-approvals-outlet-label st-approvals-outlet-value">
+              <span class="se-filter-chip-value" id="st-approvals-outlet-value">{{ selected_outlet_label }}</span>
+            </button>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+          <div class="se-filter-listbox" id="st-approvals-outlet-list" role="listbox" aria-labelledby="st-approvals-outlet-label" hidden>
+            {% for outlet in stores_outlets %}
+            <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <button type="button" class="st-indent-view-close" id="st-approvals-close" aria-label="Close">×</button>
+    </div>
+    <div class="st-indent-view-body st-approvals-modal-body" id="st-approvals-modal-body">
+      <div class="st-approvals-modal-loading" id="st-approvals-modal-loading">Loading approvals…</div>
+    </div>
+    <div class="st-indent-view-actions">
+      <button type="button" class="st-btn st-btn--ghost" id="st-approvals-dismiss">Close</button>
+    </div>
+  </div>
+</div>

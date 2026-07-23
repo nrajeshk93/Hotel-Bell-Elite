@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Customer Master | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <h1>Customer Master</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        {% if not show_form %}
+        <a class="btn btn-primary" href="{{ customer_report_url }}" download>Customer Report</a>
+        <a class="btn btn-primary" href="{{ url_for('customer_master', focus='form') }}">Add customer</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  {% include 'partials/customer_master_body.html' %}
+</div>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

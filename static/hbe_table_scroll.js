@@ -58,7 +58,7 @@
         return;
       }
       // Actions sit on the right edge — edge-pan steals hover and hides data-tip tags.
-      if (e.target && e.target.closest && e.target.closest('.act-grp, .act-btn, .pl-col-actions')) {
+      if (e.target && e.target.closest && e.target.closest('.act-grp, .act-btn, .pl-col-actions, .st-appr-decide, .st-appr-btn')) {
         stop();
         return;
       }

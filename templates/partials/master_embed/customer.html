@@ -1,0 +1,11 @@
+<div class="md-master-embed md-master-embed--customer" data-md-modal-title="{% if show_form %}{% if form.id %}Edit Customer{% else %}Add Customer{% endif %}{% else %}Customer Master{% endif %}">
+  {% if not show_form %}
+  <div class="md-master-embed-toolbar">
+    <div class="md-master-embed-actions">
+      <a class="btn btn-primary" href="{{ customer_report_url }}" download>Customer Report</a>
+      <a class="btn btn-primary" href="{{ url_for('customer_master', focus='form', embed=1) }}">Add customer</a>
+    </div>
+  </div>
+  {% endif %}
+  {% include 'partials/customer_master_body.html' %}
+</div>

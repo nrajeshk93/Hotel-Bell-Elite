@@ -94,6 +94,10 @@
     ) {
       return;
     }
+    // Soft-nav runs page scripts, then deWorkspaceReinit may call init again on the
+    // same nodes. A second click handler toggles open→close in one click.
+    if (wrap.getAttribute('data-sdr-bound') === '1') return;
+    wrap.setAttribute('data-sdr-bound', '1');
 
     const maxDateStr = (wrap.getAttribute('data-max-date') || '').trim();
     const monthLong = [
@@ -320,17 +324,23 @@
     window.addEventListener('scroll', repositionIfOpen, true);
 
     panel.addEventListener('click', function (e) {
+      // Keep panel clicks from reaching the document outside-close handler.
+      // Day cells are re-created in onDayClick; a detached e.target fails
+      // wrap.contains() and would otherwise close + wipe the selection.
+      e.stopPropagation();
       const btn = e.target.closest('button[data-iso]');
       if (!btn || btn.disabled) return;
       onDayClick(btn.getAttribute('data-iso'));
     });
-    btnPrev.addEventListener('click', function () {
+    btnPrev.addEventListener('click', function (e) {
+      e.stopPropagation();
       const p = addMonth(viewY, viewM, -1);
       viewY = p.y;
       viewM = p.m;
       renderCalendars();
     });
-    btnNext.addEventListener('click', function () {
+    btnNext.addEventListener('click', function (e) {
+      e.stopPropagation();
       if (btnNext.disabled) return;
       const p = addMonth(viewY, viewM, 1);
       viewY = p.y;
@@ -339,11 +349,26 @@
     });
 
     trigger.addEventListener('click', function (e) {
+      e.preventDefault();
       e.stopPropagation();
       if (wrap.classList.contains('open')) closePanel();
       else openPanel();
     });
-    if (backdrop) backdrop.addEventListener('click', closePanel);
+    if (backdrop) {
+      backdrop.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        closePanel();
+      });
+    }
+    // Outside click (backdrop may be clipped by overflow:hidden chip chrome).
+    document.addEventListener('click', function (e) {
+      if (!wrap.classList.contains('open')) return;
+      if (wrap.contains(e.target)) return;
+      // Ignore detached targets (e.g. day cell removed mid-bubble by re-render).
+      if (!e.target || (e.target.isConnected === false)) return;
+      closePanel();
+    });
     if (cancelBtn) cancelBtn.addEventListener('click', closePanel);
     if (applyBtn) {
       applyBtn.addEventListener('click', function () {

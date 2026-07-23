@@ -1,9 +1,11 @@
 <script>
 (function(){
   var f = document.getElementById('purchase-ledger-filter-form');
-  if (!f) return;
 
-  function submitScope(){ f.submit(); }
+  function submitScope(){
+    if (!f) f = document.getElementById('purchase-ledger-filter-form');
+    if (f) f.submit();
+  }
 
   function closeListbox(root){
     if (!root) return;
@@ -179,18 +181,32 @@
   }
 
   function bindListbox(root){
-    if (!root) return;
+    if (!root || root.__plFilterListboxBound) return;
+    root.__plFilterListboxBound = true;
+    // Prevent ep_form_listbox.js from double-binding after soft-nav.
+    root.__suFilterListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
+    var control = root.querySelector('.se-filter-chip-control');
     var list = root.querySelector('.se-filter-listbox');
     var optionsWrap = optionsWrapFor(root);
     var search = root.querySelector('.pl-supplier-search');
     if (!trigger || !list) return;
 
-    trigger.addEventListener('click', function(e){
+    function onTriggerClick(e){
       e.preventDefault();
       e.stopPropagation();
       toggleListbox(root);
-    });
+    }
+
+    trigger.addEventListener('click', onTriggerClick);
+    // Icon / chevron sit outside the button — still open the menu.
+    if (control) {
+      control.addEventListener('click', function(e){
+        if (e.target.closest('.se-filter-chip-trigger')) return;
+        if (e.target.closest('.se-filter-listbox')) return;
+        onTriggerClick(e);
+      });
+    }
     trigger.addEventListener('keydown', function(e){
       if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -255,66 +271,24 @@
     });
   }
 
-  document.querySelectorAll('#purchase-ledger-filter-form [data-se-listbox]').forEach(bindListbox);
-  document.addEventListener('click', function(e){
-    document.querySelectorAll('#purchase-ledger-filter-form [data-se-listbox].is-open').forEach(function(root){
-      if (!root.contains(e.target)) closeListbox(root);
+  function bindDocumentGuards(){
+    if (window.__plFilterDocBound) return;
+    window.__plFilterDocBound = true;
+    document.addEventListener('click', function(e){
+      document.querySelectorAll('#purchase-ledger-filter-form [data-se-listbox].is-open').forEach(function(root){
+        if (!root.contains(e.target)) closeListbox(root);
+      });
     });
-  });
-  document.addEventListener('keydown', function(e){
-    if (e.key !== 'Escape') return;
-    document.querySelectorAll('#purchase-ledger-filter-form [data-se-listbox].is-open').forEach(closeListbox);
-  });
-
-  var dateFrom = document.getElementById('purchase-ledger-date-from');
-  var dateTo = document.getElementById('purchase-ledger-date-to');
-  if (window.SalesDateRangePicker) {
-    SalesDateRangePicker.init({
-      wrapId: 'pl-date-range-wrap',
-      triggerId: 'pl-date-range-trigger',
-      backdropId: 'pl-date-range-backdrop',
-      panelId: 'pl-date-range-panel',
-      displayId: 'pl-date-range-display',
-      formId: 'purchase-ledger-filter-form',
-      fromInputId: 'purchase-ledger-date-from',
-      toInputId: 'purchase-ledger-date-to',
-      applyId: 'pl-date-range-apply',
-      prevId: 'pl-cal-prev',
-      nextId: 'pl-cal-next',
-      title0Id: 'pl-cal-title0',
-      title1Id: 'pl-cal-title1',
-      grid0Id: 'pl-cal-grid0',
-      grid1Id: 'pl-cal-grid1',
-      emptyLabel: 'Date',
-      onBeforeSubmit: function(){
-        if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
-        if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
-      }
-    });
-  }
-  var clearBtn = document.getElementById('pl-date-range-clear');
-  if (clearBtn) {
-    clearBtn.addEventListener('click', function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      var clearUrl = f.getAttribute('data-clear-url') || f.action || '';
-      if (clearUrl) window.location.href = clearUrl;
+    document.addEventListener('keydown', function(e){
+      if (e.key !== 'Escape') return;
+      document.querySelectorAll('#purchase-ledger-filter-form [data-se-listbox].is-open').forEach(closeListbox);
     });
   }
 
-  if (typeof formatInr === 'function') {
-    var totalEl = document.getElementById('pl-total-amount');
-    if (totalEl) totalEl.textContent = formatInr(totalEl.getAttribute('data-amount'), 0);
-    document.querySelectorAll('.pl-amount[data-amount]').forEach(function(el){
-      el.textContent = formatInr(el.getAttribute('data-amount'), 0);
-    });
-  }
-  if (typeof scheduleFitKpiValues === 'function') scheduleFitKpiValues();
-
-  /* ---------- Sortable purchase table headers ---------- */
-  (function initPurchaseTableSort(){
+  function initPurchaseTableSort(){
     var table = document.querySelector('table.pl-table');
-    if (!table) return;
+    if (!table || table.getAttribute('data-pl-sort-bound') === '1') return;
+    table.setAttribute('data-pl-sort-bound', '1');
     var tbody = table.tBodies[0];
     if (!tbody) return;
     var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
@@ -373,6 +347,101 @@
         }
       });
     });
-  })();
+  }
+
+  function initPurchaseLedgerSearch(){
+    var searchInput = document.getElementById('purchase-ledger-search');
+    if (!searchInput || searchInput.getAttribute('data-pl-search-bound') === '1') return;
+    searchInput.setAttribute('data-pl-search-bound', '1');
+    var searchChip = searchInput.closest('.pl-search-chip');
+    var entryCountEl = document.getElementById('pl-entry-count');
+
+    function applyPurchaseLedgerSearch(){
+      var needle = String(searchInput.value || '').trim().toLowerCase();
+      if (searchChip) searchChip.classList.toggle('is-active', !!needle);
+      var rows = Array.from(document.querySelectorAll('.pl-table tbody tr.pl-expense-row'));
+      var visible = 0;
+      rows.forEach(function(row){
+        var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
+        var match = !needle || hay.indexOf(needle) !== -1;
+        row.hidden = !match;
+        if (match) visible += 1;
+      });
+      if (entryCountEl) {
+        entryCountEl.textContent = visible + ' entr' + (visible === 1 ? 'y' : 'ies');
+      }
+    }
+
+    searchInput.addEventListener('input', applyPurchaseLedgerSearch);
+    searchInput.addEventListener('keydown', function(e){
+      if (e.key === 'Escape') {
+        searchInput.value = '';
+        applyPurchaseLedgerSearch();
+        searchInput.blur();
+      }
+      if (e.key === 'Enter') e.preventDefault();
+    });
+    applyPurchaseLedgerSearch();
+  }
+
+  function initPurchaseLedgerFilters(){
+    var form = document.getElementById('purchase-ledger-filter-form');
+    if (!form) return;
+    f = form;
+    bindDocumentGuards();
+    form.querySelectorAll('[data-se-listbox]').forEach(bindListbox);
+
+    var dateFrom = document.getElementById('purchase-ledger-date-from');
+    var dateTo = document.getElementById('purchase-ledger-date-to');
+    if (window.SalesDateRangePicker) {
+      SalesDateRangePicker.init({
+        wrapId: 'pl-date-range-wrap',
+        triggerId: 'pl-date-range-trigger',
+        backdropId: 'pl-date-range-backdrop',
+        panelId: 'pl-date-range-panel',
+        displayId: 'pl-date-range-display',
+        formId: 'purchase-ledger-filter-form',
+        fromInputId: 'purchase-ledger-date-from',
+        toInputId: 'purchase-ledger-date-to',
+        applyId: 'pl-date-range-apply',
+        prevId: 'pl-cal-prev',
+        nextId: 'pl-cal-next',
+        title0Id: 'pl-cal-title0',
+        title1Id: 'pl-cal-title1',
+        grid0Id: 'pl-cal-grid0',
+        grid1Id: 'pl-cal-grid1',
+        emptyLabel: 'Date',
+        onBeforeSubmit: function(){
+          if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+          if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+        }
+      });
+    }
+    var clearBtn = document.getElementById('pl-date-range-clear');
+    if (clearBtn && clearBtn.getAttribute('data-pl-clear-bound') !== '1') {
+      clearBtn.setAttribute('data-pl-clear-bound', '1');
+      clearBtn.addEventListener('click', function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        var clearUrl = f.getAttribute('data-clear-url') || f.action || '';
+        if (clearUrl) window.location.href = clearUrl;
+      });
+    }
+
+    if (typeof formatInr === 'function') {
+      var totalEl = document.getElementById('pl-total-amount');
+      if (totalEl) totalEl.textContent = formatInr(totalEl.getAttribute('data-amount'), 0);
+      document.querySelectorAll('.pl-amount[data-amount]').forEach(function(el){
+        el.textContent = formatInr(el.getAttribute('data-amount'), 0);
+      });
+    }
+    if (typeof scheduleFitKpiValues === 'function') scheduleFitKpiValues();
+
+    initPurchaseTableSort();
+    initPurchaseLedgerSearch();
+  }
+
+  window.initPurchaseLedgerFilters = initPurchaseLedgerFilters;
+  initPurchaseLedgerFilters();
 })();
 </script>

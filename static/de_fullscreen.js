@@ -15,7 +15,11 @@
     '.db-home-tools',
     '.su-header-tools',
     '.sup-header-actions',
-    '.rdx-header-tools'
+    '.rdx-header-tools',
+    '.pos-header-tools',
+    '.pos-tables-header-actions',
+    '.pos-set-header-actions',
+    '.pos-inv-header-actions'
   ];
 
   var TOP_CONTAINERS = [

@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import io
 import re
+import sqlite3
+import uuid
 from datetime import date, datetime
 from typing import Any
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
 
 from db import ensure_stores_schema, get_db
-from whatsapp_indent import notify_indent_pending_whatsapp
+from embed_helpers import is_embed_request
+from whatsapp_indent import notify_indent_pending_whatsapp, supersede_indent_whatsapp_sends
 from workspace_access import user_can_access_stores_submodule
 
 STORES_OUTLETS = (
@@ -23,9 +26,9 @@ STORES_FILTER_OUTLETS = (
     {"key": "both", "label": "All"},
 ) + STORES_OUTLETS
 PRODUCT_OUTLETS = (
+    {"key": "both", "label": "Both"},
     {"key": "bar", "label": "Bar"},
     {"key": "restaurant", "label": "Restaurant"},
-    {"key": "both", "label": "All"},
 )
 PRODUCT_OUTLET_KEYS = {item["key"] for item in PRODUCT_OUTLETS}
 FILTER_OUTLET_KEYS = {item["key"] for item in STORES_FILTER_OUTLETS}
@@ -71,7 +74,7 @@ PAGE_META = {
         "cta": "Add product",
         "cta_endpoint": "stores_product_master",
         "cta_args": {"focus": "form"},
-        "show_outlet_tabs": False,
+        "show_outlet_tabs": True,
     },
     "indent": {
         "title": "Indent",
@@ -122,7 +125,11 @@ def _now() -> str:
 
 
 def _notify_indent_pending_whatsapp(conn, indent_id: int, outlet: str) -> None:
-    """Best-effort WhatsApp indent_approval notify; never blocks indent save."""
+    """Best-effort WhatsApp indent_approval notify; never blocks indent save.
+
+    Success is silent in the UI (indent flash already says sent for approval).
+    Failures still surface so staff know WhatsApp did not go out.
+    """
     try:
         ok, message = notify_indent_pending_whatsapp(
             conn,
@@ -130,9 +137,7 @@ def _notify_indent_pending_whatsapp(conn, indent_id: int, outlet: str) -> None:
             outlet_label=_outlet_label(outlet),
         )
         conn.commit()
-        if ok:
-            flash(message, "ok")
-        elif message:
+        if not ok and message:
             flash(message, "error")
     except Exception:
         try:
@@ -331,7 +336,37 @@ def _parse_lines_from_form(form) -> list[dict[str, Any]]:
     return lines
 
 
-def _adjust_stock(conn, *, outlet, item_name, unit, qty_delta, movement_type, ref_type, ref_id, notes, user_id):
+def _unit_cost_with_tax(unit_price: Any, tax_percent: Any) -> float | None:
+    """Unit cost including tax: price × (1 + tax%/100)."""
+    try:
+        price = float(unit_price)
+    except (TypeError, ValueError):
+        return None
+    if price <= 0 or price != price:
+        return None
+    try:
+        tax = float(tax_percent or 0)
+    except (TypeError, ValueError):
+        tax = 0.0
+    if tax < 0:
+        tax = 0.0
+    return round(price * (1.0 + tax / 100.0), 4)
+
+
+def _adjust_stock(
+    conn,
+    *,
+    outlet,
+    item_name,
+    unit,
+    qty_delta,
+    movement_type,
+    ref_type,
+    ref_id,
+    notes,
+    user_id,
+    unit_cost=None,
+):
     existing = conn.execute(
         """
         SELECT id, qty_on_hand FROM store_stock_items
@@ -361,11 +396,20 @@ def _adjust_stock(conn, *, outlet, item_name, unit, qty_delta, movement_type, re
             """,
             (outlet, item_name, unit, round(float(qty_delta), 3), _now()),
         )
+    cost_value = None
+    if unit_cost is not None:
+        try:
+            cost_value = float(unit_cost)
+            if cost_value <= 0 or cost_value != cost_value:
+                cost_value = None
+        except (TypeError, ValueError):
+            cost_value = None
     conn.execute(
         """
         INSERT INTO store_stock_movements
-            (outlet, item_name, unit, qty_delta, movement_type, ref_type, ref_id, notes, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (outlet, item_name, unit, qty_delta, movement_type, ref_type, ref_id,
+             notes, unit_cost, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             outlet,
@@ -376,6 +420,7 @@ def _adjust_stock(conn, *, outlet, item_name, unit, qty_delta, movement_type, re
             ref_type,
             ref_id,
             notes or "",
+            cost_value,
             user_id,
             _now(),
         ),
@@ -443,6 +488,192 @@ def _product_names_for_outlet(conn, stores_outlet: str) -> set[str]:
     return names
 
 
+def _format_ledger_qty(value: Any) -> str:
+    try:
+        n = float(value or 0)
+    except (TypeError, ValueError):
+        return "0"
+    if abs(n - round(n)) < 0.0001:
+        return str(int(round(n)))
+    return ("%g" % (round(n * 1000) / 1000))
+
+
+def _stores_ledger_payload(conn, outlet: str) -> dict[str, Any]:
+    """Indent → inward progress ledger for the Indent page popup."""
+    outlet_key = _parse_outlet_filter(outlet)
+    outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet_key)
+    rows = conn.execute(
+        f"""
+        SELECT i.id, i.indent_no, i.outlet, i.status, i.created_at,
+               COALESCE((
+                   SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id
+               ), 0) AS line_count,
+               COALESCE((
+                   SELECT SUM(COALESCE(l.quantity, 0)) FROM store_indent_lines l WHERE l.indent_id = i.id
+               ), 0) AS qty_ordered,
+               COALESCE((
+                   SELECT SUM(COALESCE(l.quantity_received, 0)) FROM store_indent_lines l WHERE l.indent_id = i.id
+               ), 0) AS qty_received,
+               COALESCE((
+                   SELECT SUM(
+                       CASE
+                         WHEN COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+                         THEN COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0)
+                         ELSE 0
+                       END
+                   )
+                   FROM store_indent_lines l WHERE l.indent_id = i.id
+               ), 0) AS qty_pending
+        FROM store_indents i
+        WHERE {outlet_sql}
+        ORDER BY i.created_at DESC, i.id DESC
+        LIMIT 100
+        """,
+        outlet_params,
+    ).fetchall()
+
+    indent_ids = [int(row["id"]) for row in rows]
+    pending_lines_by_id: dict[int, list[dict[str, Any]]] = {iid: [] for iid in indent_ids}
+    received_lines_by_id: dict[int, list[dict[str, Any]]] = {iid: [] for iid in indent_ids}
+    item_names_by_id: dict[int, list[str]] = {iid: [] for iid in indent_ids}
+    if indent_ids:
+        placeholders = ",".join("?" for _ in indent_ids)
+        line_rows = conn.execute(
+            f"""
+            SELECT indent_id, item_name, quantity, quantity_received, unit
+            FROM store_indent_lines
+            WHERE indent_id IN ({placeholders})
+            ORDER BY id
+            """,
+            indent_ids,
+        ).fetchall()
+        for line in line_rows:
+            try:
+                ordered = float(line["quantity"] or 0)
+            except (TypeError, ValueError):
+                ordered = 0.0
+            try:
+                received = float(line["quantity_received"] or 0)
+            except (TypeError, ValueError, KeyError):
+                received = 0.0
+            pending = ordered - received
+            if pending < 0:
+                pending = 0.0
+            iid = int(line["indent_id"])
+            item_name = (line["item_name"] or "").strip()
+            if item_name:
+                item_names_by_id.setdefault(iid, []).append(item_name)
+            line_payload = {
+                "item_name": item_name,
+                "unit": line["unit"] or "",
+                "qty_ordered": ordered,
+                "qty_received": received,
+                "qty_pending": pending if pending > 0.0001 else 0.0,
+                "qty_ordered_display": _format_ledger_qty(ordered),
+                "qty_received_display": _format_ledger_qty(received),
+                "qty_pending_display": _format_ledger_qty(pending if pending > 0.0001 else 0.0),
+            }
+            if pending > 0.0001:
+                pending_lines_by_id.setdefault(iid, []).append(line_payload)
+            if received > 0.0001:
+                received_lines_by_id.setdefault(iid, []).append(line_payload)
+
+    ledger_rows: list[dict[str, Any]] = []
+    indents_created = 0
+    qty_ordered_sum = 0.0
+    qty_received_sum = 0.0
+    qty_pending_sum = 0.0
+    for row in rows:
+        indents_created += 1
+        try:
+            ordered = float(row["qty_ordered"] or 0)
+        except (TypeError, ValueError):
+            ordered = 0.0
+        try:
+            received = float(row["qty_received"] or 0)
+        except (TypeError, ValueError):
+            received = 0.0
+        try:
+            pending = float(row["qty_pending"] or 0)
+        except (TypeError, ValueError):
+            pending = 0.0
+        if pending < 0:
+            pending = 0.0
+        qty_ordered_sum += ordered
+        qty_received_sum += received
+        qty_pending_sum += pending
+        outlet_val = _normalize_outlet_key(row["outlet"] or "restaurant")
+        if outlet_val not in ("bar", "restaurant"):
+            outlet_val = "restaurant"
+        iid = int(row["id"])
+        status = row["status"] or ""
+        pending_lines = pending_lines_by_id.get(iid, [])
+        received_lines = received_lines_by_id.get(iid, [])
+        item_names = item_names_by_id.get(iid, [])
+        can_view_pending = status == "approved" and pending > 0.0001 and bool(pending_lines)
+        can_view_received = received > 0.0001 and bool(received_lines)
+        indent_no = row["indent_no"] or ""
+        status_label = _status_label(status)
+        created_at = _format_stores_dt(row["created_at"] or "")
+        outlet_label = _outlet_label(outlet_val)
+        qty_ordered_display = _format_ledger_qty(ordered)
+        qty_received_display = _format_ledger_qty(received)
+        qty_pending_display = _format_ledger_qty(pending)
+        search_parts = [
+            indent_no,
+            outlet_val,
+            outlet_label,
+            status,
+            status_label,
+            created_at,
+            qty_ordered_display,
+            qty_received_display,
+            qty_pending_display,
+            *item_names,
+        ]
+        search_text = " ".join(str(part or "").lower() for part in search_parts if part)
+        ledger_rows.append({
+            "id": iid,
+            "indent_no": indent_no,
+            "outlet": outlet_val,
+            "outlet_label": outlet_label,
+            "status": status,
+            "status_label": status_label,
+            "created_at": created_at,
+            "line_count": int(row["line_count"] or 0),
+            "qty_ordered": ordered,
+            "qty_received": received,
+            "qty_pending": pending,
+            "qty_ordered_display": qty_ordered_display,
+            "qty_received_display": qty_received_display,
+            "qty_pending_display": qty_pending_display,
+            "can_view_pending": can_view_pending,
+            "can_view_received": can_view_received,
+            "pending_lines": pending_lines if can_view_pending else [],
+            "received_lines": received_lines if can_view_received else [],
+            "item_names": item_names,
+            "search_text": search_text,
+            "inward_url": (
+                url_for("stores_purchase_requests", outlet=outlet_val, indent=iid)
+                if can_view_pending
+                else ""
+            ),
+        })
+
+    return {
+        "summary": {
+            "indents_created": indents_created,
+            "qty_ordered": qty_ordered_sum,
+            "qty_received": qty_received_sum,
+            "qty_pending": qty_pending_sum,
+            "qty_ordered_display": _format_ledger_qty(qty_ordered_sum),
+            "qty_received_display": _format_ledger_qty(qty_received_sum),
+            "qty_pending_display": _format_ledger_qty(qty_pending_sum),
+        },
+        "rows": ledger_rows,
+    }
+
+
 def _indent_view_payload(conn, indents: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Serialize indent rows + lines for the list-page view modal."""
     if not indents:
@@ -506,16 +737,23 @@ def _indent_view_payload(conn, indents: list[dict[str, Any]]) -> list[dict[str, 
     return payload
 
 
-def _load_flat_products(conn) -> list[dict[str, Any]]:
+def _load_flat_products(conn, stores_outlet: str | None = None) -> list[dict[str, Any]]:
+    filter_outlet = _parse_outlet_filter(stores_outlet) if stores_outlet else None
+    params: list[Any] = []
+    outlet_sql = ""
+    if filter_outlet and filter_outlet != "both":
+        outlet_sql = " AND lower(coalesce(p.outlet, '')) IN (?, 'both')"
+        params.append(filter_outlet)
     rows = conn.execute(
-        """
+        f"""
         SELECT p.id, p.name, p.default_unit, p.outlet, p.approximate_price, p.category_id,
                c.name AS category_name, c.sort_order AS category_sort, p.sort_order
         FROM store_products p
         JOIN store_product_categories c ON c.id = p.category_id
-        WHERE p.is_active = 1 AND c.is_active = 1
+        WHERE p.is_active = 1 AND c.is_active = 1{outlet_sql}
         ORDER BY c.sort_order, c.name, p.sort_order, p.name
-        """
+        """,
+        params,
     ).fetchall()
     products = []
     for row in rows:
@@ -551,13 +789,9 @@ def _first_stores_endpoint(user) -> str | None:
 def _page_render(page_key: str, **kwargs):
     user = _get_user() if _get_user else None
     raw_outlet = kwargs.pop("outlet", None) or request.args.get("outlet")
-    # List filters use All/Bar/Restaurant; product master keeps its own outlet field.
-    if page_key == "product_master":
-        outlet = _parse_outlet(raw_outlet)
-        outlets_for_ui = STORES_OUTLETS
-    else:
-        outlet = _parse_outlet_filter(raw_outlet)
-        outlets_for_ui = STORES_FILTER_OUTLETS
+    # List filters use All/Bar/Restaurant across Stores pages (including Product Master).
+    outlet = _parse_outlet_filter(raw_outlet)
+    outlets_for_ui = STORES_FILTER_OUTLETS
     meta = PAGE_META[page_key]
     cta_url = None
     if meta.get("cta_endpoint"):
@@ -594,7 +828,7 @@ def _page_render(page_key: str, **kwargs):
         stores_dt=_format_stores_dt,
         stores_date=_format_stores_date_line,
         stores_time=_format_stores_time_line,
-        default_units=DEFAULT_UNITS,
+        default_units=kwargs.pop("default_units", DEFAULT_UNITS),
         product_outlets=PRODUCT_OUTLETS,
         current_user=user,
         **kwargs,
@@ -604,6 +838,9 @@ def _page_render(page_key: str, **kwargs):
 @stores_bp.route("/stores/product-master", methods=["GET", "POST"])
 def stores_product_master():
     user = _get_user()
+    outlet = _parse_outlet_filter(
+        request.args.get("outlet") or request.form.get("list_outlet")
+    )
     edit_id = request.args.get("edit") or request.form.get("product_id") or ""
     try:
         edit_id_int = int(edit_id) if str(edit_id).strip() else 0
@@ -615,14 +852,23 @@ def stores_product_master():
         or bool(edit_id_int)
     )
     errors: list[str] = []
+    show_category_modal = False
+    show_unit_modal = False
+    category_form_name = ""
+    unit_form_name = ""
     form = {
         "product_id": "",
         "category_id": "",
         "name": "",
         "default_unit": "kg",
-        "outlet": "restaurant",
+        "outlet": "",
         "approximate_price": "",
     }
+
+    def _pm_redirect(**extra):
+        args = {"outlet": outlet}
+        args.update(extra)
+        return redirect(url_for("stores_product_master", **args))
 
     conn = get_db()
     try:
@@ -631,8 +877,10 @@ def stores_product_master():
             action = (request.form.get("action") or "save_product").strip()
             if action == "save_category":
                 cat_name = (request.form.get("category_name") or "").strip()
+                category_form_name = cat_name
                 if not cat_name:
                     errors.append("Category name is required.")
+                    show_category_modal = True
                 else:
                     exists = conn.execute(
                         "SELECT id FROM store_product_categories WHERE lower(name) = lower(?)",
@@ -640,11 +888,12 @@ def stores_product_master():
                     ).fetchone()
                     if exists:
                         errors.append("That category already exists.")
+                        show_category_modal = True
                     else:
                         max_sort = conn.execute(
                             "SELECT COALESCE(MAX(sort_order), 0) AS m FROM store_product_categories"
                         ).fetchone()["m"]
-                        conn.execute(
+                        cursor = conn.execute(
                             """
                             INSERT INTO store_product_categories (name, sort_order, is_active)
                             VALUES (?, ?, 1)
@@ -653,11 +902,40 @@ def stores_product_master():
                         )
                         conn.commit()
                         flash("Category added.", "ok")
-                        return redirect(url_for("stores_product_master"))
+                        return _pm_redirect(focus="form", category=cursor.lastrowid)
+            elif action == "save_unit":
+                unit_name = (request.form.get("unit_name") or "").strip()
+                unit_form_name = unit_name
+                if not unit_name:
+                    errors.append("Unit name is required.")
+                    show_unit_modal = True
+                else:
+                    exists = conn.execute(
+                        "SELECT id FROM store_product_units WHERE lower(name) = lower(?)",
+                        (unit_name,),
+                    ).fetchone()
+                    if exists:
+                        errors.append("That unit already exists.")
+                        show_unit_modal = True
+                    else:
+                        max_sort = conn.execute(
+                            "SELECT COALESCE(MAX(sort_order), 0) AS m FROM store_product_units"
+                        ).fetchone()["m"]
+                        conn.execute(
+                            """
+                            INSERT INTO store_product_units (name, sort_order, is_active)
+                            VALUES (?, ?, 1)
+                            """,
+                            (unit_name, int(max_sort) + 10),
+                        )
+                        conn.commit()
+                        flash("Unit added.", "ok")
+                        return _pm_redirect(focus="form", unit=unit_name)
             else:
                 form["name"] = (request.form.get("name") or "").strip()
                 form["default_unit"] = (request.form.get("default_unit") or "kg").strip() or "kg"
-                form["outlet"] = _parse_product_outlet(request.form.get("outlet"))
+                raw_outlet = (request.form.get("outlet") or "").strip().lower()
+                form["outlet"] = raw_outlet if raw_outlet in PRODUCT_OUTLET_KEYS else ""
                 form["category_id"] = (request.form.get("category_id") or "").strip()
                 form["product_id"] = (request.form.get("product_id") or "").strip()
                 approx_price, price_error = _parse_optional_price(request.form.get("approximate_price"))
@@ -674,6 +952,8 @@ def stores_product_master():
                     errors.append("Product name is required.")
                 if not category_id:
                     errors.append("Choose a category.")
+                if not form["outlet"]:
+                    errors.append("Choose an outlet.")
                 if price_error:
                     errors.append(price_error)
                 if not errors:
@@ -714,7 +994,7 @@ def stores_product_master():
                             )
                             conn.commit()
                             flash("Product updated.", "ok")
-                            return redirect(url_for("stores_product_master"))
+                            return _pm_redirect()
                     else:
                         max_sort = conn.execute(
                             """
@@ -742,7 +1022,7 @@ def stores_product_master():
                         )
                         conn.commit()
                         flash("Product added to master.", "ok")
-                        return redirect(url_for("stores_product_master"))
+                        return _pm_redirect()
 
         if edit_id_int and request.method == "GET":
             row = conn.execute(
@@ -764,10 +1044,18 @@ def stores_product_master():
                 )
             else:
                 flash("Product not found.", "error")
-                return redirect(url_for("stores_product_master"))
+                return _pm_redirect()
+        elif request.method == "GET" and not form["category_id"]:
+            preselect = (request.args.get("category") or "").strip()
+            if preselect.isdigit():
+                form["category_id"] = preselect
+        if request.method == "GET":
+            preselect_unit = (request.args.get("unit") or "").strip()
+            if preselect_unit:
+                form["default_unit"] = preselect_unit
 
-        catalog = _load_product_catalog(conn)
-        products = _load_flat_products(conn)
+        catalog = _load_product_catalog(conn, stores_outlet=outlet)
+        products = _load_flat_products(conn, stores_outlet=outlet)
         categories = conn.execute(
             """
             SELECT id, name FROM store_product_categories
@@ -775,17 +1063,45 @@ def stores_product_master():
             ORDER BY sort_order, name
             """
         ).fetchall()
+        unit_rows = conn.execute(
+            """
+            SELECT name FROM store_product_units
+            WHERE is_active = 1
+            ORDER BY sort_order, name
+            """
+        ).fetchall()
+        product_units = [row["name"] for row in unit_rows]
+        if not product_units:
+            product_units = list(DEFAULT_UNITS)
+        if form.get("default_unit") and form["default_unit"] not in product_units:
+            product_units = list(product_units) + [form["default_unit"]]
         product_count = len(products)
     finally:
         conn.close()
 
+    if request.method == "GET" and is_embed_request():
+        return render_template(
+            "partials/master_embed/product.html",
+            stores_outlets=STORES_FILTER_OUTLETS,
+            selected_outlet=outlet,
+            selected_outlet_label=_outlet_label(outlet),
+            products=products,
+            product_count=product_count,
+        )
+
     return _page_render(
         "product_master",
+        outlet=outlet,
         catalog=catalog,
         products=products,
         categories=[dict(row) for row in categories],
+        default_units=product_units,
         product_count=product_count,
-        show_form=focus or bool(errors),
+        show_form=focus or bool(errors) or show_category_modal or show_unit_modal,
+        show_category_modal=show_category_modal,
+        show_unit_modal=show_unit_modal,
+        category_form_name=category_form_name,
+        unit_form_name=unit_form_name,
         form=form,
         errors=errors,
         editing=bool(form.get("product_id")),
@@ -795,6 +1111,7 @@ def stores_product_master():
 @stores_bp.route("/stores/product-master/<int:product_id>/delete", methods=["GET", "POST"])
 def stores_product_delete(product_id: int):
     _get_user()
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
     conn = get_db()
     try:
         ensure_stores_schema(conn)
@@ -817,8 +1134,7 @@ def stores_product_delete(product_id: int):
             flash(f"Deleted {row['name']}.", "ok")
     finally:
         conn.close()
-    return redirect(url_for("stores_product_master"))
-
+    return redirect(url_for("stores_product_master", outlet=outlet))
 
 @stores_bp.route("/stores")
 def stores():
@@ -852,6 +1168,7 @@ def stores_indent():
     form = {
         "indent_id": "",
         "notes": "",
+        "submission_token": "",
         "lines": [{"item_name": "", "quantity": "", "unit": "kg", "notes": "", "approximate_price": ""}],
     }
 
@@ -861,6 +1178,7 @@ def stores_indent():
         if request.method == "POST":
             form["notes"] = (request.form.get("notes") or "").strip()
             form["indent_id"] = (request.form.get("indent_id") or "").strip()
+            form["submission_token"] = (request.form.get("submission_token") or "").strip()
             lines = _parse_lines_from_form(request.form)
             form["lines"] = lines or [{"item_name": "", "quantity": "", "unit": "kg", "notes": "", "approximate_price": ""}]
             for line in form["lines"]:
@@ -930,7 +1248,19 @@ def stores_indent():
                 else:
                     status = "pending" if action == "submit" else "draft"
                 if indent_id and existing:
-                    conn.execute(
+                    prior_status = (existing["status"] or "")
+                    # Fresh submitted_at only when (re)entering pending so WhatsApp
+                    # idempotency treats reject→resubmit as a new approval round.
+                    if status == "pending" and prior_status != "pending":
+                        submitted_at = _now()
+                    elif status == "pending":
+                        submitted_at = existing["submitted_at"] or _now()
+                    else:
+                        submitted_at = None
+                    # Bind the WHERE to the status we read earlier so a concurrent duplicate
+                    # request (e.g. an overlapping double-submit) can't both win a "new
+                    # approval round" transition and each fire off their own WhatsApp send.
+                    update_cur = conn.execute(
                         """
                         UPDATE store_indents
                         SET notes = ?,
@@ -938,20 +1268,30 @@ def stores_indent():
                             decided_by = NULL,
                             decided_at = NULL,
                             decision_note = '',
-                            submitted_at = CASE
-                                WHEN ? = 'pending' THEN COALESCE(submitted_at, ?)
-                                ELSE NULL
-                            END
-                        WHERE id = ?
+                            submitted_at = ?
+                        WHERE id = ? AND status = ?
                         """,
                         (
                             form["notes"],
                             status,
-                            status,
-                            _now(),
+                            submitted_at,
                             indent_id,
+                            prior_status,
                         ),
                     )
+                    won_transition = update_cur.rowcount > 0
+                    if not won_transition:
+                        # Someone else changed this indent between our read and write
+                        # (rare race). Still apply this request's edits so they aren't
+                        # silently dropped, just without re-triggering the approval flow.
+                        conn.execute(
+                            """
+                            UPDATE store_indents
+                            SET notes = ?, status = ?, submitted_at = ?
+                            WHERE id = ?
+                            """,
+                            (form["notes"], status, submitted_at, indent_id),
+                        )
                     conn.execute(
                         "DELETE FROM store_indent_lines WHERE indent_id = ?",
                         (indent_id,),
@@ -972,35 +1312,85 @@ def stores_indent():
                                 line.get("approximate_price"),
                             ),
                         )
+                    # New approval round: allow WhatsApp notify again after reject/draft.
+                    is_new_round = won_transition and status == "pending" and prior_status != "pending"
+                    if is_new_round:
+                        supersede_indent_whatsapp_sends(conn, indent_id)
                     conn.commit()
-                    if (existing["status"] or "") == "rejected":
+                    if prior_status == "rejected":
                         msg = "Indent updated and sent for approval."
-                    elif (existing["status"] or "") != "pending":
+                    elif prior_status != "pending":
                         msg = "Indent sent for approval."
                     else:
                         msg = "Indent updated."
                     flash(msg, "ok")
-                    if status == "pending":
+                    # Only notify when entering pending (draft/rejected → pending).
+                    # Editing an already-pending indent must not re-spam WhatsApp.
+                    if is_new_round:
                         _notify_indent_pending_whatsapp(conn, indent_id, write_outlet)
                     return redirect(url_for("stores_indent", outlet=write_outlet, view="pending"))
 
+                # Guard against duplicate indents from a double form submit (double-click,
+                # soft-nav retry, browser resubmit): the same rendered form carries a
+                # one-time token, so a repeat POST is recognised and short-circuited here
+                # instead of creating a second indent + sending a second approval request.
+                submission_token = form["submission_token"]
+                dup_indent = None
+                if submission_token:
+                    dup_indent = conn.execute(
+                        "SELECT id, outlet, status FROM store_indents WHERE submission_token = ?",
+                        (submission_token,),
+                    ).fetchone()
+                if dup_indent:
+                    flash(
+                        "Indent sent for approval." if status == "pending" else "Indent saved as draft.",
+                        "ok",
+                    )
+                    return redirect(
+                        url_for(
+                            "stores_indent",
+                            outlet=dup_indent["outlet"] or write_outlet,
+                            view="pending" if dup_indent["status"] == "pending" else list_view,
+                        )
+                    )
+
                 indent_no = _next_doc_no(conn, "store_indents", "indent_no", "IND", write_outlet)
-                cur = conn.execute(
-                    """
-                    INSERT INTO store_indents
-                        (outlet, indent_no, status, notes, created_by, created_at, submitted_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        write_outlet,
-                        indent_no,
-                        status,
-                        form["notes"],
-                        user["id"] if user else None,
-                        _now(),
-                        _now() if status == "pending" else None,
-                    ),
-                )
+                try:
+                    cur = conn.execute(
+                        """
+                        INSERT INTO store_indents
+                            (outlet, indent_no, status, notes, created_by, created_at, submitted_at, submission_token)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            write_outlet,
+                            indent_no,
+                            status,
+                            form["notes"],
+                            user["id"] if user else None,
+                            _now(),
+                            _now() if status == "pending" else None,
+                            submission_token,
+                        ),
+                    )
+                except sqlite3.IntegrityError:
+                    # Lost the race to a concurrent duplicate submit with the same token.
+                    conn.rollback()
+                    dup_indent = conn.execute(
+                        "SELECT id, outlet, status FROM store_indents WHERE submission_token = ?",
+                        (submission_token,),
+                    ).fetchone()
+                    flash(
+                        "Indent sent for approval." if status == "pending" else "Indent saved as draft.",
+                        "ok",
+                    )
+                    return redirect(
+                        url_for(
+                            "stores_indent",
+                            outlet=(dup_indent["outlet"] if dup_indent else write_outlet),
+                            view="pending" if (dup_indent and dup_indent["status"] == "pending") else list_view,
+                        )
+                    )
                 new_id = cur.lastrowid
                 for line in lines:
                     conn.execute(
@@ -1060,6 +1450,18 @@ def stores_indent():
             catalog = _load_product_catalog(conn, stores_outlet=outlet)
         status_keys = INDENT_LIST_VIEW_STATUSES[list_view]
         status_placeholders = ",".join("?" for _ in status_keys)
+        stores_ledger_data = {
+            "summary": {
+                "indents_created": 0,
+                "qty_ordered": 0,
+                "qty_received": 0,
+                "qty_pending": 0,
+                "qty_ordered_display": "0",
+                "qty_received_display": "0",
+                "qty_pending_display": "0",
+            },
+            "rows": [],
+        }
         if outlet == "both":
             rows = conn.execute(
                 f"""
@@ -1096,17 +1498,23 @@ def stores_indent():
             ).fetchall()
         indents = [dict(row) for row in rows]
         indent_view_data = _indent_view_payload(conn, indents)
+        stores_ledger_data = _stores_ledger_payload(conn, "both")
     finally:
         conn.close()
 
     show_form = (focus and not open_edit_id) or bool(errors)
     indent_form_unset = bool(show_form and outlet == "both" and not open_edit_id)
+    # Fresh "New Indent" form: mint a one-time token so a resubmitted POST (double
+    # click, soft-nav retry) can be recognised server-side and de-duplicated.
+    if show_form and not form.get("indent_id") and not form.get("submission_token"):
+        form["submission_token"] = uuid.uuid4().hex
 
     return _page_render(
         "indent",
         outlet=outlet,
         indents=indents,
         indent_view_data=indent_view_data,
+        stores_ledger_data=stores_ledger_data,
         product_catalog=catalog,
         show_form=show_form,
         open_edit_id=open_edit_id,
@@ -1334,10 +1742,17 @@ def stores_indent_submit(indent_id: int):
         if not line_count:
             flash("Add items before sending for approval.", "error")
             return redirect(url_for("stores_indent_detail", indent_id=indent_id, outlet=outlet))
-        conn.execute(
-            "UPDATE store_indents SET status = 'pending', submitted_at = ? WHERE id = ?",
+        # Bind the WHERE to status='draft' so a concurrent duplicate submit (double
+        # click, retried request) can't both flip the row and each send an approval.
+        update_cur = conn.execute(
+            "UPDATE store_indents SET status = 'pending', submitted_at = ? WHERE id = ? AND status = 'draft'",
             (_now(), indent_id),
         )
+        if update_cur.rowcount == 0:
+            conn.commit()
+            flash("Indent already sent for approval.", "ok")
+            return redirect(url_for("stores_indent", outlet=outlet))
+        supersede_indent_whatsapp_sends(conn, indent_id)
         conn.commit()
         flash("Indent sent for approval.", "ok")
         _notify_indent_pending_whatsapp(conn, indent_id, outlet)
@@ -1559,6 +1974,7 @@ def stores_purchase_requests():
     import app as app_module
 
     conn = get_db()
+    expense_categories = app_module.EXPENSE_CATEGORIES
     try:
         ensure_stores_schema(conn)
         approved_rows = conn.execute(
@@ -1572,6 +1988,11 @@ def stores_purchase_requests():
             LEFT JOIN users u ON u.id = i.created_by
             LEFT JOIN users d ON d.id = i.decided_by
             WHERE {outlet_sql} AND i.status = 'approved'
+              AND EXISTS (
+                SELECT 1 FROM store_indent_lines l
+                WHERE l.indent_id = i.id
+                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+              )
             ORDER BY i.decided_at DESC, i.id DESC
             """,
             outlet_params,
@@ -1593,7 +2014,7 @@ def stores_purchase_requests():
         if selected_indent is not None:
             line_rows = conn.execute(
                 """
-                SELECT id, item_name, quantity, unit, notes, approximate_price
+                SELECT id, item_name, quantity, quantity_received, unit, notes, approximate_price
                 FROM store_indent_lines
                 WHERE indent_id = ?
                 ORDER BY id
@@ -1606,10 +2027,25 @@ def stores_purchase_requests():
                     qty_val = float(line["quantity"] or 0)
                 except (TypeError, ValueError):
                     qty_val = 0.0
+                try:
+                    received_val = float(line["quantity_received"] or 0)
+                except (KeyError, TypeError, ValueError):
+                    received_val = 0.0
+                remaining_val = qty_val - received_val
+                if remaining_val <= 0.0001:
+                    continue
                 if abs(qty_val - round(qty_val)) < 0.0001:
                     qty_display = str(int(round(qty_val)))
                 else:
                     qty_display = ("%g" % qty_val)
+                if abs(remaining_val - round(remaining_val)) < 0.0001:
+                    remaining_display = str(int(round(remaining_val)))
+                else:
+                    remaining_display = ("%g" % remaining_val)
+                if abs(received_val - round(received_val)) < 0.0001:
+                    received_display = str(int(round(received_val)))
+                else:
+                    received_display = ("%g" % received_val)
                 try:
                     rate_val = float(approx) if approx is not None and approx != "" else 0.0
                 except (TypeError, ValueError):
@@ -1619,6 +2055,10 @@ def stores_purchase_requests():
                     "item_name": line["item_name"],
                     "quantity": qty_val,
                     "quantity_display": qty_display,
+                    "quantity_received": received_val,
+                    "quantity_received_display": received_display,
+                    "remaining": remaining_val,
+                    "remaining_display": remaining_display,
                     "unit": line["unit"] or "",
                     "notes": line["notes"] or "",
                     "approximate_price": approx,
@@ -1640,6 +2080,7 @@ def stores_purchase_requests():
         available_cash = app_module._cash_ledger_available_as_of(
             conn, app_module.DEFAULT_COMPANY, today
         )
+        expense_categories = app_module._expense_category_choices(conn)
     finally:
         conn.close()
 
@@ -1651,7 +2092,7 @@ def stores_purchase_requests():
         selected_lines=selected_lines,
         indent_view_data=indent_view_data,
         suppliers=suppliers,
-        expense_categories=app_module.EXPENSE_CATEGORIES,
+        expense_categories=expense_categories,
         expense_payment_types=app_module.EXPENSE_PAYMENT_TYPES,
         available_cash=available_cash,
         available_cash_url=url_for("cash_ledger_available"),
@@ -1660,7 +2101,101 @@ def stores_purchase_requests():
         default_location=app_module.OUTLET_HOTEL,
         today_iso=today.isoformat(),
         inward_confirm_url=url_for("stores_confirm_stock_inward_expense"),
+        inward_save_category_url=url_for("stores_save_expense_category"),
     )
+
+
+@stores_bp.route("/stores/purchase-requests/expense-category", methods=["POST"])
+def stores_save_expense_category():
+    """Add a custom expense category for Inward / Expense Ledger dropdowns."""
+    user = _get_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+
+    import app as app_module
+    import re
+
+    data = request.get_json(silent=True) or {}
+    name = (data.get("category_name") or data.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "Category name is required."}), 400
+    if len(name) > 80:
+        return jsonify({"ok": False, "error": "Category name must be 80 characters or fewer."}), 400
+
+    key = app_module._slugify_expense_category_key(name)
+    if not key or not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", key):
+        return jsonify({"ok": False, "error": "Enter a valid category name."}), 400
+
+    # Prefer builtin key when the name matches an existing label (case-insensitive).
+    for builtin_key, builtin_label in app_module.EXPENSE_CATEGORIES:
+        if builtin_label.casefold() == name.casefold() or builtin_key == key:
+            return jsonify({
+                "ok": True,
+                "category_key": builtin_key,
+                "category_label": builtin_label,
+                "existing": True,
+            })
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        # Schema for expense_categories lives in init_db path; ensure via pragma/create.
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS expense_categories (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                category_key  TEXT    NOT NULL UNIQUE,
+                name          TEXT    NOT NULL COLLATE NOCASE,
+                sort_order    INTEGER NOT NULL DEFAULT 0,
+                is_active     INTEGER NOT NULL DEFAULT 1,
+                created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+        """)
+        by_key = conn.execute(
+            "SELECT category_key, name, is_active FROM expense_categories WHERE category_key = ?",
+            (key,),
+        ).fetchone()
+        by_name = conn.execute(
+            "SELECT category_key, name, is_active FROM expense_categories WHERE lower(name) = lower(?)",
+            (name,),
+        ).fetchone()
+        existing = by_name or by_key
+        if existing:
+            if int(existing["is_active"] or 0) != 1:
+                conn.execute(
+                    "UPDATE expense_categories SET is_active = 1, name = ? WHERE category_key = ?",
+                    (name, existing["category_key"]),
+                )
+                conn.commit()
+            return jsonify({
+                "ok": True,
+                "category_key": existing["category_key"],
+                "category_label": name if int(existing["is_active"] or 0) != 1 else existing["name"],
+                "existing": True,
+            })
+
+        max_sort = conn.execute(
+            "SELECT COALESCE(MAX(sort_order), 0) AS m FROM expense_categories"
+        ).fetchone()["m"]
+        conn.execute(
+            """
+            INSERT INTO expense_categories (category_key, name, sort_order, is_active)
+            VALUES (?, ?, ?, 1)
+            """,
+            (key, name, int(max_sort) + 10),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        return jsonify({"ok": False, "error": "Could not save category."}), 500
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "category_key": key,
+        "category_label": name,
+        "existing": False,
+    })
 
 
 @stores_bp.route("/stores/purchase-requests/confirm-with-expense", methods=["POST"])
@@ -1682,7 +2217,8 @@ def stores_confirm_stock_inward_expense():
     if not isinstance(raw_lines, list):
         raw_lines = []
 
-    selected: dict[int, float] = {}
+    # line_id -> (received_qty, unit_price, tax_percent)
+    selected: dict[int, tuple[float, float | None, float | None]] = {}
     for raw in raw_lines:
         if not isinstance(raw, dict):
             continue
@@ -1691,8 +2227,21 @@ def stores_confirm_stock_inward_expense():
             qty = float(raw.get("received_qty") or raw.get("quantity") or 0)
         except (TypeError, ValueError):
             continue
-        if line_id > 0 and qty > 0:
-            selected[line_id] = qty
+        if line_id <= 0 or qty <= 0:
+            continue
+        unit_price = None
+        tax_percent = None
+        try:
+            if raw.get("unit_price") not in (None, ""):
+                unit_price = float(raw.get("unit_price"))
+        except (TypeError, ValueError):
+            unit_price = None
+        try:
+            if raw.get("tax_percent") not in (None, ""):
+                tax_percent = float(raw.get("tax_percent"))
+        except (TypeError, ValueError):
+            tax_percent = None
+        selected[line_id] = (qty, unit_price, tax_percent)
 
     if not indent_id:
         return jsonify({"ok": False, "error": "Select an approved indent."}), 400
@@ -1718,21 +2267,35 @@ def stores_confirm_stock_inward_expense():
             return jsonify({"ok": False, "error": "This indent has no items."}), 400
 
         lines_by_id = {int(row["id"]): row for row in lines}
-        received_pairs: list[tuple[Any, float]] = []
-        for line_id, received_qty in selected.items():
+        received_pairs: list[tuple[Any, float, float | None]] = []
+        for line_id, (received_qty, unit_price, tax_percent) in selected.items():
             line = lines_by_id.get(line_id)
             if not line:
                 return jsonify({"ok": False, "error": "One or more selected lines were not found."}), 400
             ordered = float(line["quantity"] or 0)
-            if received_qty - ordered > 0.0001:
+            try:
+                already = float(line["quantity_received"] or 0)
+            except (KeyError, TypeError, ValueError):
+                already = 0.0
+            remaining = ordered - already
+            if remaining <= 0.0001:
+                return jsonify({
+                    "ok": False,
+                    "error": f"{line['item_name']} is already fully received.",
+                }), 400
+            if received_qty - remaining > 0.0001:
                 return jsonify({
                     "ok": False,
                     "error": (
                         f"Received quantity for {line['item_name']} cannot exceed "
-                        f"ordered qty ({ordered:g})."
+                        f"remaining qty ({remaining:g})."
                     ),
                 }), 400
-            received_pairs.append((line, received_qty))
+            unit_cost = _unit_cost_with_tax(unit_price, tax_percent)
+            if unit_cost is None:
+                # Fall back to approved indent price (ex-tax) when UI omits entered rate.
+                unit_cost = _unit_cost_with_tax(line["approximate_price"], 0)
+            received_pairs.append((line, received_qty, unit_cost))
 
         expense_data = {
             "company": data.get("company") or app_module.DEFAULT_COMPANY,
@@ -1758,7 +2321,20 @@ def stores_confirm_stock_inward_expense():
             return jsonify({"ok": False, "error": expense_error}), 400
 
         payment_type = app_module._normalize_expense_payment_type(expense_data.get("payment_type"))
-        if payment_type == app_module.EXPENSE_PAYMENT_CREDIT:
+        expense_amount = app_module.parse_money(expense_data.get("amount"))
+        approved_total = 0.0
+        for line, received_qty, _unit_cost in received_pairs:
+            try:
+                unit_price = float(line["approximate_price"] or 0)
+            except (TypeError, ValueError):
+                unit_price = 0.0
+            approved_total += float(received_qty) * unit_price
+        approved_total = app_module.round_half_up(approved_total, 2)
+        # Credit ≤ approved total skips Purchase Verification; any overage must be verified.
+        if (
+            payment_type == app_module.EXPENSE_PAYMENT_CREDIT
+            and expense_amount - approved_total <= 0.001
+        ):
             verify_notes = f"Auto-verified from stock inward {indent['indent_no']}"
             if notes:
                 verify_notes = f"{verify_notes}: {notes}"
@@ -1766,7 +2342,7 @@ def stores_confirm_stock_inward_expense():
                 conn,
                 expense_id=expense_result["expense_id"],
                 supplier_id=expense_data["supplier_id"],
-                amount=app_module.parse_money(expense_data.get("amount")),
+                amount=expense_amount,
                 company=expense_data["company"],
                 user=user,
                 notes=verify_notes,
@@ -1778,7 +2354,7 @@ def stores_confirm_stock_inward_expense():
         movement_note = f"Stock inward from {indent['indent_no']}"
         if notes:
             movement_note = f"{movement_note}: {notes}"
-        for line, received_qty in received_pairs:
+        for line, received_qty, unit_cost in received_pairs:
             _adjust_stock(
                 conn,
                 outlet=write_outlet,
@@ -1790,12 +2366,51 @@ def stores_confirm_stock_inward_expense():
                 ref_id=indent_id,
                 notes=movement_note,
                 user_id=user["id"] if user else None,
+                unit_cost=unit_cost,
+            )
+            try:
+                already = float(line["quantity_received"] or 0)
+            except (KeyError, TypeError, ValueError):
+                already = 0.0
+            conn.execute(
+                """
+                UPDATE store_indent_lines
+                SET quantity_received = ?
+                WHERE id = ?
+                """,
+                (already + float(received_qty), int(line["id"])),
             )
 
-        conn.execute(
-            "UPDATE store_indents SET status = 'stocked' WHERE id = ?",
+        # Refresh remaining after this confirm.
+        remaining_rows = conn.execute(
+            """
+            SELECT COALESCE(quantity, 0) - COALESCE(quantity_received, 0) AS remaining
+            FROM store_indent_lines
+            WHERE indent_id = ?
+            """,
             (indent_id,),
-        )
+        ).fetchall()
+        still_open = any(float(row["remaining"] or 0) > 0.0001 for row in remaining_rows)
+        if still_open:
+            # Keep approved so the indent stays on Stock Inward.
+            conn.execute(
+                "UPDATE store_indents SET status = 'approved' WHERE id = ?",
+                (indent_id,),
+            )
+            redirect_url = url_for(
+                "stores_purchase_requests",
+                outlet=write_outlet,
+                indent=indent_id,
+            )
+            message = "Partial stock inward recorded. Remaining items stay on Stock Inward."
+        else:
+            conn.execute(
+                "UPDATE store_indents SET status = 'stocked' WHERE id = ?",
+                (indent_id,),
+            )
+            redirect_url = url_for("stores_stock", outlet=write_outlet)
+            message = "Stock inward and expense recorded."
+
         conn.commit()
     except ValueError as exc:
         conn.rollback()
@@ -1808,10 +2423,11 @@ def stores_confirm_stock_inward_expense():
 
     return jsonify({
         "ok": True,
-        "redirect": url_for("stores_stock", outlet=write_outlet),
+        "redirect": redirect_url,
         "expense_id": expense_result["expense_id"],
         "expense_code": expense_result.get("expense_code"),
-        "message": "Stock inward and expense recorded.",
+        "message": message,
+        "partial": still_open,
     })
 
 
@@ -1895,6 +2511,148 @@ def stores_pr_receive(pr_id: int):
     return redirect(url_for("stores_stock", outlet=outlet))
 
 
+def _inward_weighted_unit_costs(
+    conn,
+    outlet_sql: str,
+    outlet_params: tuple[Any, ...],
+) -> dict[tuple[str, str, str], float]:
+    """Weighted-average unit cost (incl. tax when stored) from receive movements.
+
+    Prefers ``store_stock_movements.unit_cost`` (inward price + tax). Falls back to
+    the matching indent line ``approximate_price`` for older receipts without cost.
+    """
+    rows = conn.execute(
+        f"""
+        SELECT m.outlet,
+               lower(m.item_name) AS name_key,
+               lower(m.unit) AS unit_key,
+               SUM(
+                 m.qty_delta * COALESCE(
+                   m.unit_cost,
+                   (
+                     SELECT l.approximate_price
+                     FROM store_indent_lines l
+                     WHERE m.ref_type = 'stock_inward'
+                       AND l.indent_id = m.ref_id
+                       AND lower(l.item_name) = lower(m.item_name)
+                     ORDER BY l.id
+                     LIMIT 1
+                   )
+                 )
+               ) AS cost_total,
+               SUM(
+                 CASE
+                   WHEN COALESCE(
+                     m.unit_cost,
+                     (
+                       SELECT l.approximate_price
+                       FROM store_indent_lines l
+                       WHERE m.ref_type = 'stock_inward'
+                         AND l.indent_id = m.ref_id
+                         AND lower(l.item_name) = lower(m.item_name)
+                       ORDER BY l.id
+                       LIMIT 1
+                     )
+                   ) IS NOT NULL THEN m.qty_delta
+                   ELSE 0
+                 END
+               ) AS qty_priced
+        FROM store_stock_movements m
+        WHERE m.movement_type = 'receive'
+          AND m.qty_delta > 0
+          AND {outlet_sql}
+        GROUP BY m.outlet, lower(m.item_name), lower(m.unit)
+        """,
+        outlet_params,
+    ).fetchall()
+    costs: dict[tuple[str, str, str], float] = {}
+    for row in rows:
+        try:
+            qty_priced = float(row["qty_priced"] or 0)
+            cost_total = float(row["cost_total"] or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty_priced <= 0.0001 or cost_total <= 0:
+            continue
+        key = (
+            (row["outlet"] or "").strip().lower(),
+            (row["name_key"] or "").strip().lower(),
+            (row["unit_key"] or "").strip().lower(),
+        )
+        costs[key] = round(cost_total / qty_priced, 4)
+    return costs
+
+
+def _enrich_stock_items(
+    conn,
+    items: list[dict[str, Any]],
+    *,
+    inward_costs: dict[tuple[str, str, str], float] | None = None,
+) -> list[dict[str, Any]]:
+    """Attach category + unit price for Stock display (inward WAC preferred)."""
+    if not items:
+        return items
+    products = conn.execute(
+        """
+        SELECT p.name, p.outlet, p.default_unit, p.approximate_price,
+               c.name AS category_name
+        FROM store_products p
+        LEFT JOIN store_product_categories c
+          ON c.id = p.category_id AND c.is_active = 1
+        WHERE p.is_active = 1
+        """
+    ).fetchall()
+    by_name: dict[str, list[dict[str, Any]]] = {}
+    for row in products:
+        key = (row["name"] or "").strip().lower()
+        if not key:
+            continue
+        by_name.setdefault(key, []).append(dict(row))
+
+    costs = inward_costs or {}
+    for item in items:
+        name_key = (item.get("item_name") or "").strip().lower()
+        unit_key = (item.get("unit") or "").strip().lower()
+        outlet_key = (item.get("outlet") or "").strip().lower()
+        candidates = by_name.get(name_key) or []
+        match = None
+        for preferred in (
+            lambda p: (p.get("outlet") or "").strip().lower() == outlet_key
+            and (p.get("default_unit") or "").strip().lower() == unit_key,
+            lambda p: (p.get("outlet") or "").strip().lower() == outlet_key,
+            lambda p: (p.get("outlet") or "").strip().lower() == "both"
+            and (p.get("default_unit") or "").strip().lower() == unit_key,
+            lambda p: (p.get("outlet") or "").strip().lower() == "both",
+            lambda p: True,
+        ):
+            for cand in candidates:
+                if preferred(cand):
+                    match = cand
+                    break
+            if match:
+                break
+        if match:
+            item["category_name"] = match.get("category_name") or ""
+        else:
+            item.setdefault("category_name", "")
+
+        inward_price = costs.get((outlet_key, name_key, unit_key))
+        if inward_price is not None and inward_price > 0:
+            item["approximate_price"] = inward_price
+            item["approximate_price_display"] = _format_optional_price(inward_price)
+            item["price_source"] = "inward"
+        elif match and match.get("approximate_price") is not None:
+            price = match.get("approximate_price")
+            item["approximate_price"] = price
+            item["approximate_price_display"] = _format_optional_price(price)
+            item["price_source"] = "product"
+        else:
+            item.setdefault("approximate_price", None)
+            item.setdefault("approximate_price_display", "")
+            item.setdefault("price_source", None)
+    return items
+
+
 @stores_bp.route("/stores/stock")
 def stores_stock():
     outlet = _parse_outlet_filter(request.args.get("outlet"))
@@ -1911,6 +2669,12 @@ def stores_stock():
             """,
             outlet_params,
         ).fetchall()
+        inward_costs = _inward_weighted_unit_costs(conn, outlet_sql_m, outlet_params_m)
+        stock_items = _enrich_stock_items(
+            conn,
+            [dict(row) for row in items],
+            inward_costs=inward_costs,
+        )
         movements = conn.execute(
             f"""
             SELECT m.*, u.full_name AS created_by_name
@@ -1924,10 +2688,23 @@ def stores_stock():
         ).fetchall()
     finally:
         conn.close()
+    categories = sorted(
+        {
+            (item.get("category_name") or "").strip()
+            for item in stock_items
+            if (item.get("category_name") or "").strip()
+        },
+        key=lambda name: name.lower(),
+    )
+    has_prices = any(item.get("approximate_price") is not None for item in stock_items)
+    has_inward_prices = any(item.get("price_source") == "inward" for item in stock_items)
     return _page_render(
         "stock",
         outlet=outlet,
-        stock_items=[dict(row) for row in items],
+        stock_items=stock_items,
+        stock_categories=categories,
+        stock_has_prices=has_prices,
+        stock_has_inward_prices=has_inward_prices,
         movements=[dict(row) for row in movements],
     )
 

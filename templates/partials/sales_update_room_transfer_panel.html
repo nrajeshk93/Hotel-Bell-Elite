@@ -101,6 +101,7 @@
             status_labels.get(entry.payment_status, entry.payment_status),
             entry.balance if entry.balance is defined else entry.amount
           ]|select|join(' ')|lower %}
+          {% set display_amount = entry.paid_amount if entry.payment_status == 'paid' and entry.paid_amount is defined else entry.amount %}
           <tr data-entry-id="{{ entry.id }}"
               data-balance="{{ entry.balance if entry.balance is defined else entry.amount }}"
               data-invoice="{{ entry.invoice_number or '' }}"
@@ -123,7 +124,7 @@
               <div class="pl-name">{{ entry.guest_name or '—' }}</div>
               {% if entry.ledger_detail %}<div class="pl-meta">{{ entry.ledger_detail }}</div>{% endif %}
             </td>
-            <td class="pl-col-amount rt-amount pl-amount" data-amount="{{ entry.balance if entry.balance is defined else entry.amount }}" data-sort-value="{{ entry.balance if entry.balance is defined else entry.amount }}">{{ entry.balance if entry.balance is defined else entry.amount }}</td>
+            <td class="pl-col-amount rt-amount pl-amount" data-amount="{{ display_amount }}" data-sort-value="{{ display_amount }}">{{ display_amount }}</td>
           </tr>
           {% endfor %}
         </tbody>

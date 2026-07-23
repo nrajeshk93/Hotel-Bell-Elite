@@ -1,24 +1,86 @@
 body.su-module #purchase-ledger-filter-form .se-filter-chip-label{
   text-align:center;
 }
+body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form){
+  justify-content:stretch;
+}
 body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
   display:flex;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
   align-items:flex-end;
-  gap:14px;
+  justify-content:flex-end;
+  gap:12px;
   width:100%;
+  max-width:100%;
   min-width:0;
+  margin-left:0;
+  flex:1 1 auto;
 }
-body.su-module #purchase-ledger-filter-form .se-filter-chip{
-  flex:1 1 160px;
-  min-width:140px;
-  max-width:240px;
+body.su-module #purchase-ledger-filter-form .pl-search-chip{
+  position:relative;
+  flex:1 1 auto;
+  width:auto;
+  min-width:96px;
+  max-width:100%;
+  z-index:20;
+}
+body.su-module #purchase-ledger-filter-form .pl-search-chip .se-filter-chip-label{
+  color:#6B7280;
+  text-align:left;
+}
+body.su-module #purchase-ledger-filter-form .pl-search-chip .se-filter-chip-control{
+  min-height:48px;
+  border-radius:12px;
+  border:1px solid #E5E7EB !important;
+  background:#fff !important;
+  display:flex;
+  align-items:center;
+  overflow:visible;
+  width:100%;
+}
+body.su-module #purchase-ledger-filter-form .pl-search-chip .se-filter-chip-icon{
+  width:44px;
+  color:var(--acc,#2563EB);
+  flex-shrink:0;
+}
+body.su-module #purchase-ledger-filter-form .pl-search-input{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:48px;
+  border:none;
+  background:transparent;
+  font:500 14px Inter,system-ui,sans-serif;
+  color:#111827;
+  padding:0 12px 0 4px;
+  outline:none;
+}
+body.su-module #purchase-ledger-filter-form .pl-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+body.su-module #purchase-ledger-filter-form .pl-search-input::placeholder{color:#94A3B8;font-weight:500}
+body.su-module #purchase-ledger-filter-form .pl-search-chip.is-active .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  background:#EFF6FF !important;
+}
+body.su-module #purchase-ledger-filter-form .pl-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
+body.su-module #purchase-ledger-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip){
+  flex:0 1 auto;
+  width:clamp(120px,12vw,180px);
+  min-width:112px;
+  max-width:200px;
+}
+body.su-module #purchase-ledger-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-value{
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 body.su-module .pl-date-range-host{
   flex:0 0 auto;
   min-width:0;
   z-index:30;
-  margin-left:auto;
+  margin-left:0;
+  overflow:visible;
+}
+body.su-module .pl-date-range-host .se-filter-chip--date-range .se-filter-chip-control{
+  overflow:visible;
 }
 body.su-module .pl-date-range-host .se-filter-chip--date-range{
   flex:none;
@@ -27,9 +89,38 @@ body.su-module .pl-date-range-host .se-filter-chip--date-range{
   max-width:none;
 }
 body.su-module .pl-date-range-host .an-range-trigger{
-  min-width:148px;
+  min-width:140px;
   width:auto;
-  max-width:min(340px,70vw);
+  max-width:min(280px,40vw);
+}
+@media (max-width:1100px){
+  body.su-module #purchase-ledger-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip){
+    flex:0 1 auto;
+    width:auto;
+    min-width:104px;
+    max-width:160px;
+  }
+}
+@media (max-width:900px){
+  body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
+    flex-wrap:wrap;
+    justify-content:stretch;
+  }
+  body.su-module #purchase-ledger-filter-form .pl-search-chip{
+    flex:1 1 100%;
+    max-width:none;
+  }
+  body.su-module #purchase-ledger-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip){
+    flex:1 1 calc(50% - 6px);
+    max-width:none;
+  }
+  body.su-module .pl-date-range-host{
+    flex:1 1 100%;
+  }
+  body.su-module .pl-date-range-host .an-range-trigger{
+    max-width:none;
+    width:100%;
+  }
 }
 body.su-module .pl-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
   border-color:#93C5FD;

@@ -44,23 +44,65 @@ body.su-module .rt-table .pl-col-code{
   font-weight:600;
   color:var(--txt);
 }
-body.su-module #room-transfer-filter-form.rt-filter-form{
+/* Credit / Room Transfer filters — one right-aligned row like Purchase Ledger */
+body.su-module .se-sales-header-filters:has(#room-transfer-filter-form){
+  display:flex;
+  justify-content:flex-end;
   align-items:flex-end;
-  flex-wrap:wrap;
+}
+body.su-module #room-transfer-filter-form.rt-filter-form{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:flex-end;
+  justify-content:flex-end;
+  gap:12px;
+  width:auto;
+  max-width:100%;
+  min-width:0;
+  margin-left:auto;
+  flex:0 0 auto;
+}
+body.su-module #room-transfer-filter-form .se-filter-chip-label{
+  text-align:center;
+}
+body.su-module #room-transfer-filter-form .rt-status-tabs{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  flex:0 0 auto;
+  min-width:0;
+}
+body.su-module #room-transfer-filter-form .rt-status-tabs .se-filter-chip-label{
+  visibility:hidden;
+  user-select:none;
+}
+body.su-module #room-transfer-filter-form .cp-view-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  height:48px;
+  margin:0;
+  padding:4px;
+  box-sizing:border-box;
+  flex-shrink:0;
+}
+body.su-module #room-transfer-filter-form .cp-view-tab{
+  height:40px;
 }
 body.su-module .rt-location-chip{
   flex:0 0 auto;
-  width:148px;
-  min-width:132px;
-  max-width:148px;
+  width:140px;
+  min-width:120px;
+  max-width:160px;
 }
 body.su-module .rt-location-chip .se-filter-chip-trigger{
   padding-right:28px;
 }
 body.su-module .rt-search-chip{
-  flex:1 1 220px;
+  flex:0 0 auto;
+  width:220px;
   min-width:180px;
-  max-width:300px;
+  max-width:240px;
 }
 body.su-module .rt-search-chip .se-filter-chip-label{color:#64748B}
 body.su-module .rt-search-chip .se-filter-chip-control{
@@ -88,20 +130,23 @@ body.su-module .rt-search-chip.is-active .se-filter-chip-control{
 }
 body.su-module .rt-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
 body.su-module .rt-date-range-host{
+  display:flex;
+  flex-direction:column;
   flex:0 0 auto;
   min-width:0;
   z-index:30;
-  margin-left:auto;
+  margin-left:0;
 }
 body.su-module .rt-date-range-host .se-filter-chip--date-range{
   flex:none;
   min-width:0;
   width:auto;
+  max-width:none;
 }
 body.su-module .rt-date-range-host .an-range-trigger{
-  min-width:148px;
+  min-width:140px;
   width:auto;
-  max-width:min(340px, 70vw);
+  max-width:min(240px,40vw);
 }
 body.su-module .rt-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
   border-color:#93C5FD;
@@ -111,6 +156,16 @@ body.su-module .rt-date-range-host .an-range-actions{
   display:flex;
   justify-content:flex-end;
   gap:8px;
+}
+@media (max-width:960px){
+  body.su-module #room-transfer-filter-form.rt-filter-form{
+    flex-wrap:wrap;
+  }
+  body.su-module .rt-search-chip{
+    flex:1 1 180px;
+    width:auto;
+    max-width:none;
+  }
 }
 body.su-module #room-transfer-save-status:empty{display:none}
 body.su-module #room-transfer-save-status{

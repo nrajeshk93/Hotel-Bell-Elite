@@ -8,11 +8,16 @@ from typing import Any
 
 
 def _money(value) -> str:
+    """Format currency for PDF.
+
+    Use ASCII \"Rs.\" — Helvetica has no ₹ glyph (renders as a black dot/box).
+    """
     try:
         n = float(value or 0)
     except (TypeError, ValueError):
         n = 0.0
-    return f"₹{n:,.0f}" if abs(n - round(n)) < 0.001 else f"₹{n:,.2f}"
+    amount = f"{n:,.0f}" if abs(n - round(n)) < 0.001 else f"{n:,.2f}"
+    return f"Rs. {amount}"
 
 
 def _qty(value) -> str:

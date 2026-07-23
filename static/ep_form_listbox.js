@@ -72,7 +72,7 @@
 
   function listboxRoots(selector){
     return document.querySelectorAll(
-      'body.ep-module ' + selector + ', body.su-module ' + selector
+      'body.ep-module ' + selector + ', body.su-module ' + selector + ', body.pos-module ' + selector
     );
   }
 
@@ -84,9 +84,19 @@
 
   function shouldUseFixedListbox(root){
     if (!root) return false;
+    // Invoice header/meta: overflow is visible; fixed + animated transform ancestors
+    // (e.g. .pos-inv-header posInvFadeUp) rebases fixed to the header and misaligns menus.
+    if (root.closest('#pos-invoice-page, .pos-inv-header, .pos-inv-header-actions, .pos-inv-meta')) {
+      return false;
+    }
+    // Menu item modal keeps overflow:visible — absolute under the chip stays aligned.
+    // Fixed + transformed workspace ancestors shift the panel away from the trigger.
+    if (root.closest('#pos-menu-item-modal')) {
+      return false;
+    }
     if (root.classList.contains('ep-toolbar-listbox')) return true;
-    // Indent edit (and similar) modals clip absolute menus via overflow:auto/hidden.
-    if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal')) {
+    // Indent edit / similar modals clip absolute menus via overflow:auto/hidden.
+    if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal, #st-stores-ledger-modal, #st-ledger-pending-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-floor-props-modal')) {
       return true;
     }
     return false;
@@ -108,7 +118,7 @@
     list.style.width = width + 'px';
     list.style.minWidth = width + 'px';
     list.style.maxHeight = maxHeight + 'px';
-    list.style.zIndex = '10090';
+    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-floor-props-modal') ? '10100' : '10090';
     if (openUp) {
       list.style.top = 'auto';
       list.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
@@ -176,6 +186,9 @@
   function openListbox(root){
     if (!root || root.classList.contains('is-disabled')) return;
     closeAllListboxes(root);
+    try {
+      document.dispatchEvent(new CustomEvent('ep-listbox-opened', { detail: { root: root } }));
+    } catch (err) {}
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var list = root.querySelector('.se-filter-listbox');
     var search = root.querySelector('.ep-listbox-search');
@@ -183,7 +196,11 @@
     if (trigger) trigger.setAttribute('aria-expanded', 'true');
     if (list) {
       list.hidden = false;
-      positionFixedListbox(root, list);
+      if (shouldUseFixedListbox(root)) {
+        positionFixedListbox(root, list);
+      } else {
+        clearFixedListbox(list);
+      }
       if (root.hasAttribute('data-se-listbox-searchable')) {
         filterSearchableOptions(root, '');
         scrollSelectedToTop(list);
@@ -211,12 +228,20 @@
     if (input) input.value = value;
     if (valueEl) {
       valueEl.textContent = label;
-      valueEl.classList.toggle('is-placeholder', !value);
+      if (value) {
+        valueEl.classList.remove('is-placeholder', 'staff-supplier-placeholder');
+      } else {
+        valueEl.classList.add('is-placeholder', 'staff-supplier-placeholder');
+      }
     }
   }
 
+  function isOptionDisabled(option){
+    return !!option && option.getAttribute('aria-disabled') === 'true';
+  }
+
   function selectOption(root, option){
-    if (!root || !option || option.classList.contains('is-filtered-out')) return;
+    if (!root || !option || option.classList.contains('is-filtered-out') || isOptionDisabled(option)) return;
     var list = root.querySelector('.se-filter-listbox');
     var value = option.getAttribute('data-value') || '';
     var label = (option.getAttribute('data-label') || option.textContent || '').trim();
@@ -236,7 +261,13 @@
       if (form) {
         // Prefer soft-submit helper so GET payroll filters keep the workspace shell.
         if (typeof window.deSoftSubmitForm === 'function' && window.deSoftSubmitForm(form)) return;
-        form.submit();
+        // requestSubmit fires the submit event so Masters modal inject handlers can
+        // intercept (native form.submit() does not).
+        if (typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
       }
       return;
     }
@@ -248,8 +279,9 @@
   }
 
   function bindListbox(root){
-    // Skip chips already owned by sales filter listbox scripts (Tips / Cash / Room Transfer).
-    if (!root || root.__epListboxBound || root.__suFilterListboxBound) return;
+    // Skip chips already owned by sales / purchase / credit-payment filter listbox scripts.
+    if (!root || root.__epListboxBound || root.__suFilterListboxBound || root.__plFilterListboxBound) return;
+    if (root.closest('#purchase-ledger-filter-form, #pl-add-purchase-modal, #credit-payment-filter-form')) return;
     root.__epListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');
@@ -307,7 +339,7 @@
     var clickTarget = optionsWrap || list;
     clickTarget.addEventListener('click', function(e){
       var option = e.target.closest('.se-filter-listbox-option');
-      if (!option || !clickTarget.contains(option) || option.classList.contains('is-filtered-out')) return;
+      if (!option || !clickTarget.contains(option) || option.classList.contains('is-filtered-out') || isOptionDisabled(option)) return;
       e.preventDefault();
       selectOption(root, option);
     });
@@ -365,6 +397,9 @@
   }
 
   window.initEpListboxes = initEpListboxes;
+  window.closeAllEpListboxes = function(except){
+    closeAllListboxes(except || null);
+  };
 
   window.resetEpListbox = function(fieldId, value, label){
     var root = document.getElementById(fieldId + '-listbox');
@@ -374,7 +409,11 @@
     var valueEl = root.querySelector('.se-filter-chip-value');
     if (valueEl) {
       valueEl.textContent = label;
-      valueEl.classList.toggle('is-placeholder', !value);
+      if (value) {
+        valueEl.classList.remove('is-placeholder', 'staff-supplier-placeholder');
+      } else {
+        valueEl.classList.add('is-placeholder', 'staff-supplier-placeholder');
+      }
     }
     var list = root.querySelector('.se-filter-listbox');
     if (list) {

@@ -4,8 +4,13 @@
   opacity:0;pointer-events:none;
   transition:opacity .1s ease;
 }
+.de-main-wrapper.is-soft-nav-loading{
+  opacity:.62;
+  pointer-events:none;
+  transition:opacity .12s ease;
+}
 html.de-sidebar-wide-boot .de-sidebar{
-  width:202px!important;min-width:202px!important;max-width:202px!important;
+  width:214px!important;min-width:214px!important;max-width:214px!important;
   transition:none!important;
 }
 html.de-sidebar-wide-boot .de-sidebar .sb-brand-text,
@@ -13,7 +18,7 @@ html.de-sidebar-wide-boot .de-sidebar .de-nav-item span,
 html.de-sidebar-wide-boot .de-sidebar .de-nav-group-toggle span,
 html.de-sidebar-wide-boot .de-sidebar .de-nav-chevron,
 html.de-sidebar-wide-boot .de-sidebar .de-sidebar-pin-btn span{
-  opacity:1!important;max-width:160px!important;
+  opacity:1!important;max-width:168px!important;
 }
 html.de-sidebar-wide-boot .de-sidebar .de-help-copy{
   opacity:1!important;max-width:none!important;overflow:visible!important;white-space:normal!important;
@@ -70,7 +75,7 @@ body.de-open.ep-module{overflow:auto;}
     align-self:start;
     transition:width .25s ease,min-width .25s ease,max-width .25s ease,transform .25s ease;
     overflow-x:hidden;
-    overflow-y:auto;
+    overflow-y:hidden;
     scrollbar-gutter:stable;
     box-shadow:none;
   }
@@ -83,9 +88,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-pinned,
   #ep-workspace.de-module .de-sidebar.is-pinned,
   #dashboard.de-module .de-sidebar.is-pinned{
-    width:202px;
-    min-width:202px;
-    max-width:202px;
+    width:214px;
+    min-width:214px;
+    max-width:214px;
     box-shadow:none;
     z-index:20;
   }
@@ -157,7 +162,7 @@ body.de-open.ep-module{overflow:auto;}
   #ep-workspace.de-module .de-sidebar.is-pinned .de-help-copy,
   #dashboard.de-module .de-sidebar.is-pinned .de-help-copy{
     opacity:1;
-    max-width:160px;
+    max-width:168px;
   }
   #main-app.de-module .de-sidebar:hover .de-nav-chevron,
   #ep-workspace.de-module .de-sidebar:hover .de-nav-chevron,
@@ -231,10 +236,10 @@ body.de-open.ep-module{overflow:auto;}
   }
   #main-app.de-module .sb-brand-name,
   #ep-workspace.de-module .sb-brand-name,
-  #dashboard.de-module .sb-brand-name{font-size:14px;font-weight:600;color:#111827;letter-spacing:-.01em}
+  #dashboard.de-module .sb-brand-name{font-size:15px;font-weight:600;color:#111827;letter-spacing:-.01em}
   #main-app.de-module .sb-brand-sub,
   #ep-workspace.de-module .sb-brand-sub,
-  #dashboard.de-module .sb-brand-sub{font-size:11px;color:#64748B;font-weight:500;text-transform:none;letter-spacing:0;margin-top:2px}
+  #dashboard.de-module .sb-brand-sub{font-size:12px;color:#64748B;font-weight:500;text-transform:none;letter-spacing:0;margin-top:2px}
   #main-app.de-module .de-sb-nav,
   #ep-workspace.de-module .de-sb-nav,
   #dashboard.de-module .de-sb-nav{
@@ -245,7 +250,14 @@ body.de-open.ep-module{overflow:auto;}
     min-height:0;
     overflow-x:hidden;
     overflow-y:auto;
+    overflow-anchor:none;
+    overscroll-behavior:contain;
     padding:0 2px;
+  }
+  #main-app.de-module .de-sb-nav a,
+  #ep-workspace.de-module .de-sb-nav a,
+  #dashboard.de-module .de-sb-nav a{
+    overflow-anchor:none;
   }
   #main-app.de-module .de-nav-item,
   #ep-workspace.de-module .de-nav-item,
@@ -260,7 +272,7 @@ body.de-open.ep-module{overflow:auto;}
     border-radius:14px;
     color:#334155;
     text-decoration:none;
-    font-size:15px;
+    font-size:16px;
     font-weight:500;
     background:transparent;
     box-shadow:none;
@@ -368,7 +380,7 @@ body.de-open.ep-module{overflow:auto;}
     border:none;
     background:transparent;
     color:#334155;
-    font-size:15px;
+    font-size:16px;
     font-weight:500;
     width:100%;
     cursor:pointer;
@@ -574,7 +586,7 @@ body.de-open.ep-module{overflow:auto;}
     border-radius:12px;
     color:#1E293B;
     text-decoration:none;
-    font-size:14px;
+    font-size:15px;
     font-weight:500;
     line-height:1.35;
     background:transparent;
@@ -760,7 +772,7 @@ body.de-open.ep-module{overflow:auto;}
   #ep-workspace.de-module .de-sidebar-pin-btn span,
   #dashboard.de-module .de-sidebar-pin-btn span{
     opacity:0;flex:0 0 auto;max-width:0;overflow:hidden;white-space:nowrap;
-    font-size:13px;font-weight:500;transition:opacity .15s ease,max-width .25s ease;
+    font-size:14px;font-weight:500;transition:opacity .15s ease,max-width .25s ease;
   }
   #main-app.de-module .de-sidebar:hover .de-sidebar-pin-btn,
   #ep-workspace.de-module .de-sidebar:hover .de-sidebar-pin-btn,
@@ -792,7 +804,7 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn span,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn span,
   #dashboard.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn span{
-    opacity:1;max-width:160px;
+    opacity:1;max-width:168px;
   }
   #main-app.de-module .de-help,
   #ep-workspace.de-module .de-help,
@@ -1042,7 +1054,7 @@ body.de-open.ep-module{overflow:auto;}
 body.sb-off #dashboard.de-module .de-sidebar,
 body.de-open.sb-off #main-app.de-module .de-sidebar,
 body.de-open.sb-off #ep-workspace.de-module .de-sidebar{
-  transform:translateX(calc(-202px - 12px));
+  transform:translateX(calc(-214px - 12px));
 }
 body.de-open.sb-off #main-app.de-module .de-sb-pin-btn svg,
 body.de-open.sb-off #ep-workspace.de-module .de-sb-pin-btn svg{
@@ -1065,10 +1077,10 @@ body.de-open.sb-off #ep-workspace.de-module .de-sb-pin-btn svg{
     top:0;
     left:0;
     bottom:0;
-    width:202px;
-    min-width:202px;
-    max-width:202px;
-    transform:translateX(-216px);
+    width:214px;
+    min-width:214px;
+    max-width:214px;
+    transform:translateX(-226px);
     z-index:50;
     padding-top:env(safe-area-inset-top, 0px);
     padding-bottom:env(safe-area-inset-bottom, 0px);
@@ -1084,14 +1096,14 @@ body.de-open.sb-off #ep-workspace.de-module .de-sb-pin-btn svg{
 }
 #main-app.de-module .sb-brand-text,#main-app.de-module .de-nav-item span,#main-app.de-module .de-nav-group-toggle span,#main-app.de-module .de-nav-chevron,
   #ep-workspace.de-module .sb-brand-text,#ep-workspace.de-module .de-nav-item span,#ep-workspace.de-module .de-nav-group-toggle span,#ep-workspace.de-module .de-nav-chevron,
-  #dashboard.de-module .sb-brand-text,#dashboard.de-module .de-nav-item span,#dashboard.de-module .de-nav-group-toggle span,#dashboard.de-module .de-nav-chevron{opacity:1;max-width:160px;}
+  #dashboard.de-module .sb-brand-text,#dashboard.de-module .de-nav-item span,#dashboard.de-module .de-nav-group-toggle span,#dashboard.de-module .de-nav-chevron{opacity:1;max-width:168px;}
 #main-app.de-module .de-help-copy,#ep-workspace.de-module .de-help-copy,#dashboard.de-module .de-help-copy{opacity:1;max-width:none;overflow:visible;white-space:normal;}
 #main-app.de-module .de-nav-chevron,#ep-workspace.de-module .de-nav-chevron,#dashboard.de-module .de-nav-chevron{max-width:14px;}
 #main-app.de-module .sb-brand,#ep-workspace.de-module .sb-brand,#dashboard.de-module .sb-brand{justify-content:flex-start;padding:28px 6px 20px;}
 #main-app.de-module .de-nav-item,#main-app.de-module .de-nav-group-toggle,#ep-workspace.de-module .de-nav-item,#ep-workspace.de-module .de-nav-group-toggle,#dashboard.de-module .de-nav-item,#dashboard.de-module .de-nav-group-toggle{justify-content:flex-start;padding:0 16px;}
 #main-app.de-module .de-help-compact,#ep-workspace.de-module .de-help-compact,#dashboard.de-module .de-help-compact{display:none;}
 #main-app.de-module .de-help-expanded,#ep-workspace.de-module .de-help-expanded,#dashboard.de-module .de-help-expanded{display:block;}
-body.de-open.sb-off #main-app.de-module .de-sidebar,body.de-open.sb-off #ep-workspace.de-module .de-sidebar,body.sb-off #dashboard.de-module .de-sidebar{transform:translateX(-216px);}
+body.de-open.sb-off #main-app.de-module .de-sidebar,body.de-open.sb-off #ep-workspace.de-module .de-sidebar,body.sb-off #dashboard.de-module .de-sidebar{transform:translateX(-226px);}
 }
   #main-app.de-module .de-sb-pin-btn,
   #ep-workspace.de-module .de-sb-pin-btn,

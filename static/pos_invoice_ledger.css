@@ -1,0 +1,305 @@
+/* POS Invoice Ledger — thin layer over purchase_ledger + sales shell patterns */
+
+.pos-invoice-ledger-module .su-header-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.pos-invoice-ledger-module .su-header-tools .btn {
+  text-decoration: none;
+}
+
+/* Filter row — mirror Expense Ledger search chip */
+body.su-module .se-sales-header-filters:has(#pos-il-filter-form) {
+  justify-content: stretch;
+}
+
+body.su-module #pos-il-filter-form.sr-topbar-filters {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-left: 0;
+  flex: 1 1 auto;
+}
+
+body.su-module #pos-il-filter-form .pl-search-chip {
+  position: relative;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 96px;
+  max-width: 100%;
+  z-index: 20;
+}
+
+body.su-module #pos-il-filter-form .pl-search-chip .se-filter-chip-label {
+  color: #6b7280;
+  text-align: left;
+}
+
+body.su-module #pos-il-filter-form .pl-search-chip .se-filter-chip-control {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb !important;
+  background: #fff !important;
+  display: flex;
+  align-items: center;
+  overflow: visible;
+  width: 100%;
+}
+
+body.su-module #pos-il-filter-form .pl-search-chip .se-filter-chip-icon {
+  width: 44px;
+  color: var(--acc, #2563eb);
+  flex-shrink: 0;
+}
+
+body.su-module #pos-il-filter-form .pl-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 48px;
+  border: none;
+  background: transparent;
+  font: 500 14px Inter, system-ui, sans-serif;
+  color: #111827;
+  padding: 0 12px 0 4px;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+}
+
+body.su-module #pos-il-filter-form .pl-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+body.su-module #pos-il-filter-form .pl-search-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+body.su-module #pos-il-filter-form .pl-search-chip.is-active .se-filter-chip-control {
+  border-color: #93c5fd !important;
+  background: #eff6ff !important;
+}
+
+body.su-module #pos-il-filter-form .pl-search-chip.is-active .se-filter-chip-icon {
+  color: #2563eb;
+}
+
+body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) {
+  flex: 0 1 auto;
+  width: clamp(120px, 12vw, 180px);
+  min-width: 112px;
+  max-width: 200px;
+}
+
+body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body.su-module .pos-invoice-ledger-module .pl-date-range-host {
+  flex: 0 0 auto;
+  min-width: 0;
+  z-index: 30;
+  margin-left: 0;
+  overflow: visible;
+}
+
+.pos-il-kpi-rupee {
+  font-size: 1.15rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 900px) {
+  body.su-module #pos-il-filter-form.sr-topbar-filters {
+    flex-wrap: wrap;
+  }
+
+  body.su-module #pos-il-filter-form .pl-search-chip {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) {
+    flex: 1 1 calc(50% - 6px);
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+.pos-il-modal[hidden] {
+  display: none !important;
+}
+
+.pos-il-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.pos-il-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.pos-il-modal-dialog {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  overflow: auto;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.pos-il-modal-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+}
+
+.pos-il-modal-hdr h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.pos-il-modal-close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: #f1f5f9;
+  color: #334155;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pos-il-modal-close svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.pos-il-modal-body {
+  padding: 16px 18px 20px;
+}
+
+.pos-il-modal-loading,
+.pos-il-modal-error {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.92rem;
+}
+
+.pos-il-modal-error {
+  color: #b91c1c;
+}
+
+.pos-il-detail-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-bottom: 16px;
+}
+
+.pos-il-detail-meta div {
+  min-width: 0;
+}
+
+.pos-il-detail-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.pos-il-detail-value {
+  margin-top: 2px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0f172a;
+  word-break: break-word;
+}
+
+.pos-il-detail-lines {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.pos-il-detail-lines th,
+.pos-il-detail-lines td {
+  padding: 8px 6px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+  text-align: left;
+}
+
+.pos-il-detail-lines th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.pos-il-detail-lines .is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pos-il-detail-totals {
+  margin-top: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.pos-il-detail-totals-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+  color: #334155;
+}
+
+.pos-il-detail-totals-row.is-grand {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(148, 163, 184, 0.35);
+  font-weight: 700;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+@media (max-width: 640px) {
+  .pos-il-detail-meta {
+    grid-template-columns: 1fr;
+  }
+}

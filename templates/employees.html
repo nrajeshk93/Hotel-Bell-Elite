@@ -21,10 +21,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=10">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=23">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
@@ -449,20 +449,34 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
   .sal-preview{grid-template-columns:repeat(2,1fr);}
   .filter-tabs{flex-wrap:wrap;}
 }
+/* Match Purchase Ledger header filter type */
+body.ep-module .se-sales-header-filters .ep-toolbar-listbox .se-filter-chip-label,
+body.ep-module .se-sales-header-filters .ep-search-chip .se-filter-chip-label{
+  font-size:12px!important;
+  font-weight:500!important;
+  text-transform:none!important;
+  letter-spacing:0!important;
+  color:#6B7280!important;
+}
+body.ep-module .se-sales-header-filters .ep-toolbar-listbox .se-filter-chip-trigger,
+body.ep-module .se-sales-header-filters .ep-search-input{
+  font:500 14px Inter,system-ui,sans-serif!important;
+  color:#111827!important;
+}
+body.ep-module .se-sales-header-filters .ep-toolbar-listbox .se-filter-chip-value{
+  font-weight:600!important;
+  color:#111827!important;
+}
+body.ep-module .se-sales-header-filters .ep-toolbar-listbox .se-filter-chip-icon,
+body.ep-module .se-sales-header-filters .ep-search-chip .se-filter-chip-icon{
+  color:var(--acc,#2563EB)!important;
+}
 </style>
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 </head>
 <body class="de-open ep-module{% if mode is defined and mode in ('credits_dashboard', 'credits') %} cd-ledger-page{% endif %}">
 
-<div id="page-transition"></div>
-{% include 'partials/de_fullscreen_script.html' %}
-{% include 'partials/de_fullscreen_bootstrap.html' %}
-<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=11"></script>
-<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=29"></script>
-<script src="{{ url_for('static', filename='hbe_table_scroll.js') }}?v=2"></script>
-
-<div id="ep-workspace" class="de-module">
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox, ep_toolbar_listbox %}
 {% set ep_month_names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
 {% set ep_month_opts = namespace(options=[]) %}
@@ -471,10 +485,23 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 {% if sel_year is defined %}{% for y in range(sel_year - 5, sel_year + 6) %}{% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}{% endfor %}{% endif %}
 {% set ep_location_opts = namespace(options=[('', 'All Departments')]) %}
 {% if locations is defined %}{% for l in locations %}{% set ep_location_opts.options = ep_location_opts.options + [(l, l)] %}{% endfor %}{% endif %}
+
+{% if is_partial_main|default(false) %}
+<div class="de-main-wrapper" data-de-partial="main">
+{% else %}
+<div id="page-transition"></div>
+{% include 'partials/de_fullscreen_script.html' %}
+{% include 'partials/de_fullscreen_bootstrap.html' %}
+<script src="{{ url_for('static', filename='de_workspace_nav.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='de_workspace_transitions.js') }}?v=49"></script>
+<script src="{{ url_for('static', filename='hbe_table_scroll.js') }}?v=2"></script>
+
+<div id="ep-workspace" class="de-module">
 <div class="de-sb-overlay" id="de-sb-overlay" onclick="closeDeSidebar()"></div>
 <div class="de-app-shell">
 {% include 'partials/de_workspace_sidebar.html' %}
 <div class="de-main-wrapper">
+{% endif %}
 <div class="main-wrapper">
 
 <!-- ── Top bar ── -->
@@ -495,7 +522,6 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
           </div>
           <h1>Attendance</h1>
         </div>
-        <p>{{ month_name }} {{ sel_year }}</p>
       </div>
     </div>
     <div class="su-header-tools">
@@ -516,19 +542,24 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
              href="{{ url_for('attendance_date_view', date=date_view_date, location=sel_location|default('')) }}"
              role="tab" aria-selected="false">Date View</a>
         </div>
-        <div class="search-wrap" style="position:relative;">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <form method="GET" action="{{ url_for('attendance_overview') }}" id="attendance-search-form">
-            <input type="hidden" name="year" value="{{ sel_year }}">
-            <input type="hidden" name="month" value="{{ sel_month }}">
-            <input type="hidden" name="location" value="{{ sel_location|default('') }}">
-            <input type="text" name="q" id="attendance-search-input" value="{{ search|default('') }}" placeholder="Search employee…"
-                   autocomplete="off"
-                   oninput="attendanceAcFilter(this.value)"
-                   onkeydown="attendanceAcKeyNav(event)"
-                   onblur="setTimeout(attendanceAcHide,180)">
-          </form>
-          <ul id="attendance-ac-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:500;background:var(--card);border:1px solid var(--acc);border-radius:var(--rs);box-shadow:var(--sh2);margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;"></ul>
+        <div class="se-filter-chip se-filter-chip--search ep-search-chip{% if search|default('') %} is-active{% endif %}" id="attendance-search-chip">
+          <label class="se-filter-chip-label" for="attendance-search-input">Search</label>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            </span>
+            <form method="GET" action="{{ url_for('attendance_overview') }}" id="attendance-search-form" class="ep-search-form">
+              <input type="hidden" name="year" value="{{ sel_year }}">
+              <input type="hidden" name="month" value="{{ sel_month }}">
+              <input type="hidden" name="location" value="{{ sel_location|default('') }}">
+              <input type="search" name="q" id="attendance-search-input" class="ep-search-input" value="{{ search|default('') }}" placeholder="Search employee…"
+                     autocomplete="off" aria-label="Search employees"
+                     oninput="attendanceAcFilter(this.value)"
+                     onkeydown="attendanceAcKeyNav(event)"
+                     onblur="setTimeout(attendanceAcHide,180)">
+            </form>
+          </div>
+          <ul id="attendance-ac-list" class="ep-search-ac-list" hidden></ul>
         </div>
 {% if attendance_autocomplete_emps is defined %}
       <script>
@@ -545,13 +576,13 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         var list = document.getElementById('attendance-ac-list');
         _attendanceAcIdx = -1;
         q = q.trim().toLowerCase();
-        if (!q) { list.style.display = 'none'; return; }
+        if (!q) { list.hidden = true; list.style.display = 'none'; return; }
         var matches = _attendanceAcData.filter(function(e) {
           return e.name.toLowerCase().includes(q)
               || (e.emp_code && e.emp_code.toLowerCase().includes(q))
               || (e.location && e.location.toLowerCase().includes(q));
         }).slice(0, 10);
-        if (!matches.length) { list.style.display = 'none'; return; }
+        if (!matches.length) { list.hidden = true; list.style.display = 'none'; return; }
         list.innerHTML = matches.map(function(e, i) {
           var name = attendanceAcEscape(e.name);
           var code = attendanceAcEscape(e.emp_code);
@@ -566,18 +597,21 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
             + (location || '')
             + '</span></li>';
         }).join('');
+        list.hidden = false;
         list.style.display = 'block';
       }
 
       function attendanceAcSelect(name) {
         document.getElementById('attendance-search-input').value = name;
-        document.getElementById('attendance-ac-list').style.display = 'none';
+        var list = document.getElementById('attendance-ac-list');
+        list.hidden = true;
+        list.style.display = 'none';
         document.getElementById('attendance-search-form').submit();
       }
 
       function attendanceAcHide() {
         var list = document.getElementById('attendance-ac-list');
-        if (list) list.style.display = 'none';
+        if (list) { list.hidden = true; list.style.display = 'none'; }
       }
 
       function attendanceAcHighlight(idx) {
@@ -637,7 +671,6 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
           </div>
           <h1>Attendance</h1>
         </div>
-        <p>{{ day_name }} · {{ month_name }} {{ sel_date[8:10]|int }}, {{ sel_year }}</p>
       </div>
     </div>
     <div class="su-header-tools"></div>
@@ -740,8 +773,8 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Add Credit</button>
       <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Repayment</button>
       {% else %}
-      <button type="button" class="btn btn-primary" onclick="openAddCreditModal('credit')">Add Credit</button>
-      <button type="button" class="btn btn-primary" onclick="openAddCreditModal('repayment')">Repayment</button>
+      <button type="button" class="btn btn-primary" data-ep-action="open-credit-modal" data-ep-credit-type="credit">Add Credit</button>
+      <button type="button" class="btn btn-primary" data-ep-action="open-credit-modal" data-ep-credit-type="repayment">Repayment</button>
       {% endif %}
       {% endif %}
     </div>
@@ -866,7 +899,6 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
           </div>
           <h1>Credit Dashboard</h1>
         </div>
-        <p>{{ month_name }} {{ sel_year }} · advances and repayments</p>
       </div>
     </div>
     <div class="su-header-tools">
@@ -879,8 +911,8 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Add Credit</button>
       <button type="button" class="btn btn-secondary" disabled title="{{ payroll_state.message }}">Repayment</button>
       {% else %}
-      <button type="button" class="btn btn-primary" onclick="openAddCreditModal('credit')">Add Credit</button>
-      <button type="button" class="btn btn-primary" onclick="openAddCreditModal('repayment')">Repayment</button>
+      <button type="button" class="btn btn-primary" data-ep-action="open-credit-modal" data-ep-credit-type="credit">Add Credit</button>
+      <button type="button" class="btn btn-primary" data-ep-action="open-credit-modal" data-ep-credit-type="repayment">Repayment</button>
       {% endif %}
       {% endif %}
     </div>
@@ -916,7 +948,6 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
           </div>
           <h1>Payroll Report</h1>
         </div>
-        <p>{{ month_name }} {{ sel_year }}</p>
       </div>
     </div>
     <div class="su-header-tools"></div>
@@ -947,7 +978,6 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
           </div>
           <h1>Employees</h1>
         </div>
-        <p>{{ month_name }} {{ sel_year }}</p>
       </div>
     </div>
     <div class="su-header-tools">
@@ -962,7 +992,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
   <div class="se-sales-header-card">
     <div class="se-sales-header-filters">
       <div class="ep-header-filters sr-topbar-filters">
-        <div class="cp-view-tabs cp-view-tabs--end" role="tablist" aria-label="Employee status">
+        <div class="cp-view-tabs" role="tablist" aria-label="Employee status">
           <a class="cp-view-tab{% if sel_status|default('active') == 'active' %} is-active{% endif %}"
              href="{{ url_for('employees', year=sel_year, month=sel_month, q=search, status='active', location=sel_location|default('')) }}"
              role="tab"
@@ -972,21 +1002,26 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
              role="tab"
              aria-selected="{{ 'true' if sel_status|default('active') == 'inactive' else 'false' }}">Inactive</a>
         </div>
-        <div class="search-wrap" style="position:relative;">
-          <form method="GET" action="{{ url_for('employees') }}" id="search-form" style="display:flex;align-items:center;width:100%;">
-            <input type="hidden" name="year" value="{{ sel_year }}">
-            <input type="hidden" name="month" value="{{ sel_month }}">
-            <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
-            <input type="hidden" name="location" value="{{ sel_location|default('') }}">
-            <input type="hidden" name="sort" value="id">
-            <svg viewBox="0 0 24 24" style="position:absolute;left:9px;pointer-events:none;z-index:1;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input type="text" name="q" id="emp-search-input" value="{{ search }}" placeholder="Search employees..."
-                   autocomplete="off"
-                   oninput="empAcFilter(this.value)"
-                   onkeydown="empAcKeyNav(event)"
-                   onblur="setTimeout(empAcHide,180)">
-          </form>
-          <ul id="emp-ac-list" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:500;background:var(--card);border:1px solid var(--acc);border-radius:var(--rs);box-shadow:var(--sh2);margin:0;padding:4px 0;list-style:none;max-height:240px;overflow-y:auto;"></ul>
+        <div class="se-filter-chip se-filter-chip--search ep-search-chip{% if search %} is-active{% endif %}" id="emp-search-chip">
+          <label class="se-filter-chip-label" for="emp-search-input">Search</label>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            </span>
+            <form method="GET" action="{{ url_for('employees') }}" id="search-form" class="ep-search-form">
+              <input type="hidden" name="year" value="{{ sel_year }}">
+              <input type="hidden" name="month" value="{{ sel_month }}">
+              <input type="hidden" name="status" value="{{ sel_status|default('active') }}">
+              <input type="hidden" name="location" value="{{ sel_location|default('') }}">
+              <input type="hidden" name="sort" value="id">
+              <input type="search" name="q" id="emp-search-input" class="ep-search-input" value="{{ search }}" placeholder="Search employees…"
+                     autocomplete="off" aria-label="Search employees"
+                     oninput="empAcFilter(this.value)"
+                     onkeydown="empAcKeyNav(event)"
+                     onblur="setTimeout(empAcHide,180)">
+            </form>
+          </div>
+          <ul id="emp-ac-list" class="ep-search-ac-list" hidden></ul>
         </div>
 {% if autocomplete_emps is defined %}
       <script>
@@ -997,12 +1032,12 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         var list = document.getElementById('emp-ac-list');
         _empAcIdx = -1;
         q = q.trim().toLowerCase();
-        if (!q) { list.style.display = 'none'; return; }
+        if (!q) { list.hidden = true; list.style.display = 'none'; return; }
         var matches = _empAcData.filter(function(e) {
           return e.name.toLowerCase().includes(q)
               || (e.emp_code && e.emp_code.toLowerCase().includes(q));
         }).slice(0, 10);
-        if (!matches.length) { list.style.display = 'none'; return; }
+        if (!matches.length) { list.hidden = true; list.style.display = 'none'; return; }
         list.innerHTML = matches.map(function(e, i) {
           // Check if name is shared by more than one employee
           var dupes = _empAcData.filter(function(x){ return x.name.toLowerCase() === e.name.toLowerCase(); });
@@ -1019,18 +1054,21 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
             + (e.location || '')
             + '</span></li>';
         }).join('');
+        list.hidden = false;
         list.style.display = 'block';
       }
 
       function empAcSelect(name) {
         document.getElementById('emp-search-input').value = name;
-        document.getElementById('emp-ac-list').style.display = 'none';
+        var list = document.getElementById('emp-ac-list');
+        list.hidden = true;
+        list.style.display = 'none';
         document.getElementById('search-form').submit();
       }
 
       function empAcHide() {
         var list = document.getElementById('emp-ac-list');
-        if (list) list.style.display = 'none';
+        if (list) { list.hidden = true; list.style.display = 'none'; }
       }
 
       function empAcHighlight(idx) {
@@ -1805,7 +1843,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
                   </button>
                   <a href="{{ url_for('delete_credit', credit_id=cr.id, year=sel_year, month=sel_month) }}"
                      class="act-btn del" data-tip="Delete" aria-label="Delete entry"
-                     onclick="return confirm('Delete this credit entry?')">
+                     onclick="return confirm('Delete this credit entry? Linked Expense Ledger entry will also be removed.')">
                     <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                   </a>
                   {% else %}
@@ -2982,7 +3020,7 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 
 </main>
 </div><!-- /main-wrapper -->
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
 {% if mode is defined and mode == 'credits' %}
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=7"></script>
 <script>
@@ -3025,20 +3063,14 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
 })();
 </script>
 {% endif %}
-</div><!-- /de-main-wrapper -->
-</div><!-- /de-app-shell -->
-</div><!-- /ep-workspace -->
 
-<!-- ═══════════════════════════════════════════════════
-     ADD CREDIT MODAL (Credit Dashboard)
-══════════════════════════════════════════════════════ -->
+<!-- Soft-nav swaps .de-main-wrapper only — keep payroll modals inside this root. -->
 <div class="modal-overlay" id="add-credit-modal">
   <div class="modal-box" style="width:480px;">
     <h3 style="display:flex;align-items:center;gap:8px;">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--pur)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
       <span id="acm-title">Add Credit / Advance</span>
     </h3>
-    <p id="acm-copy">Select an employee and enter the credit details. The entry will be added to their credit history.</p>
 
     <div id="acm-err" style="display:none;background:var(--err-bg);border:1px solid rgba(220,38,38,.25);color:var(--err);padding:9px 13px;border-radius:var(--rs);font-size:12px;margin-bottom:12px;"></div>
 
@@ -3080,6 +3112,18 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
         </div>
       </div>
 
+      <!-- Payment (advances post to Expense Ledger) -->
+      <div id="acm-payment-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;align-items:end;">
+        <div>
+          {% set acm_pay_opts = credit_expense_payment_types|default([('cash','Cash'),('bank_transfer','Bank Transfer')]) %}
+          {{ ep_listbox('payment_type', 'Payment *', acm_pay_opts, 'cash', placeholder='Select payment…', field_id='acm-payment', change_handler='toggleCreditPaymentFields') }}
+        </div>
+        <div id="acm-txn-wrap" hidden>
+          <label style="display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;">Transaction ID *</label>
+          <input type="text" id="acm-txn" name="transaction_id" placeholder="Bank reference" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--rs);font-family:inherit;font-size:13px;color:var(--txt);background:var(--entry);outline:none;min-height:44px;box-sizing:border-box;">
+        </div>
+      </div>
+
       <!-- Description -->
       <div style="margin-bottom:18px;">
         <label style="display:block;font-size:11px;font-weight:600;color:var(--txt2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px;">Description</label>
@@ -3087,11 +3131,11 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       </div>
 
       <div class="modal-actions">
-        <button type="button" class="btn btn-primary" id="acm-submit" onclick="submitAddCredit()">
+        <button type="button" class="btn btn-primary" id="acm-submit" data-ep-action="submit-credit-modal">
           <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           <span id="acm-submit-label">Add Credit</span>
         </button>
-        <button type="button" class="btn btn-secondary" onclick="closeAddCreditModal()">Cancel</button>
+        <button type="button" class="btn btn-secondary" data-ep-action="close-credit-modal">Cancel</button>
       </div>
     </form>
   </div>
@@ -3160,385 +3204,19 @@ thead .tbl-sticky{background:#F8FAFD;z-index:3;}
       </div>
       <div class="modal-actions">
         <button type="submit" class="btn btn-primary" id="import-submit-btn" disabled>↑ Import</button>
-        <button type="button" class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
+        <button type="button" class="btn btn-secondary" data-ep-action="close-import-modal">Cancel</button>
       </div>
     </form>
   </div>
 </div>
-
-<script>
-// ── Import modal ──
-function openImportModal(){
-  document.getElementById('import-modal').classList.add('active');
-}
-function closeImportModal(){
-  document.getElementById('import-modal').classList.remove('active');
-}
-function onFileChosen(input){
-  var lbl = document.getElementById('file-chosen-label');
-  var btn = document.getElementById('import-submit-btn');
-  if(input.files && input.files[0]){
-    lbl.textContent = input.files[0].name;
-    lbl.style.display = 'block';
-    btn.disabled = false;
-  } else {
-    lbl.style.display = 'none';
-    btn.disabled = true;
-  }
-}
-document.getElementById('import-modal').addEventListener('click', function(e){
-  if(e.target === this) closeImportModal();
-});
-
-(function(){
-  if(window.lucide && typeof window.lucide.createIcons === 'function'){
-    window.lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
-  }
-})();
-
-// ── Live salary calc preview ──
-function toggleExempt(type){
-  var cb  = document.getElementById(type + '_exempt');
-  var inp = document.getElementById(type + '_amount');
-  if(cb.checked){
-    inp.disabled = true;
-    inp.value = '';
-    inp.style.opacity = '0.45';
-    inp.style.background = 'var(--bg)';
-    inp.placeholder = 'No ' + type.toUpperCase() + ' — full amount to Basic';
-  } else {
-    inp.disabled = false;
-    inp.style.opacity = '';
-    inp.style.background = '';
-    inp.placeholder = type === 'epf'
-      ? 'Auto: 12% of Actual Gross (max ₹1,800)'
-      : 'Auto: 0.75% of Gross (₹158 if Gross > ₹21,000)';
-  }
-  calcPreview();
-}
-function calcPreview(){
-  var inp = document.getElementById('gross_salary');
-  if(!inp) return;
-  var gross = parseFloat(inp.value) || 0;
-  var preview = document.getElementById('salary-preview');
-  var warn = document.getElementById('salary-warning');
-  if(gross <= 0){ preview.style.display='none'; if(warn) warn.style.display='none'; return; }
-  preview.style.display='grid';
-  var customBasic = parseFloat(document.getElementById('basic_salary').value) || 0;
-  var customEpf   = parseFloat(document.getElementById('epf_amount').value) || 0;
-  var customEsic  = parseFloat(document.getElementById('esic_amount').value) || 0;
-  var crEl = document.getElementById('credit_repayment');
-  var creditRepay = crEl ? (parseFloat(crEl.value) || 0) : 0;
-  var crItem = document.getElementById('pv-cr-item');
-  if (crItem) crItem.style.display = crEl ? '' : 'none';
-  var epfExempt  = document.getElementById('epf_exempt')  && document.getElementById('epf_exempt').checked;
-  var esicExempt = document.getElementById('esic_exempt') && document.getElementById('esic_exempt').checked;
-  var esic = 0;
-  var esicLabel = 'ESIC (auto .75%)';
-  if(esicExempt){
-    esic = 0;
-    esicLabel = 'ESIC (exempt ₹0)';
-  } else if(customEsic > 0){
-    esic = customEsic;
-    esicLabel = 'ESIC (custom)';
-  } else if(gross > 21000){
-    esic = 158;
-    esicLabel = 'ESIC (fixed ₹158 > ₹21k)';
-  } else {
-    esic = Math.round(gross * 0.0075 * 100) / 100;
-    esicLabel = 'ESIC (auto .75%)';
-  }
-  var epf = 0;
-  if(epfExempt){
-    epf = 0;
-  } else if(customEpf > 0){
-    epf = Math.min(1800, customEpf);
-  } else {
-    epf = Math.min(1800, Math.round(gross * 0.12 * 100) / 100);
-  }
-  var basic = Math.max(0, Math.round((gross - epf - esic) * 100) / 100);
-  var netRaw = Math.round((gross - epf - esic - creditRepay) * 100) / 100;
-  var net = Math.max(0, netRaw);
-  document.getElementById('pv-gross').textContent = fmtInr(gross, 0);
-  document.getElementById('pv-basic').textContent = fmtInr(basic, 0);
-  document.getElementById('pv-epf').textContent   = fmtInr(epf, 0);
-  document.getElementById('pv-esic').textContent  = fmtInr(esic, 0);
-  document.getElementById('pv-cr').textContent    = fmtInr(creditRepay, 0);
-  document.getElementById('pv-net').textContent   = fmtInr(net, 0);
-  document.getElementById('pv-basic-label').textContent = epfExempt ? 'Basic (EPF exempt)' : (customBasic > 0 ? 'Basic (custom)' : 'Basic (auto)');
-  document.getElementById('pv-epf-label').textContent   = epfExempt ? 'EPF (exempt ₹0)' : (customEpf > 0 ? 'EPF (custom, max ₹1,800)' : 'EPF (12% of Gross, max ₹1,800)');
-  document.getElementById('pv-esic-label').textContent  = esicLabel;
-  document.getElementById('pv-cr-label').textContent = creditRepay > 0 ? 'Credit Repay' : 'Credit Repay (0)';
-  var warnings = [];
-  if(customBasic > 0 && customBasic > gross) warnings.push('Basic Pay exceeds Gross Salary');
-  if(!epfExempt){
-    var comp = Math.round((basic + epf + esic) * 100) / 100;
-    if(Math.abs(comp - gross) > 0.01) warnings.push('Gross mismatch: Basic+EPF+ESIC = '+comp.toFixed(2)+', Gross = '+gross.toFixed(2));
-  }
-  if(epf + esic + creditRepay > gross) warnings.push('Total deductions exceed Gross Salary');
-  if(netRaw < 0) warnings.push('Net is 0 — deductions exceed Gross');
-  if(warn){ if(warnings.length){ warn.style.display='block'; warn.textContent=warnings.join('. '); } else warn.style.display='none'; }
-}
-if(document.getElementById('gross_salary') && document.getElementById('gross_salary').value) calcPreview();
-
-// ── Searchable dropdown ──
-var _openSd = null;
-function toggleSd(trigger){
-  var wrap = trigger.closest('.sd-wrap');
-  var panel = wrap.querySelector('.sd-panel');
-  var isOpen = panel.style.display === 'block';
-  closeAllSd();
-  if(!isOpen){
-    panel.style.display = 'block';
-    trigger.classList.add('open');
-    _openSd = wrap;
-    var srch = panel.querySelector('.sd-search');
-    srch.value = ''; filterSd(srch);
-    setTimeout(function(){ srch.focus(); }, 30);
-  }
-}
-function closeAllSd(){
-  document.querySelectorAll('.sd-wrap').forEach(function(w){
-    w.querySelector('.sd-panel').style.display = 'none';
-    w.querySelector('.sd-trigger').classList.remove('open');
-  });
-  _openSd = null;
-}
-function filterSd(searchInput){
-  var list = searchInput.closest('.sd-panel').querySelector('.sd-list');
-  var q = searchInput.value.toLowerCase();
-  var items = list.querySelectorAll('.sd-item');
-  var any = false;
-  items.forEach(function(item){
-    var m = item.dataset.value.toLowerCase().includes(q);
-    item.style.display = m ? '' : 'none';
-    if(m) any = true;
-  });
-  var empty = list.querySelector('.sd-empty');
-  if(!any){
-    if(!empty){ empty = document.createElement('div'); empty.className='sd-empty'; empty.textContent='No matches'; list.appendChild(empty); }
-    empty.style.display = '';
-  } else if(empty) empty.style.display = 'none';
-}
-function selectSd(el){
-  var wrap = el.closest('.sd-wrap');
-  var field = wrap.dataset.field;
-  document.getElementById(field).value = el.dataset.value;
-  wrap.querySelector('.sd-display').textContent = el.dataset.value;
-  wrap.querySelectorAll('.sd-item').forEach(function(i){ i.classList.remove('selected','active'); });
-  el.classList.add('selected');
-  closeAllSd();
-}
-function sdNav(e, searchInput){
-  var list = searchInput.closest('.sd-panel').querySelector('.sd-list');
-  var visible = Array.from(list.querySelectorAll('.sd-item')).filter(function(i){ return i.style.display!=='none'; });
-  var active = list.querySelector('.sd-item.active');
-  var idx = visible.indexOf(active);
-  if(e.key==='ArrowDown'){ e.preventDefault(); idx=Math.min(idx+1,visible.length-1); }
-  else if(e.key==='ArrowUp'){ e.preventDefault(); idx=Math.max(idx-1,0); }
-  else if(e.key==='Enter'&&active){ e.preventDefault(); selectSd(active); return; }
-  else if(e.key==='Escape'){ closeAllSd(); return; }
-  else return;
-  if(active) active.classList.remove('active');
-  if(visible[idx]){ visible[idx].classList.add('active'); visible[idx].scrollIntoView({block:'nearest'}); }
-}
-document.addEventListener('click', function(e){
-  if(_openSd && !_openSd.contains(e.target)) closeAllSd();
-});
-
-// ── Attendance popup ──
-var attEmpId='', attDate='';
-function openAttPopup(empId, dateStr, dayNum, currentStatus){
-  var todayStr = new Date().toISOString().split('T')[0];
-  if(dateStr > todayStr) return; // block future dates
-  attEmpId = empId; attDate = dateStr;
-  var isSunday = (new Date(dateStr + 'T12:00:00')).getDay() === 0;
-  document.getElementById('att-popup-title').textContent = 'Day '+dayNum+' — '+dateStr+(isSunday?' (Sunday)':'');
-  var ab = document.getElementById('att-absent-btn');
-  if(ab) ab.style.display = '';
-  document.getElementById('att-popup').classList.add('active');
-}
-function closeAttPopup(){
-  document.getElementById('att-popup').classList.remove('active');
-}
-function markAtt(status){
-  var form = document.createElement('form');
-  form.method='POST'; form.action='/mark_attendance';
-  var fields = {employee_id:attEmpId, date:attDate, status:status, year:'{{ sel_year }}', month:'{{ sel_month }}'};
-  for(var k in fields){
-    var inp = document.createElement('input');
-    inp.type='hidden'; inp.name=k; inp.value=fields[k];
-    form.appendChild(inp);
-  }
-  document.body.appendChild(form); form.submit();
-}
-var popup = document.getElementById('att-popup');
-if(popup) popup.addEventListener('click', function(e){ if(e.target===popup) closeAttPopup(); });
-
-// ── Credit inline edit ──
-function showEditCredit(id){
-  var row = document.getElementById('cr-row-'+id);
-  var edit = document.getElementById('cr-edit-'+id);
-  if (row) row.hidden = true;
-  if (edit) edit.hidden = false;
-}
-function hideEditCredit(id){
-  var row = document.getElementById('cr-row-'+id);
-  var edit = document.getElementById('cr-edit-'+id);
-  if (row) row.hidden = false;
-  if (edit) edit.hidden = true;
-}
-function submitEditCredit(id){
-  var form = document.createElement('form');
-  form.method='POST'; form.action='/edit_credit/'+id;
-  var fields = {
-    date: document.getElementById('cr-date-'+id).value,
-    description: document.getElementById('cr-desc-'+id).value,
-    amount: document.getElementById('cr-amt-'+id).value,
-    year: '{{ sel_year }}',
-    month: '{{ sel_month }}'
-  };
-  for(var k in fields){
-    var inp = document.createElement('input');
-    inp.type='hidden'; inp.name=k; inp.value=fields[k];
-    form.appendChild(inp);
-  }
-  document.body.appendChild(form); form.submit();
-}
-
-function submitPayrollLock(year, month, label){
-  if(!window.confirm('Lock ' + label + '? After locking, NO edits are allowed for this month — attendance, credits, repayments, tip incentive, and wage fields — including for administrators. This cannot be undone from here.')) return;
-  var form = document.createElement('form');
-  form.method = 'POST';
-  form.action = '{{ url_for('lock_payroll_month') }}';
-  var fields = {year: year, month: month, lock_action: 'manual_lock'};
-  for(var k in fields){
-    var inp = document.createElement('input');
-    inp.type = 'hidden';
-    inp.name = k;
-    inp.value = fields[k];
-    form.appendChild(inp);
-  }
-  document.body.appendChild(form);
-  form.submit();
-}
-
-// ── Credit Dashboard table filter ──
-function filterCreditTable(){
-  var q       = (document.getElementById('cd-search')   || {value:''}).value.toLowerCase().trim();
-  var location= (document.getElementById('cd-location') || {value:''}).value.toLowerCase();
-  var rows    = document.querySelectorAll('#credit-emp-table tbody tr');
-  var visible = 0;
-  rows.forEach(function(row){
-    var name   = (row.dataset.name     || '');
-    var loc    = (row.dataset.location || '');
-    var show = (!q || name.includes(q))
-            && (!location || loc === location);
-    row.style.display = show ? '' : 'none';
-    if(show) visible++;
-  });
-  var noRes = document.getElementById('cd-no-results');
-  if(noRes) noRes.hidden = !(visible === 0 && rows.length > 0);
-  var badge = document.getElementById('cd-count-badge');
-  if(badge) badge.textContent = visible + ' employee' + (visible !== 1 ? 's' : '');
-}
-
-// ── Add Credit / Repayment Modal (Credit Dashboard) ──
-function openAddCreditModal(type){
-  type = type === 'repayment' ? 'repayment' : 'credit';
-  var lockedEmp = document.querySelector('.acm-locked-emp');
-  var today = new Date().toISOString().split('T')[0];
-  document.getElementById('acm-type').value = type;
-  document.getElementById('acm-date').value = today;
-  document.getElementById('acm-amount').value = '';
-  document.getElementById('acm-desc').value = type === 'repayment' ? 'Repayment' : '';
-  if (!lockedEmp && typeof resetEpListbox === 'function') {
-    resetEpListbox('acm-emp-hidden', '', 'Select employee…');
-  }
-  document.getElementById('acm-err').style.display = 'none';
-  document.getElementById('acm-title').textContent = type === 'repayment' ? 'Add Repayment' : 'Add Credit / Advance';
-  document.getElementById('acm-copy').textContent = lockedEmp
-    ? (type === 'repayment'
-      ? 'Enter repayment details. The amount will reduce this employee’s credit balance.'
-      : 'Enter the credit details. The entry will be added to this employee’s credit history.')
-    : (type === 'repayment'
-      ? 'Select an employee and enter repayment details. The amount will reduce their credit balance.'
-      : 'Select an employee and enter the credit details. The entry will be added to their credit history.');
-  document.getElementById('acm-submit-label').textContent = type === 'repayment' ? 'Repayment' : 'Add Credit';
-  document.getElementById('add-credit-modal').classList.add('active');
-}
-function closeAddCreditModal(){
-  document.getElementById('add-credit-modal').classList.remove('active');
-}
-document.addEventListener('DOMContentLoaded', function(){
-  var m = document.getElementById('add-credit-modal');
-  if(m) m.addEventListener('click', function(e){ if(e.target===m) closeAddCreditModal(); });
-});
-
-function submitAddCredit(){
-  var empId  = document.getElementById('acm-emp-hidden').value;
-  var date   = document.getElementById('acm-date').value;
-  var amount = document.getElementById('acm-amount').value;
-  var errEl  = document.getElementById('acm-err');
-  if(!empId){ errEl.textContent='Please select an employee.'; errEl.style.display='block'; return; }
-  if(!date){ errEl.textContent='Please select a date.'; errEl.style.display='block'; return; }
-  if(!amount||parseFloat(amount)<=0){ errEl.textContent='Please enter a valid amount greater than 0.'; errEl.style.display='block'; return; }
-  errEl.style.display='none';
-  document.getElementById('add-credit-form').submit();
-}
-
-// fmtInr provided by static/format_inr.js
-
-// ── Inline credit repayment save (AJAX) ──
-function saveSalary(empId){
-  var crEl = document.getElementById('cr-'+empId);
-  if(!crEl) return;
-  crEl.className = 'inline-sal saving';
-  fetch('/update_salary/'+empId, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ credit_repayment: crEl.value||'0', year:'{{ sel_year }}', month:'{{ sel_month }}' })
-  })
-  .then(function(r){
-    return r.json().then(function(d){
-      if(!r.ok) throw d;
-      return d;
-    });
-  })
-  .then(function(d){
-    if(d.ok){
-      crEl.value = d.credit_repayment || '';
-      crEl.className='inline-sal saved';
-      // Update net salary cell
-      var netEl = document.getElementById('net-'+empId);
-      if(netEl){
-        netEl.textContent = fmtInr(d.net, 0);
-      }
-      // Update credit balance cell live
-      var cbEl = document.getElementById('cb-'+empId);
-      if(cbEl && typeof d.credit_balance !== 'undefined'){
-        var bal = d.credit_balance;
-        cbEl.textContent = fmtInr(bal, 2);
-        cbEl.className = 'num ' + (bal > 0 ? 'orange' : '');
-        cbEl.style.color = bal <= 0 ? 'var(--txt3)' : '';
-        // Flash green briefly to signal the repayment was recorded
-        cbEl.style.transition = 'color .3s';
-        cbEl.style.color = 'var(--ok)';
-        setTimeout(function(){ cbEl.style.color = bal <= 0 ? 'var(--txt3)' : ''; }, 1200);
-      }
-      setTimeout(function(){ crEl.className='inline-sal'; }, 2000);
-    } else { crEl.className='inline-sal error'; }
-  })
-  .catch(function(err){
-    crEl.className='inline-sal error';
-    if(err && err.max_repayment !== undefined){
-      crEl.value = err.max_repayment || '';
-    }
-    if(err && err.error){
-      window.alert(err.error);
-    }
-  });
-}
-</script>
+<script type="application/json" id="ep-page-config">{"year":{{ sel_year|default('')|tojson }},"month":{{ sel_month|default('')|tojson }},"lockUrl":{{ url_for('lock_payroll_month')|tojson }}}</script>
+<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=4"></script>
+{% if is_partial_main|default(false) %}
+</div><!-- /de-main-wrapper (partial) -->
+{% else %}
+</div><!-- /de-main-wrapper -->
+</div><!-- /de-app-shell -->
+</div><!-- /ep-workspace -->
+{% endif %}
 </body>
 </html>

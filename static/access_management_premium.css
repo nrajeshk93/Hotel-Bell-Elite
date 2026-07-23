@@ -163,6 +163,8 @@ body.am-module.ep-module .main-wrapper{flex:1;min-width:0;display:flex;flex-dire
 
 /* ── Existing Users — premium card list ── */
 body.am-module .am-users-panel{
+  --am-users-pad-x:28px;
+  --am-users-card-cols:minmax(0,240px) max-content minmax(0,1fr) max-content;
   width:100%;
   max-width:1180px;
   margin:0 auto;
@@ -173,7 +175,7 @@ body.am-module .am-users-head{
   align-items:flex-start;
   justify-content:space-between;
   gap:16px;
-  padding:28px 28px 0;
+  padding:28px var(--am-users-pad-x) 0;
 }
 body.am-module .am-users-title{
   font-size:18px;
@@ -200,7 +202,7 @@ body.am-module .am-users-toolbar{
   justify-content:space-between;
   gap:16px;
   flex-wrap:wrap;
-  padding:20px 28px 0;
+  padding:20px var(--am-users-pad-x) 0;
 }
 body.am-module .am-users-search-wrap{
   position:relative;
@@ -295,10 +297,10 @@ body.am-module .am-users-sort-btn svg,
 body.am-module .am-users-sort-btn i svg{width:15px;height:15px}
 body.am-module .am-users-columns{
   display:grid;
-  grid-template-columns:minmax(200px,1.1fr) 150px minmax(0,2fr) 96px;
-  gap:16px;
+  grid-template-columns:var(--am-users-card-cols);
+  gap:16px 20px;
   align-items:center;
-  padding:18px 28px 10px;
+  padding:18px var(--am-users-pad-x) 10px;
   border-bottom:1px solid #EEF2F7;
   margin-top:8px;
 }
@@ -314,19 +316,24 @@ body.am-module .am-users-list{
   display:flex;
   flex-direction:column;
   gap:0;
-  padding:4px 16px 16px;
+  width:100%;
+  padding:4px var(--am-users-pad-x) 16px;
+  box-sizing:border-box;
 }
 body.am-module .am-user-card{
   display:grid;
-  grid-template-columns:minmax(200px,1.1fr) 150px minmax(0,2fr) 96px;
-  gap:16px;
+  grid-template-columns:var(--am-users-card-cols);
+  gap:16px 20px;
   align-items:center;
+  width:100%;
+  min-width:0;
   min-height:96px;
-  padding:20px 12px;
+  padding:18px 16px;
   margin:4px 0;
   border:1px solid #E8EDF5;
   border-radius:16px;
   background:#fff;
+  box-sizing:border-box;
   transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease;
 }
 body.am-module .am-user-card:hover{
@@ -407,6 +414,11 @@ body.am-module .am-role-manager{
   border:1px solid rgba(67,56,202,.22);
 }
 body.am-module .am-user-access{min-width:0}
+body.am-module .am-user-role{
+  display:flex;
+  align-items:center;
+  min-width:0;
+}
 body.am-module .am-access-label{
   display:none;
 }
@@ -529,7 +541,7 @@ body.am-module .am-users-pagination{
   align-items:center;
   justify-content:center;
   gap:8px;
-  padding:8px 28px 24px;
+  padding:8px var(--am-users-pad-x) 24px;
 }
 body.am-module .am-users-pagination[hidden]{display:none}
 body.am-module .am-page-btn{
@@ -569,9 +581,12 @@ body.am-module .btn-primary i svg,
 body.am-module .btn-primary svg{width:16px;height:16px}
 
 @media(max-width:1024px){
+  body.am-module .am-users-panel{
+    --am-users-card-cols:minmax(0,1fr) auto;
+  }
   body.am-module .am-users-columns{display:none}
   body.am-module .am-user-card{
-    grid-template-columns:1fr auto;
+    grid-template-columns:var(--am-users-card-cols);
     grid-template-areas:
       "identity actions"
       "role role"
@@ -592,16 +607,17 @@ body.am-module .btn-primary svg{width:16px;height:16px}
   }
 }
 @media(max-width:720px){
-  body.am-module .am-users-head,
-  body.am-module .am-users-toolbar{padding-left:20px;padding-right:20px}
-  body.am-module .am-users-list{padding-left:12px;padding-right:12px}
+  body.am-module .am-users-panel{--am-users-pad-x:20px}
   body.am-module .am-users-toolbar{flex-direction:column;align-items:stretch}
   body.am-module .am-users-search-wrap{max-width:none}
   body.am-module .am-users-filters{width:100%}
   body.am-module .am-users-filter{flex:1;min-width:0}
   body.am-module .am-users-select{width:100%}
+  body.am-module .am-users-panel{
+    --am-users-card-cols:minmax(0,1fr);
+  }
   body.am-module .am-user-card{
-    grid-template-columns:1fr;
+    grid-template-columns:var(--am-users-card-cols);
     grid-template-areas:
       "identity"
       "role"
@@ -617,9 +633,12 @@ body.am-module .btn-primary svg{width:16px;height:16px}
  * it actually receives when the sidebar is pinned or expanded.
  */
 @container access-content (max-width:1024px){
+  body.am-module .am-users-panel{
+    --am-users-card-cols:minmax(0,1fr) auto;
+  }
   body.am-module .am-users-columns{display:none}
   body.am-module .am-user-card{
-    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-columns:var(--am-users-card-cols);
     grid-template-areas:
       "identity actions"
       "role role"
@@ -641,16 +660,17 @@ body.am-module .btn-primary svg{width:16px;height:16px}
 }
 
 @container access-content (max-width:720px){
-  body.am-module .am-users-head,
-  body.am-module .am-users-toolbar{padding-left:20px;padding-right:20px}
-  body.am-module .am-users-list{padding-left:12px;padding-right:12px}
+  body.am-module .am-users-panel{--am-users-pad-x:20px}
   body.am-module .am-users-toolbar{flex-direction:column;align-items:stretch}
   body.am-module .am-users-search-wrap{max-width:none}
   body.am-module .am-users-filters{width:100%}
   body.am-module .am-users-filter{flex:1;min-width:0}
   body.am-module .am-users-select{width:100%}
+  body.am-module .am-users-panel{
+    --am-users-card-cols:minmax(0,1fr);
+  }
   body.am-module .am-user-card{
-    grid-template-columns:minmax(0,1fr);
+    grid-template-columns:var(--am-users-card-cols);
     grid-template-areas:
       "identity"
       "role"
@@ -661,8 +681,9 @@ body.am-module .btn-primary svg{width:16px;height:16px}
 }
 
 @container access-content (max-width:480px){
-  body.am-module .am-users-head{padding:20px 16px 0}
-  body.am-module .am-users-toolbar{padding:16px 16px 0}
+  body.am-module .am-users-panel{--am-users-pad-x:16px}
+  body.am-module .am-users-head{padding-top:20px}
+  body.am-module .am-users-toolbar{padding-top:16px}
   body.am-module .am-users-filters{display:grid;grid-template-columns:1fr 1fr}
   body.am-module .am-users-sort-btn{grid-column:1 / -1;justify-content:center;width:100%}
   body.am-module .am-user-card{padding:16px}

@@ -1,0 +1,135 @@
+<section class="content se-content">
+  {% if auth_notice %}
+  <div class="sm-flash sm-flash--ok">{{ auth_notice }}</div>
+  {% endif %}
+  {% if success_message %}
+  <div class="sm-flash sm-flash--ok">{{ success_message }}</div>
+  {% endif %}
+
+  <div class="sm-layout{% if show_form %} sm-layout--form-focus{% endif %}">
+    <article class="card pl-list-panel pl-list-panel--scroll sm-list-panel sm-list-panel--scroll hbe-scroll-panel{% if show_form %} hidden{% endif %}" aria-label="Supplier list">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+          <span>Suppliers</span>
+        </div>
+        <span class="pl-count sm-count">{{ suppliers|length }} total</span>
+      </div>
+      <div class="card-body pl-card-body--flush sm-card-body--flush" style="padding:0;">
+        {% if suppliers %}
+        <div class="pl-table-wrap sm-table-wrap" tabindex="0" aria-label="Supplier list, scroll for more">
+          <table class="pl-table sm-pl-table" aria-label="Supplier list">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">GST</th>
+                <th scope="col">Phone</th>
+                <th scope="col">Bank</th>
+                <th class="pl-col-actions" scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for supplier in suppliers %}
+              <tr>
+                <td>
+                  <div class="pl-name">{{ supplier.name }}</div>
+                  {% if supplier.address %}<div class="pl-meta">{{ supplier.address }}</div>{% endif %}
+                </td>
+                <td>{{ supplier.gst or '—' }}</td>
+                <td>{{ supplier.phone or '—' }}</td>
+                <td>
+                  {% if supplier.bank_name %}
+                  <div class="pl-name">{{ supplier.bank_name }}</div>
+                  <div class="pl-meta">{{ supplier.bank_account_number }}{% if supplier.ifsc_code %} · {{ supplier.ifsc_code }}{% endif %}</div>
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                <td class="pl-col-actions">
+                  <div class="act-grp">
+                    <a class="act-btn edit"
+                       href="{{ url_for('supplier_master', supplier_id=supplier.id, embed=1) if embed_mode else url_for('supplier_master', supplier_id=supplier.id) }}"
+                       data-tip="Edit"
+                       aria-label="Edit {{ supplier.name }}">
+                      <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </a>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty sm-empty">No suppliers added yet. Use Add supplier to create the first one.</div>
+        {% endif %}
+      </div>
+    </article>
+
+    {% if show_form %}
+    <article class="card" aria-label="Supplier form">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <span>{% if form.id %}Edit supplier{% else %}Add supplier{% endif %}</span>
+        </div>
+        {% if form_focus %}
+        <a class="btn" href="{{ url_for('supplier_master', embed=1) if embed_mode else url_for('supplier_master') }}">Back to list</a>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('save_supplier') }}"{% if embed_mode %} data-md-full-nav="1"{% endif %}>
+          <input type="hidden" name="supplier_id" value="{{ form.id or '' }}">
+          {% if errors %}
+          <div class="sm-errors">
+            {% for error in errors %}
+            <div class="sm-error-item">{{ error }}</div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <div class="staff-grid sm-form-grid">
+            <div class="staff-field staff-field--inline staff-field--full">
+              <label for="supplier-name">Supplier name *</label>
+              <input id="supplier-name" class="staff-input" name="name" type="text" value="{{ form.name or '' }}" placeholder="e.g. ABC Supplies Pvt Ltd" required>
+            </div>
+            <div class="staff-field staff-field--inline staff-field--full">
+              <label for="supplier-gst">GST</label>
+              <input id="supplier-gst" class="staff-input" name="gst" type="text" value="{{ form.gst or '' }}" placeholder="e.g. 29ABCDE1234F1Z5">
+            </div>
+            <div class="staff-field staff-field--inline staff-field--full">
+              <label for="supplier-address">Address</label>
+              <textarea id="supplier-address" class="staff-input sm-textarea" name="address" placeholder="Street, city, state">{{ form.address or '' }}</textarea>
+            </div>
+            <div class="staff-field staff-field--inline">
+              <label for="supplier-phone">Phone number</label>
+              <input id="supplier-phone" class="staff-input" name="phone" type="text" value="{{ form.phone or '' }}" placeholder="e.g. 9876543210">
+            </div>
+            <div class="staff-field staff-field--inline">
+              <label for="supplier-bank-name">Bank name</label>
+              <input id="supplier-bank-name" class="staff-input" name="bank_name" type="text" value="{{ form.bank_name or '' }}" placeholder="e.g. HDFC Bank">
+            </div>
+            <div class="staff-field staff-field--inline">
+              <label for="supplier-bank-account">Bank account number</label>
+              <input id="supplier-bank-account" class="staff-input" name="bank_account_number" type="text" value="{{ form.bank_account_number or '' }}" placeholder="e.g. 1234567890">
+            </div>
+            <div class="staff-field staff-field--inline staff-field--full">
+              <label for="supplier-ifsc">IFSC code</label>
+              <input id="supplier-ifsc" class="staff-input" name="ifsc_code" type="text" value="{{ form.ifsc_code or '' }}" placeholder="e.g. HDFC0001234">
+            </div>
+          </div>
+          <div class="sm-actions">
+            <button type="submit" class="btn btn-primary staff-primary">{% if form.id %}Update supplier{% else %}Save supplier{% endif %}</button>
+            <a class="btn staff-secondary" href="{{ url_for('supplier_master', embed=1) if embed_mode else url_for('supplier_master') }}">Cancel</a>
+          </div>
+        </form>
+        {% if form.id %}
+        <form method="post" action="{{ url_for('delete_supplier') }}" class="sm-delete-form" onsubmit="return confirm('Delete this supplier? This cannot be undone.');"{% if embed_mode %} data-md-full-nav="1"{% endif %}>
+          <input type="hidden" name="supplier_id" value="{{ form.id }}">
+          <button type="submit" class="btn sm-btn-danger">Delete supplier</button>
+        </form>
+        {% endif %}
+      </div>
+    </article>
+    {% endif %}
+  </div>
+</section>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tables | Restaurant | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=10">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open pos-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+
+{# Optional context from backend when table data exists — defaults keep the stub honest. #}
+{% set tables = tables|default([]) %}
+{% set areas = areas|default([]) %}
+{% set pos_outlets = pos_outlets|default([]) %}
+{% set business_date = business_date|default(none) %}
+{% set status_labels = {
+  'available': 'Available',
+  'occupied': 'Occupied',
+  'reserved': 'Reserved',
+  'cleaning': 'Cleaning',
+  'inactive': 'Inactive'
+} %}
+{% if not areas and tables %}
+  {% set derived_areas = [] %}
+  {% for t in tables %}
+    {% set ak = t.area_key|default(t.area)|default(none) %}
+    {% if ak and ak not in derived_areas %}
+      {% set _ = derived_areas.append(ak) %}
+    {% endif %}
+  {% endfor %}
+  {% set areas = derived_areas %}
+{% endif %}
+
+<div class="de-main-inner pos-tables-page" id="pos-tables-page" data-pos-tables>
+  <header class="pos-tables-header">
+    <div class="pos-tables-header-copy">
+      <h1>Tables</h1>
+      <p>Live table status and restaurant management</p>
+    </div>
+    <div class="pos-tables-header-actions">
+      {% if pos_outlets %}
+      <label class="pos-tables-select">
+        <span class="pos-sr-only">Outlet</span>
+        <select id="pos-tables-outlet" aria-label="Outlet">
+          <option value="">All Outlets</option>
+          {% for outlet in pos_outlets %}
+          <option value="{{ outlet.key|default(outlet.id)|default(outlet) }}">{{ outlet.label|default(outlet.name)|default(outlet) }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      {% if business_date is not none %}
+      <label class="pos-tables-date">
+        <span class="pos-sr-only">Business date</span>
+        <input type="date" id="pos-tables-biz-date" value="{{ business_date }}" aria-label="Business date">
+      </label>
+      {% endif %}
+      <button type="button" class="pos-tables-btn-ghost" id="pos-tables-clear-all" title="Free every table back to available">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.3-6.4M21 12a9 9 0 0 1-15.3 6.4"/><path d="M18 2v4.5h-4.5M6 22v-4.5h4.5"/></svg>
+        Clear All Tables
+      </button>
+      <a class="pos-tables-btn-primary" href="{{ url_for('point_of_sale_invoice') }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New Order
+      </a>
+    </div>
+  </header>
+
+  <section class="pos-tables-kpis" aria-label="Table status summary">
+    <article class="pos-kpi" data-kpi="total">
+      <div class="pos-kpi-icon pos-kpi-icon--blue" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="8" rx="2"/><path d="M7 10V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><path d="M7 18v2M17 18v2"/></svg>
+      </div>
+      <div>
+        <div class="pos-kpi-label">Total Tables</div>
+        <div class="pos-kpi-value" data-kpi-value>0</div>
+      </div>
+    </article>
+    <article class="pos-kpi" data-kpi="available">
+      <div class="pos-kpi-icon pos-kpi-icon--green" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>
+      </div>
+      <div>
+        <div class="pos-kpi-label">Available seats</div>
+        <div class="pos-kpi-value" data-kpi-value>0</div>
+      </div>
+    </article>
+    <article class="pos-kpi" data-kpi="occupied">
+      <div class="pos-kpi-icon pos-kpi-icon--orange" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+      </div>
+      <div>
+        <div class="pos-kpi-label">Occupied</div>
+        <div class="pos-kpi-value" data-kpi-value>0</div>
+      </div>
+    </article>
+    <article class="pos-kpi" data-kpi="reserved">
+      <div class="pos-kpi-icon pos-kpi-icon--purple" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>
+      </div>
+      <div>
+        <div class="pos-kpi-label">Reserved</div>
+        <div class="pos-kpi-value" data-kpi-value>0</div>
+      </div>
+    </article>
+    <article class="pos-kpi" data-kpi="cleaning">
+      <div class="pos-kpi-icon pos-kpi-icon--rose" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 20V9l5-5 5 5v11"/><path d="M10 13h4"/></svg>
+      </div>
+      <div>
+        <div class="pos-kpi-label">Cleaning</div>
+        <div class="pos-kpi-value" data-kpi-value>0</div>
+      </div>
+    </article>
+    <article class="pos-kpi" data-kpi="inactive">
+      <div class="pos-kpi-icon pos-kpi-icon--gray" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>
+      </div>
+      <div>
+        <div class="pos-kpi-label">Inactive</div>
+        <div class="pos-kpi-value" data-kpi-value>0</div>
+      </div>
+    </article>
+  </section>
+
+  <div class="pos-tables-toolbar" role="region" aria-label="Table filters">
+    <div class="pos-area-pills" id="pos-area-pills" role="tablist" aria-label="Areas">
+      <button type="button" class="pos-area-pill is-active" data-area="" role="tab" aria-selected="true">All Areas</button>
+      {% for area in areas %}
+      <button type="button" class="pos-area-pill" data-area="{{ area.key|default(area.id)|default(area.name)|default(area) }}" role="tab" aria-selected="false">{{ area.label|default(area.name)|default(area) }}</button>
+      {% endfor %}
+    </div>
+    <div class="pos-toolbar-right">
+      <div class="pos-view-toggle" role="group" aria-label="View mode">
+        <button type="button" class="pos-view-btn is-active" data-view="grid" aria-pressed="true" title="Grid view">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          Grid
+        </button>
+        <button type="button" class="pos-view-btn" data-view="list" aria-pressed="false" title="List view">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg>
+          List
+        </button>
+      </div>
+      <label class="pos-tables-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="pos-tables-search" placeholder="Search table..." autocomplete="off" aria-label="Search tables">
+      </label>
+      <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pos-status-filter-listbox" data-se-listbox data-se-listbox-change="posTablesStatusChanged" id="pos-tables-status-listbox">
+        <span class="se-filter-chip-label" id="pos-tables-status-label">Status</span>
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2.5"/></svg>
+          </span>
+          <input type="hidden" id="pos-tables-status-filter" value="all">
+          <button type="button" class="se-filter-chip-trigger" id="pos-tables-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-tables-status-list" aria-labelledby="pos-tables-status-label pos-tables-status-value">
+            <span class="se-filter-chip-value" id="pos-tables-status-value">All statuses</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox" id="pos-tables-status-list" role="listbox" aria-labelledby="pos-tables-status-label" hidden>
+          <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="all" data-label="All statuses" aria-selected="true">All statuses</button>
+          <button type="button" class="se-filter-listbox-option" role="option" data-value="available" data-label="Available" aria-selected="false">Available</button>
+          <button type="button" class="se-filter-listbox-option" role="option" data-value="occupied" data-label="Occupied" aria-selected="false">Occupied</button>
+          <button type="button" class="se-filter-listbox-option" role="option" data-value="reserved" data-label="Reserved" aria-selected="false">Reserved</button>
+          <button type="button" class="se-filter-listbox-option" role="option" data-value="cleaning" data-label="Cleaning" aria-selected="false">Cleaning</button>
+          <button type="button" class="se-filter-listbox-option" role="option" data-value="inactive" data-label="Inactive" aria-selected="false">Inactive</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pos-tables-body">
+    <div class="pos-tables-main">
+      <div class="pos-floor" id="pos-floor" data-view="grid">
+        {% if tables %}
+          {% set area_names = [] %}
+          {% for t in tables %}
+            {% set ak = t.area_key|default(t.area)|default('Floor') %}
+            {% if ak not in area_names %}
+              {% set _ = area_names.append(ak) %}
+            {% endif %}
+          {% endfor %}
+          {% for area_key in area_names %}
+          <section class="pos-floor-section" data-area-section="{{ area_key }}">
+            <h2 class="pos-floor-section-title">{{ area_key }}</h2>
+            <div class="pos-floor-grid">
+              {% for t in tables if (t.area_key|default(t.area)|default('Floor')) == area_key %}
+              {% set status = (t.status|default('available')|string|lower) %}
+              {% set seats = t.seats|default(t.capacity)|default(none) %}
+              {% set shape = (t.shape|default('')|string|lower) %}
+              {% if not shape and seats is not none %}
+                {% if seats|int <= 2 %}{% set shape = 'round' %}
+                {% elif seats|int <= 4 %}{% set shape = 'square' %}
+                {% else %}{% set shape = 'rect' %}
+                {% endif %}
+              {% endif %}
+              {% if not shape %}{% set shape = 'square' %}{% endif %}
+              <article
+                class="pos-table-tile pos-table-tile--{{ status }} pos-table-tile--{{ shape }}"
+                data-table-tile
+                data-name="{{ t.name|default(t.label)|default(t.code)|default('Table') }}"
+                data-status="{{ status }}"
+                data-area="{{ t.area_key|default(t.area)|default(area_key) }}"
+                data-seats="{{ seats if seats is not none else '' }}"
+                {% if t.id is defined %}data-id="{{ t.id }}"{% endif %}
+                tabindex="0"
+              >
+                <div class="pos-table-tile-top">
+                  <span class="pos-table-shape-icon" aria-hidden="true">
+                    {% if shape == 'round' %}
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><path d="M12 5v2M12 17v2M5 12h2M17 12h2"/></svg>
+                    {% elif shape == 'rect' %}
+                    <svg viewBox="0 0 24 24"><rect x="4" y="8" width="16" height="8" rx="2"/><path d="M7 8V6M17 8V6M7 16v2M17 16v2"/></svg>
+                    {% else %}
+                    <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 6V4M15 6V4M9 18v2M15 18v2"/></svg>
+                    {% endif %}
+                  </span>
+                  <button type="button" class="pos-table-more" aria-label="Table actions" aria-haspopup="menu" aria-expanded="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+                  </button>
+                  <div class="pos-table-menu" role="menu" hidden>
+                    <button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="open">Open</button>
+                    <button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="reserve">Reserve</button>
+                    <button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="occupied">Occupy</button>
+                    <button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="cleaning">Mark cleaning</button>
+                    <button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="available">Set available</button>
+                  </div>
+                </div>
+                <div class="pos-table-tile-name">{{ t.name|default(t.label)|default(t.code)|default('Table') }}</div>
+                {% if seats is not none %}
+                <div class="pos-table-tile-seats">{{ seats }} Seater</div>
+                {% endif %}
+                <div class="pos-table-badge pos-table-badge--{{ status }}">{% if status in status_labels %}{{ status_labels[status] }}{% else %}{{ status|capitalize }}{% endif %}</div>
+                {% if status == 'occupied' and (t.duration or t.bill_amount is defined or t.bill is defined) %}
+                <div class="pos-table-meta">
+                  {% if t.duration %}<span><em>Duration</em>{{ t.duration }}</span>{% endif %}
+                  {% if t.bill_amount is defined or t.bill is defined %}
+                  <span><em>Bill</em>₹{{ '%.2f'|format(t.bill_amount|default(t.bill)|float) }}</span>
+                  {% endif %}
+                </div>
+                {% elif status == 'reserved' and (t.reserved_at or t.reservation_time) %}
+                <div class="pos-table-meta pos-table-meta--single">
+                  <span>{{ t.reserved_at|default(t.reservation_time) }}</span>
+                </div>
+                {% elif status == 'cleaning' and (t.expected_ready or t.expected_at) %}
+                <div class="pos-table-meta pos-table-meta--single">
+                  <span><em>Expected</em>{{ t.expected_ready|default(t.expected_at) }}</span>
+                </div>
+                {% endif %}
+              </article>
+              {% endfor %}
+            </div>
+          </section>
+          {% endfor %}
+        {% else %}
+          <div class="pos-floor-empty" role="status">
+            <div class="pos-floor-empty-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="8" rx="2"/><path d="M7 10V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><path d="M7 18v2M17 18v2"/></svg>
+            </div>
+            <h2>No tables configured</h2>
+            <p>Table floor data is not available yet. When tables are connected, live status will appear here.</p>
+          </div>
+        {% endif %}
+      </div>
+      <div class="pos-floor-empty pos-floor-empty--filtered" id="pos-floor-filtered-empty" hidden role="status">
+        <h2>No matching tables</h2>
+        <p>Try another area, status, or search term.</p>
+      </div>
+    </div>
+  </div>
+
+  <section class="pos-quick-actions" aria-label="Quick actions">
+    <h2 class="pos-quick-actions-title">Quick Actions</h2>
+    <div class="pos-quick-actions-grid">
+      <a class="pos-quick-card" href="{{ url_for('point_of_sale_invoice') }}">
+        <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
+        <span class="pos-quick-copy"><strong>New Order</strong><small>Create a new order</small></span>
+      </a>
+      <a class="pos-quick-card" href="{{ url_for('point_of_sale_invoice') }}">
+        <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg></span>
+        <span class="pos-quick-copy"><strong>View Orders</strong><small>Open invoice workspace</small></span>
+      </a>
+      <button type="button" class="pos-quick-card is-disabled" disabled title="Reservations are not available yet">
+        <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg></span>
+        <span class="pos-quick-copy"><strong>Reservations</strong><small>Not available yet</small></span>
+      </button>
+      <button type="button" class="pos-quick-card is-disabled" disabled title="Hold orders are not available yet">
+        <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+        <span class="pos-quick-copy"><strong>Hold Orders</strong><small>Not available yet</small></span>
+      </button>
+      <button type="button" class="pos-quick-card is-disabled" disabled title="Table merge is not available yet">
+        <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="8" height="8" rx="1.5"/><rect x="13" y="8" width="8" height="8" rx="1.5"/><path d="M11 12h2"/></svg></span>
+        <span class="pos-quick-copy"><strong>Table Merge</strong><small>Not available yet</small></span>
+      </button>
+    </div>
+  </section>
+
+  <div class="pos-tables-toast" id="pos-tables-toast" role="status" aria-live="polite" hidden></div>
+</div>
+
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=21"></script>
+<script src="{{ url_for('static', filename='pos_tables.js') }}?v=11"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>
