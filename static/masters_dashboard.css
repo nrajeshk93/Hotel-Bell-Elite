@@ -642,7 +642,8 @@ body.md-master-modal-open {
   min-width: 160px;
 }
 
-.md-master-embed-search input {
+.md-master-embed-search input,
+.md-master-embed-search-input {
   width: 100%;
   height: 40px;
   padding: 0 12px;
@@ -651,6 +652,84 @@ body.md-master-modal-open {
   background: #fff;
   font: inherit;
   font-size: 14px;
+}
+
+.md-master-embed-search input:focus,
+.md-master-embed-search-input:focus {
+  outline: none;
+  border-color: rgba(37, 99, 235, 0.45);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+/* Product Master embed — Expense Ledger–style single row: filters | search | Add */
+.md-master-embed--product .md-master-embed-toolbar {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.md-master-embed--product .md-master-embed-filters {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.md-master-embed--product .md-master-embed-pill {
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border-color: #E5E7EB;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.md-master-embed--product .md-master-embed-search--toolbar {
+  flex: 1 1 auto;
+  min-width: 96px;
+  max-width: none;
+  width: auto;
+}
+
+.md-master-embed--product .md-master-embed-search--toolbar input,
+.md-master-embed--product .md-master-embed-search--toolbar .md-master-embed-search-input {
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.md-master-embed--product .md-master-embed-search--toolbar input::placeholder,
+.md-master-embed--product .md-master-embed-search--toolbar .md-master-embed-search-input::placeholder {
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+.md-master-embed--product .md-master-embed-search--toolbar input::-webkit-search-cancel-button,
+.md-master-embed--product .md-master-embed-search--toolbar .md-master-embed-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+.md-master-embed--product .md-master-embed-search--toolbar.is-active input,
+.md-master-embed--product .md-master-embed-search--toolbar.is-active .md-master-embed-search-input {
+  border-color: #93C5FD;
+  background: #EFF6FF;
+  color: #111827;
+  box-shadow: none;
+}
+
+.md-master-embed--product .md-master-embed-toolbar > .btn {
+  flex: 0 0 auto;
+  align-self: center;
+  white-space: nowrap;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 12px;
 }
 
 /* Customer / Supplier embed lists — match Product Master / pl-table */

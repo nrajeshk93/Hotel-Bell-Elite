@@ -45,7 +45,16 @@ class StoresFlowTests(unittest.TestCase):
         self._get_user_patch.start()
         self._stores_user_patch.start()
 
+        # CRITICAL: never hit live Meta/WhatsApp while exercising indent submit flows.
+        # .env may load real credentials; each pending indent would otherwise send paid messages.
+        self._wa_buttons_patch = mock.patch(
+            "whatsapp_indent.wa.send_interactive_buttons",
+            return_value=(True, "", {"messages": [{"id": "wamid.BTN"}]}),
+        )
+        self._wa_buttons_patch.start()
+
     def tearDown(self):
+        self._wa_buttons_patch.stop()
         self._get_user_patch.stop()
         self._stores_user_patch.stop()
         db_mod.DATABASE_PATH = self._orig_path

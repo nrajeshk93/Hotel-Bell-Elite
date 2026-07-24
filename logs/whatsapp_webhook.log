@@ -34,3 +34,150 @@
 [2026-07-22 23:29:45] Indent IND-BAR-20260722-001 rejected.
 [2026-07-22 23:29:45] Indent IND-BAR-20260722-001 approved.
 [2026-07-22 23:29:45] Indent IND-BAR-20260722-001 rejected.
+[2026-07-24 20:32:13] action=approved from=919999999999 token=ea324bb1-bdcd-4d7b-ac3a-3400553df26a button_id='approve_ea324bb1-bdcd-4d7b-ac3a-3400553df26a' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:32:13] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:32:13] action=approved from=919999999999 token=79a61a06-df25-4328-b98e-06af58f45ecf button_id='approve_79a61a06-df25-4328-b98e-06af58f45ecf' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:32:13] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:32:13] action=approved from=919999999999 token=79a61a06-df25-4328-b98e-06af58f45ecf button_id='approve_79a61a06-df25-4328-b98e-06af58f45ecf' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:32:13] skip: This indent was already Approved.
+[2026-07-24 20:32:13] action=rejected from=919999999999 token=e5f629ca-386e-47ff-8ab7-9e1a2c5c013c button_id='reject_e5f629ca-386e-47ff-8ab7-9e1a2c5c013c' message_id=wamid.INBOUND.REJECT
+[2026-07-24 20:32:13] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 20:32:13] action=approved from=918940651222 token=- button_id='Approved' message_id=wamid.INBOUND.TEXT
+[2026-07-24 20:32:13] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:32:13] action=rejected from=918940651222 token=- button_id='rejected' message_id=
+[2026-07-24 20:32:13] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 20:32:13] action=approved from=919999999999 token=4d2c9244-9cc9-486d-83ba-3e5ed8ef5113 button_id='approve_4d2c9244-9cc9-486d-83ba-3e5ed8ef5113' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:32:13] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:32:13] action=approved from=919999999999 token=00000000-0000-4000-8000-000000000099 button_id='approve_00000000-0000-4000-8000-000000000099' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:32:13] unknown_token from=919999999999 token=00000000-0000-4000-8000-000000000099
+[2026-07-24 20:46:00] action=approved from=919999999999 token=d8932e25-5cf7-4824-9c23-efd2485bae62 button_id='approve_d8932e25-5cf7-4824-9c23-efd2485bae62' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:46:00] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:46:00] action=approved from=919999999999 token=332d5ffd-ddba-4970-ab9f-94e01189faf7 button_id='approve_332d5ffd-ddba-4970-ab9f-94e01189faf7' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:46:00] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:46:00] action=approved from=919999999999 token=332d5ffd-ddba-4970-ab9f-94e01189faf7 button_id='approve_332d5ffd-ddba-4970-ab9f-94e01189faf7' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:46:00] skip: This indent was already Approved.
+[2026-07-24 20:46:00] action=rejected from=919999999999 token=a808bdb8-99eb-48f5-9bfd-f48b2bbd4d59 button_id='reject_a808bdb8-99eb-48f5-9bfd-f48b2bbd4d59' message_id=wamid.INBOUND.REJECT
+[2026-07-24 20:46:00] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 20:46:00] action=approved from=918940651222 token=- button_id='Approved' message_id=wamid.INBOUND.TEXT
+[2026-07-24 20:46:00] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:46:00] action=rejected from=918940651222 token=- button_id='rejected' message_id=
+[2026-07-24 20:46:00] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 20:46:00] action=approved from=919999999999 token=fb589b97-0618-4b36-9584-e8b133866227 button_id='approve_fb589b97-0618-4b36-9584-e8b133866227' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:46:00] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:46:00] action=approved from=919999999999 token=00000000-0000-4000-8000-000000000099 button_id='approve_00000000-0000-4000-8000-000000000099' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:46:00] unknown_token from=919999999999 token=00000000-0000-4000-8000-000000000099
+[2026-07-24 20:47:34] action=approved from=918940651222 token=- button_id='' message_id=wamid.IN
+[2026-07-24 20:47:36] action=approved from=918940651222 token=- button_id='' message_id=wamid.IN2
+[2026-07-24 20:47:36] action=approved from=919999999999 token=- button_id='' message_id=wamid.IN3
+[2026-07-24 20:47:55] action=approved from=918940651222 token=47a74fbd-0704-447d-84f9-37e2e0262de7 button_id='approve_47a74fbd-0704-447d-84f9-37e2e0262de7' message_id=wamid.IN
+[2026-07-24 20:47:55] action=approved from=918940651222 token=- button_id='' message_id=wamid.IN
+[2026-07-24 20:47:55] action=approved from=918940651222 token=47a74fbd-0704-447d-84f9-37e2e0262de7 button_id='approve_47a74fbd-0704-447d-84f9-37e2e0262de7' message_id=wamid.IN
+[2026-07-24 20:47:55] action=approved from=918940651222 token=- button_id='' message_id=wamid.IN
+[2026-07-24 20:47:55] action=approved from=918940651222 token=- button_id='' message_id=wamid.IN
+[2026-07-24 20:48:10] action=approved from=918940651222 token=- button_id='' message_id=x
+[2026-07-24 20:53:06] action=approved from=919999999999 token=2ec4d5b8-ca05-4a75-bbaf-4105048c84f0 button_id='approve_2ec4d5b8-ca05-4a75-bbaf-4105048c84f0' context=wamid.BTN_A message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=approved from=918940651222 token=- button_id='Approve' context=wamid.NORM_T message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=approved from=918940651222 token=- button_id='Approved' context=wamid.NORM_T message_id=wamid.INBOUND.APPROVED
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=approved from=918940651222 token=- button_id='approve' context=wamid.NORM_T message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=approved from=918940651222 token=- button_id='APPROVED' context=wamid.NORM_T message_id=wamid.INBOUND.APPROVED
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=approved from=918940651222 token=- button_id='' context=wamid.BTN_TITLE message_id=wamid.INBOUND.TITLE_ONLY
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=approved from=919999999999 token=66009f18-f12a-4dd6-9a7f-425af159a5c7 button_id='approve_66009f18-f12a-4dd6-9a7f-425af159a5c7' context=wamid.BTN message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=approved from=919999999999 token=66009f18-f12a-4dd6-9a7f-425af159a5c7 button_id='approve_66009f18-f12a-4dd6-9a7f-425af159a5c7' context=wamid.BTN message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:53:06] skip: This indent was already Approved.
+[2026-07-24 20:53:06] action=rejected from=919999999999 token=49fcd906-2f59-450b-9ce1-330deb9bdd5d button_id='reject_49fcd906-2f59-450b-9ce1-330deb9bdd5d' context=wamid.BTN_R message_id=wamid.INBOUND.REJECT
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 20:53:06] action=approved from=918940651222 token=- button_id='Approve' context=wamid.BTN_CTX message_id=wamid.INBOUND.APPROVE_TEXT
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=approved from=918940651222 token=- button_id='Approved' context=wamid.TEXT_APPROVE message_id=wamid.INBOUND.TEXT
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:06] action=rejected from=918940651222 token=- button_id='rejected' context=- message_id=
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 20:53:06] action=approved from=918940651222 token=- button_id='' context=- message_id=wamid.INBOUND.CLEARED
+[2026-07-24 20:53:06] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:07] action=approved from=919999999999 token=5c35709f-0239-4937-af49-41b28ed48cbb button_id='approve_5c35709f-0239-4937-af49-41b28ed48cbb' context=wamid.BTNA message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:53:07] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 20:53:07] action=approved from=919999999999 token=00000000-0000-4000-8000-000000000099 button_id='approve_00000000-0000-4000-8000-000000000099' context=wamid.BTN message_id=wamid.INBOUND.APPROVE
+[2026-07-24 20:53:07] unknown_token from=919999999999 token=00000000-0000-4000-8000-000000000099
+[2026-07-24 20:53:22] action=approved from=919999999999 token=- button_id='' context=wamid.BTN message_id=x
+[2026-07-24 22:58:07] Button ID Received id='approve_0b05c5c6-a505-4b19-a0af-ff9f5a70273a' from=919999999999
+[2026-07-24 22:58:07] action=approved from=919999999999 token=0b05c5c6-a505-4b19-a0af-ff9f5a70273a button_id='approve_0b05c5c6-a505-4b19-a0af-ff9f5a70273a' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:08] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 22:58:08] Button ID Received id='approve_a7b5fb37-7e01-4150-bab4-6d27a2779c82' from=919999999999
+[2026-07-24 22:58:08] action=approved from=919999999999 token=a7b5fb37-7e01-4150-bab4-6d27a2779c82 button_id='approve_a7b5fb37-7e01-4150-bab4-6d27a2779c82' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:08] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 22:58:08] Button ID Received id='approve_a7b5fb37-7e01-4150-bab4-6d27a2779c82' from=919999999999
+[2026-07-24 22:58:08] action=approved from=919999999999 token=a7b5fb37-7e01-4150-bab4-6d27a2779c82 button_id='approve_a7b5fb37-7e01-4150-bab4-6d27a2779c82' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:08] skip: This indent was already Approved.
+[2026-07-24 22:58:08] Button ID Received id='reject_745925e7-f807-4b05-a7cf-e3a87e61f49c' from=919999999999
+[2026-07-24 22:58:08] action=rejected from=919999999999 token=745925e7-f807-4b05-a7cf-e3a87e61f49c button_id='reject_745925e7-f807-4b05-a7cf-e3a87e61f49c' message_id=wamid.INBOUND.REJECT
+[2026-07-24 22:58:08] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 22:58:08] inbound from=918940651222 type=text
+[2026-07-24 22:58:08] inbound from=918940651222 type=interactive
+[2026-07-24 22:58:08] Button ID Received id='approve_340f6a0b-7c11-4a2d-9df2-3f8c2e7ac419' from=919999999999
+[2026-07-24 22:58:08] action=approved from=919999999999 token=340f6a0b-7c11-4a2d-9df2-3f8c2e7ac419 button_id='approve_340f6a0b-7c11-4a2d-9df2-3f8c2e7ac419' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:08] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 22:58:08] Button ID Received id='approve_00000000-0000-4000-8000-000000000099' from=919999999999
+[2026-07-24 22:58:08] action=approved from=919999999999 token=00000000-0000-4000-8000-000000000099 button_id='approve_00000000-0000-4000-8000-000000000099' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:08] unknown_token from=919999999999 token=00000000-0000-4000-8000-000000000099
+[2026-07-24 22:58:17] Button ID Received id='approve_cc21879c-2aeb-487d-b64e-7a1b0e9824ef' from=919999999999
+[2026-07-24 22:58:17] action=approved from=919999999999 token=cc21879c-2aeb-487d-b64e-7a1b0e9824ef button_id='approve_cc21879c-2aeb-487d-b64e-7a1b0e9824ef' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:17] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 22:58:17] Button ID Received id='approve_b95dd2b0-e23c-4dc5-bc3d-6ae17b1cd1cf' from=919999999999
+[2026-07-24 22:58:17] action=approved from=919999999999 token=b95dd2b0-e23c-4dc5-bc3d-6ae17b1cd1cf button_id='approve_b95dd2b0-e23c-4dc5-bc3d-6ae17b1cd1cf' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:17] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 22:58:17] Button ID Received id='approve_b95dd2b0-e23c-4dc5-bc3d-6ae17b1cd1cf' from=919999999999
+[2026-07-24 22:58:17] action=approved from=919999999999 token=b95dd2b0-e23c-4dc5-bc3d-6ae17b1cd1cf button_id='approve_b95dd2b0-e23c-4dc5-bc3d-6ae17b1cd1cf' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:17] skip: This indent was already Approved.
+[2026-07-24 22:58:17] Button ID Received id='reject_45eb4b77-2878-4198-8c2a-e784d8c27b16' from=919999999999
+[2026-07-24 22:58:17] action=rejected from=919999999999 token=45eb4b77-2878-4198-8c2a-e784d8c27b16 button_id='reject_45eb4b77-2878-4198-8c2a-e784d8c27b16' message_id=wamid.INBOUND.REJECT
+[2026-07-24 22:58:17] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 22:58:17] inbound from=918940651222 type=text
+[2026-07-24 22:58:17] inbound from=918940651222 type=interactive
+[2026-07-24 22:58:17] Button ID Received id='approve_d09259bd-35a4-4414-8737-9ed8c9360d2c' from=919999999999
+[2026-07-24 22:58:17] action=approved from=919999999999 token=d09259bd-35a4-4414-8737-9ed8c9360d2c button_id='approve_d09259bd-35a4-4414-8737-9ed8c9360d2c' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:17] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 22:58:17] Button ID Received id='approve_00000000-0000-4000-8000-000000000099' from=919999999999
+[2026-07-24 22:58:17] action=approved from=919999999999 token=00000000-0000-4000-8000-000000000099 button_id='approve_00000000-0000-4000-8000-000000000099' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 22:58:17] unknown_token from=919999999999 token=00000000-0000-4000-8000-000000000099
+[2026-07-24 23:07:34] Webhook received type=interactive button_reply.id='approve_db40f0f3-a8e5-4ff7-b024-5e3e2a7bc21c' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:34] Button ID Received id='approve_db40f0f3-a8e5-4ff7-b024-5e3e2a7bc21c' from=919999999999
+[2026-07-24 23:07:34] action=approved from=919999999999 token=db40f0f3-a8e5-4ff7-b024-5e3e2a7bc21c button_id='approve_db40f0f3-a8e5-4ff7-b024-5e3e2a7bc21c' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:34] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 23:07:34] Webhook received type=interactive button_reply.id='approve_d8b4798b-bca3-4479-b8fe-1ff4b4a7bb11' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:34] Button ID Received id='approve_d8b4798b-bca3-4479-b8fe-1ff4b4a7bb11' from=919999999999
+[2026-07-24 23:07:34] action=approved from=919999999999 token=d8b4798b-bca3-4479-b8fe-1ff4b4a7bb11 button_id='approve_d8b4798b-bca3-4479-b8fe-1ff4b4a7bb11' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:34] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 23:07:34] Webhook received type=interactive button_reply.id='approve_d8b4798b-bca3-4479-b8fe-1ff4b4a7bb11' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:34] Button ID Received id='approve_d8b4798b-bca3-4479-b8fe-1ff4b4a7bb11' from=919999999999
+[2026-07-24 23:07:34] action=approved from=919999999999 token=d8b4798b-bca3-4479-b8fe-1ff4b4a7bb11 button_id='approve_d8b4798b-bca3-4479-b8fe-1ff4b4a7bb11' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:34] skip: This indent was already Approved.
+[2026-07-24 23:07:34] Webhook received type=interactive button_reply.id='reject_6c33c205-6527-4072-9109-e7fdb1642b34' title='Reject' from=919999999999 message_id=wamid.INBOUND.REJECT
+[2026-07-24 23:07:34] Button ID Received id='reject_6c33c205-6527-4072-9109-e7fdb1642b34' from=919999999999
+[2026-07-24 23:07:34] action=rejected from=919999999999 token=6c33c205-6527-4072-9109-e7fdb1642b34 button_id='reject_6c33c205-6527-4072-9109-e7fdb1642b34' message_id=wamid.INBOUND.REJECT
+[2026-07-24 23:07:34] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 23:07:34] Webhook received type=text button_reply.id='' title='' from=918940651222 message_id=wamid.INBOUND.APPROVE_TEXT
+[2026-07-24 23:07:34] inbound from=918940651222 type=text
+[2026-07-24 23:07:34] Webhook received type=text button_reply.id='' title='' from=918940651222 message_id=wamid.INBOUND.APPROVED_TEXT
+[2026-07-24 23:07:34] inbound from=918940651222 type=text
+[2026-07-24 23:07:35] Webhook received type=interactive button_reply.id='' title='Approve' from=918940651222 message_id=wamid.INBOUND.TITLE_ONLY
+[2026-07-24 23:07:35] ERROR missing button id type=interactive title='Approve' from=918940651222
+[2026-07-24 23:07:35] missing_button_id from=918940651222 type=interactive
+[2026-07-24 23:07:35] Webhook received type=interactive button_reply.id='approve_ee7ff683-78f2-41ef-bda5-73e3affe70bb' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:35] Button ID Received id='approve_ee7ff683-78f2-41ef-bda5-73e3affe70bb' from=919999999999
+[2026-07-24 23:07:35] action=approved from=919999999999 token=ee7ff683-78f2-41ef-bda5-73e3affe70bb button_id='approve_ee7ff683-78f2-41ef-bda5-73e3affe70bb' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:35] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 23:07:35] Webhook received type=button button_reply.id='approve_9de2e82a-2477-417d-af72-6d313ed36b3e' title='Approve' from=919999999999 message_id=wamid.INBOUND.BUTTON_TYPE
+[2026-07-24 23:07:35] Button ID Received id='approve_9de2e82a-2477-417d-af72-6d313ed36b3e' from=919999999999
+[2026-07-24 23:07:35] action=approved from=919999999999 token=9de2e82a-2477-417d-af72-6d313ed36b3e button_id='approve_9de2e82a-2477-417d-af72-6d313ed36b3e' message_id=wamid.INBOUND.BUTTON_TYPE
+[2026-07-24 23:07:35] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 23:07:35] Webhook received type=interactive button_reply.id='approve_00000000-0000-4000-8000-000000000099' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:35] Button ID Received id='approve_00000000-0000-4000-8000-000000000099' from=919999999999
+[2026-07-24 23:07:35] action=approved from=919999999999 token=00000000-0000-4000-8000-000000000099 button_id='approve_00000000-0000-4000-8000-000000000099' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:07:35] unknown_token from=919999999999 token=00000000-0000-4000-8000-000000000099

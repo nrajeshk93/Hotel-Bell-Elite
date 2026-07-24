@@ -7,7 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=14">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=12">
 <script>
 (function(){
   try{
@@ -196,6 +197,7 @@
             <table class="pos-set-table" id="pos-set-tables-list">
               <thead>
                 <tr>
+                  <th class="pos-set-table-drag-col"><span class="visually-hidden">Reorder</span></th>
                   <th>Name</th>
                   <th>Area</th>
                   <th>Seats</th>
@@ -338,36 +340,7 @@
       </section>
 
       {# ——— Menu ——— #}
-      <section class="pos-set-panel" id="pos-set-panel-menu" data-panel="menu" role="tabpanel" hidden>
-        <div class="pos-set-panel-head">
-          <div>
-            <h2>Menu</h2>
-            <p>Categories and items linked to Product Master.</p>
-          </div>
-          <div class="pos-set-panel-actions">
-            <button type="button" class="pos-set-btn pos-set-btn--ghost" id="pos-menu-add-category" data-pos-menu-action="add-category">Add category</button>
-            <button type="button" class="pos-set-btn pos-set-btn--primary" id="pos-menu-add-item" data-pos-menu-action="add-item" disabled>Add menu item</button>
-          </div>
-        </div>
-        <div class="pos-menu-layout" id="pos-menu-layout">
-          <article class="pos-set-card pos-menu-pane pos-menu-pane--cats">
-            <div class="pos-menu-pane-head">
-              <h3>Categories</h3>
-              <span class="pos-menu-pane-meta" id="pos-menu-cat-count">—</span>
-            </div>
-            <ul class="pos-set-list pos-set-list--rich pos-menu-cat-list" id="pos-menu-cat-list" role="listbox" aria-label="Menu categories"></ul>
-            <p class="pos-menu-empty" id="pos-menu-cat-empty" hidden>No categories yet. Add one to start.</p>
-          </article>
-          <article class="pos-set-card pos-menu-pane pos-menu-pane--items">
-            <div class="pos-menu-pane-head">
-              <h3 id="pos-menu-items-title">Items</h3>
-              <span class="pos-menu-pane-meta" id="pos-menu-item-count">Select a category</span>
-            </div>
-            <ul class="pos-set-list pos-set-list--rich pos-menu-item-list" id="pos-menu-item-list" role="list" aria-label="Menu items"></ul>
-            <p class="pos-menu-empty" id="pos-menu-item-empty">Select a category to view and add items.</p>
-          </article>
-        </div>
-      </section>
+      {% include 'partials/pos_menu_panel.html' %}
 
       {# ——— Printers ——— #}
       <section class="pos-set-panel" id="pos-set-panel-printers" data-panel="printers" role="tabpanel" hidden>
@@ -471,82 +444,7 @@
     </div>
   </div>
 
-  {# Menu — Add / edit category #}
-  <div class="modal-overlay" id="pos-menu-cat-modal" role="dialog" aria-modal="true" aria-labelledby="pos-menu-cat-title">
-    <div class="modal-box pos-menu-modal-box">
-      <h3>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-        <span id="pos-menu-cat-title">Add category</span>
-      </h3>
-      <p class="pos-floor-props-copy">Group menu items for the restaurant POS.</p>
-      <div id="pos-menu-cat-err" class="pos-menu-modal-err" hidden></div>
-      <form id="pos-menu-cat-form" autocomplete="off" data-de-hard-nav>
-        <input type="hidden" id="pos-menu-cat-id" value="">
-        <div class="pos-floor-props-field">
-          <label for="pos-menu-cat-name">Name *</label>
-          <input type="text" id="pos-menu-cat-name" maxlength="80" placeholder="e.g. Starters" required>
-        </div>
-        <label class="pos-set-toggle" style="margin-bottom:18px">
-          <input type="checkbox" id="pos-menu-cat-visible" checked>
-          <span class="pos-set-toggle-ui" aria-hidden="true"></span>
-          <span>Visible on POS</span>
-        </label>
-        <div class="modal-actions pos-floor-props-actions">
-          <button type="button" class="btn btn-secondary btn-danger" id="pos-menu-cat-delete" hidden>Delete</button>
-          <span class="pos-floor-props-actions-spacer" aria-hidden="true"></span>
-          <button type="button" class="btn btn-secondary" data-pos-menu-dismiss="cat">Cancel</button>
-          <button type="submit" class="btn btn-primary" id="pos-menu-cat-save">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  {# Menu — Add / edit item from Product Master #}
-  <div class="modal-overlay" id="pos-menu-item-modal" role="dialog" aria-modal="true" aria-labelledby="pos-menu-item-title">
-    <div class="modal-box pos-menu-modal-box pos-menu-item-modal-box">
-      <h3>
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-        <span id="pos-menu-item-title">Add menu item</span>
-      </h3>
-      <p class="pos-floor-props-copy" id="pos-menu-item-copy">Set the menu name and rate, then add ingredients with the quantity required.</p>
-      <div id="pos-menu-item-err" class="pos-menu-modal-err" hidden></div>
-      <form id="pos-menu-item-form" autocomplete="off" novalidate data-de-hard-nav>
-        <input type="hidden" id="pos-menu-item-id" value="">
-        <input type="hidden" id="pos-menu-item-category-id" value="">
-        <div class="pos-floor-props-field">
-          <label for="pos-menu-item-name">Menu *</label>
-          <input type="text" id="pos-menu-item-name" maxlength="120" placeholder="e.g. Menu item name" required>
-        </div>
-        <div class="pos-floor-props-grid">
-          <div class="pos-floor-props-field">
-            <label for="pos-menu-item-code">Code</label>
-            <input type="text" id="pos-menu-item-code" maxlength="40" placeholder="Optional SKU">
-          </div>
-          <div class="pos-floor-props-field">
-            <label for="pos-menu-item-rate">Rate (₹) *</label>
-            <input type="number" id="pos-menu-item-rate" min="0" step="0.01" placeholder="0.00" required>
-          </div>
-        </div>
-        <div class="pos-floor-props-field">
-          <label for="pos-menu-item-variant">Variant</label>
-          <input type="text" id="pos-menu-item-variant" maxlength="80" placeholder="e.g. Half / Full (optional)">
-        </div>
-        <div class="pos-menu-recipe-block">
-          <div class="pos-floor-props-field">
-            {{ ep_listbox('add_ingredient', 'Ingredients', [], '', placeholder='Add ingredient…', searchable=true, field_id='pos-menu-item-product', change_handler='onPosMenuProductPicked', extra_class='pos-floor-props-listbox pos-menu-listbox') }}
-          </div>
-          <ul class="pos-menu-recipe-list" id="pos-menu-recipe-list" aria-label="Recipe ingredients"></ul>
-          <p class="pos-menu-recipe-empty" id="pos-menu-recipe-empty">No ingredients yet. Pick products from Product Master.</p>
-        </div>
-        <div class="modal-actions pos-floor-props-actions">
-          <button type="button" class="btn btn-secondary btn-danger" id="pos-menu-item-delete" hidden>Delete</button>
-          <span class="pos-floor-props-actions-spacer" aria-hidden="true"></span>
-          <button type="button" class="btn btn-secondary" data-pos-menu-dismiss="item">Cancel</button>
-          <button type="button" class="btn btn-primary" id="pos-menu-item-save">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  {% include 'partials/pos_menu_modals.html' %}
 </div>
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=24"></script>
@@ -597,8 +495,8 @@
   applySectionBoot(readStoredSection());
 })(window);
 </script>
-<script src="{{ url_for('static', filename='pos_settings.js') }}?v=15"></script>
-<script src="{{ url_for('static', filename='pos_menu.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='pos_settings.js') }}?v=20"></script>
+<script src="{{ url_for('static', filename='pos_menu.js') }}?v=25"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

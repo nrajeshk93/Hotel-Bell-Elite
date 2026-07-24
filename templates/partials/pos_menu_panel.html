@@ -1,0 +1,154 @@
+{# Restaurant Menu & Margin Calculator. Used by Settings panel and /point-of-sale/menu. #}
+{# Caller may set pos_menu_panel_active=true for the dedicated Menu page. #}
+{# pos_menu_standalone=true: filters/actions live in the page header (ledger shell). #}
+{% set menu_panel_active = pos_menu_panel_active|default(false) %}
+{% set menu_standalone = pos_menu_standalone|default(false) %}
+<section class="pos-set-panel pos-menu-calc{% if menu_panel_active %} is-active{% endif %}" id="pos-set-panel-menu" data-panel="menu" role="tabpanel"{% if not menu_panel_active %} hidden{% endif %}>
+  <div class="pl-summary-row pos-menu-kpis" id="pos-menu-kpis" aria-label="Menu margin summary">
+    <article class="card pl-summary-card hbe-kpi-card pos-menu-kpi pos-menu-kpi--items" aria-label="Total menu items">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Total Menu Items</div>
+          <div class="pl-summary-value" id="pos-menu-kpi-total">—</div>
+          <div class="pl-summary-meta" id="pos-menu-kpi-total-meta">in current filters</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card pos-menu-kpi pos-menu-kpi--cost" aria-label="Average food cost">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Avg. Food Cost %</div>
+          <div class="pl-summary-value" id="pos-menu-kpi-food-cost">—</div>
+          <div class="pl-summary-meta" id="pos-menu-kpi-food-cost-meta">recipe cost vs rate</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card pos-menu-kpi pos-menu-kpi--margin" aria-label="Average margin">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Avg. Margin %</div>
+          <div class="pl-summary-value" id="pos-menu-kpi-margin">—</div>
+          <div class="pl-summary-meta" id="pos-menu-kpi-margin-meta">gross margin</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card pos-menu-kpi pos-menu-kpi--low" aria-label="Low margin items">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--red" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Low Margin Items</div>
+          <div class="pl-summary-value" id="pos-menu-kpi-low">—</div>
+          <div class="pl-summary-meta" id="pos-menu-kpi-low-meta">under 30% margin</div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  {% if not menu_standalone %}
+  <div class="pos-menu-toolbar" id="pos-menu-toolbar">
+    <div class="pos-menu-filter-form pos-menu-filter-form--embed" aria-label="Menu filters">
+      <div class="se-filter-chip se-filter-chip--search pl-search-chip pos-menu-search-chip" id="pos-menu-search-chip">
+        <label class="se-filter-chip-label" for="pos-menu-search">Search</label>
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          </span>
+          <input type="search" id="pos-menu-search" class="pl-search-input" placeholder="Menu item, code, category…" autocomplete="off" aria-label="Search menu items">
+        </div>
+      </div>
+      <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pos-menu-filter-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-change="posMenuCategoryFilterChanged" id="pos-menu-filter-category-listbox">
+        <span class="se-filter-chip-label" id="pos-menu-filter-category-label">Category</span>
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+          </span>
+          <input type="hidden" id="pos-menu-filter-category" value="">
+          <button type="button" class="se-filter-chip-trigger" id="pos-menu-filter-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-filter-category-list" aria-labelledby="pos-menu-filter-category-label pos-menu-filter-category-value">
+            <span class="se-filter-chip-value" id="pos-menu-filter-category-value">All Categories</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox" id="pos-menu-filter-category-list" role="listbox" aria-labelledby="pos-menu-filter-category-label" hidden>
+          <div class="ep-listbox-search-wrap">
+            <input type="search" class="ep-listbox-search" placeholder="Search category…" autocomplete="off" aria-label="Search categories">
+          </div>
+          <div class="ep-listbox-options" id="pos-menu-filter-category-options">
+            <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="" data-name="all categories" data-label="All Categories" aria-selected="true">All Categories</button>
+          </div>
+        </div>
+      </div>
+      <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pos-menu-filter-listbox" data-se-listbox data-se-listbox-change="posMenuStatusFilterChanged" id="pos-menu-filter-status-listbox">
+        <span class="se-filter-chip-label" id="pos-menu-filter-status-label">Status</span>
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+          </span>
+          <input type="hidden" id="pos-menu-filter-status" value="">
+          <button type="button" class="se-filter-chip-trigger" id="pos-menu-filter-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-filter-status-list" aria-labelledby="pos-menu-filter-status-label pos-menu-filter-status-value">
+            <span class="se-filter-chip-value" id="pos-menu-filter-status-value">All Status</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox" id="pos-menu-filter-status-list" role="listbox" aria-labelledby="pos-menu-filter-status-label" hidden>
+          <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="" data-name="all status" data-label="All Status" aria-selected="true">All Status</button>
+          <button type="button" class="se-filter-listbox-option" role="option" data-value="visible" data-name="visible" data-label="Visible" aria-selected="false">Visible</button>
+          <button type="button" class="se-filter-listbox-option" role="option" data-value="hidden" data-name="hidden" data-label="Hidden" aria-selected="false">Hidden</button>
+        </div>
+      </div>
+    </div>
+    <div class="pos-menu-toolbar-actions">
+      <button type="button" class="btn" id="pos-menu-export" data-pos-menu-action="export" title="Export filtered rows as CSV">Export</button>
+      <button type="button" class="btn" id="pos-menu-add-category" data-pos-menu-action="add-category">Add category</button>
+      <button type="button" class="btn btn-primary" id="pos-menu-add-item" data-pos-menu-action="add-item">Add Menu</button>
+    </div>
+  </div>
+  {% endif %}
+
+  <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel pos-menu-table-card" id="pos-menu-table-card" aria-label="Menu items">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+        <span>Menu items</span>
+      </div>
+      <span class="pl-count" id="pos-menu-entry-count">0 items</span>
+    </div>
+    <div class="card-body pl-card-body--flush">
+      <div class="pl-table-wrap pos-menu-table-scroll" tabindex="0" aria-label="Menu items, scroll for more">
+        <table class="pl-table pos-menu-table" id="pos-menu-table" aria-label="Menu margin calculator">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="name" scope="col" tabindex="0" aria-sort="none">Menu Item</th>
+              <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
+              <th class="pl-sortable pl-col-amount pos-menu-num" data-sort="rate" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Selling Price (₹)</th>
+              <th class="pl-sortable pl-col-amount pos-menu-num" data-sort="food_cost" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Food Cost (₹)</th>
+              <th class="pl-sortable pl-col-amount pos-menu-num" data-sort="gross_margin" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Margin (₹)</th>
+              <th class="pl-sortable pl-col-amount pos-menu-num" data-sort="margin_pct" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Margin %</th>
+              <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+              <th scope="col" class="pl-col-actions pos-menu-actions-col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="pos-menu-table-body">
+            <tr class="pos-menu-table-empty-row">
+              <td colspan="8">Loading menu…</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </article>
+</section>

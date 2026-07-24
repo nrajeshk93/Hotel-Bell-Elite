@@ -1232,6 +1232,18 @@
       event.preventDefault();
       event.stopPropagation();
       window.alert('Could not save — missing indent id. Close and open Edit again.');
+      return;
+    }
+    // Edit modal bypasses soft-nav submit locks — disable to prevent double WhatsApp notify.
+    if (form.getAttribute('data-st-submit-lock') === '1') {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    form.setAttribute('data-st-submit-lock', '1');
+    var controls = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+    for (var i = 0; i < controls.length; i++) {
+      controls[i].disabled = true;
     }
   }
 

@@ -127,6 +127,7 @@
         <a class="de-nav-subitem{% if pos_view == 'tables' or pos_view == 'home' %} is-active{% endif %}" id="de-nav-pos-tables" href="{{ url_for('point_of_sale') }}"{% if pos_view == 'tables' or pos_view == 'home' %} aria-current="page"{% endif %}>Tables</a>
         <a class="de-nav-subitem{% if pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-pos-invoice" href="{{ url_for('point_of_sale_invoice') }}"{% if pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
         <a class="de-nav-subitem{% if pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-pos-invoice-ledger" href="{{ url_for('point_of_sale_invoice_ledger') }}"{% if pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+        <a class="de-nav-subitem{% if pos_view == 'menu' %} is-active{% endif %}" id="de-nav-pos-menu" href="{{ url_for('point_of_sale_menu') }}"{% if pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
         <a class="de-nav-subitem{% if pos_view == 'settings' %} is-active{% endif %}" id="de-nav-pos-settings" href="{{ url_for('point_of_sale_settings') }}"{% if pos_view == 'settings' %} aria-current="page"{% endif %}>Settings</a>
       </div>
     </div>

@@ -13,7 +13,11 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 
 from db import ensure_stores_schema, get_db
 from embed_helpers import is_embed_request
-from whatsapp_indent import notify_indent_pending_whatsapp, supersede_indent_whatsapp_sends
+from whatsapp_indent import (
+    assign_fresh_approval_token,
+    notify_indent_pending_whatsapp,
+    supersede_indent_whatsapp_sends,
+)
 from workspace_access import user_can_access_stores_submodule
 
 STORES_OUTLETS = (
@@ -124,12 +128,49 @@ def _now() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _whatsapp_indent_host_allowed() -> tuple[bool, str]:
+    """Block live WhatsApp sends when this app host is not the webhook host.
+
+    Meta delivers Approve/Reject webhooks to production only. Submitting from a
+    local preview with live credentials creates tokens in the local DB that
+    production cannot find (unknown_token). Set ``WHATSAPP_INDENT_PUBLIC_HOST``
+    (e.g. belleliteaccounts.com) so off-host live sends fail with a clear flash.
+    """
+    import os
+
+    expected = (os.environ.get("WHATSAPP_INDENT_PUBLIC_HOST") or "").strip().lower()
+    if not expected:
+        return True, ""
+    try:
+        from whatsapp_client import whatsapp_live_sends_allowed
+
+        if not whatsapp_live_sends_allowed():
+            return True, ""
+    except Exception:
+        pass
+    host = (request.host or "").split(":")[0].strip().lower()
+    if not host:
+        return True, ""
+    if host == expected or host.endswith("." + expected):
+        return True, ""
+    return (
+        False,
+        f"WhatsApp approval must be sent from {expected} (where webhooks arrive). "
+        "Open Indent on that site and Send for Approval again — local preview "
+        "cannot receive Approve/Reject clicks.",
+    )
+
+
 def _notify_indent_pending_whatsapp(conn, indent_id: int, outlet: str) -> None:
     """Best-effort WhatsApp indent_approval notify; never blocks indent save.
 
     Success is silent in the UI (indent flash already says sent for approval).
     Failures still surface so staff know WhatsApp did not go out.
     """
+    allowed, host_msg = _whatsapp_indent_host_allowed()
+    if not allowed:
+        flash(host_msg, "error")
+        return
     try:
         ok, message = notify_indent_pending_whatsapp(
             conn,
@@ -1316,6 +1357,7 @@ def stores_indent():
                     is_new_round = won_transition and status == "pending" and prior_status != "pending"
                     if is_new_round:
                         supersede_indent_whatsapp_sends(conn, indent_id)
+                        assign_fresh_approval_token(conn, indent_id)
                     conn.commit()
                     if prior_status == "rejected":
                         msg = "Indent updated and sent for approval."
@@ -1408,6 +1450,8 @@ def stores_indent():
                             line.get("approximate_price"),
                         ),
                     )
+                if status == "pending":
+                    assign_fresh_approval_token(conn, new_id)
                 conn.commit()
                 msg = "Indent sent for approval." if status == "pending" else "Indent saved as draft."
                 flash(msg, "ok")
@@ -1753,6 +1797,7 @@ def stores_indent_submit(indent_id: int):
             flash("Indent already sent for approval.", "ok")
             return redirect(url_for("stores_indent", outlet=outlet))
         supersede_indent_whatsapp_sends(conn, indent_id)
+        assign_fresh_approval_token(conn, indent_id)
         conn.commit()
         flash("Indent sent for approval.", "ok")
         _notify_indent_pending_whatsapp(conn, indent_id, outlet)

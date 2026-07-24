@@ -1,0 +1,235 @@
+{# Menu category / item modals. Soft-nav swaps .de-main-wrapper — keep modals inside the page root. #}
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
+<div class="modal-overlay" id="pos-menu-cat-modal" role="dialog" aria-modal="true" aria-labelledby="pos-menu-cat-title">
+  <div class="modal-box pos-menu-modal-box">
+    <h3>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+      <span id="pos-menu-cat-title">Add category</span>
+    </h3>
+    <p class="pos-floor-props-copy">Group menu items for the restaurant POS.</p>
+    <div id="pos-menu-cat-err" class="pos-menu-modal-err" hidden></div>
+    <form id="pos-menu-cat-form" autocomplete="off" data-de-hard-nav>
+      <input type="hidden" id="pos-menu-cat-id" value="">
+      <div class="pos-floor-props-field">
+        <label for="pos-menu-cat-name">Name *</label>
+        <input type="text" id="pos-menu-cat-name" maxlength="80" placeholder="e.g. Starters" required>
+      </div>
+      <label class="pos-set-toggle" style="margin-bottom:18px">
+        <input type="checkbox" id="pos-menu-cat-visible" checked>
+        <span class="pos-set-toggle-ui" aria-hidden="true"></span>
+        <span>Visible on POS</span>
+      </label>
+      <div class="modal-actions pos-floor-props-actions">
+        <button type="button" class="btn btn-secondary btn-danger" id="pos-menu-cat-delete" hidden>Delete</button>
+        <span class="pos-floor-props-actions-spacer" aria-hidden="true"></span>
+        <button type="button" class="btn btn-secondary" data-pos-menu-dismiss="cat">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="pos-menu-cat-save">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="pos-menu-item-modal" role="dialog" aria-modal="true" aria-labelledby="pos-menu-item-title">
+  <div class="modal-box pos-menu-modal-box pos-menu-item-modal-box">
+    <h3>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span id="pos-menu-item-title">Add menu item</span>
+    </h3>
+    <p class="pos-floor-props-copy" id="pos-menu-item-copy">Set the menu name and rate, then add ingredients with the quantity required.</p>
+    <div id="pos-menu-item-err" class="pos-menu-modal-err" hidden></div>
+    <form id="pos-menu-item-form" class="pos-menu-item-form" autocomplete="off" novalidate data-de-hard-nav>
+      <div class="pos-menu-item-modal-body">
+        <input type="hidden" id="pos-menu-item-id" value="">
+        <input type="hidden" id="pos-menu-item-category-id" value="">
+        <div class="pos-floor-props-field">
+          <label for="pos-menu-item-category">Category *</label>
+          <select id="pos-menu-item-category" required>
+            <option value="">Select category…</option>
+          </select>
+        </div>
+        <div class="pos-floor-props-field">
+          <label for="pos-menu-item-name">Menu *</label>
+          <input type="text" id="pos-menu-item-name" maxlength="120" placeholder="e.g. Menu item name" required>
+        </div>
+        <div class="pos-floor-props-grid">
+          <div class="pos-floor-props-field">
+            <label for="pos-menu-item-code">Code</label>
+            <input type="text" id="pos-menu-item-code" maxlength="40" placeholder="Optional SKU">
+          </div>
+          <div class="pos-floor-props-field">
+            <label for="pos-menu-item-rate">Rate (₹) *</label>
+            <input type="number" id="pos-menu-item-rate" min="0" step="0.01" placeholder="0.00" required>
+          </div>
+        </div>
+        <div class="pos-floor-props-grid">
+          <div class="pos-floor-props-field">
+            <label for="pos-menu-item-variant">Variant</label>
+            <input type="text" id="pos-menu-item-variant" maxlength="80" placeholder="e.g. Half / Full (optional)">
+          </div>
+          <div class="pos-floor-props-field">
+            <label for="pos-menu-item-menu-type">Menu Type</label>
+            <select id="pos-menu-item-menu-type">
+              <option value="">Select…</option>
+              <option value="veg">Veg</option>
+              <option value="non_veg">Non-Veg</option>
+            </select>
+          </div>
+        </div>
+        <div class="pos-menu-recipe-block">
+          <div class="pos-floor-props-field">
+            {{ ep_listbox('add_ingredient', 'Ingredients', [], '', placeholder='Add ingredient…', searchable=true, field_id='pos-menu-item-product', change_handler='onPosMenuProductPicked', extra_class='pos-floor-props-listbox pos-menu-listbox') }}
+          </div>
+          <ul class="pos-menu-recipe-list" id="pos-menu-recipe-list" aria-label="Recipe ingredients"></ul>
+          <p class="pos-menu-recipe-empty" id="pos-menu-recipe-empty">No ingredients yet. Pick products from Product Master.</p>
+        </div>
+      </div>
+      <div class="modal-actions pos-floor-props-actions">
+        <button type="button" class="btn btn-secondary btn-danger" id="pos-menu-item-delete" hidden>Delete</button>
+        <span class="pos-floor-props-actions-spacer" aria-hidden="true"></span>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Large Menu Details popup — opened from table row click (not ⋮). #}
+<div class="modal-overlay pos-md-overlay" id="pos-menu-details-modal" role="dialog" aria-modal="true" aria-labelledby="pos-md-title" hidden>
+  <div class="pos-md-dialog" role="document">
+    <header class="pos-md-header">
+      <div class="pos-md-header-main">
+        <div class="pos-md-title-row">
+          <h2 class="pos-md-title" id="pos-md-title">Menu item</h2>
+          <span class="pos-md-status" id="pos-md-status" data-status="visible">
+            <span class="pos-md-status-dot" aria-hidden="true"></span>
+            <span id="pos-md-status-label">Visible</span>
+          </span>
+        </div>
+        <div class="pos-md-chips" id="pos-md-chips" aria-label="Menu summary chips"></div>
+      </div>
+      <div class="pos-md-header-actions">
+        <button type="button" class="btn btn-secondary pos-md-btn-edit" id="pos-md-edit" data-pos-menu-action="details-edit">Edit Menu</button>
+        <div class="pos-menu-row-menu pos-md-more-wrap">
+          <button type="button" class="pos-menu-more-btn pos-md-more-btn" id="pos-md-more" data-pos-menu-action="details-more" aria-haspopup="menu" aria-expanded="false" title="More actions" aria-label="More actions">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.75" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.75" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.75" fill="currentColor" stroke="none"/></svg>
+          </button>
+          <div class="pos-menu-more-pop pos-md-more-pop" id="pos-md-more-pop" role="menu" hidden>
+            <button type="button" role="menuitem" data-pos-menu-action="details-edit">Edit Menu</button>
+            <button type="button" role="menuitem" class="is-danger" data-pos-menu-action="details-delete">Delete</button>
+          </div>
+        </div>
+        <button type="button" class="pos-md-close" id="pos-md-close" data-pos-menu-action="details-close" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="pos-md-kpis" id="pos-md-kpis" aria-label="Cost and margin summary"></div>
+
+    <div class="pos-md-body">
+      <nav class="pos-md-nav" aria-label="Menu details sections">
+        <button type="button" class="pos-md-nav-btn is-active" data-pos-md-tab="overview" aria-selected="true">Overview</button>
+        <button type="button" class="pos-md-nav-btn" data-pos-md-tab="recipe" aria-selected="false">Recipe &amp; Ingredients</button>
+        <button type="button" class="pos-md-nav-btn" data-pos-md-tab="fifo" aria-selected="false">FIFO Costing</button>
+        <button type="button" class="pos-md-nav-btn" data-pos-md-tab="margin" aria-selected="false">Margin Analysis</button>
+        <button type="button" class="pos-md-nav-btn" data-pos-md-tab="history" aria-selected="false">Price History</button>
+        <button type="button" class="pos-md-nav-btn" data-pos-md-tab="notes" aria-selected="false">Notes</button>
+      </nav>
+
+      <div class="pos-md-panels">
+        <section class="pos-md-panel is-active" id="pos-md-panel-overview" data-pos-md-panel="overview" aria-label="Overview">
+          <div class="pos-md-overview-grid" id="pos-md-overview-grid"></div>
+        </section>
+
+        <section class="pos-md-panel" id="pos-md-panel-recipe" data-pos-md-panel="recipe" aria-label="Recipe and ingredients" hidden>
+          <div class="pos-md-table-wrap">
+            <table class="pos-md-table" id="pos-md-recipe-table">
+              <thead>
+                <tr>
+                  <th>Ingredient</th>
+                  <th class="pos-md-num">Required Qty</th>
+                  <th>Unit</th>
+                  <th class="pos-md-num">Current FIFO Unit Cost</th>
+                  <th class="pos-md-num">Ingredient Cost</th>
+                </tr>
+              </thead>
+              <tbody id="pos-md-recipe-body"></tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="4">Total Recipe Cost</td>
+                  <td class="pos-md-num" id="pos-md-recipe-total">—</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
+        <section class="pos-md-panel" id="pos-md-panel-fifo" data-pos-md-panel="fifo" aria-label="FIFO costing" hidden>
+          <div class="pos-md-banner" id="pos-md-fifo-banner" role="note"></div>
+          <div class="pos-md-table-wrap">
+            <table class="pos-md-table" id="pos-md-fifo-table">
+              <thead>
+                <tr>
+                  <th>Batch No</th>
+                  <th>Purchase Date</th>
+                  <th>Supplier</th>
+                  <th class="pos-md-num">Available Qty</th>
+                  <th class="pos-md-num">Unit Cost</th>
+                  <th class="pos-md-num">Qty Used</th>
+                  <th class="pos-md-num">Cost Used</th>
+                </tr>
+              </thead>
+              <tbody id="pos-md-fifo-body"></tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="6">Current FIFO Food Cost</td>
+                  <td class="pos-md-num" id="pos-md-fifo-total">—</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <div class="pos-md-fifo-actions">
+            <a class="btn btn-secondary" id="pos-md-view-inventory" href="/stores/stock?outlet=restaurant" target="_blank" rel="noopener">View Inventory Batch</a>
+          </div>
+        </section>
+
+        <section class="pos-md-panel" id="pos-md-panel-margin" data-pos-md-panel="margin" aria-label="Margin analysis" hidden>
+          <div class="pos-md-analysis-grid" id="pos-md-analysis-grid"></div>
+        </section>
+
+        <section class="pos-md-panel" id="pos-md-panel-history" data-pos-md-panel="history" aria-label="Price history" hidden>
+          <div class="pos-md-table-wrap">
+            <table class="pos-md-table" id="pos-md-history-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th class="pos-md-num">Old Price</th>
+                  <th class="pos-md-num">New Price</th>
+                  <th>Reason</th>
+                  <th>Updated By</th>
+                </tr>
+              </thead>
+              <tbody id="pos-md-history-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="pos-md-panel" id="pos-md-panel-notes" data-pos-md-panel="notes" aria-label="Notes" hidden>
+          <label class="pos-md-notes-label" for="pos-md-notes">Chef / admin notes</label>
+          <textarea id="pos-md-notes" class="pos-md-notes" rows="12" maxlength="8000" placeholder="Add prep notes, plating tips, allergen callouts…"></textarea>
+        </section>
+      </div>
+    </div>
+
+    <footer class="pos-md-footer">
+      <div class="pos-md-footer-meta" id="pos-md-footer-meta">
+        <span>Last Updated <strong id="pos-md-updated-at">—</strong></span>
+        <span class="pos-md-footer-sep" aria-hidden="true">·</span>
+        <span>Updated By <strong id="pos-md-updated-by">—</strong></span>
+      </div>
+      <div class="pos-md-footer-actions">
+        <button type="button" class="btn btn-secondary" data-pos-menu-action="details-close">Close</button>
+        <button type="button" class="btn btn-primary" id="pos-md-save" data-pos-menu-action="details-save">Save Changes</button>
+      </div>
+    </footer>
+    <div id="pos-md-err" class="pos-menu-modal-err pos-md-err" hidden></div>
+  </div>
+</div>

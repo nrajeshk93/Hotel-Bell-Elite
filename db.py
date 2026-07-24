@@ -127,6 +127,18 @@ def ensure_pos_schema(conn):
     }
     if "product_id" not in item_cols:
         cursor.execute("ALTER TABLE pos_menu_items ADD COLUMN product_id INTEGER")
+    _pos_menu_item_extra_cols = {
+        "menu_type": "TEXT NOT NULL DEFAULT ''",
+        "portion_size": "TEXT NOT NULL DEFAULT ''",
+        "prep_time_mins": "INTEGER",
+        "shelf_life": "TEXT NOT NULL DEFAULT ''",
+        "notes": "TEXT NOT NULL DEFAULT ''",
+        "target_margin_pct": "REAL",
+        "updated_by": "TEXT NOT NULL DEFAULT ''",
+    }
+    for col_name, col_ddl in _pos_menu_item_extra_cols.items():
+        if col_name not in item_cols:
+            cursor.execute(f"ALTER TABLE pos_menu_items ADD COLUMN {col_name} {col_ddl}")
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_pos_menu_items_category
@@ -156,6 +168,26 @@ def ensure_pos_schema(conn):
         """
         CREATE INDEX IF NOT EXISTS idx_pos_menu_recipe_item
         ON pos_menu_recipe_lines(menu_item_id, sort_order)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_menu_price_history (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            menu_item_id  INTEGER NOT NULL,
+            old_price     REAL    NOT NULL,
+            new_price     REAL    NOT NULL,
+            reason        TEXT    NOT NULL DEFAULT '',
+            updated_by    TEXT    NOT NULL DEFAULT '',
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (menu_item_id) REFERENCES pos_menu_items(id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_menu_price_history_item
+        ON pos_menu_price_history(menu_item_id, created_at DESC, id DESC)
         """
     )
     cursor.execute(
@@ -207,14 +239,22 @@ def ensure_pos_schema(conn):
     invoice_cols = {
         row[1] for row in cursor.execute("PRAGMA table_info(pos_invoices)").fetchall()
     }
-    # Bill lifecycle ('open' -> 'closed') and KOT tracking — occupancy flips on the
-    # first KOT sent for an order, not on a plain save; closing a bill frees its table.
+    # Bill lifecycle ('open' -> 'closed') and KOT tracking — occupancy flips when a
+    # dine-in bill with a table is saved (items on the table); closing frees it.
     if "status" not in invoice_cols:
         cursor.execute("ALTER TABLE pos_invoices ADD COLUMN status TEXT NOT NULL DEFAULT 'open'")
     if "kot_sent" not in invoice_cols:
         cursor.execute("ALTER TABLE pos_invoices ADD COLUMN kot_sent INTEGER NOT NULL DEFAULT 0")
     if "first_kot_at" not in invoice_cols:
         cursor.execute("ALTER TABLE pos_invoices ADD COLUMN first_kot_at TEXT NOT NULL DEFAULT ''")
+    if "customer_bill_sent" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN customer_bill_sent INTEGER NOT NULL DEFAULT 0"
+        )
+    if "customer_bill_at" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN customer_bill_at TEXT NOT NULL DEFAULT ''"
+        )
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_pos_invoices_table_open
@@ -311,7 +351,7 @@ def _backfill_customers_from_invoices(conn):
     seen = set()
     for row in rows:
         mobile = _normalize_customer_mobile(row["customer_mobile"] if row else "")
-        if not mobile or mobile in seen:
+        if len(mobile) != 10 or mobile in seen:
             continue
         seen.add(mobile)
         first_name = _normalize_customer_first_name(
@@ -407,21 +447,26 @@ def search_customers(conn, query, limit=8):
 
 
 def upsert_customer(conn, first_name, mobile):
-    """Create or update Customer Master from POS (requires mobile). Returns customer dict or None."""
+    """Create or update Customer Master from POS (requires 10-digit mobile).
+
+    Unique by normalized mobile. If the mobile already exists, update first name
+    when a new name is provided (or fill when the stored name is blank). Incomplete
+    mobiles are ignored so partial POS input does not create junk rows.
+    """
     ensure_customers_schema(conn)
     mobile = _normalize_customer_mobile(mobile)
     first_name = _normalize_customer_first_name(first_name)
-    if not mobile:
+    if len(mobile) != 10:
         return None
-    if not first_name:
-        first_name = "Guest"
 
     existing = conn.execute(
         "SELECT id, first_name, mobile FROM customers WHERE mobile = ?",
         (mobile,),
     ).fetchone()
     if existing:
-        if (existing["first_name"] or "") != first_name:
+        existing_name = _normalize_customer_first_name(existing["first_name"])
+        # Update / fill only when POS supplies a name that should replace blank or prior.
+        if first_name and first_name != existing_name:
             conn.execute(
                 f"""
                 UPDATE customers
@@ -432,6 +477,8 @@ def upsert_customer(conn, first_name, mobile):
             )
         return get_customer(conn, existing["id"])
 
+    if not first_name:
+        first_name = "Guest"
     cursor = conn.execute(
         f"""
         INSERT INTO customers (first_name, mobile, created_at, updated_at)
@@ -660,17 +707,201 @@ def soft_delete_pos_menu_category(conn, category_id):
     return True
 
 
+# Margin % badge thresholds for Menu & Margin Calculator UI.
+# ≥60% healthy (green), 30–60% moderate (orange), <30% low (red).
+POS_MENU_MARGIN_HEALTHY_PCT = 60.0
+POS_MENU_MARGIN_MODERATE_PCT = 30.0
+
+
+def _normalize_pos_menu_unit(unit):
+    """Normalize product/recipe unit aliases for cost conversion."""
+    u = str(unit or "").strip().lower()
+    if u in ("ltr", "l", "litre", "liters", "litres"):
+        return "liter"
+    if u in ("gram", "grams"):
+        return "g"
+    if u in ("kilogram", "kilograms", "kgs"):
+        return "kg"
+    if u in ("pc", "piece", "pieces"):
+        return "pcs"
+    return u or "pcs"
+
+
+def _qty_in_product_units(qty, recipe_unit, product_unit):
+    """Convert a recipe quantity into Product Master default-unit quantity.
+
+    Returns None when units are incompatible (cannot cost the line).
+    """
+    try:
+        amount = float(qty)
+    except (TypeError, ValueError):
+        return None
+    if amount <= 0 or amount != amount:
+        return None
+    ru = _normalize_pos_menu_unit(recipe_unit)
+    pu = _normalize_pos_menu_unit(product_unit)
+
+    # Weight family
+    if pu in ("kg", "g") and ru in ("kg", "g"):
+        grams = amount * 1000.0 if ru == "kg" else amount
+        return grams / 1000.0 if pu == "kg" else grams
+    # Volume family
+    if pu in ("liter", "ml") and ru in ("liter", "ml"):
+        ml = amount * 1000.0 if ru == "liter" else amount
+        return ml / 1000.0 if pu == "liter" else ml
+    # Count family
+    if pu in ("pcs", "dozen") and ru in ("pcs", "dozen"):
+        pieces = amount * 12.0 if ru == "dozen" else amount
+        return pieces / 12.0 if pu == "dozen" else pieces
+    # Same unit (bunch, bottle, pack, case, …)
+    if pu == ru:
+        return amount
+    return None
+
+
+def recipe_line_food_cost(qty, recipe_unit, product_unit, unit_price):
+    """Cost of one recipe line: qty × unit price after unit conversion.
+
+    ``unit_price`` is Product Master approximate_price per default unit.
+    Returns None when price or units are missing/incompatible.
+    """
+    try:
+        price = float(unit_price) if unit_price is not None else None
+    except (TypeError, ValueError):
+        price = None
+    if price is None or price < 0 or price != price:
+        return None
+    converted = _qty_in_product_units(qty, recipe_unit, product_unit)
+    if converted is None:
+        return None
+    return round(converted * price, 4)
+
+
+def margin_band_for_pct(margin_pct):
+    """Return 'healthy' | 'moderate' | 'low' | None for a margin percentage."""
+    if margin_pct is None:
+        return None
+    try:
+        pct = float(margin_pct)
+    except (TypeError, ValueError):
+        return None
+    if pct != pct:  # NaN
+        return None
+    if pct >= POS_MENU_MARGIN_HEALTHY_PCT:
+        return "healthy"
+    if pct >= POS_MENU_MARGIN_MODERATE_PCT:
+        return "moderate"
+    return "low"
+
+
+def margin_status_for_pct(margin_pct):
+    """Return Excellent/Good/Average/Low/Critical label for margin analysis UI."""
+    if margin_pct is None:
+        return None
+    try:
+        pct = float(margin_pct)
+    except (TypeError, ValueError):
+        return None
+    if pct != pct:
+        return None
+    if pct >= 70.0:
+        return "excellent"
+    if pct >= POS_MENU_MARGIN_HEALTHY_PCT:
+        return "good"
+    if pct >= 45.0:
+        return "average"
+    if pct >= POS_MENU_MARGIN_MODERATE_PCT:
+        return "low"
+    return "critical"
+
+
+def recommended_selling_price(food_cost, target_margin_pct):
+    """Selling price needed to hit target margin % given food cost."""
+    try:
+        cost = float(food_cost)
+        target = float(target_margin_pct)
+    except (TypeError, ValueError):
+        return None
+    if cost < 0 or cost != cost or target != target:
+        return None
+    if target >= 100.0 or target < 0:
+        return None
+    denom = 1.0 - (target / 100.0)
+    if denom <= 0:
+        return None
+    return round(cost / denom, 2)
+
+
+def compute_pos_menu_item_margins(selling_price, food_cost):
+    """Derive gross margin ₹ / % and badge band from selling price + food cost.
+
+    Missing food cost → food_cost 0 treated as unknown (None metrics) when
+    recipe has no priced ingredients; callers pass food_cost=None for that case.
+    """
+    try:
+        price = float(selling_price or 0)
+    except (TypeError, ValueError):
+        price = 0.0
+    if food_cost is None:
+        return {
+            "food_cost": None,
+            "gross_margin": None,
+            "margin_pct": None,
+            "food_cost_pct": None,
+            "margin_band": None,
+            "margin_status": None,
+        }
+    try:
+        cost = float(food_cost)
+    except (TypeError, ValueError):
+        cost = 0.0
+    if cost < 0 or cost != cost:
+        cost = 0.0
+    cost = round(cost, 2)
+    if price <= 0:
+        return {
+            "food_cost": cost,
+            "gross_margin": None,
+            "margin_pct": None,
+            "food_cost_pct": None,
+            "margin_band": None,
+            "margin_status": None,
+        }
+    gross = round(price - cost, 2)
+    margin_pct = round((gross / price) * 100.0, 2)
+    food_cost_pct = round((cost / price) * 100.0, 2)
+    return {
+        "food_cost": cost,
+        "gross_margin": gross,
+        "margin_pct": margin_pct,
+        "food_cost_pct": food_cost_pct,
+        "margin_band": margin_band_for_pct(margin_pct),
+        "margin_status": margin_status_for_pct(margin_pct),
+    }
+
+
 def _pos_menu_recipe_line_dict(row):
     """Normalize a recipe join row."""
+    price = row["approximate_price"] if "approximate_price" in row.keys() else None
+    try:
+        price_val = float(price) if price is not None else None
+    except (TypeError, ValueError):
+        price_val = None
+    qty = float(row["qty"] or 0)
+    unit = (row["unit"] or "g").strip() or "g"
+    product_unit = (row["product_unit"] if "product_unit" in row.keys() else None) or ""
+    line_cost = recipe_line_food_cost(qty, unit, product_unit, price_val)
     return {
         "id": int(row["id"]),
         "menu_item_id": int(row["menu_item_id"]),
         "product_id": int(row["product_id"]),
         "product_name": (row["product_name"] if "product_name" in row.keys() else None) or "",
-        "product_unit": (row["product_unit"] if "product_unit" in row.keys() else None) or "",
-        "qty": float(row["qty"] or 0),
-        "unit": (row["unit"] or "g").strip() or "g",
+        "product_unit": product_unit,
+        "approximate_price": price_val,
+        "qty": qty,
+        "unit": unit,
         "sort_order": int(row["sort_order"] or 0),
+        "line_cost": line_cost,
     }
 
 
@@ -697,7 +928,8 @@ def list_pos_menu_recipe_lines(conn, menu_item_ids=None):
             r.unit,
             r.sort_order,
             p.name AS product_name,
-            p.default_unit AS product_unit
+            p.default_unit AS product_unit,
+            p.approximate_price AS approximate_price
         FROM pos_menu_recipe_lines r
         LEFT JOIN store_products p ON p.id = r.product_id
         WHERE r.menu_item_id IN ({placeholders})
@@ -709,7 +941,7 @@ def list_pos_menu_recipe_lines(conn, menu_item_ids=None):
 
 
 def _attach_pos_menu_recipes(conn, items):
-    """Attach recipe[] onto each menu item dict."""
+    """Attach recipe[] and margin fields onto each menu item dict."""
     if not items:
         return items
     by_id = {int(it["id"]): it for it in items}
@@ -720,6 +952,20 @@ def _attach_pos_menu_recipes(conn, items):
         mid = int(line["menu_item_id"])
         if mid in by_id:
             by_id[mid]["recipe"].append(line)
+    for it in items:
+        recipe = it.get("recipe") or []
+        if not recipe:
+            margins = compute_pos_menu_item_margins(it.get("rate"), None)
+        else:
+            costs = [line.get("line_cost") for line in recipe]
+            if any(c is None for c in costs):
+                # Partial pricing: sum known lines; still show a cost when any priced.
+                known = [c for c in costs if c is not None]
+                food_cost = round(sum(known), 2) if known else None
+            else:
+                food_cost = round(sum(costs), 2)
+            margins = compute_pos_menu_item_margins(it.get("rate"), food_cost)
+        it.update(margins)
     return items
 
 
@@ -802,21 +1048,94 @@ def _pos_menu_item_dict(row):
     """Normalize a pos_menu_items join row to a JSON-friendly dict."""
     product_id = row["product_id"]
     rate = row["rate"]
+    category_visible = True
+    if "category_visible" in row.keys() and row["category_visible"] is not None:
+        category_visible = bool(row["category_visible"])
+    keys = row.keys()
+
+    def _text(col, default=""):
+        if col not in keys or row[col] is None:
+            return default
+        return str(row[col] or default)
+
+    prep_time = None
+    if "prep_time_mins" in keys and row["prep_time_mins"] is not None:
+        try:
+            prep_time = int(row["prep_time_mins"])
+        except (TypeError, ValueError):
+            prep_time = None
+
+    target_margin = None
+    if "target_margin_pct" in keys and row["target_margin_pct"] is not None:
+        try:
+            target_margin = float(row["target_margin_pct"])
+        except (TypeError, ValueError):
+            target_margin = None
+
+    portion = _text("portion_size")
+    if not portion:
+        portion = _text("variant")
+
     return {
         "id": int(row["id"]),
         "category_id": int(row["category_id"]),
+        "category_name": (row["category_name"] if "category_name" in keys else None) or "",
+        "category_visible": category_visible,
         "product_id": int(product_id) if product_id not in (None, "") else None,
-        "product_name": (row["product_name"] if "product_name" in row.keys() else None) or "",
-        "product_unit": (row["product_unit"] if "product_unit" in row.keys() else None) or "",
+        "product_name": (row["product_name"] if "product_name" in keys else None) or "",
+        "product_unit": (row["product_unit"] if "product_unit" in keys else None) or "",
         "name": row["name"] or "",
         "code": row["code"] or "",
         "barcode": row["barcode"] or "",
         "variant": row["variant"] or "",
+        "menu_type": _text("menu_type"),
+        "portion_size": portion,
+        "prep_time_mins": prep_time,
+        "shelf_life": _text("shelf_life"),
+        "notes": _text("notes"),
+        "target_margin_pct": target_margin if target_margin is not None else POS_MENU_MARGIN_HEALTHY_PCT,
+        "updated_by": _text("updated_by"),
+        "created_at": _text("created_at") if "created_at" in keys else "",
+        "updated_at": _text("updated_at") if "updated_at" in keys else "",
         "rate": float(rate or 0),
         "sort_order": int(row["sort_order"] or 0),
         "is_active": bool(row["is_active"]),
+        "status": "visible" if category_visible else "hidden",
         "recipe": [],
+        "food_cost": None,
+        "gross_margin": None,
+        "margin_pct": None,
+        "food_cost_pct": None,
+        "margin_band": None,
+        "margin_status": None,
     }
+
+
+_POS_MENU_ITEM_SELECT = """
+            i.id,
+            i.category_id,
+            i.product_id,
+            i.name,
+            i.code,
+            i.barcode,
+            i.variant,
+            i.rate,
+            i.sort_order,
+            i.is_active,
+            i.menu_type,
+            i.portion_size,
+            i.prep_time_mins,
+            i.shelf_life,
+            i.notes,
+            i.target_margin_pct,
+            i.updated_by,
+            i.created_at,
+            i.updated_at,
+            c.name AS category_name,
+            c.is_visible AS category_visible,
+            p.name AS product_name,
+            p.default_unit AS product_unit
+"""
 
 
 def list_pos_menu_items(conn, category_id=None, include_inactive=False):
@@ -834,19 +1153,9 @@ def list_pos_menu_items(conn, category_id=None, include_inactive=False):
     rows = conn.execute(
         f"""
         SELECT
-            i.id,
-            i.category_id,
-            i.product_id,
-            i.name,
-            i.code,
-            i.barcode,
-            i.variant,
-            i.rate,
-            i.sort_order,
-            i.is_active,
-            p.name AS product_name,
-            p.default_unit AS product_unit
+            {_POS_MENU_ITEM_SELECT}
         FROM pos_menu_items i
+        LEFT JOIN pos_menu_categories c ON c.id = i.category_id
         LEFT JOIN store_products p ON p.id = i.product_id
         {where}
         ORDER BY i.sort_order ASC, i.name COLLATE NOCASE ASC, i.id ASC
@@ -855,6 +1164,26 @@ def list_pos_menu_items(conn, category_id=None, include_inactive=False):
     ).fetchall()
     items = [_pos_menu_item_dict(r) for r in rows]
     return _attach_pos_menu_recipes(conn, items)
+
+
+def get_pos_menu_item(conn, item_id):
+    """Return one active menu item with recipe + margin fields, or None."""
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+    row = conn.execute(
+        f"""
+        SELECT
+            {_POS_MENU_ITEM_SELECT}
+        FROM pos_menu_items i
+        LEFT JOIN pos_menu_categories c ON c.id = i.category_id
+        LEFT JOIN store_products p ON p.id = i.product_id
+        WHERE i.id = ? AND i.is_active = 1
+        """,
+        (int(item_id),),
+    ).fetchone()
+    if not row:
+        return None
+    return _attach_pos_menu_recipes(conn, [_pos_menu_item_dict(row)])[0]
 
 
 def save_pos_menu_item(
@@ -870,6 +1199,14 @@ def save_pos_menu_item(
     rate=0,
     sort_order=None,
     recipe=None,
+    menu_type=None,
+    portion_size=None,
+    prep_time_mins=None,
+    shelf_life=None,
+    notes=None,
+    target_margin_pct=None,
+    updated_by=None,
+    price_change_reason="",
 ):
     """Create or update a menu item; optional recipe[] replaces ingredient lines."""
     ensure_pos_schema(conn)
@@ -932,19 +1269,114 @@ def save_pos_menu_item(
         except (TypeError, ValueError):
             pass
 
+    existing_row = None
     if item_id:
-        existing = conn.execute(
-            "SELECT id FROM pos_menu_items WHERE id = ? AND is_active = 1",
+        existing_row = conn.execute(
+            """
+            SELECT id, rate, menu_type, portion_size, prep_time_mins, shelf_life,
+                   notes, target_margin_pct, updated_by, variant
+            FROM pos_menu_items
+            WHERE id = ? AND is_active = 1
+            """,
             (int(item_id),),
         ).fetchone()
-        if not existing:
+        if not existing_row:
             raise ValueError("Menu item not found.")
+
+    if existing_row:
+        cur_menu_type = (existing_row["menu_type"] or "") if "menu_type" in existing_row.keys() else ""
+        cur_portion = (existing_row["portion_size"] or "") if "portion_size" in existing_row.keys() else ""
+        cur_prep = existing_row["prep_time_mins"] if "prep_time_mins" in existing_row.keys() else None
+        cur_shelf = (existing_row["shelf_life"] or "") if "shelf_life" in existing_row.keys() else ""
+        cur_notes = (existing_row["notes"] or "") if "notes" in existing_row.keys() else ""
+        cur_target = (
+            existing_row["target_margin_pct"] if "target_margin_pct" in existing_row.keys() else None
+        )
+        cur_updated_by = (existing_row["updated_by"] or "") if "updated_by" in existing_row.keys() else ""
+    else:
+        cur_menu_type = ""
+        cur_portion = ""
+        cur_prep = None
+        cur_shelf = ""
+        cur_notes = ""
+        cur_target = POS_MENU_MARGIN_HEALTHY_PCT
+        cur_updated_by = ""
+
+    if menu_type is None:
+        clean_menu_type = cur_menu_type
+    else:
+        clean_menu_type = str(menu_type or "").strip().lower()
+    if clean_menu_type in ("non-veg", "nonveg", "non veg"):
+        clean_menu_type = "non_veg"
+    if clean_menu_type not in ("", "veg", "non_veg"):
+        raise ValueError("Menu type must be Veg or Non-Veg.")
+    clean_menu_type = clean_menu_type[:20]
+
+    if portion_size is not None:
+        clean_portion = " ".join(str(portion_size or "").split()).strip()[:80]
+    elif not existing_row and clean_variant:
+        clean_portion = clean_variant
+    else:
+        clean_portion = cur_portion or ""
+    if (
+        portion_size is not None
+        and clean_portion
+        and (not existing_row or not (existing_row["variant"] or "").strip())
+        and not clean_variant
+    ):
+        clean_variant = clean_portion
+
+    if prep_time_mins is None:
+        clean_prep = cur_prep
+    elif prep_time_mins in ("",):
+        clean_prep = None
+    else:
+        try:
+            clean_prep = int(prep_time_mins)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Prep time must be a whole number of minutes.") from exc
+        if clean_prep < 0:
+            raise ValueError("Prep time cannot be negative.")
+
+    clean_shelf = (
+        " ".join(str(shelf_life or "").split()).strip()[:80]
+        if shelf_life is not None
+        else cur_shelf
+    )
+    clean_notes = str(notes) if notes is not None else cur_notes
+    if clean_notes is None:
+        clean_notes = ""
+    if len(clean_notes) > 8000:
+        raise ValueError("Notes are too long.")
+
+    if target_margin_pct is None:
+        clean_target = cur_target if cur_target is not None else POS_MENU_MARGIN_HEALTHY_PCT
+    elif target_margin_pct in ("",):
+        clean_target = POS_MENU_MARGIN_HEALTHY_PCT
+    else:
+        try:
+            clean_target = float(target_margin_pct)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Target margin must be a number.") from exc
+        if clean_target < 0 or clean_target >= 100:
+            raise ValueError("Target margin must be between 0 and 100.")
+
+    clean_updated_by = (
+        " ".join(str(updated_by or "").split()).strip()[:120]
+        if updated_by is not None
+        else cur_updated_by
+    )
+
+    if item_id:
+        old_rate = float(existing_row["rate"] or 0)
         if sort_order is None:
             conn.execute(
                 f"""
                 UPDATE pos_menu_items
                 SET category_id = ?, product_id = ?, name = ?, code = ?, barcode = ?,
-                    variant = ?, rate = ?, updated_at = {SQL_NOW}
+                    variant = ?, rate = ?, menu_type = ?, portion_size = ?,
+                    prep_time_mins = ?, shelf_life = ?, notes = ?,
+                    target_margin_pct = ?, updated_by = ?, updated_at = {SQL_NOW}
                 WHERE id = ?
                 """,
                 (
@@ -955,6 +1387,13 @@ def save_pos_menu_item(
                     clean_barcode,
                     clean_variant,
                     rate_val,
+                    clean_menu_type,
+                    clean_portion,
+                    clean_prep,
+                    clean_shelf,
+                    clean_notes,
+                    clean_target,
+                    clean_updated_by,
                     int(item_id),
                 ),
             )
@@ -963,7 +1402,9 @@ def save_pos_menu_item(
                 f"""
                 UPDATE pos_menu_items
                 SET category_id = ?, product_id = ?, name = ?, code = ?, barcode = ?,
-                    variant = ?, rate = ?, sort_order = ?, updated_at = {SQL_NOW}
+                    variant = ?, rate = ?, sort_order = ?, menu_type = ?, portion_size = ?,
+                    prep_time_mins = ?, shelf_life = ?, notes = ?,
+                    target_margin_pct = ?, updated_by = ?, updated_at = {SQL_NOW}
                 WHERE id = ?
                 """,
                 (
@@ -975,10 +1416,26 @@ def save_pos_menu_item(
                     clean_variant,
                     rate_val,
                     int(sort_order),
+                    clean_menu_type,
+                    clean_portion,
+                    clean_prep,
+                    clean_shelf,
+                    clean_notes,
+                    clean_target,
+                    clean_updated_by,
                     int(item_id),
                 ),
             )
         saved_id = int(item_id)
+        if abs(old_rate - rate_val) > 0.0001:
+            record_pos_menu_price_change(
+                conn,
+                saved_id,
+                old_price=old_rate,
+                new_price=rate_val,
+                reason=price_change_reason or "Rate updated",
+                updated_by=clean_updated_by,
+            )
     else:
         if sort_order is None:
             max_row = conn.execute(
@@ -994,9 +1451,11 @@ def save_pos_menu_item(
             f"""
             INSERT INTO pos_menu_items (
                 category_id, product_id, name, code, barcode, variant, rate,
-                sort_order, is_active, created_at, updated_at
+                sort_order, is_active, menu_type, portion_size, prep_time_mins,
+                shelf_life, notes, target_margin_pct, updated_by,
+                created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, {SQL_NOW}, {SQL_NOW})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, {SQL_NOW}, {SQL_NOW})
             """,
             (
                 cat_id,
@@ -1007,6 +1466,13 @@ def save_pos_menu_item(
                 clean_variant,
                 rate_val,
                 int(sort_order),
+                clean_menu_type,
+                clean_portion,
+                clean_prep,
+                clean_shelf,
+                clean_notes,
+                clean_target,
+                clean_updated_by,
             ),
         )
         saved_id = int(cur.lastrowid)
@@ -1016,30 +1482,323 @@ def save_pos_menu_item(
     elif not item_id:
         replace_pos_menu_recipe_lines(conn, saved_id, [])
 
-    row = conn.execute(
-        """
-        SELECT
-            i.id,
-            i.category_id,
-            i.product_id,
-            i.name,
-            i.code,
-            i.barcode,
-            i.variant,
-            i.rate,
-            i.sort_order,
-            i.is_active,
-            p.name AS product_name,
-            p.default_unit AS product_unit
-        FROM pos_menu_items i
-        LEFT JOIN store_products p ON p.id = i.product_id
-        WHERE i.id = ?
-        """,
-        (saved_id,),
-    ).fetchone()
-    item = _pos_menu_item_dict(row)
-    item["recipe"] = list_pos_menu_recipe_lines(conn, saved_id)
+    item = get_pos_menu_item(conn, saved_id)
+    if not item:
+        raise ValueError("Menu item not found after save.")
     return item
+
+
+def record_pos_menu_price_change(
+    conn, menu_item_id, *, old_price, new_price, reason="", updated_by=""
+):
+    """Append a selling-price history row."""
+    ensure_pos_schema(conn)
+    try:
+        old_v = float(old_price)
+        new_v = float(new_price)
+    except (TypeError, ValueError):
+        return None
+    conn.execute(
+        f"""
+        INSERT INTO pos_menu_price_history (
+            menu_item_id, old_price, new_price, reason, updated_by, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, {SQL_NOW})
+        """,
+        (
+            int(menu_item_id),
+            round(old_v, 2),
+            round(new_v, 2),
+            " ".join(str(reason or "").split()).strip()[:200],
+            " ".join(str(updated_by or "").split()).strip()[:120],
+        ),
+    )
+    return True
+
+
+def list_pos_menu_price_history(conn, menu_item_id, limit=50):
+    """Return newest-first price history for a menu item."""
+    ensure_pos_schema(conn)
+    try:
+        lim = max(1, min(int(limit or 50), 200))
+    except (TypeError, ValueError):
+        lim = 50
+    rows = conn.execute(
+        """
+        SELECT id, menu_item_id, old_price, new_price, reason, updated_by, created_at
+        FROM pos_menu_price_history
+        WHERE menu_item_id = ?
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+        """,
+        (int(menu_item_id), lim),
+    ).fetchall()
+    out = []
+    for r in rows:
+        out.append(
+            {
+                "id": int(r["id"]),
+                "menu_item_id": int(r["menu_item_id"]),
+                "old_price": float(r["old_price"] or 0),
+                "new_price": float(r["new_price"] or 0),
+                "reason": r["reason"] or "",
+                "updated_by": r["updated_by"] or "",
+                "created_at": r["created_at"] or "",
+            }
+        )
+    return out
+
+
+def _fifo_remaining_layers(conn, item_name, unit):
+    """Rebuild remaining receive layers for a stock item using FIFO drain.
+
+    Returns list of dicts: batch_no, purchase_date, supplier, available_qty,
+    unit_cost, unit, movement_id.
+    """
+    ensure_stores_schema(conn)
+    name = " ".join(str(item_name or "").split()).strip()
+    unit_key = " ".join(str(unit or "").split()).strip()
+    if not name:
+        return []
+    rows = conn.execute(
+        """
+        SELECT id, qty_delta, movement_type, unit_cost, notes, created_at, unit
+        FROM store_stock_movements
+        WHERE lower(item_name) = lower(?)
+          AND lower(unit) = lower(?)
+        ORDER BY created_at ASC, id ASC
+        """,
+        (name, unit_key),
+    ).fetchall()
+    layers = []
+    for row in rows:
+        try:
+            qty = float(row["qty_delta"] or 0)
+        except (TypeError, ValueError):
+            continue
+        mtype = (row["movement_type"] or "").strip().lower()
+        if mtype == "receive" and qty > 0:
+            try:
+                unit_cost = float(row["unit_cost"]) if row["unit_cost"] is not None else None
+            except (TypeError, ValueError):
+                unit_cost = None
+            supplier = ""
+            notes = (row["notes"] or "").strip()
+            if notes.lower().startswith("received from "):
+                supplier = notes[14:].strip()
+            elif notes:
+                supplier = notes[:80]
+            layers.append(
+                {
+                    "movement_id": int(row["id"]),
+                    "purchase_date": (row["created_at"] or "")[:10],
+                    "supplier": supplier or "—",
+                    "available_qty": qty,
+                    "unit_cost": unit_cost,
+                    "unit": row["unit"] or unit_key,
+                }
+            )
+            continue
+        drain = abs(qty) if qty < 0 else (
+            qty if mtype in ("issue", "adjust", "waste", "transfer") else 0
+        )
+        if drain <= 0:
+            continue
+        remaining = drain
+        for layer in layers:
+            if remaining <= 0:
+                break
+            take = min(layer["available_qty"], remaining)
+            layer["available_qty"] = round(layer["available_qty"] - take, 4)
+            remaining = round(remaining - take, 4)
+        layers = [layer for layer in layers if layer["available_qty"] > 0.0001]
+    out = []
+    for idx, layer in enumerate(layers, start=1):
+        out.append(
+            {
+                "batch_no": f"B-{layer['movement_id']}",
+                "batch_index": idx,
+                "purchase_date": layer["purchase_date"],
+                "supplier": layer["supplier"],
+                "available_qty": round(layer["available_qty"], 4),
+                "unit_cost": layer["unit_cost"],
+                "unit": layer["unit"],
+                "movement_id": layer["movement_id"],
+            }
+        )
+    return out
+
+
+def allocate_fifo_for_qty(layers, qty_needed):
+    """Allocate qty_needed across FIFO layers. Returns (rows, total_cost, fully_covered)."""
+    try:
+        need = float(qty_needed)
+    except (TypeError, ValueError):
+        return [], None, False
+    if need <= 0:
+        return [], 0.0, True
+    rows = []
+    remaining = need
+    total_cost = 0.0
+    priced_ok = True
+    for layer in layers:
+        if remaining <= 0:
+            break
+        avail = float(layer.get("available_qty") or 0)
+        if avail <= 0:
+            continue
+        take = min(avail, remaining)
+        unit_cost = layer.get("unit_cost")
+        cost_used = None
+        if unit_cost is not None:
+            try:
+                cost_used = round(take * float(unit_cost), 4)
+                total_cost += cost_used
+            except (TypeError, ValueError):
+                priced_ok = False
+                cost_used = None
+        else:
+            priced_ok = False
+        rows.append(
+            {
+                "batch_no": layer.get("batch_no") or "",
+                "purchase_date": layer.get("purchase_date") or "",
+                "supplier": layer.get("supplier") or "—",
+                "available_qty": round(avail, 4),
+                "unit_cost": unit_cost,
+                "qty_used": round(take, 4),
+                "cost_used": cost_used,
+                "unit": layer.get("unit") or "",
+                "product_name": layer.get("product_name") or "",
+            }
+        )
+        remaining = round(remaining - take, 4)
+    fully = remaining <= 0.0001
+    if not rows:
+        return [], None, False
+    if not priced_ok:
+        return rows, None, fully
+    return rows, round(total_cost, 4), fully
+
+
+def build_pos_menu_fifo_costing(conn, recipe_lines):
+    """FIFO batch usage for a recipe. Falls back when stock batches are missing.
+
+    Returns dict with batches, fifo_food_cost, fifo_available, note.
+    """
+    ensure_stores_schema(conn)
+    batches = []
+    line_costs = []
+    any_layers = False
+    all_covered = True
+    if not recipe_lines:
+        return {
+            "batches": [],
+            "fifo_food_cost": None,
+            "fifo_available": False,
+            "fifo_partial": False,
+            "note": "No recipe ingredients to cost.",
+        }
+
+    for line in recipe_lines:
+        product_name = (line.get("product_name") or "").strip()
+        product_unit = (line.get("product_unit") or "").strip() or "pcs"
+        qty = line.get("qty")
+        recipe_unit = line.get("unit") or "g"
+        converted = _qty_in_product_units(qty, recipe_unit, product_unit)
+        layers = _fifo_remaining_layers(conn, product_name, product_unit) if product_name else []
+        for layer in layers:
+            layer["product_name"] = product_name
+        if layers:
+            any_layers = True
+        if converted is None:
+            all_covered = False
+            continue
+        rows, cost, fully = allocate_fifo_for_qty(layers, converted)
+        for row in rows:
+            row["ingredient"] = product_name
+            row["required_qty"] = float(qty or 0)
+            row["required_unit"] = recipe_unit
+            batches.append(row)
+        if cost is None or not fully:
+            all_covered = False
+        elif cost is not None:
+            line_costs.append(cost)
+
+    if not any_layers:
+        return {
+            "batches": [],
+            "fifo_food_cost": None,
+            "fifo_available": False,
+            "fifo_partial": False,
+            "note": (
+                "FIFO batches unavailable — no stock receive movements found for these "
+                "ingredients. Showing approximate Product Master food cost instead."
+            ),
+        }
+
+    fifo_available = bool(line_costs and all_covered)
+    fifo_food_cost = round(sum(line_costs), 2) if line_costs else None
+    if fifo_available:
+        note = "Food cost allocated from oldest stock receive batches (FIFO)."
+    else:
+        note = (
+            "Partial FIFO coverage — some ingredients lack priced batches or stock. "
+            "Use approximate food cost where FIFO is incomplete."
+        )
+    return {
+        "batches": batches,
+        "fifo_food_cost": fifo_food_cost,
+        "fifo_available": fifo_available,
+        "fifo_partial": bool(any_layers and not all_covered and line_costs),
+        "note": note,
+    }
+
+
+def get_pos_menu_item_details(conn, item_id):
+    """Rich payload for Menu Details popup (recipe, FIFO, history, analysis)."""
+    item = get_pos_menu_item(conn, item_id)
+    if not item:
+        return None
+
+    recipe = item.get("recipe") or []
+    fifo = build_pos_menu_fifo_costing(conn, recipe)
+    approx_food_cost = item.get("food_cost")
+    fifo_cost = fifo.get("fifo_food_cost")
+    display_food_cost = (
+        fifo_cost if fifo.get("fifo_available") and fifo_cost is not None else approx_food_cost
+    )
+    margins = compute_pos_menu_item_margins(item.get("rate"), display_food_cost)
+    target = item.get("target_margin_pct")
+    if target is None:
+        target = POS_MENU_MARGIN_HEALTHY_PCT
+    recommended = recommended_selling_price(display_food_cost, target)
+
+    analysis = {
+        "selling_price": float(item.get("rate") or 0),
+        "fifo_food_cost": display_food_cost,
+        "approximate_food_cost": approx_food_cost,
+        "gross_profit": margins.get("gross_margin"),
+        "margin_pct": margins.get("margin_pct"),
+        "food_cost_pct": margins.get("food_cost_pct"),
+        "target_margin_pct": target,
+        "recommended_selling_price": recommended,
+        "profit_per_portion": margins.get("gross_margin"),
+        "margin_status": margins.get("margin_status"),
+        "margin_band": margins.get("margin_band"),
+        "cost_source": "fifo" if fifo.get("fifo_available") else "approximate",
+    }
+
+    detail = dict(item)
+    detail.update(margins)
+    detail["food_cost"] = approx_food_cost
+    detail["display_food_cost"] = display_food_cost
+    detail["fifo"] = fifo
+    detail["analysis"] = analysis
+    detail["price_history"] = list_pos_menu_price_history(conn, item_id)
+    detail["recipe_total_cost"] = approx_food_cost
+    detail["inventory_url"] = "/stores/stock?outlet=restaurant"
+    return detail
 
 
 def soft_delete_pos_menu_item(conn, item_id):
@@ -1287,6 +2046,8 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "status": row["status"] or "open",
         "kot_sent": bool(row["kot_sent"]),
         "first_kot_at": row["first_kot_at"] or "",
+        "customer_bill_sent": bool(row["customer_bill_sent"]) if "customer_bill_sent" in row.keys() else False,
+        "customer_bill_at": (row["customer_bill_at"] or "") if "customer_bill_at" in row.keys() else "",
         "item_count": int(row["item_count"]) if "item_count" in row.keys() else 0,
     }
     if include_lines:
@@ -1308,9 +2069,11 @@ def _pos_floor_table_status(layout, table_label):
 
 
 def _pos_mark_table_occupied(conn, table_label):
-    """Flip a table to occupied once the first KOT is sent for its dine-in bill
-    (best-effort, only advances tables that are currently available — never
-    overrides reserved/cleaning/inactive set deliberately from the Tables page)."""
+    """Flip a table to occupied when a dine-in bill claims it (save / autosave / KOT).
+
+    Best-effort: only advances tables that are currently available — never
+    overrides reserved/cleaning/inactive set deliberately from the Tables page.
+    """
     needle = str(table_label or "").strip().lower()
     if not needle:
         return
@@ -1348,6 +2111,28 @@ def _pos_mark_table_available(conn, table_label):
         save_pos_floor_layout(conn, layout.get("areas") or [], tables)
 
 
+def sync_pos_floor_occupancy_from_open_orders(conn):
+    """Mark Available tables Occupied when they already have an open dine-in bill.
+
+    Repairs tiles that still show Available after items were saved under the
+    older KOT-only occupancy rule, and keeps floor status aligned with open orders.
+    """
+    ensure_pos_schema(conn)
+    rows = conn.execute(
+        """
+        SELECT DISTINCT table_label
+        FROM pos_invoices
+        WHERE is_active = 1
+          AND status = 'open'
+          AND order_type = 'dine_in'
+          AND TRIM(COALESCE(table_label, '')) != ''
+        """
+    ).fetchall()
+    for row in rows:
+        _pos_mark_table_occupied(conn, row["table_label"] if row else "")
+
+
+
 def get_open_pos_invoice_for_table(conn, table_label):
     """Return the most recent open dine-in invoice for a table (with lines), or
     None. This is the shared lookup behind 'resume this table's order' on both
@@ -1379,19 +2164,31 @@ def get_open_pos_invoice_for_table(conn, table_label):
 def list_pos_kot_pending_summary(conn):
     """Open dine-in orders with unsents (qty > sent_qty) — same rule as the
     invoice page KOT pending check. Powers the Tables page Kitchen Orders
-    Pending banner (table count + first-table resume target).
+    Pending banner and details modal.
 
-    Includes Available tables with a plain save (kot_sent=0, sent_qty=0) and
-    Occupied tables with later qty bumps — occupancy / kot_sent is intentionally
-    not a filter here.
+    Includes tables with a plain save (kot_sent=0, sent_qty=0) and Occupied
+    tables with later qty bumps — occupancy / kot_sent is intentionally not a
+    filter here.
     """
     ensure_pos_schema(conn)
+    layout = get_pos_floor_layout(conn)
+    floor_by_name = {}
+    for t in (layout or {}).get("tables") or []:
+        key = str(t.get("name") or "").strip().lower()
+        if key:
+            floor_by_name[key] = t
+
     rows = conn.execute(
         """
         SELECT
             i.id AS invoice_id,
+            i.order_no AS order_no,
             i.table_label AS name,
-            COUNT(l.id) AS pending_items
+            i.saved_at AS saved_at,
+            i.updated_at AS updated_at,
+            i.first_kot_at AS first_kot_at,
+            COUNT(l.id) AS pending_items,
+            COALESCE(SUM(l.qty - COALESCE(l.sent_qty, 0)), 0) AS pending_qty
         FROM pos_invoices i
         JOIN pos_invoice_lines l
           ON l.invoice_id = i.id
@@ -1400,7 +2197,7 @@ def list_pos_kot_pending_summary(conn):
           AND i.status = 'open'
           AND i.order_type = 'dine_in'
           AND TRIM(COALESCE(i.table_label, '')) != ''
-        GROUP BY i.id, i.table_label
+        GROUP BY i.id, i.order_no, i.table_label, i.saved_at, i.updated_at, i.first_kot_at
         ORDER BY i.id ASC
         """
     ).fetchall()
@@ -1408,17 +2205,210 @@ def list_pos_kot_pending_summary(conn):
     pending_item_count = 0
     for row in rows:
         pending_items = int(row["pending_items"] or 0)
+        pending_qty = int(float(row["pending_qty"] or 0))
         pending_item_count += pending_items
+        name = (row["name"] or "").strip()
+        floor = floor_by_name.get(name.lower()) or {}
+        seats = floor.get("seats")
+        try:
+            seats = int(seats) if seats is not None and str(seats).strip() != "" else None
+        except (TypeError, ValueError):
+            seats = None
+        table_status = str(floor.get("status") or "available").strip().lower() or "available"
+        order_no = (row["order_no"] or "").strip()
+        kot_no = order_no
+        if kot_no.upper().startswith("ORD-"):
+            kot_no = "KOT-" + kot_no[4:]
+        elif kot_no and not kot_no.upper().startswith("KOT-"):
+            kot_no = "KOT-" + kot_no
+        saved_at = (row["saved_at"] or row["updated_at"] or "").strip()
         tables.append(
             {
-                "name": (row["name"] or "").strip(),
+                "name": name,
                 "invoice_id": int(row["invoice_id"]),
+                "order_no": order_no,
+                "kot_no": kot_no,
                 "pending_items": pending_items,
+                "pending_qty": pending_qty,
+                "seats": seats,
+                "table_status": table_status,
+                "saved_at": saved_at,
             }
         )
     return {
         "pending_table_count": len(tables),
         "pending_item_count": pending_item_count,
+        "tables": tables,
+    }
+
+
+def send_pos_invoice_pending_kot(conn, invoice_id):
+    """Mark every unsent line qty as sent for an open invoice (Tables KOT modal).
+
+    Returns the updated invoice dict. Raises ValueError when there is nothing to send.
+    """
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+
+    row = conn.execute(
+        """
+        SELECT id, order_no, table_label, order_type, kot_sent, first_kot_at, status
+        FROM pos_invoices
+        WHERE id = ? AND is_active = 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Invoice not found.")
+    if str(row["status"] or "").strip().lower() != "open":
+        raise ValueError("Only open invoices can be sent to kitchen.")
+
+    pending = conn.execute(
+        """
+        SELECT id, qty, COALESCE(sent_qty, 0) AS sent_qty
+        FROM pos_invoice_lines
+        WHERE invoice_id = ?
+          AND qty > COALESCE(sent_qty, 0)
+        """,
+        (invoice_id,),
+    ).fetchall()
+    if not pending:
+        raise ValueError("Nothing new to send — kitchen is already up to date.")
+
+    for line in pending:
+        conn.execute(
+            "UPDATE pos_invoice_lines SET sent_qty = ? WHERE id = ?",
+            (float(line["qty"] or 0), int(line["id"])),
+        )
+
+    first_kot_at = (row["first_kot_at"] or "").strip()
+    if not first_kot_at:
+        first_kot_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute(
+        f"""
+        UPDATE pos_invoices
+        SET kot_sent = 1,
+            first_kot_at = ?,
+            updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (first_kot_at, invoice_id),
+    )
+
+    table_label = (row["table_label"] or "").strip()
+    order_type = _normalize_pos_order_type(row["order_type"])
+    if table_label and order_type == "dine_in":
+        _pos_mark_table_occupied(conn, table_label)
+
+    return get_pos_invoice(conn, invoice_id)
+
+
+def list_pos_kot_tokens(conn):
+    """Open dine-in bills that already have kitchen-sent qty — Tables KOT hub.
+
+    Used to resend / reprint a token when kitchen missed the slip. Only lines with
+    sent_qty > 0 are included (the last confirmed kitchen copy).
+    """
+    ensure_pos_schema(conn)
+    layout = get_pos_floor_layout(conn)
+    floor_by_name = {}
+    for t in (layout or {}).get("tables") or []:
+        key = str(t.get("name") or "").strip().lower()
+        if key:
+            floor_by_name[key] = t
+
+    rows = conn.execute(
+        """
+        SELECT
+            i.id AS invoice_id,
+            i.order_no AS order_no,
+            i.table_label AS name,
+            i.order_type AS order_type,
+            i.first_kot_at AS first_kot_at,
+            i.saved_at AS saved_at,
+            i.updated_at AS updated_at,
+            COALESCE(i.customer_bill_sent, 0) AS customer_bill_sent,
+            COALESCE(i.customer_bill_at, '') AS customer_bill_at,
+            COUNT(l.id) AS sent_items,
+            COALESCE(SUM(COALESCE(l.sent_qty, 0)), 0) AS sent_qty
+        FROM pos_invoices i
+        JOIN pos_invoice_lines l
+          ON l.invoice_id = i.id
+         AND COALESCE(l.sent_qty, 0) > 0
+        WHERE i.is_active = 1
+          AND i.status = 'open'
+          AND i.order_type = 'dine_in'
+          AND TRIM(COALESCE(i.table_label, '')) != ''
+        GROUP BY
+            i.id, i.order_no, i.table_label, i.order_type,
+            i.first_kot_at, i.saved_at, i.updated_at,
+            i.customer_bill_sent, i.customer_bill_at
+        ORDER BY i.table_label ASC, i.id ASC
+        """
+    ).fetchall()
+
+    tables = []
+    for row in rows:
+        name = (row["name"] or "").strip()
+        floor = floor_by_name.get(name.lower()) or {}
+        seats = floor.get("seats")
+        try:
+            seats = int(seats) if seats is not None and str(seats).strip() != "" else None
+        except (TypeError, ValueError):
+            seats = None
+        table_status = str(floor.get("status") or "occupied").strip().lower() or "occupied"
+        order_no = (row["order_no"] or "").strip()
+        kot_no = order_no
+        if kot_no.upper().startswith("ORD-"):
+            kot_no = "KOT-" + kot_no[4:]
+        elif kot_no and not kot_no.upper().startswith("KOT-"):
+            kot_no = "KOT-" + kot_no
+        sent_at = (row["first_kot_at"] or row["updated_at"] or row["saved_at"] or "").strip()
+        invoice_id = int(row["invoice_id"])
+        line_rows = conn.execute(
+            """
+            SELECT id, name, variant, qty, COALESCE(sent_qty, 0) AS sent_qty
+            FROM pos_invoice_lines
+            WHERE invoice_id = ?
+              AND COALESCE(sent_qty, 0) > 0
+            ORDER BY sort_order ASC, id ASC
+            """,
+            (invoice_id,),
+        ).fetchall()
+        lines = []
+        for line in line_rows:
+            sent_qty = float(line["sent_qty"] or 0)
+            lines.append(
+                {
+                    "id": int(line["id"]),
+                    "name": (line["name"] or "").strip(),
+                    "variant": (line["variant"] or "").strip(),
+                    "qty": sent_qty,
+                    "sent_qty": sent_qty,
+                }
+            )
+        tables.append(
+            {
+                "name": name,
+                "invoice_id": invoice_id,
+                "order_no": order_no,
+                "kot_no": kot_no,
+                "order_type": _normalize_pos_order_type(row["order_type"]),
+                "sent_items": int(row["sent_items"] or 0),
+                "sent_qty": int(float(row["sent_qty"] or 0)),
+                "seats": seats,
+                "table_status": table_status,
+                "sent_at": sent_at,
+                "customer_bill_sent": bool(row["customer_bill_sent"]),
+                "customer_bill_at": (row["customer_bill_at"] or "").strip(),
+                "lines": lines,
+            }
+        )
+    return {
+        "token_count": len(tables),
         "tables": tables,
     }
 
@@ -1473,8 +2463,54 @@ def clear_all_pos_tables(conn):
     return save_pos_floor_layout(conn, layout.get("areas") or [], tables)
 
 
-def save_pos_invoice(conn, payload, *, created_by=""):
-    """Create or update a POS invoice by order_no. Returns the saved invoice dict."""
+def _pos_invoice_line_kitchen_key(menu_item_id, name, variant):
+    return (
+        str(menu_item_id if menu_item_id is not None else ""),
+        str(name or "").strip().lower(),
+        str(variant or "").strip().lower(),
+    )
+
+
+def _enforce_pos_kot_line_protections(conn, invoice_id, normalized_lines, *, actor_is_admin):
+    """Block non-admins from cutting kitchen-sent qty or removing sent lines."""
+    if actor_is_admin or not invoice_id:
+        return
+    old_rows = conn.execute(
+        """
+        SELECT menu_item_id, name, variant, qty, COALESCE(sent_qty, 0) AS sent_qty
+        FROM pos_invoice_lines
+        WHERE invoice_id = ?
+          AND COALESCE(sent_qty, 0) > 0
+        """,
+        (invoice_id,),
+    ).fetchall()
+    if not old_rows:
+        return
+
+    required = {}
+    for row in old_rows:
+        key = _pos_invoice_line_kitchen_key(row["menu_item_id"], row["name"], row["variant"])
+        required[key] = required.get(key, 0.0) + float(row["sent_qty"] or 0)
+
+    available = {}
+    for line in normalized_lines:
+        key = _pos_invoice_line_kitchen_key(line.get("menu_item_id"), line.get("name"), line.get("variant"))
+        available[key] = available.get(key, 0.0) + float(line.get("qty") or 0)
+
+    for key, need in required.items():
+        have = available.get(key, 0.0)
+        if have + 1e-9 < need:
+            raise ValueError(
+                "Only an administrator can reduce or remove items after they were sent to the kitchen."
+            )
+
+
+def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
+    """Create or update a POS invoice by order_no. Returns the saved invoice dict.
+
+    Non-administrators cannot reduce qty below kitchen-sent amounts or remove
+    lines that already have sent_qty > 0 (post-KOT protection).
+    """
     ensure_pos_schema(conn)
     if not isinstance(payload, dict):
         raise ValueError("Invalid invoice payload.")
@@ -1511,8 +2547,10 @@ def save_pos_invoice(conn, payload, *, created_by=""):
     table_label = str(payload.get("table") or payload.get("table_label") or "").strip()
     captain = str(payload.get("captain") or "").strip()
     notes = str(payload.get("notes") or "").strip()
-    # Keep Customer Master in sync with POS Customer Details (unique mobile).
-    if customer_mobile:
+    # Keep Customer Master in sync with POS Customer Details (unique 10-digit mobile).
+    # Shared by Save, Send to Kitchen, Send to Customer, and any autosave that posts
+    # to the same invoice API — incomplete mobiles are intentionally skipped.
+    if len(customer_mobile) == 10:
         upsert_customer(conn, customer_name, customer_mobile)
     discount_type = str(
         payload.get("discountType") or totals.get("discountType") or "pct"
@@ -1578,13 +2616,14 @@ def save_pos_invoice(conn, payload, *, created_by=""):
     if subtotal <= 0:
         subtotal = _pos_money(computed_subtotal)
 
-    # A KOT send both persists the order and marks it as sent to the kitchen —
-    # that first send (not a plain save) is what flips the table to occupied.
+    # A KOT send persists the order and marks lines as sent to the kitchen.
+    # Occupancy is claimed on any dine-in save with a table (see below).
     kot_send = bool(payload.get("kotSend") or payload.get("kot_send"))
 
     existing = conn.execute(
         """
-        SELECT id, kot_sent, first_kot_at FROM pos_invoices
+        SELECT id, kot_sent, first_kot_at, customer_bill_sent, customer_bill_at
+        FROM pos_invoices
         WHERE order_no = ? AND is_active = 1
         LIMIT 1
         """,
@@ -1607,6 +2646,21 @@ def save_pos_invoice(conn, payload, *, created_by=""):
     first_kot_at = (existing["first_kot_at"] if existing else "") or ""
     if kot_send and not first_kot_at:
         first_kot_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    customer_bill = bool(payload.get("customerBill") or payload.get("customer_bill"))
+    was_bill_sent = bool(existing["customer_bill_sent"]) if existing else False
+    next_bill_sent = 1 if (customer_bill or was_bill_sent) else 0
+    customer_bill_at = (existing["customer_bill_at"] if existing else "") or ""
+    if customer_bill and not customer_bill_at:
+        customer_bill_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    if existing:
+        _enforce_pos_kot_line_protections(
+            conn,
+            int(existing["id"]),
+            normalized_lines,
+            actor_is_admin=bool(actor_is_admin),
+        )
 
     creator = str(created_by or "").strip()
     if existing:
@@ -1637,6 +2691,8 @@ def save_pos_invoice(conn, payload, *, created_by=""):
                 grand_total = ?,
                 kot_sent = ?,
                 first_kot_at = ?,
+                customer_bill_sent = ?,
+                customer_bill_at = ?,
                 updated_at = {SQL_NOW}
             WHERE id = ?
             """,
@@ -1664,6 +2720,8 @@ def save_pos_invoice(conn, payload, *, created_by=""):
                 grand_total,
                 next_kot_sent,
                 first_kot_at,
+                next_bill_sent,
+                customer_bill_at,
                 invoice_id,
             ),
         )
@@ -1678,6 +2736,7 @@ def save_pos_invoice(conn, payload, *, created_by=""):
                 tip_amount, coupon_code,
                 subtotal, discount_amount, gst_amount, service_amount, tip,
                 round_off, grand_total, created_by, status, kot_sent, first_kot_at,
+                customer_bill_sent, customer_bill_at,
                 is_active, created_at, updated_at
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
@@ -1686,6 +2745,7 @@ def save_pos_invoice(conn, payload, *, created_by=""):
                 ?, ?,
                 ?, ?, ?, ?, ?,
                 ?, ?, ?, 'open', ?, ?,
+                ?, ?,
                 1, {SQL_NOW}, {SQL_NOW}
             )
             """,
@@ -1715,6 +2775,8 @@ def save_pos_invoice(conn, payload, *, created_by=""):
                 creator,
                 next_kot_sent,
                 first_kot_at,
+                next_bill_sent,
+                customer_bill_at,
             ),
         )
         invoice_id = int(cursor.lastrowid)
@@ -1739,9 +2801,10 @@ def save_pos_invoice(conn, payload, *, created_by=""):
             ),
         )
 
-    # Occupancy is now a KOT-driven signal: a table becomes occupied the moment
-    # its first KOT is confirmed to the kitchen, not merely when a bill is saved.
-    if kot_send and not was_kot_sent and table_label and order_type == "dine_in":
+    # Claim the table as soon as a dine-in bill with items is saved (Save,
+    # autosave, Send to Kitchen, Send to Customer). Available → occupied only;
+    # reserved/cleaning/inactive are left alone.
+    if table_label and order_type == "dine_in":
         _pos_mark_table_occupied(conn, table_label)
 
     return get_pos_invoice(conn, invoice_id)
@@ -1844,6 +2907,24 @@ def list_pos_invoices(
         params,
     ).fetchall()
     return [_pos_invoice_row_to_dict(conn, row, include_lines=False) for row in rows]
+
+
+def list_pos_today_invoices(conn, *, today=None):
+    """Active POS invoices for the business day — Tables Invoice hub.
+
+    Includes dine-in and other order types created today (open and closed).
+    Newest first via list_pos_invoices ordering (saved_at / id).
+    """
+    if today is None:
+        today = datetime.now().strftime("%Y-%m-%d")
+    else:
+        today = str(today)
+    invoices = list_pos_invoices(conn, date_from=today, date_to=today)
+    return {
+        "date": today,
+        "invoice_count": len(invoices),
+        "invoices": invoices,
+    }
 
 
 def pos_invoice_kpis(conn, invoices, *, today=None):
@@ -1981,6 +3062,42 @@ def ensure_stores_schema(conn):
         CREATE UNIQUE INDEX IF NOT EXISTS idx_store_indents_submission_token
         ON store_indents(submission_token) WHERE submission_token != ''
     """)
+    # Refresh columns after possible ALTER above.
+    indent_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_indents)").fetchall()
+    }
+    if "approval_token" not in indent_cols:
+        cursor.execute(
+            "ALTER TABLE store_indents ADD COLUMN approval_token TEXT NOT NULL DEFAULT ''"
+        )
+    if "wa_decided_by" not in indent_cols:
+        cursor.execute(
+            "ALTER TABLE store_indents ADD COLUMN wa_decided_by TEXT NOT NULL DEFAULT ''"
+        )
+    if "wa_decision_message_id" not in indent_cols:
+        cursor.execute(
+            "ALTER TABLE store_indents ADD COLUMN wa_decision_message_id TEXT NOT NULL DEFAULT ''"
+        )
+    if "wa_template_message_id" not in indent_cols:
+        cursor.execute(
+            "ALTER TABLE store_indents ADD COLUMN wa_template_message_id TEXT NOT NULL DEFAULT ''"
+        )
+    if "wa_interactive_message_id" not in indent_cols:
+        cursor.execute(
+            "ALTER TABLE store_indents ADD COLUMN wa_interactive_message_id TEXT NOT NULL DEFAULT ''"
+        )
+    if "wa_notify_lock" not in indent_cols:
+        cursor.execute(
+            "ALTER TABLE store_indents ADD COLUMN wa_notify_lock INTEGER NOT NULL DEFAULT 0"
+        )
+    if "wa_notify_lock_at" not in indent_cols:
+        cursor.execute(
+            "ALTER TABLE store_indents ADD COLUMN wa_notify_lock_at TEXT NOT NULL DEFAULT ''"
+        )
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_store_indents_approval_token
+        ON store_indents(approval_token) WHERE approval_token != ''
+    """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_indent_lines (
             id                 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2049,6 +3166,19 @@ def ensure_stores_schema(conn):
             FOREIGN KEY (indent_id) REFERENCES store_indents(id) ON DELETE CASCADE
         )
     """)
+    wa_msg_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_indent_whatsapp_messages)").fetchall()
+    }
+    if "approval_token" not in wa_msg_cols:
+        cursor.execute(
+            "ALTER TABLE store_indent_whatsapp_messages "
+            "ADD COLUMN approval_token TEXT NOT NULL DEFAULT ''"
+        )
+    if "send_kind" not in wa_msg_cols:
+        cursor.execute(
+            "ALTER TABLE store_indent_whatsapp_messages "
+            "ADD COLUMN send_kind TEXT NOT NULL DEFAULT ''"
+        )
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_indent_wa_message
         ON store_indent_whatsapp_messages(wa_message_id)
@@ -2056,6 +3186,18 @@ def ensure_stores_schema(conn):
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_indent_wa_indent
         ON store_indent_whatsapp_messages(indent_id, created_at DESC)
+    """)
+    # One attempt per indent approval round + recipient + kind (template|interactive).
+    # Superseded rows fall outside the partial index so a new round can notify again.
+    cursor.execute("DROP INDEX IF EXISTS idx_store_indent_wa_send_claim")
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_store_indent_wa_send_claim
+        ON store_indent_whatsapp_messages(
+            indent_id, recipient_phone, approval_token, send_kind
+        )
+        WHERE status IN ('sending', 'sent', 'failed')
+          AND approval_token != ''
+          AND send_kind != ''
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_purchase_requests (

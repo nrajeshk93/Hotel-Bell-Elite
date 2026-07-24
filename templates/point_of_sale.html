@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=22">
 <script>
 (function(){
   try{
@@ -67,10 +67,6 @@
         <input type="date" id="pos-tables-biz-date" value="{{ business_date }}" aria-label="Business date">
       </label>
       {% endif %}
-      <button type="button" class="pos-tables-btn-ghost" id="pos-tables-clear-all" title="Free every table back to available">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15.3-6.4M21 12a9 9 0 0 1-15.3 6.4"/><path d="M18 2v4.5h-4.5M6 22v-4.5h4.5"/></svg>
-        Clear All Tables
-      </button>
       <a class="pos-tables-btn-primary" href="{{ url_for('point_of_sale_invoice') }}">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         New Order
@@ -142,6 +138,59 @@
       </svg>
       <span>View Details</span>
     </button>
+  </div>
+
+  <div class="pos-kot-modal" id="pos-kot-pending-modal" hidden aria-hidden="true">
+    <div class="pos-kot-modal-backdrop" data-kot-modal-close tabindex="-1" aria-hidden="true"></div>
+    <div class="pos-kot-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="pos-kot-modal-title">
+      <header class="pos-kot-modal-header">
+        <div class="pos-kot-modal-heading">
+          <span class="pos-kot-modal-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/>
+              <path d="M10.5 17a1.5 1.5 0 0 0 3 0"/>
+            </svg>
+          </span>
+          <div class="pos-kot-modal-heading-copy">
+            <h2 id="pos-kot-modal-title">Pending Kitchen Orders</h2>
+            <p class="pos-kot-modal-sub" id="pos-kot-modal-sub">Tables have orders that are not yet sent to kitchen.</p>
+          </div>
+        </div>
+        <button type="button" class="pos-kot-modal-close" data-kot-modal-close aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <div class="pos-kot-modal-body">
+        <div class="pos-kot-modal-table-wrap">
+          <table class="pos-kot-modal-table">
+            <thead>
+              <tr>
+                <th scope="col">Table</th>
+                <th scope="col">KOT No.</th>
+                <th scope="col">Items</th>
+                <th scope="col">Time</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody id="pos-kot-modal-rows">
+            </tbody>
+          </table>
+        </div>
+        <p class="pos-kot-modal-empty" id="pos-kot-modal-empty" hidden>No pending kitchen orders.</p>
+      </div>
+
+      <footer class="pos-kot-modal-footer">
+        <p class="pos-kot-modal-meta" id="pos-kot-modal-meta">Showing 0 of 0 pending tables</p>
+        <button type="button" class="pos-kot-modal-send-all" id="pos-kot-modal-send-all">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/>
+            <path d="M10.5 17a1.5 1.5 0 0 0 3 0"/>
+          </svg>
+          <span id="pos-kot-modal-send-all-label">Send All to Kitchen</span>
+        </button>
+      </footer>
+    </div>
   </div>
 
   <div class="pos-tables-toolbar" role="region" aria-label="Table filters">
@@ -295,14 +344,19 @@
   <section class="pos-quick-actions" aria-label="Quick actions">
     <h2 class="pos-quick-actions-title">Quick Actions</h2>
     <div class="pos-quick-actions-grid">
-      <a class="pos-quick-card" href="{{ url_for('point_of_sale_invoice') }}">
-        <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span>
-        <span class="pos-quick-copy"><strong>New Order</strong><small>Create a new order</small></span>
-      </a>
-      <a class="pos-quick-card" href="{{ url_for('point_of_sale_invoice') }}">
+      <button type="button" class="pos-quick-card" id="pos-quick-kot-tokens" aria-haspopup="dialog" aria-controls="pos-kot-tokens-modal">
+        <span class="pos-quick-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/>
+            <path d="M10.5 17a1.5 1.5 0 0 0 3 0"/>
+          </svg>
+        </span>
+        <span class="pos-quick-copy"><strong>Kitchen Order Token (KOT)</strong></span>
+      </button>
+      <button type="button" class="pos-quick-card" id="pos-quick-today-invoices" aria-haspopup="dialog" aria-controls="pos-today-invoices-modal">
         <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg></span>
-        <span class="pos-quick-copy"><strong>View Orders</strong><small>Open invoice workspace</small></span>
-      </a>
+        <span class="pos-quick-copy"><strong>Invoice</strong></span>
+      </button>
       <button type="button" class="pos-quick-card is-disabled" disabled title="Reservations are not available yet">
         <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg></span>
         <span class="pos-quick-copy"><strong>Reservations</strong><small>Not available yet</small></span>
@@ -318,11 +372,108 @@
     </div>
   </section>
 
+  <div class="pos-kot-modal" id="pos-kot-tokens-modal" hidden aria-hidden="true">
+    <div class="pos-kot-modal-backdrop" data-kot-tokens-close tabindex="-1" aria-hidden="true"></div>
+    <div class="pos-kot-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="pos-kot-tokens-title">
+      <header class="pos-kot-modal-header">
+        <div class="pos-kot-modal-heading">
+          <span class="pos-kot-modal-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/>
+              <path d="M10.5 17a1.5 1.5 0 0 0 3 0"/>
+            </svg>
+          </span>
+          <div class="pos-kot-modal-heading-copy">
+            <h2 id="pos-kot-tokens-title">Kitchen Order Tokens</h2>
+            <p class="pos-kot-modal-sub" id="pos-kot-tokens-sub">Resend a KOT if the kitchen missed the slip.</p>
+          </div>
+        </div>
+        <button type="button" class="pos-kot-modal-close" data-kot-tokens-close aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <div class="pos-kot-modal-body">
+        <div class="pos-kot-modal-table-wrap" id="pos-kot-tokens-table-wrap">
+          <table class="pos-kot-modal-table">
+            <thead>
+              <tr>
+                <th scope="col">Table</th>
+                <th scope="col">KOT No.</th>
+                <th scope="col">Items</th>
+                <th scope="col">Sent</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody id="pos-kot-tokens-rows">
+            </tbody>
+          </table>
+        </div>
+        <p class="pos-kot-modal-empty" id="pos-kot-tokens-empty" hidden>No kitchen tokens yet. Send a KOT from Create Invoice first.</p>
+      </div>
+
+      <footer class="pos-kot-modal-footer">
+        <p class="pos-kot-modal-meta" id="pos-kot-tokens-meta">Showing 0 tokens</p>
+        <button type="button" class="pos-kot-modal-footer-close" data-kot-tokens-close>Close</button>
+      </footer>
+    </div>
+  </div>
+
+  <div class="pos-kot-modal" id="pos-today-invoices-modal" hidden aria-hidden="true">
+    <div class="pos-kot-modal-backdrop" data-today-invoices-close tabindex="-1" aria-hidden="true"></div>
+    <div class="pos-kot-modal-dialog pos-today-invoices-dialog" role="dialog" aria-modal="true" aria-labelledby="pos-today-invoices-title">
+      <header class="pos-kot-modal-header">
+        <div class="pos-kot-modal-heading">
+          <span class="pos-kot-modal-icon pos-today-invoices-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+              <path d="M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2z"/>
+              <path d="M9 12h6M9 16h6"/>
+            </svg>
+          </span>
+          <div class="pos-kot-modal-heading-copy">
+            <h2 id="pos-today-invoices-title">Today’s Invoices</h2>
+            <p class="pos-kot-modal-sub" id="pos-today-invoices-sub">View or reprint bills created today.</p>
+          </div>
+        </div>
+        <button type="button" class="pos-kot-modal-close" data-today-invoices-close aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+
+      <div class="pos-kot-modal-body">
+        <div class="pos-kot-modal-table-wrap" id="pos-today-invoices-table-wrap">
+          <table class="pos-kot-modal-table">
+            <thead>
+              <tr>
+                <th scope="col">Order</th>
+                <th scope="col">Table</th>
+                <th scope="col">Type</th>
+                <th scope="col">Total</th>
+                <th scope="col">Time</th>
+                <th scope="col">Status</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody id="pos-today-invoices-rows">
+            </tbody>
+          </table>
+        </div>
+        <p class="pos-kot-modal-empty" id="pos-today-invoices-empty" hidden>No invoices created today yet. Use New Order or Create Invoice to start a bill.</p>
+      </div>
+
+      <footer class="pos-kot-modal-footer">
+        <p class="pos-kot-modal-meta" id="pos-today-invoices-meta">Showing 0 invoices</p>
+        <button type="button" class="pos-kot-modal-footer-close" data-today-invoices-close>Close</button>
+      </footer>
+    </div>
+  </div>
+
   <div class="pos-tables-toast" id="pos-tables-toast" role="status" aria-live="polite" hidden></div>
 </div>
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
-<script src="{{ url_for('static', filename='pos_tables.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='pos_tables.js') }}?v=22"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

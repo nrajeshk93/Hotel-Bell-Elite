@@ -207,6 +207,24 @@ body.pos-settings-module{
 
 /* Main panels */
 .pos-set-main{min-width:0}
+/* Standalone Menu page shell — calculator CSS (pos_menu.css) clears the card chrome */
+.pos-menu-standalone-main{
+  background:var(--pos-card);
+  border:1px solid var(--pos-border);
+  border-radius:var(--pos-radius);
+  box-shadow:var(--pos-shadow);
+  padding:8px 4px 20px;
+}
+body.pos-menu-module .pos-menu-standalone-main{
+  background:transparent;
+  border:0;
+  box-shadow:none;
+  padding:0;
+  border-radius:0;
+}
+.pos-menu-standalone-main .pos-set-panel{padding:8px 16px 0}
+body.pos-menu-module .pos-menu-standalone-main .pos-set-panel{padding:0}
+.pos-menu-standalone-main .pos-set-panel-head{padding-left:4px;padding-right:4px}
 .pos-set-panel{
   animation:posSetFade .35s ease both;
 }
@@ -373,6 +391,105 @@ body.pos-settings-module .pos-set-listbox .se-filter-chip-label{
 .pos-set-table tbody tr{cursor:pointer;transition:background .12s}
 .pos-set-table tbody tr:hover{background:#F8FAFC}
 .pos-set-table tbody tr.is-selected{background:var(--pos-primary-soft)}
+.pos-set-table-drag-col{
+  width:1%;white-space:nowrap;text-align:center;
+  vertical-align:middle;padding-left:10px;padding-right:4px;
+}
+.pos-set-table th.pos-set-table-drag-col{padding-left:10px;padding-right:4px}
+.pos-set-table-drag-handle{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;margin:0;padding:0;
+  border:0;border-radius:6px;background:transparent;
+  color:#94A3B8;cursor:grab;user-select:none;
+  -webkit-user-select:none;touch-action:none;
+  transition:color .12s,background .12s;
+}
+.pos-set-table-drag-handle svg{
+  width:14px;height:14px;fill:currentColor;pointer-events:none;
+}
+.pos-set-table-drag-handle:hover{color:#64748B;background:#F1F5F9}
+.pos-set-table-drag-handle:focus-visible{
+  outline:2px solid rgba(37,99,235,.35);outline-offset:2px;
+}
+.pos-set-table-drag-handle:active,
+html.pos-set-tables-dragging .pos-set-table-drag-handle{cursor:grabbing}
+.pos-set-table.is-reordering tbody tr{cursor:grabbing}
+.pos-set-table tbody tr.is-drag-placeholder{
+  opacity:.38;
+  transition:opacity .18s ease;
+}
+.pos-set-table tbody tr.is-drag-placeholder td{
+  background:#F8FAFC;
+  box-shadow:inset 0 0 0 1px rgba(37,99,235,.12);
+  transition:transform .24s cubic-bezier(.22,1,.36,1),background .18s ease,box-shadow .18s ease;
+}
+.pos-set-table tbody tr.is-drag-settling{
+  opacity:1;
+  transition:opacity .2s ease;
+}
+.pos-set-table tbody tr.is-drag-settling td{
+  background:transparent;
+  box-shadow:none;
+}
+/* FLIP shifts apply on td — tr transforms are unreliable with table layout */
+.pos-set-table.is-reordering tbody tr:not(.is-drag-placeholder) td{
+  transition:transform .24s cubic-bezier(.22,1,.36,1);
+  will-change:transform;
+}
+.pos-set-tables-drag-ghost{
+  position:fixed;
+  left:0;top:0;
+  z-index:1200;
+  margin:0;
+  pointer-events:none;
+  border-collapse:collapse;
+  background:#fff;
+  border-radius:10px;
+  overflow:hidden;
+  box-shadow:
+    0 1px 2px rgba(15,23,42,.04),
+    0 12px 28px rgba(15,23,42,.12);
+  opacity:.97;
+  transform:scale(1.012);
+  transform-origin:top left;
+  will-change:transform,left,top,opacity,box-shadow;
+}
+.pos-set-tables-drag-ghost td{
+  background:#fff;
+  border-bottom:1px solid var(--pos-border);
+}
+.pos-set-tables-drag-ghost.is-settling{
+  opacity:1;
+  box-shadow:
+    0 1px 2px rgba(15,23,42,.03),
+    0 4px 12px rgba(15,23,42,.06);
+  transition:
+    left .28s cubic-bezier(.22,1,.36,1),
+    top .28s cubic-bezier(.22,1,.36,1),
+    transform .28s cubic-bezier(.22,1,.36,1),
+    opacity .22s ease,
+    box-shadow .28s ease;
+}
+html.pos-set-tables-dragging{
+  cursor:grabbing;
+  user-select:none;
+  -webkit-user-select:none;
+}
+html.pos-set-tables-dragging *{cursor:grabbing !important}
+@media (prefers-reduced-motion:reduce){
+  .pos-set-table tbody tr.is-drag-placeholder,
+  .pos-set-table tbody tr.is-drag-placeholder td,
+  .pos-set-table tbody tr.is-drag-settling,
+  .pos-set-table tbody tr.is-drag-settling td,
+  .pos-set-table.is-reordering tbody tr:not(.is-drag-placeholder) td,
+  .pos-set-tables-drag-ghost,
+  .pos-set-tables-drag-ghost.is-settling{
+    transition:none !important;
+  }
+  .pos-set-tables-drag-ghost{transform:none;opacity:1;box-shadow:0 4px 14px rgba(15,23,42,.1)}
+}
+.pos-set-table tbody tr.pos-set-table-empty{cursor:default}
+.pos-set-table tbody tr.pos-set-table-empty:hover{background:transparent}
 
 /* Floor editor — text layout */
 .pos-floor-editor{
@@ -460,7 +577,7 @@ body.pos-settings-module .pos-set-listbox .se-filter-chip-label{
 .pos-floor-table-rows{display:flex;flex-direction:column}
 .pos-floor-table-row{
   display:grid;
-  grid-template-columns:minmax(72px,1fr) 72px 110px 120px;
+  grid-template-columns:minmax(72px,1fr) 72px 110px 120px 72px;
   gap:10px;align-items:center;
   width:100%;
   padding:12px 16px;
@@ -468,6 +585,7 @@ body.pos-settings-module .pos-set-listbox .se-filter-chip-label{
   background:#fff;color:var(--pos-text);
   font:inherit;font-size:13px;text-align:left;
   cursor:pointer;transition:background .12s;
+  box-sizing:border-box;
 }
 .pos-floor-table-row--head{
   border-top:0;
@@ -482,6 +600,27 @@ body.pos-settings-module .pos-set-listbox .se-filter-chip-label{
   box-shadow:inset 3px 0 0 var(--pos-primary);
 }
 .pos-floor-table-row-name{font-weight:700;letter-spacing:-.01em}
+.pos-floor-table-row-order{
+  display:inline-flex;align-items:center;justify-content:flex-end;gap:2px;
+}
+.pos-floor-order-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;padding:0;margin:0;
+  border:1px solid transparent;border-radius:8px;
+  background:transparent;color:var(--pos-muted);
+  cursor:pointer;transition:background .12s,color .12s,border-color .12s;
+}
+.pos-floor-order-btn svg{
+  width:14px;height:14px;stroke:currentColor;fill:none;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+}
+.pos-floor-order-btn:hover:not(:disabled){
+  background:#F1F5F9;color:var(--pos-text);border-color:var(--pos-border);
+}
+.pos-floor-order-btn:disabled{opacity:.35;cursor:not-allowed}
+.pos-floor-table-row.is-selected .pos-floor-order-btn:hover:not(:disabled){
+  background:rgba(255,255,255,.7);
+}
 
 /* Floor properties modal — mirrors Employee Add Credit (modal-overlay / modal-box) */
 body.pos-settings-module .modal-overlay{
@@ -697,11 +836,64 @@ body.pos-settings-module .pos-menu-modal-box{
   max-width:min(460px,94vw);
   overflow:visible;
 }
-body.pos-settings-module .pos-menu-item-modal-box{width:560px;max-width:min(560px,94vw);overflow:visible}
-body.pos-settings-module #pos-menu-item-modal.modal-overlay{
+/* Item modal: fit viewport, scroll fields/ingredients, keep Cancel/Save visible */
+body.pos-settings-module .pos-menu-item-modal-box{
+  width:560px;
+  max-width:min(560px,94vw);
+  max-height:min(calc(100dvh - 24px), calc(100vh - 24px));
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  box-sizing:border-box;
+}
+body.pos-settings-module .pos-menu-item-modal-box > h3,
+body.pos-settings-module .pos-menu-item-modal-box > .pos-floor-props-copy,
+body.pos-settings-module .pos-menu-item-modal-box > .pos-menu-modal-err{
+  flex-shrink:0;
+}
+body.pos-settings-module .pos-menu-item-form{
+  display:flex;
+  flex-direction:column;
+  flex:1 1 auto;
+  min-height:0;
+  overflow:hidden;
+}
+body.pos-settings-module .pos-menu-item-modal-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:4px;
+}
+body.pos-settings-module .pos-menu-item-modal-box .modal-actions{
+  flex-shrink:0;
+  margin-top:12px;
+  background:#fff;
+}
+/* While a listbox is open, let absolute menus paint outside the scroll clip */
+body.pos-settings-module .pos-menu-item-modal-box:has(.pos-menu-listbox.is-open),
+body.pos-settings-module .pos-menu-item-modal-box:has(.pos-menu-unit-listbox.is-open){
   overflow:visible;
-  align-items:flex-start;
-  padding-top:min(48px,6vh);
+}
+body.pos-settings-module .pos-menu-item-form:has(.pos-menu-listbox.is-open),
+body.pos-settings-module .pos-menu-item-form:has(.pos-menu-unit-listbox.is-open){
+  overflow:visible;
+}
+body.pos-settings-module .pos-menu-item-modal-body:has(.pos-menu-listbox.is-open),
+body.pos-settings-module .pos-menu-item-modal-body:has(.pos-menu-unit-listbox.is-open){
+  overflow:visible;
+}
+body.pos-settings-module #pos-menu-item-modal.modal-overlay{
+  overflow:auto;
+  align-items:center;
+  justify-content:center;
+  padding:max(12px, env(safe-area-inset-top, 0px))
+          max(12px, env(safe-area-inset-right, 0px))
+          max(12px, env(safe-area-inset-bottom, 0px))
+          max(12px, env(safe-area-inset-left, 0px));
+  box-sizing:border-box;
 }
 body.pos-settings-module #pos-menu-item-modal .pos-menu-listbox,
 body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox{

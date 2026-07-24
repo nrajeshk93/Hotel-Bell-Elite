@@ -190,6 +190,65 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         )
         self.assertEqual(no_name.status_code, 400)
 
+    def test_today_invoices_lists_todays_bills_newest_first(self):
+        from datetime import datetime, timedelta
+
+        empty = self.client.get("/point-of-sale/api/today-invoices")
+        self.assertEqual(empty.status_code, 200)
+        body = empty.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["invoice_count"], 0)
+        self.assertEqual(body["invoices"], [])
+        today = body["date"]
+        self.assertEqual(today, datetime.now().strftime("%Y-%m-%d"))
+
+        # Older day must not appear in the hub.
+        yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+        self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="ORD-OLD-0001",
+                savedAt=f"{yesterday} 10:00:00",
+                table="T9",
+            ),
+        )
+
+        older = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="ORD-TODAY-0001",
+                savedAt=f"{today} 09:00:00",
+                orderType="takeaway",
+                table="",
+            ),
+        )
+        self.assertEqual(older.status_code, 200, older.get_data(as_text=True))
+        newer = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="ORD-TODAY-0002",
+                savedAt=f"{today} 18:30:00",
+                orderType="dine_in",
+                table="T2",
+            ),
+        )
+        self.assertEqual(newer.status_code, 200, newer.get_data(as_text=True))
+
+        res = self.client.get("/point-of-sale/api/today-invoices")
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["date"], today)
+        self.assertEqual(payload["invoice_count"], 2)
+        orders = [inv["order_no"] for inv in payload["invoices"]]
+        self.assertEqual(orders, ["ORD-TODAY-0002", "ORD-TODAY-0001"])
+        first = payload["invoices"][0]
+        self.assertEqual(first["table_label"], "T2")
+        self.assertEqual(first["order_type"], "dine_in")
+        self.assertEqual(first["status"], "open")
+        self.assertIn("grand_total", first)
+        self.assertIn("saved_at", first)
+
 
 if __name__ == "__main__":
     unittest.main()

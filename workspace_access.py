@@ -163,7 +163,10 @@ _ACCESS_MODULE_UI_META = {
     },
     "point_of_sale": {
         "icon": "receipt",
-        "description": "Counter billing and invoice workspace for guest sales.",
+        "description": (
+            "Counter billing and invoice workspace for guest sales. "
+            "After a KOT is sent, only Administrators can reduce qty or delete those lines."
+        ),
     },
     "stores": {
         "icon": "store",
@@ -175,11 +178,12 @@ _ACCESS_MODULE_UI_META = {
     },
 }
 
-# Point of Sale workspace routes (Tables + POS + Invoice Ledger + Settings). Not Sales Analytics.
+# Point of Sale workspace routes (Tables + POS + Invoice Ledger + Menu + Settings). Not Sales Analytics.
 _POINT_OF_SALE_ENDPOINTS = {
     "point_of_sale",
     "point_of_sale_invoice",
     "point_of_sale_invoice_ledger",
+    "point_of_sale_menu",
     "point_of_sale_settings",
     "export_pos_invoice_ledger_report",
     "point_of_sale_api_floor",
@@ -815,6 +819,11 @@ def is_system_administrator(user):
         return False
     username = (user.get("username") or "").strip().lower()
     return username == "admin"
+
+
+def user_can_edit_kot_sent_lines(user):
+    """Administrators may reduce/delete invoice lines after kitchen send."""
+    return bool(user and user.get("is_admin"))
 
 
 def set_user_permissions(

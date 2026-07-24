@@ -228,6 +228,153 @@ class PosMenuTests(unittest.TestCase):
         self.assertEqual(alt.status_code, 200)
         self.assertTrue(alt.get_json()["ok"])
 
+    def test_recipe_line_food_cost_unit_conversion(self):
+        # 150 g of a product priced ₹200 / kg → ₹30
+        self.assertAlmostEqual(
+            db_mod.recipe_line_food_cost(150, "g", "kg", 200),
+            30.0,
+        )
+        # 2 pcs of a product priced ₹12 / pcs → ₹24
+        self.assertAlmostEqual(
+            db_mod.recipe_line_food_cost(2, "pcs", "pcs", 12),
+            24.0,
+        )
+        # Incompatible units → None
+        self.assertIsNone(db_mod.recipe_line_food_cost(1, "g", "pcs", 10))
+
+    def test_margin_bands_and_item_enrichment(self):
+        self.assertEqual(db_mod.margin_band_for_pct(63.5), "healthy")
+        self.assertEqual(db_mod.margin_band_for_pct(45), "moderate")
+        self.assertEqual(db_mod.margin_band_for_pct(12), "low")
+
+        healthy = db_mod.compute_pos_menu_item_margins(260, 94.8)
+        self.assertAlmostEqual(healthy["gross_margin"], 165.2)
+        self.assertAlmostEqual(healthy["margin_pct"], 63.54, places=2)
+        self.assertEqual(healthy["margin_band"], "healthy")
+
+        missing = db_mod.compute_pos_menu_item_margins(260, None)
+        self.assertIsNone(missing["food_cost"])
+        self.assertIsNone(missing["margin_band"])
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "UPDATE store_products SET approximate_price = 200 WHERE id = ?",
+                (self.product_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        cat = self.client.post(
+            "/point-of-sale/api/menu/categories",
+            json={"name": "Margin Cat", "is_visible": True},
+        ).get_json()["category"]
+
+        created = self.client.post(
+            "/point-of-sale/api/menu/items",
+            json={
+                "category_id": cat["id"],
+                "name": "Butter Chicken",
+                "rate": 260,
+                "recipe": [{"product_id": self.product_id, "qty": 150, "unit": "g"}],
+            },
+        )
+        self.assertEqual(created.status_code, 200)
+        item = created.get_json()["item"]
+        self.assertEqual(item["category_name"], "Margin Cat")
+        self.assertEqual(item["status"], "visible")
+        self.assertAlmostEqual(float(item["food_cost"]), 30.0)
+        self.assertAlmostEqual(float(item["gross_margin"]), 230.0)
+        self.assertAlmostEqual(float(item["margin_pct"]), 88.46, places=2)
+        self.assertEqual(item["margin_band"], "healthy")
+
+    def test_menu_details_price_history_and_fifo_fallback(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "UPDATE store_products SET approximate_price = 200 WHERE id = ?",
+                (self.product_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        cat = self.client.post(
+            "/point-of-sale/api/menu/categories",
+            json={"name": "Details Cat", "is_visible": True},
+        ).get_json()["category"]
+        created = self.client.post(
+            "/point-of-sale/api/menu/items",
+            json={
+                "category_id": cat["id"],
+                "name": "Butter Chicken",
+                "rate": 350,
+                "menu_type": "non_veg",
+                "portion_size": "Full",
+                "notes": "Serve hot",
+                "recipe": [{"product_id": self.product_id, "qty": 150, "unit": "g"}],
+            },
+        )
+        self.assertEqual(created.status_code, 200)
+        item_id = created.get_json()["item"]["id"]
+
+        updated = self.client.post(
+            "/point-of-sale/api/menu/items",
+            json={
+                "id": item_id,
+                "category_id": cat["id"],
+                "name": "Butter Chicken",
+                "rate": 375,
+                "recipe": [{"product_id": self.product_id, "qty": 150, "unit": "g"}],
+                "price_change_reason": "Weekend price",
+            },
+        )
+        self.assertEqual(updated.status_code, 200)
+
+        detail_res = self.client.get(f"/point-of-sale/api/menu/items/{item_id}")
+        self.assertEqual(detail_res.status_code, 200)
+        payload = detail_res.get_json()
+        self.assertTrue(payload["ok"])
+        detail = payload["item"]
+        self.assertEqual(detail["name"], "Butter Chicken")
+        self.assertEqual(detail["menu_type"], "non_veg")
+        self.assertEqual(detail["notes"], "Serve hot")
+        self.assertIn("fifo", detail)
+        self.assertIn("analysis", detail)
+        self.assertGreaterEqual(len(detail["price_history"]), 1)
+        self.assertAlmostEqual(float(detail["price_history"][0]["old_price"]), 350)
+        self.assertAlmostEqual(float(detail["price_history"][0]["new_price"]), 375)
+
+        # No stock batches → FIFO unavailable; approximate cost still present.
+        self.assertFalse(detail["fifo"]["fifo_available"])
+        self.assertAlmostEqual(float(detail["food_cost"]), 30.0)
+
+        conn = db_mod.get_db()
+        try:
+            product = conn.execute(
+                "SELECT name, default_unit FROM store_products WHERE id = ?",
+                (self.product_id,),
+            ).fetchone()
+            conn.execute(
+                """
+                INSERT INTO store_stock_movements
+                    (outlet, item_name, unit, qty_delta, movement_type, notes, unit_cost)
+                VALUES ('restaurant', ?, ?, 5, 'receive', 'Received from PR-9', 200)
+                """,
+                (product["name"], product["default_unit"] or "kg"),
+            )
+            conn.commit()
+            with_fifo = db_mod.get_pos_menu_item_details(conn, item_id)
+        finally:
+            conn.close()
+        self.assertTrue(with_fifo["fifo"]["fifo_available"])
+        self.assertIsNotNone(with_fifo["fifo"]["fifo_food_cost"])
+        self.assertGreaterEqual(len(with_fifo["fifo"]["batches"]), 1)
+        self.assertEqual(db_mod.margin_status_for_pct(72), "excellent")
+        self.assertEqual(db_mod.margin_status_for_pct(20), "critical")
+        self.assertAlmostEqual(db_mod.recommended_selling_price(40, 60), 100.0)
+
 
 if __name__ == "__main__":
     unittest.main()

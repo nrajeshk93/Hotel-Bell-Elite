@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Menu & Margin Calculator | Restaurant | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=12">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module pos-module pos-settings-module pos-menu-module">
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
+{% include 'partials/de_workspace_shell_open.html' %}
+
+<div class="main-wrapper" id="pos-menu-page" data-pos-menu>
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+            </div>
+            <h1>Menu &amp; Margin Calculator</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools pos-menu-header-actions">
+        <button type="button" class="btn" id="pos-menu-export" data-pos-menu-action="export" title="Export filtered rows as CSV">Export</button>
+        <button type="button" class="btn" id="pos-menu-add-category" data-pos-menu-action="add-category">Add category</button>
+        <button type="button" class="btn btn-primary" id="pos-menu-add-item" data-pos-menu-action="add-item">Add Menu</button>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <div id="pos-menu-filter-form" class="sr-topbar-filters pos-menu-filter-form" aria-label="Menu filters">
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pos-menu-search-chip" id="pos-menu-search-chip">
+            <label class="se-filter-chip-label" for="pos-menu-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="pos-menu-search" class="pl-search-input" placeholder="Menu item, code, category…" autocomplete="off" aria-label="Search menu items">
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pos-menu-filter-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-change="posMenuCategoryFilterChanged" id="pos-menu-filter-category-listbox">
+            <span class="se-filter-chip-label" id="pos-menu-filter-category-label">Category</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+              </span>
+              <input type="hidden" id="pos-menu-filter-category" value="">
+              <button type="button" class="se-filter-chip-trigger" id="pos-menu-filter-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-filter-category-list" aria-labelledby="pos-menu-filter-category-label pos-menu-filter-category-value">
+                <span class="se-filter-chip-value" id="pos-menu-filter-category-value">All Categories</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="pos-menu-filter-category-list" role="listbox" aria-labelledby="pos-menu-filter-category-label" hidden>
+              <div class="ep-listbox-search-wrap">
+                <input type="search" class="ep-listbox-search" placeholder="Search category…" autocomplete="off" aria-label="Search categories">
+              </div>
+              <div class="ep-listbox-options" id="pos-menu-filter-category-options">
+                <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="" data-name="all categories" data-label="All Categories" aria-selected="true">All Categories</button>
+              </div>
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pos-menu-filter-listbox" data-se-listbox data-se-listbox-change="posMenuStatusFilterChanged" id="pos-menu-filter-status-listbox">
+            <span class="se-filter-chip-label" id="pos-menu-filter-status-label">Status</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
+              </span>
+              <input type="hidden" id="pos-menu-filter-status" value="">
+              <button type="button" class="se-filter-chip-trigger" id="pos-menu-filter-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-filter-status-list" aria-labelledby="pos-menu-filter-status-label pos-menu-filter-status-value">
+                <span class="se-filter-chip-value" id="pos-menu-filter-status-value">All Status</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="pos-menu-filter-status-list" role="listbox" aria-labelledby="pos-menu-filter-status-label" hidden>
+              <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="" data-name="all status" data-label="All Status" aria-selected="true">All Status</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="visible" data-name="visible" data-label="Visible" aria-selected="false">Visible</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="hidden" data-name="hidden" data-label="Hidden" aria-selected="false">Hidden</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    {% with pos_menu_panel_active=true, pos_menu_standalone=true %}
+    {% include 'partials/pos_menu_panel.html' %}
+    {% endwith %}
+  </section>
+
+  <div class="pos-set-toast" id="pos-set-toast" role="status" aria-live="polite" hidden></div>
+  {% include 'partials/pos_menu_modals.html' %}
+</div>
+
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=24"></script>
+<script src="{{ url_for('static', filename='pos_menu.js') }}?v=25"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

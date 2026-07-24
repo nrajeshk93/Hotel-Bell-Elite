@@ -476,6 +476,134 @@
     return '';
   }
 
+  function isOrphanTable(table, areas) {
+    if (!table) return true;
+    if (!table.areaId) return true;
+    return !(areas || []).some(function (a) {
+      return a.id === table.areaId;
+    });
+  }
+
+  function tableGroupIndices(tables, areas, table) {
+    var indices = [];
+    var assigned =
+      table &&
+      table.areaId &&
+      (areas || []).some(function (a) {
+        return a.id === table.areaId;
+      });
+    var i;
+    for (i = 0; i < (tables || []).length; i++) {
+      var t = tables[i];
+      if (assigned) {
+        if (t.areaId === table.areaId) indices.push(i);
+      } else if (isOrphanTable(t, areas)) {
+        indices.push(i);
+      }
+    }
+    return indices;
+  }
+
+  function swapTablesAt(ia, ib) {
+    var s = ensureState();
+    if (ia < 0 || ib < 0 || ia >= s.tables.length || ib >= s.tables.length) return false;
+    var tmp = s.tables[ia];
+    s.tables[ia] = s.tables[ib];
+    s.tables[ib] = tmp;
+    persistState();
+    renderFloorList();
+    return true;
+  }
+
+  function moveTableInArea(tableId, direction) {
+    var s = ensureState();
+    var table = findItem(tableId);
+    if (!table || table.type !== 'table') return false;
+    var indices = tableGroupIndices(s.tables, s.areas, table);
+    var pos = -1;
+    var i;
+    for (i = 0; i < indices.length; i++) {
+      if (s.tables[indices[i]].id === tableId) {
+        pos = i;
+        break;
+      }
+    }
+    if (pos < 0) return false;
+    var swapWith = direction === 'up' ? pos - 1 : pos + 1;
+    if (swapWith < 0 || swapWith >= indices.length) return false;
+    return swapTablesAt(indices[pos], indices[swapWith]);
+  }
+
+  /** Move a table to a new index in the Tables settings master list. */
+  function moveTableToIndex(tableId, newIndex) {
+    var s = ensureState();
+    var from = -1;
+    var i;
+    for (i = 0; i < s.tables.length; i++) {
+      if (s.tables[i].id === tableId) {
+        from = i;
+        break;
+      }
+    }
+    if (from < 0) return false;
+    newIndex = Math.max(0, Math.min(s.tables.length - 1, newIndex));
+    if (from === newIndex) return false;
+    var item = s.tables.splice(from, 1)[0];
+    s.tables.splice(newIndex, 0, item);
+    persistState();
+    renderFloorList();
+    return true;
+  }
+
+  function floorTableRowHtml(table, indexInGroup, groupLen, selected) {
+    var canUp = indexInGroup > 0;
+    var canDown = indexInGroup < groupLen - 1;
+    return (
+      '<div class="pos-floor-table-row' +
+      (selected ? ' is-selected' : '') +
+      '" role="listitem" data-id="' +
+      escapeHtml(table.id) +
+      '" data-kind="table" data-select-id="' +
+      escapeHtml(table.id) +
+      '" tabindex="0">' +
+      '<span class="pos-floor-table-row-name">' +
+      escapeHtml(table.name) +
+      '</span>' +
+      '<span>' +
+      escapeHtml(String(table.seats || 0)) +
+      '</span>' +
+      '<span>' +
+      escapeHtml(shapeLabel(table.shape)) +
+      '</span>' +
+      '<span><span class="pos-set-badge ' +
+      statusClass(table.status) +
+      '">' +
+      escapeHtml(statusLabel(table.status)) +
+      '</span></span>' +
+      '<span class="pos-floor-table-row-order">' +
+      '<button type="button" class="pos-floor-order-btn" data-floor-action="move-table-up" data-table-id="' +
+      escapeHtml(table.id) +
+      '" title="Move up" aria-label="Move ' +
+      escapeHtml(table.name) +
+      ' up"' +
+      (canUp ? '' : ' disabled') +
+      '>' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>' +
+      '</button>' +
+      '<button type="button" class="pos-floor-order-btn" data-floor-action="move-table-down" data-table-id="' +
+      escapeHtml(table.id) +
+      '" title="Move down" aria-label="Move ' +
+      escapeHtml(table.name) +
+      ' down"' +
+      (canDown ? '' : ' disabled') +
+      '>' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 10l6 6 6-6"/></svg>' +
+      '</button>' +
+      '</span>' +
+      '</div>'
+    );
+  }
+
   function updateSelectionChrome() {
     var s = ensureState();
     var delBtn = $('#pos-floor-delete-btn');
@@ -533,33 +661,10 @@
           html +=
             '<div class="pos-floor-table-rows" role="list">' +
             '<div class="pos-floor-table-row pos-floor-table-row--head" aria-hidden="true">' +
-            '<span>Table</span><span>Seats</span><span>Shape</span><span>Status</span>' +
+            '<span>Table</span><span>Seats</span><span>Shape</span><span>Status</span><span>Order</span>' +
             '</div>';
-          tables.forEach(function (table) {
-            var selected = s.selectedId === table.id;
-            html +=
-              '<button type="button" class="pos-floor-table-row' +
-              (selected ? ' is-selected' : '') +
-              '" role="listitem" data-id="' +
-              escapeHtml(table.id) +
-              '" data-kind="table" data-select-id="' +
-              escapeHtml(table.id) +
-              '">' +
-              '<span class="pos-floor-table-row-name">' +
-              escapeHtml(table.name) +
-              '</span>' +
-              '<span>' +
-              escapeHtml(String(table.seats || 0)) +
-              '</span>' +
-              '<span>' +
-              escapeHtml(shapeLabel(table.shape)) +
-              '</span>' +
-              '<span><span class="pos-set-badge ' +
-              statusClass(table.status) +
-              '">' +
-              escapeHtml(statusLabel(table.status)) +
-              '</span></span>' +
-              '</button>';
+          tables.forEach(function (table, idx) {
+            html += floorTableRowHtml(table, idx, tables.length, s.selectedId === table.id);
           });
           html += '</div>';
         }
@@ -567,9 +672,7 @@
       });
 
       var orphan = s.tables.filter(function (t) {
-        return !t.areaId || !s.areas.some(function (a) {
-          return a.id === t.areaId;
-        });
+        return isOrphanTable(t, s.areas);
       });
       if (orphan.length) {
         html +=
@@ -579,32 +682,12 @@
           ' table' +
           (orphan.length === 1 ? '' : 's') +
           '</p></div></header>' +
-          '<div class="pos-floor-table-rows" role="list">';
-        orphan.forEach(function (table) {
-          var selected = s.selectedId === table.id;
-          html +=
-            '<button type="button" class="pos-floor-table-row' +
-            (selected ? ' is-selected' : '') +
-            '" role="listitem" data-id="' +
-            escapeHtml(table.id) +
-            '" data-kind="table" data-select-id="' +
-            escapeHtml(table.id) +
-            '">' +
-            '<span class="pos-floor-table-row-name">' +
-            escapeHtml(table.name) +
-            '</span>' +
-            '<span>' +
-            escapeHtml(String(table.seats || 0)) +
-            '</span>' +
-            '<span>' +
-            escapeHtml(shapeLabel(table.shape)) +
-            '</span>' +
-            '<span><span class="pos-set-badge ' +
-            statusClass(table.status) +
-            '">' +
-            escapeHtml(statusLabel(table.status)) +
-            '</span></span>' +
-            '</button>';
+          '<div class="pos-floor-table-rows" role="list">' +
+          '<div class="pos-floor-table-row pos-floor-table-row--head" aria-hidden="true">' +
+          '<span>Table</span><span>Seats</span><span>Shape</span><span>Status</span><span>Order</span>' +
+          '</div>';
+        orphan.forEach(function (table, idx) {
+          html += floorTableRowHtml(table, idx, orphan.length, s.selectedId === table.id);
         });
         html += '</div></section>';
       }
@@ -705,13 +788,35 @@
     if (modal) modal.classList.remove('active');
   }
 
+  var TABLES_LIST_GRIP_SVG =
+    '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
+    '<circle cx="5" cy="3.5" r="1.35"/><circle cx="11" cy="3.5" r="1.35"/>' +
+    '<circle cx="5" cy="8" r="1.35"/><circle cx="11" cy="8" r="1.35"/>' +
+    '<circle cx="5" cy="12.5" r="1.35"/><circle cx="11" cy="12.5" r="1.35"/>' +
+    '</svg>';
+
+  function tablesListDragHandleCellHtml(table) {
+    return (
+      '<td class="pos-set-table-drag-col">' +
+      '<span class="pos-set-table-drag-handle" role="button" tabindex="0" ' +
+      'data-table-drag-handle="1" data-table-id="' +
+      escapeHtml(table.id) +
+      '" title="Drag to reorder" aria-label="Drag to reorder ' +
+      escapeHtml(table.name) +
+      '">' +
+      TABLES_LIST_GRIP_SVG +
+      '</span>' +
+      '</td>'
+    );
+  }
+
   function renderTablesList() {
     var tbody = $('#pos-set-tables-list tbody');
     if (!tbody) return;
     var s = ensureState();
     if (!s.tables.length) {
       tbody.innerHTML =
-        '<tr class="pos-set-table-empty"><td colspan="5">No tables yet. Add areas and tables on the Floor Layout tab.</td></tr>';
+        '<tr class="pos-set-table-empty"><td colspan="6">No tables yet. Add areas and tables on the Floor Layout tab.</td></tr>';
       return;
     }
     var areaMap = {};
@@ -726,6 +831,7 @@
           '"' +
           (s.selectedId === t.id ? ' class="is-selected"' : '') +
           '>' +
+          tablesListDragHandleCellHtml(t) +
           '<td>' +
           escapeHtml(t.name) +
           '</td>' +
@@ -1040,6 +1146,14 @@
       else if (action === 'add-area') addArea();
       else if (action === 'delete') deleteSelected();
       else if (action === 'duplicate') duplicateSelected();
+      else if (action === 'move-table-up' || action === 'move-table-down') {
+        e.preventDefault();
+        e.stopPropagation();
+        moveTableInArea(
+          btn.getAttribute('data-table-id'),
+          action === 'move-table-up' ? 'up' : 'down'
+        );
+      }
     });
   }
 
@@ -1120,13 +1234,390 @@
       }
       selectItem(target.getAttribute('data-select-id'));
     });
+    wrap.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      if (e.target.closest('[data-floor-action]')) return;
+      var row = e.target.closest('.pos-floor-table-row[data-select-id]');
+      if (!row || !wrap.contains(row)) return;
+      e.preventDefault();
+      selectItem(row.getAttribute('data-select-id'));
+    });
+  }
+
+  function prefersTablesListReducedMotion() {
+    try {
+      return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch (err) {
+      return false;
+    }
+  }
+
+  /**
+   * Pointer-based Tables list reorder with floating ghost + FLIP sibling shifts.
+   * Handle-only; persists via moveTableToIndex → tables[] floor PUT.
+   */
+  function bindTablesListDrag(table) {
+    var DRAG_THRESHOLD_PX = 5;
+    var FLIP_MS = 240;
+    var SETTLE_MS = 280;
+    var FLIP_EASE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+    var session = null;
+    var suppressRowClickUntil = 0;
+
+    function dataRows() {
+      return $all('tbody > tr[data-id]', table);
+    }
+
+    function clearTdMotion(row) {
+      $all('td', row).forEach(function (td) {
+        td.style.transition = '';
+        td.style.transform = '';
+      });
+    }
+
+    function captureRowTops(list) {
+      var map = typeof Map === 'function' ? new Map() : null;
+      var fallback = [];
+      list.forEach(function (row, i) {
+        var rect = row.getBoundingClientRect();
+        if (map) map.set(row, rect);
+        else fallback[i] = { row: row, rect: rect };
+      });
+      return map || fallback;
+    }
+
+    function prevTop(captured, row) {
+      if (captured && typeof captured.get === 'function') {
+        var rect = captured.get(row);
+        return rect ? rect.top : null;
+      }
+      var i;
+      for (i = 0; i < captured.length; i++) {
+        if (captured[i].row === row) return captured[i].rect.top;
+      }
+      return null;
+    }
+
+    function flipSiblingRows(captured, excludeRow, animate) {
+      var list = dataRows();
+      if (!animate) {
+        list.forEach(function (row) {
+          if (row !== excludeRow) clearTdMotion(row);
+        });
+        return;
+      }
+      /* Clear in-flight transforms so Last rects are layout positions. */
+      list.forEach(function (row) {
+        if (row === excludeRow) return;
+        $all('td', row).forEach(function (td) {
+          td.style.transition = 'none';
+          td.style.transform = '';
+        });
+      });
+      void table.offsetHeight;
+      list.forEach(function (row) {
+        if (row === excludeRow) return;
+        var top = prevTop(captured, row);
+        if (top == null) return;
+        var dy = top - row.getBoundingClientRect().top;
+        if (Math.abs(dy) < 0.5) return;
+        $all('td', row).forEach(function (td) {
+          td.style.transform = 'translate3d(0,' + dy + 'px,0)';
+        });
+      });
+      void table.offsetHeight;
+      list.forEach(function (row) {
+        if (row === excludeRow) return;
+        $all('td', row).forEach(function (td) {
+          td.style.transition = 'transform ' + FLIP_MS + 'ms ' + FLIP_EASE;
+          td.style.transform = '';
+        });
+      });
+    }
+
+    function createGhost(row, clientX, clientY) {
+      var rect = row.getBoundingClientRect();
+      var ghost = document.createElement('table');
+      ghost.className = 'pos-set-table pos-set-tables-drag-ghost';
+      ghost.setAttribute('aria-hidden', 'true');
+      ghost.style.width = rect.width + 'px';
+      var body = document.createElement('tbody');
+      var clone = row.cloneNode(true);
+      clone.classList.remove('is-selected', 'is-drag-placeholder');
+      var srcCells = row.children;
+      var cloneCells = clone.children;
+      var i;
+      for (i = 0; i < srcCells.length; i++) {
+        if (cloneCells[i]) {
+          cloneCells[i].style.width = srcCells[i].getBoundingClientRect().width + 'px';
+        }
+      }
+      body.appendChild(clone);
+      ghost.appendChild(body);
+      document.body.appendChild(ghost);
+      return {
+        el: ghost,
+        offsetX: clientX - rect.left,
+        offsetY: clientY - rect.top,
+        width: rect.width,
+        height: rect.height
+      };
+    }
+
+    function positionGhost(ghost, clientX, clientY, settling) {
+      var x = clientX - ghost.offsetX;
+      var y = clientY - ghost.offsetY;
+      ghost.el.style.left = x + 'px';
+      ghost.el.style.top = y + 'px';
+      if (!settling) {
+        ghost.el.style.transform = session && session.reduced ? 'none' : 'scale(1.012)';
+      }
+    }
+
+    function autoScrollWrap(clientY) {
+      var wrap = table.closest('.pos-set-table-wrap');
+      if (!wrap) return;
+      var rect = wrap.getBoundingClientRect();
+      var edge = 40;
+      var step = 0;
+      if (clientY < rect.top + edge) step = -10;
+      else if (clientY > rect.bottom - edge) step = 10;
+      if (step) wrap.scrollTop += step;
+    }
+
+    function rowUnderPoint(clientX, clientY, placeholder) {
+      var stack = document.elementsFromPoint
+        ? document.elementsFromPoint(clientX, clientY)
+        : [];
+      var i;
+      var el;
+      var row;
+      for (i = 0; i < stack.length; i++) {
+        el = stack[i];
+        if (el.closest && el.closest('.pos-set-tables-drag-ghost')) continue;
+        row = el.closest ? el.closest('#pos-set-tables-list tr[data-id]') : null;
+        if (row && table.contains(row) && row !== placeholder) return row;
+      }
+      /* Fallback: geometric hit against current row boxes. */
+      var list = dataRows();
+      for (i = 0; i < list.length; i++) {
+        row = list[i];
+        if (row === placeholder) continue;
+        var r = row.getBoundingClientRect();
+        if (clientY >= r.top && clientY <= r.bottom) return row;
+      }
+      return null;
+    }
+
+    function movePlaceholderToward(clientY) {
+      if (!session || !session.placeholder) return;
+      var target = rowUnderPoint(session.lastX, clientY, session.placeholder);
+      var list = dataRows();
+      var tbody = session.placeholder.parentNode;
+      if (!tbody) return;
+
+      var beforeRects = captureRowTops(list);
+      var nextNode = null;
+
+      if (!target) {
+        var first = null;
+        var last = null;
+        list.forEach(function (row) {
+          if (row === session.placeholder) return;
+          if (!first) first = row;
+          last = row;
+        });
+        if (!first) return;
+        var firstTop = first.getBoundingClientRect().top;
+        var lastBottom = last.getBoundingClientRect().bottom;
+        if (clientY < firstTop) nextNode = first;
+        else if (clientY > lastBottom) nextNode = null;
+        else return;
+      } else {
+        var rect = target.getBoundingClientRect();
+        var after = clientY - rect.top > rect.height / 2;
+        nextNode = after ? target.nextElementSibling : target;
+        if (nextNode === session.placeholder) return;
+        if (!after && target.previousElementSibling === session.placeholder) return;
+      }
+
+      if (nextNode === session.placeholder) return;
+      if (
+        (nextNode == null && session.placeholder === tbody.lastElementChild) ||
+        (nextNode && session.placeholder.nextElementSibling === nextNode)
+      ) {
+        return;
+      }
+
+      tbody.insertBefore(session.placeholder, nextNode);
+      flipSiblingRows(beforeRects, session.placeholder, !session.reduced);
+    }
+
+    function teardownMotionStyles() {
+      dataRows().forEach(function (row) {
+        row.classList.remove('is-drag-placeholder', 'is-dragging', 'is-drag-settling');
+        clearTdMotion(row);
+      });
+      table.classList.remove('is-reordering');
+      document.documentElement.classList.remove('pos-set-tables-dragging');
+    }
+
+    function finishDrag(commit) {
+      if (!session) return;
+      var current = session;
+      session = null;
+
+      var ghost = current.ghost;
+      var placeholder = current.placeholder;
+      var movedId = current.id;
+      var fromIndex = current.fromIndex;
+      var newIndex = dataRows().indexOf(placeholder);
+      if (newIndex < 0) newIndex = fromIndex;
+
+      function cleanupAndPersist() {
+        if (ghost && ghost.el && ghost.el.parentNode) ghost.el.parentNode.removeChild(ghost.el);
+        teardownMotionStyles();
+        suppressRowClickUntil = Date.now() + 450;
+        if (commit && current.didDrag && newIndex !== fromIndex && movedId) {
+          moveTableToIndex(movedId, newIndex);
+        }
+      }
+
+      if (!current.didDrag || !ghost || !placeholder) {
+        cleanupAndPersist();
+        return;
+      }
+
+      if (current.reduced) {
+        cleanupAndPersist();
+        return;
+      }
+
+      var dest = placeholder.getBoundingClientRect();
+      ghost.el.classList.add('is-settling');
+      ghost.el.style.left = dest.left + 'px';
+      ghost.el.style.top = dest.top + 'px';
+      ghost.el.style.transform = 'scale(1)';
+      placeholder.classList.add('is-drag-settling');
+
+      var settled = false;
+      function settleDone() {
+        if (settled) return;
+        settled = true;
+        cleanupAndPersist();
+      }
+      ghost.el.addEventListener('transitionend', function onEnd(e) {
+        if (e.target !== ghost.el) return;
+        if (e.propertyName && e.propertyName !== 'top' && e.propertyName !== 'transform' && e.propertyName !== 'left') {
+          return;
+        }
+        ghost.el.removeEventListener('transitionend', onEnd);
+        settleDone();
+      });
+      setTimeout(settleDone, SETTLE_MS + 80);
+    }
+
+    function unbindDocListeners() {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', onPointerUp);
+      document.removeEventListener('pointercancel', onPointerUp);
+    }
+
+    function onPointerMove(e) {
+      if (!session || e.pointerId !== session.pointerId) return;
+      session.lastX = e.clientX;
+      session.lastY = e.clientY;
+
+      var dy = e.clientY - session.startY;
+      var dx = e.clientX - session.startX;
+      if (!session.didDrag) {
+        if (Math.abs(dy) < DRAG_THRESHOLD_PX && Math.abs(dx) < DRAG_THRESHOLD_PX) return;
+        session.didDrag = true;
+        session.reduced = prefersTablesListReducedMotion();
+        table.classList.add('is-reordering');
+        document.documentElement.classList.add('pos-set-tables-dragging');
+        session.placeholder.classList.add('is-drag-placeholder');
+        session.ghost = createGhost(session.placeholder, session.startX, session.startY);
+        positionGhost(session.ghost, e.clientX, e.clientY, false);
+        try {
+          session.handle.setPointerCapture(e.pointerId);
+        } catch (err) {
+          /* ignore */
+        }
+      }
+
+      e.preventDefault();
+      autoScrollWrap(e.clientY);
+      positionGhost(session.ghost, e.clientX, e.clientY, false);
+      movePlaceholderToward(e.clientY);
+    }
+
+    function onPointerUp(e) {
+      if (!session || e.pointerId !== session.pointerId) return;
+      unbindDocListeners();
+      try {
+        if (session.handle.releasePointerCapture) {
+          session.handle.releasePointerCapture(e.pointerId);
+        }
+      } catch (err) {
+        /* ignore */
+      }
+      finishDrag(true);
+    }
+
+    table.addEventListener('pointerdown', function (e) {
+      if (session) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      var handle = e.target.closest('[data-table-drag-handle]');
+      if (!handle || !table.contains(handle)) return;
+      var row = handle.closest('tr[data-id]');
+      if (!row || !table.contains(row)) return;
+      var list = dataRows();
+      var fromIndex = list.indexOf(row);
+      if (fromIndex < 0) return;
+
+      session = {
+        pointerId: e.pointerId,
+        handle: handle,
+        placeholder: row,
+        id: row.getAttribute('data-id'),
+        fromIndex: fromIndex,
+        startX: e.clientX,
+        startY: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        didDrag: false,
+        reduced: false,
+        ghost: null
+      };
+      document.addEventListener('pointermove', onPointerMove, { passive: false });
+      document.addEventListener('pointerup', onPointerUp);
+      document.addEventListener('pointercancel', onPointerUp);
+      e.preventDefault();
+    });
+
+    table.__posTablesSuppressClick = function () {
+      return Date.now() < suppressRowClickUntil;
+    };
   }
 
   function bindLists(page) {
     var table = $('#pos-set-tables-list', page);
     if (table && table.getAttribute('data-bound') !== '1') {
       table.setAttribute('data-bound', '1');
+      bindTablesListDrag(table);
       table.addEventListener('click', function (e) {
+        if (e.target.closest('[data-table-drag-handle]')) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        if (table.__posTablesSuppressClick && table.__posTablesSuppressClick()) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        if (e.target.closest('[data-floor-action]')) return;
         var row = e.target.closest('tr[data-id]');
         if (!row) return;
         selectItem(row.getAttribute('data-id'));

@@ -329,7 +329,11 @@
       redirect: 'follow'
     };
     if(nav.signal) fetchOpts.signal = nav.signal;
+    // Once the server has accepted the POST, never hard-resubmit — that previously
+    // could double-fire expensive side effects (e.g. WhatsApp indent approval).
+    var serverAccepted = false;
     fetch(postUrl, fetchOpts).then(function(response){
+      serverAccepted = true;
       if(!response.ok) throw new Error('post soft submit failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
       if(contentType.indexOf('text/html') === -1) throw new Error('non-html response');
@@ -356,6 +360,14 @@
       document.documentElement.classList.remove('de-soft-navigating');
       hideSoftNavProgress();
       unlockFormSubmit(form);
+      if(serverAccepted){
+        // POST already ran on the server; reload/navigate instead of resubmitting.
+        try{
+          var fallbackUrl = stripPartialParam(form.getAttribute('action') || window.location.href);
+          window.location.assign(fallbackUrl);
+        } catch(e){}
+        return;
+      }
       hardSubmitFallback(form, submitter);
     });
     return true;
@@ -527,7 +539,10 @@
       /* Drop stale Tables HTML prefetched before Kitchen Orders Pending banner. */
       try{
         var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
-        if(path === '/point-of-sale' && entry.html.indexOf('pos-kot-pending-banner') === -1){
+        if(path === '/point-of-sale' && (
+          entry.html.indexOf('pos-kot-tokens-modal') === -1 ||
+          entry.html.indexOf('pos-today-invoices-modal') === -1
+        )){
           return null;
         }
       } catch(e){}
@@ -539,7 +554,10 @@
         if(!html) return null;
         try{
           var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
-          if(path === '/point-of-sale' && html.indexOf('pos-kot-pending-banner') === -1){
+          if(path === '/point-of-sale' && (
+            html.indexOf('pos-kot-tokens-modal') === -1 ||
+            html.indexOf('pos-today-invoices-modal') === -1
+          )){
             return null;
           }
         } catch(e){}
@@ -1449,6 +1467,23 @@
     );
   }
 
+  /** Pages may register leave flushes (e.g. POS invoice autosave) so dirty state
+   *  is persisted before the main DOM is swapped away. Handlers may return a
+   *  Promise; soft-nav waits (in parallel with HTML fetch) before applySoftSwap. */
+  function runBeforeSoftNavHandlers(){
+    var list = window.__deBeforeSoftNavHandlers;
+    if(!list || !list.length) return Promise.resolve();
+    return Promise.all(list.map(function(fn){
+      try{
+        return Promise.resolve(typeof fn === 'function' ? fn() : null).catch(function(){
+          return null;
+        });
+      } catch(e){
+        return Promise.resolve(null);
+      }
+    }));
+  }
+
   function softNavigate(url, done){
     var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
@@ -1470,6 +1505,9 @@
     };
     if(!prefetched && nav.signal) fetchOpts.signal = nav.signal;
 
+    /* Start leave saves immediately so they overlap the destination HTML fetch. */
+    var leavePromise = runBeforeSoftNavHandlers();
+
     var htmlPromise = prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
@@ -1479,8 +1517,9 @@
       return response.text();
     });
 
-    htmlPromise.then(function(html){
+    Promise.all([htmlPromise, leavePromise]).then(function(results){
       if(!isCurrentSoftNav(nav.token)) return;
+      var html = results[0];
       if(!html) throw new Error('empty soft nav html');
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
@@ -1746,6 +1785,9 @@
     }
     if(typeof window.initPosInvoiceLedgerPage === 'function'){
       window.initPosInvoiceLedgerPage();
+    }
+    if(typeof window.initPosMenuPage === 'function'){
+      window.initPosMenuPage();
     }
     if(typeof window.initMastersDashboard === 'function'){
       window.initMastersDashboard();

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 
 import requests
+
+log = logging.getLogger(__name__)
 
 
 def whatsapp_access_token() -> str:
@@ -22,6 +25,38 @@ def whatsapp_graph_api_version() -> str:
 
 def whatsapp_configured() -> bool:
     return bool(whatsapp_access_token() and whatsapp_phone_number_id())
+
+
+def whatsapp_live_sends_allowed() -> bool:
+    """Gate real Meta/WhatsApp HTTP calls.
+
+    Live sends are blocked when:
+    - ``WHATSAPP_DRY_RUN`` is truthy, or
+    - Flask ``TESTING`` is on (unless ``WHATSAPP_ALLOW_IN_TESTS=1``).
+
+    This prevents unit/integration tests that create pending indents from
+    burning WhatsApp budget when ``.env`` has real credentials loaded.
+    """
+    dry = (os.environ.get("WHATSAPP_DRY_RUN") or "").strip().lower()
+    if dry in {"1", "true", "yes", "on"}:
+        return False
+    allow_tests = (os.environ.get("WHATSAPP_ALLOW_IN_TESTS") or "").strip().lower()
+    if allow_tests in {"1", "true", "yes", "on"}:
+        return True
+    try:
+        from flask import current_app, has_app_context
+
+        if has_app_context() and current_app.config.get("TESTING"):
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def _refuse_live_send(action: str) -> tuple[bool, str, dict]:
+    msg = f"WhatsApp live send blocked ({action})."
+    log.warning(msg)
+    return False, msg, {}
 
 
 def normalise_whatsapp_number(value) -> str:
@@ -58,6 +93,9 @@ def graph_messages_url() -> str:
 
 
 def send_payload(payload: dict) -> tuple[bool, str, dict]:
+    """POST one WhatsApp Cloud message. No automatic retries (avoids send storms)."""
+    if not whatsapp_live_sends_allowed():
+        return _refuse_live_send("messages")
     token = whatsapp_access_token()
     phone_number_id = whatsapp_phone_number_id()
     if not token:
@@ -69,6 +107,7 @@ def send_payload(payload: dict) -> tuple[bool, str, dict]:
         "Content-Type": "application/json",
     }
     try:
+        # Explicitly no Session retry adapter — a single intentional send only.
         response = requests.post(graph_messages_url(), headers=headers, json=payload, timeout=30)
     except requests.RequestException as exc:
         return False, str(exc), {}
@@ -82,6 +121,8 @@ def send_payload(payload: dict) -> tuple[bool, str, dict]:
 
 
 def upload_media_file(file_path: str, mime_type: str = "application/pdf") -> tuple[bool, str, dict]:
+    if not whatsapp_live_sends_allowed():
+        return _refuse_live_send("media_upload")
     token = whatsapp_access_token()
     phone_number_id = whatsapp_phone_number_id()
     if not token or not phone_number_id:
@@ -175,8 +216,49 @@ def send_text_message(phone: str, text: str) -> tuple[bool, str, dict]:
     return send_payload(payload)
 
 
+def send_interactive_buttons(
+    phone: str,
+    body_text: str,
+    buttons: list[tuple[str, str]],
+) -> tuple[bool, str, dict]:
+    """Send an interactive reply-button message.
+
+    ``buttons`` is a list of ``(button_id, title)`` pairs (max 3). Button ids are
+    opaque payloads returned as ``button_reply.id`` on webhook clicks.
+    """
+    reply_buttons = []
+    for button_id, title in (buttons or [])[:3]:
+        bid = str(button_id or "").strip()[:256]
+        label = str(title or "").strip()[:20]
+        if not bid or not label:
+            continue
+        reply_buttons.append({
+            "type": "reply",
+            "reply": {"id": bid, "title": label},
+        })
+    if not reply_buttons:
+        return False, "No interactive buttons provided.", {}
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": phone,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": {"text": str(body_text or "")[:1024]},
+            "action": {"buttons": reply_buttons},
+        },
+    }
+    return send_payload(payload)
+
+
 def first_message_id(response_body: dict) -> str:
     messages = (response_body or {}).get("messages") or []
     if not messages:
+        # Some Graph responses nest under "message" singular.
+        single = (response_body or {}).get("message") or {}
+        if isinstance(single, dict):
+            return str(single.get("id") or "").strip()
         return ""
-    return str(messages[0].get("id") or "").strip()
+    first = messages[0] if isinstance(messages[0], dict) else {}
+    return str(first.get("id") or "").strip()

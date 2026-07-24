@@ -49,6 +49,9 @@ from db import (
     list_customers,
     list_pos_invoices,
     list_pos_kot_pending_summary,
+    list_pos_kot_tokens,
+    list_pos_today_invoices,
+    get_pos_menu_item_details,
     list_pos_menu_categories,
     list_pos_menu_items,
     list_store_products_lite,
@@ -58,6 +61,8 @@ from db import (
     save_pos_invoice,
     save_pos_menu_category,
     save_pos_menu_item,
+    send_pos_invoice_pending_kot,
+    sync_pos_floor_occupancy_from_open_orders,
     save_pos_restaurant_settings,
     search_customers,
     soft_delete_pos_invoice,
@@ -3037,6 +3042,16 @@ def point_of_sale_settings():
     )
 
 
+@app.route("/point-of-sale/menu")
+def point_of_sale_menu():
+    """Restaurant Menu catalog — categories and items (Product Master linked)."""
+    return render_template(
+        "point_of_sale_menu.html",
+        de_nav_section="pos",
+        de_nav_pos_view="menu",
+    )
+
+
 def _pos_invoice_ledger_filters(args):
     """Parse invoice ledger GET filters (shared by page + export)."""
     today = date.today()
@@ -3223,7 +3238,12 @@ def point_of_sale_api_invoices_save():
     try:
         ensure_pos_schema(conn)
         try:
-            saved = save_pos_invoice(conn, data, created_by=created_by)
+            saved = save_pos_invoice(
+                conn,
+                data,
+                created_by=created_by,
+                actor_is_admin=bool(user and user.get("is_admin")),
+            )
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3283,6 +3303,81 @@ def point_of_sale_api_invoice_close(invoice_id):
         conn.close()
 
 
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/send-kot", methods=["POST"])
+def point_of_sale_api_invoice_send_kot(invoice_id):
+    """Send pending (unsent) lines for one open invoice to the kitchen."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            invoice = send_pos_invoice_pending_kot(conn, invoice_id)
+            kot_pending = list_pos_kot_pending_summary(conn)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "invoice": invoice, "kot_pending": kot_pending})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/kot-pending/send-all", methods=["POST"])
+def point_of_sale_api_kot_pending_send_all():
+    """Send pending KOT lines for every open dine-in table listed in the summary."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        summary = list_pos_kot_pending_summary(conn)
+        sent = []
+        errors = []
+        for entry in summary.get("tables") or []:
+            invoice_id = entry.get("invoice_id")
+            try:
+                invoice = send_pos_invoice_pending_kot(conn, invoice_id)
+                sent.append({"invoice_id": invoice_id, "table": entry.get("name") or "", "order_no": invoice.get("order_no")})
+            except ValueError as exc:
+                errors.append({"invoice_id": invoice_id, "error": str(exc)})
+        kot_pending = list_pos_kot_pending_summary(conn)
+        conn.commit()
+        return jsonify(
+            {
+                "ok": True,
+                "sent_count": len(sent),
+                "sent": sent,
+                "errors": errors,
+                "kot_pending": kot_pending,
+            }
+        )
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/kot-tokens", methods=["GET"])
+def point_of_sale_api_kot_tokens():
+    """List open dine-in KOTs already sent to kitchen (for resend / reprint)."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        payload = list_pos_kot_tokens(conn)
+        conn.commit()
+        return jsonify({"ok": True, **payload})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/today-invoices", methods=["GET"])
+def point_of_sale_api_today_invoices():
+    """List today's active POS invoices for the Tables Invoice hub (newest first)."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        payload = list_pos_today_invoices(conn)
+        conn.commit()
+        return jsonify({"ok": True, **payload})
+    finally:
+        conn.close()
+
+
 @app.route("/point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"])
 def point_of_sale_api_invoice_delete(invoice_id):
     """Soft-delete a saved POS invoice."""
@@ -3321,6 +3416,7 @@ def point_of_sale_api_floor():
     try:
         ensure_pos_schema(conn)
         if request.method == "GET":
+            sync_pos_floor_occupancy_from_open_orders(conn)
             payload = get_pos_floor_layout(conn)
             kot_pending = list_pos_kot_pending_summary(conn)
             conn.commit()
@@ -3451,6 +3547,12 @@ def point_of_sale_api_menu_items():
             item_id = int(item_id) if item_id not in (None, "") else None
         except (TypeError, ValueError):
             return jsonify({"ok": False, "error": "Invalid item id."}), 400
+        user = get_current_user() or {}
+        updated_by = (
+            (user.get("full_name") or user.get("username") or "").strip()
+            if isinstance(user, dict)
+            else ""
+        )
         try:
             saved = save_pos_menu_item(
                 conn,
@@ -3464,6 +3566,14 @@ def point_of_sale_api_menu_items():
                 rate=data.get("rate"),
                 sort_order=data.get("sort_order"),
                 recipe=data["recipe"] if "recipe" in data else None,
+                menu_type=data["menu_type"] if "menu_type" in data else None,
+                portion_size=data["portion_size"] if "portion_size" in data else None,
+                prep_time_mins=data["prep_time_mins"] if "prep_time_mins" in data else None,
+                shelf_life=data["shelf_life"] if "shelf_life" in data else None,
+                notes=data["notes"] if "notes" in data else None,
+                target_margin_pct=data["target_margin_pct"] if "target_margin_pct" in data else None,
+                updated_by=updated_by or None,
+                price_change_reason=data.get("price_change_reason") or "",
             )
             conn.commit()
         except ValueError as exc:
@@ -3481,6 +3591,22 @@ def point_of_sale_api_menu_items():
                 "categories": list_pos_menu_categories(conn),
             }
         )
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/menu/items/<int:item_id>", methods=["GET"])
+def point_of_sale_api_menu_item_detail(item_id):
+    """Menu Details popup payload: recipe, FIFO costing, price history, analysis."""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        ensure_stores_schema(conn)
+        detail = get_pos_menu_item_details(conn, item_id)
+        if not detail:
+            return jsonify({"ok": False, "error": "Menu item not found."}), 404
+        conn.commit()
+        return jsonify({"ok": True, "item": detail})
     finally:
         conn.close()
 

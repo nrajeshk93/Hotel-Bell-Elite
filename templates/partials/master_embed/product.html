@@ -6,6 +6,10 @@
          href="{{ url_for('stores_product_master', outlet=outlet.key, embed=1) }}">{{ outlet.label }}</a>
       {% endfor %}
     </div>
+    <div class="md-master-embed-search md-master-embed-search--toolbar">
+      <input type="search" id="st-product-search" class="md-master-embed-search-input"
+             placeholder="Search products…" autocomplete="off" aria-label="Search products">
+    </div>
     <a class="btn btn-primary" href="{{ url_for('stores_product_master', outlet=selected_outlet, focus='form', embed=1) }}" data-md-full-nav="1">Add product</a>
   </div>
 
@@ -33,7 +37,7 @@
           </thead>
           <tbody>
             {% for product in products %}
-            <tr data-sort-row data-search="{{ [product.category_name or '', product.name or '', product.outlet_label or '', product.default_unit or '', product.approximate_price_display or '']|join(' ')|lower }}">
+            <tr data-sort-row data-search="{{ [product.category_name or '', product.name or '', product.code or product.sku or '', product.outlet_label or '', product.default_unit or '', product.approximate_price_display or '']|join(' ')|lower }}">
               <td data-sort-value="{{ product.category_name }}">
                 <span class="st-cat-pill">{{ product.category_name }}</span>
               </td>
@@ -63,6 +67,46 @@
           </tbody>
         </table>
       </div>
+      <div class="pl-empty" id="st-products-search-empty" hidden>
+        <strong>No products match</strong>
+        Try a different search term.
+      </div>
+      <script>
+      (function initStProductsEmbedSearch(){
+        var searchInput = document.getElementById('st-product-search');
+        var table = document.getElementById('st-products-table');
+        if (!searchInput || !table || searchInput.getAttribute('data-st-search-bound') === '1') return;
+        searchInput.setAttribute('data-st-search-bound', '1');
+        var countEl = document.getElementById('st-product-count');
+        var tableWrap = table.closest('.pl-table-wrap');
+        var emptyEl = document.getElementById('st-products-search-empty');
+        var searchWrap = searchInput.closest('.md-master-embed-search');
+
+        function applyProductSearch(){
+          var needle = String(searchInput.value || '').trim().toLowerCase();
+          if (searchWrap) searchWrap.classList.toggle('is-active', !!needle);
+          var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
+          var visible = 0;
+          rows.forEach(function(row){
+            var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
+            var match = !needle || hay.indexOf(needle) !== -1;
+            row.hidden = !match;
+            if (match) visible += 1;
+          });
+          if (countEl) {
+            countEl.textContent = visible + ' product' + (visible === 1 ? '' : 's');
+          }
+          if (emptyEl) emptyEl.hidden = !(needle && visible === 0);
+          if (tableWrap) tableWrap.hidden = !!(needle && visible === 0);
+        }
+
+        searchInput.addEventListener('input', applyProductSearch);
+        searchInput.addEventListener('keydown', function(e){
+          if (e.key === 'Enter') e.preventDefault();
+        });
+        applyProductSearch();
+      })();
+      </script>
       <script>
       (function initStProductsTableSort(){
         var table = document.getElementById('st-products-table');
