@@ -358,6 +358,80 @@ class PosTableOccupancyTests(unittest.TestCase):
         res = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
         self.assertIsNone(res.get_json()["invoice"])
 
+    # -- Kitchen Orders Pending summary (Tables banner) -----------------------
+
+    def test_floor_kot_pending_summary_empty_by_default(self):
+        res = self.client.get("/point-of-sale/api/floor")
+        self.assertEqual(res.status_code, 200)
+        body = res.get_json()
+        pending = body["kot_pending"]
+        self.assertEqual(pending["pending_table_count"], 0)
+        self.assertEqual(pending["pending_item_count"], 0)
+        self.assertEqual(pending["tables"], [])
+
+    def test_floor_kot_pending_summary_counts_unsents(self):
+        # Plain save: qty=2, sent_qty=0 → pending. Table stays Available
+        # (occupancy flips only on first KOT) — banner must still count it.
+        self.client.post("/point-of-sale/api/invoices", json=self._payload("ORD-2607-0030", "T1"))
+        self.assertEqual(self._floor_status("T1"), "available")
+        res = self.client.get("/point-of-sale/api/floor")
+        pending = res.get_json()["kot_pending"]
+        self.assertEqual(pending["pending_table_count"], 1)
+        self.assertEqual(pending["pending_item_count"], 1)
+        self.assertEqual(pending["tables"][0]["name"], "T1")
+        self.assertEqual(pending["tables"][0]["pending_items"], 1)
+
+        # Full KOT send clears pending for that order.
+        self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0030", "T1", kot_send=True),
+        )
+        res = self.client.get("/point-of-sale/api/floor")
+        pending = res.get_json()["kot_pending"]
+        self.assertEqual(pending["pending_table_count"], 0)
+        self.assertEqual(pending["pending_item_count"], 0)
+        self.assertEqual(pending["tables"], [])
+
+    def test_floor_kot_pending_summary_partial_line_and_ignores_takeaway(self):
+        # After a first KOT, bump qty without sending — delta is pending.
+        self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0031", "T1", kot_send=True),
+        )
+        again = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0031",
+                "T1",
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 3,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(again.status_code, 200, again.get_data(as_text=True))
+        self.assertEqual(self._floor_status("T1"), "occupied")
+
+        # Takeaway with unsents must not appear on the dine-in Tables banner.
+        self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0032", "T3", order_type="takeaway"),
+        )
+
+        res = self.client.get("/point-of-sale/api/floor")
+        pending = res.get_json()["kot_pending"]
+        self.assertEqual(pending["pending_table_count"], 1)
+        self.assertEqual(pending["pending_item_count"], 1)
+        self.assertEqual(pending["tables"][0]["name"], "T1")
+        # Occupancy / kot_sent must not gate the banner — occupied + unsents counts.
+        self.assertTrue(res.get_json()["kot_pending"]["tables"][0]["invoice_id"])
 
 if __name__ == "__main__":
     unittest.main()

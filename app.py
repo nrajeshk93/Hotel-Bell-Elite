@@ -48,6 +48,7 @@ from db import (
     init_db,
     list_customers,
     list_pos_invoices,
+    list_pos_kot_pending_summary,
     list_pos_menu_categories,
     list_pos_menu_items,
     list_store_products_lite,
@@ -3321,8 +3322,9 @@ def point_of_sale_api_floor():
         ensure_pos_schema(conn)
         if request.method == "GET":
             payload = get_pos_floor_layout(conn)
+            kot_pending = list_pos_kot_pending_summary(conn)
             conn.commit()
-            return jsonify({"ok": True, **payload})
+            return jsonify({"ok": True, **payload, "kot_pending": kot_pending})
 
         data = request.get_json(silent=True) or {}
         areas = data.get("areas")
@@ -3344,8 +3346,9 @@ def point_of_sale_api_floor_clear_all():
     try:
         ensure_pos_schema(conn)
         payload = clear_all_pos_tables(conn)
+        kot_pending = list_pos_kot_pending_summary(conn)
         conn.commit()
-        return jsonify({"ok": True, **payload})
+        return jsonify({"ok": True, **payload, "kot_pending": kot_pending})
     finally:
         conn.close()
 

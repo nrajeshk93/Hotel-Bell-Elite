@@ -513,6 +513,24 @@ body.pos-settings-module .pos-floor-props-box{
   /* Allow absolute listbox menus to escape the modal box */
   overflow:visible;
 }
+/* Same pattern as menu-item modal: do not clip absolute area/shape/status menus. */
+body.pos-settings-module #pos-floor-props-modal.modal-overlay{
+  overflow:visible;
+  align-items:center;
+  justify-content:center;
+}
+body.pos-settings-module #pos-floor-props-modal .pos-floor-props-listbox{
+  position:relative;
+  z-index:5;
+}
+body.pos-settings-module #pos-floor-props-modal .pos-floor-props-listbox.is-open{
+  z-index:30;
+}
+body.pos-settings-module #pos-floor-props-modal .pos-floor-props-listbox .se-filter-listbox{
+  z-index:40;
+  min-height:0;
+  max-height:min(260px,42vh);
+}
 body.pos-settings-module .pos-floor-props-field .ep-form-listbox{
   width:100%;
 }

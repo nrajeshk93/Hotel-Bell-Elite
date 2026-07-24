@@ -1001,7 +1001,8 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initPosMenuSettings);
-  } else {
+  } else if (!global.__deSoftNavInProgress) {
+    /* Soft-nav: settings page init calls initPosMenuSettings once — avoid double category/item fetch. */
     initPosMenuSettings();
   }
 })(window);

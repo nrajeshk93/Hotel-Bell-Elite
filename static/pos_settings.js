@@ -1078,9 +1078,6 @@
       if (action === 'cancel') {
         e.preventDefault();
         closePropsModal();
-      } else if (action === 'duplicate') {
-        e.preventDefault();
-        duplicateSelected();
       } else if (action === 'delete') {
         e.preventDefault();
         deleteSelected();
@@ -1206,7 +1203,8 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initPosSettingsPage);
-  } else {
+  } else if (!global.__deSoftNavInProgress) {
+    /* Soft-nav: deWorkspaceReinit calls init once after scripts load — avoid double API fetch. */
     initPosSettingsPage();
   }
 })(window);

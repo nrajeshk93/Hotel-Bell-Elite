@@ -486,11 +486,26 @@
     loadApprovalsModal(true);
   }
 
-  function submitApprovalsModalForm(form) {
+  function submitApprovalsModalForm(form, submitter) {
     if (!form) return;
     var action = form.getAttribute('action') || window.location.href;
     var method = (form.getAttribute('method') || 'post').toUpperCase();
-    var body = method === 'GET' ? null : new FormData(form);
+    var body = null;
+    if (method !== 'GET') {
+      try {
+        body = submitter ? new FormData(form, submitter) : new FormData(form);
+      } catch (err) {
+        body = new FormData(form);
+      }
+      // Named submit buttons (Approve / Reject) are omitted from FormData(form)
+      // unless the submitter is passed — always attach decision explicitly.
+      if (submitter && submitter.name) {
+        body.set(submitter.name, submitter.value != null ? String(submitter.value) : '');
+      }
+      if (!body.get('decision') && form.getAttribute('data-st-decision')) {
+        body.set('decision', form.getAttribute('data-st-decision'));
+      }
+    }
     if (form.id === 'st-reject-form') closeRejectModal();
     fetch(action, {
       method: method,
@@ -1208,7 +1223,7 @@
     ) {
       event.preventDefault();
       event.stopPropagation();
-      submitApprovalsModalForm(form);
+      submitApprovalsModalForm(form, event.submitter || null);
       return;
     }
     if (form.id !== 'st-indent-edit-form') return;

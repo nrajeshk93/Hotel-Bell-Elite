@@ -89,14 +89,15 @@
     if (root.closest('#pos-invoice-page, .pos-inv-header, .pos-inv-header-actions, .pos-inv-meta')) {
       return false;
     }
-    // Menu item modal keeps overflow:visible — absolute under the chip stays aligned.
-    // Fixed + transformed workspace ancestors shift the panel away from the trigger.
-    if (root.closest('#pos-menu-item-modal')) {
+    // Floor props + menu item modals keep overflow:visible — absolute under the chip stays
+    // aligned. Fixed + transformed workspace/page ancestors rebases coords and collapses
+    // the panel to a thin strip above the modal actions.
+    if (root.closest('#pos-menu-item-modal, #pos-floor-props-modal, #pos-menu-cat-modal')) {
       return false;
     }
     if (root.classList.contains('ep-toolbar-listbox')) return true;
     // Indent edit / similar modals clip absolute menus via overflow:auto/hidden.
-    if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal, #st-stores-ledger-modal, #st-ledger-pending-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-floor-props-modal')) {
+    if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal, #st-stores-ledger-modal, #st-ledger-pending-modal, #st-product-modal, #st-category-modal, #st-unit-modal')) {
       return true;
     }
     return false;
@@ -118,7 +119,7 @@
     list.style.width = width + 'px';
     list.style.minWidth = width + 'px';
     list.style.maxHeight = maxHeight + 'px';
-    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-floor-props-modal') ? '10100' : '10090';
+    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal') ? '10100' : '10090';
     if (openUp) {
       list.style.top = 'auto';
       list.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
@@ -153,10 +154,18 @@
       var searchWrap = list.querySelector('.ep-listbox-search-wrap, .pl-supplier-search-wrap, .staff-supplier-search-wrap');
       var topPad = searchWrap ? searchWrap.offsetHeight : 0;
       var cap = parseFloat(list.style.maxHeight) || list.clientHeight || 260;
+      var options = list.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)');
 
       // Short list: size to content only (no tall empty tray).
+      // Never collapse to padding-only height while options exist (layout race → 14px sliver).
       if (list.scrollHeight <= cap + 1) {
-        list.style.maxHeight = list.scrollHeight + 'px';
+        var contentH = list.scrollHeight;
+        if (options.length && contentH < 48) {
+          list.style.maxHeight = cap + 'px';
+          list.scrollTop = 0;
+          return;
+        }
+        list.style.maxHeight = Math.max(contentH, options.length ? 88 : contentH) + 'px';
         list.scrollTop = 0;
         return;
       }
@@ -172,8 +181,8 @@
       // After pinning selection at the top, trim leftover blank space under the last year/option.
       requestAnimationFrame(function(){
         var last = null;
-        var options = list.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)');
-        if (options.length) last = options[options.length - 1];
+        var visible = list.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)');
+        if (visible.length) last = visible[visible.length - 1];
         if (!last) return;
         var gap = list.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
         if (gap > 10) {

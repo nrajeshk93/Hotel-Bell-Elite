@@ -112,7 +112,51 @@
     // Keep suppression briefly so enter keyframes do not restart from opacity:0 after reveal.
     setTimeout(function(){
       document.documentElement.classList.remove('de-soft-navigating');
+      // Persist for the session so Restaurant enter-fades do not replay on every swap.
+      document.documentElement.classList.add('de-soft-nav-session');
     }, 120);
+  }
+
+  function prefetchRestaurantGroup(){
+    if(!shouldSoftNavigate()) return;
+    var group = document.getElementById('de-nav-pos-group');
+    if(!group) return;
+    var links = group.querySelectorAll('a.de-nav-subitem[href]');
+    for(var i = 0; i < links.length; i++){
+      var href = links[i].getAttribute('href') || '';
+      if(!href || href.indexOf('javascript:') === 0) continue;
+      prefetchSoftNav(withSalesScope(links[i].href || href));
+    }
+    // Warm Restaurant JSON APIs so Tables/POS/Settings hydrate from browser cache on AWS.
+    if(!window.__dePosApiWarm){
+      window.__dePosApiWarm = true;
+      ['/point-of-sale/api/floor', '/point-of-sale/api/menu/items', '/point-of-sale/api/menu/categories'].forEach(function(apiUrl){
+        try{
+          fetch(apiUrl, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' }
+          }).catch(function(){});
+        } catch(e){}
+      });
+    }
+  }
+
+  function prefetchFromSidebarEvent(event){
+    var target = event.target && event.target.closest ? event.target : null;
+    if(!target) return;
+    if(target.closest('#de-nav-pos-group, #de-nav-pos-toggle, #de-nav-pos-sub')){
+      prefetchRestaurantGroup();
+    }
+    var link = target.closest('.de-sidebar a[href], .sidebar a[href], a[href]');
+    if(!link) return;
+    if(link.closest && !link.closest('.de-sidebar, .sidebar') && event.type === 'mouseover') return;
+    var rawHref = link.getAttribute('href') || '';
+    if(!rawHref || rawHref.indexOf('javascript:') === 0) return;
+    if(!isSameOriginLink(link)) return;
+    if(isFileDownloadLink(link)) return;
+    if(isMasterModalLink(link)) return;
+    if(isEmbedFragmentUrl(link.href || rawHref)) return;
+    prefetchSoftNav(withSalesScope(link.href));
   }
 
   function isFullscreenActive(){
@@ -159,7 +203,8 @@
     if(form.hasAttribute('data-md-full-nav') || form.closest('[data-md-full-nav]')) return false;
     if(form.closest('#md-master-modal, .md-master-modal, #md-master-modal-inject, .md-master-embed')) return false;
     // Modal / dialog forms are handled by page JS (JSON APIs); soft-nav must not steal submit.
-    if(form.closest('.modal-overlay, [role="dialog"][aria-modal="true"]')) return false;
+    if(form.closest('.modal-overlay, .modal-backdrop, [role="dialog"][aria-modal="true"]')) return false;
+    if(form.hasAttribute('data-st-decide-form') || form.id === 'st-reject-form') return false;
     var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
     if(method && method !== 'get' && method !== 'post') return false;
     var enctype = String(form.getAttribute('enctype') || form.enctype || '').toLowerCase();
@@ -325,6 +370,10 @@
       if(!form || form.nodeName !== 'FORM') return;
       var isPost = formMethod(form) === 'post';
 
+      // Only soft-nav POST forms are locked. Modal/JS-handled forms (approvals decide,
+      // etc.) must keep their submitter enabled so FormData includes decision=approved.
+      if(!shouldSoftSubmitForm(form)) return;
+
       if(isPost){
         if(isFormSubmitLocked(form)){
           // A prior submit for this exact form is still in flight (double
@@ -337,7 +386,6 @@
         lockFormSubmit(form);
       }
 
-      if(!shouldSoftSubmitForm(form)) return;
       event.preventDefault();
       event.stopPropagation();
       if(!softSubmitForm(form, event.submitter || null) && isPost){
@@ -476,15 +524,29 @@
     if(!entry) return null;
     if(entry.html && (Date.now() - entry.ts) < PREFETCH_TTL_MS){
       prefetchCache.delete(key);
+      /* Drop stale Tables HTML prefetched before Kitchen Orders Pending banner. */
+      try{
+        var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+        if(path === '/point-of-sale' && entry.html.indexOf('pos-kot-pending-banner') === -1){
+          return null;
+        }
+      } catch(e){}
       return Promise.resolve(entry.html);
     }
     if(entry.promise){
+      prefetchCache.delete(key);
       return entry.promise.then(function(html){
         if(!html) return null;
-        prefetchCache.delete(key);
+        try{
+          var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+          if(path === '/point-of-sale' && html.indexOf('pos-kot-pending-banner') === -1){
+            return null;
+          }
+        } catch(e){}
         return html;
       });
     }
+    prefetchCache.delete(key);
     return null;
   }
 
@@ -1572,21 +1634,6 @@
     try{
       if(typeof link.focus === 'function') link.focus({ preventScroll: true });
     } catch(e){}
-  }
-
-  function prefetchFromSidebarEvent(event){
-    var link = event.target && event.target.closest
-      ? event.target.closest('.de-sidebar a[href], .sidebar a[href], a[href]')
-      : null;
-    if(!link) return;
-    if(link.closest && !link.closest('.de-sidebar, .sidebar') && event.type === 'mouseover') return;
-    var rawHref = link.getAttribute('href') || '';
-    if(!rawHref || rawHref.indexOf('javascript:') === 0) return;
-    if(!isSameOriginLink(link)) return;
-    if(isFileDownloadLink(link)) return;
-    if(isMasterModalLink(link)) return;
-    if(isEmbedFragmentUrl(link.href || rawHref)) return;
-    prefetchSoftNav(withSalesScope(link.href));
   }
 
   function initDeSidebarPageTransitions(){

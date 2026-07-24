@@ -19,6 +19,7 @@
   var menuCatalog = [];
   var menuCatalogById = {};
   var menuCatalogStatus = 'idle';
+  var menuCatalogInflight = null;
   var customerCache = [];
   var customerCacheQuery = '';
   var customerSearchTimer = null;
@@ -147,6 +148,26 @@
   }
 
   function loadFloorTables(done) {
+    if (floorTablesLoaded && Array.isArray(floorTablesCache) && floorTablesCache.length) {
+      if (typeof done === 'function') done(floorTablesCache);
+      /* Stale-while-revalidate: refresh in background for next visit. */
+      fetch(FLOOR_API, {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' }
+      })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            return { ok: res.ok && data && data.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (result.ok && Array.isArray(result.data.tables)) {
+            floorTablesCache = result.data.tables;
+          }
+        })
+        .catch(function () {});
+      return;
+    }
     fetch(FLOOR_API, {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
@@ -222,12 +243,22 @@
   }
 
   function loadMenuCatalog(done) {
+    if (menuCatalogStatus === 'ready' && menuCatalog.length) {
+      if (typeof done === 'function') done(true);
+      return;
+    }
+    if (menuCatalogInflight) {
+      menuCatalogInflight.then(function (ok) {
+        if (typeof done === 'function') done(ok);
+      });
+      return;
+    }
     menuCatalogStatus = 'loading';
     var itemsPayload = null;
     var categoriesPayload = null;
     var failed = false;
 
-    fetch(MENU_ITEMS_API, {
+    menuCatalogInflight = fetch(MENU_ITEMS_API, {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
     })
@@ -259,25 +290,28 @@
           menuCatalog.length = 0;
           menuCatalogById = {};
           menuCatalogStatus = 'error';
-          if (typeof done === 'function') done(false);
-          return;
+          return false;
         }
         if (!result || !result.ok || !Array.isArray(result.data.categories)) {
           menuCatalog.length = 0;
           menuCatalogById = {};
           menuCatalogStatus = 'error';
-          if (typeof done === 'function') done(false);
-          return;
+          return false;
         }
         categoriesPayload = result.data.categories;
         buildMenuCatalog(itemsPayload, categoriesPayload);
-        if (typeof done === 'function') done(true);
+        return true;
       })
       .catch(function () {
         menuCatalog.length = 0;
         menuCatalogById = {};
         menuCatalogStatus = 'error';
-        if (typeof done === 'function') done(false);
+        return false;
+      })
+      .then(function (ok) {
+        menuCatalogInflight = null;
+        if (typeof done === 'function') done(!!ok);
+        return !!ok;
       });
   }
 
@@ -2284,7 +2318,8 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initPosInvoicePage);
-  } else {
+  } else if (!global.__deSoftNavInProgress) {
+    /* Soft-nav: deWorkspaceReinit calls init once after scripts load — avoid double floor/menu fetch. */
     initPosInvoicePage();
   }
 })(window);

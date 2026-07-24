@@ -361,7 +361,7 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initPosInvoiceLedgerPage);
-  } else {
+  } else if (!global.__deSoftNavInProgress) {
     initPosInvoiceLedgerPage();
   }
 })(typeof window !== 'undefined' ? window : this);

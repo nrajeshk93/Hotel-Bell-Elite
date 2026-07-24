@@ -30,6 +30,13 @@ html.de-soft-navigating .de-main-wrapper,
 html.de-soft-navigating .de-main-wrapper *{
   animation:none!important;
 }
+/* Soft-nav session: skip Restaurant enter-from-opacity fades (replay feels like lag on AWS). */
+html.de-soft-nav-session .de-main-wrapper [class*="pos-tables-"],
+html.de-soft-nav-session .de-main-wrapper .pos-settings-page,
+html.de-soft-nav-session .de-main-wrapper .pos-settings-page [data-panel],
+html.de-soft-nav-session .de-main-wrapper [class*="pos-inv-"]{
+  animation:none!important;
+}
 html.de-sidebar-wide-boot .de-sidebar{
   width:214px!important;min-width:214px!important;max-width:214px!important;
   transition:none!important;

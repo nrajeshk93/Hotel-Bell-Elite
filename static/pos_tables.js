@@ -20,6 +20,7 @@
   };
   var floorSaveTimer = null;
   var currentFloor = null;
+  var currentKotPending = { pending_table_count: 0, pending_item_count: 0, tables: [] };
 
   function $(sel, root) {
     return (root || document).querySelector(sel);
@@ -56,6 +57,60 @@
 
   function emptyFloor() {
     return { areas: [], tables: [] };
+  }
+
+  function emptyKotPending() {
+    return { pending_table_count: 0, pending_item_count: 0, tables: [] };
+  }
+
+  function normalizeKotPending(summary) {
+    if (!summary || typeof summary !== 'object') return emptyKotPending();
+    var tables = Array.isArray(summary.tables) ? summary.tables : [];
+    return {
+      pending_table_count: Number(summary.pending_table_count) || 0,
+      pending_item_count: Number(summary.pending_item_count) || 0,
+      tables: tables
+    };
+  }
+
+  function paintKotPendingBanner(summary) {
+    var banner = document.getElementById('pos-kot-pending-banner');
+    if (!banner) return;
+    var data = normalizeKotPending(summary);
+    currentKotPending = data;
+    var count = data.pending_table_count;
+    if (count <= 0) {
+      banner.hidden = true;
+      banner.setAttribute('hidden', '');
+      banner.classList.remove('is-shown');
+      banner.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    banner.hidden = false;
+    banner.removeAttribute('hidden');
+    banner.classList.add('is-shown');
+    banner.setAttribute('aria-hidden', 'false');
+    var badge = banner.querySelector('[data-kot-pending-count]');
+    var copy = banner.querySelector('[data-kot-pending-copy]');
+    if (badge) badge.textContent = String(count);
+    if (copy) {
+      copy.textContent =
+        count === 1
+          ? '1 table has orders that are not yet sent to kitchen.'
+          : count + ' tables have orders that are not yet sent to kitchen.';
+    }
+  }
+
+  function bindKotPendingBanner() {
+    var btn = document.getElementById('pos-kot-pending-view');
+    if (!btn || btn.getAttribute('data-bound') === '1') return;
+    btn.setAttribute('data-bound', '1');
+    btn.addEventListener('click', function () {
+      var tables = (currentKotPending && currentKotPending.tables) || [];
+      if (!tables.length) return;
+      var first = tables[0];
+      navigateToInvoice(first && first.name);
+    });
   }
 
   function readLegacyFloor() {
@@ -127,13 +182,16 @@
         if (data && data.ok && Array.isArray(data.areas) && Array.isArray(data.tables)) {
           payload = { areas: data.areas, tables: data.tables };
           currentFloor = payload;
+          paintKotPendingBanner(data.kot_pending);
         } else {
           payload = emptyFloor();
           currentFloor = payload;
+          paintKotPendingBanner(emptyKotPending());
         }
         if (typeof done === 'function') done(payload);
       })
       .catch(function () {
+        paintKotPendingBanner(emptyKotPending());
         if (typeof done === 'function') done(emptyFloor());
       });
   }
@@ -626,6 +684,7 @@
           }
           currentFloor = { areas: data.areas || [], tables: data.tables || [] };
           paintTablesPage(root, currentFloor);
+          paintKotPendingBanner(data.kot_pending || emptyKotPending());
           toast('All tables are now available.');
         })
         .catch(function () {
@@ -642,6 +701,7 @@
     if (!root) return;
     /* Soft-nav: paint cache first, then refresh from SQLite API */
     paintTablesPage(root, loadFloorDataCached());
+    paintKotPendingBanner(currentKotPending);
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();
     }
@@ -650,6 +710,7 @@
     bindSearch(root);
     bindTileInteractions(root);
     bindClearAllTables(root);
+    bindKotPendingBanner();
     loadFloorFromApi(function (data) {
       paintTablesPage(root, data || loadFloorDataCached());
     });
@@ -660,7 +721,8 @@
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initPosTablesPage);
-  } else {
+  } else if (!global.__deSoftNavInProgress) {
+    /* Soft-nav: deWorkspaceReinit calls init once after scripts load — avoid double API fetch. */
     initPosTablesPage();
   }
 })(window);

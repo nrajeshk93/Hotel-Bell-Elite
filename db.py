@@ -1376,6 +1376,53 @@ def get_open_pos_invoice_for_table(conn, table_label):
     return _pos_invoice_row_to_dict(conn, row, include_lines=True)
 
 
+def list_pos_kot_pending_summary(conn):
+    """Open dine-in orders with unsents (qty > sent_qty) — same rule as the
+    invoice page KOT pending check. Powers the Tables page Kitchen Orders
+    Pending banner (table count + first-table resume target).
+
+    Includes Available tables with a plain save (kot_sent=0, sent_qty=0) and
+    Occupied tables with later qty bumps — occupancy / kot_sent is intentionally
+    not a filter here.
+    """
+    ensure_pos_schema(conn)
+    rows = conn.execute(
+        """
+        SELECT
+            i.id AS invoice_id,
+            i.table_label AS name,
+            COUNT(l.id) AS pending_items
+        FROM pos_invoices i
+        JOIN pos_invoice_lines l
+          ON l.invoice_id = i.id
+         AND l.qty > COALESCE(l.sent_qty, 0)
+        WHERE i.is_active = 1
+          AND i.status = 'open'
+          AND i.order_type = 'dine_in'
+          AND TRIM(COALESCE(i.table_label, '')) != ''
+        GROUP BY i.id, i.table_label
+        ORDER BY i.id ASC
+        """
+    ).fetchall()
+    tables = []
+    pending_item_count = 0
+    for row in rows:
+        pending_items = int(row["pending_items"] or 0)
+        pending_item_count += pending_items
+        tables.append(
+            {
+                "name": (row["name"] or "").strip(),
+                "invoice_id": int(row["invoice_id"]),
+                "pending_items": pending_items,
+            }
+        )
+    return {
+        "pending_table_count": len(tables),
+        "pending_item_count": pending_item_count,
+        "tables": tables,
+    }
+
+
 def close_pos_invoice_and_free_table(conn, invoice_id):
     """Close a bill (status -> 'closed') and free its table, if any. Decoupled
     from real payment for now — this is the 'Close & Free Table' action."""

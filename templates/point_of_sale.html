@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tables | Restaurant | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=15">
 <script>
 (function(){
   try{
@@ -48,7 +48,6 @@
   <header class="pos-tables-header">
     <div class="pos-tables-header-copy">
       <h1>Tables</h1>
-      <p>Live table status and restaurant management</p>
     </div>
     <div class="pos-tables-header-actions">
       {% if pos_outlets %}
@@ -116,25 +115,34 @@
         <div class="pos-kpi-value" data-kpi-value>0</div>
       </div>
     </article>
-    <article class="pos-kpi" data-kpi="cleaning">
-      <div class="pos-kpi-icon pos-kpi-icon--rose" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M7 20V9l5-5 5 5v11"/><path d="M10 13h4"/></svg>
-      </div>
-      <div>
-        <div class="pos-kpi-label">Cleaning</div>
-        <div class="pos-kpi-value" data-kpi-value>0</div>
-      </div>
-    </article>
-    <article class="pos-kpi" data-kpi="inactive">
-      <div class="pos-kpi-icon pos-kpi-icon--gray" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>
-      </div>
-      <div>
-        <div class="pos-kpi-label">Inactive</div>
-        <div class="pos-kpi-value" data-kpi-value>0</div>
-      </div>
-    </article>
   </section>
+
+  <div class="pos-kot-pending-banner" id="pos-kot-pending-banner" hidden role="status" aria-live="polite">
+    <div class="pos-kot-pending-banner-main">
+      <span class="pos-kot-pending-banner-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M6.5 14c-1.7 0-3-1.3-3-3 0-1.4 1-2.6 2.4-2.9A4.2 4.2 0 0 1 12 5a4.2 4.2 0 0 1 6.1 3.1c1.4.3 2.4 1.5 2.4 2.9 0 1.7-1.3 3-3 3H6.5z"/>
+          <path d="M7 14v3.5A2.5 2.5 0 0 0 9.5 20h5A2.5 2.5 0 0 0 17 17.5V14"/>
+        </svg>
+      </span>
+      <div class="pos-kot-pending-banner-copy">
+        <div class="pos-kot-pending-banner-title-row">
+          <strong class="pos-kot-pending-banner-title">Kitchen Orders Pending</strong>
+          <span class="pos-kot-pending-banner-badge" data-kot-pending-count>0</span>
+        </div>
+        <p class="pos-kot-pending-banner-sub" data-kot-pending-copy>Tables have orders that are not yet sent to kitchen.</p>
+      </div>
+    </div>
+    <button type="button" class="pos-kot-pending-view-btn" id="pos-kot-pending-view">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M8 6h13M8 12h13M8 18h13"/>
+        <circle cx="4" cy="6" r="1.2" fill="currentColor" stroke="none"/>
+        <circle cx="4" cy="12" r="1.2" fill="currentColor" stroke="none"/>
+        <circle cx="4" cy="18" r="1.2" fill="currentColor" stroke="none"/>
+      </svg>
+      <span>View Details</span>
+    </button>
+  </div>
 
   <div class="pos-tables-toolbar" role="region" aria-label="Table filters">
     <div class="pos-area-pills" id="pos-area-pills" role="tablist" aria-label="Areas">
@@ -313,8 +321,8 @@
   <div class="pos-tables-toast" id="pos-tables-toast" role="status" aria-live="polite" hidden></div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=21"></script>
-<script src="{{ url_for('static', filename='pos_tables.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
+<script src="{{ url_for('static', filename='pos_tables.js') }}?v=15"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>
