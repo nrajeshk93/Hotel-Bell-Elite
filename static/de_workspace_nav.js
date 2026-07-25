@@ -131,11 +131,18 @@
     var bottomGap = elRect.bottom - scRect.bottom;
     var delta = 0;
 
-    // Prefer keeping the top (toggle) visible; then bring as much of the bottom into view.
-    if(topGap < pad){
+    // Nearest: only nudge when the target is clipped. Never force a tall
+    // group's top into view (that jumps the rail upward away from the active item).
+    var clippedTop = topGap < pad;
+    var clippedBottom = bottomGap > -pad;
+    if(clippedTop && clippedBottom){
+      // Taller than the scroller — leave scroll alone unless caller insists.
+      if(opts.preferTop) delta = topGap - pad;
+      else if(opts.preferBottom) delta = bottomGap + pad;
+    } else if(clippedTop){
       delta = topGap - pad;
-    } else if(bottomGap > -pad){
-      delta = Math.min(bottomGap + pad, topGap - pad);
+    } else if(clippedBottom){
+      delta = bottomGap + pad;
     }
 
     if(!delta) return;
@@ -158,6 +165,28 @@
     scroller.scrollTop = nextTop;
   }
 
+  function getActiveNavTarget(sidebar){
+    sidebar = sidebar || getSidebar();
+    if(!sidebar) return null;
+    return sidebar.querySelector('a.is-active, a[aria-current="page"]');
+  }
+
+  /** Keep the active module/submenu in view (nearest) without jumping to the rail top. */
+  function scheduleActiveNavIntoView(opts){
+    opts = opts || {};
+    var behavior = opts.behavior || (prefersReducedMotion() ? 'auto' : 'smooth');
+    var padding = typeof opts.padding === 'number' ? opts.padding : 12;
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        if(window.__deSoftNavInProgress) return;
+        var active = getActiveNavTarget();
+        if(!active) return;
+        // Rail-only nearest scroll (avoids native scrollIntoView moving window/main).
+        ensureVisibleInScroller(active, { behavior: behavior, padding: padding });
+      });
+    });
+  }
+
   function scheduleEnsureNavGroupVisible(group){
     if(!group) return;
     // Flyouts sit outside the nav scroller; scrolling the rail does not help.
@@ -166,7 +195,14 @@
       requestAnimationFrame(function(){
         if(!group.classList.contains('is-open')) return;
         if(group.classList.contains('is-flyout-active')) return;
-        ensureVisibleInScroller(group);
+        // Prefer the active child in this group, else the toggle — never the whole tall group.
+        var target = group.querySelector('a.is-active, a[aria-current="page"]')
+          || group.querySelector('.de-nav-group-toggle')
+          || group;
+        ensureVisibleInScroller(target, {
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+          padding: 12
+        });
       });
     });
   }
@@ -251,7 +287,13 @@
     group.classList.toggle('is-open', opening);
     group.classList.toggle('is-flyout-active', opening && !sidebarExpanded);
     var toggle = group.querySelector('.de-nav-group-toggle');
-    if(toggle) toggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
+    if(toggle){
+      toggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
+      // Browser focus scroll would jump the rail to the toggle (top of group).
+      try{
+        if(typeof toggle.focus === 'function') toggle.focus({ preventScroll: true });
+      } catch(e){}
+    }
     try{
       var openIds = [];
       sidebar.querySelectorAll('.de-nav-group.is-open').forEach(function(g){
@@ -260,6 +302,8 @@
       sessionStorage.setItem('de-nav-open-groups', JSON.stringify(openIds));
     } catch(e){}
     if(opening) scheduleEnsureNavGroupVisible(group);
+    // After expand/collapse reflow, keep the current page item visible (nearest).
+    scheduleActiveNavIntoView({ behavior: 'auto' });
   }
 
   function closeDeNavFlyouts(sidebar){
@@ -401,6 +445,12 @@
     restorePersistedNavGroups();
     seedPersistedNavGroups();
     getAllSidebars().forEach(bindDeSidebarInteractions);
+    // After open-groups / pin layout settles, keep the active item in view once.
+    scheduleActiveNavIntoView({ behavior: 'auto' });
+    // max-height expand finishes ~200ms; one more nearest pass if still clipped.
+    setTimeout(function(){
+      scheduleActiveNavIntoView({ behavior: 'auto' });
+    }, 240);
 
     if(!document.__deSidebarDocClickBound){
       document.__deSidebarDocClickBound = true;
@@ -443,6 +493,7 @@
     restorePersistedNavGroups();
     seedPersistedNavGroups();
     getAllSidebars().forEach(bindDeSidebarInteractions);
+    scheduleActiveNavIntoView({ behavior: 'auto' });
   }
 
   window.toggleDeNavGroup = toggleDeNavGroup;
@@ -456,6 +507,7 @@
   window.reinitDeWorkspaceSidebar = reinitDeWorkspaceSidebar;
   window.findScrollParent = findScrollParent;
   window.ensureVisibleInScroller = ensureVisibleInScroller;
+  window.scheduleActiveNavIntoView = scheduleActiveNavIntoView;
 
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', initDeWorkspaceSidebar);

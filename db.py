@@ -255,6 +255,11 @@ def ensure_pos_schema(conn):
         cursor.execute(
             "ALTER TABLE pos_invoices ADD COLUMN customer_bill_at TEXT NOT NULL DEFAULT ''"
         )
+    # Idempotency marker: stock was reduced once for this closed invoice (POS sale).
+    if "stock_deducted_at" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN stock_deducted_at TEXT NOT NULL DEFAULT ''"
+        )
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_pos_invoices_table_open
@@ -890,6 +895,9 @@ def _pos_menu_recipe_line_dict(row):
     qty = float(row["qty"] or 0)
     unit = (row["unit"] or "g").strip() or "g"
     product_unit = (row["product_unit"] if "product_unit" in row.keys() else None) or ""
+    product_outlet = ""
+    if "product_outlet" in row.keys() and row["product_outlet"] is not None:
+        product_outlet = str(row["product_outlet"] or "").strip().lower()
     line_cost = recipe_line_food_cost(qty, unit, product_unit, price_val)
     return {
         "id": int(row["id"]),
@@ -897,6 +905,7 @@ def _pos_menu_recipe_line_dict(row):
         "product_id": int(row["product_id"]),
         "product_name": (row["product_name"] if "product_name" in row.keys() else None) or "",
         "product_unit": product_unit,
+        "product_outlet": product_outlet or "restaurant",
         "approximate_price": price_val,
         "qty": qty,
         "unit": unit,
@@ -929,6 +938,7 @@ def list_pos_menu_recipe_lines(conn, menu_item_ids=None):
             r.sort_order,
             p.name AS product_name,
             p.default_unit AS product_unit,
+            p.outlet AS product_outlet,
             p.approximate_price AS approximate_price
         FROM pos_menu_recipe_lines r
         LEFT JOIN store_products p ON p.id = r.product_id
@@ -1600,7 +1610,7 @@ def _fifo_remaining_layers(conn, item_name, unit):
             )
             continue
         drain = abs(qty) if qty < 0 else (
-            qty if mtype in ("issue", "adjust", "waste", "transfer") else 0
+            qty if mtype in ("issue", "adjust", "waste", "transfer", "sale", "consume") else 0
         )
         if drain <= 0:
             continue
@@ -2048,6 +2058,7 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "first_kot_at": row["first_kot_at"] or "",
         "customer_bill_sent": bool(row["customer_bill_sent"]) if "customer_bill_sent" in row.keys() else False,
         "customer_bill_at": (row["customer_bill_at"] or "") if "customer_bill_at" in row.keys() else "",
+        "stock_deducted_at": (row["stock_deducted_at"] or "") if "stock_deducted_at" in row.keys() else "",
         "item_count": int(row["item_count"]) if "item_count" in row.keys() else 0,
     }
     if include_lines:
@@ -2413,9 +2424,14 @@ def list_pos_kot_tokens(conn):
     }
 
 
-def close_pos_invoice_and_free_table(conn, invoice_id):
+def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     """Close a bill (status -> 'closed') and free its table, if any. Decoupled
-    from real payment for now — this is the 'Close & Free Table' action."""
+    from real payment for now — this is the 'Close & Free Table' action.
+
+    On close, recipe ingredients for sold lines are deducted from store stock
+    once (idempotent via stock_deducted_at / movement ref). Stock shortfalls
+    never block closing the bill.
+    """
     ensure_pos_schema(conn)
     try:
         invoice_id = int(invoice_id)
@@ -2438,19 +2454,41 @@ def close_pos_invoice_and_free_table(conn, invoice_id):
     order_type = _normalize_pos_order_type(row["order_type"])
     if table_label and order_type == "dine_in":
         _pos_mark_table_available(conn, table_label)
+    try:
+        from stores import deduct_stock_for_pos_invoice
+
+        deduct_stock_for_pos_invoice(conn, invoice_id, user_id=user_id)
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception(
+            "POS stock deduction failed for invoice_id=%s (bill still closed)",
+            invoice_id,
+        )
     return get_pos_invoice(conn, invoice_id)
 
 
-def clear_all_pos_tables(conn):
+def clear_all_pos_tables(conn, *, user_id=None):
     """Bulk-free every table on the floor back to available (Tables page 'Clear
     all tables'). Also closes any dangling open dine-in bills tied to those
     tables so a later resume lookup can't resurrect a stale order."""
     ensure_pos_schema(conn)
     layout = get_pos_floor_layout(conn)
     tables = layout.get("tables") or []
+    closed_ids = []
     for t in tables:
         label = str(t.get("name") or "").strip()
         if label:
+            open_rows = conn.execute(
+                """
+                SELECT id FROM pos_invoices
+                WHERE is_active = 1 AND status = 'open' AND order_type = 'dine_in'
+                  AND LOWER(table_label) = LOWER(?)
+                """,
+                (label,),
+            ).fetchall()
+            for open_row in open_rows:
+                closed_ids.append(int(open_row["id"]))
             conn.execute(
                 f"""
                 UPDATE pos_invoices SET status = 'closed', updated_at = {SQL_NOW}
@@ -2460,6 +2498,26 @@ def clear_all_pos_tables(conn):
                 (label,),
             )
         t["status"] = "available"
+    if closed_ids:
+        try:
+            from stores import deduct_stock_for_pos_invoice
+
+            for inv_id in closed_ids:
+                try:
+                    deduct_stock_for_pos_invoice(conn, inv_id, user_id=user_id)
+                except Exception:
+                    import logging
+
+                    logging.getLogger(__name__).exception(
+                        "POS stock deduction failed for invoice_id=%s during clear-all",
+                        inv_id,
+                    )
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "POS stock deduction unavailable during clear-all"
+            )
     return save_pos_floor_layout(conn, layout.get("areas") or [], tables)
 
 

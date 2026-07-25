@@ -1004,7 +1004,11 @@ class StoresFlowTests(unittest.TestCase):
         self.assertIn(b'id="st-approvals-pending-table"', page.data)
         self.assertIn(b"pl-sortable", page.data)
         self.assertIn(b'data-sort="indent"', page.data)
+        self.assertIn(b'data-sort="submitted"', page.data)
         self.assertIn(b'data-sort-row', page.data)
+        self.assertIn(b"pl-list-panel--scroll", page.data)
+        self.assertIn(b"hbe-scroll-panel", page.data)
+        self.assertIn(b"Click to sort", page.data)
         self.assertIn(b"Approx. price", page.data)
         self.assertIn(b"\xe2\x82\xb920", page.data)  # ₹20 (2 × 10)
         self.assertIn(b"Indents awaiting your approval", page.data)
@@ -1387,7 +1391,7 @@ class StoresFlowTests(unittest.TestCase):
         self.assertGreaterEqual(stores_js_idx, 0)
         self.assertGreaterEqual(shell_nav_idx, 0)
         self.assertLess(stores_js_idx, shell_nav_idx)
-        self.assertIn(b'Approximate price', listing.data)
+        self.assertIn(b'Approximate Price', listing.data)
         self.assertIn(b'pl-sortable', listing.data)
         self.assertIn(b'data-sort="indent"', listing.data)
         self.assertIn(b'data-tip="Edit"', listing.data)
@@ -1524,6 +1528,243 @@ class StoresFlowTests(unittest.TestCase):
                 "SELECT COUNT(*) AS c FROM store_indents WHERE outlet = 'bar'"
             ).fetchone()["c"]
             self.assertEqual(count, 1)
+        finally:
+            conn.close()
+
+    def test_admin_delete_approved_indent_removes_non_inwarded_only(self):
+        from datetime import date
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name) VALUES (?)",
+                ("Approved Delete Supplier",),
+            )
+            supplier_id = conn.execute(
+                "SELECT id FROM suppliers WHERE name = 'Approved Delete Supplier'"
+            ).fetchone()["id"]
+            conn.execute(
+                "INSERT INTO cash_ledger_loads (company, load_date, description, amount) VALUES (?,?,?,?)",
+                ("HBE", date.today().isoformat(), "Approved delete float", 5000),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "Admin delete approved partial",
+                "item_name": ["Onion", "Potato", "Tomato"],
+                "quantity": ["10", "24", "8"],
+                "unit": ["kg", "kg", "kg"],
+                "approximate_price": ["30", "20", "15"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            indent = conn.execute(
+                "SELECT id, indent_no FROM store_indents WHERE notes = 'Admin delete approved partial' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            indent_id = indent["id"]
+            lines = {
+                row["item_name"]: int(row["id"])
+                for row in conn.execute(
+                    "SELECT id, item_name FROM store_indent_lines WHERE indent_id = ?",
+                    (indent_id,),
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+
+        decide = self.client.post(
+            f"/stores/indent/{indent_id}/decide",
+            data={"outlet": "bar", "decision": "approved", "decision_note": ""},
+            follow_redirects=False,
+        )
+        self.assertEqual(decide.status_code, 302)
+
+        # Fully receive Onion; partially receive Potato (10 of 24); leave Tomato pending.
+        partial = self.client.post(
+            "/stores/purchase-requests/confirm-with-expense",
+            json={
+                "indent_id": indent_id,
+                "notes": "First delivery before cancel",
+                "lines": [
+                    {"line_id": lines["Onion"], "received_qty": 10},
+                    {"line_id": lines["Potato"], "received_qty": 10},
+                ],
+                "date": date.today().isoformat(),
+                "description": "Partial before approved delete",
+                "amount": 500,
+                "payment_type": "cash",
+                "category": "grocery",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(partial.status_code, 200)
+        self.assertTrue(partial.get_json().get("ok"))
+
+        conn = db_mod.get_db()
+        try:
+            stock_before = {
+                (row["item_name"], row["unit"]): float(row["qty_on_hand"])
+                for row in conn.execute(
+                    "SELECT item_name, unit, qty_on_hand FROM store_stock_items WHERE outlet = 'bar'"
+                ).fetchall()
+            }
+            movements_before = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM store_stock_movements
+                WHERE ref_type = 'stock_inward' AND ref_id = ?
+                """,
+                (indent_id,),
+            ).fetchone()["c"]
+        finally:
+            conn.close()
+        self.assertEqual(stock_before[("Onion", "kg")], 10.0)
+        self.assertEqual(stock_before[("Potato", "kg")], 10.0)
+        self.assertNotIn(("Tomato", "kg"), stock_before)
+
+        approved_list = self.client.get("/stores/indent?outlet=bar&view=approved")
+        self.assertEqual(approved_list.status_code, 200)
+        self.assertIn(b'data-tip="Delete remaining"', approved_list.data)
+        self.assertIn(b"Already inwarded stock will not be changed", approved_list.data)
+
+        delete = self.client.get(
+            f"/stores/indent/{indent_id}/delete?outlet=bar",
+            follow_redirects=True,
+        )
+        self.assertEqual(delete.status_code, 200)
+        self.assertIn(b"Inwarded stock unchanged", delete.data)
+
+        conn = db_mod.get_db()
+        try:
+            indent_row = conn.execute(
+                "SELECT status FROM store_indents WHERE id = ?", (indent_id,)
+            ).fetchone()
+            self.assertIsNotNone(indent_row)
+            # Remains approved so PO download stays available; open qty is gone.
+            self.assertEqual(indent_row["status"], "approved")
+            line_rows = {
+                row["item_name"]: (
+                    float(row["quantity"]),
+                    float(row["quantity_received"] or 0),
+                )
+                for row in conn.execute(
+                    "SELECT item_name, quantity, quantity_received FROM store_indent_lines WHERE indent_id = ?",
+                    (indent_id,),
+                ).fetchall()
+            }
+            self.assertEqual(set(line_rows), {"Onion", "Potato"})
+            self.assertEqual(line_rows["Onion"], (10.0, 10.0))
+            self.assertEqual(line_rows["Potato"], (10.0, 10.0))
+            self.assertNotIn("Tomato", line_rows)
+
+            stock_after = {
+                (row["item_name"], row["unit"]): float(row["qty_on_hand"])
+                for row in conn.execute(
+                    "SELECT item_name, unit, qty_on_hand FROM store_stock_items WHERE outlet = 'bar'"
+                ).fetchall()
+            }
+            movements_after = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM store_stock_movements
+                WHERE ref_type = 'stock_inward' AND ref_id = ?
+                """,
+                (indent_id,),
+            ).fetchone()["c"]
+        finally:
+            conn.close()
+
+        self.assertEqual(stock_after[("Onion", "kg")], 10.0)
+        self.assertEqual(stock_after[("Potato", "kg")], 10.0)
+        self.assertNotIn(("Tomato", "kg"), stock_after)
+        self.assertEqual(movements_after, movements_before)
+
+        # Nothing left to cancel — clear error, indent and stock unchanged.
+        blocked = self.client.get(
+            f"/stores/indent/{indent_id}/delete?outlet=bar",
+            follow_redirects=True,
+        )
+        self.assertEqual(blocked.status_code, 200)
+        self.assertIn(b"fully inwarded", blocked.data)
+        self.assertIn(b"nothing left to delete", blocked.data)
+
+    def test_non_admin_cannot_delete_approved_indent(self):
+        create = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "Non-admin approved delete",
+                "item_name": ["Onion"],
+                "quantity": ["5"],
+                "unit": ["kg"],
+                "approximate_price": ["25"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            indent_id = conn.execute(
+                "SELECT id FROM store_indents WHERE notes = 'Non-admin approved delete' ORDER BY id DESC LIMIT 1"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+        decide = self.client.post(
+            f"/stores/indent/{indent_id}/decide",
+            data={"outlet": "bar", "decision": "approved", "decision_note": ""},
+            follow_redirects=False,
+        )
+        self.assertEqual(decide.status_code, 302)
+
+        clerk = {
+            "id": self.admin_id,
+            "username": "storeclerk",
+            "full_name": "Store Clerk",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"stores"},
+            "stores_access": {"indent", "stock", "purchase_requests", "approvals"},
+            "sales_analytics_access": set(),
+            "user_access": set(),
+            "payroll_access": set(),
+            "accounts_access": set(),
+        }
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=clerk), mock.patch.object(
+            self.stores_mod, "_get_user", return_value=clerk
+        ):
+            listing = self.client.get("/stores/indent?outlet=bar&view=approved")
+            self.assertEqual(listing.status_code, 200)
+            self.assertIn(b'data-tip="Download PO"', listing.data)
+            self.assertNotIn(b'data-tip="Delete remaining"', listing.data)
+
+            denied = self.client.get(
+                f"/stores/indent/{indent_id}/delete?outlet=bar",
+                follow_redirects=True,
+            )
+            self.assertEqual(denied.status_code, 200)
+            self.assertIn(b"Only administrators can delete approved indents", denied.data)
+
+        conn = db_mod.get_db()
+        try:
+            row = conn.execute(
+                "SELECT status FROM store_indents WHERE id = ?", (indent_id,)
+            ).fetchone()
+            self.assertEqual(row["status"], "approved")
+            line = conn.execute(
+                "SELECT quantity, COALESCE(quantity_received, 0) AS quantity_received FROM store_indent_lines WHERE indent_id = ?",
+                (indent_id,),
+            ).fetchone()
+            self.assertEqual(float(line["quantity"]), 5.0)
+            self.assertEqual(float(line["quantity_received"]), 0.0)
         finally:
             conn.close()
 

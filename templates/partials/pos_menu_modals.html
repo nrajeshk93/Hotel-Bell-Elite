@@ -91,19 +91,26 @@
   </div>
 </div>
 
-{# Large Menu Details popup — opened from table row click (not ⋮). #}
+{# Large Menu Details popup — opened from table row click (not ⋮). Expense Ledger visual language. #}
 <div class="modal-overlay pos-md-overlay" id="pos-menu-details-modal" role="dialog" aria-modal="true" aria-labelledby="pos-md-title" hidden>
   <div class="pos-md-dialog" role="document">
     <header class="pos-md-header">
       <div class="pos-md-header-main">
         <div class="pos-md-title-row">
-          <h2 class="pos-md-title" id="pos-md-title">Menu item</h2>
-          <span class="pos-md-status" id="pos-md-status" data-status="visible">
-            <span class="pos-md-status-dot" aria-hidden="true"></span>
-            <span id="pos-md-status-label">Visible</span>
+          <span class="pos-md-title-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
           </span>
+          <div class="pos-md-title-stack">
+            <div class="pos-md-title-line">
+              <h2 class="pos-md-title" id="pos-md-title">Menu item</h2>
+              <span class="pos-md-status" id="pos-md-status" data-status="visible">
+                <span class="pos-md-status-dot" aria-hidden="true"></span>
+                <span id="pos-md-status-label">Visible</span>
+              </span>
+            </div>
+            <div class="pos-md-chips" id="pos-md-chips" aria-label="Menu summary chips"></div>
+          </div>
         </div>
-        <div class="pos-md-chips" id="pos-md-chips" aria-label="Menu summary chips"></div>
       </div>
       <div class="pos-md-header-actions">
         <button type="button" class="btn btn-secondary pos-md-btn-edit" id="pos-md-edit" data-pos-menu-action="details-edit">Edit Menu</button>
@@ -122,7 +129,7 @@
       </div>
     </header>
 
-    <div class="pos-md-kpis" id="pos-md-kpis" aria-label="Cost and margin summary"></div>
+    <div class="pos-md-kpis pl-summary-row" id="pos-md-kpis" aria-label="Cost and margin summary"></div>
 
     <div class="pos-md-body">
       <nav class="pos-md-nav" aria-label="Menu details sections">
@@ -141,21 +148,21 @@
 
         <section class="pos-md-panel" id="pos-md-panel-recipe" data-pos-md-panel="recipe" aria-label="Recipe and ingredients" hidden>
           <div class="pos-md-table-wrap">
-            <table class="pos-md-table" id="pos-md-recipe-table">
+            <table class="pos-md-table pl-table" id="pos-md-recipe-table">
               <thead>
                 <tr>
                   <th>Ingredient</th>
-                  <th class="pos-md-num">Required Qty</th>
+                  <th class="pos-md-num pl-col-amount">Required Qty</th>
                   <th>Unit</th>
-                  <th class="pos-md-num">Current FIFO Unit Cost</th>
-                  <th class="pos-md-num">Ingredient Cost</th>
+                  <th class="pos-md-num pl-col-amount">Current FIFO Unit Cost</th>
+                  <th class="pos-md-num pl-col-amount">Ingredient Cost</th>
                 </tr>
               </thead>
               <tbody id="pos-md-recipe-body"></tbody>
               <tfoot>
                 <tr>
                   <td colspan="4">Total Recipe Cost</td>
-                  <td class="pos-md-num" id="pos-md-recipe-total">—</td>
+                  <td class="pos-md-num pl-amount" id="pos-md-recipe-total">—</td>
                 </tr>
               </tfoot>
             </table>
@@ -165,23 +172,23 @@
         <section class="pos-md-panel" id="pos-md-panel-fifo" data-pos-md-panel="fifo" aria-label="FIFO costing" hidden>
           <div class="pos-md-banner" id="pos-md-fifo-banner" role="note"></div>
           <div class="pos-md-table-wrap">
-            <table class="pos-md-table" id="pos-md-fifo-table">
+            <table class="pos-md-table pl-table" id="pos-md-fifo-table">
               <thead>
                 <tr>
                   <th>Batch No</th>
-                  <th>Purchase Date</th>
+                  <th class="pl-col-date">Purchase Date</th>
                   <th>Supplier</th>
-                  <th class="pos-md-num">Available Qty</th>
-                  <th class="pos-md-num">Unit Cost</th>
-                  <th class="pos-md-num">Qty Used</th>
-                  <th class="pos-md-num">Cost Used</th>
+                  <th class="pos-md-num pl-col-amount">Available Qty</th>
+                  <th class="pos-md-num pl-col-amount">Unit Cost</th>
+                  <th class="pos-md-num pl-col-amount">Qty Used</th>
+                  <th class="pos-md-num pl-col-amount">Cost Used</th>
                 </tr>
               </thead>
               <tbody id="pos-md-fifo-body"></tbody>
               <tfoot>
                 <tr>
                   <td colspan="6">Current FIFO Food Cost</td>
-                  <td class="pos-md-num" id="pos-md-fifo-total">—</td>
+                  <td class="pos-md-num pl-amount" id="pos-md-fifo-total">—</td>
                 </tr>
               </tfoot>
             </table>
@@ -197,12 +204,12 @@
 
         <section class="pos-md-panel" id="pos-md-panel-history" data-pos-md-panel="history" aria-label="Price history" hidden>
           <div class="pos-md-table-wrap">
-            <table class="pos-md-table" id="pos-md-history-table">
+            <table class="pos-md-table pl-table" id="pos-md-history-table">
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th class="pos-md-num">Old Price</th>
-                  <th class="pos-md-num">New Price</th>
+                  <th class="pl-col-date">Date</th>
+                  <th class="pos-md-num pl-col-amount">Old Price</th>
+                  <th class="pos-md-num pl-col-amount">New Price</th>
                   <th>Reason</th>
                   <th>Updated By</th>
                 </tr>
@@ -214,7 +221,7 @@
 
         <section class="pos-md-panel" id="pos-md-panel-notes" data-pos-md-panel="notes" aria-label="Notes" hidden>
           <label class="pos-md-notes-label" for="pos-md-notes">Chef / admin notes</label>
-          <textarea id="pos-md-notes" class="pos-md-notes" rows="12" maxlength="8000" placeholder="Add prep notes, plating tips, allergen callouts…"></textarea>
+          <textarea id="pos-md-notes" class="pos-md-notes staff-input" rows="12" maxlength="8000" placeholder="Add prep notes, plating tips, allergen callouts…"></textarea>
         </section>
       </div>
     </div>

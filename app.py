@@ -3293,7 +3293,9 @@ def point_of_sale_api_invoice_close(invoice_id):
     try:
         ensure_pos_schema(conn)
         try:
-            invoice = close_pos_invoice_and_free_table(conn, invoice_id)
+            user = get_current_user()
+            user_id = user.get("id") if user else None
+            invoice = close_pos_invoice_and_free_table(conn, invoice_id, user_id=user_id)
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3441,7 +3443,9 @@ def point_of_sale_api_floor_clear_all():
     conn = get_db()
     try:
         ensure_pos_schema(conn)
-        payload = clear_all_pos_tables(conn)
+        user = get_current_user()
+        user_id = user.get("id") if user else None
+        payload = clear_all_pos_tables(conn, user_id=user_id)
         kot_pending = list_pos_kot_pending_summary(conn)
         conn.commit()
         return jsonify({"ok": True, **payload, "kot_pending": kot_pending})

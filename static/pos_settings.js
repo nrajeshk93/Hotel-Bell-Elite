@@ -120,6 +120,10 @@
   function showToast(message) {
     var el = $('#pos-set-toast');
     if (!el) return;
+    /* Host on body so panel/card overflow and workspace scroll shells cannot clip. */
+    if (el.parentNode !== document.body) {
+      document.body.appendChild(el);
+    }
     el.textContent = message;
     el.hidden = false;
     el.classList.add('is-visible');

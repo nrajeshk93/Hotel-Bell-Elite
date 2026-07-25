@@ -494,13 +494,18 @@ body.su-module .st-appr-count{
   font:700 14px Inter,system-ui,sans-serif;
 }
 body.su-module .st-appr-body{padding:0;min-width:0}
-body.su-module .st-appr-table-wrap{
+/* Match Expense Ledger dense scroll panel (sticky header + capped rows). */
+body.su-module .st-appr-table-wrap,
+body.su-module .st-appr-card .pl-table-wrap,
+body.su-module #st-approvals-modal .st-panel .pl-table-wrap{
   margin:0;
   border:0;
   border-radius:0;
+  max-width:100%;
+  max-height:calc(48px + 8 * 76px);
   overflow:auto;
   -webkit-overflow-scrolling:touch;
-  max-width:100%;
+  position:relative;
 }
 body.su-module .st-appr-table{
   min-width:1040px;
@@ -515,11 +520,49 @@ body.su-module .st-appr-table thead th{
   letter-spacing:.06em;
   text-transform:uppercase;
   color:#94A3B8;
-  background:#fff;
+  background:#F8FAFD;
   border-bottom:1px solid #EEF2F7;
   text-align:left;
   vertical-align:middle;
   white-space:nowrap;
+  position:sticky;
+  top:0;
+  z-index:2;
+  box-shadow:0 1px 0 #EEF2F7;
+}
+body.su-module .st-appr-table th.pl-sortable,
+body.su-module #st-approvals-modal .pl-table th.pl-sortable{
+  cursor:pointer;
+  user-select:none;
+}
+body.su-module .st-appr-table th.pl-sortable:hover,
+body.su-module #st-approvals-modal .pl-table th.pl-sortable:hover{
+  color:#64748B;
+}
+body.su-module .st-appr-table th.pl-sortable::after,
+body.su-module #st-approvals-modal .pl-table th.pl-sortable::after{
+  content:'';
+  display:inline-block;
+  margin-left:6px;
+  font-size:9px;
+  opacity:.35;
+  vertical-align:middle;
+}
+body.su-module .st-appr-table th.pl-sortable.is-sorted-asc::after,
+body.su-module .st-appr-table th.pl-sortable.is-sorted-desc::after,
+body.su-module #st-approvals-modal .pl-table th.pl-sortable.is-sorted-asc::after,
+body.su-module #st-approvals-modal .pl-table th.pl-sortable.is-sorted-desc::after{
+  opacity:1;
+  color:#2563EB;
+}
+body.su-module .st-appr-table th.pl-sortable.is-sorted-asc::after,
+body.su-module #st-approvals-modal .pl-table th.pl-sortable.is-sorted-asc::after{content:'▲'}
+body.su-module .st-appr-table th.pl-sortable.is-sorted-desc::after,
+body.su-module #st-approvals-modal .pl-table th.pl-sortable.is-sorted-desc::after{content:'▼'}
+body.su-module .st-appr-table th.pl-sortable:focus-visible,
+body.su-module #st-approvals-modal .pl-table th.pl-sortable:focus-visible{
+  outline:2px solid rgba(37,99,235,.35);
+  outline-offset:-2px;
 }
 body.su-module .st-appr-table tbody td{
   padding:18px 16px;

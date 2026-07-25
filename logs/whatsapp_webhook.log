@@ -181,3 +181,38 @@
 [2026-07-24 23:07:35] Button ID Received id='approve_00000000-0000-4000-8000-000000000099' from=919999999999
 [2026-07-24 23:07:35] action=approved from=919999999999 token=00000000-0000-4000-8000-000000000099 button_id='approve_00000000-0000-4000-8000-000000000099' message_id=wamid.INBOUND.APPROVE
 [2026-07-24 23:07:35] unknown_token from=919999999999 token=00000000-0000-4000-8000-000000000099
+[2026-07-24 23:30:37] Webhook received type=interactive button_reply.id='approve_ec3865c4-c5c6-4fb8-b7d7-52f64e0fd66a' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] Button ID Received id='approve_ec3865c4-c5c6-4fb8-b7d7-52f64e0fd66a' from=919999999999
+[2026-07-24 23:30:37] action=approved from=919999999999 token=ec3865c4-c5c6-4fb8-b7d7-52f64e0fd66a button_id='approve_ec3865c4-c5c6-4fb8-b7d7-52f64e0fd66a' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 23:30:37] Webhook received type=interactive button_reply.id='approve_404c3c3b-0a49-491c-93e4-421e7173d6f9' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] Button ID Received id='approve_404c3c3b-0a49-491c-93e4-421e7173d6f9' from=919999999999
+[2026-07-24 23:30:37] action=approved from=919999999999 token=404c3c3b-0a49-491c-93e4-421e7173d6f9 button_id='approve_404c3c3b-0a49-491c-93e4-421e7173d6f9' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 23:30:37] Webhook received type=interactive button_reply.id='approve_404c3c3b-0a49-491c-93e4-421e7173d6f9' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] Button ID Received id='approve_404c3c3b-0a49-491c-93e4-421e7173d6f9' from=919999999999
+[2026-07-24 23:30:37] action=approved from=919999999999 token=404c3c3b-0a49-491c-93e4-421e7173d6f9 button_id='approve_404c3c3b-0a49-491c-93e4-421e7173d6f9' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] skip: This indent was already Approved.
+[2026-07-24 23:30:37] Webhook received type=interactive button_reply.id='reject_83cf577d-0094-4638-bb5c-5d4ec8471d21' title='Reject' from=919999999999 message_id=wamid.INBOUND.REJECT
+[2026-07-24 23:30:37] Button ID Received id='reject_83cf577d-0094-4638-bb5c-5d4ec8471d21' from=919999999999
+[2026-07-24 23:30:37] action=rejected from=919999999999 token=83cf577d-0094-4638-bb5c-5d4ec8471d21 button_id='reject_83cf577d-0094-4638-bb5c-5d4ec8471d21' message_id=wamid.INBOUND.REJECT
+[2026-07-24 23:30:37] Indent IND-BAR-20260724-001 rejected.
+[2026-07-24 23:30:37] Webhook received type=text button_reply.id='' title='' from=918940651222 message_id=wamid.INBOUND.APPROVE_TEXT
+[2026-07-24 23:30:37] inbound from=918940651222 type=text
+[2026-07-24 23:30:37] Webhook received type=text button_reply.id='' title='' from=918940651222 message_id=wamid.INBOUND.APPROVED_TEXT
+[2026-07-24 23:30:37] inbound from=918940651222 type=text
+[2026-07-24 23:30:37] Webhook received type=interactive button_reply.id='' title='Approve' from=918940651222 message_id=wamid.INBOUND.TITLE_ONLY
+[2026-07-24 23:30:37] ERROR missing button id type=interactive title='Approve' from=918940651222
+[2026-07-24 23:30:37] missing_button_id from=918940651222 type=interactive
+[2026-07-24 23:30:37] Webhook received type=interactive button_reply.id='approve_8901af75-5bce-4cef-91e4-dc186ca0716d' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] Button ID Received id='approve_8901af75-5bce-4cef-91e4-dc186ca0716d' from=919999999999
+[2026-07-24 23:30:37] action=approved from=919999999999 token=8901af75-5bce-4cef-91e4-dc186ca0716d button_id='approve_8901af75-5bce-4cef-91e4-dc186ca0716d' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 23:30:37] Webhook received type=button button_reply.id='approve_2aead3ab-f972-424b-a319-1190f7d4e488' title='Approve' from=919999999999 message_id=wamid.INBOUND.BUTTON_TYPE
+[2026-07-24 23:30:37] Button ID Received id='approve_2aead3ab-f972-424b-a319-1190f7d4e488' from=919999999999
+[2026-07-24 23:30:37] action=approved from=919999999999 token=2aead3ab-f972-424b-a319-1190f7d4e488 button_id='approve_2aead3ab-f972-424b-a319-1190f7d4e488' message_id=wamid.INBOUND.BUTTON_TYPE
+[2026-07-24 23:30:37] Indent IND-BAR-20260724-001 approved.
+[2026-07-24 23:30:37] Webhook received type=interactive button_reply.id='approve_00000000-0000-4000-8000-000000000099' title='Approve' from=919999999999 message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] Button ID Received id='approve_00000000-0000-4000-8000-000000000099' from=919999999999
+[2026-07-24 23:30:37] action=approved from=919999999999 token=00000000-0000-4000-8000-000000000099 button_id='approve_00000000-0000-4000-8000-000000000099' message_id=wamid.INBOUND.APPROVE
+[2026-07-24 23:30:37] unknown_token from=919999999999 token=00000000-0000-4000-8000-000000000099

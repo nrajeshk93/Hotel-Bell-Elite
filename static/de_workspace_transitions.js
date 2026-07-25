@@ -1277,9 +1277,13 @@
       restoreSidebarScroll(lockedSidebarScroll);
       // Keep active item on-screen without jumping the rail to the top.
       try{
-        var active = document.querySelector('#de-sidebar a.is-active, #de-sidebar a[aria-current="page"]');
-        if(active && typeof window.ensureVisibleInScroller === 'function'){
-          window.ensureVisibleInScroller(active, { behavior: 'auto', padding: 12 });
+        if(typeof window.scheduleActiveNavIntoView === 'function'){
+          window.scheduleActiveNavIntoView({ behavior: 'auto', padding: 12 });
+        } else {
+          var active = document.querySelector('#de-sidebar a.is-active, #de-sidebar a[aria-current="page"]');
+          if(active && typeof window.ensureVisibleInScroller === 'function'){
+            window.ensureVisibleInScroller(active, { behavior: 'auto', padding: 12 });
+          }
         }
       } catch(e){}
       lockedSidebarScroll = null;
@@ -1726,27 +1730,32 @@
       sessionStorage.setItem(NAV_FLAG, '1');
     } catch(e){}
 
+    var useSoft = shouldSoftNavigate()
+      || (window.deFullscreen && typeof window.deFullscreen.isPreferred === 'function' && window.deFullscreen.isPreferred());
+    if(!useSoft){
+      window.location.href = url;
+      return;
+    }
+
+    // Match navigateWithTransition: pushState + re-enter FS in the same user gesture.
+    // Deferred pushState (after fetch) cannot restore fullscreen without a gesture.
     setSoftNavFlag(true);
     if(window.deFullscreen && typeof window.deFullscreen.armForSoftNav === 'function'){
       window.deFullscreen.armForSoftNav();
-    }
-    if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+    } else if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
       window.deFullscreen.preserveForNavigation();
     }
-
-    if(shouldSoftNavigate()){
-      showSoftNavProgress();
-      softNavigate(url, hideSoftNavProgress);
-      return;
+    if(!sameAppUrl(url, window.location.href)){
+      try{
+        history.pushState({ deSoftNav: true }, '', url);
+      } catch(e){}
+      if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
+        window.deFullscreen.preserveForNavigation();
+      }
+      try{ syncSidebarActiveFromUrl(url); } catch(e){}
     }
-
-    if(window.deFullscreen && typeof window.deFullscreen.isPreferred === 'function' && window.deFullscreen.isPreferred()){
-      showSoftNavProgress();
-      softNavigate(url, hideSoftNavProgress);
-      return;
-    }
-
-    window.location.href = url;
+    showSoftNavProgress();
+    softNavigate(url, hideSoftNavProgress);
   };
   window.deWorkspaceReinit = function(){
     initDeSidebarPageTransitions();
@@ -1810,17 +1819,27 @@
   function bootRestoreSidebarScroll(){
     try{ if('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch(e){}
     var snapshot = readStoredSidebarScroll();
-    if(!snapshot) return;
-    lockedSidebarScroll = snapshot;
-    restoreSidebarScroll(snapshot);
-    requestAnimationFrame(function(){
+    if(snapshot){
+      lockedSidebarScroll = snapshot;
       restoreSidebarScroll(snapshot);
       requestAnimationFrame(function(){
         restoreSidebarScroll(snapshot);
-        // Drop boot lock so the user can scroll freely after first paint.
-        lockedSidebarScroll = null;
+        requestAnimationFrame(function(){
+          restoreSidebarScroll(snapshot);
+          // Drop boot lock so the user can scroll freely after first paint.
+          lockedSidebarScroll = null;
+          // If restore left the active item clipped (e.g. more groups open), nudge nearest.
+          if(typeof window.scheduleActiveNavIntoView === 'function'){
+            window.scheduleActiveNavIntoView({ behavior: 'auto', padding: 12 });
+          }
+        });
       });
-    });
+      return;
+    }
+    // No stored rail scroll — bring the active module into view once (nearest).
+    if(typeof window.scheduleActiveNavIntoView === 'function'){
+      window.scheduleActiveNavIntoView({ behavior: 'auto', padding: 12 });
+    }
   }
 
   function init(){

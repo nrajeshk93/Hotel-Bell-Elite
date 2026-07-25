@@ -82,6 +82,10 @@
     }
     var el = $('#pos-set-toast');
     if (!el) return;
+    /* Host on body so panel/card overflow and workspace scroll shells cannot clip. */
+    if (el.parentNode !== document.body) {
+      document.body.appendChild(el);
+    }
     el.textContent = message || '';
     el.hidden = false;
     el.classList.add('is-visible');
@@ -985,24 +989,24 @@
     var kpis = $('#pos-md-kpis');
     if (kpis) {
       kpis.innerHTML =
-        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon">' +
+        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon pos-md-kpi-icon--blue">' +
         kpiIcon('price') +
         '</span><span class="pos-md-kpi-body"><span class="pos-md-kpi-label">Selling Price</span><span class="pos-md-kpi-value">' +
         escapeHtml(formatMoney(item.rate)) +
         '</span><span class="pos-md-kpi-sub">Menu rate</span></span></div>' +
-        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon">' +
+        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon pos-md-kpi-icon--orange">' +
         kpiIcon('cost') +
         '</span><span class="pos-md-kpi-body"><span class="pos-md-kpi-label">Food Cost (FIFO)</span><span class="pos-md-kpi-value">' +
         escapeHtml(formatMoney(displayCost)) +
         '</span><span class="pos-md-kpi-sub">' +
         escapeHtml(costSource) +
         ' recipe cost</span></span></div>' +
-        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon">' +
+        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon pos-md-kpi-icon--green">' +
         kpiIcon('margin') +
         '</span><span class="pos-md-kpi-body"><span class="pos-md-kpi-label">Gross Margin</span><span class="pos-md-kpi-value">' +
         escapeHtml(formatMoney(item.gross_margin != null ? item.gross_margin : analysis.gross_profit)) +
         '</span><span class="pos-md-kpi-sub">Price − food cost</span></span></div>' +
-        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon">' +
+        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon pos-md-kpi-icon--blue">' +
         kpiIcon('pct') +
         '</span><span class="pos-md-kpi-body"><span class="pos-md-kpi-label">Margin %</span><span class="pos-md-kpi-value">' +
         escapeHtml(formatPct(item.margin_pct != null ? item.margin_pct : analysis.margin_pct)) +

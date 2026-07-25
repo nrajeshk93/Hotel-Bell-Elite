@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=54">
 {% if page_key == 'indent' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=56">
 {% elif page_key == 'purchase_requests' %}
@@ -273,7 +273,7 @@
 </div>
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=18"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=48"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=50"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import logging
 import re
 import sqlite3
 import uuid
@@ -11,7 +12,13 @@ from typing import Any
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
 
-from db import ensure_stores_schema, get_db
+from db import (
+    _qty_in_product_units,
+    ensure_pos_schema,
+    ensure_stores_schema,
+    get_db,
+    list_pos_menu_recipe_lines,
+)
 from embed_helpers import is_embed_request
 from whatsapp_indent import (
     assign_fresh_approval_token,
@@ -20,6 +27,7 @@ from whatsapp_indent import (
 )
 from workspace_access import user_can_access_stores_submodule
 
+logger = logging.getLogger(__name__)
 STORES_OUTLETS = (
     {"key": "bar", "label": "Bar"},
     {"key": "restaurant", "label": "Restaurant"},
@@ -407,7 +415,20 @@ def _adjust_stock(
     notes,
     user_id,
     unit_cost=None,
+    allow_shortfall=False,
 ):
+    """Adjust on-hand qty and write a stock movement.
+
+    Returns the qty_delta actually applied (may be clamped when allow_shortfall
+    is True). Returns 0.0 when nothing was written (no row / zero delta).
+    """
+    try:
+        qty_delta = float(qty_delta)
+    except (TypeError, ValueError):
+        qty_delta = 0.0
+    if abs(qty_delta) < 0.0001:
+        return 0.0
+
     existing = conn.execute(
         """
         SELECT id, qty_on_hand FROM store_stock_items
@@ -416,9 +437,16 @@ def _adjust_stock(
         (outlet, item_name, unit),
     ).fetchone()
     if existing:
-        new_qty = float(existing["qty_on_hand"] or 0) + float(qty_delta)
+        on_hand = float(existing["qty_on_hand"] or 0)
+        new_qty = on_hand + qty_delta
         if new_qty < -0.0001:
-            raise ValueError(f"Not enough stock for {item_name} ({unit}).")
+            if not allow_shortfall:
+                raise ValueError(f"Not enough stock for {item_name} ({unit}).")
+            # Deduct only what exists; do not block the caller (e.g. POS sale).
+            qty_delta = -on_hand
+            new_qty = 0.0
+            if abs(qty_delta) < 0.0001:
+                return 0.0
         conn.execute(
             """
             UPDATE store_stock_items
@@ -429,7 +457,9 @@ def _adjust_stock(
         )
     else:
         if qty_delta < 0:
-            raise ValueError(f"Not enough stock for {item_name} ({unit}).")
+            if not allow_shortfall:
+                raise ValueError(f"Not enough stock for {item_name} ({unit}).")
+            return 0.0
         conn.execute(
             """
             INSERT INTO store_stock_items (outlet, item_name, unit, qty_on_hand, updated_at)
@@ -466,7 +496,265 @@ def _adjust_stock(
             _now(),
         ),
     )
+    return float(qty_delta)
 
+
+def _resolve_pos_sale_stock_outlet(conn, product_outlet, item_name, unit) -> str:
+    """Pick bar/restaurant stock outlet for a Product Master row."""
+    po = _normalize_outlet_key(product_outlet or "restaurant")
+    if po in OUTLET_KEYS:
+        return po
+    # Product outlet is "both" (or unknown): prefer an existing stock row.
+    rows = conn.execute(
+        """
+        SELECT outlet, qty_on_hand
+        FROM store_stock_items
+        WHERE lower(item_name) = lower(?) AND lower(unit) = lower(?)
+        """,
+        (item_name, unit),
+    ).fetchall()
+    if not rows:
+        return "restaurant"
+    by_outlet = {
+        _normalize_outlet_key(r["outlet"]): float(r["qty_on_hand"] or 0) for r in rows
+    }
+    if by_outlet.get("restaurant", 0) > 0.0001:
+        return "restaurant"
+    if by_outlet.get("bar", 0) > 0.0001:
+        return "bar"
+    if "restaurant" in by_outlet:
+        return "restaurant"
+    if "bar" in by_outlet:
+        return "bar"
+    return "restaurant"
+
+
+def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
+    """Deduct recipe ingredients for a closed POS invoice (idempotent).
+
+    Matches ingredients to ``store_stock_items`` by outlet + product name +
+    product default unit (after converting recipe qty). Shortfalls and missing
+    recipes/stock rows are skipped with logging — never raises for business
+    cases. Marks ``pos_invoices.stock_deducted_at`` so re-close / reprint does
+    not double-deduct.
+    """
+    ensure_pos_schema(conn)
+    ensure_stores_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError):
+        logger.warning("POS stock deduct skipped: invalid invoice_id=%r", invoice_id)
+        return {"ok": False, "reason": "invalid_id"}
+
+    inv = conn.execute(
+        """
+        SELECT id, order_no, status, is_active,
+               COALESCE(stock_deducted_at, '') AS stock_deducted_at
+        FROM pos_invoices
+        WHERE id = ?
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if not inv or not int(inv["is_active"] or 0):
+        return {"ok": False, "reason": "not_found"}
+    if (inv["stock_deducted_at"] or "").strip():
+        return {"ok": True, "skipped": True, "reason": "already_deducted"}
+
+    existing_mv = conn.execute(
+        """
+        SELECT id FROM store_stock_movements
+        WHERE ref_type = 'pos_invoice' AND ref_id = ?
+        LIMIT 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if existing_mv:
+        conn.execute(
+            """
+            UPDATE pos_invoices
+            SET stock_deducted_at = ?, updated_at = ?
+            WHERE id = ? AND COALESCE(stock_deducted_at, '') = ''
+            """,
+            (_now(), _now(), invoice_id),
+        )
+        return {"ok": True, "skipped": True, "reason": "movements_exist"}
+
+    order_no = (inv["order_no"] or "").strip() or f"#{invoice_id}"
+    lines = conn.execute(
+        """
+        SELECT menu_item_id, name, qty
+        FROM pos_invoice_lines
+        WHERE invoice_id = ?
+        ORDER BY sort_order ASC, id ASC
+        """,
+        (invoice_id,),
+    ).fetchall()
+
+    menu_qty: dict[int, float] = {}
+    skipped: list[dict[str, Any]] = []
+    for line in lines:
+        mid = line["menu_item_id"]
+        try:
+            qty = float(line["qty"] or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if mid is None:
+            skipped.append(
+                {
+                    "reason": "no_menu_item",
+                    "name": line["name"] or "",
+                    "qty": qty,
+                }
+            )
+            continue
+        if qty <= 0:
+            continue
+        menu_qty[int(mid)] = menu_qty.get(int(mid), 0.0) + qty
+
+    needs: dict[tuple[str, str, str], float] = {}
+    if menu_qty:
+        recipes = list_pos_menu_recipe_lines(conn, list(menu_qty.keys()))
+        recipes_by_menu: dict[int, list] = {}
+        for recipe in recipes:
+            recipes_by_menu.setdefault(int(recipe["menu_item_id"]), []).append(recipe)
+
+        for mid, sold_qty in menu_qty.items():
+            recipe_lines = recipes_by_menu.get(mid) or []
+            if not recipe_lines:
+                skipped.append({"reason": "no_recipe", "menu_item_id": mid, "qty": sold_qty})
+                logger.info(
+                    "POS stock deduct: no recipe for menu_item_id=%s on invoice %s",
+                    mid,
+                    order_no,
+                )
+                continue
+            for recipe in recipe_lines:
+                product_name = (recipe.get("product_name") or "").strip()
+                product_unit = (recipe.get("product_unit") or "").strip() or "pcs"
+                if not product_name:
+                    skipped.append(
+                        {
+                            "reason": "missing_product",
+                            "menu_item_id": mid,
+                            "product_id": recipe.get("product_id"),
+                        }
+                    )
+                    logger.info(
+                        "POS stock deduct: missing product for recipe on menu_item_id=%s invoice %s",
+                        mid,
+                        order_no,
+                    )
+                    continue
+                per_portion = _qty_in_product_units(
+                    recipe.get("qty"), recipe.get("unit"), product_unit
+                )
+                if per_portion is None:
+                    skipped.append(
+                        {
+                            "reason": "unit_mismatch",
+                            "menu_item_id": mid,
+                            "product_name": product_name,
+                            "recipe_unit": recipe.get("unit"),
+                            "product_unit": product_unit,
+                        }
+                    )
+                    logger.info(
+                        "POS stock deduct: unit mismatch %s (%s→%s) invoice %s",
+                        product_name,
+                        recipe.get("unit"),
+                        product_unit,
+                        order_no,
+                    )
+                    continue
+                need = float(per_portion) * float(sold_qty)
+                if need <= 0:
+                    continue
+                outlet = _resolve_pos_sale_stock_outlet(
+                    conn, recipe.get("product_outlet"), product_name, product_unit
+                )
+                key = (outlet, product_name, product_unit)
+                needs[key] = needs.get(key, 0.0) + need
+
+    deducted: list[dict[str, Any]] = []
+    for (outlet, name, unit), need_qty in needs.items():
+        applied = _adjust_stock(
+            conn,
+            outlet=outlet,
+            item_name=name,
+            unit=unit,
+            qty_delta=-abs(need_qty),
+            movement_type="sale",
+            ref_type="pos_invoice",
+            ref_id=invoice_id,
+            notes=f"POS sale {order_no}",
+            user_id=user_id,
+            allow_shortfall=True,
+        )
+        if abs(applied) < 0.0001:
+            skipped.append(
+                {
+                    "reason": "no_stock",
+                    "outlet": outlet,
+                    "item_name": name,
+                    "unit": unit,
+                    "needed": round(need_qty, 4),
+                }
+            )
+            logger.info(
+                "POS stock deduct: no on-hand stock for %s (%s) outlet=%s needed=%.4f invoice %s",
+                name,
+                unit,
+                outlet,
+                need_qty,
+                order_no,
+            )
+            continue
+        shortfall = round(need_qty - abs(applied), 4)
+        if shortfall > 0.0001:
+            skipped.append(
+                {
+                    "reason": "partial",
+                    "outlet": outlet,
+                    "item_name": name,
+                    "unit": unit,
+                    "needed": round(need_qty, 4),
+                    "applied": round(abs(applied), 4),
+                    "shortfall": shortfall,
+                }
+            )
+            logger.info(
+                "POS stock deduct: partial %s (%s) outlet=%s applied=%.4f needed=%.4f invoice %s",
+                name,
+                unit,
+                outlet,
+                abs(applied),
+                need_qty,
+                order_no,
+            )
+        deducted.append(
+            {
+                "outlet": outlet,
+                "item_name": name,
+                "unit": unit,
+                "qty_delta": round(applied, 4),
+            }
+        )
+
+    conn.execute(
+        """
+        UPDATE pos_invoices
+        SET stock_deducted_at = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (_now(), _now(), invoice_id),
+    )
+    return {
+        "ok": True,
+        "invoice_id": invoice_id,
+        "order_no": order_no,
+        "deducted": deducted,
+        "skipped": skipped,
+    }
 
 def _load_product_catalog(conn, stores_outlet: str | None = None):
     """Load product master.
@@ -1694,9 +1982,89 @@ def stores_indent_purchase_order(indent_id: int):
     )
 
 
+def _delete_approved_indent_non_inwarded(conn, indent_id: int) -> tuple[bool, str]:
+    """Admin-only: cancel non-inwarded qty on an approved indent.
+
+    Already inwarded quantities (``quantity_received``) and related stock
+    movements are left untouched. Lines with no receipt are removed; partially
+    received lines are reduced to ``quantity_received``. If nothing remains,
+    the indent header is deleted.
+    """
+    indent = conn.execute(
+        "SELECT id, indent_no, status FROM store_indents WHERE id = ?",
+        (indent_id,),
+    ).fetchone()
+    if not indent:
+        return False, "Indent not found."
+    if (indent["status"] or "") != "approved":
+        return False, "Only approved indents support this delete."
+
+    lines = conn.execute(
+        """
+        SELECT id, item_name, quantity, COALESCE(quantity_received, 0) AS quantity_received
+        FROM store_indent_lines
+        WHERE indent_id = ?
+        ORDER BY id
+        """,
+        (indent_id,),
+    ).fetchall()
+    if not lines:
+        conn.execute("DELETE FROM store_indents WHERE id = ?", (indent_id,))
+        return True, f"Deleted {indent['indent_no']}."
+
+    removed_lines = 0
+    trimmed_lines = 0
+    kept_lines = 0
+    for line in lines:
+        try:
+            ordered = float(line["quantity"] or 0)
+        except (TypeError, ValueError):
+            ordered = 0.0
+        try:
+            received = float(line["quantity_received"] or 0)
+        except (TypeError, ValueError):
+            received = 0.0
+        if received < 0:
+            received = 0.0
+        if received <= 0.0001:
+            conn.execute("DELETE FROM store_indent_lines WHERE id = ?", (int(line["id"]),))
+            removed_lines += 1
+            continue
+        if ordered - received > 0.0001:
+            conn.execute(
+                "UPDATE store_indent_lines SET quantity = ? WHERE id = ?",
+                (received, int(line["id"])),
+            )
+            trimmed_lines += 1
+            kept_lines += 1
+        else:
+            # Fully inwarded — leave as-is.
+            kept_lines += 1
+
+    remaining = conn.execute(
+        "SELECT COUNT(*) AS c FROM store_indent_lines WHERE indent_id = ?",
+        (indent_id,),
+    ).fetchone()["c"]
+    indent_no = indent["indent_no"]
+    if not remaining:
+        conn.execute("DELETE FROM store_indents WHERE id = ?", (indent_id,))
+        return True, f"Deleted {indent_no} (no inwarded stock)."
+
+    if removed_lines == 0 and trimmed_lines == 0:
+        return False, f"{indent_no} is fully inwarded — nothing left to delete."
+
+    parts = []
+    if removed_lines:
+        parts.append(f"removed {removed_lines} pending line{'s' if removed_lines != 1 else ''}")
+    if trimmed_lines:
+        parts.append(f"trimmed {trimmed_lines} partially inwarded line{'s' if trimmed_lines != 1 else ''}")
+    return True, f"Updated {indent_no}: {', '.join(parts)}. Inwarded stock unchanged."
+
+
 @stores_bp.route("/stores/indent/<int:indent_id>/delete", methods=["GET", "POST"])
 def stores_indent_delete(indent_id: int):
     outlet = _parse_outlet_filter(request.args.get("outlet") or request.form.get("outlet"))
+    user = _get_user() if _get_user else None
     conn = get_db()
     try:
         ensure_stores_schema(conn)
@@ -1708,7 +2076,22 @@ def stores_indent_delete(indent_id: int):
             flash("Indent not found.", "error")
             return redirect(url_for("stores_indent", outlet=outlet))
         outlet = _parse_outlet(indent["outlet"])
-        if indent["status"] not in ("draft", "pending"):
+        status = (indent["status"] or "").strip().lower()
+
+        if status == "approved":
+            if not user or not user.get("is_admin"):
+                flash("Only administrators can delete approved indents.", "error")
+                return redirect(url_for("stores_indent", outlet=outlet, view="approved"))
+            ok, message = _delete_approved_indent_non_inwarded(conn, indent_id)
+            if ok:
+                conn.commit()
+                flash(message, "ok")
+            else:
+                conn.rollback()
+                flash(message, "error")
+            return redirect(url_for("stores_indent", outlet=outlet, view="approved"))
+
+        if status not in ("draft", "pending"):
             flash("Only draft or waiting indents can be deleted.", "error")
             return redirect(url_for("stores_indent", outlet=outlet))
         conn.execute("DELETE FROM store_indent_lines WHERE indent_id = ?", (indent_id,))

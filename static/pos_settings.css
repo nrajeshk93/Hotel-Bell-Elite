@@ -771,10 +771,10 @@ body.pos-settings-module .modal-overlay .btn-danger:hover{
   color:var(--pos-danger);
 }
 
-/* Toast */
+/* Toast — fixed to viewport; keep above ledger panels / sticky table chrome */
 .pos-set-toast{
   position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(12px);
-  z-index:80;padding:11px 16px;border-radius:12px;
+  z-index:5200;padding:11px 16px;border-radius:12px;
   background:#0F172A;color:#fff;font-size:13px;font-weight:600;
   box-shadow:0 12px 32px rgba(15,23,42,.25);
   opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;

@@ -13,35 +13,6 @@ import whatsapp_client as wa
 log = logging.getLogger(__name__)
 
 _WEBHOOK_LOG = os.path.join(os.path.dirname(__file__), "logs", "whatsapp_webhook.log")
-# #region agent log
-_AGENT_DEBUG_LOGS = (
-    os.path.join(os.path.dirname(__file__), "logs", "debug-5137c6.log"),
-    os.path.join(os.path.dirname(__file__), ".cursor", "debug-5137c6.log"),
-    "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-5137c6.log",
-)
-
-
-def _agent_dbg(hypothesis_id: str, location: str, message: str, data=None, run_id: str = "pre-fix") -> None:
-    import time
-
-    payload = {
-        "sessionId": "5137c6",
-        "runId": run_id,
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data or {},
-        "timestamp": int(time.time() * 1000),
-    }
-    line = json.dumps(payload, default=str) + "\n"
-    for path in _AGENT_DEBUG_LOGS:
-        try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(line)
-        except OSError:
-            pass
-# #endregion
 
 WHATSAPP_REJECT_NOTE = "Rejected via WhatsApp"
 WHATSAPP_APPROVE_NOTE = "Approved via WhatsApp"
@@ -312,21 +283,6 @@ def process_indent_button_replies(conn, payload: dict) -> list[str]:
             f"Webhook received type={msg_type} button_reply.id={button_id!r} "
             f"title={title!r} from={sender} message_id={inbound_id}"
         )
-        # #region agent log
-        _agent_dbg(
-            "B",
-            "whatsapp_webhook.py:process_indent_button_replies",
-            "extracted_button_reply",
-            {
-                "msg_type": msg_type,
-                "is_button_click": is_button_click,
-                "button_id_prefix": (button_id or "")[:16],
-                "button_id_len": len(button_id or ""),
-                "title": (title or "")[:40],
-                "has_text_body": bool(((message.get("text") or {}) if isinstance(message.get("text"), dict) else {}).get("body")),
-            },
-        )
-        # #endregion
 
         if not is_button_click:
             # Text / media / other — never run indent approval text matching.
@@ -336,9 +292,6 @@ def process_indent_button_replies(conn, payload: dict) -> list[str]:
                 msg_type,
                 stamp,
             )
-            # #region agent log
-            _agent_dbg("C", "whatsapp_webhook.py:process_indent_button_replies", "ignored_non_button", {"msg_type": msg_type})
-            # #endregion
             continue
 
         if not button_id:
@@ -356,9 +309,6 @@ def process_indent_button_replies(conn, payload: dict) -> list[str]:
                 f"ERROR missing button id type={msg_type} title={title!r} from={sender}"
             )
             results.append(f"missing_button_id from={sender} type={msg_type}")
-            # #region agent log
-            _agent_dbg("D", "whatsapp_webhook.py:process_indent_button_replies", "missing_button_id", {"title": title, "msg_type": msg_type})
-            # #endregion
             continue
 
         log.info("Button ID Received id=%r title=%r from=%s", button_id, title, sender)
@@ -371,18 +321,6 @@ def process_indent_button_replies(conn, payload: dict) -> list[str]:
             approval_token or "",
             sender,
         )
-        # #region agent log
-        _agent_dbg(
-            "E",
-            "whatsapp_webhook.py:process_indent_button_replies",
-            "parsed_token_button",
-            {
-                "decision": decision or "",
-                "token_len": len(approval_token or ""),
-                "token_prefix": (approval_token or "")[:8],
-            },
-        )
-        # #endregion
         if not decision or not approval_token:
             log.error(
                 "WhatsApp button id not approve_/reject_<token> from=%s button_id=%r at=%s",
@@ -423,14 +361,6 @@ def process_indent_button_replies(conn, payload: dict) -> list[str]:
                 stamp,
             )
             results.append(f"unknown_token from={sender} token={approval_token}")
-            # #region agent log
-            _agent_dbg(
-                "E",
-                "whatsapp_webhook.py:process_indent_button_replies",
-                "indent_not_found_for_token",
-                {"token_prefix": (approval_token or "")[:8], "decision": decision},
-            )
-            # #endregion
             if sender:
                 wa.send_text_message(sender, msg)
             # Return path for this message — no text-body fallthrough.
@@ -444,19 +374,6 @@ def process_indent_button_replies(conn, payload: dict) -> list[str]:
             row["status"],
             approval_token,
         )
-        # #region agent log
-        _agent_dbg(
-            "E",
-            "whatsapp_webhook.py:process_indent_button_replies",
-            "indent_found",
-            {
-                "indent_id": indent_id,
-                "indent_no": row["indent_no"],
-                "status": row["status"],
-                "decision": decision,
-            },
-        )
-        # #endregion
 
         ok, msg = _apply_whatsapp_decision(
             conn,
@@ -466,14 +383,6 @@ def process_indent_button_replies(conn, payload: dict) -> list[str]:
             wa_message_id=inbound_id,
         )
         results.append(msg if ok else f"skip: {msg}")
-        # #region agent log
-        _agent_dbg(
-            "E",
-            "whatsapp_webhook.py:process_indent_button_replies",
-            "indent_update_result",
-            {"ok": ok, "msg": msg[:120], "decision": decision, "indent_id": indent_id},
-        )
-        # #endregion
         if ok:
             log.info(
                 "Indent updated / approval completed indent_id=%s decision=%s "
@@ -509,37 +418,6 @@ def handle_events_post(request, get_db, ensure_stores_schema):
 
     if not isinstance(payload, dict):
         payload = {}
-
-    # #region agent log
-    _msg_summaries = []
-    for entry in payload.get("entry") or []:
-        for change in entry.get("changes") or []:
-            value = change.get("value") or {}
-            for message in value.get("messages") or []:
-                interactive = message.get("interactive") if isinstance(message.get("interactive"), dict) else {}
-                button_reply = interactive.get("button_reply") if isinstance(interactive.get("button_reply"), dict) else {}
-                button = message.get("button") if isinstance(message.get("button"), dict) else {}
-                text_body = ""
-                if isinstance(message.get("text"), dict):
-                    text_body = str((message.get("text") or {}).get("body") or "")[:80]
-                _msg_summaries.append(
-                    {
-                        "type": message.get("type"),
-                        "has_interactive": bool(interactive),
-                        "button_reply_id": str(button_reply.get("id") or "")[:80],
-                        "button_reply_title": str(button_reply.get("title") or "")[:40],
-                        "button_payload": str(button.get("payload") or button.get("id") or "")[:80],
-                        "text_body": text_body,
-                        "from": str(message.get("from") or "")[-4:],
-                    }
-                )
-    _agent_dbg(
-        "A",
-        "whatsapp_webhook.py:handle_events_post",
-        "webhook_post_received",
-        {"message_count": len(_msg_summaries), "messages": _msg_summaries, "code_build": "token_button_only_v1"},
-    )
-    # #endregion
 
     summary_bits = []
     conn = get_db()
