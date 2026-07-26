@@ -413,19 +413,23 @@ body.md-master-modal-open {
 
 #md-master-modal.modal-backdrop {
   z-index: 1200;
-  padding: 20px;
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
 }
 
 #md-master-modal .md-master-dialog {
-  width: min(960px, 96vw);
-  max-height: calc(100vh - 48px);
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: #fff;
-  border: 1px solid var(--md-card-border, #E5E7EB);
-  border-radius: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .md-master-dialog-hdr {
@@ -489,7 +493,79 @@ body.md-master-modal-open {
 
 .md-master-modal-inject {
   min-height: 100%;
+  height: 100%;
   box-sizing: border-box;
+}
+
+/* Menu Master embed: fill the fullscreen dialog and scroll the table, not the page chrome */
+#md-master-modal .md-master-dialog-body:has(#pos-menu-page) {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#md-master-modal .md-master-modal-inject:has(#pos-menu-page) {
+  display: flex !important;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+#md-master-modal #pos-menu-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--md-bg, #F8FAFC);
+}
+
+#md-master-modal #pos-menu-page > .se-sales-header {
+  flex-shrink: 0;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 16px 24px 0;
+  box-sizing: border-box;
+}
+
+#md-master-modal #pos-menu-page > .se-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 16px 24px 24px;
+  box-sizing: border-box;
+}
+
+#md-master-modal #pos-menu-page .de-sb-pin-btn,
+#md-master-modal #pos-menu-page .sb-pin-btn {
+  display: none !important;
+}
+
+#md-master-modal #pos-set-panel-menu.pos-menu-calc {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+#md-master-modal #pos-menu-table-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#md-master-modal #pos-menu-table-card .pl-card-body--flush,
+#md-master-modal #pos-menu-table-card .pos-menu-table-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .md-master-modal-inject[hidden],
@@ -762,6 +838,30 @@ body.md-master-modal-open {
 
 .md-master-embed--supplier .sm-pl-table .pl-col-actions {
   vertical-align: middle;
+}
+
+/*
+ * data-tip labels sit below .act-btn by default and get clipped by
+ * overflow:auto table wraps / overflow:hidden panels inside the master modal.
+ * Anchor tips to the left of the action so they stay inside the scroll box.
+ */
+#md-master-modal .pl-col-actions,
+#md-master-modal .act-grp,
+#md-master-modal .act-btn[data-tip] {
+  overflow: visible;
+}
+#md-master-modal .act-btn[data-tip]::after {
+  top: 50%;
+  bottom: auto;
+  left: auto;
+  right: calc(100% + 8px);
+  transform: translateY(-50%);
+  z-index: 80;
+}
+#md-master-modal .act-btn[data-tip]:hover::after,
+#md-master-modal .act-btn[data-tip]:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Employee embed list — match Product Master / pl-table column rhythm */

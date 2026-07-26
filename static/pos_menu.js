@@ -1374,16 +1374,18 @@
 
   function fetchCategoriesThen(cb) {
     fetch(CATEGORIES_API, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-      .then(function (r) {
-        return r.json().then(function (data) {
-          return { ok: r.ok, data: data };
-        });
-      })
+      .then(parseJsonResponse)
       .then(function (res) {
         if (!res.ok || !res.data || !res.data.ok) {
           throw new Error((res.data && res.data.error) || 'Could not load categories.');
         }
-        applyCategories(res.data.categories);
+        try {
+          applyCategories(res.data.categories);
+        } catch (err) {
+          if (typeof console !== 'undefined' && console.error) {
+            console.error('POS menu categories apply failed', err);
+          }
+        }
         if (typeof cb === 'function') cb();
       })
       .catch(function (err) {
@@ -1397,11 +1399,7 @@
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
     })
-      .then(function (r) {
-        return r.json().then(function (data) {
-          return { ok: r.ok, data: data };
-        });
-      })
+      .then(parseJsonResponse)
       .then(function (res) {
         if (!res.ok || !res.data || !res.data.ok) {
           throw new Error((res.data && res.data.error) || 'Could not load items.');
@@ -1939,7 +1937,9 @@
       });
     }
     /* Category / Status use ep_form_listbox (data-se-listbox-change). */
-    if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
+    try {
+      if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
+    } catch (err) {}
     clearFilterListboxPlaceholder($('#pos-menu-filter-category-listbox', page));
     clearFilterListboxPlaceholder($('#pos-menu-filter-status-listbox', page));
     syncFilterChipState(page);
@@ -2181,6 +2181,27 @@
     }
   }
 
+  function parseJsonResponse(r) {
+    return r.text().then(function (text) {
+      var data = null;
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch (err) {
+        data = null;
+      }
+      return { ok: r.ok, status: r.status, data: data };
+    });
+  }
+
+  function ensureMenuPanelVisible(page) {
+    var panel =
+      (page && page.querySelector && page.querySelector('#pos-set-panel-menu')) ||
+      document.getElementById('pos-set-panel-menu');
+    if (!panel) return;
+    panel.classList.add('is-active');
+    panel.removeAttribute('hidden');
+  }
+
   function getMenuPageRoot() {
     return document.getElementById('pos-menu-page') || document.getElementById('pos-settings-page');
   }
@@ -2188,14 +2209,22 @@
   function initPosMenuSettings() {
     var page = getMenuPageRoot();
     if (!page) return;
-    bindPage(page);
+    ensureMenuPanelVisible(page);
+    /* Binding must not block data load (Masters modal listbox bind can throw). */
+    try {
+      bindPage(page);
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('POS menu bind failed', err);
+      }
+    }
     productsLoaded = false;
     fetchCategoriesThen(function () {
       fetchAllItemsThen();
     });
   }
 
-  /** Soft-nav entry for the dedicated /point-of-sale/menu page (not Settings). */
+  /** Soft-nav / Masters modal entry for the dedicated /point-of-sale/menu page. */
   function initPosMenuPage() {
     if (!document.getElementById('pos-menu-page')) return;
     initPosMenuSettings();

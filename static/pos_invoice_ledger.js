@@ -245,6 +245,9 @@
           '<div><div class="pos-il-detail-label">Order type</div><div class="pos-il-detail-value">' +
           (inv.order_type_label || inv.order_type || '—') +
           '</div></div>' +
+          '<div><div class="pos-il-detail-label">Payment Mode</div><div class="pos-il-detail-value">' +
+          (inv.payment_mode_label || 'Unsettled') +
+          '</div></div>' +
           '<div><div class="pos-il-detail-label">Table</div><div class="pos-il-detail-value">' +
           (inv.table_label || inv.table || '—') +
           '</div></div>' +

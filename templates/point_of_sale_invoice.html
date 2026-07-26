@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=24">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=30">
 <script>
 (function(){
   try{
@@ -33,39 +33,41 @@
     <div class="pos-inv-header-actions">
       <!-- Fullscreen/expand control is mounted here by de_fullscreen.js; stays on the title row. -->
     </div>
-    <div class="pos-inv-header-pills">
-      {{ ep_toolbar_listbox('table', 'Table', [], '', placeholder='Select table…', hide_label=true, field_id='pos-inv-table', extra_class='pos-inv-header-listbox', change_handler='posInvTableChanged', icon='table') }}
-      {{ ep_toolbar_listbox('order_type', 'Order type', [
-        ('dine_in', 'Dine In'),
-        ('takeaway', 'Takeaway'),
-        ('delivery', 'Delivery')
-      ], 'dine_in', placeholder='Order type', hide_label=true, field_id='pos-inv-order-type-header', extra_class='pos-inv-header-listbox', change_handler='posInvOrderTypeChanged', icon='utensils') }}
-    </div>
-    <div class="pos-inv-header-buttons">
-      <div class="pos-inv-more-wrap">
-        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="pos-inv-more-menu" title="More actions">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
-          <span>More Actions</span>
-        </button>
-        <div class="pos-inv-more-menu" id="pos-inv-more-menu" role="menu" hidden>
-          <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="hold">Hold Order</button>
-          <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="clear">Clear Items</button>
-          <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="duplicate">Duplicate Order</button>
-        </div>
+    <div class="pos-inv-header-toolbar">
+      <div class="pos-inv-header-pills">
+        {{ ep_toolbar_listbox('table', 'Table', [], '', placeholder='Select table…', hide_label=true, field_id='pos-inv-table', extra_class='pos-inv-header-listbox', change_handler='posInvTableChanged', icon='table') }}
+        {{ ep_toolbar_listbox('order_type', 'Order type', [
+          ('dine_in', 'Dine In'),
+          ('takeaway', 'Takeaway'),
+          ('delivery', 'Delivery')
+        ], 'dine_in', placeholder='Order type', hide_label=true, field_id='pos-inv-order-type-header', extra_class='pos-inv-header-listbox', change_handler='posInvOrderTypeChanged', icon='utensils') }}
       </div>
-      <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-close-table" data-inv-action="close-table" title="Close this bill and free the table for new guests" hidden>
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12 3 3 5-6"/><circle cx="12" cy="12" r="9"/></svg>
-        <span>Close &amp; Free Table</span>
-      </button>
-      <button type="button" class="pos-inv-btn pos-inv-btn--kitchen pos-inv-kot-btn" id="pos-inv-send-kot" data-inv-action="send-kot" title="Confirm order and send new items to the kitchen" disabled>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/><path d="M10.5 17a1.5 1.5 0 0 0 3 0"/></svg>
-        <span>Send to Kitchen</span>
-        <span class="pos-inv-kot-count" id="pos-inv-send-kot-count" hidden>0</span>
-      </button>
-      <span class="pos-sr-only" id="pos-inv-kot-status" aria-live="polite"></span>
-      <button type="button" class="pos-inv-icon-btn pos-inv-header-info" id="pos-inv-header-info" title="Send to Kitchen sends only new or updated items since the last KOT." aria-label="About Send to Kitchen">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4.5M12 8.2v.01"/></svg>
-      </button>
+      <div class="pos-inv-header-buttons">
+        <div class="pos-inv-more-wrap">
+          <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-more-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="pos-inv-more-menu" title="More actions">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+            <span>More Actions</span>
+          </button>
+          <div class="pos-inv-more-menu" id="pos-inv-more-menu" role="menu" hidden>
+            <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="hold">Hold Order</button>
+            <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="clear">Clear Items</button>
+            <button type="button" class="pos-inv-more-item" role="menuitem" data-inv-action="duplicate">Duplicate Order</button>
+          </div>
+        </div>
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-settle-bill" data-inv-action="settle-bill" title="Collect payment and complete this order" hidden>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12 3 3 5-6"/><circle cx="12" cy="12" r="9"/></svg>
+          <span>Settle Bill</span>
+        </button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--kitchen pos-inv-kot-btn" id="pos-inv-send-kot" data-inv-action="send-kot" title="Confirm order and send new items to the kitchen" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/><path d="M10.5 17a1.5 1.5 0 0 0 3 0"/></svg>
+          <span>Send to Kitchen</span>
+          <span class="pos-inv-kot-count" id="pos-inv-send-kot-count" hidden>0</span>
+        </button>
+        <span class="pos-sr-only" id="pos-inv-kot-status" aria-live="polite"></span>
+        <button type="button" class="pos-inv-icon-btn pos-inv-header-info" id="pos-inv-header-info" title="Send to Kitchen sends only new or updated items since the last KOT." aria-label="About Send to Kitchen">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4.5M12 8.2v.01"/></svg>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -357,10 +359,65 @@
       </div>
     </div>
   </div>
+
+  <div class="pos-inv-modal" id="pos-inv-settle-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-settle-close tabindex="-1" aria-hidden="true"></div>
+    <div class="staff-credit-box cp-modal-box pos-inv-settle-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-settle-title">
+      <div class="staff-credit-head">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+        <span id="pos-inv-settle-title">Payment Details</span>
+      </div>
+      <div id="pos-inv-settle-error" class="staff-credit-error"></div>
+      <div class="staff-field">
+        <div class="rt-split-head">
+          <label>Payment mode *</label>
+          <button type="button" class="rt-link-btn" id="pos-inv-settle-add-split">Split Payment</button>
+        </div>
+        <div id="pos-inv-settle-splits" class="rt-payment-splits" aria-label="Payment mode splits"></div>
+        <div class="rt-split-balance" id="pos-inv-settle-balance" hidden>
+          <span>Modes total</span>
+          <strong id="pos-inv-settle-split-total" data-amount="0">0</strong>
+          <span class="rt-split-vs">of</span>
+          <strong id="pos-inv-settle-split-target" data-amount="0">0</strong>
+        </div>
+      </div>
+      <div class="staff-field">
+        <label for="pos-inv-settle-notes">Notes</label>
+        <input id="pos-inv-settle-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
+      </div>
+      <div class="cp-alloc-wrap">
+        <div class="cp-alloc-head">
+          <span>Bill</span>
+          <span id="pos-inv-settle-alloc-meta"></span>
+        </div>
+        <div class="cp-alloc-table-wrap">
+          <table class="cp-alloc-table" aria-label="Bill payment">
+            <thead>
+              <tr>
+                <th>Order</th>
+                <th class="pl-col-amount">Total</th>
+                <th class="pl-col-amount">Pay now</th>
+              </tr>
+            </thead>
+            <tbody id="pos-inv-settle-alloc-body"></tbody>
+          </table>
+        </div>
+        <div class="cp-alloc-total">
+          <span>Payment total</span>
+          <strong id="pos-inv-settle-total" data-amount="0">0</strong>
+        </div>
+      </div>
+      <div class="staff-credit-actions">
+        <button type="button" class="btn" data-settle-close>Back</button>
+        <button type="button" class="btn btn-primary" id="pos-inv-settle-submit" disabled>Record Payment</button>
+      </div>
+    </div>
+  </div>
 </div>
 
+<script type="application/json" id="pos-inv-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["room_transfer","Room Transfer"],["bank_transfer","Bank Transfer"]]</script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=32"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=42"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

@@ -118,6 +118,8 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertIn("ORD-2607-0001", html)
         self.assertIn("Invoice Ledger", html)
         self.assertIn("Guest One", html)
+        self.assertIn("Payment Mode", html)
+        self.assertNotIn('data-sort="table"', html)
 
         save2 = self.client.post(
             "/point-of-sale/api/invoices",
@@ -248,6 +250,66 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(first["status"], "open")
         self.assertIn("grand_total", first)
         self.assertIn("saved_at", first)
+
+    def test_ledger_shows_settlement_payment_mode(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-PAY-0001", total=500, table="T1"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice = saved.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        total = float(invoice["grand_total"])
+
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": 200},
+                    {"payment_method": "upi", "amount": total - 200},
+                ],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        settled = settle.get_json()["invoice"]
+        self.assertEqual(settled.get("payment_mode_label"), "Cash + UPI")
+
+        page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Cash + UPI", html)
+        self.assertIn("Payment Mode", html)
+
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_pos_invoices(conn)
+        finally:
+            conn.close()
+        match = next(r for r in rows if r["id"] == invoice_id)
+        self.assertEqual(match["payment_modes"], ["cash", "upi"])
+        self.assertEqual(match["payment_mode_label"], "Cash + UPI")
+
+    def test_ledger_shows_unsettled_when_no_payment(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-PAY-OPEN", total=500, table="T1"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+
+        page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Unsettled", html)
+
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_pos_invoices(conn)
+        finally:
+            conn.close()
+        match = next(r for r in rows if r["id"] == invoice_id)
+        self.assertEqual(match["payment_modes"], [])
+        self.assertEqual(match["payment_mode_label"], "Unsettled")
 
 
 if __name__ == "__main__":

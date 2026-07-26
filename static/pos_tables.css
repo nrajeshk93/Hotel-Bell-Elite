@@ -578,59 +578,134 @@ body.pos-module .de-main-inner.pos-tables-page{
 .pos-today-invoices-dialog{
   width:min(960px,100%);
 }
-.pos-today-invoice-actions{
-  display:flex;
-  flex-direction:column;
-  align-items:stretch;
-  gap:6px;
-  min-width:112px;
+.pos-today-invoices-dialog .pos-kot-modal-table th:nth-child(6),
+.pos-today-invoices-dialog .pos-kot-modal-table td:nth-child(6){
+  text-align:center;
+  vertical-align:middle;
+  width:7.5rem;
 }
-.pos-today-invoice-btn{
+.pos-today-invoices-dialog .pos-kot-modal-table th:nth-child(7),
+.pos-today-invoices-dialog .pos-kot-modal-table td:nth-child(7){
+  text-align:center;
+  vertical-align:middle;
+}
+.pos-today-invoice-status{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  gap:6px;
-  height:34px;
-  padding:0 10px;
-  border-radius:10px;
-  font:650 12px Inter,system-ui,sans-serif;
-  cursor:pointer;
+  margin:0;
+  min-height:26px;
+  min-width:5.75rem;
+  padding:0 12px;
+  border-radius:999px;
+  font:700 11px Inter,system-ui,sans-serif;
+  letter-spacing:.03em;
+  text-transform:none;
+  box-sizing:border-box;
+}
+.pos-today-invoice-status.is-open,
+.pos-today-invoice-status.is-unsettled{
+  background:#FFF7ED;
+  color:#C2410C;
+  box-shadow:inset 0 0 0 1px #FED7AA;
+}
+.pos-today-invoice-status.is-closed,
+.pos-today-invoice-status.is-settled{
+  background:#ECFDF5;
+  color:#047857;
+  box-shadow:inset 0 0 0 1px #A7F3D0;
+}
+.pos-today-invoice-actions-cell{
   white-space:nowrap;
+  width:1%;
 }
-.pos-today-invoice-btn--view{
+/* Compact icon actions — same pattern as employee payroll .act-grp / .act-btn */
+.pos-today-invoice-actions.act-grp{
+  display:inline-flex;
+  align-items:center;
+  gap:2px;
+  background:#F8FAFD;
   border:1px solid #E2E8F0;
-  background:#fff;
-  color:#334155;
+  border-radius:8px;
+  padding:3px;
+  position:relative;
+  overflow:visible;
+  min-width:0;
+  flex-direction:row;
 }
-.pos-today-invoice-btn--view:hover{
-  background:#F8FAFC;
-  border-color:#CBD5E1;
+.pos-today-invoice-actions .act-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  padding:0;
+  border-radius:6px;
+  border:none;
+  cursor:pointer;
+  background:transparent;
+  color:#94A3B8;
+  text-decoration:none;
+  transition:background .12s,color .12s;
+  position:relative;
+  flex-shrink:0;
+  font:inherit;
 }
-.pos-today-invoice-btn--print{
-  border:1px solid #BFDBFE;
-  background:#fff;
-  color:#1D4ED8;
-}
-.pos-today-invoice-btn--print:hover{
-  background:#EFF6FF;
-  border-color:#93C5FD;
-}
-.pos-today-invoice-btn--print:disabled,
-.pos-today-invoice-btn--print:disabled:hover{
-  opacity:.55;
-  cursor:wait;
-  background:#fff;
-  border-color:#BFDBFE;
-  color:#1D4ED8;
-}
-.pos-today-invoice-btn svg{
+.pos-today-invoice-actions .act-btn svg{
   width:14px;
   height:14px;
   stroke:currentColor;
   fill:none;
-  stroke-width:2;
+  stroke-width:1.9;
   stroke-linecap:round;
   stroke-linejoin:round;
+  pointer-events:none;
+}
+.pos-today-invoice-actions .act-btn:hover{color:#1A202C}
+.pos-today-invoice-actions .act-btn.edit:hover,
+.pos-today-invoice-actions .pos-today-invoice-btn--view:hover{
+  background:#EBF5FF;
+  color:#1877F2;
+}
+.pos-today-invoice-actions .act-btn.print:hover,
+.pos-today-invoice-actions .pos-today-invoice-btn--print:hover{
+  background:#EEF2FF;
+  color:#4F46E5;
+}
+.pos-today-invoice-actions .act-btn:disabled,
+.pos-today-invoice-actions .act-btn.is-disabled{
+  opacity:.42;
+  cursor:not-allowed;
+}
+.pos-today-invoice-actions .act-btn:disabled:hover,
+.pos-today-invoice-actions .act-btn.is-disabled:hover{
+  background:transparent;
+  color:#94A3B8;
+}
+.pos-today-invoice-actions .act-btn[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute;
+  top:calc(100% + 8px);
+  left:50%;
+  transform:translateX(-50%);
+  background:#1A202C;
+  color:#fff;
+  font-size:10px;
+  font-weight:600;
+  white-space:nowrap;
+  padding:4px 8px;
+  border-radius:4px;
+  pointer-events:none;
+  opacity:0;
+  visibility:hidden;
+  z-index:30;
+  box-shadow:0 4px 12px rgba(15,23,42,.18);
+  transition:opacity .12s,visibility .12s;
+}
+.pos-today-invoice-actions .act-btn[data-tip]:hover::after,
+.pos-today-invoice-actions .act-btn[data-tip]:focus-visible::after{
+  opacity:1;
+  visibility:visible;
 }
 .pos-kot-table-status.is-open{background:#FFEDD5;color:#C2410C}
 .pos-kot-table-status.is-closed{background:#DCFCE7;color:#15803D}
@@ -933,6 +1008,8 @@ body.pos-module .de-main-inner.pos-tables-page{
 
 /* Toolbar */
 .pos-tables-toolbar{
+  position:relative;
+  z-index:60;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -944,6 +1021,7 @@ body.pos-module .de-main-inner.pos-tables-page{
   border:1px solid var(--pos-border);
   border-radius:18px;
   box-shadow:var(--pos-shadow);
+  overflow:visible;
   animation:posFadeUp .5s ease .08s both;
 }
 .pos-area-pills{
@@ -1043,6 +1121,7 @@ body.pos-module .de-main-inner.pos-tables-page{
 }
 .pos-tables-search input::placeholder{color:#94A3B8}
 .pos-toolbar-right .pos-status-filter-listbox{
+  position:relative;
   min-width:168px;
   max-width:200px;
   flex:0 1 auto;
@@ -1051,6 +1130,7 @@ body.pos-module .de-main-inner.pos-tables-page{
   flex-direction:column;
   justify-content:center;
   align-self:center;
+  overflow:visible;
 }
 /* Keep label for a11y, but don't stack it above the control in this compact toolbar. */
 .pos-toolbar-right .pos-status-filter-listbox .se-filter-chip-label{
@@ -1084,13 +1164,25 @@ body.pos-module .de-main-inner.pos-tables-page{
   stroke-linecap:round;
   stroke-linejoin:round;
 }
+.pos-toolbar-right .pos-status-filter-listbox.is-open{
+  z-index:70;
+}
 .pos-toolbar-right .pos-status-filter-listbox .se-filter-listbox{
+  left:0;
+  right:0;
+  top:calc(100% + 6px);
+  bottom:auto;
+  width:auto;
+  min-width:100%;
   border:1px solid #E5E7EB;
   border-radius:12px;
-  background:#fff;
-  box-shadow:0 12px 28px rgba(15,23,42,.12);
+  background:#fff !important;
+  box-shadow:0 12px 28px rgba(15,23,42,.18);
   overflow:auto;
   padding:6px;
+  z-index:71;
+  opacity:1;
+  isolation:isolate;
 }
 .pos-toolbar-right .pos-status-filter-listbox .se-filter-listbox-option{
   display:block;
@@ -1117,6 +1209,8 @@ body.pos-module .de-main-inner.pos-tables-page{
 
 /* Body layout */
 .pos-tables-body{
+  position:relative;
+  z-index:1;
   margin-bottom:22px;
   animation:posFadeUp .55s ease .1s both;
 }
@@ -1208,8 +1302,40 @@ body.pos-module .de-main-inner.pos-tables-page{
   outline:2px solid var(--pos-primary);
   outline-offset:2px;
 }
-.pos-table-tile.is-hidden{display:none !important}
-.pos-table-tile--available{background:linear-gradient(180deg,#FFFFFF 0%,#F7FDF9 100%)}
+.pos-table-tile--merged{
+  min-width:min(100%, 280px);
+  border-style:dashed;
+  border-width:1.5px;
+}
+.pos-table-tile--merged .pos-table-tile-name{
+  font-size:17px;
+  line-height:1.25;
+}
+.pos-table-tile-merged-meta{
+  margin-top:4px;
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.02em;
+  color:var(--pos-muted);
+}
+.pos-table-badge-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:auto;
+  align-items:center;
+}
+.pos-table-badge-row .pos-table-badge{
+  margin-top:0;
+}
+.pos-table-badge--merged{
+  background:#EEF2FF;
+  color:#3730A3;
+}
+.pos-table-tile--merged .pos-table-shape-icon{
+  background:#EEF2FF;
+  color:#4338CA;
+}
 .pos-table-tile--occupied{background:linear-gradient(180deg,#FFFFFF 0%,#FFF8F1 100%);border-color:#FED7AA}
 .pos-table-tile--reserved{background:linear-gradient(180deg,#FFFFFF 0%,#F8F5FF 100%);border-color:#DDD6FE}
 .pos-table-tile--cleaning{background:linear-gradient(180deg,#FFFFFF 0%,#FFF5F7 100%);border-color:#FECDD3}
@@ -1240,6 +1366,8 @@ body.pos-module .de-main-inner.pos-tables-page{
   stroke-linecap:round;stroke-linejoin:round;
 }
 .pos-table-more{
+  position:relative;
+  z-index:2;
   width:28px;height:28px;
   border:0;
   border-radius:8px;
@@ -1248,6 +1376,7 @@ body.pos-module .de-main-inner.pos-tables-page{
   display:grid;place-items:center;
   cursor:pointer;
   opacity:1;
+  pointer-events:auto;
   transition:background .15s ease, color .15s ease;
 }
 .pos-table-more:hover,
@@ -1255,8 +1384,11 @@ body.pos-module .de-main-inner.pos-tables-page{
   background:#F1F5F9;
   color:var(--pos-text);
 }
-.pos-table-tile.is-menu-open{
-  z-index:30;
+.pos-table-tile.is-menu-open,
+.pos-table-tile.is-menu-open:hover{
+  /* Hover translate creates a fixed-position containing block and breaks the menu. */
+  transform:none;
+  z-index:40;
 }
 .pos-table-menu{
   position:absolute;
@@ -1271,9 +1403,9 @@ body.pos-module .de-main-inner.pos-tables-page{
   box-shadow:0 12px 28px rgba(15,23,42,.12);
 }
 .pos-table-menu.is-fixed-open{
-  /* Anchored in JS via getBoundingClientRect — avoids grid/overflow clipping. */
+  /* Anchored in JS via getBoundingClientRect — portaled to body/fs root. */
   position:fixed;
-  z-index:120;
+  z-index:5000;
 }
 .pos-table-menu-item{
   display:block;
@@ -1461,7 +1593,7 @@ body.pos-module .de-main-inner.pos-tables-page{
 
 @keyframes posFadeUp{
   from{opacity:0;transform:translateY(8px)}
-  to{opacity:1;transform:translateY(0)}
+  to{opacity:1;transform:none}
 }
 
 /* Toast — mirrors .pos-inv-toast so occupied-table feedback matches the invoice page */
@@ -1489,6 +1621,117 @@ body.pos-module .de-main-inner.pos-tables-page{
 }
 .pos-tables-toast[hidden]{display:none}
 
+/* Transfer table popup — mirrors invoice tip/discount modal chrome */
+.pos-inv-modal[hidden]{display:none !important}
+.pos-inv-modal{
+  position:fixed;
+  inset:0;
+  z-index:5100;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+.pos-inv-modal-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(15,23,42,.4);
+}
+.pos-inv-modal-box{
+  position:relative;
+  width:100%;
+  max-width:400px;
+  padding:24px;
+  border-radius:var(--pos-radius);
+  background:#fff;
+  box-shadow:0 20px 48px rgba(15,23,42,.2);
+}
+.pos-inv-modal-box h3{
+  margin:0 0 8px;
+  font-size:18px;
+  font-weight:750;
+  color:var(--pos-text);
+}
+.pos-inv-modal-lead{
+  margin:0 0 16px;
+  font-size:12.5px;
+  line-height:1.5;
+  color:var(--pos-muted);
+  font-weight:500;
+}
+.pos-inv-modal-lead strong{color:var(--pos-text);font-weight:700}
+.pos-inv-field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:14px;
+  font-size:12.5px;
+  font-weight:600;
+  color:var(--pos-muted);
+}
+.pos-inv-modal-box .pos-inv-field{font-size:13px}
+.pos-transfer-dest-listbox{
+  width:100%;
+  max-width:none;
+}
+.pos-transfer-dest-listbox .se-filter-chip-label{display:none}
+.pos-transfer-dest-listbox .se-filter-chip-control{
+  min-height:44px;
+  border-radius:10px;
+}
+.pos-inv-modal-preview{
+  margin:-4px 0 14px;
+  padding:10px 12px;
+  border-radius:10px;
+  background:#FEF2F2;
+  border:1px solid #FECACA;
+  font-size:12.5px;
+  font-weight:600;
+  color:#B91C1C;
+}
+.pos-inv-modal-preview[hidden]{display:none !important}
+.pos-inv-modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:8px;
+}
+.pos-inv-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  min-height:42px;
+  padding:0 16px;
+  border-radius:10px;
+  border:1px solid transparent;
+  font:inherit;
+  font-size:13.5px;
+  font-weight:650;
+  cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;
+}
+.pos-inv-btn--primary{
+  background:var(--pos-primary);
+  color:#fff;
+  box-shadow:0 4px 12px rgba(37,99,235,.25);
+}
+.pos-inv-btn--primary:hover{background:#1D4ED8}
+.pos-inv-btn--primary:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+.pos-inv-btn--ghost{
+  background:var(--pos-card);
+  color:var(--pos-text);
+  border-color:var(--pos-border);
+}
+.pos-inv-btn--ghost:hover{
+  background:#F8FAFC;
+  border-color:#CBD5E1;
+}
+
 @media (max-width:1180px){
   .pos-tables-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pos-quick-actions-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -1506,4 +1749,64 @@ body.pos-module .de-main-inner.pos-tables-page{
   .pos-toolbar-right .pos-status-filter-listbox{max-width:none;flex:1 1 100%;min-width:0}
   .pos-view-toggle{flex:1}
   .pos-view-btn{flex:1;justify-content:center}
+}
+
+/* In-app KOT / bill print page — used when window.open is blocked (fullscreen / preview). */
+.pos-inapp-print-page{
+  position:fixed;
+  inset:0;
+  z-index:400;
+  display:flex;
+  flex-direction:column;
+  background:#0F172A;
+}
+.pos-inapp-print-toolbar{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 16px;
+  background:#1E293B;
+  border-bottom:1px solid #334155;
+  color:#F8FAFC;
+}
+.pos-inapp-print-title{
+  font-size:14px;
+  font-weight:700;
+  letter-spacing:.02em;
+}
+.pos-inapp-print-actions{
+  display:flex;
+  gap:8px;
+}
+.pos-inapp-print-btn{
+  appearance:none;
+  border:0;
+  border-radius:8px;
+  padding:8px 14px;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  background:#F97316;
+  color:#fff;
+}
+.pos-inapp-print-btn:hover{background:#EA580C}
+.pos-inapp-print-btn--ghost{
+  background:transparent;
+  color:#E2E8F0;
+  border:1px solid #475569;
+}
+.pos-inapp-print-btn--ghost:hover{
+  background:#334155;
+}
+.pos-inapp-print-frame{
+  flex:1 1 auto;
+  width:100%;
+  border:0;
+  background:#fff;
+}
+@media print{
+  .pos-inapp-print-toolbar{display:none !important}
 }

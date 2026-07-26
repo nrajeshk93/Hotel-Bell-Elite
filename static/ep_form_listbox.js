@@ -89,6 +89,10 @@
     if (root.closest('#pos-invoice-page, .pos-inv-header, .pos-inv-header-actions, .pos-inv-meta')) {
       return false;
     }
+    // Tables toolbar uses the same posFadeUp transform fill — fixed coords land elsewhere.
+    if (root.closest('#pos-tables-page, .pos-tables-toolbar, .pos-status-filter-listbox')) {
+      return false;
+    }
     // Floor props + menu item modals keep overflow:visible — absolute under the chip stays
     // aligned. Fixed + transformed workspace/page ancestors rebases coords and collapses
     // the panel to a thin strip above the modal actions.

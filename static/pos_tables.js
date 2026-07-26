@@ -7,6 +7,10 @@
   'use strict';
 
   var FLOOR_API = '/point-of-sale/api/floor';
+  var INVOICE_BY_TABLE_API = '/point-of-sale/api/invoices/by-table';
+  var TRANSFER_TABLE_API = '/point-of-sale/api/invoices/transfer-table';
+  var MERGE_TABLES_API = '/point-of-sale/api/invoices/merge-tables';
+  var UNMERGE_TABLES_API = '/point-of-sale/api/floor/unmerge-tables';
   var LEGACY_STORAGE_KEY = 'hbe_pos_floor_demo';
   var MIGRATE_FLAG = 'hbe_pos_floor_db_migrated';
   var STATUS_KEYS = ['available', 'occupied', 'reserved', 'cleaning', 'inactive'];
@@ -393,15 +397,31 @@
     });
   }
 
+  function cancelPendingFloorSave() {
+    if (floorSaveTimer) {
+      clearTimeout(floorSaveTimer);
+      floorSaveTimer = null;
+    }
+  }
+
   function saveFloorData(data) {
     currentFloor = data;
-    if (floorSaveTimer) clearTimeout(floorSaveTimer);
+    cancelPendingFloorSave();
     floorSaveTimer = setTimeout(function () {
       floorSaveTimer = null;
       putFloor(data).catch(function () {
         /* keep in-memory state */
       });
     }, 280);
+  }
+
+  function refreshFloorAfterMutation(done) {
+    cancelPendingFloorSave();
+    loadFloorFromApi(function (data) {
+      var root = document.getElementById('pos-tables-page');
+      if (root) paintTablesPage(root, data || loadFloorDataCached());
+      if (typeof done === 'function') done(data);
+    });
   }
 
   function loadFloorFromApi(done) {
@@ -464,6 +484,633 @@
     global.location.href = url;
   }
 
+  var transferSourceTable = '';
+  var transferBusy = false;
+
+  function transferModalEl() {
+    return document.getElementById('pos-transfer-table-modal');
+  }
+
+  function setTransferError(msg) {
+    var el = document.getElementById('pos-transfer-table-error');
+    if (!el) return;
+    if (!msg) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function closeTransferTableModal() {
+    var modal = transferModalEl();
+    if (!modal) return;
+    modal.hidden = true;
+    transferSourceTable = '';
+    transferBusy = false;
+    setTransferError('');
+    var confirmBtn = document.getElementById('pos-transfer-table-confirm');
+    if (confirmBtn) confirmBtn.disabled = false;
+    if (typeof global.resetEpListbox === 'function') {
+      global.resetEpListbox('pos-transfer-dest', '', 'Select table…');
+    }
+  }
+
+  function availableTransferDestinations(sourceName) {
+    var source = normalize(sourceName);
+    var tables = ((currentFloor && currentFloor.tables) || []).slice();
+    return tables
+      .filter(function (t) {
+        var name = String(t.name || '').trim();
+        if (!name || normalize(name) === source) return false;
+        return mapStatus(t.status) === 'available';
+      })
+      .sort(function (a, b) {
+        return String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true });
+      });
+  }
+
+  function populateTransferDestinations(sourceName) {
+    var optionsWrap = document.getElementById('pos-transfer-dest-options');
+    if (!optionsWrap) return 0;
+    var dests = availableTransferDestinations(sourceName);
+    var html = '';
+    dests.forEach(function (t) {
+      var name = String(t.name || 'Table');
+      var seats = t.seats != null ? t.seats : '';
+      var label = seats !== '' ? name + ' (' + seats + ' Seats)' : name;
+      html +=
+        '<button type="button" class="se-filter-listbox-option" role="option" data-value="' +
+        escapeHtml(name) +
+        '" data-name="' +
+        escapeHtml(name.toLowerCase()) +
+        '" data-label="' +
+        escapeHtml(label) +
+        '" aria-selected="false">' +
+        escapeHtml(label) +
+        '</button>';
+    });
+    if (!dests.length) {
+      html =
+        '<div class="se-filter-listbox-status" role="presentation">No available tables to transfer to.</div>';
+    }
+    optionsWrap.innerHTML = html;
+    if (typeof global.resetEpListbox === 'function') {
+      global.resetEpListbox('pos-transfer-dest', '', 'Select table…');
+    } else {
+      var input = document.getElementById('pos-transfer-dest');
+      var valueEl = document.getElementById('pos-transfer-dest-value');
+      if (input) input.value = '';
+      if (valueEl) {
+        valueEl.textContent = 'Select table…';
+        valueEl.classList.add('is-placeholder');
+      }
+    }
+    if (typeof global.initEpListboxes === 'function') {
+      global.initEpListboxes();
+    }
+    return dests.length;
+  }
+
+  function showTransferTableModal(sourceName) {
+    var modal = transferModalEl();
+    if (!modal) return;
+    transferSourceTable = sourceName;
+    var lead = document.getElementById('pos-transfer-table-lead');
+    if (lead) {
+      lead.innerHTML =
+        'Move the open bill from <strong>' + escapeHtml(sourceName) + '</strong> to another table.';
+    }
+    setTransferError('');
+    var count = populateTransferDestinations(sourceName);
+    modal.hidden = false;
+    if (!count) {
+      setTransferError('No available tables to transfer to.');
+    }
+    var trigger = document.getElementById('pos-transfer-dest-trigger');
+    if (trigger && count) {
+      setTimeout(function () {
+        try {
+          trigger.focus();
+        } catch (err) {}
+      }, 0);
+    }
+  }
+
+  function openTransferTableModal(root, sourceName) {
+    var name = String(sourceName || '').trim();
+    if (!name) return;
+    fetch(INVOICE_BY_TABLE_API + '?table=' + encodeURIComponent(name), {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: apiHeaders()
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return null;
+        });
+      })
+      .then(function (data) {
+        if (!data || !data.ok || !data.invoice) {
+          toast('No open bill on ' + name + ' to transfer.');
+          return;
+        }
+        showTransferTableModal(data.invoice.table_label || data.invoice.table || name);
+      })
+      .catch(function () {
+        toast('Could not check the open bill for ' + name + '.');
+      });
+  }
+
+  function confirmTransferTable() {
+    if (transferBusy) return;
+    var fromTable = String(transferSourceTable || '').trim();
+    var destInput = document.getElementById('pos-transfer-dest');
+    var toTable = destInput ? String(destInput.value || '').trim() : '';
+    if (!fromTable) {
+      closeTransferTableModal();
+      return;
+    }
+    if (!toTable) {
+      setTransferError('Select a destination table.');
+      return;
+    }
+    transferBusy = true;
+    setTransferError('');
+    var confirmBtn = document.getElementById('pos-transfer-table-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+    fetch(TRANSFER_TABLE_API, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ from_table: fromTable, to_table: toTable })
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return null;
+        }).then(function (data) {
+          return { okHttp: res.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        transferBusy = false;
+        if (confirmBtn) confirmBtn.disabled = false;
+        var data = result && result.data;
+        if (!result || !result.okHttp || !data || !data.ok) {
+          setTransferError((data && data.error) || 'Transfer failed.');
+          return;
+        }
+        closeTransferTableModal();
+        refreshFloorAfterMutation(function () {
+          toast('Transferred bill to ' + toTable + '.');
+        });
+      })
+      .catch(function () {
+        transferBusy = false;
+        if (confirmBtn) confirmBtn.disabled = false;
+        setTransferError('Transfer failed. Try again.');
+      });
+  }
+
+  function bindTransferTableModal() {
+    var modal = transferModalEl();
+    if (!modal || modal.getAttribute('data-bound') === '1') return;
+    modal.setAttribute('data-bound', '1');
+    modal.addEventListener('click', function (event) {
+      if (event.target.closest('[data-transfer-modal-close]')) {
+        event.preventDefault();
+        closeTransferTableModal();
+      }
+    });
+    var confirmBtn = document.getElementById('pos-transfer-table-confirm');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        confirmTransferTable();
+      });
+    }
+    if (!document.__posTransferEscBound) {
+      document.__posTransferEscBound = true;
+      document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') return;
+        var open = transferModalEl();
+        if (open && !open.hidden) closeTransferTableModal();
+      });
+    }
+  }
+
+  var mergeSourceTable = '';
+  var mergePickSource = false;
+  var mergeBusy = false;
+
+  function mergeModalEl() {
+    return document.getElementById('pos-merge-tables-modal');
+  }
+
+  function setMergeError(msg) {
+    var el = document.getElementById('pos-merge-tables-error');
+    if (!el) return;
+    if (!msg) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    el.hidden = false;
+    el.textContent = msg;
+  }
+
+  function mergeTableCandidates(excludeName, opts) {
+    /* Any floor status by default. Pass requireOccupied to limit to tables
+       that likely hold an open bill (source picker). */
+    opts = opts || {};
+    var exclude = normalize(excludeName);
+    var tables = ((currentFloor && currentFloor.tables) || []).slice();
+    return tables
+      .filter(function (t) {
+        var name = String(t.name || '').trim();
+        if (!name) return false;
+        if (exclude && normalize(name) === exclude) return false;
+        if (opts.requireOccupied && mapStatus(t.status) !== 'occupied') return false;
+        return true;
+      })
+      .sort(function (a, b) {
+        var sa = mapStatus(a.status);
+        var sb = mapStatus(b.status);
+        if (sa === 'occupied' && sb !== 'occupied') return -1;
+        if (sb === 'occupied' && sa !== 'occupied') return 1;
+        return String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true });
+      });
+  }
+
+  function renderMergeOptionsHtml(tables, emptyMsg) {
+    if (!tables.length) {
+      return '<div class="se-filter-listbox-status" role="presentation">' + escapeHtml(emptyMsg) + '</div>';
+    }
+    return tables
+      .map(function (t) {
+        var name = String(t.name || 'Table');
+        var seats = t.seats != null ? t.seats : '';
+        var status = mapStatus(t.status);
+        var statusLabel = STATUS_LABELS[status] || status;
+        var label = name;
+        if (seats !== '') label += ' (' + seats + ' Seats)';
+        if (statusLabel) label += ' · ' + statusLabel;
+        return (
+          '<button type="button" class="se-filter-listbox-option" role="option" data-value="' +
+          escapeHtml(name) +
+          '" data-name="' +
+          escapeHtml(name.toLowerCase()) +
+          '" data-label="' +
+          escapeHtml(label) +
+          '" aria-selected="false">' +
+          escapeHtml(label) +
+          '</button>'
+        );
+      })
+      .join('');
+  }
+
+  function resetMergeListbox(listboxId, inputId, valueId, placeholder) {
+    if (typeof global.resetEpListbox === 'function') {
+      global.resetEpListbox(listboxId, '', placeholder);
+      return;
+    }
+    var input = document.getElementById(inputId);
+    var valueEl = document.getElementById(valueId);
+    if (input) input.value = '';
+    if (valueEl) {
+      valueEl.textContent = placeholder;
+      valueEl.classList.add('is-placeholder');
+    }
+  }
+
+  function closeMergeTablesModal() {
+    var modal = mergeModalEl();
+    if (!modal) return;
+    modal.hidden = true;
+    mergeSourceTable = '';
+    mergePickSource = false;
+    mergeBusy = false;
+    setMergeError('');
+    var confirmBtn = document.getElementById('pos-merge-tables-confirm');
+    if (confirmBtn) confirmBtn.disabled = false;
+    var sourceField = document.getElementById('pos-merge-source-field');
+    if (sourceField) sourceField.hidden = true;
+    resetMergeListbox('pos-merge-source', 'pos-merge-source', 'pos-merge-source-value', 'Select table…');
+    resetMergeListbox('pos-merge-dest', 'pos-merge-dest', 'pos-merge-dest-value', 'Select table…');
+  }
+
+  function populateMergeSourceOptions(excludeName) {
+    var optionsWrap = document.getElementById('pos-merge-source-options');
+    if (!optionsWrap) return 0;
+    /* Any other floor table — visual merge does not require an open bill. */
+    var sources = mergeTableCandidates(excludeName || '');
+    optionsWrap.innerHTML = renderMergeOptionsHtml(
+      sources,
+      'No other tables on the floor to merge.'
+    );
+    resetMergeListbox('pos-merge-source', 'pos-merge-source', 'pos-merge-source-value', 'Select table…');
+    if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
+    return sources.length;
+  }
+
+  function populateMergeDestinations(sourceName) {
+    var optionsWrap = document.getElementById('pos-merge-dest-options');
+    if (!optionsWrap) return 0;
+    var dests = mergeTableCandidates(sourceName);
+    optionsWrap.innerHTML = renderMergeOptionsHtml(
+      dests,
+      'No other tables to merge into.'
+    );
+    resetMergeListbox('pos-merge-dest', 'pos-merge-dest', 'pos-merge-dest-value', 'Select table…');
+    if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
+    return dests.length;
+  }
+
+  function showMergeTablesModal(sourceName, pickSource, prefDestName) {
+    var modal = mergeModalEl();
+    if (!modal) return;
+    mergePickSource = !!pickSource;
+    mergeSourceTable = pickSource ? '' : String(sourceName || '').trim();
+    var preferredDest = String(prefDestName || '').trim();
+    var sourceField = document.getElementById('pos-merge-source-field');
+    if (sourceField) sourceField.hidden = !mergePickSource;
+    var lead = document.getElementById('pos-merge-tables-lead');
+    if (lead) {
+      if (mergePickSource && preferredDest) {
+        lead.innerHTML =
+          'Join another table with <strong>' +
+          escapeHtml(preferredDest) +
+          '</strong> — pick Table 2 (or any other table) below. An open bill is optional.';
+      } else if (mergePickSource) {
+        lead.textContent =
+          'Pick two tables to join on the floor. If one has an open bill, it stays on Merge into.';
+      } else {
+        lead.innerHTML =
+          'Merge <strong>' +
+          escapeHtml(mergeSourceTable) +
+          '</strong> into another table — empty tables are allowed.';
+      }
+    }
+    setMergeError('');
+    var destCount = 0;
+    if (mergePickSource) {
+      var sourceCount = populateMergeSourceOptions(preferredDest);
+      destCount = populateMergeDestinations(preferredDest || '');
+      if (preferredDest) {
+        setMergeListboxValue('pos-merge-dest', preferredDest);
+      }
+      if (sourceCount < 1) {
+        setMergeError('No other tables on the floor to merge with.');
+      }
+    } else {
+      destCount = populateMergeDestinations(mergeSourceTable);
+      if (!destCount) {
+        setMergeError('No other tables to merge into.');
+      }
+    }
+    modal.hidden = false;
+    var focusId = mergePickSource ? 'pos-merge-source-trigger' : 'pos-merge-dest-trigger';
+    var trigger = document.getElementById(focusId);
+    if (trigger && (mergePickSource || destCount)) {
+      setTimeout(function () {
+        try {
+          trigger.focus();
+        } catch (err) {}
+      }, 0);
+    }
+  }
+
+  function setMergeListboxValue(fieldId, tableName) {
+    var name = String(tableName || '').trim();
+    if (!name) return;
+    var tables = (currentFloor && currentFloor.tables) || [];
+    var match = null;
+    for (var i = 0; i < tables.length; i++) {
+      if (normalize(tables[i].name) === normalize(name)) {
+        match = tables[i];
+        break;
+      }
+    }
+    var label = name;
+    if (match) {
+      var seats = match.seats != null ? match.seats : '';
+      var status = mapStatus(match.status);
+      var statusLabel = STATUS_LABELS[status] || status;
+      if (seats !== '') label += ' (' + seats + ' Seats)';
+      if (statusLabel) label += ' · ' + statusLabel;
+    }
+    if (typeof global.resetEpListbox === 'function') {
+      global.resetEpListbox(fieldId, name, label);
+      return;
+    }
+    var input = document.getElementById(fieldId);
+    var valueEl = document.getElementById(fieldId + '-value');
+    if (input) input.value = name;
+    if (valueEl) {
+      valueEl.textContent = label;
+      valueEl.classList.remove('is-placeholder');
+    }
+  }
+
+  function openMergeTablesModal(root, sourceName) {
+    var name = String(sourceName || '').trim();
+    if (!name) {
+      showMergeTablesModal('', true);
+      return;
+    }
+    fetch(INVOICE_BY_TABLE_API + '?table=' + encodeURIComponent(name), {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: apiHeaders()
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return null;
+        });
+      })
+      .then(function (data) {
+        if (!data || !data.ok || !data.invoice) {
+          /* Available / reserved / etc. without a bill — this table is the
+             destination; staff pick which occupied table to bring in. */
+          showMergeTablesModal('', true, name);
+          return;
+        }
+        showMergeTablesModal(data.invoice.table_label || data.invoice.table || name, false);
+      })
+      .catch(function () {
+        showMergeTablesModal('', true, name);
+      });
+  }
+
+  function confirmMergeTables() {
+    if (mergeBusy) return;
+    var sourceInput = document.getElementById('pos-merge-source');
+    var fromTable = mergePickSource
+      ? sourceInput
+        ? String(sourceInput.value || '').trim()
+        : ''
+      : String(mergeSourceTable || '').trim();
+    var destInput = document.getElementById('pos-merge-dest');
+    var toTable = destInput ? String(destInput.value || '').trim() : '';
+    if (!fromTable) {
+      setMergeError(mergePickSource ? 'Select a source table.' : 'Source table is missing.');
+      return;
+    }
+    if (!toTable) {
+      setMergeError('Select a destination table.');
+      return;
+    }
+    if (normalize(fromTable) === normalize(toTable)) {
+      setMergeError('Choose a different destination table.');
+      return;
+    }
+    mergeBusy = true;
+    setMergeError('');
+    var confirmBtn = document.getElementById('pos-merge-tables-confirm');
+    if (confirmBtn) confirmBtn.disabled = true;
+    fetch(MERGE_TABLES_API, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ from_table: fromTable, to_table: toTable })
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return null;
+        }).then(function (data) {
+          return { okHttp: res.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        mergeBusy = false;
+        if (confirmBtn) confirmBtn.disabled = false;
+        var data = result && result.data;
+        if (!result || !result.okHttp || !data || !data.ok) {
+          setMergeError((data && data.error) || 'Merge failed.');
+          return;
+        }
+        closeMergeTablesModal();
+        var landed =
+          (data.invoice && (data.invoice.table_label || data.invoice.table)) || toTable;
+        refreshFloorAfterMutation(function () {
+          toast('Merged into ' + landed + '.');
+        });
+      })
+      .catch(function () {
+        mergeBusy = false;
+        if (confirmBtn) confirmBtn.disabled = false;
+        setMergeError('Merge failed. Try again.');
+      });
+  }
+
+  var unmergeBusy = false;
+
+  function confirmUnmergeTables(tableName) {
+    var name = String(tableName || '').trim();
+    if (!name || unmergeBusy) return;
+    unmergeBusy = true;
+    fetch(UNMERGE_TABLES_API, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ table: name })
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return null;
+        }).then(function (data) {
+          return { okHttp: res.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        unmergeBusy = false;
+        var data = result && result.data;
+        if (!result || !result.okHttp || !data || !data.ok) {
+          toast((data && data.error) || 'Unmerge failed.');
+          return;
+        }
+        refreshFloorAfterMutation(function () {
+          var label = data.label || name;
+          toast('Unmerged ' + label + '.');
+        });
+      })
+      .catch(function () {
+        unmergeBusy = false;
+        toast('Unmerge failed. Try again.');
+      });
+  }
+
+  function bindMergeTablesModal() {
+    var modal = mergeModalEl();
+    if (!modal || modal.getAttribute('data-bound') === '1') return;
+    modal.setAttribute('data-bound', '1');
+    modal.addEventListener('click', function (event) {
+      if (event.target.closest('[data-merge-modal-close]')) {
+        event.preventDefault();
+        closeMergeTablesModal();
+      }
+    });
+    var confirmBtn = document.getElementById('pos-merge-tables-confirm');
+    if (confirmBtn) {
+      confirmBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        confirmMergeTables();
+      });
+    }
+    var sourceListbox = document.getElementById('pos-merge-source-listbox');
+    if (sourceListbox && sourceListbox.getAttribute('data-merge-source-bound') !== '1') {
+      sourceListbox.setAttribute('data-merge-source-bound', '1');
+      sourceListbox.addEventListener('click', function (event) {
+        var opt = event.target.closest('.se-filter-listbox-option');
+        if (!opt || !sourceListbox.contains(opt)) return;
+        var value = opt.getAttribute('data-value') || '';
+        setTimeout(function () {
+          mergeSourceTable = value;
+          var destCount = populateMergeDestinations(value);
+          if (!destCount) {
+            setMergeError('No other tables to merge into.');
+          } else {
+            setMergeError('');
+          }
+        }, 0);
+      });
+    }
+    if (!document.__posMergeEscBound) {
+      document.__posMergeEscBound = true;
+      document.addEventListener('keydown', function (event) {
+        if (event.key !== 'Escape') return;
+        var open = mergeModalEl();
+        if (open && !open.hidden) closeMergeTablesModal();
+      });
+    }
+  }
+
+  function bindTableMergeQuickCard() {
+    var btn = document.getElementById('pos-quick-table-merge');
+    if (!btn || btn.getAttribute('data-bound') === '1') return;
+    btn.setAttribute('data-bound', '1');
+    btn.addEventListener('click', function (event) {
+      event.preventDefault();
+      openMergeTablesModal(document.getElementById('pos-tables-page'), '');
+    });
+  }
+
+  var tableMenuScrollGuardUntil = 0;
+
+  function restoreTableMenuHome(menu) {
+    if (!menu) return;
+    var home = menu.__posMenuHome;
+    if (home && menu.parentNode !== home) {
+      try {
+        home.appendChild(menu);
+      } catch (err) {}
+    }
+    menu.__posMenuHome = null;
+    menu.__posMenuTile = null;
+  }
+
   function closeTableMenu() {
     $all('.pos-table-menu').forEach(function (menu) {
       menu.hidden = true;
@@ -474,6 +1121,7 @@
       menu.style.right = '';
       menu.style.bottom = '';
       menu.style.zIndex = '';
+      restoreTableMenuHome(menu);
     });
     $all('.pos-table-more[aria-expanded="true"]').forEach(function (btn) {
       btn.setAttribute('aria-expanded', 'false');
@@ -484,13 +1132,13 @@
   }
 
   function positionTableMenu(btn, menu) {
-    /* Fixed to the viewport so neighboring tiles / overflow:auto shells cannot
-       clip or paint over the dropdown (common on lower/right tiles). */
+    /* Fixed to the viewport (menu is portaled to body) so tile transforms /
+       overflow:auto shells cannot clip or steal hits. */
     var rect = btn.getBoundingClientRect();
     menu.style.position = 'fixed';
     menu.style.right = 'auto';
     menu.style.bottom = 'auto';
-    menu.style.zIndex = '120';
+    menu.style.zIndex = '5000';
     menu.classList.add('is-fixed-open');
 
     var pad = 8;
@@ -513,10 +1161,25 @@
     closeTableMenu();
     var menu = tile && tile.querySelector('.pos-table-menu');
     if (!menu || !btn) return;
+    /* Portal out of the tile — hover transform creates a containing block that
+       breaks position:fixed and makes the menu appear "not clickable". */
+    menu.__posMenuHome = menu.parentNode;
+    menu.__posMenuTile = tile;
+    var host = document.getElementById('de-fs-app') || document.body;
+    host.appendChild(menu);
     tile.classList.add('is-menu-open');
     menu.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
     positionTableMenu(btn, menu);
+    /* Opening can nudge scrollIntoView / layout; ignore that brief scroll. */
+    tableMenuScrollGuardUntil = Date.now() + 450;
+  }
+
+  function tileForTableMenu(menu) {
+    if (!menu) return null;
+    if (menu.__posMenuTile && menu.__posMenuTile.isConnected) return menu.__posMenuTile;
+    if (menu.__posMenuHome) return menu.__posMenuHome.closest('[data-table-tile]');
+    return menu.closest('[data-table-tile]');
   }
 
   function setTableStatus(root, tableId, nextStatus) {
@@ -606,10 +1269,15 @@
       var tileArea = normalize(tile.getAttribute('data-area'));
       var tileStatus = normalize(tile.getAttribute('data-status'));
       var tileName = normalize(tile.getAttribute('data-name'));
+      var tileDisplay = normalize(tile.getAttribute('data-display-name'));
       var seats = normalize(tile.getAttribute('data-seats'));
       var matchArea = !area || tileArea === area;
       var matchStatus = !statusFilter || tileStatus === statusFilter;
-      var matchQuery = !query || tileName.indexOf(query) !== -1 || seats.indexOf(query) !== -1;
+      var matchQuery =
+        !query ||
+        tileName.indexOf(query) !== -1 ||
+        tileDisplay.indexOf(query) !== -1 ||
+        seats.indexOf(query) !== -1;
       var show = matchArea && matchStatus && matchQuery;
       tile.classList.toggle('is-hidden', !show);
       if (show) visible += 1;
@@ -671,6 +1339,7 @@
   function renderFloor(root, data) {
     var floor = $('#pos-floor', root);
     if (!floor) return;
+    closeTableMenu();
     var view = floor.getAttribute('data-view') || 'grid';
     var areas = data.areas || [];
     var tables = data.tables || [];
@@ -728,18 +1397,38 @@
         '</h2>' +
         '<div class="pos-floor-grid">';
       sec.tables.forEach(function (t) {
+        if (t.hiddenInMerge) return;
         var status = mapStatus(t.status);
         var shape = normalize(t.shape) || 'square';
-        var seats = t.seats != null ? t.seats : '';
+        var isMerged = !!(t.mergeGroupId && t.mergePrimary);
+        var seats =
+          isMerged && t.mergedSeats != null
+            ? t.mergedSeats
+            : t.seats != null
+              ? t.seats
+              : '';
         var name = t.name || 'Table';
+        var displayName = t.displayName || name;
+        var mergedNames = Array.isArray(t.mergedNames) ? t.mergedNames : [name];
         var areaKey = t.areaId || sec.id;
+        var menuHtml =
+          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="transfer">Transfer table</button>' +
+          (isMerged
+            ? '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="unmerge">Unmerge tables</button>'
+            : '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="merge">Merge tables</button>') +
+          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="reserve">Reserve</button>' +
+          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="occupied">Occupy</button>' +
+          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="available">Set available</button>';
         html +=
           '<article class="pos-table-tile pos-table-tile--' +
           escapeHtml(status) +
           ' pos-table-tile--' +
           escapeHtml(shape) +
+          (isMerged ? ' pos-table-tile--merged' : '') +
           '" data-table-tile data-name="' +
           escapeHtml(name) +
+          '" data-display-name="' +
+          escapeHtml(displayName) +
           '" data-status="' +
           escapeHtml(status) +
           '" data-area="' +
@@ -748,32 +1437,42 @@
           escapeHtml(seats) +
           '" data-id="' +
           escapeHtml(t.id || '') +
+          '" data-merge-group="' +
+          escapeHtml(t.mergeGroupId || '') +
+          '" data-merged="' +
+          (isMerged ? '1' : '0') +
           '" tabindex="0">' +
           '<div class="pos-table-tile-top">' +
           '<span class="pos-table-shape-icon" aria-hidden="true">' +
-          shapeIcon(shape) +
+          (isMerged ? mergedShapeIcon() : shapeIcon(shape)) +
           '</span>' +
           '<button type="button" class="pos-table-more" aria-label="Table actions" aria-haspopup="menu" aria-expanded="false">' +
           '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>' +
           '</button>' +
           '<div class="pos-table-menu" role="menu" hidden>' +
-          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="open">Open</button>' +
-          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="reserve">Reserve</button>' +
-          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="occupied">Occupy</button>' +
-          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="cleaning">Mark cleaning</button>' +
-          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="available">Set available</button>' +
+          menuHtml +
           '</div>' +
           '</div>' +
           '<div class="pos-table-tile-name">' +
-          escapeHtml(name) +
+          escapeHtml(displayName) +
           '</div>' +
+          (isMerged
+            ? '<div class="pos-table-tile-merged-meta">' +
+              escapeHtml(mergedNames.join(' · ')) +
+              '</div>'
+            : '') +
           (seats !== ''
             ? '<div class="pos-table-tile-seats">' + escapeHtml(seats) + ' Seater</div>'
+            : '') +
+          '<div class="pos-table-badge-row">' +
+          (isMerged
+            ? '<div class="pos-table-badge pos-table-badge--merged">Merged</div>'
             : '') +
           '<div class="pos-table-badge pos-table-badge--' +
           escapeHtml(status) +
           '">' +
           escapeHtml(STATUS_LABELS[status] || status) +
+          '</div>' +
           '</div>' +
           '</article>';
       });
@@ -783,6 +1482,16 @@
     floor.innerHTML = html;
     floor.setAttribute('data-view', view);
     floor.hidden = false;
+  }
+
+  function mergedShapeIcon() {
+    return (
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<rect x="2" y="9" width="9" height="7" rx="1.5"/>' +
+      '<rect x="13" y="9" width="9" height="7" rx="1.5"/>' +
+      '<path d="M11 12.5h2"/>' +
+      '</svg>'
+    );
   }
 
   function bindAreaPills(root) {
@@ -845,6 +1554,18 @@
       navigateToInvoice(name);
       return;
     }
+    if (action === 'transfer') {
+      openTransferTableModal(root, name);
+      return;
+    }
+    if (action === 'merge') {
+      openMergeTablesModal(root, name);
+      return;
+    }
+    if (action === 'unmerge') {
+      confirmUnmergeTables(name);
+      return;
+    }
     if (action === 'reserve') {
       setTableStatus(root, id, 'reserved');
       return;
@@ -867,15 +1588,6 @@
     root.setAttribute('data-tile-bound', '1');
 
     root.addEventListener('click', function (event) {
-      var actionBtn = event.target.closest('[data-table-action]');
-      if (actionBtn && root.contains(actionBtn)) {
-        event.preventDefault();
-        event.stopPropagation();
-        var actionTile = actionBtn.closest('[data-table-tile]');
-        handleTableAction(root, actionTile, actionBtn.getAttribute('data-table-action'));
-        return;
-      }
-
       var moreBtn = event.target.closest('.pos-table-more');
       if (moreBtn && root.contains(moreBtn)) {
         event.preventDefault();
@@ -887,6 +1599,15 @@
         } else {
           openTableMenu(moreBtn, moreTile);
         }
+        return;
+      }
+
+      var actionBtn = event.target.closest('[data-table-action]');
+      if (actionBtn && root.contains(actionBtn)) {
+        event.preventDefault();
+        event.stopPropagation();
+        var actionTile = actionBtn.closest('[data-table-tile]');
+        handleTableAction(root, actionTile, actionBtn.getAttribute('data-table-action'));
         return;
       }
 
@@ -912,9 +1633,22 @@
     if (!document.__posTableMenuDocBound) {
       document.__posTableMenuDocBound = true;
       document.addEventListener('click', function (event) {
-        if (event.target.closest('[data-table-tile] .pos-table-more, [data-table-tile] .pos-table-menu')) {
+        /* Portaled menus live outside the tile — still treat as menu UI. */
+        var actionBtn = event.target.closest('.pos-table-menu [data-table-action]');
+        if (actionBtn) {
+          event.preventDefault();
+          event.stopPropagation();
+          var menu = actionBtn.closest('.pos-table-menu');
+          var actionTile = tileForTableMenu(menu);
+          var page = document.getElementById('pos-tables-page');
+          if (page && actionTile) {
+            handleTableAction(page, actionTile, actionBtn.getAttribute('data-table-action'));
+          } else {
+            closeTableMenu();
+          }
           return;
         }
+        if (event.target.closest('.pos-table-more, .pos-table-menu')) return;
         closeTableMenu();
       });
       document.addEventListener('keydown', function (event) {
@@ -924,6 +1658,7 @@
       document.addEventListener(
         'scroll',
         function () {
+          if (Date.now() < tableMenuScrollGuardUntil) return;
           closeTableMenu();
         },
         true
@@ -946,19 +1681,161 @@
     applyFilters(root);
   }
 
-  function printKotTokenTicket(token, selectedLines) {
+  function openBlankPrintWindow(width, height) {
+    var features = 'width=' + (width || 380) + ',height=' + (height || 600);
+    try {
+      return global.open('', '_blank', features);
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeHtmlAndPrint(win, html) {
+    if (!win) return false;
+    try {
+      win.document.open();
+      win.document.write(html);
+      win.document.close();
+      try {
+        win.focus();
+      } catch (err) {}
+      setTimeout(function () {
+        try {
+          win.print();
+        } catch (err) {}
+      }, 250);
+      return true;
+    } catch (err) {
+      try {
+        win.close();
+      } catch (closeErr) {}
+      return false;
+    }
+  }
+
+  function closeInAppPrintPage() {
+    var overlay = document.getElementById('pos-inapp-print-page');
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  }
+
+  /**
+   * Visible print page inside #de-fs-app — required when Element Fullscreen
+   * (or an embedded preview) blocks / hides window.open tabs.
+   */
+  function openInAppPrintPage(html) {
+    closeInAppPrintPage();
+    var host = document.getElementById('de-fs-app') || document.body;
+    var overlay = document.createElement('div');
+    overlay.id = 'pos-inapp-print-page';
+    overlay.className = 'pos-inapp-print-page';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Print preview');
+    overlay.innerHTML =
+      '<div class="pos-inapp-print-toolbar">' +
+      '<span class="pos-inapp-print-title">Print preview</span>' +
+      '<div class="pos-inapp-print-actions">' +
+      '<button type="button" class="pos-inapp-print-btn" data-pos-inapp-print>Print</button>' +
+      '<button type="button" class="pos-inapp-print-btn pos-inapp-print-btn--ghost" data-pos-inapp-close>Close</button>' +
+      '</div></div>' +
+      '<iframe class="pos-inapp-print-frame" title="Print preview"></iframe>';
+    host.appendChild(overlay);
+
+    var frame = overlay.querySelector('iframe');
+    var idoc = frame && (frame.contentDocument || (frame.contentWindow && frame.contentWindow.document));
+    if (!idoc) {
+      closeInAppPrintPage();
+      return false;
+    }
+    idoc.open();
+    idoc.write(html);
+    idoc.close();
+
+    function doPrint() {
+      try {
+        if (frame.contentWindow) {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+        }
+      } catch (err) {}
+    }
+
+    overlay.addEventListener('click', function (event) {
+      if (event.target.closest('[data-pos-inapp-close]')) {
+        closeInAppPrintPage();
+        return;
+      }
+      if (event.target.closest('[data-pos-inapp-print]')) {
+        doPrint();
+      }
+    });
+    setTimeout(doPrint, 300);
+    return true;
+  }
+
+  function openHtmlPrintWindow(html, opts) {
+    opts = opts || {};
+    var width = opts.width || 380;
+    var height = opts.height || 600;
+    var win = opts.preOpened || null;
+
+    /* Prefer a real tab/window (what staff expect as the “print page”). */
+    if (!win) {
+      win = openBlankPrintWindow(width, height);
+    }
+    if (writeHtmlAndPrint(win, html)) return true;
+    if (win) {
+      try {
+        win.close();
+      } catch (err) {}
+    }
+
+    /* Blob URL — works when about:blank write is locked (some WebViews). */
+    try {
+      var blob = new Blob([html], { type: 'text/html' });
+      var url = URL.createObjectURL(blob);
+      try {
+        win = global.open(url, '_blank', 'width=' + width + ',height=' + height);
+      } catch (err) {
+        win = null;
+      }
+      if (win) {
+        setTimeout(function () {
+          try {
+            win.focus();
+            win.print();
+          } catch (err) {}
+          setTimeout(function () {
+            URL.revokeObjectURL(url);
+          }, 60000);
+        }, 300);
+        return true;
+      }
+      URL.revokeObjectURL(url);
+    } catch (err) {}
+
+    /* Fullscreen-safe visible print page (never a silent 0×0 iframe). */
+    return openInAppPrintPage(html);
+  }
+
+  function printKotTokenTicket(token, selectedLines, preOpenedWin) {
+    var earlyWin = preOpenedWin || null;
     try {
       var allLines = (token && token.lines) || [];
       var lines =
         selectedLines && selectedLines.length ? selectedLines : allLines;
       if (!lines.length) {
+        if (earlyWin) {
+          try {
+            earlyWin.close();
+          } catch (err) {}
+        }
         toast('No kitchen items to resend for this table.');
         return;
       }
-      var win = global.open('', '_blank', 'width=380,height=600');
-      if (!win) {
-        toast('Could not open the KOT window. Check your pop-up blocker.');
-        return;
+      /* Open during the click gesture — delayed opens are blocked in fullscreen. */
+      if (!earlyWin) {
+        earlyWin = openBlankPrintWindow(380, 600);
       }
       var now = new Date();
       var orderNo = (token && (token.kot_no || token.order_no)) || '—';
@@ -996,6 +1873,7 @@
         'td.qty{width:34px;font-weight:700}' +
         '.variant{font-size:11px;color:#555}' +
         '.foot{margin-top:12px;text-align:center;font-size:11px;color:#555}' +
+        '@media print{body{width:auto;margin:0}}' +
         '</style></head><body>' +
         '<h1>KITCHEN ORDER TOKEN</h1>' +
         '<div class="banner">REPRINT / RESEND</div>' +
@@ -1019,17 +1897,21 @@
         '</tbody></table>' +
         '<div class="foot">-- Resent for kitchen --</div>' +
         '</body></html>';
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(function () {
-        try {
-          win.print();
-        } catch (err) {
-          /* Best-effort print */
-        }
-      }, 250);
+      if (
+        !openHtmlPrintWindow(html, {
+          width: 380,
+          height: 600,
+          preOpened: earlyWin
+        })
+      ) {
+        toast('Could not open the KOT window. Check your pop-up blocker.');
+      }
     } catch (err) {
+      if (earlyWin) {
+        try {
+          earlyWin.close();
+        } catch (closeErr) {}
+      }
       toast('Could not print KOT. Try again.');
     }
   }
@@ -1451,19 +2333,32 @@
       var resendAll = event.target.closest('[data-kot-resend-all-idx]');
       if (resendAll && modal.contains(resendAll)) {
         event.preventDefault();
+        event.stopPropagation();
         if (resendAll.disabled) return;
+        /* Open immediately — gesture must not be spent on validation first. */
+        var aWin = openBlankPrintWindow(380, 600);
         var aIdx = Number(resendAll.getAttribute('data-kot-resend-all-idx'));
         var aToken = currentKotTokens[aIdx];
         if (!aToken) {
+          if (aWin) {
+            try {
+              aWin.close();
+            } catch (err) {}
+          }
           toast('KOT not found. Refresh and try again.');
           return;
         }
         if (aToken.customer_bill_sent) {
+          if (aWin) {
+            try {
+              aWin.close();
+            } catch (err) {}
+          }
           toast('Bill sent — resend disabled for this order.');
           return;
         }
         /* Resend all uses full kitchen sent_qty on each line. */
-        printKotTokenTicket(aToken);
+        printKotTokenTicket(aToken, null, aWin);
         toast('KOT resent for ' + (aToken.name || 'table') + '.');
         return;
       }
@@ -1471,28 +2366,46 @@
       var resendSel = event.target.closest('[data-kot-resend-selected]');
       if (resendSel && modal.contains(resendSel)) {
         event.preventDefault();
+        event.stopPropagation();
         if (resendSel.disabled) return;
+        var rWin = openBlankPrintWindow(380, 600);
         var rIdx = Number(resendSel.getAttribute('data-kot-resend-selected'));
         var rToken = currentKotTokens[rIdx];
         if (!rToken) {
+          if (rWin) {
+            try {
+              rWin.close();
+            } catch (err) {}
+          }
           toast('KOT not found. Refresh and try again.');
           return;
         }
         if (rToken.customer_bill_sent) {
+          if (rWin) {
+            try {
+              rWin.close();
+            } catch (err) {}
+          }
           toast('Bill sent — resend disabled for this order.');
           return;
         }
         var selected = selectedKotTokenLines(rIdx);
         if (!selected.length) {
+          if (rWin) {
+            try {
+              rWin.close();
+            } catch (err) {}
+          }
           toast('Select at least one product to resend.');
           return;
         }
-        printKotTokenTicket(rToken, selected);
+        printKotTokenTicket(rToken, selected, rWin);
         toast(
           selected.length === 1
             ? '1 item resent for ' + (rToken.name || 'table') + '.'
             : selected.length + ' items resent for ' + (rToken.name || 'table') + '.'
         );
+        return;
       }
     });
 
@@ -1526,8 +2439,8 @@
     delivery: 'Delivery'
   };
   var INVOICE_STATUS_LABELS = {
-    open: 'Open',
-    closed: 'Closed'
+    open: 'Unsettled',
+    closed: 'Settled'
   };
   var GST_RATE = 0.05;
 
@@ -1778,11 +2691,11 @@
     if (emptyEl) emptyEl.hidden = true;
 
     var viewSvg =
-      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
-      '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/>' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+      '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
       '<circle cx="12" cy="12" r="3"/></svg>';
     var printSvg =
-      '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24" aria-hidden="true">' +
       '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>' +
       '<path d="M6 14h12v8H6z"/></svg>';
 
@@ -1797,12 +2710,13 @@
         var table = inv.table_label || inv.table || '—';
         var when = formatKotPendingWhen(inv.saved_at || inv.created_at);
         var id = inv.id;
+        var orderNo = inv.order_no || '—';
         return (
           '<tr data-today-invoice-id="' +
           escapeHtml(id) +
           '">' +
           '<td><span class="pos-today-invoice-order">' +
-          escapeHtml(inv.order_no || '—') +
+          escapeHtml(orderNo) +
           '</span></td>' +
           '<td>' +
           escapeHtml(table) +
@@ -1817,23 +2731,27 @@
           escapeHtml(when.time) +
           (when.date ? '<small>' + escapeHtml(when.date) + '</small>' : '') +
           '</div></td>' +
-          '<td><span class="pos-kot-table-status is-' +
-          escapeHtml(statusKey) +
+          '<td class="pos-today-invoice-status-cell"><span class="pos-today-invoice-status is-' +
+          escapeHtml(statusKey === 'closed' ? 'settled' : 'unsettled') +
           '">' +
           escapeHtml(statusLabel) +
           '</span></td>' +
-          '<td>' +
-          '<div class="pos-today-invoice-actions">' +
-          '<button type="button" class="pos-today-invoice-btn pos-today-invoice-btn--view" data-today-invoice-view="' +
+          '<td class="pos-today-invoice-actions-cell">' +
+          '<div class="pos-today-invoice-actions act-grp">' +
+          '<button type="button" class="act-btn edit pos-today-invoice-btn--view" data-today-invoice-view="' +
           escapeHtml(id) +
-          '" title="Open in invoice workspace">' +
+          '" data-tip="View" aria-label="View invoice ' +
+          escapeHtml(orderNo) +
+          '">' +
           viewSvg +
-          '<span>View</span></button>' +
-          '<button type="button" class="pos-today-invoice-btn pos-today-invoice-btn--print" data-today-invoice-print="' +
+          '</button>' +
+          '<button type="button" class="act-btn print pos-today-invoice-btn--print" data-today-invoice-print="' +
           escapeHtml(id) +
-          '" title="Reprint customer bill">' +
+          '" data-tip="Print" aria-label="Print invoice ' +
+          escapeHtml(orderNo) +
+          '">' +
           printSvg +
-          '<span>Print</span></button>' +
+          '</button>' +
           '</div>' +
           '</td>' +
           '</tr>'
@@ -1932,6 +2850,9 @@
     bindViewToggle(root);
     bindSearch(root);
     bindTileInteractions(root);
+    bindTransferTableModal();
+    bindMergeTablesModal();
+    bindTableMergeQuickCard();
     bindKotPendingBanner();
     bindKotTokensModal();
     bindTodayInvoicesModal();

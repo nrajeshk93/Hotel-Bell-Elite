@@ -52,15 +52,16 @@ MASTER_DEFINITIONS = [
         "recently_updated": True,
     },
     {
-        "id": "category",
-        "name": "Category Master",
-        "icon": "tag",
+        "id": "menu",
+        "name": "Menu Master",
+        "icon": "menu",
         "icon_tone": "violet",
-        "category": "inventory",
-        "route": None,
-        "record_count": 36,
+        "category": "restaurant",
+        "route": "point_of_sale_menu",
+        "path": "/point-of-sale/menu",
+        "record_count": 0,
         "active": True,
-        "recently_updated": False,
+        "recently_updated": True,
     },
     {
         "id": "employee",
@@ -80,6 +81,7 @@ _DB_COUNT_QUERIES = {
     "supplier": "SELECT COUNT(*) AS n FROM suppliers",
     "customer": "SELECT COUNT(*) AS n FROM customers",
     "product": "SELECT COUNT(*) AS n FROM store_products",
+    "menu": "SELECT COUNT(*) AS n FROM pos_menu_items WHERE is_active = 1",
     "employee": "SELECT COUNT(*) AS n FROM employees WHERE status = 'active'",
 }
 

@@ -56,7 +56,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         self._get_user_patch = mock.patch.object(app_mod, "get_current_user", return_value=self.user)
         self._get_user_patch.start()
 
-        # Floor: T1 available, T3 occupied (no order behind it — simulates a
+        # Floor: T1/T2 available, T3 occupied (no order behind it — simulates a
         # manually-forced occupied tile) — same layout the Tables page renders from.
         put = self.client.put(
             "/point-of-sale/api/floor",
@@ -67,6 +67,15 @@ class PosTableOccupancyTests(unittest.TestCase):
                         "id": "t1",
                         "type": "table",
                         "name": "T1",
+                        "seats": 4,
+                        "shape": "square",
+                        "status": "available",
+                        "areaId": "area_1",
+                    },
+                    {
+                        "id": "t2",
+                        "type": "table",
+                        "name": "T2",
                         "seats": 4,
                         "shape": "square",
                         "status": "available",
@@ -426,6 +435,140 @@ class PosTableOccupancyTests(unittest.TestCase):
         # A totally new party can now open a fresh bill on the freed table.
         res = self.client.post("/point-of-sale/api/invoices", json=self._payload("ORD-2607-0020", "T1"))
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+
+    # -- Settle Bill (payment + split, Room Transfer–style) -------------------
+
+    def test_settle_bill_with_cash_closes_and_frees_table(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Settle-01", "T1", kot_send=True),
+        )
+        invoice = saved.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        total = float(invoice["grand_total"])
+        self.assertEqual(self._floor_status("T1"), "occupied")
+
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_date": "2026-07-25",
+                "notes": "Paid at counter",
+                "payment_splits": [{"payment_method": "cash", "amount": total}],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        body = settle.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["invoice"]["status"], "closed")
+        self.assertEqual(len(body["invoice"]["payments"]), 1)
+        self.assertEqual(body["invoice"]["payments"][0]["payment_method"], "cash")
+        self.assertEqual(self._floor_status("T1"), "available")
+
+    def test_settle_bill_split_payment_modes(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Settle-02", "T1", kot_send=True),
+        )
+        invoice = saved.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        total = float(invoice["grand_total"])
+        cash_part = 100.0
+        upi_part = round(total - cash_part, 2)
+
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_date": "2026-07-25",
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": cash_part},
+                    {"payment_method": "upi", "amount": upi_part},
+                ],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        payments = settle.get_json()["invoice"]["payments"]
+        self.assertEqual(len(payments), 2)
+        by_method = {p["payment_method"]: p["amount"] for p in payments}
+        self.assertEqual(by_method["cash"], cash_part)
+        self.assertEqual(by_method["upi"], upi_part)
+        self.assertEqual(self._floor_status("T1"), "available")
+
+    def test_settle_bill_rejects_mismatched_split_total(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Settle-03", "T1", kot_send=True),
+        )
+        invoice_id = saved.get_json()["invoice"]["id"]
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": 50},
+                    {"payment_method": "upi", "amount": 50},
+                ],
+            },
+        )
+        self.assertEqual(settle.status_code, 400)
+        self.assertFalse(settle.get_json()["ok"])
+        self.assertEqual(self._floor_status("T1"), "occupied")
+
+    def test_settle_bill_requires_txn_for_bank_transfer(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Settle-04", "T1", kot_send=True),
+        )
+        invoice = saved.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        total = float(invoice["grand_total"])
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "bank_transfer", "amount": total, "transaction_id": ""},
+                ],
+            },
+        )
+        self.assertEqual(settle.status_code, 400)
+        self.assertIn("transaction", settle.get_json()["error"].lower())
+
+    def test_settle_bill_accepts_room_transfer_mode(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Settle-05", "T1", kot_send=True),
+        )
+        invoice = saved.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        total = float(invoice["grand_total"])
+
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "room_transfer", "amount": total},
+                ],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        methods = {p["payment_method"] for p in settle.get_json()["invoice"]["payments"]}
+        self.assertEqual(methods, {"room_transfer"})
+        self.assertEqual(self._floor_status("T1"), "available")
+
+    def test_settle_bill_rejects_credit_mode(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Settle-05b", "T1", kot_send=True),
+        )
+        invoice = saved.get_json()["invoice"]
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice['id']}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "credit", "amount": float(invoice["grand_total"])},
+                ],
+            },
+        )
+        self.assertEqual(settle.status_code, 400)
+        self.assertIn("payment mode", settle.get_json()["error"].lower())
 
     # -- Clear all tables -----------------------------------------------------
 
@@ -824,6 +967,365 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(put.get_json()["tables"][0]["status"], "available")
 
         self.assertEqual(self._floor_status("T1"), "occupied")
+
+    # -- Transfer table (move open bill) --------------------------------------
+
+    def test_dine_in_save_requires_table(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0099", ""),
+        )
+        self.assertEqual(res.status_code, 400)
+        body = res.get_json()
+        self.assertFalse(body["ok"])
+        self.assertIn("table", body["error"].lower())
+
+    def test_transfer_table_moves_open_bill_and_floor_status(self):
+        create = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0060", "T1"),
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        self.assertEqual(self._floor_status("T1"), "occupied")
+        self.assertEqual(self._floor_status("T2"), "available")
+
+        res = self.client.post(
+            "/point-of-sale/api/invoices/transfer-table",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual((body["invoice"].get("table_label") or body["invoice"].get("table")), "T2")
+
+        self.assertEqual(self._floor_status("T1"), "available")
+        self.assertEqual(self._floor_status("T2"), "occupied")
+
+        old = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
+        self.assertIsNone(old.get_json()["invoice"])
+        new = self.client.get("/point-of-sale/api/invoices/by-table?table=T2")
+        self.assertIsNotNone(new.get_json()["invoice"])
+        self.assertEqual(new.get_json()["invoice"]["id"], body["invoice"]["id"])
+
+    def test_transfer_table_fails_without_open_bill(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices/transfer-table",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(res.status_code, 400)
+        body = res.get_json()
+        self.assertFalse(body["ok"])
+        self.assertIn("open bill", body["error"].lower())
+        self.assertEqual(self._floor_status("T1"), "available")
+        self.assertEqual(self._floor_status("T2"), "available")
+
+    def test_transfer_table_fails_when_destination_has_open_bill(self):
+        first = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0061", "T1"),
+        )
+        self.assertEqual(first.status_code, 200)
+        second = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0062", "T2"),
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(self._floor_status("T1"), "occupied")
+        self.assertEqual(self._floor_status("T2"), "occupied")
+
+        # Force T2 back to available on the floor while its open bill remains —
+        # transfer must still reject based on the open invoice, not floor status alone.
+        put = self.client.put(
+            "/point-of-sale/api/floor",
+            json={
+                "areas": [{"id": "area_1", "type": "area", "name": "Main Hall"}],
+                "tables": [
+                    {
+                        "id": "t1",
+                        "type": "table",
+                        "name": "T1",
+                        "seats": 4,
+                        "shape": "square",
+                        "status": "occupied",
+                        "areaId": "area_1",
+                    },
+                    {
+                        "id": "t2",
+                        "type": "table",
+                        "name": "T2",
+                        "seats": 4,
+                        "shape": "square",
+                        "status": "available",
+                        "areaId": "area_1",
+                    },
+                    {
+                        "id": "t3",
+                        "type": "table",
+                        "name": "T3",
+                        "seats": 6,
+                        "shape": "rect",
+                        "status": "occupied",
+                        "areaId": "area_1",
+                    },
+                ],
+            },
+        )
+        self.assertEqual(put.status_code, 200)
+
+        res = self.client.post(
+            "/point-of-sale/api/invoices/transfer-table",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(res.status_code, 400)
+        body = res.get_json()
+        self.assertFalse(body["ok"])
+        self.assertIn("already has an open bill", body["error"].lower())
+
+        still_t1 = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
+        self.assertIsNotNone(still_t1.get_json()["invoice"])
+        still_t2 = self.client.get("/point-of-sale/api/invoices/by-table?table=T2")
+        self.assertIsNotNone(still_t2.get_json()["invoice"])
+
+    # -- Merge tables (combine open bills) ------------------------------------
+
+    def test_merge_tables_combines_open_bills_and_frees_source(self):
+        first = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-01", "T1"),
+        )
+        self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
+        first_id = first.get_json()["invoice"]["id"]
+        first_lines = len(first.get_json()["invoice"]["lines"])
+
+        second = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-02", "T2"),
+        )
+        self.assertEqual(second.status_code, 200, second.get_data(as_text=True))
+        second_id = second.get_json()["invoice"]["id"]
+        second_lines = len(second.get_json()["invoice"]["lines"])
+        self.assertEqual(self._floor_status("T1"), "occupied")
+        self.assertEqual(self._floor_status("T2"), "occupied")
+
+        res = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["invoice"]["id"], second_id)
+        self.assertEqual((body["invoice"].get("table_label") or body["invoice"].get("table")), "T2")
+        self.assertEqual(len(body["invoice"]["lines"]), first_lines + second_lines)
+
+        self.assertEqual(self._floor_status("T1"), "available")
+        self.assertEqual(self._floor_status("T2"), "occupied")
+
+        old = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
+        self.assertIsNone(old.get_json()["invoice"])
+        new = self.client.get("/point-of-sale/api/invoices/by-table?table=T2")
+        self.assertIsNotNone(new.get_json()["invoice"])
+        self.assertEqual(new.get_json()["invoice"]["id"], second_id)
+
+        conn = db_mod.get_db()
+        try:
+            src = conn.execute(
+                "SELECT is_active FROM pos_invoices WHERE id = ?", (first_id,)
+            ).fetchone()
+            self.assertEqual(int(src["is_active"]), 0)
+            moved = conn.execute(
+                "SELECT COUNT(*) AS n FROM pos_invoice_lines WHERE invoice_id = ?",
+                (second_id,),
+            ).fetchone()
+            self.assertEqual(int(moved["n"]), first_lines + second_lines)
+        finally:
+            conn.close()
+
+    def test_merge_tables_from_occupied_onto_empty_destination(self):
+        """Bring bill from Occupied T2 into empty T1 — bill lands on T1."""
+        occupied = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-03", "T2"),
+        )
+        self.assertEqual(occupied.status_code, 200)
+        inv_id = occupied.get_json()["invoice"]["id"]
+        self.assertEqual(self._floor_status("T1"), "available")
+        self.assertEqual(self._floor_status("T2"), "occupied")
+
+        res = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T2", "to_table": "T1"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["invoice"]["id"], inv_id)
+        self.assertEqual((body["invoice"].get("table_label") or body["invoice"].get("table")), "T1")
+        self.assertEqual(self._floor_status("T1"), "occupied")
+        self.assertEqual(self._floor_status("T2"), "available")
+
+        on_t1 = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
+        self.assertIsNotNone(on_t1.get_json()["invoice"])
+        self.assertEqual(on_t1.get_json()["invoice"]["id"], inv_id)
+        on_t2 = self.client.get("/point-of-sale/api/invoices/by-table?table=T2")
+        self.assertIsNone(on_t2.get_json()["invoice"])
+
+    def test_merge_tables_visual_join_when_source_empty_dest_has_bill(self):
+        dest = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-03b", "T2"),
+        )
+        self.assertEqual(dest.status_code, 200)
+        dest_id = dest.get_json()["invoice"]["id"]
+        res = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["invoice"]["id"], dest_id)
+        tables = {t["name"]: t for t in body["tables"]}
+        self.assertTrue(tables["T2"].get("mergePrimary"))
+        self.assertEqual(tables["T2"].get("mergeGroupId"), tables["T1"].get("mergeGroupId"))
+        self.assertTrue(tables["T1"].get("hiddenInMerge"))
+        self.assertEqual(self._floor_status("T2"), "occupied")
+
+    def test_merge_tables_visual_join_when_neither_has_open_bill(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["ok"])
+        self.assertIsNone(body.get("invoice"))
+        tables = {t["name"]: t for t in body["tables"]}
+        self.assertTrue(tables["T2"].get("mergePrimary"))
+        self.assertEqual(tables["T2"].get("mergeGroupId"), tables["T1"].get("mergeGroupId"))
+        self.assertTrue(tables["T1"].get("hiddenInMerge"))
+        self.assertIn("and", (tables["T2"].get("displayName") or "").lower())
+        self.assertEqual(self._floor_status("T1"), "available")
+        self.assertEqual(self._floor_status("T2"), "available")
+
+    def test_merge_tables_visual_join_empty_onto_floor_occupied_without_bill(self):
+        # T3 starts occupied on the floor with no open bill in setUp.
+        res = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T1", "to_table": "T3"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["ok"])
+        tables = {t["name"]: t for t in body["tables"]}
+        self.assertTrue(tables["T3"].get("mergePrimary"))
+        self.assertEqual(tables["T3"].get("mergeGroupId"), tables["T1"].get("mergeGroupId"))
+        self.assertTrue(tables["T1"].get("hiddenInMerge"))
+
+    def test_merge_tables_onto_empty_available_destination(self):
+        src = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-04", "T1"),
+        )
+        self.assertEqual(src.status_code, 200)
+        src_id = src.get_json()["invoice"]["id"]
+        self.assertEqual(self._floor_status("T1"), "occupied")
+        self.assertEqual(self._floor_status("T2"), "available")
+
+        res = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["invoice"]["id"], src_id)
+        self.assertEqual((body["invoice"].get("table_label") or body["invoice"].get("table")), "T2")
+        self.assertEqual(self._floor_status("T1"), "available")
+        self.assertEqual(self._floor_status("T2"), "occupied")
+
+        old = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
+        self.assertIsNone(old.get_json()["invoice"])
+        new = self.client.get("/point-of-sale/api/invoices/by-table?table=T2")
+        self.assertIsNotNone(new.get_json()["invoice"])
+        self.assertEqual(new.get_json()["invoice"]["id"], src_id)
+
+    def test_merge_tables_rejects_same_table(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-05", "T1"),
+        )
+        self.assertEqual(saved.status_code, 200)
+        res = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T1", "to_table": "T1"},
+        )
+        self.assertEqual(res.status_code, 400)
+        body = res.get_json()
+        self.assertFalse(body["ok"])
+        self.assertIn("different", body["error"].lower())
+
+    def test_merge_tables_creates_visual_group_on_floor(self):
+        first = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-Vis-01", "T1"),
+        )
+        second = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-Vis-02", "T2"),
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+
+        res = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        tables = {t["name"]: t for t in body["tables"]}
+        self.assertTrue(tables["T2"].get("mergePrimary"))
+        self.assertTrue(tables["T2"].get("mergeGroupId"))
+        self.assertEqual(tables["T2"].get("mergeGroupId"), tables["T1"].get("mergeGroupId"))
+        self.assertFalse(tables["T1"].get("mergePrimary"))
+        self.assertTrue(tables["T1"].get("hiddenInMerge"))
+        self.assertFalse(tables["T2"].get("hiddenInMerge"))
+        self.assertIn("and", (tables["T2"].get("displayName") or "").lower())
+        self.assertIn("t1", (tables["T2"].get("displayName") or "").lower())
+        self.assertIn("t2", (tables["T2"].get("displayName") or "").lower())
+        self.assertEqual(tables["T2"].get("mergedSeats"), 8)
+
+    def test_unmerge_tables_splits_visual_group(self):
+        self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-Vis-03", "T1"),
+        )
+        self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Merge-Vis-04", "T2"),
+        )
+        merged = self.client.post(
+            "/point-of-sale/api/invoices/merge-tables",
+            json={"from_table": "T1", "to_table": "T2"},
+        )
+        self.assertEqual(merged.status_code, 200)
+
+        res = self.client.post(
+            "/point-of-sale/api/floor/unmerge-tables",
+            json={"table": "T2"},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertTrue(body["ok"])
+        tables = {t["name"]: t for t in body["tables"]}
+        self.assertFalse(tables["T1"].get("mergeGroupId"))
+        self.assertFalse(tables["T2"].get("mergeGroupId"))
+        self.assertFalse(tables["T1"].get("hiddenInMerge"))
+        self.assertFalse(tables["T2"].get("hiddenInMerge"))
+        # Bill stays on destination T2 after unmerge.
+        self.assertEqual(self._floor_status("T2"), "occupied")
+        inv = self.client.get("/point-of-sale/api/invoices/by-table?table=T2")
+        self.assertIsNotNone(inv.get_json()["invoice"])
 
 
 if __name__ == "__main__":

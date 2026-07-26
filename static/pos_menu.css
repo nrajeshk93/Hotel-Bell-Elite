@@ -48,13 +48,15 @@ body.pos-menu-module .pos-menu-header-actions{
   flex-wrap:wrap;
 }
 
-/* —— Filter row (mirror Expense Ledger search / chips) —— */
+/* —— Filter row (mirror Expense Ledger / purchase_ledger search chips) —— */
 body.su-module .se-sales-header-filters:has(#pos-menu-filter-form),
-body.su-module .se-sales-header-filters:has(.pos-menu-filter-form){
+body.su-module .se-sales-header-filters:has(.pos-menu-filter-form),
+#md-master-modal .se-sales-header-filters:has(#pos-menu-filter-form){
   justify-content:stretch;
 }
 body.su-module #pos-menu-filter-form.pos-menu-filter-form,
-.pos-menu-filter-form{
+.pos-menu-filter-form,
+#md-master-modal #pos-menu-filter-form{
   display:flex;
   flex-wrap:nowrap;
   align-items:flex-end;
@@ -67,7 +69,9 @@ body.su-module #pos-menu-filter-form.pos-menu-filter-form,
   flex:1 1 auto;
 }
 body.su-module #pos-menu-filter-form .pos-menu-search-chip,
-.pos-menu-filter-form .pos-menu-search-chip{
+.pos-menu-filter-form .pos-menu-search-chip,
+#md-master-modal #pos-menu-page .pos-menu-search-chip,
+#pos-menu-page .pos-menu-search-chip{
   position:relative;
   flex:1 1 auto;
   width:auto;
@@ -76,12 +80,21 @@ body.su-module #pos-menu-filter-form .pos-menu-search-chip,
   z-index:20;
 }
 body.su-module #pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-label,
-.pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-label{
+.pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-label,
+#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-label,
+#pos-menu-page .pos-menu-search-chip .se-filter-chip-label{
   color:#6B7280;
   text-align:left;
+  text-transform:none;
+  letter-spacing:0;
+  font-size:12px;
+  font-weight:500;
+  margin-bottom:6px;
 }
 body.su-module #pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-control{
+.pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-control,
+#pos-menu-page .pos-menu-search-chip .se-filter-chip-control{
   min-height:48px;
   border-radius:12px;
   border:1px solid #E5E7EB !important;
@@ -90,42 +103,72 @@ body.su-module #pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-contr
   align-items:center;
   overflow:visible;
   width:100%;
+  box-sizing:border-box;
+  box-shadow:none;
 }
 body.su-module #pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-icon,
-.pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-icon{
+.pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-icon,
+#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-icon,
+#pos-menu-page .pos-menu-search-chip .se-filter-chip-icon{
   width:44px;
-  color:var(--mmc-acc);
+  color:var(--mmc-acc, #2563EB);
   flex-shrink:0;
 }
+/* Kill nested “input inside chip” look (browser default search border). */
 body.su-module #pos-menu-filter-form .pl-search-input,
-.pos-menu-filter-form .pl-search-input{
+.pos-menu-filter-form .pl-search-input,
+#md-master-modal #pos-menu-page .pl-search-input,
+#pos-menu-page .pl-search-input,
+#md-master-modal #pos-menu-search{
   flex:1 1 auto;
   min-width:0;
   width:100%;
   height:48px;
-  border:none;
-  background:transparent;
+  border:none !important;
+  background:transparent !important;
   font:500 14px Inter,system-ui,sans-serif;
   color:#111827;
   padding:0 12px 0 4px;
   outline:none;
-  box-shadow:none;
+  box-shadow:none !important;
   appearance:none;
+  -webkit-appearance:none;
 }
 body.su-module #pos-menu-filter-form .pl-search-input::-webkit-search-cancel-button,
-.pos-menu-filter-form .pl-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+.pos-menu-filter-form .pl-search-input::-webkit-search-cancel-button,
+#md-master-modal #pos-menu-page .pl-search-input::-webkit-search-cancel-button,
+#pos-menu-page .pl-search-input::-webkit-search-cancel-button{
+  -webkit-appearance:none;
+}
 body.su-module #pos-menu-filter-form .pl-search-input::placeholder,
-.pos-menu-filter-form .pl-search-input::placeholder{color:#94A3B8;font-weight:500}
+.pos-menu-filter-form .pl-search-input::placeholder,
+#md-master-modal #pos-menu-page .pl-search-input::placeholder,
+#pos-menu-page .pl-search-input::placeholder{
+  color:#94A3B8;
+  font-weight:500;
+}
 body.su-module #pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-control{
+.pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-search-chip.is-active .se-filter-chip-control,
+#pos-menu-page .pos-menu-search-chip.is-active .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-control:focus-within,
+#pos-menu-page .pos-menu-search-chip .se-filter-chip-control:focus-within{
   border-color:#93C5FD !important;
   background:#EFF6FF !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
 }
 body.su-module #pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-icon,
-.pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
+.pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-icon,
+#md-master-modal #pos-menu-page .pos-menu-search-chip.is-active .se-filter-chip-icon,
+#pos-menu-page .pos-menu-search-chip.is-active .se-filter-chip-icon,
+#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-control:focus-within .se-filter-chip-icon,
+#pos-menu-page .pos-menu-search-chip .se-filter-chip-control:focus-within .se-filter-chip-icon{
+  color:#2563EB;
+}
 
 body.su-module #pos-menu-filter-form .pos-menu-filter-listbox,
-.pos-menu-filter-form .pos-menu-filter-listbox{
+.pos-menu-filter-form .pos-menu-filter-listbox,
+#md-master-modal #pos-menu-page .pos-menu-filter-listbox{
   flex:0 1 auto;
   width:clamp(120px,12vw,180px);
   min-width:112px;
@@ -133,12 +176,18 @@ body.su-module #pos-menu-filter-form .pos-menu-filter-listbox,
   z-index:25;
 }
 body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-label,
-.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-label{
+.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-label,
+#md-master-modal #pos-menu-page .pos-menu-filter-listbox .se-filter-chip-label{
   color:#6B7280;
   text-align:left;
+  text-transform:none;
+  letter-spacing:0;
+  font-size:12px;
+  font-weight:500;
 }
 body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-control{
+.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-filter-listbox .se-filter-chip-control{
   min-height:48px;
   border-radius:12px;
   border:1px solid #E5E7EB !important;

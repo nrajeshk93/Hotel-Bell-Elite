@@ -55,6 +55,8 @@ def _normalize_pos_floor_payload(areas, tables):
         area_id = raw.get("areaId")
         if area_id is not None:
             area_id = str(area_id).strip() or None
+        merge_group_id = str(raw.get("mergeGroupId") or "").strip() or None
+        merge_primary = bool(raw.get("mergePrimary")) if merge_group_id else False
         clean_tables.append(
             {
                 "id": table_id,
@@ -64,6 +66,8 @@ def _normalize_pos_floor_payload(areas, tables):
                 "shape": shape,
                 "status": status,
                 "areaId": area_id,
+                "mergeGroupId": merge_group_id,
+                "mergePrimary": merge_primary,
             }
         )
     return {"areas": clean_areas, "tables": clean_tables}
@@ -293,6 +297,38 @@ def ensure_pos_schema(conn):
         ON pos_invoice_lines(invoice_id, sort_order)
         """
     )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pos_invoice_payments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id      INTEGER NOT NULL,
+            payment_date    TEXT    NOT NULL,
+            payment_method  TEXT    NOT NULL,
+            amount          REAL    NOT NULL DEFAULT 0,
+            transaction_id  TEXT    NOT NULL DEFAULT '',
+            notes           TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (invoice_id) REFERENCES pos_invoices(id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_invoice_payments_invoice
+        ON pos_invoice_payments(invoice_id, id)
+        """
+    )
+    invoice_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(pos_invoices)").fetchall()
+    }
+    if "payment_notes" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN payment_notes TEXT NOT NULL DEFAULT ''"
+        )
+    if "settled_at" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN settled_at TEXT NOT NULL DEFAULT ''"
+        )
     ensure_customers_schema(conn)
     conn.commit()
 
@@ -1929,6 +1965,191 @@ def save_pos_floor_layout(conn, areas, tables):
     return payload
 
 
+def _new_pos_merge_group_id():
+    return f"mg_{datetime.now().strftime('%Y%m%d%H%M%S')}_{os.getpid() % 10000:04d}"
+
+
+def _pos_find_table_by_name(tables, table_label):
+    needle = str(table_label or "").strip().lower()
+    if not needle:
+        return None
+    for t in tables or []:
+        if str(t.get("name") or "").strip().lower() == needle:
+            return t
+    return None
+
+
+def format_pos_merged_table_label(names):
+    """Human label for a merged group, e.g. 'Table 1 and Table 2'."""
+    clean = []
+    seen = set()
+    for raw in names or []:
+        name = str(raw or "").strip()
+        key = name.lower()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        clean.append(name)
+    if not clean:
+        return ""
+    if len(clean) == 1:
+        return clean[0]
+    if len(clean) == 2:
+        return f"{clean[0]} and {clean[1]}"
+    return ", ".join(clean[:-1]) + f" and {clean[-1]}"
+
+
+def link_pos_floor_tables_as_merged(conn, primary_label, member_labels):
+    """Visually join floor tables under one merge group.
+
+    ``primary_label`` is the host tile (usually the bill destination). Members
+    are hidden on the floor and shown together on the primary as
+    \"Table 1 and Table 2\". Returns the updated layout payload.
+    """
+    ensure_pos_schema(conn)
+    primary_name = str(primary_label or "").strip()
+    members = []
+    for raw in member_labels or []:
+        name = str(raw or "").strip()
+        if name and name.lower() != primary_name.lower():
+            members.append(name)
+    if not primary_name:
+        raise ValueError("Primary table is required.")
+    if not members:
+        return get_pos_floor_layout(conn)
+
+    layout = get_pos_floor_layout(conn)
+    tables = layout.get("tables") or []
+    primary = _pos_find_table_by_name(tables, primary_name)
+    if not primary:
+        raise ValueError(f"Table {primary_name} was not found on the floor.")
+
+    group_ids = set()
+    if primary.get("mergeGroupId"):
+        group_ids.add(str(primary["mergeGroupId"]))
+    member_tiles = []
+    for member_name in members:
+        tile = _pos_find_table_by_name(tables, member_name)
+        if not tile:
+            raise ValueError(f"Table {member_name} was not found on the floor.")
+        member_tiles.append(tile)
+        if tile.get("mergeGroupId"):
+            group_ids.add(str(tile["mergeGroupId"]))
+
+    group_id = next(iter(group_ids), None) or _new_pos_merge_group_id()
+    involved_ids = {str(primary.get("id") or "")}
+    for tile in member_tiles:
+        involved_ids.add(str(tile.get("id") or ""))
+    if group_ids:
+        for t in tables:
+            if str(t.get("mergeGroupId") or "") in group_ids:
+                involved_ids.add(str(t.get("id") or ""))
+
+    primary_id = str(primary.get("id") or "")
+    for t in tables:
+        tid = str(t.get("id") or "")
+        if tid not in involved_ids:
+            continue
+        t["mergeGroupId"] = group_id
+        t["mergePrimary"] = tid == primary_id
+
+    return save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+
+
+def unmerge_pos_floor_tables(conn, table_label):
+    """Split a visual merge group back into separate floor tiles.
+
+    Does not move or close any open bill — the invoice stays on its current
+    ``table_label``. Returns ``{layout, group_names, primary_name, label}``.
+    """
+    ensure_pos_schema(conn)
+    name = str(table_label or "").strip()
+    if not name:
+        raise ValueError("Table is required.")
+    layout = get_pos_floor_layout(conn)
+    tables = layout.get("tables") or []
+    tile = _pos_find_table_by_name(tables, name)
+    if not tile:
+        raise ValueError(f"Table {name} was not found on the floor.")
+    group_id = str(tile.get("mergeGroupId") or "").strip()
+    if not group_id:
+        raise ValueError(f"{name} is not part of a merged group.")
+
+    group_names = []
+    primary_name = name
+    for t in tables:
+        if str(t.get("mergeGroupId") or "") != group_id:
+            continue
+        group_names.append(str(t.get("name") or "").strip())
+        if t.get("mergePrimary"):
+            primary_name = str(t.get("name") or "").strip() or primary_name
+        t["mergeGroupId"] = None
+        t["mergePrimary"] = False
+
+    payload = save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+    return {
+        "layout": payload,
+        "group_names": group_names,
+        "primary_name": primary_name,
+        "label": format_pos_merged_table_label(group_names),
+    }
+
+
+def enrich_pos_floor_tables_for_display(tables):
+    """Attach display helpers for merged groups (does not mutate storage shape).
+
+    Returns a new list of table dicts with:
+    - ``displayName`` — \"Table 1 and Table 2\" for primaries
+    - ``mergedNames`` — list of names in the group
+    - ``mergedSeats`` — sum of seats in the group
+    - ``hiddenInMerge`` — True for non-primary members (skip in floor grid)
+    """
+    tables = [dict(t) for t in (tables or []) if isinstance(t, dict)]
+    by_group = {}
+    for t in tables:
+        gid = str(t.get("mergeGroupId") or "").strip()
+        if not gid:
+            t["displayName"] = str(t.get("name") or "").strip()
+            t["mergedNames"] = [t["displayName"]] if t["displayName"] else []
+            t["mergedSeats"] = int(t.get("seats") or 0) or None
+            t["hiddenInMerge"] = False
+            continue
+        by_group.setdefault(gid, []).append(t)
+
+    for gid, group in by_group.items():
+        names = []
+        seats_total = 0
+        primary = None
+        for t in group:
+            n = str(t.get("name") or "").strip()
+            if n:
+                names.append(n)
+            try:
+                seats_total += max(0, int(t.get("seats") or 0))
+            except (TypeError, ValueError):
+                pass
+            if t.get("mergePrimary"):
+                primary = t
+        if primary is None and group:
+            primary = group[0]
+            primary["mergePrimary"] = True
+        primary_name = str((primary or {}).get("name") or "").strip()
+        others = sorted(
+            [n for n in names if n.lower() != primary_name.lower()],
+            key=lambda s: s.lower(),
+        )
+        ordered = ([primary_name] if primary_name else []) + others
+        label = format_pos_merged_table_label(ordered)
+        for t in group:
+            is_primary = bool(t.get("mergePrimary"))
+            t["displayName"] = label if is_primary else str(t.get("name") or "").strip()
+            t["mergedNames"] = ordered
+            t["mergedSeats"] = seats_total or None
+            t["hiddenInMerge"] = not is_primary
+
+    return tables
+
+
 def get_pos_restaurant_settings(conn):
     """Load restaurant settings JSON blob (empty dict when unset)."""
     ensure_pos_schema(conn)
@@ -2060,12 +2281,85 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "customer_bill_at": (row["customer_bill_at"] or "") if "customer_bill_at" in row.keys() else "",
         "stock_deducted_at": (row["stock_deducted_at"] or "") if "stock_deducted_at" in row.keys() else "",
         "item_count": int(row["item_count"]) if "item_count" in row.keys() else 0,
+        "payment_modes": [],
+        "payment_mode_label": "Unsettled",
     }
     if include_lines:
         item["lines"] = _pos_invoice_line_dicts(conn, invoice_id)
         if not item["item_count"]:
             item["item_count"] = len(item["lines"])
     return item
+
+
+def _pos_payment_mode_labels_from_methods(methods):
+    """Unique display labels in settlement order (Cash + UPI, etc.)."""
+    labels = []
+    seen = set()
+    for raw in methods or []:
+        key = _normalize_pos_payment_method(raw) or str(raw or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        labels.append(POS_PAYMENT_METHOD_LABELS.get(key, key.replace("_", " ").title()))
+    return labels
+
+
+def _apply_pos_invoice_payment_modes(conn, invoice):
+    """Attach payment_modes / payment_mode_label from pos_invoice_payments."""
+    if not invoice or not invoice.get("id"):
+        return invoice
+    payments = list_pos_invoice_payments(conn, invoice["id"])
+    methods = [p.get("payment_method") for p in payments]
+    labels = _pos_payment_mode_labels_from_methods(methods)
+    unique_modes = []
+    seen = set()
+    for raw in methods:
+        key = _normalize_pos_payment_method(raw) or str(raw or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        unique_modes.append(key)
+    invoice["payment_modes"] = unique_modes
+    invoice["payment_mode_label"] = " + ".join(labels) if labels else "Unsettled"
+    return invoice
+
+
+def _enrich_pos_invoices_payment_modes(conn, invoices):
+    """Batch-fill payment mode labels for ledger lists."""
+    ensure_pos_schema(conn)
+    rows = list(invoices or [])
+    if not rows:
+        return rows
+    ids = [int(inv["id"]) for inv in rows if inv and inv.get("id") is not None]
+    if not ids:
+        return rows
+    placeholders = ",".join("?" for _ in ids)
+    pay_rows = conn.execute(
+        f"""
+        SELECT invoice_id, payment_method
+        FROM pos_invoice_payments
+        WHERE invoice_id IN ({placeholders})
+        ORDER BY id ASC
+        """,
+        ids,
+    ).fetchall()
+    by_id = {}
+    for pay in pay_rows:
+        by_id.setdefault(int(pay["invoice_id"]), []).append(pay["payment_method"])
+    for inv in rows:
+        methods = by_id.get(int(inv["id"]), [])
+        labels = _pos_payment_mode_labels_from_methods(methods)
+        unique_modes = []
+        seen = set()
+        for raw in methods:
+            key = _normalize_pos_payment_method(raw) or str(raw or "").strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            unique_modes.append(key)
+        inv["payment_modes"] = unique_modes
+        inv["payment_mode_label"] = " + ".join(labels) if labels else "Unsettled"
+    return rows
 
 
 def _pos_floor_table_status(layout, table_label):
@@ -2170,6 +2464,262 @@ def get_open_pos_invoice_for_table(conn, table_label):
         (needle,),
     ).fetchone()
     return _pos_invoice_row_to_dict(conn, row, include_lines=True)
+
+
+def transfer_pos_invoice_table(conn, from_table, to_table):
+    """Move an open dine-in bill from one floor table to another available table.
+
+    Updates ``pos_invoices.table_label``, frees the source tile, and marks the
+    destination occupied. Raises ``ValueError`` with a staff-facing message on
+    validation failure.
+    """
+    ensure_pos_schema(conn)
+    from_label = str(from_table or "").strip()
+    to_label = str(to_table or "").strip()
+    if not from_label:
+        raise ValueError("Source table is required.")
+    if not to_label:
+        raise ValueError("Destination table is required.")
+    if from_label.lower() == to_label.lower():
+        raise ValueError("Choose a different destination table.")
+
+    invoice = get_open_pos_invoice_for_table(conn, from_label)
+    if not invoice:
+        raise ValueError(f"No open bill on {from_label}.")
+
+    if get_open_pos_invoice_for_table(conn, to_label):
+        raise ValueError(f"{to_label} already has an open bill.")
+
+    layout = get_pos_floor_layout(conn)
+    tables = layout.get("tables") or []
+    dest = None
+    for t in tables:
+        if str(t.get("name") or "").strip().lower() == to_label.lower():
+            dest = t
+            break
+    if not dest:
+        raise ValueError(f"Table {to_label} was not found on the floor.")
+    dest_status = str(dest.get("status") or "available").strip().lower() or "available"
+    if dest_status == "blocked":
+        dest_status = "inactive"
+    if dest_status != "available":
+        raise ValueError(f"{to_label} is not available.")
+
+    to_canonical = str(dest.get("name") or to_label).strip()
+    from_canonical = str(invoice.get("table_label") or from_label).strip()
+
+    conn.execute(
+        "UPDATE pos_invoices SET table_label = ? WHERE id = ?",
+        (to_canonical, int(invoice["id"])),
+    )
+    _pos_mark_table_available(conn, from_canonical)
+    _pos_mark_table_occupied(conn, to_canonical)
+    return get_pos_invoice(conn, int(invoice["id"]))
+
+
+def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
+    """Recalculate subtotal/discount/gst/service/tip/total from current lines.
+
+    Uses the destination invoice's stored discount/service/tip settings and the
+    same 5% GST + round-half-to-nearest rule as the Create Invoice UI.
+    """
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+    row = conn.execute(
+        """
+        SELECT id, discount_type, discount_value, service_type, service_value, tip, tip_amount
+        FROM pos_invoices
+        WHERE id = ? AND is_active = 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Invoice not found.")
+
+    line_rows = conn.execute(
+        "SELECT rate, qty FROM pos_invoice_lines WHERE invoice_id = ?",
+        (invoice_id,),
+    ).fetchall()
+    subtotal = 0.0
+    for line in line_rows:
+        subtotal += _pos_money(line["rate"]) * _pos_money(line["qty"])
+    subtotal = _pos_money(subtotal)
+
+    discount_type = str(row["discount_type"] or "pct").strip().lower() or "pct"
+    service_type = str(row["service_type"] or "pct").strip().lower() or "pct"
+    discount_value = _pos_money(row["discount_value"])
+    service_value = _pos_money(row["service_value"])
+    tip = _pos_money(row["tip"] if row["tip"] is not None else row["tip_amount"])
+
+    if discount_type == "inr":
+        discount = min(max(0.0, subtotal), max(0.0, discount_value))
+    else:
+        pct = min(100.0, max(0.0, discount_value))
+        discount = _pos_money(max(0.0, subtotal) * (pct / 100.0))
+    after_discount = max(0.0, subtotal - discount)
+    gst = _pos_money(after_discount * 0.05)
+    if service_type == "inr":
+        service = min(max(0.0, after_discount), max(0.0, service_value))
+    else:
+        pct = min(100.0, max(0.0, service_value))
+        service = _pos_money(max(0.0, after_discount) * (pct / 100.0))
+    tip = max(0.0, tip)
+    before_round = after_discount + gst + service + tip
+    rounded = float(round(before_round))
+    round_off = _pos_money(rounded - before_round)
+    grand_total = _pos_money(rounded)
+
+    conn.execute(
+        f"""
+        UPDATE pos_invoices SET
+            subtotal = ?,
+            discount_amount = ?,
+            gst_amount = ?,
+            service_amount = ?,
+            tip = ?,
+            tip_amount = ?,
+            round_off = ?,
+            grand_total = ?,
+            updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (
+            subtotal,
+            discount,
+            gst,
+            service,
+            tip,
+            tip,
+            round_off,
+            grand_total,
+            invoice_id,
+        ),
+    )
+    return get_pos_invoice(conn, invoice_id)
+
+
+def merge_pos_invoice_tables(conn, from_table, to_table):
+    """Merge two floor tables onto the destination (“Merge into”).
+
+    - Both have open bills: combine lines onto dest, soft-delete source, free
+      source tile, then visually join the tiles.
+    - Only source has an open bill: move that invoice onto dest, free source,
+      occupy dest, then visually join.
+    - Only dest has an open bill (or neither): visually join the tiles under
+      the destination host — no bill move required.
+
+    Always creates/updates a floor ``mergeGroupId`` so the UI shows
+    \"Table 1 and Table 2\". Returns the resulting open invoice dict, or
+    ``None`` when the merge was visual-only (no open bill on either table).
+    """
+    ensure_pos_schema(conn)
+    from_label = str(from_table or "").strip()
+    to_label = str(to_table or "").strip()
+    if not from_label:
+        raise ValueError("Source table is required.")
+    if not to_label:
+        raise ValueError("Destination table is required.")
+    if from_label.lower() == to_label.lower():
+        raise ValueError("Choose a different destination table.")
+
+    source = get_open_pos_invoice_for_table(conn, from_label)
+    dest = get_open_pos_invoice_for_table(conn, to_label)
+
+    layout = get_pos_floor_layout(conn)
+    tables = layout.get("tables") or []
+    dest_tile = None
+    source_tile = None
+    for t in tables:
+        name = str(t.get("name") or "").strip()
+        if name.lower() == to_label.lower():
+            dest_tile = t
+        if name.lower() == from_label.lower():
+            source_tile = t
+    if not dest_tile:
+        raise ValueError(f"Table {to_label} was not found on the floor.")
+    if not source_tile:
+        raise ValueError(f"Table {from_label} was not found on the floor.")
+
+    to_canonical = str(dest_tile.get("name") or to_label).strip()
+    from_canonical = str(source_tile.get("name") or from_label).strip()
+
+    # Visual-only (or dest already holds the only bill): join tiles, keep bill.
+    if not source:
+        link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical])
+        if dest:
+            return get_pos_invoice(conn, int(dest["id"]))
+        return None
+
+    from_canonical = str(source.get("table_label") or from_canonical).strip()
+    source_id = int(source["id"])
+
+    # Empty destination: move the whole source invoice onto that table.
+    if not dest:
+        conn.execute(
+            "UPDATE pos_invoices SET table_label = ? WHERE id = ?",
+            (to_canonical, source_id),
+        )
+        _pos_mark_table_available(conn, from_canonical)
+        _pos_mark_table_occupied(conn, to_canonical)
+        try:
+            link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical])
+        except ValueError:
+            pass
+        return get_pos_invoice(conn, source_id)
+
+    dest_id = int(dest["id"])
+    if source_id == dest_id:
+        raise ValueError("Choose a different destination table.")
+
+    max_sort = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), 0) AS m FROM pos_invoice_lines WHERE invoice_id = ?",
+        (dest_id,),
+    ).fetchone()
+    sort_base = int(max_sort["m"] if max_sort else 0)
+
+    source_lines = conn.execute(
+        """
+        SELECT id, sort_order
+        FROM pos_invoice_lines
+        WHERE invoice_id = ?
+        ORDER BY sort_order ASC, id ASC
+        """,
+        (source_id,),
+    ).fetchall()
+    for idx, line in enumerate(source_lines, start=1):
+        conn.execute(
+            """
+            UPDATE pos_invoice_lines
+            SET invoice_id = ?, sort_order = ?
+            WHERE id = ?
+            """,
+            (dest_id, sort_base + idx, int(line["id"])),
+        )
+
+    src_notes = str(source.get("notes") or "").strip()
+    dest_notes = str(dest.get("notes") or "").strip()
+    if src_notes:
+        merged_notes = (
+            f"{dest_notes}\n[Merged from {from_canonical}] {src_notes}".strip()
+            if dest_notes
+            else f"[Merged from {from_canonical}] {src_notes}"
+        )
+        conn.execute(
+            "UPDATE pos_invoices SET notes = ? WHERE id = ?",
+            (merged_notes[:2000], dest_id),
+        )
+
+    soft_delete_pos_invoice(conn, source_id)
+    _pos_mark_table_available(conn, from_canonical)
+    _pos_mark_table_occupied(conn, to_canonical)
+    try:
+        link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical])
+    except ValueError:
+        pass
+    return _recompute_pos_invoice_money_from_lines(conn, dest_id)
 
 
 def list_pos_kot_pending_summary(conn):
@@ -2468,6 +3018,192 @@ def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     return get_pos_invoice(conn, invoice_id)
 
 
+POS_PAYMENT_METHODS = (
+    ("cash", "Cash"),
+    ("upi", "UPI"),
+    ("card", "Card"),
+    ("room_transfer", "Room Transfer"),
+    ("bank_transfer", "Bank Transfer"),
+)
+POS_PAYMENT_METHOD_LABELS = dict(POS_PAYMENT_METHODS)
+# Kept for historical settlements that still show in Invoice Ledger.
+POS_PAYMENT_METHOD_LABELS["credit"] = "Credit"
+POS_PAYMENT_METHODS_REQUIRING_TXN = frozenset({"bank_transfer"})
+
+
+def _normalize_pos_payment_method(payment_method):
+    value = str(payment_method or "").strip().lower()
+    if value in ("bank_transfer", "bank", "bank transfer"):
+        return "bank_transfer"
+    if value == "upi":
+        return "upi"
+    if value in ("card", "credit card", "debit card"):
+        return "card"
+    if value == "cash":
+        return "cash"
+    if value in ("room_transfer", "room transfer"):
+        return "room_transfer"
+    # Historical ledger rows only — not offered for new settlements.
+    if value == "credit":
+        return "credit"
+    return None
+
+
+def _parse_pos_payment_splits(raw_splits, target_total):
+    """Validate payment_splits the same way Room Transfer Clear Payment does."""
+    target = _pos_money(target_total)
+    if target < 0:
+        raise ValueError("Bill total cannot be negative.")
+    if not isinstance(raw_splits, list) or not raw_splits:
+        if target <= 0:
+            return [{"payment_method": "cash", "amount": 0.0, "transaction_id": ""}]
+        raise ValueError("Add at least one payment mode.")
+
+    parsed = []
+    seen = set()
+    for raw in raw_splits:
+        if not isinstance(raw, dict):
+            raise ValueError("Each payment split must be an object.")
+        method = _normalize_pos_payment_method(raw.get("payment_method"))
+        allowed = {key for key, _label in POS_PAYMENT_METHODS}
+        if not method or method not in allowed:
+            raise ValueError("Select a valid payment mode for each row.")
+        if method in seen:
+            raise ValueError("Each payment mode can only be used once.")
+        seen.add(method)
+        amount = _pos_money(raw.get("amount"))
+        if amount <= 0 and target > 0:
+            raise ValueError("Enter a valid amount for each payment mode.")
+        if amount < 0:
+            raise ValueError("Payment amounts cannot be negative.")
+        txn = str(raw.get("transaction_id") or "").strip()
+        if method in POS_PAYMENT_METHODS_REQUIRING_TXN and not txn:
+            raise ValueError("Transaction ID is required for bank transfer.")
+        if method not in POS_PAYMENT_METHODS_REQUIRING_TXN:
+            txn = ""
+        parsed.append(
+            {
+                "payment_method": method,
+                "amount": amount,
+                "transaction_id": txn,
+            }
+        )
+
+    split_total = _pos_money(sum(item["amount"] for item in parsed))
+    if abs(split_total - target) > 0.001:
+        raise ValueError("Modes total must equal the bill total before settling.")
+    return parsed
+
+
+def settle_pos_invoice(
+    conn,
+    invoice_id,
+    *,
+    payment_splits=None,
+    payment_date=None,
+    notes="",
+    user_id=None,
+):
+    """Record payment (with optional split modes) and close the bill / free table.
+
+    Mirrors Sales Analytics → Room Transfer → Clear Payment: modes must sum to
+    the bill total; bank transfer requires a transaction id.
+    """
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+
+    row = conn.execute(
+        """
+        SELECT id, status, grand_total, settled_at
+        FROM pos_invoices
+        WHERE id = ? AND is_active = 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Invoice not found.")
+    if str(row["status"] or "").strip().lower() == "closed":
+        raise ValueError("This bill is already settled.")
+
+    target = _pos_money(row["grand_total"])
+    splits = _parse_pos_payment_splits(payment_splits, target)
+
+    pay_date = str(payment_date or "").strip()
+    if not pay_date:
+        pay_date = conn.execute("SELECT date('now','localtime')").fetchone()[0]
+    notes_clean = str(notes or "").strip()
+
+    # Replace any prior draft payments (should be empty for open bills).
+    conn.execute("DELETE FROM pos_invoice_payments WHERE invoice_id = ?", (invoice_id,))
+    for split in splits:
+        conn.execute(
+            """
+            INSERT INTO pos_invoice_payments
+                (invoice_id, payment_date, payment_method, amount, transaction_id, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                invoice_id,
+                pay_date,
+                split["payment_method"],
+                split["amount"],
+                split["transaction_id"],
+                notes_clean,
+            ),
+        )
+
+    conn.execute(
+        f"""
+        UPDATE pos_invoices
+        SET payment_notes = ?, settled_at = {SQL_NOW}, updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (notes_clean, invoice_id),
+    )
+
+    invoice = close_pos_invoice_and_free_table(conn, invoice_id, user_id=user_id)
+    payments = list_pos_invoice_payments(conn, invoice_id)
+    invoice["payments"] = payments
+    invoice["payment_notes"] = notes_clean
+    return invoice
+
+
+def list_pos_invoice_payments(conn, invoice_id):
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError):
+        return []
+    rows = conn.execute(
+        """
+        SELECT id, payment_date, payment_method, amount, transaction_id, notes, created_at
+        FROM pos_invoice_payments
+        WHERE invoice_id = ?
+        ORDER BY id ASC
+        """,
+        (invoice_id,),
+    ).fetchall()
+    out = []
+    for row in rows:
+        method = row["payment_method"] or "cash"
+        out.append(
+            {
+                "id": row["id"],
+                "payment_date": row["payment_date"] or "",
+                "payment_method": method,
+                "payment_method_label": POS_PAYMENT_METHOD_LABELS.get(method, method),
+                "amount": _pos_money(row["amount"]),
+                "transaction_id": row["transaction_id"] or "",
+                "notes": row["notes"] or "",
+                "created_at": row["created_at"] or "",
+            }
+        )
+    return out
+
+
 def clear_all_pos_tables(conn, *, user_id=None):
     """Bulk-free every table on the floor back to available (Tables page 'Clear
     all tables'). Also closes any dangling open dine-in bills tied to those
@@ -2498,6 +3234,8 @@ def clear_all_pos_tables(conn, *, user_id=None):
                 (label,),
             )
         t["status"] = "available"
+        t["mergeGroupId"] = None
+        t["mergePrimary"] = False
     if closed_ids:
         try:
             from stores import deduct_stock_for_pos_invoice
@@ -2605,6 +3343,8 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
     table_label = str(payload.get("table") or payload.get("table_label") or "").strip()
     captain = str(payload.get("captain") or "").strip()
     notes = str(payload.get("notes") or "").strip()
+    if order_type == "dine_in" and not table_label:
+        raise ValueError("Select a table before saving a dine-in order.")
     # Keep Customer Master in sync with POS Customer Details (unique 10-digit mobile).
     # Shared by Save, Send to Kitchen, Send to Customer, and any autosave that posts
     # to the same invoice API — incomplete mobiles are intentionally skipped.
@@ -2887,7 +3627,10 @@ def get_pos_invoice(conn, invoice_id):
         """,
         (invoice_id,),
     ).fetchone()
-    return _pos_invoice_row_to_dict(conn, row, include_lines=True)
+    invoice = _pos_invoice_row_to_dict(conn, row, include_lines=True)
+    if invoice:
+        _apply_pos_invoice_payment_modes(conn, invoice)
+    return invoice
 
 
 def soft_delete_pos_invoice(conn, invoice_id):
@@ -2964,7 +3707,8 @@ def list_pos_invoices(
         """,
         params,
     ).fetchall()
-    return [_pos_invoice_row_to_dict(conn, row, include_lines=False) for row in rows]
+    invoices = [_pos_invoice_row_to_dict(conn, row, include_lines=False) for row in rows]
+    return _enrich_pos_invoices_payment_modes(conn, invoices)
 
 
 def list_pos_today_invoices(conn, *, today=None):

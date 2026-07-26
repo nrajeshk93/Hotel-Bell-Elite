@@ -117,6 +117,70 @@
     });
   }
 
+  /** Load page <script src> tags that sit outside the embed fragment (e.g. pos_menu.js). */
+  function loadMissingPageScripts(doc) {
+    if (!doc) return Promise.resolve();
+    var needed = Array.prototype.slice.call(doc.querySelectorAll('script[src]')).filter(function (node) {
+      var src = node.getAttribute('src') || '';
+      if (!/\/pos_menu\.js(\?|$)/.test(src)) return false;
+      if (typeof global.initPosMenuPage === 'function') return false;
+      if (document.querySelector('script[src="' + src.replace(/"/g, '\\"') + '"]')) return false;
+      /* Match by path without relying on exact query string. */
+      var path = src.split('?')[0];
+      var existing = Array.prototype.slice.call(document.scripts).some(function (s) {
+        return s.src && s.src.indexOf(path) !== -1;
+      });
+      return !existing;
+    });
+    if (!needed.length) {
+      if (typeof global.initPosMenuPage === 'function') return Promise.resolve();
+      /* Script tag already present but init missing — wait briefly or force reload. */
+      var stuck = Array.prototype.slice.call(document.scripts).find(function (s) {
+        return s.src && /\/pos_menu\.js(\?|$)/.test(s.src);
+      });
+      if (stuck) return Promise.resolve();
+      needed = Array.prototype.slice.call(doc.querySelectorAll('script[src]')).filter(function (node) {
+        return /\/pos_menu\.js(\?|$)/.test(node.getAttribute('src') || '');
+      });
+    }
+    if (!needed.length) return Promise.resolve();
+    return Promise.all(
+      needed.map(function (node) {
+        return new Promise(function (resolve) {
+          var src = node.getAttribute('src');
+          var el = document.createElement('script');
+          el.src = src;
+          el.onload = function () {
+            resolve();
+          };
+          el.onerror = function () {
+            if (typeof console !== 'undefined' && console.error) {
+              console.error('Failed to load', src);
+            }
+            resolve();
+          };
+          document.body.appendChild(el);
+        });
+      })
+    );
+  }
+
+  function bootPosMenuAfterEmbed() {
+    if (typeof global.initPosMenuPage === 'function') {
+      try {
+        global.initPosMenuPage();
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('Menu Master init failed', err);
+        }
+      }
+      return;
+    }
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('initPosMenuPage missing after script load');
+    }
+  }
+
   function shouldLeaveModal(link) {
     if (!link) return true;
     if (link.hasAttribute('download')) return true;
@@ -190,8 +254,22 @@
       inject.innerHTML = fragment === doc.body ? fragment.innerHTML : fragment.outerHTML;
       executeEmbedScripts(inject);
       // Re-bind EP listboxes after HTML inject (DOMContentLoaded already ran).
-      if (typeof global.initEpListboxes === 'function') {
-        global.initEpListboxes();
+      try {
+        if (typeof global.initEpListboxes === 'function') {
+          global.initEpListboxes();
+        }
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('Masters listbox init failed', err);
+        }
+      }
+      var afterScripts = function () {
+        if (!inject.querySelector('#pos-menu-page')) return;
+        /* Defer so injected DOM + listboxes settle before fetch. */
+        setTimeout(bootPosMenuAfterEmbed, 0);
+      };
+      if (inject.querySelector('#pos-menu-page')) {
+        loadMissingPageScripts(doc).then(afterScripts).catch(afterScripts);
       }
 
       var titleEl = document.getElementById('md-master-modal-title');

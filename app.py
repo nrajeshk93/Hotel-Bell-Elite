@@ -39,6 +39,7 @@ from db import (
     ensure_customers_schema,
     ensure_pos_schema,
     ensure_stores_schema,
+    enrich_pos_floor_tables_for_display,
     get_customer,
     get_db,
     get_open_pos_invoice_for_table,
@@ -62,7 +63,11 @@ from db import (
     save_pos_menu_category,
     save_pos_menu_item,
     send_pos_invoice_pending_kot,
+    settle_pos_invoice,
     sync_pos_floor_occupancy_from_open_orders,
+    transfer_pos_invoice_table,
+    merge_pos_invoice_tables,
+    unmerge_pos_floor_tables,
     save_pos_restaurant_settings,
     search_customers,
     soft_delete_pos_invoice,
@@ -3164,7 +3169,7 @@ def export_pos_invoice_ledger_report():
         "Customer",
         "Mobile",
         "Order Type",
-        "Table",
+        "Payment Mode",
         "Captain",
         "Items",
         "Subtotal",
@@ -3189,7 +3194,7 @@ def export_pos_invoice_ledger_report():
             column=6,
             value=inv.get("order_type_label") or inv.get("order_type") or "",
         )
-        ws.cell(row=idx, column=7, value=inv.get("table_label") or inv.get("table") or "")
+        ws.cell(row=idx, column=7, value=inv.get("payment_mode_label") or "Unsettled")
         ws.cell(row=idx, column=8, value=inv.get("captain") or "")
         ws.cell(row=idx, column=9, value=int(inv.get("item_count") or 0))
         ws.cell(row=idx, column=10, value=round_half_up(inv.get("subtotal"), 2))
@@ -3285,10 +3290,69 @@ def point_of_sale_api_invoice_by_table():
         conn.close()
 
 
+@app.route("/point-of-sale/api/invoices/transfer-table", methods=["POST"])
+def point_of_sale_api_invoice_transfer_table():
+    """Move an open dine-in bill from one table to another available table."""
+    payload = request.get_json(silent=True) or {}
+    from_table = (payload.get("from_table") or payload.get("fromTable") or "").strip()
+    to_table = (payload.get("to_table") or payload.get("toTable") or "").strip()
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            invoice = transfer_pos_invoice_table(conn, from_table, to_table)
+            sync_pos_floor_occupancy_from_open_orders(conn)
+            layout = get_pos_floor_layout(conn)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify(
+            {
+                "ok": True,
+                "invoice": invoice,
+                "areas": layout.get("areas") or [],
+                "tables": layout.get("tables") or [],
+            }
+        )
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/invoices/merge-tables", methods=["POST"])
+def point_of_sale_api_invoice_merge_tables():
+    """Combine two open dine-in bills into one invoice on the destination table."""
+    payload = request.get_json(silent=True) or {}
+    from_table = (payload.get("from_table") or payload.get("fromTable") or "").strip()
+    to_table = (payload.get("to_table") or payload.get("toTable") or "").strip()
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            invoice = merge_pos_invoice_tables(conn, from_table, to_table)
+            sync_pos_floor_occupancy_from_open_orders(conn)
+            layout = get_pos_floor_layout(conn)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        floor = _pos_floor_api_payload(conn, layout)
+        return jsonify(
+            {
+                "ok": True,
+                "invoice": invoice,
+                "areas": floor["areas"],
+                "tables": floor["tables"],
+            }
+        )
+    finally:
+        conn.close()
+
+
 @app.route("/point-of-sale/api/invoices/<int:invoice_id>/close", methods=["POST"])
 def point_of_sale_api_invoice_close(invoice_id):
-    """Close a bill and free its table — the lightweight 'Close & Free Table'
-    action (decoupled from real payment)."""
+    """Close a bill and free its table — legacy path without payment details.
+    Prefer /settle for staff Settle Bill (payment + optional split)."""
     conn = get_db()
     try:
         ensure_pos_schema(conn)
@@ -3296,6 +3360,34 @@ def point_of_sale_api_invoice_close(invoice_id):
             user = get_current_user()
             user_id = user.get("id") if user else None
             invoice = close_pos_invoice_and_free_table(conn, invoice_id, user_id=user_id)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "invoice": invoice})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/settle", methods=["POST"])
+def point_of_sale_api_invoice_settle(invoice_id):
+    """Settle a bill with payment mode(s) — same split rules as Room Transfer
+    Clear Payment — then close the order and free the table when dine-in."""
+    payload = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            user = get_current_user()
+            user_id = user.get("id") if user else None
+            invoice = settle_pos_invoice(
+                conn,
+                invoice_id,
+                payment_splits=payload.get("payment_splits"),
+                payment_date=payload.get("payment_date"),
+                notes=payload.get("notes") or "",
+                user_id=user_id,
+            )
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3411,6 +3503,16 @@ def point_of_sale_api_customers():
         conn.close()
 
 
+def _pos_floor_api_payload(conn, layout=None):
+    """Floor JSON for API responses with merged-table display helpers."""
+    layout = layout or get_pos_floor_layout(conn)
+    tables = enrich_pos_floor_tables_for_display(layout.get("tables") or [])
+    return {
+        "areas": layout.get("areas") or [],
+        "tables": tables,
+    }
+
+
 @app.route("/point-of-sale/api/floor", methods=["GET", "PUT", "POST"])
 def point_of_sale_api_floor():
     """Load or replace restaurant floor layout (areas + tables) in SQLite."""
@@ -3419,7 +3521,7 @@ def point_of_sale_api_floor():
         ensure_pos_schema(conn)
         if request.method == "GET":
             sync_pos_floor_occupancy_from_open_orders(conn)
-            payload = get_pos_floor_layout(conn)
+            payload = _pos_floor_api_payload(conn)
             kot_pending = list_pos_kot_pending_summary(conn)
             conn.commit()
             return jsonify({"ok": True, **payload, "kot_pending": kot_pending})
@@ -3429,9 +3531,39 @@ def point_of_sale_api_floor():
         tables = data.get("tables")
         if not isinstance(areas, list) or not isinstance(tables, list):
             return jsonify({"ok": False, "error": "areas and tables arrays are required."}), 400
-        payload = save_pos_floor_layout(conn, areas, tables)
+        saved = save_pos_floor_layout(conn, areas, tables)
         conn.commit()
-        return jsonify({"ok": True, **payload})
+        return jsonify({"ok": True, **_pos_floor_api_payload(conn, saved)})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/floor/unmerge-tables", methods=["POST"])
+def point_of_sale_api_floor_unmerge_tables():
+    """Split a visually merged table group back into separate floor tiles."""
+    payload = request.get_json(silent=True) or {}
+    table = (payload.get("table") or payload.get("table_label") or payload.get("from_table") or "").strip()
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            result = unmerge_pos_floor_tables(conn, table)
+            sync_pos_floor_occupancy_from_open_orders(conn)
+            floor = _pos_floor_api_payload(conn, result.get("layout"))
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify(
+            {
+                "ok": True,
+                "primary_name": result.get("primary_name"),
+                "label": result.get("label"),
+                "group_names": result.get("group_names") or [],
+                "areas": floor["areas"],
+                "tables": floor["tables"],
+            }
+        )
     finally:
         conn.close()
 
@@ -3448,7 +3580,8 @@ def point_of_sale_api_floor_clear_all():
         payload = clear_all_pos_tables(conn, user_id=user_id)
         kot_pending = list_pos_kot_pending_summary(conn)
         conn.commit()
-        return jsonify({"ok": True, **payload, "kot_pending": kot_pending})
+        floor = _pos_floor_api_payload(conn, payload)
+        return jsonify({"ok": True, **floor, "kot_pending": kot_pending})
     finally:
         conn.close()
 

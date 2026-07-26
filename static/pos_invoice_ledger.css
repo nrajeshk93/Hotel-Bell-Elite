@@ -32,10 +32,10 @@ body.su-module #pos-il-filter-form.sr-topbar-filters {
 
 body.su-module #pos-il-filter-form .pl-search-chip {
   position: relative;
-  flex: 1 1 auto;
+  flex: 1 1 140px;
   width: auto;
-  min-width: 96px;
-  max-width: 100%;
+  min-width: 120px;
+  max-width: 240px;
   z-index: 20;
 }
 
@@ -95,15 +95,16 @@ body.su-module #pos-il-filter-form .pl-search-chip.is-active .se-filter-chip-ico
 }
 
 body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) {
-  flex: 0 1 auto;
-  width: clamp(120px, 12vw, 180px);
-  min-width: 112px;
-  max-width: 200px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 220px;
+  max-width: none;
 }
 
 body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-value {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
 }
 
 body.su-module .pos-invoice-ledger-module .pl-date-range-host {
@@ -129,12 +130,18 @@ body.su-module .pos-invoice-ledger-module .pl-date-range-host {
   body.su-module #pos-il-filter-form .pl-search-chip {
     flex: 1 1 100%;
     min-width: 0;
+    max-width: none;
   }
 
   body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) {
     flex: 1 1 calc(50% - 6px);
     min-width: 0;
     max-width: none;
+  }
+
+  body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
