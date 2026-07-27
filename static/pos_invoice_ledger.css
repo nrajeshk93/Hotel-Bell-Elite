@@ -32,10 +32,10 @@ body.su-module #pos-il-filter-form.sr-topbar-filters {
 
 body.su-module #pos-il-filter-form .pl-search-chip {
   position: relative;
-  flex: 1 1 140px;
+  flex: 1 1 clamp(140px, 28vw, 420px);
   width: auto;
   min-width: 120px;
-  max-width: 240px;
+  max-width: 100%;
   z-index: 20;
 }
 
@@ -97,14 +97,27 @@ body.su-module #pos-il-filter-form .pl-search-chip.is-active .se-filter-chip-ico
 body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) {
   flex: 0 0 auto;
   width: auto;
-  min-width: 220px;
+  min-width: 156px;
   max-width: none;
+}
+
+body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-control {
+  width: max-content;
+  min-width: 100%;
+}
+
+body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-trigger {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  padding-right: 28px;
 }
 
 body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-value {
   overflow: visible;
   text-overflow: clip;
   white-space: nowrap;
+  max-width: none;
 }
 
 body.su-module .pos-invoice-ledger-module .pl-date-range-host {
@@ -122,13 +135,53 @@ body.su-module .pos-invoice-ledger-module .pl-date-range-host {
   letter-spacing: -0.02em;
 }
 
+#pos-il-table tr.pos-il-row.is-unsettled {
+  cursor: pointer;
+}
+
+#pos-il-table tr.pos-il-row.is-unsettled:hover {
+  background: #f8fafc;
+}
+
+#pos-il-table tr.pos-il-row.is-unsettled:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: -2px;
+}
+
+#pos-il-table tr.pos-il-row.is-unsettled .pl-col-actions {
+  cursor: default;
+}
+
+@media (max-width: 1280px) {
+  body.su-module #pos-il-filter-form .pl-search-chip {
+    flex: 1 1 clamp(120px, 22vw, 320px);
+    min-width: 110px;
+  }
+}
+
+@media (max-width: 1100px) {
+  body.su-module #pos-il-filter-form .pl-search-chip {
+    flex: 1 1 clamp(100px, 18vw, 240px);
+    min-width: 96px;
+  }
+
+  body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 148px;
+    max-width: none;
+  }
+}
+
 @media (max-width: 900px) {
   body.su-module #pos-il-filter-form.sr-topbar-filters {
     flex-wrap: wrap;
+    justify-content: stretch;
   }
 
   body.su-module #pos-il-filter-form .pl-search-chip {
     flex: 1 1 100%;
+    width: auto;
     min-width: 0;
     max-width: none;
   }
@@ -139,9 +192,19 @@ body.su-module .pos-invoice-ledger-module .pl-date-range-host {
     max-width: none;
   }
 
+  body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-control {
+    width: 100%;
+  }
+
+  body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-trigger {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
   body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-range):not(.pl-search-chip) .se-filter-chip-value {
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 100%;
   }
 }
 
@@ -177,6 +240,14 @@ body.su-module .pos-invoice-ledger-module .pl-date-range-host {
   border: 1px solid rgba(148, 163, 184, 0.35);
 }
 
+.pos-il-modal-dialog--bill {
+  width: min(420px, 100%);
+  max-height: min(88vh, 860px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .pos-il-modal-hdr {
   display: flex;
   align-items: center;
@@ -184,6 +255,7 @@ body.su-module .pos-invoice-ledger-module .pl-date-range-host {
   gap: 12px;
   padding: 16px 18px;
   border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+  flex: 0 0 auto;
 }
 
 .pos-il-modal-hdr h2 {
@@ -191,6 +263,33 @@ body.su-module .pos-invoice-ledger-module .pl-date-range-host {
   font-size: 1.05rem;
   font-weight: 700;
   color: #0f172a;
+}
+
+.pos-il-modal-hdr-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pos-il-modal-print {
+  appearance: none;
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #0f172a;
+  color: #fff;
+}
+
+.pos-il-modal-print:hover {
+  background: #1e293b;
+}
+
+.pos-il-modal-print[hidden] {
+  display: none !important;
 }
 
 .pos-il-modal-close {
@@ -217,6 +316,22 @@ body.su-module .pos-invoice-ledger-module .pl-date-range-host {
 
 .pos-il-modal-body {
   padding: 16px 18px 20px;
+}
+
+.pos-il-modal-body--bill {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  background: #e2e8f0;
+  overflow: hidden;
+}
+
+.pos-il-bill-frame {
+  display: block;
+  width: 100%;
+  height: min(72vh, 720px);
+  border: 0;
+  background: #fff;
 }
 
 .pos-il-modal-loading,

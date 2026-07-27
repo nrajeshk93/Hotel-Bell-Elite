@@ -10,14 +10,14 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=54">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <script>
 (function(){
@@ -136,21 +136,13 @@
         </div>
         <h2 class="md-master-card-title">{{ master.name }}</h2>
         <div class="md-master-card-foot">
-          <span class="md-master-card-records">{{ "{:,}".format(master.record_count) }} Records</span>
-          <span class="md-master-card-arrow" aria-hidden="true">→</span>
+          <span class="md-master-card-foot-trail">
+            <span class="md-master-card-records">{{ "{:,}".format(master.record_count) }} Records</span>
+            <span class="md-master-card-arrow" aria-hidden="true">→</span>
+          </span>
         </div>
       </a>
       {% endfor %}
-
-      <button type="button" class="md-master-card md-master-card--add" id="md-add-card" role="listitem" aria-label="Add new master">
-        <div class="md-master-card-add-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-        </div>
-        <h2 class="md-master-card-title">Add New Master</h2>
-        <div class="md-master-card-foot">
-          <span class="md-master-card-create">Create →</span>
-        </div>
-      </button>
     </div>
 
     <p class="md-empty" id="md-empty-state" hidden>No masters match your search.</p>
@@ -212,7 +204,7 @@
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
 <script src="{{ url_for('static', filename='pos_menu.js') }}?v=29"></script>
 <script src="{{ url_for('static', filename='employee_payroll.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='masters_dashboard.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='masters_dashboard.js') }}?v=13"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

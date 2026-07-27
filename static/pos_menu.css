@@ -1433,3 +1433,182 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   .pos-md-kpi-value{font-size:clamp(16px,5.5vw,22px)}
   .pos-md-title{font-size:16px}
 }
+
+/* —— Add / Edit menu item modal (Employee Payroll Add Credit alignment) —— */
+#pos-menu-item-modal.modal-overlay,
+#md-master-modal #pos-menu-item-modal.modal-overlay{
+  position:fixed;
+  inset:0;
+  z-index:1300;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:max(12px, env(safe-area-inset-top, 0px))
+          max(12px, env(safe-area-inset-right, 0px))
+          max(12px, env(safe-area-inset-bottom, 0px))
+          max(12px, env(safe-area-inset-left, 0px));
+  box-sizing:border-box;
+  background:rgba(15,23,42,.32);
+}
+#pos-menu-item-modal.modal-overlay.active,
+#md-master-modal #pos-menu-item-modal.modal-overlay.active{
+  display:flex;
+}
+#pos-menu-item-modal .pos-menu-item-modal-box.staff-credit-box{
+  width:min(520px, 94vw);
+  max-height:min(calc(100dvh - 24px), calc(100vh - 24px));
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  box-sizing:border-box;
+  margin:0;
+  padding:24px 26px;
+}
+#pos-menu-item-modal .staff-credit-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:16px;
+  font-weight:800;
+  color:var(--txt, #1A202C);
+  margin-bottom:8px;
+  flex-shrink:0;
+}
+#pos-menu-item-modal .staff-credit-head svg{
+  width:18px;
+  height:18px;
+  stroke:var(--acc, #2563EB);
+  flex-shrink:0;
+}
+#pos-menu-item-modal .staff-credit-copy{
+  font-size:13px;
+  color:#94A3B8;
+  line-height:1.55;
+  margin:0 0 18px;
+  flex-shrink:0;
+}
+#pos-menu-item-modal .pos-menu-item-form{
+  display:flex;
+  flex-direction:column;
+  flex:1 1 auto;
+  min-height:0;
+  overflow:hidden;
+}
+#pos-menu-item-modal .pos-menu-item-modal-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-x:hidden;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+  padding-bottom:4px;
+}
+#pos-menu-item-modal .staff-field{
+  margin-bottom:14px;
+  min-width:0;
+}
+#pos-menu-item-modal .staff-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-bottom:0;
+}
+#pos-menu-item-modal .staff-grid > .staff-field{
+  margin-bottom:14px;
+}
+#pos-menu-item-modal .staff-field > label{
+  display:block;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2, #4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  margin-bottom:5px;
+}
+#pos-menu-item-modal .staff-input,
+#pos-menu-item-modal select.staff-input,
+#pos-menu-item-modal input.staff-input{
+  display:block;
+  width:100%;
+  height:44px;
+  min-height:44px;
+  box-sizing:border-box;
+  padding:9px 12px;
+  border:1px solid var(--border, #E2E8F0);
+  border-radius:8px;
+  font:inherit;
+  font-size:13px;
+  color:var(--txt, #1A202C);
+  background:var(--entry, #fff);
+  outline:none;
+  appearance:none;
+  -webkit-appearance:none;
+}
+#pos-menu-item-modal select.staff-input{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  padding-right:36px;
+}
+#pos-menu-item-modal .staff-input:focus,
+#pos-menu-item-modal select.staff-input:focus{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+#pos-menu-item-modal .pos-menu-recipe-block{
+  margin-top:4px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+#pos-menu-item-modal .pos-menu-recipe-empty{
+  margin:0;
+  font-size:12px;
+  color:#94A3B8;
+  line-height:1.5;
+}
+#pos-menu-item-modal .staff-credit-actions,
+#pos-menu-item-modal .pos-floor-props-actions{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  flex-shrink:0;
+  margin-top:12px;
+  padding-top:14px;
+  border-top:1px solid #EEF2F7;
+  background:#fff;
+}
+#pos-menu-item-modal .pos-floor-props-actions-spacer{
+  flex:1 1 8px;
+  min-width:8px;
+}
+#pos-menu-item-modal .pos-menu-modal-err.staff-credit-error{
+  display:none;
+  background:#FEF2F2;
+  border:1px solid rgba(220,38,38,.25);
+  color:#DC2626;
+  padding:9px 13px;
+  border-radius:8px;
+  font-size:12px;
+  font-weight:700;
+  margin-bottom:12px;
+}
+#pos-menu-item-modal .pos-menu-modal-err.staff-credit-error:not([hidden]){
+  display:block;
+}
+#pos-menu-item-modal .pos-menu-listbox .se-filter-chip-label,
+#pos-menu-item-modal .ep-form-listbox .se-filter-chip-label{
+  display:block;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2, #4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  margin-bottom:5px;
+}
+@media (max-width:520px){
+  #pos-menu-item-modal .staff-grid{
+    grid-template-columns:1fr;
+  }
+}

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Reports | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_dashboard.css') }}?v=8">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
+    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module master-module report-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper">
+  <header class="se-sales-header su-header md-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+            </div>
+            <h1>Reports</h1>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content md-content" aria-label="Reports dashboard">
+    <div class="md-search-row">
+      <label class="md-search" for="rd-search-input">
+        <span class="md-search-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        </span>
+        <input type="search" id="rd-search-input" class="md-search-input" placeholder="Search reports..." autocomplete="off" aria-label="Search reports">
+        <button type="button" class="md-search-filter" id="rd-search-filter" aria-label="Reset filters" title="Reset filters">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+        </button>
+      </label>
+    </div>
+
+    <div class="md-kpi-row" aria-label="Report summary">
+      <article class="md-kpi-card">
+        <div class="md-kpi-icon md-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        </div>
+        <div class="md-kpi-text">
+          <div class="md-kpi-value">{{ "{:,}".format(reports_kpis.total_reports) }}</div>
+          <div class="md-kpi-label">Total Reports</div>
+        </div>
+      </article>
+      <article class="md-kpi-card">
+        <div class="md-kpi-icon md-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </div>
+        <div class="md-kpi-text">
+          <div class="md-kpi-value">{{ "{:,}".format(reports_kpis.downloadable) }}</div>
+          <div class="md-kpi-label">Downloadable</div>
+        </div>
+      </article>
+      <article class="md-kpi-card">
+        <div class="md-kpi-icon md-kpi-icon--slate" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <div class="md-kpi-text">
+          <div class="md-kpi-value">{{ "{:,}".format(reports_kpis.modules) }}</div>
+          <div class="md-kpi-label">Modules Covered</div>
+        </div>
+      </article>
+      <article class="md-kpi-card">
+        <div class="md-kpi-icon md-kpi-icon--amber" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+        </div>
+        <div class="md-kpi-text">
+          <div class="md-kpi-value">{{ "{:,}".format(reports_kpis.categories) }}</div>
+          <div class="md-kpi-label">Categories</div>
+        </div>
+      </article>
+    </div>
+
+    <div class="md-category-pills" role="tablist" aria-label="Filter by category" id="rd-category-pills">
+      {% for cat in report_categories %}
+      <button type="button"
+              class="md-category-pill{% if cat.key == 'all' %} is-active{% endif %}"
+              role="tab"
+              aria-selected="{{ 'true' if cat.key == 'all' else 'false' }}"
+              data-rd-category="{{ cat.key }}"
+              data-rd-label="{{ cat.label }}">{{ cat.label }}</button>
+      {% endfor %}
+    </div>
+
+    <div class="rd-sections" id="rd-report-sections" aria-label="Reports by category">
+      {% for section in report_sections %}
+      <section class="rd-category-section"
+               data-rd-section="{{ section.key }}"
+               aria-labelledby="rd-section-title-{{ section.key }}">
+        <h2 class="rd-category-section-title" id="rd-section-title-{{ section.key }}">
+          <span class="rd-category-section-label">{{ section.label }}</span>
+          <span class="rd-category-section-count" data-rd-section-count>{{ section.count }} report{% if section.count != 1 %}s{% endif %}</span>
+        </h2>
+        <div class="md-grid rd-category-grid" role="list" aria-label="{{ section.label }} reports">
+          {% for report in section.reports %}
+          <a class="md-master-card rd-report-card"
+             role="listitem"
+             href="{{ report.view_href }}"
+             data-report-id="{{ report.id }}"
+             data-report-name="{{ report.name }}"
+             data-report-category="{{ report.category }}"
+             aria-label="Open {{ report.name }}">
+            <div class="md-master-card-icon md-master-card-icon--{{ report.icon_tone }}" aria-hidden="true">
+              {% include 'partials/reports_card_icon.html' with context %}
+            </div>
+            <h2 class="md-master-card-title">{{ report.name }}</h2>
+            <div class="md-master-card-foot">
+              <span class="md-master-card-arrow" aria-hidden="true">→</span>
+            </div>
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+    </div>
+
+    <p class="md-empty" id="rd-empty-state" hidden>No reports match your search.</p>
+  </section>
+</div>
+
+<script src="{{ url_for('static', filename='reports_dashboard.js') }}?v=3"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

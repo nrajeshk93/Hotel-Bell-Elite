@@ -7,7 +7,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=39">
 <script>
 (function(){
   try{
@@ -20,9 +20,14 @@
 </head>
 <body class="de-open pos-module pos-invoice-module">
 {% include 'partials/de_workspace_shell_open.html' %}
-{% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox %}
+{% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox, ep_listbox %}
 
-<div class="de-main-inner pos-invoice-page" id="pos-invoice-page" data-pos-invoice data-pos-is-admin="{{ '1' if current_user and current_user.is_admin else '0' }}">
+<div class="de-main-inner pos-invoice-page" id="pos-invoice-page" data-pos-invoice data-pos-is-admin="{{ '1' if current_user and current_user.is_admin else '0' }}"
+     data-tip-company="{{ tip_company }}"
+     data-tip-location="{{ tip_location }}"
+     data-tip-add-url="{{ tip_add_url }}"
+     data-tip-edit-url="{{ tip_edit_url }}"
+     data-tip-delete-url="{{ tip_delete_url }}">
   <header class="pos-inv-header">
     <div class="pos-inv-header-title-row">
       <span class="pos-inv-header-icon" aria-hidden="true">
@@ -58,15 +63,12 @@
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12 3 3 5-6"/><circle cx="12" cy="12" r="9"/></svg>
           <span>Settle Bill</span>
         </button>
-        <button type="button" class="pos-inv-btn pos-inv-btn--kitchen pos-inv-kot-btn" id="pos-inv-send-kot" data-inv-action="send-kot" title="Confirm order and send new items to the kitchen" disabled>
+        <button type="button" class="pos-inv-btn pos-inv-btn--kitchen pos-inv-kot-btn" id="pos-inv-send-kot" data-inv-action="send-kot" title="Confirm order and send new items to the kitchen" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/><path d="M10.5 17a1.5 1.5 0 0 0 3 0"/></svg>
           <span>Send to Kitchen</span>
           <span class="pos-inv-kot-count" id="pos-inv-send-kot-count" hidden>0</span>
         </button>
         <span class="pos-sr-only" id="pos-inv-kot-status" aria-live="polite"></span>
-        <button type="button" class="pos-inv-icon-btn pos-inv-header-info" id="pos-inv-header-info" title="Send to Kitchen sends only new or updated items since the last KOT." aria-label="About Send to Kitchen">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4.5M12 8.2v.01"/></svg>
-        </button>
       </div>
     </div>
   </header>
@@ -153,7 +155,7 @@
           <span class="pos-inv-notes-count" id="pos-inv-notes-count" aria-live="polite">0 / 200</span>
         </div>
         <div class="pos-inv-notes-wrap">
-          <textarea id="pos-inv-notes" rows="3" maxlength="200" placeholder="Add special instructions for the kitchen or guest…"></textarea>
+          <textarea id="pos-inv-notes" rows="1" maxlength="200" placeholder="Add special instructions for the kitchen or guest…"></textarea>
           <button type="button" class="pos-inv-icon-btn pos-inv-notes-history" id="pos-inv-notes-history" title="Note templates" aria-label="Note templates" data-inv-action="note-templates">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>
           </button>
@@ -192,7 +194,7 @@
             <dt>Subtotal</dt>
             <dd id="pos-inv-sum-subtotal">₹0.00</dd>
           </div>
-          <div class="pos-inv-summary-row">
+          <div class="pos-inv-summary-row" id="pos-inv-sum-discount-row" hidden>
             <dt>Discount <span class="pos-inv-summary-muted" id="pos-inv-sum-discount-hint"></span></dt>
             <dd id="pos-inv-sum-discount">₹0.00</dd>
           </div>
@@ -200,11 +202,11 @@
             <dt>GST <span class="pos-inv-summary-muted">(5%)</span></dt>
             <dd id="pos-inv-sum-gst">₹0.00</dd>
           </div>
-          <div class="pos-inv-summary-row">
+          <div class="pos-inv-summary-row" id="pos-inv-sum-service-row" hidden>
             <dt>Service Charge <span class="pos-inv-summary-muted" id="pos-inv-sum-service-hint"></span></dt>
             <dd id="pos-inv-sum-service">₹0.00</dd>
           </div>
-          <div class="pos-inv-summary-row">
+          <div class="pos-inv-summary-row" id="pos-inv-sum-tip-row" hidden>
             <dt>Tip</dt>
             <dd id="pos-inv-sum-tip">₹0.00</dd>
           </div>
@@ -246,10 +248,6 @@
       <button type="button" class="pos-inv-tool" data-inv-action="pdf" title="PDF">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-6Z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg>
         <span>PDF</span>
-      </button>
-      <button type="button" class="pos-inv-tool" data-inv-action="share" title="Share">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
-        <span>Share</span>
       </button>
     </div>
     <button type="button" class="pos-inv-btn pos-inv-btn--primary pos-inv-toolbar-primary" id="pos-inv-send-customer" data-inv-action="send" title="Save and generate the customer bill">
@@ -329,14 +327,27 @@
 
   <div class="pos-inv-modal" id="pos-inv-tip-modal" hidden>
     <div class="pos-inv-modal-backdrop" data-inv-modal-close="tip"></div>
-    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-tip-title">
-      <h3 id="pos-inv-tip-title">Add Tip</h3>
-      <p class="pos-inv-modal-lead">Enter tip amount to include on this bill.</p>
-      <label class="pos-inv-field">
-        <span>Tip amount (₹)</span>
-        <input type="number" id="pos-inv-tip-amount" min="0" step="0.01" value="0" inputmode="decimal">
-      </label>
-      <div class="pos-inv-modal-actions">
+    <div class="pos-inv-modal-box pos-inv-tip-box staff-credit-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-tip-title">
+      <div class="staff-credit-head">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 3h12"/><path d="M6 8h12"/><path d="m6 13 8.5 8"/><path d="M6 13h3"/><path d="M9 13c6.667 0 6.667-10 0-10"/></svg>
+        <span id="pos-inv-tip-title">Add Tip</span>
+      </div>
+      <p class="staff-credit-copy">Assign tip to an employee — it updates Employee Payroll → Tips.</p>
+      <div id="pos-inv-tip-error" class="staff-credit-error" hidden></div>
+      <div class="staff-field">
+        {{ ep_listbox('tip_employee_id', 'Employee *', tip_employee_options|default([('', 'Select employee…')]), '', placeholder='Select employee…', searchable=true, field_id='pos-inv-tip-employee', extra_class='pos-inv-tip-employee-listbox') }}
+      </div>
+      <div class="staff-grid">
+        <div class="staff-field">
+          <label for="pos-inv-tip-amount">Tip amount (₹) *</label>
+          <input type="number" id="pos-inv-tip-amount" class="staff-input" min="0" step="0.01" value="0" inputmode="decimal" placeholder="e.g. 200">
+        </div>
+        <div class="staff-field">
+          <label for="pos-inv-tip-note">Note</label>
+          <input type="text" id="pos-inv-tip-note" class="staff-input" placeholder="Optional note" autocomplete="off">
+        </div>
+      </div>
+      <div class="staff-credit-actions pos-inv-modal-actions">
         <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-inv-modal-close="tip">Cancel</button>
         <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-inv-tip-apply">Apply</button>
       </div>
@@ -392,11 +403,16 @@
         </div>
         <div class="cp-alloc-table-wrap">
           <table class="cp-alloc-table" aria-label="Bill payment">
+            <colgroup>
+              <col class="cp-alloc-col-order">
+              <col class="cp-alloc-col-total">
+              <col class="cp-alloc-col-pay">
+            </colgroup>
             <thead>
               <tr>
-                <th>Order</th>
-                <th class="pl-col-amount">Total</th>
-                <th class="pl-col-amount">Pay now</th>
+                <th scope="col">Order</th>
+                <th class="pl-col-amount" scope="col">Total</th>
+                <th class="pl-col-amount" scope="col">Pay now</th>
               </tr>
             </thead>
             <tbody id="pos-inv-settle-alloc-body"></tbody>
@@ -417,7 +433,7 @@
 
 <script type="application/json" id="pos-inv-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["room_transfer","Room Transfer"],["bank_transfer","Bank Transfer"]]</script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=42"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=52"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

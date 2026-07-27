@@ -2188,6 +2188,12 @@ POS_INVOICE_ORDER_TYPES = (
 )
 POS_INVOICE_ORDER_TYPE_LABELS = dict(POS_INVOICE_ORDER_TYPES)
 
+POS_INVOICE_SETTLEMENT_STATUSES = (
+    ("settled", "Settled"),
+    ("unsettled", "Un Settled"),
+)
+POS_INVOICE_SETTLEMENT_STATUS_LABELS = dict(POS_INVOICE_SETTLEMENT_STATUSES)
+
 
 def _pos_money(value, default=0.0):
     try:
@@ -3663,6 +3669,7 @@ def list_pos_invoices(
     date_from=None,
     date_to=None,
     order_type=None,
+    settlement=None,
     q="",
 ):
     """List active invoices with optional filters (newest first)."""
@@ -3678,6 +3685,27 @@ def list_pos_invoices(
     if order_type and str(order_type).strip().lower() not in ("", "all"):
         clauses.append("i.order_type = ?")
         params.append(_normalize_pos_order_type(order_type))
+    settlement_key = str(settlement or "").strip().lower()
+    if settlement_key == "settled":
+        clauses.append(
+            """
+            (
+                EXISTS (
+                    SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
+                )
+                OR TRIM(COALESCE(i.settled_at, '')) != ''
+            )
+            """
+        )
+    elif settlement_key == "unsettled":
+        clauses.append(
+            """
+            NOT EXISTS (
+                SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
+            )
+            AND TRIM(COALESCE(i.settled_at, '')) = ''
+            """
+        )
     needle = " ".join(str(q or "").split()).strip().lower()
     if needle:
         like = f"%{needle}%"
@@ -4323,10 +4351,35 @@ def init_db():
             password_hash   TEXT    NOT NULL,
             is_admin        INTEGER NOT NULL DEFAULT 0,
             is_active       INTEGER NOT NULL DEFAULT 1,
+            email           TEXT    NOT NULL DEFAULT '',
+            failed_login_attempts INTEGER NOT NULL DEFAULT 0,
+            captcha_required INTEGER NOT NULL DEFAULT 0,
+            locked_at       TEXT,
+            unlock_token_hash TEXT,
+            unlock_token_expires_at TEXT,
             created_at      TEXT    NOT NULL,
             updated_at      TEXT    NOT NULL
         )
     """)
+    existing_user_cols = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(users)").fetchall()
+    }
+    if "email" not in existing_user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+    if "failed_login_attempts" not in existing_user_cols:
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER NOT NULL DEFAULT 0"
+        )
+    if "captcha_required" not in existing_user_cols:
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN captcha_required INTEGER NOT NULL DEFAULT 0"
+        )
+    if "locked_at" not in existing_user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN locked_at TEXT")
+    if "unlock_token_hash" not in existing_user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN unlock_token_hash TEXT")
+    if "unlock_token_expires_at" not in existing_user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN unlock_token_expires_at TEXT")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_permissions (

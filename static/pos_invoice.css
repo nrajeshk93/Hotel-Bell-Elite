@@ -374,6 +374,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   cursor:pointer;
   transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;
 }
+.pos-inv-btn[hidden]{display:none !important}
 .pos-inv-btn svg{
   width:16px;
   height:16px;
@@ -435,24 +436,6 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   border-color:#E2E8F0;
   color:#94A3B8;
   box-shadow:none;
-}
-
-.pos-inv-header-info{
-  flex-shrink:0;
-  width:36px;
-  height:36px;
-  border-radius:999px;
-  border:1px solid var(--pos-border);
-  background:var(--pos-card);
-}
-.pos-inv-header-info:hover{
-  background:#F8FAFC;
-  border-color:#CBD5E1;
-  color:var(--pos-primary);
-}
-.pos-inv-header-info svg{
-  width:17px;
-  height:17px;
 }
 
 .pos-inv-more-wrap{
@@ -547,6 +530,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   position:relative;
   z-index:1;
   animation-delay:.12s;
+  padding:12px 16px;
 }
 .pos-inv-customer-card{
   animation-delay:.06s;
@@ -638,11 +622,11 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-inv-suggest{
   position:absolute;
   left:0;right:0;
-  top:calc(100% - 18px);
+  top:calc(100% + 6px);
   z-index:80;
   max-height:320px;
   overflow:auto;
-  margin-top:4px;
+  margin-top:0;
   padding:6px;
   border-radius:14px;
   background:#fff;
@@ -871,19 +855,6 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   gap:12px;
   min-width:0;
 }
-.pos-inv-item-thumb{
-  width:44px;
-  height:44px;
-  border-radius:var(--pos-radius-sm);
-  background:#F1F5F9;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  flex-shrink:0;
-  font-size:20px;
-  overflow:hidden;
-}
-.pos-inv-item-thumb img{width:100%;height:100%;object-fit:cover}
 .pos-inv-item-name{
   font-weight:650;
   color:var(--pos-text);
@@ -1049,7 +1020,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   align-items:center;
   justify-content:space-between;
   gap:12px;
-  margin-bottom:8px;
+  margin-bottom:6px;
 }
 .pos-inv-notes-label{
   display:block;
@@ -1068,13 +1039,16 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-inv-notes-wrap{position:relative}
 .pos-inv-notes-wrap textarea{
   width:100%;
-  min-height:88px;
-  padding:12px 40px 28px 14px;
+  min-height:40px;
+  max-height:96px;
+  height:40px;
+  padding:8px 40px 8px 12px;
   border:1px solid var(--pos-border);
   border-radius:var(--pos-radius-sm);
   background:#F8FAFC;
   font:inherit;
-  font-size:14px;
+  font-size:13px;
+  line-height:1.35;
   color:var(--pos-text);
   resize:vertical;
   outline:none;
@@ -1088,8 +1062,8 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-inv-notes-wrap textarea::placeholder{color:#94A3B8}
 .pos-inv-notes-history{
   position:absolute;
-  right:8px;
-  bottom:8px;
+  right:6px;
+  bottom:6px;
 }
 
 /* Customer card */
@@ -1223,6 +1197,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   padding:10px 0;
   border-bottom:1px solid #F1F5F9;
 }
+.pos-inv-summary-row[hidden]{display:none !important}
 .pos-inv-summary-row:last-child{border-bottom:0}
 .pos-inv-summary-row dt{
   margin:0;
@@ -1509,6 +1484,136 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
     flex-direction:column;
     align-items:stretch;
   }
+}
+
+/* Add Tip — Employee Payroll Add Credit / Sales Tips chrome */
+#pos-inv-tip-modal.pos-inv-modal{
+  z-index:120;
+}
+#pos-inv-tip-modal .pos-inv-tip-box.staff-credit-box{
+  position:relative;
+  width:min(520px,94vw);
+  max-width:94vw;
+  max-height:calc(100vh - 48px);
+  margin:0;
+  padding:24px 26px;
+  border:1px solid #E5E7EB;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 20px 60px rgba(0,0,0,.18);
+  overflow:visible;
+  box-sizing:border-box;
+}
+#pos-inv-tip-modal .staff-credit-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:8px;
+  font-size:16px;
+  font-weight:800;
+  color:#0F172A;
+}
+#pos-inv-tip-modal .staff-credit-head svg{
+  width:18px;
+  height:18px;
+  stroke:#2563EB;
+  stroke-width:2;
+  fill:none;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  flex-shrink:0;
+}
+#pos-inv-tip-modal .staff-credit-copy{
+  margin:0 0 18px;
+  font-size:13px;
+  color:#94A3B8;
+  line-height:1.55;
+}
+#pos-inv-tip-modal .staff-credit-error{
+  display:none;
+  background:#FEF2F2;
+  border:1px solid rgba(220,38,38,.25);
+  color:#DC2626;
+  padding:9px 13px;
+  border-radius:8px;
+  font-size:12px;
+  font-weight:700;
+  margin-bottom:12px;
+}
+#pos-inv-tip-modal .staff-credit-error.is-visible,
+#pos-inv-tip-modal .staff-credit-error:not([hidden]){
+  display:block;
+}
+#pos-inv-tip-modal .staff-field{margin-bottom:14px;min-width:0}
+#pos-inv-tip-modal .staff-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+#pos-inv-tip-modal .staff-grid > .staff-field{margin-bottom:14px}
+#pos-inv-tip-modal .staff-field > label{
+  display:block;
+  font-size:11px;
+  font-weight:700;
+  color:#4A5568;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  margin-bottom:5px;
+}
+#pos-inv-tip-modal .staff-input{
+  display:block;
+  width:100%;
+  height:44px;
+  min-height:44px;
+  box-sizing:border-box;
+  padding:9px 12px;
+  border:1px solid #E2E8F0;
+  border-radius:8px;
+  font:inherit;
+  font-size:13px;
+  color:#1A202C;
+  background:#fff;
+  outline:none;
+}
+#pos-inv-tip-modal .staff-input:focus{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+#pos-inv-tip-modal .pos-inv-tip-employee-listbox{
+  width:100%;
+  max-width:none;
+}
+#pos-inv-tip-modal .pos-inv-tip-employee-listbox .se-filter-chip-label{
+  display:block;
+  font-size:11px;
+  font-weight:700;
+  color:#4A5568;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  margin-bottom:5px;
+  text-align:left;
+}
+#pos-inv-tip-modal .pos-inv-tip-employee-listbox .se-filter-chip-control{
+  min-height:44px;
+  border-radius:8px;
+  width:100%;
+}
+#pos-inv-tip-modal .pos-inv-tip-employee-listbox.is-open{
+  z-index:80;
+}
+#pos-inv-tip-modal .pos-inv-tip-employee-listbox .se-filter-listbox{
+  z-index:90;
+}
+#pos-inv-tip-modal .staff-credit-actions.pos-inv-modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:8px;
+  padding-top:14px;
+  border-top:1px solid #EEF2F7;
+}
+@media (max-width:520px){
+  #pos-inv-tip-modal .staff-grid{grid-template-columns:1fr}
 }
 
 /* Settle Bill — Room Transfer Clear Payment popup chrome */
@@ -1845,6 +1950,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 #pos-inv-settle-modal .cp-alloc-table{
   width:100%;
   border-collapse:collapse;
+  table-layout:fixed;
 }
 #pos-inv-settle-modal .cp-alloc-table th,
 #pos-inv-settle-modal .cp-alloc-table td{
@@ -1862,23 +1968,50 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   color:#94A3B8;
   background:#fff;
 }
+#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-order{width:auto}
+#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-total{width:128px}
+#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-pay{width:136px}
+#pos-inv-settle-modal .cp-alloc-table th.pl-col-amount,
+#pos-inv-settle-modal .cp-alloc-table td.pl-col-amount{
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
 #pos-inv-settle-modal .cp-alloc-table tr:last-child td{border-bottom:0}
-#pos-inv-settle-modal .cp-alloc-table .pl-col-amount{text-align:right;font-variant-numeric:tabular-nums}
+#pos-inv-settle-modal .cp-alloc-order{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  min-width:0;
+}
 #pos-inv-settle-modal .cp-alloc-code{
   display:block;
   font-weight:700;
   color:#0F172A;
+  line-height:1.3;
 }
 #pos-inv-settle-modal .cp-alloc-supplier{
   display:block;
-  margin-top:2px;
   font-size:12px;
   color:#94A3B8;
+  line-height:1.3;
+}
+#pos-inv-settle-modal .cp-alloc-total-value{
+  display:block;
+  width:100%;
+  text-align:right;
+  font-weight:700;
+  color:#0F172A;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
 }
 #pos-inv-settle-modal .cp-alloc-input{
-  width:110px;
+  display:block;
+  width:100%;
   max-width:100%;
+  box-sizing:border-box;
   height:36px;
+  margin-left:auto;
   padding:0 10px;
   border:1px solid #E5E7EB;
   border-radius:8px;
@@ -1959,4 +2092,59 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   #pos-inv-settle-modal .pos-inv-settle-split-row.is-bank:not(.is-multi){
     grid-template-columns:minmax(0,1fr) auto;
   }
+}
+
+/* In-app bill print page (fullscreen / popup-blocked fallback) */
+.pos-inapp-print-page{
+  position:fixed;
+  inset:0;
+  z-index:400;
+  display:flex;
+  flex-direction:column;
+  background:#0F172A;
+}
+.pos-inapp-print-toolbar{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 16px;
+  background:#1E293B;
+  border-bottom:1px solid #334155;
+  color:#F8FAFC;
+}
+.pos-inapp-print-title{
+  font-size:14px;
+  font-weight:700;
+  letter-spacing:.02em;
+}
+.pos-inapp-print-actions{display:flex;gap:8px}
+.pos-inapp-print-btn{
+  appearance:none;
+  border:0;
+  border-radius:8px;
+  padding:8px 14px;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  background:#F97316;
+  color:#fff;
+}
+.pos-inapp-print-btn:hover{background:#EA580C}
+.pos-inapp-print-btn--ghost{
+  background:transparent;
+  color:#E2E8F0;
+  border:1px solid #475569;
+}
+.pos-inapp-print-btn--ghost:hover{background:#334155}
+.pos-inapp-print-frame{
+  flex:1 1 auto;
+  width:100%;
+  border:0;
+  background:#fff;
+}
+@media print{
+  .pos-inapp-print-toolbar{display:none !important}
 }

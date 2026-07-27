@@ -112,6 +112,13 @@ _WORKSPACE_MODULE_REGISTRY = (
         "permission_field": None,
         "permission_children": (),
     },
+    {
+        "key": "reports",
+        "label": "Report",
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
+    },
 )
 
 _DASHBOARD_MODULES = tuple(
@@ -176,6 +183,10 @@ _ACCESS_MODULE_UI_META = {
         "icon": "database",
         "description": "Central master data for Hotel Bell Elite.",
     },
+    "reports": {
+        "icon": "file-text",
+        "description": "View and download reports across all modules.",
+    },
 }
 
 # Point of Sale workspace routes (Tables + POS + Invoice Ledger + Menu + Settings). Not Sales Analytics.
@@ -237,9 +248,16 @@ _MASTER_ENDPOINTS = {
     "export_customer_report",
 }
 
+_REPORTS_ENDPOINTS = {
+    "reports",
+}
+
 _PUBLIC_ENDPOINTS = {
     "index",
     "login",
+    "login_captcha",
+    "login_resend_unlock",
+    "unlock_account",
     "logout",
     "static",
     "home",
@@ -311,10 +329,10 @@ _SALES_ANALYTICS_ENDPOINT_GROUPS = {
 _SALES_ANALYTICS_PARENT_ENDPOINTS = set().union(*_SALES_ANALYTICS_ENDPOINT_GROUPS.values())
 
 _ACCESS_ENDPOINT_GROUPS = {
-    "users": {"delete_access_user"},
+    "users": {"delete_access_user", "unlock_access_user"},
     "add": set(),
 }
-_ACCESS_MANAGEMENT_ENDPOINTS = {"access_management", "save_access_user"}
+_ACCESS_MANAGEMENT_ENDPOINTS = {"access_management", "save_access_user", "unlock_access_user"}
 _ACCOUNTS_ENDPOINT_GROUPS = {
     "purchase_ledger": {
         "purchase_ledger",
@@ -525,6 +543,15 @@ def build_user_context(conn, row):
     user = dict(row)
     user["is_admin"] = bool(user.get("is_admin"))
     user["is_active"] = bool(user.get("is_active"))
+    user["email"] = (user.get("email") or "").strip()
+    user["is_locked"] = bool(user.get("locked_at"))
+    user["failed_login_attempts"] = int(user.get("failed_login_attempts") or 0)
+    user["captcha_required"] = bool(user.get("captcha_required"))
+    user["account_status"] = (
+        "locked"
+        if user["is_locked"]
+        else ("active" if user["is_active"] else "inactive")
+    )
     (
         dashboard_access,
         sales_analytics_access,
@@ -745,6 +772,8 @@ def get_endpoint_dashboard_module(endpoint):
         return "stores"
     if endpoint in _MASTER_ENDPOINTS:
         return "master"
+    if endpoint in _REPORTS_ENDPOINTS:
+        return "reports"
     return None
 
 
@@ -970,12 +999,21 @@ def validate_access_user_form(
     payroll_modules=None,
     accounts_modules=None,
     stores_modules=None,
+    email="",
 ):
     errors = []
     actor_is_admin = bool(actor and actor.get("is_admin"))
 
     if not username:
         errors.append("Username is required.")
+    email = (email or "").strip()
+    if not email:
+        errors.append("Email is required.")
+    else:
+        from auth_security import is_valid_email
+
+        if not is_valid_email(email):
+            errors.append("Enter a valid email address.")
     if not user_id and not password:
         errors.append("Password is required for a new user.")
     if not is_admin and not dashboard_modules:
@@ -1058,11 +1096,13 @@ def save_access_user_record(
     accounts_modules=None,
     stores_modules=None,
     sql_now,
+    email="",
 ):
+    email = (email or "").strip()
     if user_id:
-        params = [username, full_name, int(is_admin)]
+        params = [username, full_name, email, int(is_admin)]
         update_sql = (
-            f"UPDATE users SET username = ?, full_name = ?, is_admin = ?, "
+            f"UPDATE users SET username = ?, full_name = ?, email = ?, is_admin = ?, "
             f"is_active = 1, updated_at = {sql_now}"
         )
         if password:
@@ -1076,9 +1116,9 @@ def save_access_user_record(
     else:
         conn.execute(
             f"""INSERT INTO users
-                (username, full_name, password_hash, is_admin, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 1, {sql_now}, {sql_now})""",
-            (username, full_name, generate_password_hash(password), int(is_admin)),
+                (username, full_name, email, password_hash, is_admin, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 1, {sql_now}, {sql_now})""",
+            (username, full_name, email, generate_password_hash(password), int(is_admin)),
         )
         saved_user_id = conn.execute(
             "SELECT id FROM users WHERE LOWER(username) = LOWER(?)",

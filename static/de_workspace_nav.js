@@ -191,18 +191,25 @@
     if(!group) return;
     // Flyouts sit outside the nav scroller; scrolling the rail does not help.
     if(group.classList.contains('is-flyout-active')) return;
+    function reveal(){
+      if(!group.classList.contains('is-open')) return;
+      if(group.classList.contains('is-flyout-active')) return;
+      var active = group.querySelector('a.is-active, a[aria-current="page"]');
+      var sub = group.querySelector('.de-nav-sub');
+      var lastItem = sub ? sub.querySelector('.de-nav-subitem:last-of-type') : null;
+      /* Prefer an active child; otherwise bring the opened submenu into view
+         (bottom groups like User & Access expand below the fold). */
+      var target = active || lastItem || (sub && sub.lastElementChild) || group.querySelector('.de-nav-group-toggle') || group;
+      ensureVisibleInScroller(target, {
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        padding: 16
+      });
+    }
+    /* Wait for .de-nav-sub max-height transition (~200ms) so bottom is measurable. */
     requestAnimationFrame(function(){
       requestAnimationFrame(function(){
-        if(!group.classList.contains('is-open')) return;
-        if(group.classList.contains('is-flyout-active')) return;
-        // Prefer the active child in this group, else the toggle — never the whole tall group.
-        var target = group.querySelector('a.is-active, a[aria-current="page"]')
-          || group.querySelector('.de-nav-group-toggle')
-          || group;
-        ensureVisibleInScroller(target, {
-          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-          padding: 12
-        });
+        reveal();
+        window.setTimeout(reveal, prefersReducedMotion() ? 0 : 220);
       });
     });
   }
@@ -301,9 +308,12 @@
       });
       sessionStorage.setItem('de-nav-open-groups', JSON.stringify(openIds));
     } catch(e){}
-    if(opening) scheduleEnsureNavGroupVisible(group);
-    // After expand/collapse reflow, keep the current page item visible (nearest).
-    scheduleActiveNavIntoView({ behavior: 'auto' });
+    if(opening){
+      scheduleEnsureNavGroupVisible(group);
+    } else {
+      // After collapse reflow, keep the current page item visible (nearest).
+      scheduleActiveNavIntoView({ behavior: 'auto' });
+    }
   }
 
   function closeDeNavFlyouts(sidebar){

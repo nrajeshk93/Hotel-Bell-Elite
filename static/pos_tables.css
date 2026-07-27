@@ -1242,6 +1242,7 @@ body.pos-module .de-main-inner.pos-tables-page{
   grid-template-columns:40px minmax(0,1fr) auto auto;
   grid-template-rows:auto auto;
   align-items:center;
+  text-align:left;
   column-gap:14px;
   row-gap:4px;
   min-height:0;
@@ -1257,16 +1258,29 @@ body.pos-module .de-main-inner.pos-tables-page{
   grid-column:2;
   grid-row:1;
   margin:0;
+  text-align:left;
+  width:auto;
 }
 .pos-floor[data-view="list"] .pos-table-tile-seats{
   grid-column:2;
   grid-row:2;
   margin:0;
+  text-align:left;
+  width:auto;
 }
 .pos-floor[data-view="list"] .pos-table-badge{
   grid-column:3;
   grid-row:1 / span 2;
   margin:0;
+  align-self:center;
+}
+.pos-floor[data-view="list"] .pos-table-badge-row{
+  grid-column:3;
+  grid-row:1 / span 2;
+  margin:0;
+  width:auto;
+  justify-content:flex-end;
+  align-self:center;
 }
 .pos-floor[data-view="list"] .pos-table-meta{
   grid-column:4;
@@ -1281,6 +1295,8 @@ body.pos-module .de-main-inner.pos-tables-page{
   position:relative;
   display:flex;
   flex-direction:column;
+  align-items:center;
+  text-align:center;
   min-height:168px;
   padding:16px;
   background:var(--pos-card);
@@ -1292,6 +1308,7 @@ body.pos-module .de-main-inner.pos-tables-page{
 }
 .pos-table-tile .pos-table-badge{
   margin-top:auto;
+  align-self:center;
 }
 .pos-table-tile:hover{
   transform:translateY(-3px);
@@ -1317,6 +1334,8 @@ body.pos-module .de-main-inner.pos-tables-page{
   font-weight:600;
   letter-spacing:.02em;
   color:var(--pos-muted);
+  text-align:center;
+  width:100%;
 }
 .pos-table-badge-row{
   display:flex;
@@ -1324,6 +1343,9 @@ body.pos-module .de-main-inner.pos-tables-page{
   gap:6px;
   margin-top:auto;
   align-items:center;
+  justify-content:center;
+  align-self:center;
+  width:100%;
 }
 .pos-table-badge-row .pos-table-badge{
   margin-top:0;
@@ -1346,6 +1368,7 @@ body.pos-module .de-main-inner.pos-tables-page{
   align-items:center;
   justify-content:space-between;
   margin-bottom:10px;
+  width:100%;
 }
 .pos-table-shape-icon{
   width:34px;height:34px;
@@ -1428,22 +1451,30 @@ body.pos-module .de-main-inner.pos-tables-page{
   font-weight:720;
   letter-spacing:-.02em;
   color:var(--pos-text);
+  text-align:center;
+  width:100%;
 }
 .pos-table-tile-seats{
   margin-top:2px;
   font-size:12px;
   font-weight:550;
   color:var(--pos-muted);
+  text-align:center;
+  width:100%;
 }
 .pos-table-badge{
   display:inline-flex;
-  align-self:flex-start;
+  align-items:center;
+  justify-content:center;
+  align-self:center;
   margin-top:14px;
   min-height:26px;
   padding:0 10px;
   border-radius:999px;
-  font:700 11px Inter,system-ui,sans-serif;
+  font:700 11px/1 Inter,system-ui,sans-serif;
   letter-spacing:.02em;
+  text-align:center;
+  box-sizing:border-box;
 }
 .pos-table-badge--available{background:#DCFCE7;color:#15803D}
 .pos-table-badge--occupied{background:#FFEDD5;color:#C2410C}

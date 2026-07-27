@@ -236,7 +236,12 @@ body.master-module .su-header-tools .btn svg {
   text-decoration: none;
   color: inherit;
   cursor: pointer;
-  transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+  transition:
+    transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.35s ease,
+    background-color 0.35s ease;
+  will-change: transform, box-shadow;
 }
 
 button.md-master-card {
@@ -245,10 +250,22 @@ button.md-master-card {
   text-align: left;
 }
 
-.md-master-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
-  border-color: #CBD5E1;
+.md-master-card:hover,
+.md-master-card:focus-visible {
+  transform: translateY(-5px);
+  border-color: #BFDBFE;
+  background: #fff;
+  box-shadow:
+    0 4px 10px rgba(37, 99, 235, 0.06),
+    0 16px 36px rgba(15, 23, 42, 0.12);
+}
+
+.md-master-card:active {
+  transform: translateY(-2px);
+  box-shadow:
+    0 2px 6px rgba(37, 99, 235, 0.05),
+    0 10px 22px rgba(15, 23, 42, 0.1);
+  transition-duration: 0.18s;
 }
 
 .md-master-card-icon {
@@ -259,6 +276,12 @@ button.md-master-card {
   align-items: center;
   justify-content: center;
   margin-bottom: 18px;
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.md-master-card:hover .md-master-card-icon,
+.md-master-card:focus-visible .md-master-card-icon {
+  transform: translateY(-2px) scale(1.04);
 }
 
 .md-master-card-icon svg {
@@ -294,28 +317,90 @@ button.md-master-card {
 .md-master-card-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  justify-content: flex-start;
+  gap: 0;
+  min-height: 20px;
   margin-top: 20px;
+  position: relative;
+  overflow: visible;
+}
+
+/* Same Report-page spacer: trail (arrow) glides left → right. */
+.md-master-card-foot::before {
+  content: "";
+  display: block;
+  flex: 0 0 auto;
+  width: 0;
+  height: 1px;
+  transition: width 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.md-master-card:hover .md-master-card-foot::before,
+.md-master-card:focus-visible .md-master-card-foot::before {
+  width: calc(100% - 1.25em);
+}
+
+.md-master-card-foot-trail {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  min-width: 1.1em;
 }
 
 .md-master-card-records,
 .md-master-card-create {
+  position: absolute;
+  right: calc(100% + 8px);
+  top: 50%;
+  margin: 0;
   font-size: 14px;
-  color: var(--md-text-muted);
   font-weight: 500;
+  color: #64748B;
+  white-space: nowrap;
+  line-height: 1;
+  opacity: 0;
+  transform: translate3d(10px, -50%, 0);
+  pointer-events: none;
+  transition:
+    opacity 0.55s ease,
+    transform 0.85s cubic-bezier(0.22, 1, 0.36, 1),
+    color 0.4s ease;
+}
+
+.md-master-card:hover .md-master-card-records,
+.md-master-card:focus-visible .md-master-card-records {
+  opacity: 1;
+  transform: translate3d(0, -50%, 0);
+  color: #64748B;
 }
 
 .md-master-card-arrow {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
   font-size: 18px;
   color: #94A3B8;
   line-height: 1;
-  transition: transform 120ms ease, color 120ms ease;
+  opacity: 0.9;
+  transition:
+    color 0.45s ease,
+    opacity 0.45s ease,
+    transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.md-master-card:hover .md-master-card-arrow {
-  transform: translateX(4px);
+.md-master-card:hover .md-master-card-arrow,
+.md-master-card:focus-visible .md-master-card-arrow {
   color: var(--md-primary);
+  opacity: 1;
+  transform: translateX(2px) scale(1.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .md-toast {
+    transition: none;
+  }
 }
 
 /* Add card */
@@ -444,6 +529,12 @@ body.md-master-modal-open {
   border-bottom: 1px solid var(--md-card-border);
 }
 
+/* Menu Master / page-shell masters have their own title + actions — drop duplicate dialog chrome. */
+#md-master-modal:has(#pos-menu-page) .md-master-dialog-hdr,
+#md-master-modal:has(.md-master-embed--page-shell) .md-master-dialog-hdr {
+  display: none;
+}
+
 .md-master-dialog-title {
   margin: 0;
   font-size: 16px;
@@ -498,13 +589,15 @@ body.md-master-modal-open {
 }
 
 /* Menu Master embed: fill the fullscreen dialog and scroll the table, not the page chrome */
-#md-master-modal .md-master-dialog-body:has(#pos-menu-page) {
+#md-master-modal .md-master-dialog-body:has(#pos-menu-page),
+#md-master-modal .md-master-dialog-body:has(.md-master-embed--page-shell) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-#md-master-modal .md-master-modal-inject:has(#pos-menu-page) {
+#md-master-modal .md-master-modal-inject:has(#pos-menu-page),
+#md-master-modal .md-master-modal-inject:has(.md-master-embed--page-shell) {
   display: flex !important;
   flex-direction: column;
   flex: 1 1 auto;
@@ -513,7 +606,8 @@ body.md-master-modal-open {
   overflow: hidden;
 }
 
-#md-master-modal #pos-menu-page {
+#md-master-modal #pos-menu-page,
+#md-master-modal .md-master-embed--page-shell {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -521,9 +615,12 @@ body.md-master-modal-open {
   height: 100%;
   overflow: hidden;
   background: var(--md-bg, #F8FAFC);
+  padding: 0;
+  box-sizing: border-box;
 }
 
-#md-master-modal #pos-menu-page > .se-sales-header {
+#md-master-modal #pos-menu-page > .se-sales-header,
+#md-master-modal .md-master-embed--page-shell > .md-master-embed-header {
   flex-shrink: 0;
   max-width: none;
   width: 100%;
@@ -532,7 +629,8 @@ body.md-master-modal-open {
   box-sizing: border-box;
 }
 
-#md-master-modal #pos-menu-page > .se-content {
+#md-master-modal #pos-menu-page > .se-content,
+#md-master-modal .md-master-embed--page-shell > .md-master-embed-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -546,6 +644,150 @@ body.md-master-modal-open {
 #md-master-modal #pos-menu-page .de-sb-pin-btn,
 #md-master-modal #pos-menu-page .sb-pin-btn {
   display: none !important;
+}
+
+#md-master-modal #pos-menu-page .pos-menu-header-actions,
+#md-master-modal .md-master-embed-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#md-master-modal #pos-menu-page .pos-menu-embed-close,
+#md-master-modal .md-master-embed-header-actions .pos-menu-embed-close,
+#md-master-modal .md-master-embed-header-actions .md-master-modal-close {
+  display: inline-flex;
+  margin-left: 4px;
+}
+
+#md-master-modal .md-master-embed--page-shell .su-title-icon svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#md-master-modal .md-master-embed-filter-form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* Page-shell search chips — match Menu Master (single control, no nested input border). */
+#md-master-modal .md-master-embed--page-shell .pl-search-chip {
+  position: relative;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 220px;
+  max-width: 100%;
+  z-index: 2;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-label {
+  color: #6B7280;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 6px;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid #E5E7EB !important;
+  background: #fff !important;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: none;
+  padding: 0 4px 0 0;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-icon {
+  width: 44px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #2563EB;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-icon svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .pl-search-input,
+#md-master-modal .md-master-embed--page-shell .pl-search-chip input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 46px;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  appearance: none;
+  -webkit-appearance: none;
+  font: 500 14px Inter, system-ui, sans-serif;
+  color: #111827;
+  padding: 0 14px 0 4px;
+  margin: 0;
+  border-radius: 0;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .pl-search-input::-webkit-search-cancel-button,
+#md-master-modal .md-master-embed--page-shell .pl-search-chip input[type="search"]::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .pl-search-input::placeholder,
+#md-master-modal .md-master-embed--page-shell .pl-search-chip input[type="search"]::placeholder {
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip.is-active .se-filter-chip-control,
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control:focus-within {
+  border-color: #93C5FD !important;
+  background: #EFF6FF !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip.is-active .se-filter-chip-icon,
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control:focus-within .se-filter-chip-icon {
+  color: #2563EB;
+}
+
+#md-master-modal .md-master-embed-outlet-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 2px;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-list-panel,
+#md-master-modal .md-master-embed--page-shell .sm-list-panel,
+#md-master-modal .md-master-embed--page-shell .st-products-panel,
+#md-master-modal .md-master-embed--page-shell .emp-list-panel {
+  min-height: calc(100vh - 280px);
 }
 
 #md-master-modal #pos-set-panel-menu.pos-menu-calc {
@@ -1198,16 +1440,30 @@ body.md-master-modal-open {
 
 @media (prefers-reduced-motion: reduce) {
   .md-master-card,
+  .md-master-card-icon,
+  .md-master-card-foot::before,
   .md-master-card-arrow,
   .md-toast {
     transition: none;
   }
 
-  .md-master-card:hover {
+  .md-master-card:hover,
+  .md-master-card:focus-visible {
     transform: none;
   }
 
-  .md-master-card:hover .md-master-card-arrow {
-    transform: none;
+  .md-master-card:hover .md-master-card-foot::before,
+  .md-master-card:focus-visible .md-master-card-foot::before {
+    width: 0;
+  }
+
+  .md-master-card .md-master-card-records {
+    opacity: 1;
+    transform: translate3d(0, -50%, 0);
+  }
+
+  .md-master-card:hover .md-master-card-arrow,
+  .md-master-card:focus-visible .md-master-card-arrow {
+    transform: translateX(4px);
   }
 }

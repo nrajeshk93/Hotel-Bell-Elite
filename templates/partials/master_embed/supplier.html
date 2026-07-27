@@ -1,11 +1,82 @@
-<div class="md-master-embed md-master-embed--supplier" data-md-modal-title="{% if show_form %}{% if form.id %}Edit Supplier{% else %}Add Supplier{% endif %}{% else %}Supplier Master{% endif %}">
-  {% if not show_form %}
-  <div class="md-master-embed-toolbar">
-    <div class="md-master-embed-actions">
-      <a class="btn btn-primary" href="{{ supplier_report_url }}" download>Supplier Report</a>
-      <a class="btn btn-primary" href="{{ url_for('supplier_master', focus='form', embed=1) }}">Add supplier</a>
+{% set embed_title = 'Edit Supplier' if (show_form and form.id) else ('Add Supplier' if show_form else 'Supplier Master') %}
+<div class="md-master-embed md-master-embed--page-shell md-master-embed--supplier"
+     data-md-modal-title="{{ embed_title }}">
+  <header class="se-sales-header su-header md-master-embed-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+            </div>
+            <h1>{{ embed_title }}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools md-master-embed-header-actions">
+        {% if show_form %}
+        <a class="btn" href="{{ url_for('supplier_master', embed=1) }}">Back to list</a>
+        {% else %}
+        <a class="btn" href="{{ supplier_report_url }}" download data-de-no-soft-nav="1">Export</a>
+        <a class="btn btn-primary" href="{{ url_for('supplier_master', focus='form', embed=1) }}">Add Supplier</a>
+        {% endif %}
+      </div>
     </div>
+    {% if not show_form %}
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <div class="sr-topbar-filters md-master-embed-filter-form-row" aria-label="Supplier filters">
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip" id="sm-supplier-search-chip">
+            <label class="se-filter-chip-label" for="sm-supplier-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="sm-supplier-search" class="pl-search-input" placeholder="Name, GST, phone, bank…" autocomplete="off" aria-label="Search suppliers">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </header>
+
+  <div class="md-master-embed-body">
+    {% with embed_page_shell=true %}
+    {% include 'partials/supplier_master_body.html' %}
+    {% endwith %}
   </div>
+
+  {% if not show_form %}
+  <script>
+  (function initSmSupplierEmbedSearch(){
+    var searchInput = document.getElementById('sm-supplier-search');
+    var table = document.getElementById('sm-supplier-table');
+    if (!searchInput || !table || searchInput.getAttribute('data-sm-search-bound') === '1') return;
+    searchInput.setAttribute('data-sm-search-bound', '1');
+    var countEl = document.getElementById('sm-supplier-count');
+    var tableWrap = document.getElementById('sm-supplier-table-wrap');
+    var emptyEl = document.getElementById('sm-supplier-search-empty');
+    var chip = document.getElementById('sm-supplier-search-chip');
+    function applySearch(){
+      var needle = String(searchInput.value || '').trim().toLowerCase();
+      if (chip) chip.classList.toggle('is-active', !!needle);
+      var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
+      var visible = 0;
+      rows.forEach(function(row){
+        var hay = String(row.getAttribute('data-search') || '').toLowerCase();
+        var match = !needle || hay.indexOf(needle) !== -1;
+        row.hidden = !match;
+        if (match) visible += 1;
+      });
+      if (countEl) countEl.textContent = visible + ' total';
+      if (emptyEl) emptyEl.hidden = !(needle && visible === 0);
+      if (tableWrap) tableWrap.hidden = !!(needle && visible === 0);
+    }
+    searchInput.addEventListener('input', applySearch);
+    searchInput.addEventListener('keydown', function(e){ if (e.key === 'Enter') e.preventDefault(); });
+    applySearch();
+  })();
+  </script>
   {% endif %}
-  {% include 'partials/supplier_master_body.html' %}
 </div>

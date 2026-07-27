@@ -1,4 +1,4 @@
-<section class="content se-content">
+<section class="content se-content"{% if embed_page_shell|default(false) %} style="padding:0;margin:0;max-width:none;"{% endif %}>
   {% if auth_notice %}
   <div class="sm-flash sm-flash--ok">{{ auth_notice }}</div>
   {% endif %}
@@ -7,18 +7,18 @@
   {% endif %}
 
   <div class="sm-layout{% if show_form %} sm-layout--form-focus{% endif %}">
-    <article class="card pl-list-panel pl-list-panel--scroll sm-list-panel sm-list-panel--scroll hbe-scroll-panel{% if show_form %} hidden{% endif %}" aria-label="Customer list">
+    <article class="card pl-list-panel pl-list-panel--scroll sm-list-panel sm-list-panel--scroll hbe-scroll-panel{% if show_form %} hidden{% endif %}" id="sm-customer-list-panel" aria-label="Customer list">
       <div class="card-hdr">
         <div class="card-title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <span>Customers</span>
         </div>
-        <span class="pl-count sm-count">{{ customers|length }} total</span>
+        <span class="pl-count sm-count" id="sm-customer-count">{{ customers|length }} total</span>
       </div>
       <div class="card-body pl-card-body--flush sm-card-body--flush" style="padding:0;">
         {% if customers %}
-        <div class="pl-table-wrap sm-table-wrap" tabindex="0" aria-label="Customer list, scroll for more">
-          <table class="pl-table sm-pl-table" aria-label="Customer list">
+        <div class="pl-table-wrap sm-table-wrap" id="sm-customer-table-wrap" tabindex="0" aria-label="Customer list, scroll for more">
+          <table class="pl-table sm-pl-table" id="sm-customer-table" aria-label="Customer list">
             <thead>
               <tr>
                 <th scope="col">First Name</th>
@@ -28,7 +28,7 @@
             </thead>
             <tbody>
               {% for customer in customers %}
-              <tr>
+              <tr data-sort-row data-search="{{ [customer.first_name or '', customer.mobile or '']|join(' ')|lower }}">
                 <td class="pl-name">{{ customer.first_name }}</td>
                 <td>
                   {% if customer.mobile %}
@@ -51,6 +51,10 @@
               {% endfor %}
             </tbody>
           </table>
+        </div>
+        <div class="pl-empty sm-empty" id="sm-customer-search-empty" hidden>
+          <strong>No customers match</strong>
+          Try a different search term.
         </div>
         {% else %}
         <div class="pl-empty sm-empty">No customers yet. Add one here or save a POS invoice with Customer Details.</div>

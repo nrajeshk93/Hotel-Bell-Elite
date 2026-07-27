@@ -1,0 +1,65 @@
+/* Hotel Bell Elite — Reports dashboard (extends Masters card motion) */
+
+body.report-module .su-title-icon svg {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.rd-report-card {
+  text-decoration: none;
+  color: inherit;
+}
+
+.rd-report-card.is-hidden,
+.rd-category-section.is-hidden {
+  display: none;
+}
+
+/* Tables-style category sections (Main Dining / Balcony pattern) */
+body.report-module .rd-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+body.report-module .rd-category-section {
+  margin: 0 0 18px;
+}
+
+body.report-module .rd-category-section-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #94A3B8;
+}
+
+body.report-module .rd-category-section-label {
+  color: #94A3B8;
+}
+
+body.report-module .rd-category-section-count {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: #94A3B8;
+  opacity: 0.9;
+}
+
+body.report-module .rd-category-grid {
+  margin: 0;
+}
+
+body.report-module .md-empty {
+  margin-top: 8px;
+}

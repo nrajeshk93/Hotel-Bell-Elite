@@ -1,4 +1,4 @@
-<section class="content se-content">
+<section class="content se-content"{% if embed_page_shell|default(false) %} style="padding:0;margin:0;max-width:none;"{% endif %}>
   {% if auth_notice %}
   <div class="sm-flash sm-flash--ok">{{ auth_notice }}</div>
   {% endif %}
@@ -7,18 +7,18 @@
   {% endif %}
 
   <div class="sm-layout{% if show_form %} sm-layout--form-focus{% endif %}">
-    <article class="card pl-list-panel pl-list-panel--scroll sm-list-panel sm-list-panel--scroll hbe-scroll-panel{% if show_form %} hidden{% endif %}" aria-label="Supplier list">
+    <article class="card pl-list-panel pl-list-panel--scroll sm-list-panel sm-list-panel--scroll hbe-scroll-panel{% if show_form %} hidden{% endif %}" id="sm-supplier-list-panel" aria-label="Supplier list">
       <div class="card-hdr">
         <div class="card-title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
           <span>Suppliers</span>
         </div>
-        <span class="pl-count sm-count">{{ suppliers|length }} total</span>
+        <span class="pl-count sm-count" id="sm-supplier-count">{{ suppliers|length }} total</span>
       </div>
       <div class="card-body pl-card-body--flush sm-card-body--flush" style="padding:0;">
         {% if suppliers %}
-        <div class="pl-table-wrap sm-table-wrap" tabindex="0" aria-label="Supplier list, scroll for more">
-          <table class="pl-table sm-pl-table" aria-label="Supplier list">
+        <div class="pl-table-wrap sm-table-wrap" id="sm-supplier-table-wrap" tabindex="0" aria-label="Supplier list, scroll for more">
+          <table class="pl-table sm-pl-table" id="sm-supplier-table" aria-label="Supplier list">
             <thead>
               <tr>
                 <th scope="col">Name</th>
@@ -30,7 +30,7 @@
             </thead>
             <tbody>
               {% for supplier in suppliers %}
-              <tr>
+              <tr data-sort-row data-search="{{ [supplier.name or '', supplier.gst or '', supplier.phone or '', supplier.address or '', supplier.bank_name or '', supplier.bank_account_number or '', supplier.ifsc_code or '']|join(' ')|lower }}">
                 <td>
                   <div class="pl-name">{{ supplier.name }}</div>
                   {% if supplier.address %}<div class="pl-meta">{{ supplier.address }}</div>{% endif %}
@@ -59,6 +59,10 @@
               {% endfor %}
             </tbody>
           </table>
+        </div>
+        <div class="pl-empty sm-empty" id="sm-supplier-search-empty" hidden>
+          <strong>No suppliers match</strong>
+          Try a different search term.
         </div>
         {% else %}
         <div class="pl-empty sm-empty">No suppliers added yet. Use Add supplier to create the first one.</div>

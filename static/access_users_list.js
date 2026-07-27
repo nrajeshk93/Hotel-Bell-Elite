@@ -16,9 +16,9 @@
     listEl.setAttribute('data-am-users-ready', '1');
 
     var searchEl = byId('am-users-search');
+    var searchChip = byId('am-users-search-chip');
     var roleFilterEl = byId('am-users-role-filter');
     var statusFilterEl = byId('am-users-status-filter');
-    var sortBtn = byId('am-users-sort');
     var countEl = byId('am-users-count');
     var emptyFilterEl = byId('am-users-empty-filter');
     var paginationEl = byId('am-users-pagination');
@@ -27,7 +27,6 @@
     var cards = Array.prototype.slice.call(listEl.querySelectorAll('.am-user-card'));
     var pageSize = 10;
     var currentPage = 1;
-    var sortAsc = true;
 
     function getFilteredCards(){
       var query = (searchEl && searchEl.value || '').trim().toLowerCase();
@@ -49,8 +48,8 @@
       return filtered.slice().sort(function(a, b){
         var nameA = a.getAttribute('data-name') || '';
         var nameB = b.getAttribute('data-name') || '';
-        if(nameA < nameB) return sortAsc ? -1 : 1;
-        if(nameA > nameB) return sortAsc ? 1 : -1;
+        if(nameA < nameB) return -1;
+        if(nameA > nameB) return 1;
         return 0;
       });
     }
@@ -70,7 +69,7 @@
       prevBtn.className = 'am-page-btn';
       prevBtn.setAttribute('aria-label', 'Previous page');
       prevBtn.disabled = currentPage <= 1;
-      prevBtn.innerHTML = '<i data-lucide="chevron-left"></i>';
+      prevBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>';
       prevBtn.addEventListener('click', function(){
         if(currentPage > 1){
           currentPage -= 1;
@@ -99,7 +98,7 @@
       nextBtn.className = 'am-page-btn';
       nextBtn.setAttribute('aria-label', 'Next page');
       nextBtn.disabled = currentPage >= totalPages;
-      nextBtn.innerHTML = '<i data-lucide="chevron-right"></i>';
+      nextBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
       nextBtn.addEventListener('click', function(){
         if(currentPage < totalPages){
           currentPage += 1;
@@ -107,7 +106,6 @@
         }
       });
       paginationEl.appendChild(nextBtn);
-      refreshIcons();
     }
 
     function applyFilters(){
@@ -142,37 +140,28 @@
       if(columnsEl){
         columnsEl.style.display = filtered.length > 0 ? '' : 'none';
       }
+      if(searchChip){
+        searchChip.classList.toggle('is-active', !!(searchEl && (searchEl.value || '').trim()));
+      }
 
       renderPagination(totalPages);
     }
 
+    function onFilterChange(){
+      currentPage = 1;
+      applyFilters();
+    }
+
+    window.amOnUsersFilterChange = function(){
+      onFilterChange();
+    };
+
     if(searchEl){
-      searchEl.addEventListener('input', function(){
-        currentPage = 1;
-        applyFilters();
-      });
+      searchEl.addEventListener('input', onFilterChange);
     }
-    if(roleFilterEl){
-      roleFilterEl.addEventListener('change', function(){
-        currentPage = 1;
-        applyFilters();
-      });
-    }
-    if(statusFilterEl){
-      statusFilterEl.addEventListener('change', function(){
-        currentPage = 1;
-        applyFilters();
-      });
-    }
-    if(sortBtn){
-      sortBtn.addEventListener('click', function(){
-        sortAsc = !sortAsc;
-        var label = sortBtn.querySelector('span');
-        if(label) label.textContent = sortAsc ? 'Sort A–Z' : 'Sort Z–A';
-        applyFilters();
-      });
-      var sortLabel = sortBtn.querySelector('span');
-      if(sortLabel) sortLabel.textContent = 'Sort A–Z';
+
+    if(typeof window.initEpListboxes === 'function'){
+      try{ window.initEpListboxes(); }catch(err){}
     }
 
     applyFilters();

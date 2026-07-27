@@ -16,6 +16,7 @@ except ImportError:
 
 from flask import (
     Flask,
+    Response,
     g,
     jsonify,
     redirect,
@@ -26,12 +27,15 @@ from flask import (
     session,
     url_for,
 )
-from werkzeug.security import check_password_hash
 
+import auth_security
+from mailer import app_base_url, send_account_unlock_email, smtp_configured
 from db import (
     SQL_NOW,
     POS_INVOICE_ORDER_TYPES,
     POS_INVOICE_ORDER_TYPE_LABELS,
+    POS_INVOICE_SETTLEMENT_STATUSES,
+    POS_INVOICE_SETTLEMENT_STATUS_LABELS,
     clear_all_pos_tables,
     close_pos_invoice_and_free_table,
     delete_customer_record,
@@ -119,6 +123,7 @@ from workspace_access import (
 from employee_payroll import register_employee_payroll
 from embed_helpers import is_embed_request, is_partial_main_request
 from masters import build_masters_dashboard
+from reports import build_reports_dashboard
 from stores import register_stores
 
 app = Flask(__name__)
@@ -365,6 +370,9 @@ def get_current_user():
     finally:
         conn.close()
     if user and not user.get("is_active"):
+        session.pop(AUTH_USER_SESSION_KEY, None)
+        user = None
+    if user and user.get("is_locked"):
         session.pop(AUTH_USER_SESSION_KEY, None)
         user = None
     g.current_user = user
@@ -2970,22 +2978,235 @@ def favicon():
 def index():
     if get_current_user():
         return redirect(url_for("home"))
-    return render_template("index.html")
+    notice = session.pop("login_notice", "")
+    return render_template(
+        "index.html",
+        error="",
+        notice=notice,
+        username="",
+        show_captcha=False,
+        account_locked=False,
+    )
+
+
+def _login_page(
+    *,
+    error="",
+    notice="",
+    username="",
+    show_captcha=False,
+    account_locked=False,
+):
+    return render_template(
+        "index.html",
+        error=error,
+        notice=notice,
+        username=username or "",
+        show_captcha=bool(show_captcha),
+        account_locked=bool(account_locked),
+    )
+
+
+def _send_unlock_email_for_user(conn, row):
+    """
+    Issue unlock token and attempt email delivery.
+    Returns {"ok": bool, "reason": "sent"|"no_email"|"smtp_not_configured"|"send_failed"}
+    """
+    email = (row["email"] if row and "email" in row.keys() else "") or ""
+    email = email.strip()
+    if not email:
+        return {"ok": False, "reason": "no_email"}
+    token = auth_security.issue_unlock_token(conn, int(row["id"]))
+    base = app_base_url(request)
+    unlock_url = f"{base}{url_for('unlock_account', token=token)}"
+    sent = send_account_unlock_email(
+        to_addr=email,
+        username=row["username"],
+        unlock_url=unlock_url,
+    )
+    if sent:
+        return {"ok": True, "reason": "sent"}
+    if not smtp_configured():
+        return {"ok": False, "reason": "smtp_not_configured"}
+    return {"ok": False, "reason": "send_failed"}
+
+
+def _locked_account_message(send_result=None):
+    reason = (send_result or {}).get("reason")
+    if reason == "sent":
+        return (
+            "This account is locked after too many failed sign-in attempts. "
+            "Check your email for an unlock link, or ask an administrator."
+        )
+    if reason == "no_email":
+        return (
+            "This account is locked after too many failed sign-in attempts. "
+            "No email is on file — ask an administrator to unlock the account."
+        )
+    if reason in ("smtp_not_configured", "send_failed"):
+        return (
+            "This account is locked after too many failed sign-in attempts. "
+            "Unlock email could not be sent — ask an administrator to unlock the account "
+            "(or configure SMTP_HOST in .env)."
+        )
+    return (
+        "This account is locked after too many failed sign-in attempts. "
+        "Ask an administrator to unlock the account, or use Resend unlock email."
+    )
 
 
 @app.route("/login", methods=["POST"])
 def login():
     username = (request.form.get("username") or "").strip()
     password = request.form.get("password") or ""
+    captcha_answer = request.form.get("captcha") or ""
+    ip = auth_security.client_ip_from_request(request)
+    auth_security.note_ip_login_attempt(ip)
+
+    if auth_security.ip_is_throttled(ip):
+        return _login_page(
+            error="Too many sign-in attempts from this network. Please wait and try again.",
+            username=username,
+        )
+
     conn = get_db()
     try:
-        row = conn.execute("SELECT * FROM users WHERE username = ? AND is_active = 1", (username,)).fetchone()
+        row = conn.execute(
+            "SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND is_active = 1",
+            (username,),
+        ).fetchone()
+
+        if row and auth_security.is_account_locked(row):
+            return _login_page(
+                error=_locked_account_message(),
+                username=username,
+                account_locked=True,
+            )
+
+        needs_captcha = auth_security.captcha_is_required(row)
+        if needs_captcha:
+            if not auth_security.verify_captcha_answer(session, captcha_answer):
+                state = auth_security.record_failed_login(conn, int(row["id"]))
+                conn.commit()
+                if state["newly_locked"]:
+                    send_result = _send_unlock_email_for_user(conn, row)
+                    conn.commit()
+                    return _login_page(
+                        error=_locked_account_message(send_result),
+                        username=username,
+                        account_locked=True,
+                    )
+                return _login_page(
+                    error="CAPTCHA was incorrect. Please try again.",
+                    username=username,
+                    show_captcha=True,
+                )
+
+        password_ok = auth_security.verify_password_for_row(row, password)
+        if not row or not password_ok:
+            if row:
+                state = auth_security.record_failed_login(conn, int(row["id"]))
+                conn.commit()
+                if state["newly_locked"]:
+                    send_result = _send_unlock_email_for_user(conn, row)
+                    conn.commit()
+                    return _login_page(
+                        error=_locked_account_message(send_result),
+                        username=username,
+                        account_locked=True,
+                    )
+                return _login_page(
+                    error="Invalid username or password.",
+                    username=username,
+                    show_captcha=state["captcha_required"],
+                )
+            auth_security.record_unknown_user_failure()
+            return _login_page(
+                error="Invalid username or password.",
+                username=username,
+            )
+
+        auth_security.clear_login_failures(conn, int(row["id"]))
+        conn.commit()
     finally:
         conn.close()
-    if not row or not check_password_hash(row["password_hash"], password):
-        return render_template("index.html", error="Invalid username or password.")
+
+    auth_security.clear_captcha_challenge(session)
+    session.clear()
     session[AUTH_USER_SESSION_KEY] = row["id"]
     return redirect(url_for("home"))
+
+
+@app.route("/login/captcha")
+def login_captcha():
+    answer = auth_security.generate_captcha_text()
+    auth_security.store_captcha_challenge(session, answer)
+    png = auth_security.render_captcha_png(answer)
+    return Response(png, mimetype="image/png")
+
+
+@app.route("/login/resend-unlock", methods=["POST"])
+def login_resend_unlock():
+    username = (request.form.get("username") or "").strip()
+    notice = "If that account exists and is locked, an unlock email has been sent."
+    account_locked = False
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM users WHERE LOWER(username) = LOWER(?) AND is_active = 1",
+            (username,),
+        ).fetchone()
+        if not row:
+            # Keep generic notice to avoid account enumeration.
+            account_locked = True
+        elif not auth_security.is_account_locked(row):
+            notice = "That account is not locked. You can sign in with your password."
+            account_locked = False
+        else:
+            account_locked = True
+            send_result = _send_unlock_email_for_user(conn, row)
+            conn.commit()
+            if send_result.get("ok"):
+                notice = "Unlock email sent. Check your inbox (and spam folder)."
+            elif send_result.get("reason") == "no_email":
+                notice = (
+                    "This account is locked, but no email is on file. "
+                    "Ask an administrator to unlock the account."
+                )
+            elif send_result.get("reason") == "smtp_not_configured":
+                notice = (
+                    "This account is locked, but SMTP is not configured on the server "
+                    "(set SMTP_HOST in .env). Ask an administrator to unlock the account."
+                )
+            else:
+                notice = (
+                    "This account is locked, but unlock email could not be sent. "
+                    "Ask an administrator to unlock the account."
+                )
+    finally:
+        conn.close()
+    return _login_page(
+        notice=notice,
+        username=username,
+        account_locked=account_locked,
+    )
+
+
+@app.route("/unlock-account")
+def unlock_account():
+    token = (request.args.get("token") or "").strip()
+    conn = get_db()
+    try:
+        user_id = auth_security.verify_and_consume_unlock_token(conn, token)
+        if user_id:
+            conn.commit()
+            session["login_notice"] = "Your account has been unlocked. Please sign in."
+            return redirect(url_for("index"))
+    finally:
+        conn.close()
+    return _login_page(
+        error="This unlock link is invalid or has expired. Request a new unlock email or contact an administrator.",
+    )
 
 
 @app.route("/logout")
@@ -3017,6 +3238,18 @@ def master():
     )
 
 
+@app.route("/reports")
+def reports():
+    """Cross-module reports hub — view and download module reports."""
+    payload = build_reports_dashboard(url_for)
+    return render_template(
+        "reports.html",
+        de_nav_section="report",
+        de_nav_report_view="home",
+        **payload,
+    )
+
+
 @app.route("/point-of-sale")
 def point_of_sale():
     """Point of Sale Tables floor — counter workspace (not Sales Analytics)."""
@@ -3030,8 +3263,31 @@ def point_of_sale():
 @app.route("/point-of-sale/invoice")
 def point_of_sale_invoice():
     """POS Invoice workspace."""
+    conn = get_db()
+    try:
+        tip_employees = _active_employees_for_tips(conn)
+    finally:
+        conn.close()
+    tip_employee_options = [("", "Select employee…")] + [
+        (
+            str(emp["id"]),
+            (
+                f'{emp["name"]} ({emp["emp_code"]})'
+                if emp.get("emp_code")
+                else emp["name"]
+            ),
+        )
+        for emp in tip_employees
+    ]
     return render_template(
         "point_of_sale_invoice.html",
+        tip_employees=tip_employees,
+        tip_employee_options=tip_employee_options,
+        tip_company=DEFAULT_COMPANY,
+        tip_location=OUTLET_RESTAURANT,
+        tip_add_url=url_for("sales_update_add_tip"),
+        tip_edit_url=url_for("sales_update_edit_tip"),
+        tip_delete_url=url_for("sales_update_delete_tip"),
         de_nav_section="pos",
         de_nav_pos_view="invoice",
     )
@@ -3071,6 +3327,11 @@ def _pos_invoice_ledger_filters(args):
         selected_order_type = "all"
     order_type_filter = None if selected_order_type == "all" else selected_order_type
 
+    selected_settlement = (args.get("settlement") or "all").strip().lower()
+    if selected_settlement not in ("all",) and selected_settlement not in POS_INVOICE_SETTLEMENT_STATUS_LABELS:
+        selected_settlement = "all"
+    settlement_filter = None if selected_settlement == "all" else selected_settlement
+
     return {
         "today": today,
         "date_from": date_from,
@@ -3080,6 +3341,8 @@ def _pos_invoice_ledger_filters(args):
         "query_date_to": query_date_to,
         "selected_order_type": selected_order_type,
         "order_type_filter": order_type_filter,
+        "selected_settlement": selected_settlement,
+        "settlement_filter": settlement_filter,
     }
 
 
@@ -3096,23 +3359,36 @@ def point_of_sale_invoice_ledger():
             date_from=filters["query_date_from"].isoformat(),
             date_to=filters["query_date_to"].isoformat(),
             order_type=filters["order_type_filter"],
+            settlement=filters["settlement_filter"],
         )
         kpis = pos_invoice_kpis(conn, invoices, today=filters["today"].isoformat())
     finally:
         conn.close()
 
     selected_order_type = filters["selected_order_type"]
-    selected_order_type_label = "All order types"
+    selected_order_type_label = "All"
     if selected_order_type != "all":
         selected_order_type_label = POS_INVOICE_ORDER_TYPE_LABELS.get(
             selected_order_type, selected_order_type
         )
 
+    selected_settlement = filters["selected_settlement"]
+    selected_settlement_label = "All"
+    if selected_settlement != "all":
+        selected_settlement_label = POS_INVOICE_SETTLEMENT_STATUS_LABELS.get(
+            selected_settlement, selected_settlement
+        )
+
     clear_kwargs = {}
     if selected_order_type != "all":
         clear_kwargs["order_type"] = selected_order_type
+    if selected_settlement != "all":
+        clear_kwargs["settlement"] = selected_settlement
 
-    report_kwargs = {"order_type": selected_order_type}
+    report_kwargs = {
+        "order_type": selected_order_type,
+        "settlement": selected_settlement,
+    }
     if filters["date_filter_active"]:
         report_kwargs["date_from"] = filters["date_from"].isoformat()
         report_kwargs["date_to"] = filters["date_to"].isoformat()
@@ -3125,6 +3401,9 @@ def point_of_sale_invoice_ledger():
         order_types=POS_INVOICE_ORDER_TYPES,
         selected_order_type=selected_order_type,
         selected_order_type_label=selected_order_type_label,
+        settlement_statuses=POS_INVOICE_SETTLEMENT_STATUSES,
+        selected_settlement=selected_settlement,
+        selected_settlement_label=selected_settlement_label,
         date_from=filters["date_from"].isoformat() if filters["date_from"] else "",
         date_to=filters["date_to"].isoformat() if filters["date_to"] else "",
         today_iso=filters["today"].isoformat(),
@@ -3154,6 +3433,7 @@ def export_pos_invoice_ledger_report():
             date_from=filters["query_date_from"].isoformat(),
             date_to=filters["query_date_to"].isoformat(),
             order_type=filters["order_type_filter"],
+            settlement=filters["settlement_filter"],
         )
     finally:
         conn.close()
@@ -6460,7 +6740,12 @@ def sales_update_edit_tip():
     finally:
         conn.close()
 
-    return jsonify({"ok": True, "tip_total": tip_total, "tip_entries": tip_entries})
+    return jsonify({
+        "ok": True,
+        "tip_id": tip_id,
+        "tip_total": tip_total,
+        "tip_entries": tip_entries,
+    })
 
 
 @app.route("/sales_update/delete_tip", methods=["POST"])
@@ -7585,6 +7870,7 @@ def access_management():
         "id": selected_user["id"] if selected_user else "",
         "username": selected_user["username"] if selected_user else "",
         "full_name": selected_user.get("full_name", "") if selected_user else "",
+        "email": selected_user.get("email", "") if selected_user else "",
         "is_admin": bool(selected_user["is_admin"]) if selected_user else False,
         "dashboard_modules": dashboard_access_list(selected_user) if selected_user else [],
         "sales_analytics_modules": sales_analytics_access_list(selected_user) if selected_user else [],
@@ -7616,6 +7902,7 @@ def save_access_user():
     user_id_raw = request.form.get("user_id", "").strip()
     username = normalize_username(request.form.get("username"))
     full_name = (request.form.get("full_name") or "").strip()
+    email = (request.form.get("email") or "").strip()
     password = request.form.get("password", "")
     is_admin = bool(request.form.get("is_admin"))
     dashboard_modules = request.form.getlist("dashboard_modules")
@@ -7656,6 +7943,7 @@ def save_access_user():
             payroll_modules=payroll_modules,
             accounts_modules=accounts_modules,
             stores_modules=stores_modules,
+            email=email,
         )
         if errors:
             users, selected_user = fetch_access_management_users(conn, user_id)
@@ -7663,6 +7951,7 @@ def save_access_user():
                 "id": user_id or "",
                 "username": username,
                 "full_name": full_name,
+                "email": email,
                 "is_admin": is_admin,
                 "dashboard_modules": dashboard_modules,
                 "sales_analytics_modules": sales_analytics_modules,
@@ -7686,6 +7975,7 @@ def save_access_user():
             user_id=user_id,
             username=username,
             full_name=full_name,
+            email=email,
             password=password,
             is_admin=is_admin,
             dashboard_modules=dashboard_modules,
@@ -7705,6 +7995,26 @@ def save_access_user():
         get_current_user()
 
     return redirect(url_for("access_management", user_id=saved_user_id, saved=result_flag))
+
+
+@app.route("/access-management/unlock/<int:user_id>", methods=["POST"])
+def unlock_access_user(user_id):
+    actor = get_current_user()
+    if not user_can_access_user_access_submodule(actor, "users"):
+        return _permission_denied_response("You do not have access to unlock users.")
+
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            _queue_auth_notice("User not found.")
+            return redirect(url_for("access_management"))
+        auth_security.admin_unlock_user(conn, user_id)
+        conn.commit()
+        _queue_auth_notice(f"Unlocked account for {row['username']}.")
+    finally:
+        conn.close()
+    return redirect(url_for("access_management"))
 
 
 @app.route("/access-management/delete/<int:user_id>", methods=["POST"])

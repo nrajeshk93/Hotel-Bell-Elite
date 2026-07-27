@@ -59,6 +59,11 @@ body.login-page{
   background:#FEF2F2;border:1px solid rgba(220,38,38,.2);color:#DC2626;
   font-size:13px;font-weight:600;
 }
+.login-notice{
+  margin-bottom:16px;padding:10px 12px;border-radius:10px;
+  background:#EFF6FF;border:1px solid rgba(37,99,235,.2);color:#1D4ED8;
+  font-size:13px;font-weight:600;
+}
 .login-form{display:flex;flex-direction:column;gap:14px}
 .form-group label{display:block;font-size:12px;font-weight:600;color:#6B7280;margin-bottom:6px}
 .form-group input{
@@ -67,6 +72,18 @@ body.login-page{
   transition:border-color .2s ease,box-shadow .2s ease;
 }
 .form-group input:focus{border-color:#BFDBFE;box-shadow:0 0 0 4px rgba(37,99,235,.12)}
+.login-captcha-row{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+}
+.login-captcha-img{
+  display:block;border-radius:10px;border:1px solid #E5E7EB;background:#EFF6FF;
+  height:56px;width:160px;
+}
+.login-captcha-refresh{
+  width:40px;height:40px;border-radius:10px;border:1px solid #E5E7EB;background:#fff;
+  color:#2563EB;font-size:18px;cursor:pointer;line-height:1;
+}
+.login-captcha-refresh:hover{background:#F8FAFC}
 .login-btn{
   margin-top:8px;height:46px;border:none;border-radius:12px;background:#2563EB;color:#fff;
   font:600 15px Outfit,system-ui,sans-serif;cursor:pointer;
@@ -74,3 +91,9 @@ body.login-page{
 }
 .login-btn:hover{background:#1D4ED8}
 .login-btn:active{transform:scale(.98)}
+.login-resend-form{margin-top:14px;text-align:center}
+.login-resend-btn{
+  border:none;background:transparent;color:#2563EB;font:600 13px Outfit,system-ui,sans-serif;
+  cursor:pointer;text-decoration:underline;padding:0;
+}
+.login-resend-btn:hover{color:#1D4ED8}

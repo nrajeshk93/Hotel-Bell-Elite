@@ -702,7 +702,8 @@ body.pos-settings-module .modal-box h3 svg{color:var(--pos-primary);flex-shrink:
   letter-spacing:.4px;
   margin-bottom:5px;
 }
-.pos-floor-props-field input{
+.pos-floor-props-field input,
+.pos-floor-props-field select{
   width:100%;
   min-height:44px;
   padding:9px 12px;
@@ -713,8 +714,10 @@ body.pos-settings-module .modal-box h3 svg{color:var(--pos-primary);flex-shrink:
   color:var(--pos-text);
   background:#fff;
   outline:none;
+  box-sizing:border-box;
 }
-.pos-floor-props-field input:focus{
+.pos-floor-props-field input:focus,
+.pos-floor-props-field select:focus{
   border-color:#93C5FD;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
 }

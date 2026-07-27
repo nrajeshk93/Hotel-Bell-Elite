@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Hotel Bell Elite</title>
   {% include 'partials/de_android_head.html' %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='login_premium.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='login_premium.css') }}?v=2" />
 </head>
 <body class="login-page">
   <div class="login-orb login-orb-1" aria-hidden="true"></div>
@@ -16,21 +16,53 @@
     <h1 class="login-title">Hotel Bell Elite</h1>
     <p class="login-subtitle">Sales update — sign in to continue</p>
 
+    {% if notice %}
+      <div class="login-notice">{{ notice }}</div>
+    {% endif %}
     {% if error %}
       <div class="login-error">{{ error }}</div>
     {% endif %}
 
-    <form method="POST" action="{{ url_for('login') }}" class="login-form">
+    <form method="POST" action="{{ url_for('login') }}" class="login-form" autocomplete="on">
       <div class="form-group">
         <label for="username">Username</label>
-        <input type="text" id="username" name="username" placeholder="admin" autocomplete="username" required />
+        <input type="text" id="username" name="username" placeholder="admin" autocomplete="username" value="{{ username or '' }}" required />
       </div>
       <div class="form-group">
         <label for="password">Password</label>
         <input type="password" id="password" name="password" placeholder="Enter password" autocomplete="current-password" required />
       </div>
+      {% if show_captcha %}
+      <div class="form-group login-captcha-group">
+        <label for="captcha">CAPTCHA</label>
+        <div class="login-captcha-row">
+          <img class="login-captcha-img" src="{{ url_for('login_captcha') }}" alt="CAPTCHA image" width="160" height="56">
+          <button type="button" class="login-captcha-refresh" id="login-captcha-refresh" aria-label="Refresh CAPTCHA">↻</button>
+        </div>
+        <input type="text" id="captcha" name="captcha" placeholder="Enter the characters above" autocomplete="off" autocapitalize="characters" spellcheck="false" required />
+      </div>
+      {% endif %}
       <button type="submit" class="login-btn">Sign In</button>
     </form>
+
+    {% if account_locked %}
+    <form method="POST" action="{{ url_for('login_resend_unlock') }}" class="login-resend-form">
+      <input type="hidden" name="username" value="{{ username or '' }}">
+      <button type="submit" class="login-resend-btn">Resend unlock email</button>
+    </form>
+    {% endif %}
   </div>
+  {% if show_captcha %}
+  <script>
+  (function(){
+    var btn = document.getElementById('login-captcha-refresh');
+    var img = document.querySelector('.login-captcha-img');
+    if(!btn || !img) return;
+    btn.addEventListener('click', function(){
+      img.src = {{ url_for('login_captcha')|tojson }} + '?t=' + Date.now();
+    });
+  })();
+  </script>
+  {% endif %}
 </body>
 </html>

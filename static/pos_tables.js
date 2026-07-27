@@ -735,11 +735,10 @@
         return true;
       })
       .sort(function (a, b) {
-        var sa = mapStatus(a.status);
-        var sb = mapStatus(b.status);
-        if (sa === 'occupied' && sb !== 'occupied') return -1;
-        if (sb === 'occupied' && sa !== 'occupied') return 1;
-        return String(a.name || '').localeCompare(String(b.name || ''), undefined, { numeric: true });
+        return String(a.name || '').localeCompare(String(b.name || ''), undefined, {
+          numeric: true,
+          sensitivity: 'base'
+        });
       });
   }
 
@@ -1418,7 +1417,8 @@
             : '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="merge">Merge tables</button>') +
           '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="reserve">Reserve</button>' +
           '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="occupied">Occupy</button>' +
-          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="available">Set available</button>';
+          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="available">Set available</button>' +
+          '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="inactive">Inactive</button>';
         html +=
           '<article class="pos-table-tile pos-table-tile--' +
           escapeHtml(status) +
@@ -1580,6 +1580,10 @@
     }
     if (action === 'available') {
       setTableStatus(root, id, 'available');
+      return;
+    }
+    if (action === 'inactive') {
+      setTableStatus(root, id, 'inactive');
     }
   }
 

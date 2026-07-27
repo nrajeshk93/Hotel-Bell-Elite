@@ -150,7 +150,18 @@
       </a>
       {% endif %}
 
-      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('stores') and not has_dashboard_access('master') %}
+      {% if has_dashboard_access('reports') %}
+      <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('reports') }}" data-search="reports download excel export ledger" aria-label="Open Reports">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+        </div>
+        <h2>Report</h2>
+        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <p class="db-home-card-desc">View and download reports across all modules.</p>
+      </a>
+      {% endif %}
+
+      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('stores') and not has_dashboard_access('master') and not has_dashboard_access('reports') %}
       <div class="db-home-empty" role="status">
         <h2>No modules assigned yet</h2>
         <p>This account is active, but no dashboard modules have been assigned. Ask an administrator to grant access so your modules appear here.</p>

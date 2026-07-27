@@ -12,8 +12,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=25">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=14">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=16">
 <script>
 (function(){
   try{
@@ -95,14 +95,14 @@
               </span>
               <input type="hidden" id="pos-menu-filter-status" value="">
               <button type="button" class="se-filter-chip-trigger" id="pos-menu-filter-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-filter-status-list" aria-labelledby="pos-menu-filter-status-label pos-menu-filter-status-value">
-                <span class="se-filter-chip-value" id="pos-menu-filter-status-value">All Status</span>
+                <span class="se-filter-chip-value" id="pos-menu-filter-status-value">All</span>
               </button>
               <span class="se-filter-chip-chev" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
               </span>
             </div>
             <div class="se-filter-listbox" id="pos-menu-filter-status-list" role="listbox" aria-labelledby="pos-menu-filter-status-label" hidden>
-              <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="" data-name="all status" data-label="All Status" aria-selected="true">All Status</button>
+              <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="" data-name="all" data-label="All" aria-selected="true">All</button>
               <button type="button" class="se-filter-listbox-option" role="option" data-value="visible" data-name="visible" data-label="Visible" aria-selected="false">Visible</button>
               <button type="button" class="se-filter-listbox-option" role="option" data-value="hidden" data-name="hidden" data-label="Hidden" aria-selected="false">Hidden</button>
             </div>

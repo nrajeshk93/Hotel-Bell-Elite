@@ -1,0 +1,260 @@
+"""Login lockout, CAPTCHA, and email unlock security tests."""
+
+import os
+import tempfile
+import unittest
+from datetime import datetime, timedelta
+from unittest import mock
+
+import db as db_mod
+from werkzeug.security import generate_password_hash
+
+import auth_security
+
+
+class LoginSecurityTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+
+        import app as app_mod
+
+        self.app_mod = app_mod
+        self.app = app_mod.app
+        self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
+        auth_security.reset_ip_throttle_for_tests()
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                UPDATE users
+                   SET email = ?, password_hash = ?
+                 WHERE username = 'admin'
+                """,
+                ("admin@example.com", generate_password_hash("admin")),
+            )
+            conn.execute(
+                """
+                INSERT INTO users
+                  (username, full_name, email, password_hash, is_admin, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 0, 1, datetime('now','localtime'), datetime('now','localtime'))
+                """,
+                ("locke", "Locke User", "locke@example.com", generate_password_hash("secret123")),
+            )
+            conn.commit()
+            self.user_id = conn.execute(
+                "SELECT id FROM users WHERE username = 'locke'"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+    def tearDown(self):
+        db_mod.DATABASE_PATH = self._orig_path
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def _user_row(self):
+        conn = db_mod.get_db()
+        try:
+            return dict(
+                conn.execute(
+                    "SELECT * FROM users WHERE id = ?", (self.user_id,)
+                ).fetchone()
+            )
+        finally:
+            conn.close()
+
+    def test_captcha_required_after_two_failures(self):
+        resp = None
+        for _ in range(2):
+            resp = self.client.post(
+                "/login",
+                data={"username": "locke", "password": "wrong"},
+                follow_redirects=False,
+            )
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn(b"Invalid username or password", resp.data)
+
+        row = self._user_row()
+        self.assertEqual(row["failed_login_attempts"], 2)
+        self.assertEqual(row["captcha_required"], 1)
+        self.assertFalse(row["locked_at"])
+        self.assertIn(b"CAPTCHA", resp.data)
+        self.assertIn(b'name="captcha"', resp.data)
+
+        # Correct password without CAPTCHA is rejected and counts as another failure → lock.
+        resp = self.client.post(
+            "/login",
+            data={"username": "locke", "password": "secret123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"account is locked", resp.data)
+        row = self._user_row()
+        self.assertEqual(row["failed_login_attempts"], 3)
+        self.assertTrue(row["locked_at"])
+
+    def test_lock_after_three_failures_and_unlock_token(self):
+        sent = []
+
+        def fake_send(**kwargs):
+            sent.append(kwargs)
+            return True
+
+        with mock.patch("app.send_account_unlock_email", side_effect=fake_send):
+            for _ in range(3):
+                self.client.post(
+                    "/login",
+                    data={"username": "locke", "password": "wrong", "captcha": "XXXXX"},
+                )
+
+        row = self._user_row()
+        self.assertEqual(row["failed_login_attempts"], 3)
+        self.assertTrue(row["locked_at"])
+        self.assertTrue(row["unlock_token_hash"])
+        self.assertEqual(len(sent), 1)
+        self.assertIn("unlock-account?token=", sent[0]["unlock_url"])
+
+        # Locked account cannot log in even with correct password.
+        resp = self.client.post(
+            "/login",
+            data={"username": "locke", "password": "secret123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"account is locked", resp.data)
+
+        # Extract token by re-issuing via helper and unlock.
+        conn = db_mod.get_db()
+        try:
+            token = auth_security.issue_unlock_token(conn, self.user_id)
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = self.client.get(f"/unlock-account?token={token}", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+
+        row = self._user_row()
+        self.assertFalse(row["locked_at"])
+        self.assertEqual(row["failed_login_attempts"], 0)
+        self.assertEqual(row["captcha_required"], 0)
+
+        resp = self.client.post(
+            "/login",
+            data={"username": "locke", "password": "secret123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.headers["Location"].endswith("/home"))
+
+    def test_unlock_token_single_use_and_expiry(self):
+        conn = db_mod.get_db()
+        try:
+            token = auth_security.issue_unlock_token(conn, self.user_id)
+            conn.execute(
+                "UPDATE users SET locked_at = ? WHERE id = ?",
+                (auth_security.sql_now(), self.user_id),
+            )
+            conn.commit()
+            first = auth_security.verify_and_consume_unlock_token(conn, token)
+            conn.commit()
+            self.assertEqual(first, self.user_id)
+            second = auth_security.verify_and_consume_unlock_token(conn, token)
+            self.assertIsNone(second)
+
+            token2 = auth_security.issue_unlock_token(conn, self.user_id)
+            expired = (datetime.now() - timedelta(hours=2)).strftime("%Y-%m-%d %H:%M:%S")
+            conn.execute(
+                "UPDATE users SET unlock_token_expires_at = ? WHERE id = ?",
+                (expired, self.user_id),
+            )
+            conn.commit()
+            self.assertIsNone(auth_security.verify_and_consume_unlock_token(conn, token2))
+        finally:
+            conn.close()
+
+    def test_captcha_endpoint_returns_png(self):
+        resp = self.client.get("/login/captcha")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.mimetype, "image/png")
+        self.assertTrue(resp.data.startswith(b"\x89PNG"))
+
+    def test_successful_login_clears_failures(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                UPDATE users
+                   SET failed_login_attempts = 2, captcha_required = 1
+                 WHERE id = ?
+                """,
+                (self.user_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with self.client.session_transaction() as sess:
+            sess[auth_security.CAPTCHA_SESSION_ANSWER] = "ABC12"
+            sess[auth_security.CAPTCHA_SESSION_EXPIRES] = 9999999999
+
+        resp = self.client.post(
+            "/login",
+            data={"username": "locke", "password": "secret123", "captcha": "abc12"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+        row = self._user_row()
+        self.assertEqual(row["failed_login_attempts"], 0)
+        self.assertEqual(row["captcha_required"], 0)
+
+    def test_admin_unlock_route(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                UPDATE users
+                   SET failed_login_attempts = 3,
+                       locked_at = ?,
+                       captcha_required = 0
+                 WHERE id = ?
+                """,
+                (auth_security.sql_now(), self.user_id),
+            )
+            admin_id = conn.execute(
+                "SELECT id FROM users WHERE username = 'admin'"
+            ).fetchone()["id"]
+            conn.commit()
+        finally:
+            conn.close()
+
+        with mock.patch.object(self.app_mod, "get_current_user") as get_user:
+            get_user.return_value = {
+                "id": admin_id,
+                "username": "admin",
+                "is_admin": True,
+                "is_active": True,
+                "user_access": {"users", "add"},
+                "dashboard_access": set(),
+            }
+            resp = self.client.post(
+                f"/access-management/unlock/{self.user_id}",
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 302)
+        row = self._user_row()
+        self.assertFalse(row["locked_at"])
+        self.assertEqual(row["failed_login_attempts"], 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

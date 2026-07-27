@@ -165,7 +165,27 @@
     );
   }
 
+  function ensureEmbedClose() {
+    var tools =
+      document.querySelector('#md-master-modal #pos-menu-page .pos-menu-header-actions') ||
+      document.querySelector('#md-master-modal .md-master-embed--page-shell .md-master-embed-header-actions');
+    if (!tools || tools.querySelector('[data-md-menu-close]')) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'md-master-modal-close pos-menu-embed-close';
+    btn.setAttribute('data-md-menu-close', '1');
+    btn.setAttribute('aria-label', 'Close master');
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      closeMasterModal();
+    });
+    tools.appendChild(btn);
+  }
+
   function bootPosMenuAfterEmbed() {
+    ensureEmbedClose();
     if (typeof global.initPosMenuPage === 'function') {
       try {
         global.initPosMenuPage();
@@ -270,6 +290,8 @@
       };
       if (inject.querySelector('#pos-menu-page')) {
         loadMissingPageScripts(doc).then(afterScripts).catch(afterScripts);
+      } else if (inject.querySelector('.md-master-embed--page-shell')) {
+        ensureEmbedClose();
       }
 
       var titleEl = document.getElementById('md-master-modal-title');
@@ -512,8 +534,7 @@
     bindCreateModal(
       createModal,
       [
-        document.getElementById('md-new-master-btn'),
-        document.getElementById('md-add-card')
+        document.getElementById('md-new-master-btn')
       ],
       ['#md-create-cancel'],
       signal

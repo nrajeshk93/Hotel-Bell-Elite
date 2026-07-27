@@ -1,23 +1,32 @@
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% set form = form|default({}) %}
-<div class="md-master-embed md-master-embed--employee md-master-embed--employee-form"
-     data-md-modal-title="{{ 'Edit Employee' if mode == 'edit' else 'Add Employee' }}">
-  <div class="md-master-embed-toolbar">
-    <a class="btn btn-secondary" href="{{ url_for('employees', embed=1) }}">Back to list</a>
-  </div>
-
-  <article class="card md-emp-form-card" aria-label="{{ 'Edit employee' if mode == 'edit' else 'Add employee' }}">
-    <div class="card-hdr">
-      <div class="card-title">
-        {% if mode == 'add' %}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-          Add New Employee
-        {% else %}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Edit Employee{% if form.get('id') %} <span class="md-emp-form-id">#{{ form['id'] }}</span>{% endif %}
-        {% endif %}
+{% set form_title = 'Edit Employee' if mode == 'edit' else 'Add Employee' %}
+<div class="md-master-embed md-master-embed--page-shell md-master-embed--employee md-master-embed--employee-form"
+     data-md-modal-title="{{ form_title }}">
+  <header class="se-sales-header su-header md-master-embed-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              {% if mode == 'add' %}
+              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+              {% else %}
+              <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              {% endif %}
+            </div>
+            <h1>{{ form_title }}{% if mode == 'edit' and form.get('id') %} <span class="md-emp-form-id">#{{ form['id'] }}</span>{% endif %}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools md-master-embed-header-actions">
+        <a class="btn" href="{{ url_for('employees', embed=1) }}">Back to list</a>
       </div>
     </div>
+  </header>
+
+  <div class="md-master-embed-body">
+  <article class="card md-emp-form-card" aria-label="{{ 'Edit employee' if mode == 'edit' else 'Add employee' }}">
     <div class="card-body">
       {% if errors is defined and errors %}
       <div class="alert-error">
@@ -38,6 +47,7 @@
             <label for="emp_code">Employee ID</label>
             <input type="text" id="emp_code" name="emp_code" value="{{ form.get('emp_code', '') }}" readonly
                    class="md-emp-readonly" title="Auto-generated unique ID">
+
             <div class="md-emp-field-hint">
               {% if mode == 'add' %}Auto-generated next ID — assigned uniquely on save.{% else %}System-assigned — cannot be changed.{% endif %}
             </div>
@@ -193,6 +203,7 @@
       </form>
     </div>
   </article>
+  </div>
   <script>
   (function(){
     if (typeof window.initEpListboxes === 'function') window.initEpListboxes();

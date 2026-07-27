@@ -311,6 +311,53 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(match["payment_modes"], [])
         self.assertEqual(match["payment_mode_label"], "Unsettled")
 
+    def test_ledger_filters_by_settlement_status(self):
+        open_res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-FILT-OPEN", total=500, table="T1"),
+        )
+        self.assertEqual(open_res.status_code, 200, open_res.get_data(as_text=True))
+        open_id = open_res.get_json()["invoice"]["id"]
+
+        settled_res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-FILT-PAID", total=500, table="T2"),
+        )
+        self.assertEqual(settled_res.status_code, 200, settled_res.get_data(as_text=True))
+        settled_inv = settled_res.get_json()["invoice"]
+        settled_id = settled_inv["id"]
+        total = float(settled_inv["grand_total"])
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{settled_id}/settle",
+            json={"payment_splits": [{"payment_method": "cash", "amount": total}]},
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+
+        unsettled_page = self.client.get("/point-of-sale/invoice-ledger?settlement=unsettled")
+        self.assertEqual(unsettled_page.status_code, 200)
+        unsettled_html = unsettled_page.get_data(as_text=True)
+        self.assertIn("ORD-FILT-OPEN", unsettled_html)
+        self.assertNotIn("ORD-FILT-PAID", unsettled_html)
+        self.assertIn('id="pos-il-settlement"', unsettled_html)
+        self.assertIn("Un Settled", unsettled_html)
+
+        settled_page = self.client.get("/point-of-sale/invoice-ledger?settlement=settled")
+        self.assertEqual(settled_page.status_code, 200)
+        settled_html = settled_page.get_data(as_text=True)
+        self.assertIn("ORD-FILT-PAID", settled_html)
+        self.assertNotIn("ORD-FILT-OPEN", settled_html)
+
+        conn = db_mod.get_db()
+        try:
+            unsettled_rows = db_mod.list_pos_invoices(conn, settlement="unsettled")
+            settled_rows = db_mod.list_pos_invoices(conn, settlement="settled")
+        finally:
+            conn.close()
+        self.assertTrue(any(r["id"] == open_id for r in unsettled_rows))
+        self.assertFalse(any(r["id"] == settled_id for r in unsettled_rows))
+        self.assertTrue(any(r["id"] == settled_id for r in settled_rows))
+        self.assertFalse(any(r["id"] == open_id for r in settled_rows))
+
 
 if __name__ == "__main__":
     unittest.main()

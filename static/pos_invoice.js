@@ -73,6 +73,9 @@
     discountType: 'pct',
     discountValue: 0,
     tipAmount: 0,
+    tipEmployeeId: '',
+    tipNote: '',
+    tipPayrollId: null,
     serviceType: 'pct',
     serviceValue: DEFAULT_SERVICE_PCT,
     couponCode: '',
@@ -495,8 +498,20 @@
     });
     var discHint = $('#pos-inv-sum-discount-hint', page);
     if (discHint) discHint.textContent = formatAdjHint(t.discountType, t.discountValue);
+    var discRow = $('#pos-inv-sum-discount-row', page);
+    if (discRow) {
+      var showDiscount = Number(t.discount) > 0 || Number(t.discountValue) > 0;
+      discRow.hidden = !showDiscount;
+    }
     var svcHint = $('#pos-inv-sum-service-hint', page);
     if (svcHint) svcHint.textContent = formatAdjHint(t.serviceType, t.serviceValue) || '';
+    var svcRow = $('#pos-inv-sum-service-row', page);
+    if (svcRow) {
+      var showService = Number(t.service) > 0 || Number(t.serviceValue) > 0;
+      svcRow.hidden = !showService;
+    }
+    var tipRow = $('#pos-inv-sum-tip-row', page);
+    if (tipRow) tipRow.hidden = !(Number(t.tip) > 0);
   }
 
   function canEditKitchenSentLines(page) {
@@ -542,9 +557,6 @@
           escapeHtml(line.uid) +
           '">' +
           '<td><div class="pos-inv-item-cell">' +
-          '<div class="pos-inv-item-thumb">' +
-          (line.emoji ? escapeHtml(line.emoji) : '🍽️') +
-          '</div>' +
           '<div><div class="pos-inv-item-name">' +
           escapeHtml(line.name) +
           '</div>' +
@@ -596,6 +608,8 @@
     if (!btn) return;
     var pending = pendingKotLines();
     var pendingItems = pending.length;
+    /* Appear only when there are items yet to send — same idea as Tables KOT banner. */
+    btn.hidden = pendingItems === 0;
     btn.disabled = pendingItems === 0;
     btn.classList.toggle('is-pending', pendingItems > 0);
     if (countEl) {
@@ -676,134 +690,291 @@
     }
   }
 
-  /** Customer-facing bill — distinct from the kitchen KOT ticket above. Prints
-   *  every line on the order (not just pending-KOT items) with rates, amounts,
-   *  discount/GST/service/tip and the grand total. Prefers the persisted
-   *  invoice (server totals + order no) so the printed bill always matches
-   *  what was actually saved. */
-  function printCustomerBill(page, invoice) {
-    try {
-      var win = global.open('', '_blank', 'width=420,height=680');
-      if (!win) {
-        toast('Could not open the bill window. Check your pop-up blocker.');
+  /** Customer-facing bill HTML — same layout used by Print and Send to Customer. */
+  function buildCustomerBillHtml(page, invoice) {
+    var now = new Date();
+    var orderNo = (invoice && invoice.order_no) || state.orderNo || '—';
+    var table = (invoice && (invoice.table_label || invoice.table)) || fieldValue('pos-inv-table', page) || '—';
+    var orderTypeValue =
+      (invoice && invoice.order_type) ||
+      fieldValue('pos-inv-order-type-header', page) ||
+      fieldValue('pos-inv-order-type', page) ||
+      'dine_in';
+    var orderType = ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue;
+    var customerName = (invoice && invoice.customer_name) || fieldValue('pos-inv-customer-name', page) || '';
+    var customerMobile =
+      (invoice && invoice.customer_mobile) || digitsOnly(fieldValue('pos-inv-customer-mobile', page), 10) || '';
+    var lines =
+      invoice && Array.isArray(invoice.lines) && invoice.lines.length
+        ? invoice.lines
+        : state.lines;
+    var totals = invoice
+      ? {
+          discountType: invoice.discount_type,
+          discountValue: invoice.discount_value,
+          serviceType: invoice.service_type,
+          serviceValue: invoice.service_value,
+          subtotal: invoice.subtotal,
+          discount: invoice.discount,
+          gst: invoice.gst,
+          service: invoice.service,
+          tip: invoice.tip,
+          roundOff: invoice.round_off,
+          total: invoice.grand_total
+        }
+      : calcTotals();
+
+    var rows = lines
+      .map(function (line) {
+        var qty = Number(line.qty) || 0;
+        var rate = Number(line.rate) || 0;
+        var amt = line.line_total != null ? Number(line.line_total) : rate * qty;
+        return (
+          '<tr><td class="name">' +
+          escapeHtml(line.name) +
+          (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
+          '</td><td class="qty">' +
+          qty +
+          '</td><td class="rate">' +
+          money(rate) +
+          '</td><td class="amt">' +
+          money(amt) +
+          '</td></tr>'
+        );
+      })
+      .join('');
+
+    var discHint = formatAdjHint(totals.discountType, totals.discountValue);
+    var svcHint = formatAdjHint(totals.serviceType, totals.serviceValue);
+    var custRow = customerName
+      ? '<div><span>Customer</span><span>' +
+        escapeHtml(customerName) +
+        (customerMobile ? ' · +91 ' + escapeHtml(customerMobile) : '') +
+        '</span></div>'
+      : '';
+
+    return (
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ' +
+      escapeHtml(orderNo) +
+      '</title><style>' +
+      'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:340px;margin:0 auto}' +
+      'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
+      '.sub{font-size:11px;text-align:center;color:#555;margin-bottom:10px}' +
+      '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
+      '.meta div{display:flex;justify-content:space-between;margin:2px 0;gap:8px}' +
+      'table.items{width:100%;border-collapse:collapse;font-size:12px}' +
+      'table.items th{text-align:left;font-size:11px;border-bottom:1px solid #333;padding:4px 0}' +
+      'table.items td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
+      'table.items td.qty,table.items th.qty{width:30px;text-align:center}' +
+      'table.items td.rate,table.items th.rate,table.items td.amt,table.items th.amt{width:64px;text-align:right}' +
+      '.variant{font-size:10px;color:#555}' +
+      '.totals{margin-top:10px;font-size:12px}' +
+      '.totals div{display:flex;justify-content:space-between;margin:2px 0}' +
+      '.totals .grand{font-size:15px;font-weight:700;border-top:1px solid #333;margin-top:6px;padding-top:6px}' +
+      '.foot{margin-top:14px;text-align:center;font-size:11px;color:#555}' +
+      '@media print{body{width:auto;margin:0}}' +
+      '</style></head><body>' +
+      '<h1>Hotel Bell Elite</h1>' +
+      '<div class="sub">Customer Bill</div>' +
+      '<div class="meta">' +
+      '<div><span>Order</span><span>' +
+      escapeHtml(orderNo) +
+      '</span></div>' +
+      '<div><span>Table</span><span>' +
+      escapeHtml(table) +
+      '</span></div>' +
+      '<div><span>Type</span><span>' +
+      escapeHtml(orderType) +
+      '</span></div>' +
+      '<div><span>Date</span><span>' +
+      formatDate(now) +
+      ' ' +
+      formatTime(now) +
+      '</span></div>' +
+      custRow +
+      '</div>' +
+      '<table class="items"><thead><tr><th>Item</th><th class="qty">Qty</th><th class="rate">Rate</th><th class="amt">Amt</th></tr></thead>' +
+      '<tbody>' +
+      (rows ||
+        '<tr><td colspan="4" style="text-align:center;color:#555">No items</td></tr>') +
+      '</tbody></table>' +
+      '<div class="totals">' +
+      '<div><span>Subtotal</span><span>' +
+      money(totals.subtotal) +
+      '</span></div>' +
+      '<div><span>Discount' +
+      (discHint ? ' ' + discHint : '') +
+      '</span><span>-' +
+      money(totals.discount) +
+      '</span></div>' +
+      '<div><span>GST (' +
+      GST_RATE * 100 +
+      '%)</span><span>' +
+      money(totals.gst) +
+      '</span></div>' +
+      '<div><span>Service Charge' +
+      (svcHint ? ' ' + svcHint : '') +
+      '</span><span>' +
+      money(totals.service) +
+      '</span></div>' +
+      '<div><span>Tip</span><span>' +
+      money(totals.tip) +
+      '</span></div>' +
+      '<div><span>Round Off</span><span>' +
+      money(totals.roundOff) +
+      '</span></div>' +
+      '<div class="grand"><span>Total</span><span>' +
+      money(totals.total) +
+      '</span></div>' +
+      '</div>' +
+      '<div class="foot">Thank you for dining with us!</div>' +
+      '</body></html>'
+    );
+  }
+
+  function closeInAppPrintPage() {
+    var overlay = document.getElementById('pos-inapp-print-page');
+    if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  }
+
+  /** Fullscreen-safe print page inside the workspace. */
+  function openInAppPrintPage(html, opts) {
+    opts = opts || {};
+    var autoPrint = opts.autoPrint !== false;
+    closeInAppPrintPage();
+    var host = document.getElementById('de-fs-app') || document.body;
+    var overlay = document.createElement('div');
+    overlay.id = 'pos-inapp-print-page';
+    overlay.className = 'pos-inapp-print-page';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', 'Print page');
+    overlay.innerHTML =
+      '<div class="pos-inapp-print-toolbar">' +
+      '<span class="pos-inapp-print-title">Print page</span>' +
+      '<div class="pos-inapp-print-actions">' +
+      '<button type="button" class="pos-inapp-print-btn" data-pos-inapp-print>Print</button>' +
+      '<button type="button" class="pos-inapp-print-btn pos-inapp-print-btn--ghost" data-pos-inapp-close>Close</button>' +
+      '</div></div>' +
+      '<iframe class="pos-inapp-print-frame" title="Print page"></iframe>';
+    host.appendChild(overlay);
+
+    var frame = overlay.querySelector('iframe');
+    var idoc =
+      frame && (frame.contentDocument || (frame.contentWindow && frame.contentWindow.document));
+    if (!idoc) {
+      closeInAppPrintPage();
+      return false;
+    }
+    idoc.open();
+    idoc.write(html);
+    idoc.close();
+
+    function doPrint() {
+      try {
+        if (frame.contentWindow) {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+        }
+      } catch (err) {}
+    }
+
+    overlay.addEventListener('click', function (event) {
+      if (event.target.closest('[data-pos-inapp-close]')) {
+        closeInAppPrintPage();
         return;
       }
-      var now = new Date();
-      var orderNo = (invoice && invoice.order_no) || state.orderNo || '—';
-      var table = (invoice && (invoice.table_label || invoice.table)) || fieldValue('pos-inv-table', page) || '—';
-      var orderTypeValue =
-        (invoice && invoice.order_type) ||
-        fieldValue('pos-inv-order-type-header', page) ||
-        fieldValue('pos-inv-order-type', page) ||
-        'dine_in';
-      var orderType = ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue;
-      var customerName = (invoice && invoice.customer_name) || fieldValue('pos-inv-customer-name', page) || '';
-      var customerMobile =
-        (invoice && invoice.customer_mobile) || digitsOnly(fieldValue('pos-inv-customer-mobile', page), 10) || '';
-      var lines =
-        invoice && Array.isArray(invoice.lines) && invoice.lines.length
-          ? invoice.lines
-          : state.lines;
-      var totals = invoice
-        ? {
-            discountType: invoice.discount_type,
-            discountValue: invoice.discount_value,
-            serviceType: invoice.service_type,
-            serviceValue: invoice.service_value,
-            subtotal: invoice.subtotal,
-            discount: invoice.discount,
-            gst: invoice.gst,
-            service: invoice.service,
-            tip: invoice.tip,
-            roundOff: invoice.round_off,
-            total: invoice.grand_total
-          }
-        : calcTotals();
+      if (event.target.closest('[data-pos-inapp-print]')) {
+        doPrint();
+      }
+    });
+    document.addEventListener(
+      'keydown',
+      function onEsc(ev) {
+        if (ev.key !== 'Escape') return;
+        document.removeEventListener('keydown', onEsc);
+        closeInAppPrintPage();
+      },
+      { once: true }
+    );
+    if (autoPrint) setTimeout(doPrint, 300);
+    return true;
+  }
 
-      var rows = lines
-        .map(function (line) {
-          var qty = Number(line.qty) || 0;
-          var rate = Number(line.rate) || 0;
-          var amt = line.line_total != null ? Number(line.line_total) : rate * qty;
-          return (
-            '<tr><td class="name">' +
-            escapeHtml(line.name) +
-            (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
-            '</td><td class="qty">' +
-            qty +
-            '</td><td class="rate">' +
-            money(rate) +
-            '</td><td class="amt">' +
-            money(amt) +
-            '</td></tr>'
-          );
-        })
-        .join('');
+  function openBillPrintPage(html, opts) {
+    opts = opts || {};
+    var autoPrint = opts.autoPrint !== false;
+    var width = opts.width || 420;
+    var height = opts.height || 680;
 
-      var discHint = formatAdjHint(totals.discountType, totals.discountValue);
-      var svcHint = formatAdjHint(totals.serviceType, totals.serviceValue);
-      var custRow = customerName
-        ? '<div><span>Customer</span><span>' +
-          escapeHtml(customerName) +
-          (customerMobile ? ' · +91 ' + escapeHtml(customerMobile) : '') +
-          '</span></div>'
-        : '';
-
-      var html =
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ' +
-        escapeHtml(orderNo) +
-        '</title><style>' +
-        'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:340px;margin:0 auto}' +
-        'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
-        '.sub{font-size:11px;text-align:center;color:#555;margin-bottom:10px}' +
-        '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
-        '.meta div{display:flex;justify-content:space-between;margin:2px 0;gap:8px}' +
-        'table.items{width:100%;border-collapse:collapse;font-size:12px}' +
-        'table.items th{text-align:left;font-size:11px;border-bottom:1px solid #333;padding:4px 0}' +
-        'table.items td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
-        'table.items td.qty,table.items th.qty{width:30px;text-align:center}' +
-        'table.items td.rate,table.items th.rate,table.items td.amt,table.items th.amt{width:64px;text-align:right}' +
-        '.variant{font-size:10px;color:#555}' +
-        '.totals{margin-top:10px;font-size:12px}' +
-        '.totals div{display:flex;justify-content:space-between;margin:2px 0}' +
-        '.totals .grand{font-size:15px;font-weight:700;border-top:1px solid #333;margin-top:6px;padding-top:6px}' +
-        '.foot{margin-top:14px;text-align:center;font-size:11px;color:#555}' +
-        '</style></head><body>' +
-        '<h1>Hotel Bell Elite</h1>' +
-        '<div class="sub">Customer Bill</div>' +
-        '<div class="meta">' +
-        '<div><span>Order</span><span>' + escapeHtml(orderNo) + '</span></div>' +
-        '<div><span>Table</span><span>' + escapeHtml(table) + '</span></div>' +
-        '<div><span>Type</span><span>' + escapeHtml(orderType) + '</span></div>' +
-        '<div><span>Date</span><span>' + formatDate(now) + ' ' + formatTime(now) + '</span></div>' +
-        custRow +
-        '</div>' +
-        '<table class="items"><thead><tr><th>Item</th><th class="qty">Qty</th><th class="rate">Rate</th><th class="amt">Amt</th></tr></thead>' +
-        '<tbody>' + rows + '</tbody></table>' +
-        '<div class="totals">' +
-        '<div><span>Subtotal</span><span>' + money(totals.subtotal) + '</span></div>' +
-        '<div><span>Discount' + (discHint ? ' ' + discHint : '') + '</span><span>-' + money(totals.discount) + '</span></div>' +
-        '<div><span>GST (' + (GST_RATE * 100) + '%)</span><span>' + money(totals.gst) + '</span></div>' +
-        '<div><span>Service Charge' + (svcHint ? ' ' + svcHint : '') + '</span><span>' + money(totals.service) + '</span></div>' +
-        '<div><span>Tip</span><span>' + money(totals.tip) + '</span></div>' +
-        '<div><span>Round Off</span><span>' + money(totals.roundOff) + '</span></div>' +
-        '<div class="grand"><span>Total</span><span>' + money(totals.total) + '</span></div>' +
-        '</div>' +
-        '<div class="foot">Thank you for dining with us!</div>' +
-        '</body></html>';
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(function () {
+    try {
+      var win = global.open('', '_blank', 'width=' + width + ',height=' + height);
+      if (win) {
         try {
-          win.print();
+          win.document.open();
+          win.document.write(html);
+          win.document.close();
+          win.focus();
+          if (autoPrint) {
+            setTimeout(function () {
+              try {
+                win.print();
+              } catch (err) {}
+            }, 250);
+          }
+          return true;
         } catch (err) {
-          /* Best-effort print; ignore if the browser blocks it. */
+          try {
+            win.close();
+          } catch (closeErr) {}
         }
-      }, 250);
+      }
+    } catch (err) {}
+
+    try {
+      var blob = new Blob([html], { type: 'text/html' });
+      var url = URL.createObjectURL(blob);
+      var blobWin = global.open(url, '_blank', 'width=' + width + ',height=' + height);
+      if (blobWin) {
+        setTimeout(function () {
+          try {
+            blobWin.focus();
+            if (autoPrint) blobWin.print();
+          } catch (err) {}
+          setTimeout(function () {
+            URL.revokeObjectURL(url);
+          }, 60000);
+        }, 300);
+        return true;
+      }
+      URL.revokeObjectURL(url);
+    } catch (err) {}
+
+    return openInAppPrintPage(html, { autoPrint: autoPrint });
+  }
+
+  /** Customer-facing bill — distinct from the kitchen KOT ticket above. */
+  function printCustomerBill(page, invoice, opts) {
+    opts = opts || {};
+    try {
+      var html = buildCustomerBillHtml(page, invoice);
+      if (!openBillPrintPage(html, { autoPrint: opts.autoPrint !== false })) {
+        toast('Could not open the print page. Check your pop-up blocker.');
+      }
     } catch (err) {
-      /* Printing is best-effort only — order state below is unaffected. */
+      toast('Could not open the print page.');
     }
+  }
+
+  function openToolbarPrintPage(page) {
+    if (!state.lines.length) {
+      toast('Add at least one item before printing.');
+      var search = $('#pos-inv-search', page);
+      if (search) search.focus();
+      return;
+    }
+    /* Land on the print page; staff print from there (or browser print). */
+    printCustomerBill(page, null, { autoPrint: false });
   }
 
   function sendKot(page) {
@@ -1411,6 +1582,9 @@
     state.discountType = 'pct';
     state.discountValue = 0;
     state.tipAmount = 0;
+    state.tipEmployeeId = '';
+    state.tipNote = '';
+    state.tipPayrollId = null;
     state.serviceType = 'pct';
     state.serviceValue = DEFAULT_SERVICE_PCT;
     state.couponCode = '';
@@ -2018,16 +2192,16 @@
     if (allocBody) {
       allocBody.innerHTML =
         '<tr>' +
-        '<td><span class="cp-alloc-code">' +
+        '<td><div class="cp-alloc-order"><span class="cp-alloc-code">' +
         escapeHtml(orderNo) +
         '</span>' +
         (table
           ? '<span class="cp-alloc-supplier">' + escapeHtml(table) + '</span>'
           : '') +
-        '</td>' +
-        '<td class="pl-col-amount">' +
+        '</div></td>' +
+        '<td class="pl-col-amount"><span class="cp-alloc-total-value">' +
         escapeHtml(settleMoneyLabel(total)) +
-        '</td>' +
+        '</span></td>' +
         '<td class="pl-col-amount"><input class="cp-alloc-input" type="number" value="' +
         escapeHtml(total) +
         '" disabled aria-label="Pay now amount"></td>' +
@@ -2317,14 +2491,205 @@
     updateAdjPreview(page, 'service');
   }
 
+  function tipConfig(page) {
+    var root = page || document.getElementById('pos-invoice-page');
+    if (!root) return {};
+    return {
+      company: root.getAttribute('data-tip-company') || 'HBE',
+      location: root.getAttribute('data-tip-location') || 'Restaurant',
+      addUrl: root.getAttribute('data-tip-add-url') || '/sales_update/add_tip',
+      editUrl: root.getAttribute('data-tip-edit-url') || '/sales_update/edit_tip',
+      deleteUrl: root.getAttribute('data-tip-delete-url') || '/sales_update/delete_tip'
+    };
+  }
+
+  function setTipError(page, msg) {
+    var err = $('#pos-inv-tip-error', page);
+    if (!err) return;
+    if (msg) {
+      err.textContent = msg;
+      err.hidden = false;
+      err.classList.add('is-visible');
+    } else {
+      err.textContent = '';
+      err.hidden = true;
+      err.classList.remove('is-visible');
+    }
+  }
+
+  function todayIsoLocal() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1);
+    var day = String(d.getDate());
+    if (m.length < 2) m = '0' + m;
+    if (day.length < 2) day = '0' + day;
+    return d.getFullYear() + '-' + m + '-' + day;
+  }
+
+  function bindZeroClearAmountInput(input) {
+    if (!input || input.getAttribute('data-zero-clear-bound') === '1') return;
+    input.setAttribute('data-zero-clear-bound', '1');
+    function clearZero() {
+      if (Number(input.value || 0) === 0) input.value = '';
+    }
+    input.addEventListener('focus', clearZero);
+    input.addEventListener('click', clearZero);
+    input.addEventListener('blur', function () {
+      if (String(input.value || '').trim() === '') input.value = '0';
+    });
+  }
+
   function openTipModal(page) {
     openInvModal(page, 'tip');
+    setTipError(page, '');
     var amount = $('#pos-inv-tip-amount', page);
+    var note = $('#pos-inv-tip-note', page);
+    var emp = $('#pos-inv-tip-employee', page);
+    bindZeroClearAmountInput(amount);
     if (amount) {
       amount.value = String(state.tipAmount || 0);
-      amount.focus();
-      amount.select();
     }
+    if (note) note.value = state.tipNote || '';
+    if (typeof global.initEpListboxes === 'function') {
+      try {
+        global.initEpListboxes();
+      } catch (err) {}
+    }
+    if (emp && typeof global.resetEpListbox === 'function') {
+      var label = 'Select employee…';
+      if (state.tipEmployeeId) {
+        var opt = document.querySelector(
+          '#pos-inv-tip-employee-list .se-filter-listbox-option[data-value="' +
+            String(state.tipEmployeeId).replace(/"/g, '\\"') +
+            '"]'
+        );
+        if (opt) {
+          label =
+            opt.getAttribute('data-label') ||
+            (opt.textContent || '').replace(/\s+/g, ' ').trim() ||
+            label;
+        }
+      }
+      global.resetEpListbox('pos-inv-tip-employee', state.tipEmployeeId || '', label);
+    } else if (emp) {
+      emp.value = state.tipEmployeeId || '';
+    }
+    if (amount) {
+      amount.focus();
+    }
+  }
+
+  function persistTipToPayroll(page, amount, employeeId, note) {
+    var cfg = tipConfig(page);
+    var payload = {
+      company: cfg.company,
+      location: cfg.location,
+      date: todayIsoLocal(),
+      employee_id: employeeId,
+      amount: amount,
+      description: note || (state.orderNo ? 'POS tip ' + state.orderNo : 'POS tip')
+    };
+    var url = cfg.addUrl;
+    var methodBody = payload;
+    if (state.tipPayrollId) {
+      url = cfg.editUrl;
+      methodBody = Object.assign({}, payload, { id: state.tipPayrollId });
+    }
+    return fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify(methodBody)
+    }).then(function (r) {
+      return r.json().then(function (data) {
+        return { ok: r.ok, data: data };
+      });
+    });
+  }
+
+  function deleteTipFromPayroll(page) {
+    if (!state.tipPayrollId) return Promise.resolve({ ok: true, data: { ok: true } });
+    var cfg = tipConfig(page);
+    return fetch(cfg.deleteUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: JSON.stringify({
+        id: state.tipPayrollId,
+        company: cfg.company,
+        location: cfg.location,
+        date: todayIsoLocal()
+      })
+    }).then(function (r) {
+      return r.json().then(function (data) {
+        return { ok: r.ok, data: data };
+      });
+    });
+  }
+
+  function applyTipModal(page) {
+    var amountEl = $('#pos-inv-tip-amount', page);
+    var noteEl = $('#pos-inv-tip-note', page);
+    var empEl = $('#pos-inv-tip-employee', page);
+    var applyBtn = $('#pos-inv-tip-apply', page);
+    var n = amountEl ? Number(amountEl.value) : 0;
+    if (isNaN(n) || n < 0) n = 0;
+    var employeeId = empEl ? String(empEl.value || '').trim() : '';
+    var note = noteEl ? String(noteEl.value || '').trim() : '';
+    setTipError(page, '');
+
+    if (n > 0 && !employeeId) {
+      setTipError(page, 'Please select an employee for this tip.');
+      return;
+    }
+
+    function finishLocal() {
+      state.tipAmount = n;
+      state.tipEmployeeId = n > 0 ? employeeId : '';
+      state.tipNote = n > 0 ? note : '';
+      if (n <= 0) state.tipPayrollId = null;
+      closeInvModal(page, 'tip');
+      renderSummary(page);
+      toast(n ? 'Tip set to ' + money(n) : 'Tip cleared.');
+    }
+
+    if (applyBtn) applyBtn.disabled = true;
+
+    var req;
+    if (n > 0) {
+      req = persistTipToPayroll(page, n, Number(employeeId), note);
+    } else if (state.tipPayrollId) {
+      req = deleteTipFromPayroll(page);
+    } else {
+      req = Promise.resolve({ ok: true, data: { ok: true } });
+    }
+
+    req
+      .then(function (res) {
+        if (!res.ok || !res.data || !res.data.ok) {
+          throw new Error((res.data && res.data.error) || 'Could not save tip to payroll.');
+        }
+        if (n > 0) {
+          if (res.data.tip_id) state.tipPayrollId = res.data.tip_id;
+        } else {
+          state.tipPayrollId = null;
+        }
+        finishLocal();
+      })
+      .catch(function (err) {
+        setTipError(page, err.message || 'Could not save tip to payroll.');
+      })
+      .then(function () {
+        if (applyBtn) applyBtn.disabled = false;
+      });
   }
 
   function openCouponModal(page) {
@@ -2361,16 +2726,6 @@
     closeInvModal(page, 'service');
     renderSummary(page);
     toast(n ? 'Service charge updated.' : 'Service charge cleared.');
-  }
-
-  function applyTipModal(page) {
-    var amountEl = $('#pos-inv-tip-amount', page);
-    var n = amountEl ? Number(amountEl.value) : 0;
-    if (isNaN(n) || n < 0) n = 0;
-    state.tipAmount = n;
-    closeInvModal(page, 'tip');
-    renderSummary(page);
-    toast(n ? 'Tip set to ' + money(n) : 'Tip cleared.');
   }
 
   function applyCouponModal(page) {
@@ -2681,7 +3036,7 @@
       return;
     }
     if (action === 'print') {
-      toast('Print is not available yet.');
+      openToolbarPrintPage(page);
       return;
     }
     if (action === 'pdf') {
@@ -2690,10 +3045,6 @@
     }
     if (action === 'send') {
       sendToCustomer(page);
-      return;
-    }
-    if (action === 'share') {
-      toast('Share is not available yet.');
       return;
     }
     if (action === 'hold') {
@@ -3275,6 +3626,9 @@
       state.discountType = 'pct';
       state.discountValue = 0;
       state.tipAmount = 0;
+      state.tipEmployeeId = '';
+      state.tipNote = '';
+      state.tipPayrollId = null;
       state.serviceType = 'pct';
       state.serviceValue = DEFAULT_SERVICE_PCT;
       state.couponCode = '';
