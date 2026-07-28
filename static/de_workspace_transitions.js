@@ -693,7 +693,9 @@
 
   function waitForStylesheets(links, timeoutMs){
     if(!links || !links.length) return Promise.resolve();
-    var limit = timeoutMs == null ? 350 : timeoutMs;
+    /* Cold first-open can inject many CSS files (Masters ~12). Wait for load/error;
+       keep a high safety ceiling so AWS RTT does not swap into unstyled main. */
+    var limit = timeoutMs == null ? 2500 : timeoutMs;
     return Promise.race([
       Promise.all(links.map(function(link){
         return new Promise(function(resolve){
@@ -1413,16 +1415,11 @@
 
     var softTitle = nextMain && nextMain.getAttribute('data-de-page-title');
     var softBodyClass = nextMain && nextMain.getAttribute('data-de-body-class');
-    if(softTitle){
-      document.title = softTitle;
-    } else if(doc.title){
-      document.title = doc.title;
-    }
-    if(softBodyClass){
-      document.body.className = softBodyClass;
-    } else if(doc.body && doc.body.className){
-      document.body.className = doc.body.className;
-    }
+    var nextBodyClass = softBodyClass || ((doc.body && doc.body.className) ? doc.body.className : '');
+    var nextTitle = softTitle || doc.title || '';
+    /* Do NOT change body class / title before swap. Home (and others) scope CSS on
+       body.home-module etc. — flipping body early while old DOM remains paints a
+       plain gray box for the whole stylesheet-wait window (worst on first cold open). */
     var addedLinks = mergeHeadAssets(doc, nextMain);
     syncSidebarFromDoc(doc, url);
     restoreSidebarScroll(sidebarScroll);
@@ -1445,6 +1442,8 @@
       var finishSwap = function(){
         if(!isCurrentSoftNav(navToken)) return;
         document.documentElement.classList.add('de-soft-navigating');
+        if(nextTitle) document.title = nextTitle;
+        if(nextBodyClass) document.body.className = nextBodyClass;
         if(typeof curMain.replaceChildren === 'function'){
           curMain.replaceChildren(frag);
         } else {
@@ -1537,6 +1536,9 @@
     var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
     markMainLoading(true);
+    /* First soft-nav in a session previously lacked this class until after reveal,
+       so opacity:0 enter styles could still paint a plain box on first module open. */
+    document.documentElement.classList.add('de-soft-nav-session');
     var sidebarScroll = lockedSidebarScroll || captureSidebarScroll();
     lockSidebarScroll(sidebarScroll);
     if(window.deFullscreen && typeof window.deFullscreen.ensureRoot === 'function'){
@@ -1902,6 +1904,29 @@
         } catch(e){}
       });
       prefetchRestaurantGroup();
+      /* Warm CSS for Masters/Stores so first soft-nav does not inject 12 cold sheets. */
+      [
+        '/static/masters_dashboard.css?v=25',
+        '/static/sales_entry_dashboard.css?v=32',
+        '/static/sales_update_header.css?v=5',
+        '/static/sales_update_premium.css?v=19',
+        '/static/stores.css?v=64',
+        '/static/ep_form_listbox.css?v=13',
+        '/static/pos_tables.css?v=35',
+        '/static/pos_invoice.css?v=39'
+      ].forEach(function(href){
+        try{
+          var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]')).some(function(el){
+            return (el.getAttribute('href') || '') === href;
+          });
+          if(exists) return;
+          var link = document.createElement('link');
+          link.rel = 'preload';
+          link.as = 'style';
+          link.href = href;
+          document.head.appendChild(link);
+        } catch(e){}
+      });
     }, { timeout: 1800 });
   }
 
@@ -1910,6 +1935,8 @@
     initDeSidebarPageTransitions();
     initPageEnterTransition();
     bootRestoreSidebarScroll();
+    /* Soft-nav session paint rules from first interaction-capable paint. */
+    document.documentElement.classList.add('de-soft-nav-session');
     idlePrefetchSidebarDestinations();
   }
 
