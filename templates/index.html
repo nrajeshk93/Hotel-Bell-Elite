@@ -3,66 +3,136 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>Hotel Bell Elite</title>
+  <title>Hotel Bell Elite — Sign In</title>
   {% include 'partials/de_android_head.html' %}
-  <link rel="stylesheet" href="{{ url_for('static', filename='login_premium.css') }}?v=2" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='login_premium.css') }}?v=12" />
 </head>
 <body class="login-page">
-  <div class="login-orb login-orb-1" aria-hidden="true"></div>
-  <div class="login-orb login-orb-2" aria-hidden="true"></div>
-
-  <div class="login-box">
-    <div class="login-logo">HBE</div>
-    <h1 class="login-title">Hotel Bell Elite</h1>
-    <p class="login-subtitle">Sales update — sign in to continue</p>
-
-    {% if notice %}
-      <div class="login-notice">{{ notice }}</div>
-    {% endif %}
-    {% if error %}
-      <div class="login-error">{{ error }}</div>
-    {% endif %}
-
-    <form method="POST" action="{{ url_for('login') }}" class="login-form" autocomplete="on">
-      <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" placeholder="admin" autocomplete="username" value="{{ username or '' }}" required />
-      </div>
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" placeholder="Enter password" autocomplete="current-password" required />
-      </div>
-      {% if show_captcha %}
-      <div class="form-group login-captcha-group">
-        <label for="captcha">CAPTCHA</label>
-        <div class="login-captcha-row">
-          <img class="login-captcha-img" src="{{ url_for('login_captcha') }}" alt="CAPTCHA image" width="160" height="56">
-          <button type="button" class="login-captcha-refresh" id="login-captcha-refresh" aria-label="Refresh CAPTCHA">↻</button>
+  <div class="login-shell">
+    <aside class="login-brand" aria-hidden="false">
+      <div class="login-brand-media" style="--login-hero:url('{{ url_for('static', filename='login_hero.jpg') }}?v=2')"></div>
+      <div class="login-brand-veil" aria-hidden="true"></div>
+      <div class="login-brand-inner">
+        <div class="login-brand-top">
+          <img class="login-mark login-mark--on-dark" src="{{ url_for('static', filename='hbe_mark_sm.png') }}" width="72" height="72" alt="" />
+          <h1 class="login-brand-name">Hotel Bell Elite</h1>
+          <p class="login-brand-tag">Experience excellence</p>
         </div>
-        <input type="text" id="captcha" name="captcha" placeholder="Enter the characters above" autocomplete="off" autocapitalize="characters" spellcheck="false" required />
+        <div class="login-brand-copy">
+          <h2 class="login-welcome">Welcome back</h2>
+          <p class="login-welcome-sub">Sign in to continue to your dashboard</p>
+        </div>
+        <ul class="login-features">
+          <li>
+            <span class="login-feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3z"/><path d="M9.5 12.2l1.8 1.8 3.4-3.6"/></svg>
+            </span>
+            <strong>Secure Access</strong>
+            <span>Your data is safe with us</span>
+          </li>
+          <li>
+            <span class="login-feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 14l3-3 3 2 4-5"/></svg>
+            </span>
+            <strong>Real-time Insights</strong>
+            <span>Track performance instantly</span>
+          </li>
+          <li>
+            <span class="login-feature-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.2"/><path d="M5 19c1.6-3.2 4-4.8 7-4.8S17.4 15.8 19 19"/><circle cx="18" cy="7" r="2.2"/></svg>
+            </span>
+            <strong>Smart Management</strong>
+            <span>Manage your hotel efficiently</span>
+          </li>
+        </ul>
       </div>
-      {% endif %}
-      <button type="submit" class="login-btn">Sign In</button>
-    </form>
+    </aside>
 
-    {% if account_locked %}
-    <form method="POST" action="{{ url_for('login_resend_unlock') }}" class="login-resend-form">
-      <input type="hidden" name="username" value="{{ username or '' }}">
-      <button type="submit" class="login-resend-btn">Resend unlock email</button>
-    </form>
-    {% endif %}
+    <main class="login-panel">
+      <div class="login-panel-card">
+        <div class="login-panel-head">
+          <img class="login-mark login-mark--badge" src="{{ url_for('static', filename='hbe_mark_form_sm.png') }}?v=3" width="88" height="88" alt="Hotel Bell Elite" />
+          <h2 class="login-panel-title">Hotel Bell Elite</h2>
+          <p class="login-panel-sub">Sign in to access your account</p>
+        </div>
+
+        {% if notice %}
+          <div class="login-notice">{{ notice }}</div>
+        {% endif %}
+        {% if error %}
+          <div class="login-error">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('login') }}" class="login-form" autocomplete="on">
+          <div class="form-group">
+            <label for="username">Username</label>
+            <div class="login-field">
+              <span class="login-field-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.8-3.5 4.4-5.2 7-5.2S17.2 15.5 19 19"/></svg>
+              </span>
+              <input type="text" id="username" name="username" placeholder="Enter your username" autocomplete="username" value="{{ username or '' }}" required />
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <div class="login-field">
+              <span class="login-field-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V8a4 4 0 0 1 8 0v2"/></svg>
+              </span>
+              <input type="password" id="password" name="password" placeholder="Enter your password" autocomplete="current-password" required />
+              <button type="button" class="login-eye" id="login-toggle-password" aria-label="Show password" aria-pressed="false">
+                <svg class="login-eye-show" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                <svg class="login-eye-hide" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.5 10.6A2.8 2.8 0 0 0 13.4 13.5"/><path d="M7 7.4C4.4 9 2.8 11.2 2 12c1.2 1.5 4.5 6 10 6 1.8 0 3.4-.4 4.8-1"/><path d="M14.2 6.4C13.5 6.1 12.8 6 12 6c-5.5 0-8.8 4.5-10 6 .3.4.8 1 1.5 1.8"/></svg>
+              </button>
+            </div>
+          </div>
+          {% if show_captcha %}
+          <div class="form-group login-captcha-group">
+            <label for="captcha">CAPTCHA</label>
+            <div class="login-captcha-row">
+              <img class="login-captcha-img" src="{{ url_for('login_captcha') }}" alt="CAPTCHA image" width="160" height="56">
+              <button type="button" class="login-captcha-refresh" id="login-captcha-refresh" aria-label="Refresh CAPTCHA">↻</button>
+            </div>
+            <input type="text" id="captcha" name="captcha" placeholder="Enter the characters above" autocomplete="off" autocapitalize="characters" spellcheck="false" required />
+          </div>
+          {% endif %}
+          <button type="submit" class="login-btn">Sign In</button>
+        </form>
+
+        {% if account_locked %}
+        <form method="POST" action="{{ url_for('login_resend_unlock') }}" class="login-resend-form">
+          <input type="hidden" name="username" value="{{ username or '' }}">
+          <button type="submit" class="login-resend-btn">Resend unlock email</button>
+        </form>
+        {% endif %}
+      </div>
+    </main>
   </div>
-  {% if show_captcha %}
+
   <script>
   (function(){
+    var eye = document.getElementById('login-toggle-password');
+    var pass = document.getElementById('password');
+    if (eye && pass) {
+      eye.addEventListener('click', function(){
+        var show = pass.type === 'password';
+        pass.type = show ? 'text' : 'password';
+        eye.classList.toggle('is-revealed', show);
+        eye.setAttribute('aria-pressed', show ? 'true' : 'false');
+        eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      });
+    }
     var btn = document.getElementById('login-captcha-refresh');
     var img = document.querySelector('.login-captcha-img');
-    if(!btn || !img) return;
-    btn.addEventListener('click', function(){
-      img.src = {{ url_for('login_captcha')|tojson }} + '?t=' + Date.now();
-    });
+    if (btn && img) {
+      btn.addEventListener('click', function(){
+        img.src = {{ url_for('login_captcha')|tojson }} + '?t=' + Date.now();
+      });
+    }
   })();
   </script>
-  {% endif %}
 </body>
 </html>

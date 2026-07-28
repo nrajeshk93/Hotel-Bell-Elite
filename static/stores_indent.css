@@ -372,6 +372,7 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-wrap{
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line,
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer,
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row{
+  --st-line-pack:minmax(110px,140px);
   --st-line-qty:minmax(96px,120px);
   --st-line-unit:minmax(88px,110px);
   --st-line-price:minmax(110px,1fr);
@@ -380,7 +381,8 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row{
   --st-line-gap:14px;
   display:grid;
   grid-template-columns:
-    minmax(0,1.8fr)
+    minmax(0,1.6fr)
+    var(--st-line-pack)
     var(--st-line-qty)
     var(--st-line-unit)
     var(--st-line-price)
@@ -388,6 +390,10 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row{
     var(--st-line-action);
   gap:var(--st-line-gap);
   align-items:center;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.has-packs) .st-pack-listbox{
+  opacity:.45;
+  pointer-events:none;
 }
 
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head{
@@ -414,7 +420,7 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head span{
 }
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row--cols span:first-child{text-align:left}
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head span.st-lines-head-approx{
-  grid-column:4 / 6;
+  grid-column:5 / 7;
   text-align:center;
   font-size:12px;
   line-height:1.25;
@@ -430,7 +436,7 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer{
   border-top:1px solid #E8EDF5;
 }
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-label{
-  grid-column:1 / 5;
+  grid-column:1 / 6;
   justify-self:end;
   font:650 12px Inter,system-ui,sans-serif;
   color:#64748B;
@@ -438,7 +444,7 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-labe
   letter-spacing:.04em;
 }
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-value{
-  grid-column:5;
+  grid-column:6;
   justify-self:stretch;
   text-align:right;
   font:700 15px Inter,system-ui,sans-serif;
@@ -475,6 +481,15 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.is-prod
 }
 
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field{min-width:0;position:relative}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--pack .st-pack-listbox.is-open{
+  z-index:50;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines{
+  overflow:visible;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-wrap{
+  overflow:visible;
+}
 body.su-module .st-sr-only{
   position:absolute !important;
   width:1px;height:1px;padding:0;margin:-1px;
@@ -513,7 +528,60 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .ep-form-listbox .se-
 }
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .ep-form-listbox .se-filter-chip-value.is-placeholder{color:#9CA3AF}
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-filter-chip-icon{display:none}
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-filter-chip-trigger{padding-left:14px}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-product-listbox .se-filter-chip-trigger{
+  padding-left:14px;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-product-listbox input.se-filter-chip-combobox{
+  flex:1 1 auto;
+  min-width:0;
+  height:100%;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  outline:none;
+  padding:0 4px 0 14px;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:#111827;
+  text-align:left;
+  cursor:text;
+  -webkit-appearance:none;
+  appearance:none;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-product-listbox input.se-filter-chip-combobox::placeholder{
+  color:#9CA3AF;
+  font-weight:500;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-product-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button{
+  display:none;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-filter-chip-control{
+  position:relative;
+  justify-content:center;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  padding:0 28px;
+  text-align:center;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-filter-chip-value{
+  text-align:center;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-filter-chip-chev{
+  position:absolute;
+  right:6px;
+  top:50%;
+  transform:translateY(-50%);
+  width:28px;
+}
+/* Pack has no leading icon — match Unit left inset so labels aren't clipped. */
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-pack-listbox .se-filter-chip-trigger{padding-left:14px}
+/* When a pack is selected, Unit shows stock equiv (e.g. 0.1 kg) and stays locked. */
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox.is-pack-locked{
+  pointer-events:none;
+}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox.is-pack-locked .se-filter-chip-chev{
+  opacity:.35;
+}
 
 /* Qty + price number fields */
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty input[type="number"],

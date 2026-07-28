@@ -291,6 +291,10 @@ def ensure_pos_schema(conn):
     }
     if "sent_qty" not in line_cols:
         cursor.execute("ALTER TABLE pos_invoice_lines ADD COLUMN sent_qty REAL NOT NULL DEFAULT 0")
+    if "notes" not in line_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoice_lines ADD COLUMN notes TEXT NOT NULL DEFAULT ''"
+        )
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_pos_invoice_lines_invoice
@@ -2217,7 +2221,7 @@ def _normalize_pos_order_type(value):
 def _pos_invoice_line_dicts(conn, invoice_id):
     rows = conn.execute(
         """
-        SELECT id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty
+        SELECT id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty, notes
         FROM pos_invoice_lines
         WHERE invoice_id = ?
         ORDER BY sort_order ASC, id ASC
@@ -2230,6 +2234,8 @@ def _pos_invoice_line_dicts(conn, invoice_id):
         sent_qty = _pos_money(row["sent_qty"])
         if sent_qty > qty:
             sent_qty = qty
+        keys = row.keys()
+        notes = (row["notes"] if "notes" in keys else "") or ""
         lines.append(
             {
                 "id": int(row["id"]),
@@ -2241,6 +2247,7 @@ def _pos_invoice_line_dicts(conn, invoice_id):
                 "qty": qty,
                 "line_total": _pos_money(row["line_total"]),
                 "sent_qty": sent_qty,
+                "notes": str(notes).strip()[:200],
             }
         )
     return lines
@@ -2937,7 +2944,8 @@ def list_pos_kot_tokens(conn):
         invoice_id = int(row["invoice_id"])
         line_rows = conn.execute(
             """
-            SELECT id, name, variant, qty, COALESCE(sent_qty, 0) AS sent_qty
+            SELECT id, name, variant, qty, COALESCE(sent_qty, 0) AS sent_qty,
+                   COALESCE(notes, '') AS notes
             FROM pos_invoice_lines
             WHERE invoice_id = ?
               AND COALESCE(sent_qty, 0) > 0
@@ -2955,6 +2963,7 @@ def list_pos_kot_tokens(conn):
                     "variant": (line["variant"] or "").strip(),
                     "qty": sent_qty,
                     "sent_qty": sent_qty,
+                    "notes": (line["notes"] or "").strip() if "notes" in line.keys() else "",
                 }
             )
         tables.append(
@@ -3403,6 +3412,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
             sent_qty = 0.0
         if sent_qty > qty:
             sent_qty = qty
+        line_notes = " ".join(str(line.get("notes") or "").split()).strip()[:200]
         normalized_lines.append(
             {
                 "sort_order": idx,
@@ -3413,6 +3423,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 "qty": qty,
                 "line_total": line_total,
                 "sent_qty": sent_qty,
+                "notes": line_notes,
             }
         )
     if not normalized_lines:
@@ -3589,8 +3600,8 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
         conn.execute(
             """
             INSERT INTO pos_invoice_lines (
-                invoice_id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                invoice_id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 invoice_id,
@@ -3602,6 +3613,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 line["qty"],
                 line["line_total"],
                 line["sent_qty"],
+                line.get("notes") or "",
             ),
         )
 
@@ -3948,6 +3960,14 @@ def ensure_stores_schema(conn):
         cursor.execute(
             "ALTER TABLE store_indent_lines ADD COLUMN approximate_price REAL"
         )
+    if "pack_label" not in indent_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_indent_lines ADD COLUMN pack_label TEXT NOT NULL DEFAULT ''"
+        )
+    if "pack_qty_in_base" not in indent_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_indent_lines ADD COLUMN pack_qty_in_base REAL"
+        )
     if "quantity_received" not in indent_line_cols:
         cursor.execute(
             "ALTER TABLE store_indent_lines ADD COLUMN quantity_received REAL NOT NULL DEFAULT 0"
@@ -4154,6 +4174,34 @@ def ensure_stores_schema(conn):
         CREATE INDEX IF NOT EXISTS idx_store_products_outlet
         ON store_products(outlet, is_active, name)
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_product_variants (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id         INTEGER NOT NULL,
+            label              TEXT    NOT NULL,
+            qty_in_base        REAL    NOT NULL,
+            approximate_price  REAL,
+            sort_order         INTEGER NOT NULL DEFAULT 0,
+            is_active          INTEGER NOT NULL DEFAULT 1,
+            FOREIGN KEY (product_id) REFERENCES store_products(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_product_variants_product
+        ON store_product_variants(product_id, is_active, sort_order, id)
+    """)
+    pr_line_cols = {
+        row[1]
+        for row in cursor.execute("PRAGMA table_info(store_purchase_request_lines)").fetchall()
+    }
+    if "pack_label" not in pr_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_purchase_request_lines ADD COLUMN pack_label TEXT NOT NULL DEFAULT ''"
+        )
+    if "pack_qty_in_base" not in pr_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_purchase_request_lines ADD COLUMN pack_qty_in_base REAL"
+        )
     _seed_store_product_master(cursor)
     _seed_store_product_units(cursor)  # re-run to sync units from seeded products
     cursor.execute(
@@ -4182,7 +4230,7 @@ def ensure_stores_schema(conn):
 
 def _seed_store_product_units(cursor):
     """Seed default product units used on Product Master (idempotent)."""
-    defaults = ("kg", "pcs", "liter", "dozen", "bunch", "bottle", "case", "pack")
+    defaults = ("kg", "gram", "pcs", "liter", "mL", "bunch", "bottle", "pack")
     for idx, name in enumerate(defaults, start=1):
         cursor.execute(
             """
@@ -4259,7 +4307,7 @@ def _seed_store_product_master(cursor):
                 ("Chocolate Ice Cream (4 Ltr)", "liter"),
                 ("Apple", "kg"),
                 ("Anar", "kg"),
-                ("Banana", "dozen"),
+                ("Banana", "pcs"),
                 ("Curd", "kg"),
                 ("Coffee Powder 200 gm", "pcs"),
                 ("Besan Powder 1 Kg", "kg"),

@@ -885,6 +885,92 @@ class PosTableOccupancyTests(unittest.TestCase):
             self.assertEqual(saved["lines"][0]["qty"], 1)
         finally:
             conn.close()
+
+    def test_invoice_line_notes_round_trip(self):
+        note = "No onion, extra spicy"
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0090",
+                "T1",
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 1,
+                        "kotSentQty": 0,
+                        "notes": note,
+                    }
+                ],
+                totals={
+                    "subtotal": 100,
+                    "discount": 0,
+                    "discountType": "pct",
+                    "discountValue": 0,
+                    "gst": 5,
+                    "service": 0,
+                    "serviceType": "pct",
+                    "serviceValue": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 105,
+                },
+            ),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+        body = save.get_json()
+        self.assertTrue(body.get("ok"), body)
+        invoice = body.get("invoice") or {}
+        self.assertEqual(invoice["lines"][0]["notes"], note)
+
+        invoice_id = invoice["id"]
+        loaded = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
+        self.assertEqual(loaded.status_code, 200, loaded.get_data(as_text=True))
+        again = loaded.get_json()["invoice"]
+        self.assertEqual(again["lines"][0]["notes"], note)
+
+        # Truncate / normalize on save
+        long_note = "  " + ("x" * 250) + "  "
+        update = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0090",
+                "T1",
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 1,
+                        "kotSentQty": 0,
+                        "notes": long_note,
+                    }
+                ],
+                totals={
+                    "subtotal": 100,
+                    "discount": 0,
+                    "discountType": "pct",
+                    "discountValue": 0,
+                    "gst": 5,
+                    "service": 0,
+                    "serviceType": "pct",
+                    "serviceValue": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 105,
+                },
+            ),
+        )
+        self.assertEqual(update.status_code, 200, update.get_data(as_text=True))
+        updated = update.get_json()["invoice"]["lines"][0]["notes"]
+        self.assertEqual(len(updated), 200)
+        self.assertTrue(updated.startswith("x"))
+
     def test_floor_kot_pending_summary_partial_line_and_ignores_takeaway(self):
         # After a first KOT, bump qty without sending — delta is pending.
         self.client.post(

@@ -13,6 +13,7 @@ from typing import Any
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
 
 from db import (
+    _normalize_pos_menu_unit,
     _qty_in_product_units,
     ensure_pos_schema,
     ensure_stores_schema,
@@ -44,7 +45,7 @@ PRODUCT_OUTLETS = (
 )
 PRODUCT_OUTLET_KEYS = {item["key"] for item in PRODUCT_OUTLETS}
 FILTER_OUTLET_KEYS = {item["key"] for item in STORES_FILTER_OUTLETS}
-DEFAULT_UNITS = ("kg", "pcs", "liter", "dozen", "bunch", "bottle", "case", "pack")
+DEFAULT_UNITS = ("kg", "gram", "pcs", "liter", "mL", "bunch", "bottle", "pack")
 
 STATUS_LABELS = {
     "draft": "Draft",
@@ -334,6 +335,62 @@ def _product_outlet_label(outlet: str) -> str:
     return "Restaurant"
 
 
+def _title_case_words(name: str) -> str:
+    """Title-case labels: each word Capital + rest lowercase.
+
+    Preserves short codes like T.D. / B/L. Collapses extra spaces.
+    """
+    cleaned = " ".join(str(name or "").split())
+    if not cleaned:
+        return cleaned
+
+    def _fix_atom(atom: str) -> str:
+        if not atom:
+            return atom
+        # Keep letter codes like T.D. or B/L uppercase.
+        if re.fullmatch(r"[A-Za-z]([./][A-Za-z])+\.?", atom):
+            return atom.upper()
+        return atom[:1].upper() + atom[1:].lower()
+
+    def _fix_word(word: str) -> str:
+        if "-" in word:
+            return "-".join(_fix_atom(part) for part in word.split("-"))
+        return _fix_atom(word)
+
+    return " ".join(_fix_word(word) for word in cleaned.split(" "))
+
+
+def _title_case_product_name(name: str) -> str:
+    return _title_case_words(name)
+
+def _rename_store_item_name_refs(conn, old_name: str, new_name: str) -> None:
+    """Keep free-text item_name columns in sync when a product is renamed."""
+    if not old_name or not new_name or old_name == new_name:
+        return
+    tables = (
+        "store_indent_lines",
+        "store_purchase_request_lines",
+        "store_stock_items",
+        "store_stock_movements",
+        "store_counter_transfer_lines",
+        "store_stock_issue_lines",
+        "store_stock_verification_lines",
+    )
+    existing = {
+        str(row[0])
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    }
+    for table in tables:
+        if table not in existing:
+            continue
+        conn.execute(
+            f"UPDATE {table} SET item_name = ? WHERE item_name = ?",
+            (new_name, old_name),
+        )
+
+
 def _status_label(status: str) -> str:
     return STATUS_LABELS.get(status, status.replace("_", " ").title())
 
@@ -360,6 +417,8 @@ def _parse_lines_from_form(form) -> list[dict[str, Any]]:
     qtys = form.getlist("quantity")
     units = form.getlist("unit")
     prices = form.getlist("approximate_price")
+    pack_labels = form.getlist("pack_label")
+    pack_qtys = form.getlist("pack_qty_in_base")
     lines = []
     for idx, name in enumerate(names):
         item_name = (name or "").strip()
@@ -375,14 +434,466 @@ def _parse_lines_from_form(form) -> list[dict[str, Any]]:
         unit = unit.strip() or "pcs"
         price_raw = prices[idx] if idx < len(prices) else ""
         approx_price, _price_err = _parse_optional_price(price_raw)
+        pack_label = (pack_labels[idx] if idx < len(pack_labels) else "") or ""
+        pack_label = pack_label.strip()
+        pack_qty_in_base = None
+        if pack_label:
+            try:
+                pack_qty_raw = pack_qtys[idx] if idx < len(pack_qtys) else ""
+                pack_qty_in_base = float(pack_qty_raw or 0)
+            except (TypeError, ValueError, IndexError):
+                pack_qty_in_base = 0.0
+            if pack_qty_in_base <= 0:
+                pack_label = ""
+                pack_qty_in_base = None
         lines.append({
             "item_name": item_name,
             "quantity": qty,
             "unit": unit,
             "notes": "",
             "approximate_price": approx_price,
+            "pack_label": pack_label,
+            "pack_qty_in_base": pack_qty_in_base,
         })
     return lines
+
+
+def _row_pack_qty_in_base(row: Any) -> float | None:
+    try:
+        keys = row.keys() if hasattr(row, "keys") else ()
+        if "pack_qty_in_base" not in keys:
+            return None
+        raw = row["pack_qty_in_base"]
+    except (KeyError, TypeError, IndexError):
+        return None
+    if raw is None or raw == "":
+        return None
+    try:
+        qty = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if qty <= 0:
+        return None
+    return qty
+
+
+def _line_stock_qty_delta(line: Any, received_qty: float) -> float:
+    """Convert received packs (or base qty) into stock delta in the line's base unit."""
+    pack_qty = _row_pack_qty_in_base(line)
+    if pack_qty is None:
+        return float(received_qty)
+    return float(received_qty) * pack_qty
+
+
+def _line_stock_unit_cost(line: Any, unit_cost: float | None) -> float | None:
+    """Normalize pack unit cost into cost per base-unit stock quantity."""
+    if unit_cost is None:
+        return None
+    pack_qty = _row_pack_qty_in_base(line)
+    if pack_qty is None:
+        return unit_cost
+    return round(float(unit_cost) / pack_qty, 4)
+
+
+def _format_indent_line_item(line: Any) -> str:
+    name = str(line["item_name"] if hasattr(line, "keys") else line.get("item_name") or "").strip()
+    try:
+        pack_label = ""
+        if hasattr(line, "keys") and "pack_label" in line.keys():
+            pack_label = (line["pack_label"] or "").strip()
+        elif isinstance(line, dict):
+            pack_label = (line.get("pack_label") or "").strip()
+    except (KeyError, TypeError):
+        pack_label = ""
+    if pack_label:
+        return f"{name} — {pack_label}"
+    return name
+
+
+def _row_pack_label(row: Any) -> str:
+    try:
+        if hasattr(row, "keys") and "pack_label" in row.keys():
+            return (row["pack_label"] or "").strip()
+        if isinstance(row, dict):
+            return (row.get("pack_label") or "").strip()
+    except (KeyError, TypeError):
+        return ""
+    return ""
+
+
+def _update_product_master_price_from_inward(
+    conn,
+    *,
+    item_name: str,
+    pack_label: str,
+    unit_price: float | None,
+) -> None:
+    """Persist the inward rate as the latest Product Master / pack price (ex-tax)."""
+    if unit_price is None:
+        return
+    try:
+        price = float(unit_price)
+    except (TypeError, ValueError):
+        return
+    if price < 0 or price != price:
+        return
+    name = (item_name or "").strip()
+    if not name:
+        return
+    product = conn.execute(
+        """
+        SELECT id FROM store_products
+        WHERE lower(name) = lower(?) AND is_active = 1
+        ORDER BY id
+        LIMIT 1
+        """,
+        (name,),
+    ).fetchone()
+    if not product:
+        return
+    pid = int(product["id"])
+    pack = (pack_label or "").strip()
+    if pack:
+        conn.execute(
+            """
+            UPDATE store_product_variants
+            SET approximate_price = ?
+            WHERE product_id = ? AND is_active = 1 AND lower(label) = lower(?)
+            """,
+            (price, pid, pack),
+        )
+        variants = _load_variants_by_product_ids(conn, [pid]).get(pid, [])
+        derived = _approximate_price_from_variants(variants)
+        conn.execute(
+            """
+            UPDATE store_products
+            SET approximate_price = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (derived, _now(), pid),
+        )
+    else:
+        conn.execute(
+            """
+            UPDATE store_products
+            SET approximate_price = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (price, _now(), pid),
+        )
+
+
+def _load_variants_by_product_ids(conn, product_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    if not product_ids:
+        return {}
+    placeholders = ",".join("?" for _ in product_ids)
+    rows = conn.execute(
+        f"""
+        SELECT id, product_id, label, qty_in_base, approximate_price, sort_order
+        FROM store_product_variants
+        WHERE is_active = 1 AND product_id IN ({placeholders})
+        ORDER BY sort_order, id
+        """,
+        product_ids,
+    ).fetchall()
+    by_product: dict[int, list[dict[str, Any]]] = {int(pid): [] for pid in product_ids}
+    for row in rows:
+        pid = int(row["product_id"])
+        by_product.setdefault(pid, []).append({
+            "id": row["id"],
+            "label": row["label"],
+            "qty_in_base": float(row["qty_in_base"] or 0),
+            "qty_in_base_display": _format_ledger_qty(row["qty_in_base"]),
+            "approximate_price": row["approximate_price"],
+            "approximate_price_display": _format_optional_price(row["approximate_price"]),
+        })
+    return by_product
+
+
+def _split_variant_label(label: str) -> tuple[str, str]:
+    """Split stored pack label like '500 gram' or 'Half kg' into (qty, unit)."""
+    text = (label or "").strip()
+    if not text:
+        return "", ""
+    match = re.match(r"^([\d]+(?:\.[\d]+)?)\s+(.+)$", text)
+    if match:
+        return match.group(1), match.group(2).strip()
+    parts = text.rsplit(None, 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return text, ""
+
+
+def _parse_pack_qty_token(raw: Any) -> tuple[float | None, str, str | None]:
+    """Parse pack qty token.
+
+    Numeric tokens keep float conversion. Alphanumeric tokens are kept as the
+    display qty and count as 1 of the chosen pack unit for stock math.
+    Returns (numeric_or_none, display, error).
+    """
+    text = str(raw or "").strip()
+    if not text:
+        return None, "", "Pack quantity is required."
+    try:
+        value = float(text)
+    except (TypeError, ValueError):
+        return None, text, None
+    if value != value:  # NaN
+        return None, text, "Pack quantity must be a valid number."
+    if value <= 0:
+        return None, text, "Pack quantity must be greater than zero."
+    return value, text, None
+
+
+def _infer_product_unit_from_pack_units(pack_units: list[str]) -> tuple[str | None, str | None]:
+    """Infer Product Master stock unit from pack variant units.
+
+    Returns (unit, error). Weight packs stock in kg; volume in liter; count in pcs.
+    Mixed incompatible families return an error.
+    """
+    cleaned = [(u or "").strip() for u in pack_units if (u or "").strip()]
+    if not cleaned:
+        return None, None
+    norms = [_normalize_pos_menu_unit(u) for u in cleaned]
+    weight = [n for n in norms if n in ("kg", "g")]
+    volume = [n for n in norms if n in ("liter", "ml")]
+    count = [n for n in norms if n in ("pcs", "dozen")]
+    other = [n for n in norms if n not in ("kg", "g", "liter", "ml", "pcs", "dozen")]
+    families = sum(1 for group in (weight, volume, count, other) if group)
+    if families > 1:
+        return None, "Pack units must be in the same family (weight, volume, or count)."
+    if weight:
+        return "kg", None
+    if volume:
+        return "liter", None
+    if count:
+        return "pcs", None
+    # Same custom unit (bunch, bottle, …) — keep the first display form.
+    first_norm = norms[0]
+    for raw, norm in zip(cleaned, norms):
+        if norm == first_norm:
+            return raw, None
+    return cleaned[0], None
+
+
+def _pack_units_from_form(form) -> list[str]:
+    """Collect pack units from filled pack rows (qty present)."""
+    qtys = form.getlist("variant_qty")
+    units = form.getlist("variant_unit")
+    # Legacy forms posted label instead of qty/unit.
+    if not qtys and form.getlist("variant_label"):
+        labels = form.getlist("variant_label")
+        out: list[str] = []
+        for raw_label in labels:
+            label = (raw_label or "").strip()
+            if not label:
+                continue
+            _qty, unit = _split_variant_label(label)
+            if unit:
+                out.append(unit)
+            else:
+                # Unparseable label — still count as a filled pack row for inference skip.
+                out.append("")
+        return [u for u in out if u]
+    out = []
+    row_count = max(len(qtys), len(units))
+    for idx in range(row_count):
+        qty_raw = qtys[idx] if idx < len(qtys) else ""
+        unit = ((units[idx] if idx < len(units) else "") or "").strip()
+        price_raw = ""
+        prices = form.getlist("variant_approximate_price")
+        if idx < len(prices):
+            price_raw = prices[idx]
+        if (not str(qty_raw or "").strip()) and (not str(price_raw or "").strip()):
+            continue
+        if unit:
+            out.append(unit)
+    return out
+
+
+def _approximate_price_from_variants(variants: list[dict[str, Any]]) -> float | None:
+    """Derive product unit price from pack prices (₹ per base unit).
+
+    Prefers the pack with the largest qty_in_base so a 1 kg pack anchors the
+    implied kg rate when smaller gram packs are also present.
+    """
+    best: tuple[float, float] | None = None
+    for variant in variants or []:
+        price = variant.get("approximate_price")
+        qty = variant.get("qty_in_base")
+        if price is None or qty is None:
+            continue
+        try:
+            price_f = float(price)
+            qty_f = float(qty)
+        except (TypeError, ValueError):
+            continue
+        if price_f < 0 or qty_f <= 0 or price_f != price_f or qty_f != qty_f:
+            continue
+        unit_price = round(price_f / qty_f, 4)
+        if best is None or qty_f > best[0]:
+            best = (qty_f, unit_price)
+    return best[1] if best else None
+
+
+def _parse_variants_from_form(
+    form,
+    *,
+    product_unit: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    qtys = form.getlist("variant_qty")
+    units = form.getlist("variant_unit")
+    prices = form.getlist("variant_approximate_price")
+    # Legacy field names (older forms) — keep parse tolerant.
+    if not qtys and form.getlist("variant_label"):
+        labels = form.getlist("variant_label")
+        legacy_qtys = form.getlist("variant_qty_in_base")
+        variants: list[dict[str, Any]] = []
+        errors: list[str] = []
+        seen_labels: set[str] = set()
+        for idx, raw_label in enumerate(labels):
+            label = (raw_label or "").strip()
+            qty_raw = legacy_qtys[idx] if idx < len(legacy_qtys) else ""
+            price_raw = prices[idx] if idx < len(prices) else ""
+            if not label and (not str(qty_raw or "").strip()) and (not str(price_raw or "").strip()):
+                continue
+            if not label:
+                errors.append("Each pack variant needs a quantity and unit.")
+                continue
+            try:
+                qty_in_base = float(qty_raw)
+            except (TypeError, ValueError):
+                errors.append(f"Pack “{label}” needs a valid quantity.")
+                continue
+            if qty_in_base <= 0:
+                errors.append(f"Pack “{label}” quantity must be greater than zero.")
+                continue
+            label_key = label.casefold()
+            if label_key in seen_labels:
+                errors.append(f"Duplicate pack “{label}”.")
+                continue
+            seen_labels.add(label_key)
+            approx_price, price_error = _parse_optional_price(price_raw)
+            if price_error:
+                errors.append(f"Pack “{label}”: {price_error}")
+                continue
+            pack_qty, pack_unit = _split_variant_label(label)
+            variants.append({
+                "label": label,
+                "qty_in_base": qty_in_base,
+                "approximate_price": approx_price,
+                "pack_qty": pack_qty,
+                "pack_unit": pack_unit,
+            })
+        return variants, errors
+
+    variants = []
+    errors: list[str] = []
+    seen_labels: set[str] = set()
+    base_unit = (product_unit or "kg").strip() or "kg"
+    row_count = max(len(qtys), len(units), len(prices))
+    for idx in range(row_count):
+        qty_raw = qtys[idx] if idx < len(qtys) else ""
+        unit = ((units[idx] if idx < len(units) else "") or "").strip()
+        price_raw = prices[idx] if idx < len(prices) else ""
+        # Unit alone does not count — empty rows keep a default unit selected.
+        if (not str(qty_raw or "").strip()) and (not str(price_raw or "").strip()):
+            continue
+        if not str(qty_raw or "").strip() or not unit:
+            errors.append("Each pack needs a quantity and unit.")
+            continue
+        pack_qty_num, qty_display_raw, qty_error = _parse_pack_qty_token(qty_raw)
+        if qty_error:
+            errors.append(qty_error)
+            continue
+        if pack_qty_num is not None:
+            qty_in_base = _qty_in_product_units(pack_qty_num, unit, base_unit)
+            qty_display = _format_ledger_qty(pack_qty_num)
+        else:
+            # Alphanumeric pack size (e.g. Half, BoxA) — treat as 1 of the pack unit.
+            qty_in_base = _qty_in_product_units(1.0, unit, base_unit)
+            qty_display = qty_display_raw
+        if qty_in_base is None or qty_in_base <= 0:
+            errors.append(
+                f"Pack unit “{unit}” is not compatible with product unit “{base_unit}”."
+            )
+            continue
+        label = f"{qty_display} {unit}".strip()
+        label_key = label.casefold()
+        if label_key in seen_labels:
+            errors.append(f"Duplicate pack “{label}”.")
+            continue
+        seen_labels.add(label_key)
+        approx_price, price_error = _parse_optional_price(price_raw)
+        if price_error:
+            errors.append(f"Pack “{label}”: {price_error}")
+            continue
+        variants.append({
+            "label": label,
+            "qty_in_base": float(qty_in_base),
+            "approximate_price": approx_price,
+            "pack_qty": qty_display,
+            "pack_unit": unit,
+        })
+    return variants, errors
+
+
+def _save_product_variants(conn, product_id: int, variants: list[dict[str, Any]]) -> None:
+    existing = conn.execute(
+        """
+        SELECT id, label FROM store_product_variants
+        WHERE product_id = ? AND is_active = 1
+        """,
+        (product_id,),
+    ).fetchall()
+    by_label = {
+        (row["label"] or "").strip().casefold(): int(row["id"])
+        for row in existing
+    }
+    keep_ids: set[int] = set()
+    for sort_idx, variant in enumerate(variants):
+        label = variant["label"]
+        key = label.casefold()
+        existing_id = by_label.get(key)
+        if existing_id:
+            conn.execute(
+                """
+                UPDATE store_product_variants
+                SET label = ?, qty_in_base = ?, approximate_price = ?, sort_order = ?, is_active = 1
+                WHERE id = ?
+                """,
+                (
+                    label,
+                    variant["qty_in_base"],
+                    variant.get("approximate_price"),
+                    (sort_idx + 1) * 10,
+                    existing_id,
+                ),
+            )
+            keep_ids.add(existing_id)
+        else:
+            cur = conn.execute(
+                """
+                INSERT INTO store_product_variants
+                    (product_id, label, qty_in_base, approximate_price, sort_order, is_active)
+                VALUES (?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    product_id,
+                    label,
+                    variant["qty_in_base"],
+                    variant.get("approximate_price"),
+                    (sort_idx + 1) * 10,
+                ),
+            )
+            keep_ids.add(int(cur.lastrowid))
+    for row in existing:
+        rid = int(row["id"])
+        if rid not in keep_ids:
+            conn.execute(
+                "UPDATE store_product_variants SET is_active = 0 WHERE id = ?",
+                (rid,),
+            )
 
 
 def _unit_cost_with_tax(unit_price: Any, tax_percent: Any) -> float | None:
@@ -783,6 +1294,7 @@ def _load_product_catalog(conn, stores_outlet: str | None = None):
     ).fetchall()
     categories = []
     by_id = {}
+    product_ids: list[int] = []
     for row in rows:
         cat_id = row["category_id"]
         if cat_id not in by_id:
@@ -794,6 +1306,7 @@ def _load_product_catalog(conn, stores_outlet: str | None = None):
             by_id[cat_id] = node
             categories.append(node)
         if row["product_id"]:
+            product_ids.append(int(row["product_id"]))
             by_id[cat_id]["products"].append({
                 "id": row["product_id"],
                 "name": row["product_name"],
@@ -802,7 +1315,12 @@ def _load_product_catalog(conn, stores_outlet: str | None = None):
                 "outlet_label": _product_outlet_label(row["outlet"]),
                 "approximate_price": row["approximate_price"],
                 "approximate_price_display": _format_optional_price(row["approximate_price"]),
+                "variants": [],
             })
+    variants_by_product = _load_variants_by_product_ids(conn, product_ids)
+    for cat in categories:
+        for product in cat["products"]:
+            product["variants"] = variants_by_product.get(int(product["id"]), [])
     if filter_outlet:
         categories = [cat for cat in categories if cat["products"]]
     return categories
@@ -1013,7 +1531,8 @@ def _indent_view_payload(conn, indents: list[dict[str, Any]]) -> list[dict[str, 
         placeholders = ",".join("?" for _ in indent_ids)
         line_rows = conn.execute(
             f"""
-            SELECT indent_id, item_name, quantity, unit, notes, approximate_price
+            SELECT indent_id, item_name, quantity, unit, notes, approximate_price,
+                   pack_label, pack_qty_in_base
             FROM store_indent_lines
             WHERE indent_id IN ({placeholders})
             ORDER BY id
@@ -1022,13 +1541,28 @@ def _indent_view_payload(conn, indents: list[dict[str, Any]]) -> list[dict[str, 
         ).fetchall()
         for line in line_rows:
             approx = line["approximate_price"] if "approximate_price" in line.keys() else None
+            pack_label = ""
+            try:
+                pack_label = (line["pack_label"] or "").strip()
+            except (KeyError, TypeError):
+                pack_label = ""
+            pack_qty = _row_pack_qty_in_base(line)
+            base_unit = line["unit"] or ""
+            if pack_label and pack_qty is not None:
+                display_unit = f"{_format_ledger_qty(pack_qty)} {base_unit}".strip()
+            else:
+                display_unit = base_unit
             lines_by_id.setdefault(int(line["indent_id"]), []).append({
                 "item_name": line["item_name"],
+                "display_name": _format_indent_line_item(line),
                 "quantity": line["quantity"],
-                "unit": line["unit"] or "",
+                "unit": base_unit,
+                "display_unit": display_unit,
                 "notes": line["notes"] or "",
                 "approximate_price": approx,
                 "approximate_price_display": _format_optional_price(approx),
+                "pack_label": pack_label,
+                "pack_qty_in_base": pack_qty,
             })
     payload = []
     for row in indents:
@@ -1091,6 +1625,13 @@ def _load_flat_products(conn, stores_outlet: str | None = None) -> list[dict[str
         item["outlet_label"] = _product_outlet_label(item["outlet"])
         item["approximate_price_display"] = _format_optional_price(item.get("approximate_price"))
         products.append(item)
+    variants_by_product = _load_variants_by_product_ids(
+        conn, [int(p["id"]) for p in products]
+    )
+    for item in products:
+        variants = variants_by_product.get(int(item["id"]), [])
+        item["variants"] = variants
+        item["variant_count"] = len(variants)
     return products
 
 
@@ -1192,10 +1733,13 @@ def stores_product_master():
         "default_unit": "kg",
         "outlet": "",
         "approximate_price": "",
+        "variants": [],
     }
 
     def _pm_redirect(**extra):
         args = {"outlet": outlet}
+        if str(request.args.get("embed") or request.form.get("embed") or "") == "1":
+            args["embed"] = 1
         args.update(extra)
         return redirect(url_for("stores_product_master", **args))
 
@@ -1205,7 +1749,7 @@ def stores_product_master():
         if request.method == "POST":
             action = (request.form.get("action") or "save_product").strip()
             if action == "save_category":
-                cat_name = (request.form.get("category_name") or "").strip()
+                cat_name = _title_case_words(request.form.get("category_name") or "")
                 category_form_name = cat_name
                 if not cat_name:
                     errors.append("Category name is required.")
@@ -1261,14 +1805,11 @@ def stores_product_master():
                         flash("Unit added.", "ok")
                         return _pm_redirect(focus="form", unit=unit_name)
             else:
-                form["name"] = (request.form.get("name") or "").strip()
-                form["default_unit"] = (request.form.get("default_unit") or "kg").strip() or "kg"
+                form["name"] = _title_case_product_name(request.form.get("name") or "")
                 raw_outlet = (request.form.get("outlet") or "").strip().lower()
                 form["outlet"] = raw_outlet if raw_outlet in PRODUCT_OUTLET_KEYS else ""
                 form["category_id"] = (request.form.get("category_id") or "").strip()
                 form["product_id"] = (request.form.get("product_id") or "").strip()
-                approx_price, price_error = _parse_optional_price(request.form.get("approximate_price"))
-                form["approximate_price"] = _format_optional_price(approx_price) if approx_price is not None else (request.form.get("approximate_price") or "").strip()
                 try:
                     category_id = int(form["category_id"])
                 except (TypeError, ValueError):
@@ -1277,14 +1818,62 @@ def stores_product_master():
                     product_id = int(form["product_id"]) if form["product_id"] else 0
                 except (TypeError, ValueError):
                     product_id = 0
+
+                existing_unit = ""
+                if product_id:
+                    existing_row = conn.execute(
+                        "SELECT default_unit FROM store_products WHERE id = ? AND is_active = 1",
+                        (product_id,),
+                    ).fetchone()
+                    if existing_row:
+                        existing_unit = (existing_row["default_unit"] or "").strip()
+
+                pack_units = _pack_units_from_form(request.form)
+                inferred_unit, unit_infer_error = _infer_product_unit_from_pack_units(pack_units)
+                # Prefer an existing compatible stock unit so edits don't orphan kg stock
+                # when packs stay in gram.
+                if existing_unit and pack_units:
+                    existing_norm = _normalize_pos_menu_unit(existing_unit)
+                    pack_norms = {_normalize_pos_menu_unit(u) for u in pack_units}
+                    compatible = False
+                    if existing_norm in ("kg", "g") and pack_norms <= {"kg", "g"}:
+                        compatible = True
+                    elif existing_norm in ("liter", "ml") and pack_norms <= {"liter", "ml"}:
+                        compatible = True
+                    elif existing_norm in ("pcs", "dozen") and pack_norms <= {"pcs", "dozen"}:
+                        compatible = True
+                    elif existing_norm in pack_norms:
+                        compatible = True
+                    if compatible:
+                        form["default_unit"] = existing_unit
+                    else:
+                        form["default_unit"] = inferred_unit or existing_unit or "kg"
+                else:
+                    form["default_unit"] = inferred_unit or existing_unit or "kg"
+
+                variants, variant_errors = _parse_variants_from_form(
+                    request.form,
+                    product_unit=form["default_unit"],
+                )
+                approx_price = _approximate_price_from_variants(variants)
+                form["approximate_price"] = _format_optional_price(approx_price) if approx_price is not None else ""
+                form["variants"] = [
+                    {
+                        "qty": v.get("pack_qty") or "",
+                        "unit": v.get("pack_unit") or "",
+                        "approximate_price": _format_optional_price(v.get("approximate_price")),
+                    }
+                    for v in variants
+                ]
                 if not form["name"]:
                     errors.append("Product name is required.")
                 if not category_id:
                     errors.append("Choose a category.")
                 if not form["outlet"]:
                     errors.append("Choose an outlet.")
-                if price_error:
-                    errors.append(price_error)
+                if unit_infer_error:
+                    errors.append(unit_infer_error)
+                errors.extend(variant_errors)
                 if not errors:
                     exists = conn.execute(
                         """
@@ -1298,12 +1887,13 @@ def stores_product_master():
                         errors.append("That product already exists in this category.")
                     elif product_id:
                         row = conn.execute(
-                            "SELECT id FROM store_products WHERE id = ? AND is_active = 1",
+                            "SELECT id, name FROM store_products WHERE id = ? AND is_active = 1",
                             (product_id,),
                         ).fetchone()
                         if not row:
                             errors.append("Product not found.")
                         else:
+                            old_name = row["name"] or ""
                             conn.execute(
                                 """
                                 UPDATE store_products
@@ -1321,6 +1911,8 @@ def stores_product_master():
                                     product_id,
                                 ),
                             )
+                            _rename_store_item_name_refs(conn, old_name, form["name"])
+                            _save_product_variants(conn, product_id, variants)
                             conn.commit()
                             flash("Product updated.", "ok")
                             return _pm_redirect()
@@ -1332,7 +1924,7 @@ def stores_product_master():
                             """,
                             (category_id,),
                         ).fetchone()["m"]
-                        conn.execute(
+                        cur = conn.execute(
                             """
                             INSERT INTO store_products
                                 (category_id, name, default_unit, outlet, approximate_price,
@@ -1349,6 +1941,7 @@ def stores_product_master():
                                 _now(),
                             ),
                         )
+                        _save_product_variants(conn, int(cur.lastrowid), variants)
                         conn.commit()
                         flash("Product added to master.", "ok")
                         return _pm_redirect()
@@ -1371,6 +1964,14 @@ def stores_product_master():
                 form["approximate_price"] = _format_optional_price(
                     row["approximate_price"] if "approximate_price" in row.keys() else None
                 )
+                form["variants"] = []
+                for v in _load_variants_by_product_ids(conn, [edit_id_int]).get(edit_id_int, []):
+                    pack_qty, pack_unit = _split_variant_label(v["label"] or "")
+                    form["variants"].append({
+                        "qty": pack_qty,
+                        "unit": pack_unit,
+                        "approximate_price": v["approximate_price_display"] or "",
+                    })
             else:
                 flash("Product not found.", "error")
                 return _pm_redirect()
@@ -1416,6 +2017,17 @@ def stores_product_master():
             selected_outlet_label=_outlet_label(outlet),
             products=products,
             product_count=product_count,
+            categories=[dict(row) for row in categories],
+            default_units=product_units,
+            product_outlets=PRODUCT_OUTLETS,
+            show_form=focus or bool(errors) or show_category_modal or show_unit_modal,
+            show_category_modal=show_category_modal,
+            show_unit_modal=show_unit_modal,
+            category_form_name=category_form_name,
+            unit_form_name=unit_form_name,
+            form=form,
+            errors=errors,
+            editing=bool(form.get("product_id")),
         )
 
     return _page_render(
@@ -1441,6 +2053,12 @@ def stores_product_master():
 def stores_product_delete(product_id: int):
     _get_user()
     outlet = _parse_outlet_filter(request.args.get("outlet"))
+    wants_json = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in (request.headers.get("Accept") or "").lower()
+    )
+    deleted_name = ""
+    error = ""
     conn = get_db()
     try:
         ensure_stores_schema(conn)
@@ -1449,8 +2067,11 @@ def stores_product_delete(product_id: int):
             (product_id,),
         ).fetchone()
         if not row:
-            flash("Product not found.", "error")
+            error = "Product not found."
+            if not wants_json:
+                flash(error, "error")
         else:
+            deleted_name = row["name"] or ""
             conn.execute(
                 """
                 UPDATE store_products
@@ -1459,11 +2080,31 @@ def stores_product_delete(product_id: int):
                 """,
                 (_now(), product_id),
             )
+            conn.execute(
+                "UPDATE store_product_variants SET is_active = 0 WHERE product_id = ?",
+                (product_id,),
+            )
             conn.commit()
-            flash(f"Deleted {row['name']}.", "ok")
+            if not wants_json:
+                flash(f"Deleted {deleted_name}.", "ok")
     finally:
         conn.close()
-    return redirect(url_for("stores_product_master", outlet=outlet))
+    if wants_json:
+        if error:
+            return jsonify({"ok": False, "error": error, "product_id": product_id}), 404
+        return jsonify({
+            "ok": True,
+            "product_id": product_id,
+            "name": deleted_name,
+            "message": f"Deleted {deleted_name}." if deleted_name else "Deleted.",
+        })
+    return redirect(
+        url_for(
+            "stores_product_master",
+            outlet=outlet,
+            **({"embed": 1} if str(request.args.get("embed") or "") == "1" else {}),
+        )
+    )
 
 @stores_bp.route("/stores")
 def stores():
@@ -1498,7 +2139,15 @@ def stores_indent():
         "indent_id": "",
         "notes": "",
         "submission_token": "",
-        "lines": [{"item_name": "", "quantity": "", "unit": "kg", "notes": "", "approximate_price": ""}],
+        "lines": [{
+            "item_name": "",
+            "quantity": "",
+            "unit": "kg",
+            "notes": "",
+            "approximate_price": "",
+            "pack_label": "",
+            "pack_qty_in_base": "",
+        }],
     }
 
     conn = get_db()
@@ -1509,9 +2158,18 @@ def stores_indent():
             form["indent_id"] = (request.form.get("indent_id") or "").strip()
             form["submission_token"] = (request.form.get("submission_token") or "").strip()
             lines = _parse_lines_from_form(request.form)
-            form["lines"] = lines or [{"item_name": "", "quantity": "", "unit": "kg", "notes": "", "approximate_price": ""}]
+            form["lines"] = lines or [{
+                "item_name": "",
+                "quantity": "",
+                "unit": "kg",
+                "notes": "",
+                "approximate_price": "",
+                "pack_label": "",
+                "pack_qty_in_base": "",
+            }]
             for line in form["lines"]:
                 line["approximate_price_display"] = _format_optional_price(line.get("approximate_price"))
+                line["display_name"] = _format_indent_line_item(line)
             action = (request.form.get("action") or "save").strip()
             form_outlet_raw = (request.form.get("outlet") or "").strip()
             if not form_outlet_raw or _parse_outlet_filter(form_outlet_raw) == "both":
@@ -1629,8 +2287,9 @@ def stores_indent():
                         conn.execute(
                             """
                             INSERT INTO store_indent_lines
-                                (indent_id, item_name, quantity, unit, notes, approximate_price)
-                            VALUES (?, ?, ?, ?, ?, ?)
+                                (indent_id, item_name, quantity, unit, notes, approximate_price,
+                                 pack_label, pack_qty_in_base)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 indent_id,
@@ -1639,6 +2298,8 @@ def stores_indent():
                                 line["unit"],
                                 line.get("notes") or "",
                                 line.get("approximate_price"),
+                                line.get("pack_label") or "",
+                                line.get("pack_qty_in_base"),
                             ),
                         )
                     # New approval round: allow WhatsApp notify again after reject/draft.
@@ -1726,8 +2387,9 @@ def stores_indent():
                     conn.execute(
                         """
                         INSERT INTO store_indent_lines
-                            (indent_id, item_name, quantity, unit, notes, approximate_price)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                            (indent_id, item_name, quantity, unit, notes, approximate_price,
+                             pack_label, pack_qty_in_base)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             new_id,
@@ -1736,6 +2398,8 @@ def stores_indent():
                             line["unit"],
                             line.get("notes") or "",
                             line.get("approximate_price"),
+                            line.get("pack_label") or "",
+                            line.get("pack_qty_in_base"),
                         ),
                     )
                 if status == "pending":
@@ -1913,9 +2577,11 @@ def _build_indent_purchase_order_xlsx(indent: dict[str, Any], lines: list[dict[s
             total_amount += amount
             has_amount = True
         ws.cell(row=row_idx, column=1, value=idx)
-        ws.cell(row=row_idx, column=2, value=line.get("item_name") or "")
+        item_label = _format_indent_line_item(line)
+        pack_label = (line.get("pack_label") or "").strip()
+        ws.cell(row=row_idx, column=2, value=item_label)
         ws.cell(row=row_idx, column=3, value=qty)
-        ws.cell(row=row_idx, column=4, value=line.get("unit") or "")
+        ws.cell(row=row_idx, column=4, value=pack_label or (line.get("unit") or ""))
         ws.cell(row=row_idx, column=5, value=price_num if price_num is not None else "")
         ws.cell(row=row_idx, column=6, value=amount if amount is not None else "")
 
@@ -2133,6 +2799,7 @@ def stores_indent_detail(indent_id: int):
         for line in lines:
             item = dict(line)
             item["approximate_price_display"] = _format_optional_price(item.get("approximate_price"))
+            item["display_name"] = _format_indent_line_item(item)
             detail_lines.append(item)
     finally:
         conn.close()
@@ -2374,10 +3041,19 @@ def stores_purchase_requests():
             for line in lines:
                 conn.execute(
                     """
-                    INSERT INTO store_purchase_request_lines (pr_id, item_name, quantity, unit, notes)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO store_purchase_request_lines
+                        (pr_id, item_name, quantity, unit, notes, pack_label, pack_qty_in_base)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (pr_id, line["item_name"], line["quantity"], line["unit"], line["notes"] or ""),
+                    (
+                        pr_id,
+                        line["item_name"],
+                        line["quantity"],
+                        line["unit"],
+                        line["notes"] or "",
+                        (line["pack_label"] if "pack_label" in line.keys() else "") or "",
+                        line["pack_qty_in_base"] if "pack_qty_in_base" in line.keys() else None,
+                    ),
                 )
             conn.commit()
         finally:
@@ -2442,7 +3118,8 @@ def stores_purchase_requests():
         if selected_indent is not None:
             line_rows = conn.execute(
                 """
-                SELECT id, item_name, quantity, quantity_received, unit, notes, approximate_price
+                SELECT id, item_name, quantity, quantity_received, unit, notes, approximate_price,
+                       pack_label, pack_qty_in_base
                 FROM store_indent_lines
                 WHERE indent_id = ?
                 ORDER BY id
@@ -2478,21 +3155,35 @@ def stores_purchase_requests():
                     rate_val = float(approx) if approx is not None and approx != "" else 0.0
                 except (TypeError, ValueError):
                     rate_val = 0.0
+                pack_label = ""
+                try:
+                    pack_label = (line["pack_label"] or "").strip()
+                except (KeyError, TypeError):
+                    pack_label = ""
+                pack_qty = _row_pack_qty_in_base(line)
+                base_unit = line["unit"] or ""
+                if pack_label and pack_qty is not None:
+                    display_unit = f"{_format_ledger_qty(pack_qty)} {base_unit}".strip()
+                else:
+                    display_unit = base_unit
+                display_name = _format_indent_line_item(line)
                 selected_lines.append({
                     "id": int(line["id"]),
-                    "item_name": line["item_name"],
+                    "item_name": display_name,
                     "quantity": qty_val,
                     "quantity_display": qty_display,
                     "quantity_received": received_val,
                     "quantity_received_display": received_display,
                     "remaining": remaining_val,
                     "remaining_display": remaining_display,
-                    "unit": line["unit"] or "",
+                    "unit": display_unit,
                     "notes": line["notes"] or "",
                     "approximate_price": approx,
                     "approximate_price_display": _format_optional_price(approx),
                     "rate_value": rate_val,
                     "initial": (line["item_name"] or "?")[:1].upper(),
+                    "pack_label": pack_label,
+                    "pack_qty_in_base": _row_pack_qty_in_base(line),
                 })
             selected_indent = {
                 **selected_indent,
@@ -2695,7 +3386,7 @@ def stores_confirm_stock_inward_expense():
             return jsonify({"ok": False, "error": "This indent has no items."}), 400
 
         lines_by_id = {int(row["id"]): row for row in lines}
-        received_pairs: list[tuple[Any, float, float | None]] = []
+        received_pairs: list[tuple[Any, float, float | None, float | None]] = []
         for line_id, (received_qty, unit_price, tax_percent) in selected.items():
             line = lines_by_id.get(line_id)
             if not line:
@@ -2723,7 +3414,7 @@ def stores_confirm_stock_inward_expense():
             if unit_cost is None:
                 # Fall back to approved indent price (ex-tax) when UI omits entered rate.
                 unit_cost = _unit_cost_with_tax(line["approximate_price"], 0)
-            received_pairs.append((line, received_qty, unit_cost))
+            received_pairs.append((line, received_qty, unit_cost, unit_price))
 
         expense_data = {
             "company": data.get("company") or app_module.DEFAULT_COMPANY,
@@ -2751,7 +3442,7 @@ def stores_confirm_stock_inward_expense():
         payment_type = app_module._normalize_expense_payment_type(expense_data.get("payment_type"))
         expense_amount = app_module.parse_money(expense_data.get("amount"))
         approved_total = 0.0
-        for line, received_qty, _unit_cost in received_pairs:
+        for line, received_qty, _unit_cost, _entered_price in received_pairs:
             try:
                 unit_price = float(line["approximate_price"] or 0)
             except (TypeError, ValueError):
@@ -2782,19 +3473,34 @@ def stores_confirm_stock_inward_expense():
         movement_note = f"Stock inward from {indent['indent_no']}"
         if notes:
             movement_note = f"{movement_note}: {notes}"
-        for line, received_qty, unit_cost in received_pairs:
+        for line, received_qty, unit_cost, entered_price in received_pairs:
+            stock_qty = _line_stock_qty_delta(line, received_qty)
+            stock_unit_cost = _line_stock_unit_cost(line, unit_cost)
             _adjust_stock(
                 conn,
                 outlet=write_outlet,
                 item_name=line["item_name"],
                 unit=line["unit"] or "",
-                qty_delta=received_qty,
+                qty_delta=stock_qty,
                 movement_type="receive",
                 ref_type="stock_inward",
                 ref_id=indent_id,
                 notes=movement_note,
                 user_id=user["id"] if user else None,
-                unit_cost=unit_cost,
+                unit_cost=stock_unit_cost,
+            )
+            master_price = entered_price
+            if master_price is None:
+                try:
+                    if line["approximate_price"] is not None and line["approximate_price"] != "":
+                        master_price = float(line["approximate_price"])
+                except (KeyError, TypeError, ValueError):
+                    master_price = None
+            _update_product_master_price_from_inward(
+                conn,
+                item_name=line["item_name"],
+                pack_label=_row_pack_label(line),
+                unit_price=master_price,
             )
             try:
                 already = float(line["quantity_received"] or 0)
@@ -2917,7 +3623,7 @@ def stores_pr_receive(pr_id: int):
                 outlet=outlet,
                 item_name=line["item_name"],
                 unit=line["unit"],
-                qty_delta=float(line["quantity"]),
+                qty_delta=_line_stock_qty_delta(line, float(line["quantity"])),
                 movement_type="receive",
                 ref_type="purchase_request",
                 ref_id=pr_id,

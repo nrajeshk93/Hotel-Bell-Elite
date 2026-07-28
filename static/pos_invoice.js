@@ -27,7 +27,7 @@
   var DEFAULT_SERVICE_PCT = 0;
   var MIN_QUERY = 2;
   var NOTES_MAX = 200;
-  var INV_MODALS = ['custom', 'discount', 'service', 'tip', 'coupon'];
+  var INV_MODALS = ['custom', 'line-note', 'discount', 'service', 'tip', 'coupon'];
   /* Debounced plain-save after line edits so soft-nav back to Tables does not
      drop unsaved dine-in items. Guest is the default first name (editable);
      silent autosave may send Guest in the payload when the field is blank,
@@ -552,6 +552,7 @@
         var lockReduce = !isAdmin && sentQty > 0;
         var canDecrease = !lockReduce || Number(line.qty) > sentQty;
         var canDelete = !lockReduce;
+        var lineNotes = String(line.notes || '').trim();
         return (
           '<tr data-line-id="' +
           escapeHtml(line.uid) +
@@ -562,6 +563,13 @@
           '</div>' +
           (line.variant
             ? '<div class="pos-inv-item-variant">' + escapeHtml(line.variant) + '</div>'
+            : '') +
+          (lineNotes
+            ? '<div class="pos-inv-item-note" title="' +
+              escapeHtml(lineNotes) +
+              '">' +
+              escapeHtml(lineNotes) +
+              '</div>'
             : '') +
           (pendingQty > 0
             ? '<span class="pos-inv-item-kot-tag" title="Not yet sent to kitchen">' +
@@ -586,12 +594,19 @@
           '<td class="pos-inv-col-amt"><span class="pos-inv-amt">' +
           money(amt) +
           '</span></td>' +
-          '<td class="pos-inv-col-act">' +
+          '<td class="pos-inv-col-act"><div class="pos-inv-act-btns">' +
+          '<button type="button" class="pos-inv-note-btn' +
+          (lineNotes ? ' is-active' : '') +
+          '" data-line-note aria-label="Customise item"' +
+          (lineNotes ? ' title="' + escapeHtml(lineNotes) + '"' : ' title="Add customised note"') +
+          '>' +
+          '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
+          '</button>' +
           '<button type="button" class="pos-inv-del" data-del aria-label="Remove item"' +
           (canDelete ? '' : ' disabled title="Only an administrator can remove items after KOT"') +
           '>' +
           '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>' +
-          '</button></td></tr>'
+          '</button></div></td></tr>'
         );
       })
       .join('');
@@ -641,12 +656,14 @@
       var rows = pending
         .map(function (entry) {
           var line = entry.line;
+          var note = String(line.notes || '').trim();
           return (
             '<tr><td class="qty">' +
             entry.qty +
             '</td><td class="name">' +
             escapeHtml(line.name) +
             (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
+            (note ? '<div class="note">' + escapeHtml(note) + '</div>' : '') +
             '</td></tr>'
           );
         })
@@ -663,6 +680,7 @@
         'td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
         'td.qty{width:34px;font-weight:700}' +
         '.variant{font-size:11px;color:#555}' +
+        '.note{font-size:11px;color:#111;font-style:italic;margin-top:2px}' +
         '.foot{margin-top:12px;text-align:center;font-size:11px;color:#555}' +
         '</style></head><body>' +
         '<h1>KITCHEN ORDER TOKEN</h1>' +
@@ -729,6 +747,7 @@
         var qty = Number(line.qty) || 0;
         var rate = Number(line.rate) || 0;
         var amt = line.line_total != null ? Number(line.line_total) : rate * qty;
+        // Line notes are kitchen-only (KOT) — never print on the customer bill.
         return (
           '<tr><td class="name">' +
           escapeHtml(line.name) +
@@ -802,24 +821,28 @@
       '<div><span>Subtotal</span><span>' +
       money(totals.subtotal) +
       '</span></div>' +
-      '<div><span>Discount' +
-      (discHint ? ' ' + discHint : '') +
-      '</span><span>-' +
-      money(totals.discount) +
-      '</span></div>' +
+      (Number(totals.discount) > 0 || Number(totals.discountValue) > 0
+        ? '<div><span>Discount' +
+          (discHint ? ' ' + discHint : '') +
+          '</span><span>-' +
+          money(totals.discount) +
+          '</span></div>'
+        : '') +
       '<div><span>GST (' +
       GST_RATE * 100 +
       '%)</span><span>' +
       money(totals.gst) +
       '</span></div>' +
-      '<div><span>Service Charge' +
-      (svcHint ? ' ' + svcHint : '') +
-      '</span><span>' +
-      money(totals.service) +
-      '</span></div>' +
-      '<div><span>Tip</span><span>' +
-      money(totals.tip) +
-      '</span></div>' +
+      (Number(totals.service) > 0 || Number(totals.serviceValue) > 0
+        ? '<div><span>Service Charge' +
+          (svcHint ? ' ' + svcHint : '') +
+          '</span><span>' +
+          money(totals.service) +
+          '</span></div>'
+        : '') +
+      (Number(totals.tip) > 0
+        ? '<div><span>Tip</span><span>' + money(totals.tip) + '</span></div>'
+        : '') +
       '<div><span>Round Off</span><span>' +
       money(totals.roundOff) +
       '</span></div>' +
@@ -1177,7 +1200,8 @@
         emoji: item.emoji || '🍽️',
         /* KOT is not fired on add — sentQty tracks how much of this line has
            already been confirmed to the kitchen so only the delta re-KOTs. */
-        sentQty: 0
+        sentQty: 0,
+        notes: ''
       });
     }
     renderLines(page);
@@ -1432,7 +1456,8 @@
         rate: Number(line.rate) || 0,
         qty: Number(line.qty) || 0,
         emoji: '🍽️',
-        sentQty: Number(line.sent_qty) || 0
+        sentQty: Number(line.sent_qty) || 0,
+        notes: String(line.notes || '').trim()
       };
     });
 
@@ -2403,6 +2428,7 @@
   }
 
   function closeAllInvModals(page) {
+    persistLineNoteFromModal(page);
     INV_MODALS.forEach(function (kind) {
       closeInvModal(page, kind);
     });
@@ -2413,6 +2439,72 @@
     var modal = $('#' + modalId(kind), page);
     if (!modal) return;
     modal.hidden = false;
+  }
+
+  function updateLineNoteCount(page) {
+    var textEl = $('#pos-inv-line-note-text', page);
+    var countEl = $('#pos-inv-line-note-count', page);
+    if (!countEl) return;
+    var len = textEl ? String(textEl.value || '').length : 0;
+    countEl.textContent = len + ' / ' + NOTES_MAX;
+  }
+
+  function openLineNoteModal(page, line) {
+    if (!line) return;
+    var uidEl = $('#pos-inv-line-note-uid', page);
+    var textEl = $('#pos-inv-line-note-text', page);
+    if (uidEl) uidEl.value = line.uid || '';
+    if (textEl) {
+      textEl.value = String(line.notes || '');
+      textEl.setAttribute('maxlength', String(NOTES_MAX));
+    }
+    updateLineNoteCount(page);
+    openInvModal(page, 'line-note');
+    if (textEl) {
+      setTimeout(function () {
+        textEl.focus();
+        textEl.setSelectionRange(textEl.value.length, textEl.value.length);
+      }, 0);
+    }
+  }
+
+  function applyLineNoteModal(page, clear) {
+    var uidEl = $('#pos-inv-line-note-uid', page);
+    var textEl = $('#pos-inv-line-note-text', page);
+    var uid = uidEl ? String(uidEl.value || '') : '';
+    if (!uid) {
+      closeInvModal(page, 'line-note');
+      return;
+    }
+    var line = null;
+    var i;
+    for (i = 0; i < state.lines.length; i++) {
+      if (state.lines[i].uid === uid) {
+        line = state.lines[i];
+        break;
+      }
+    }
+    if (!line) {
+      closeInvModal(page, 'line-note');
+      return;
+    }
+    var notes = clear ? '' : String(textEl ? textEl.value || '' : '').trim().slice(0, NOTES_MAX);
+    var prev = String(line.notes || '').trim();
+    line.notes = notes;
+    closeInvModal(page, 'line-note');
+    if (prev === notes) {
+      renderLines(page);
+      return;
+    }
+    renderLines(page);
+    markOrderDirty(page);
+    toast(notes ? 'Item note saved.' : 'Item note cleared.');
+  }
+
+  function persistLineNoteFromModal(page) {
+    var modal = $('#' + modalId('line-note'), page);
+    if (!modal || modal.hidden) return;
+    applyLineNoteModal(page, false);
   }
 
   function syncAdjTypeUi(page, kind, type) {
@@ -2772,7 +2864,8 @@
           rate: Number(line.rate) || 0,
           qty: Number(line.qty) || 0,
           emoji: line.emoji || '',
-          kotSentQty: Number(line.sentQty) || 0
+          kotSentQty: Number(line.sentQty) || 0,
+          notes: String(line.notes || '').trim()
         };
       }),
       discountType: state.discountType,
@@ -3413,6 +3506,10 @@
         }
       }
       if (!line) return;
+      if (e.target.closest('[data-line-note]')) {
+        openLineNoteModal(page, line);
+        return;
+      }
       if (e.target.closest('[data-del]')) {
         if (lineHasKitchenSent(line) && !canEditKitchenSentLines(page)) {
           toast('Only an administrator can remove items after they were sent to the kitchen.');
@@ -3545,6 +3642,10 @@
       var closeEl = e.target.closest('[data-inv-modal-close]');
       if (closeEl && page.contains(closeEl)) {
         var kind = closeEl.getAttribute('data-inv-modal-close') || 'custom';
+        if (kind === 'line-note') {
+          persistLineNoteFromModal(page);
+          return;
+        }
         closeInvModal(page, kind);
         return;
       }
@@ -3563,9 +3664,18 @@
       if (!t || !page.contains(t)) return;
       if (t.id === 'pos-inv-discount-amount') updateAdjPreview(page, 'discount');
       if (t.id === 'pos-inv-service-amount') updateAdjPreview(page, 'service');
+      if (t.id === 'pos-inv-line-note-text') updateLineNoteCount(page);
     });
 
     page.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        var lineNoteModal = $('#' + modalId('line-note'), page);
+        if (lineNoteModal && !lineNoteModal.hidden) {
+          e.preventDefault();
+          persistLineNoteFromModal(page);
+          return;
+        }
+      }
       if (e.key !== 'Enter') return;
       var t = e.target;
       if (!t || !page.contains(t)) return;
@@ -3601,6 +3711,16 @@
         closeCustomModal(page);
         var search = $('#pos-inv-search', page);
         if (search) search.focus();
+      });
+    }
+
+    var lineNoteClear = $('#pos-inv-line-note-clear', page);
+    if (lineNoteClear) {
+      lineNoteClear.addEventListener('click', function () {
+        var textEl = $('#pos-inv-line-note-text', page);
+        if (textEl) textEl.value = '';
+        updateLineNoteCount(page);
+        applyLineNoteModal(page, true);
       });
     }
 

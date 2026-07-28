@@ -1,30 +1,70 @@
 {# Shared indent line row — expects fid, ufid, line, has_item, product_catalog, default_units #}
 {% set line_unit = line.unit or 'kg' %}
-<div class="st-line{% if has_item %} is-product-selected{% endif %}">
+{% set pack_label = line.pack_label|default('') %}
+{% set pack_qty = line.pack_qty_in_base if line.pack_qty_in_base is defined and line.pack_qty_in_base is not none else '' %}
+{% set pack_ns = namespace(variants=[]) %}
+{% if has_item %}
+  {% for cat in product_catalog or [] %}
+    {% for product in cat.products %}
+      {% if product.name == line.item_name %}
+        {% set pack_ns.variants = product.variants or [] %}
+      {% endif %}
+    {% endfor %}
+  {% endfor %}
+{% endif %}
+{% set has_packs = pack_ns.variants|length > 0 %}
+<div class="st-line{% if has_item %} is-product-selected{% endif %}{% if has_packs %} has-packs{% endif %}">
   <div class="st-field st-field--product" data-st-label="Item">
-    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-product-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-change="stProductPicked" id="{{ fid }}-listbox">
+    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-product-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="stProductPicked" id="{{ fid }}-listbox">
       <label class="se-filter-chip-label st-sr-only" id="{{ fid }}-label" for="{{ fid }}-trigger">Item</label>
       <div class="se-filter-chip-control">
-        <span class="se-filter-chip-icon st-product-thumb" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
-        </span>
         <input type="hidden" id="{{ fid }}" name="item_name" value="{{ line.item_name }}">
-        <button type="button" class="se-filter-chip-trigger" id="{{ fid }}-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ fid }}-list" aria-labelledby="{{ fid }}-label {{ fid }}-value">
-          <span class="se-filter-chip-value{% if not has_item %} is-placeholder{% endif %}" id="{{ fid }}-value">{% if has_item %}{{ line.item_name }}{% else %}Select Product{% endif %}</span>
-        </button>
+        <input type="search"
+               class="se-filter-chip-trigger se-filter-chip-combobox{% if not has_item %} is-placeholder{% endif %}"
+               id="{{ fid }}-trigger"
+               role="combobox"
+               aria-autocomplete="list"
+               aria-haspopup="listbox"
+               aria-expanded="false"
+               aria-controls="{{ fid }}-list"
+               aria-labelledby="{{ fid }}-label"
+               value="{% if has_item %}{{ line.item_name }}{% endif %}"
+               placeholder="Search product…"
+               autocomplete="off"
+               spellcheck="false">
         <span class="se-filter-chip-chev" aria-hidden="true">
           <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
         </span>
       </div>
       <div class="se-filter-listbox" id="{{ fid }}-list" role="listbox" aria-labelledby="{{ fid }}-label" hidden>
-        <div class="ep-listbox-search-wrap">
-          <input type="search" class="ep-listbox-search" placeholder="Search..." autocomplete="off" aria-label="Search Item">
-        </div>
         <div class="ep-listbox-options">
           {% for cat in product_catalog or [] %}
           {% for product in cat.products %}
-          <button type="button" class="se-filter-listbox-option{% if line.item_name == product.name %} is-selected{% endif %}" role="option" data-value="{{ product.name }}" data-name="{{ product.name|lower }} {{ cat.name|lower }}" data-label="{{ product.name }}" data-unit="{{ product.default_unit }}" data-outlet="{{ product.outlet }}" data-price="{{ product.approximate_price_display }}" aria-selected="{{ 'true' if line.item_name == product.name else 'false' }}">{{ product.name }}</button>
+          <button type="button" class="se-filter-listbox-option{% if line.item_name == product.name %} is-selected{% endif %}" role="option" data-value="{{ product.name }}" data-name="{{ product.name|lower }} {{ cat.name|lower }}" data-label="{{ product.name }}" data-unit="{{ product.default_unit }}" data-outlet="{{ product.outlet }}" data-price="{{ product.approximate_price_display }}" data-variants='{{ product.variants|default([])|tojson }}' aria-selected="{{ 'true' if line.item_name == product.name else 'false' }}">{{ product.name }}</button>
           {% endfor %}
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="st-field st-field--pack" data-st-label="Pack" data-st-pack-field>
+    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-pack-listbox" data-se-listbox data-se-listbox-change="stPackPicked" data-st-pack-listbox id="{{ fid }}-pack-listbox">
+      <label class="se-filter-chip-label st-sr-only" id="{{ fid }}-pack-label" for="{{ fid }}-pack-trigger">Pack</label>
+      <div class="se-filter-chip-control">
+        <input type="hidden" name="pack_label" value="{{ pack_label }}" data-st-pack-label>
+        <input type="hidden" name="pack_qty_in_base" value="{{ pack_qty }}" data-st-pack-qty>
+        <button type="button" class="se-filter-chip-trigger" id="{{ fid }}-pack-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ fid }}-pack-list" aria-labelledby="{{ fid }}-pack-label {{ fid }}-pack-value">
+          <span class="se-filter-chip-value{% if not pack_label %} is-placeholder{% endif %}" id="{{ fid }}-pack-value">{% if pack_label %}{{ pack_label }}{% elif has_packs %}Base unit{% else %}Pack{% endif %}</span>
+        </button>
+        <span class="se-filter-chip-chev" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
+      <div class="se-filter-listbox" id="{{ fid }}-pack-list" role="listbox" aria-labelledby="{{ fid }}-pack-label" hidden>
+        <div class="ep-listbox-options" data-st-pack-options>
+          <button type="button" class="se-filter-listbox-option{% if not pack_label %} is-selected{% endif %}" role="option" data-value="" data-name="base unit" data-label="Base unit" data-qty="" data-price="" aria-selected="{{ 'true' if not pack_label else 'false' }}">Base unit</button>
+          {% for variant in pack_ns.variants %}
+          <button type="button" class="se-filter-listbox-option{% if pack_label == variant.label %} is-selected{% endif %}" role="option" data-value="{{ variant.label }}" data-name="{{ variant.label|lower }}" data-label="{{ variant.label }}" data-qty="{{ variant.qty_in_base_display or variant.qty_in_base }}" data-price="{{ variant.approximate_price_display or '' }}" aria-selected="{{ 'true' if pack_label == variant.label else 'false' }}">{{ variant.label }}</button>
           {% endfor %}
         </div>
       </div>
@@ -35,12 +75,13 @@
     <input type="number" name="quantity" min="0.01" step="0.01" inputmode="decimal" value="{{ line.quantity }}" placeholder="0" aria-label="Qty">
   </div>
   <div class="st-field st-field--unit" data-st-label="Unit">
-    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-unit-listbox" data-se-listbox data-st-unit-listbox id="{{ ufid }}-listbox">
+    {% set unit_display = (pack_qty|string ~ ' ' ~ line_unit) if (pack_label and pack_qty != '' and pack_qty is not none) else line_unit %}
+    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-unit-listbox{% if pack_label %} is-pack-locked{% endif %}" data-se-listbox data-st-unit-listbox id="{{ ufid }}-listbox">
       <label class="se-filter-chip-label st-sr-only" id="{{ ufid }}-label" for="{{ ufid }}-trigger">Unit</label>
       <div class="se-filter-chip-control">
         <input type="hidden" id="{{ ufid }}" name="unit" value="{{ line_unit }}" data-st-unit>
         <button type="button" class="se-filter-chip-trigger" id="{{ ufid }}-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ ufid }}-list" aria-labelledby="{{ ufid }}-label {{ ufid }}-value">
-          <span class="se-filter-chip-value{% if not has_item %} is-placeholder{% endif %}" id="{{ ufid }}-value">{% if has_item %}{{ line_unit }}{% else %}Select unit{% endif %}</span>
+          <span class="se-filter-chip-value{% if not has_item %} is-placeholder{% endif %}" id="{{ ufid }}-value">{% if has_item %}{{ unit_display }}{% else %}Select unit{% endif %}</span>
         </button>
         <span class="se-filter-chip-chev" aria-hidden="true">
           <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>

@@ -30,9 +30,9 @@
           <tbody>
             {% for line in detail_lines %}
             <tr>
-              <td>{{ line.item_name }}</td>
+              <td>{{ line.display_name or line.item_name }}</td>
               <td>{{ line.quantity }}</td>
-              <td>{{ line.unit }}</td>
+              <td>{% if line.pack_label %}{{ line.pack_label }}{% else %}{{ line.unit }}{% endif %}</td>
               <td>{% if line.approximate_price_display %}₹{{ line.approximate_price_display }}{% else %}—{% endif %}</td>
               <td>
                 {% set qty = line.quantity|float(default=0) %}
@@ -137,11 +137,13 @@
             <span class="st-lines-head-spacer"></span>
             <span class="st-lines-head-spacer"></span>
             <span class="st-lines-head-spacer"></span>
+            <span class="st-lines-head-spacer"></span>
             <span class="st-lines-head-approx">Approximate Price</span>
             <span class="st-lines-head-spacer"></span>
           </div>
           <div class="st-lines-head-row st-lines-head-row--cols">
             <span>Item</span>
+            <span>Pack</span>
             <span>Qty</span>
             <span>Unit</span>
             <span>Price / qty</span>
@@ -456,11 +458,13 @@
                   <span class="st-lines-head-spacer"></span>
                   <span class="st-lines-head-spacer"></span>
                   <span class="st-lines-head-spacer"></span>
+                  <span class="st-lines-head-spacer"></span>
                   <span class="st-lines-head-approx">Approximate Price</span>
                   <span class="st-lines-head-spacer"></span>
                 </div>
                 <div class="st-lines-head-row st-lines-head-row--cols">
                   <span>Item</span>
+                  <span>Pack</span>
                   <span>Qty</span>
                   <span>Unit</span>
                   <span>Price / qty</span>

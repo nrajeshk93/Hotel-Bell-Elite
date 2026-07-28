@@ -8,11 +8,11 @@
       <div class="su-header-left">
         <div class="su-title">
           <div class="su-title-row">
-            <div class="su-title-icon" aria-hidden="true">
+            <div class="su-title-icon" aria-hidden="true" style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;min-width:48px;min-height:48px;max-width:48px;max-height:48px;flex:0 0 48px;overflow:hidden;border-radius:14px;background:#EEF5FF;color:#1877F2;box-sizing:border-box;">
               {% if mode == 'add' %}
-              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+              <svg width="24" height="24" viewBox="0 0 24 24" style="width:24px;height:24px;display:block;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
               {% else %}
-              <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <svg width="24" height="24" viewBox="0 0 24 24" style="width:24px;height:24px;display:block;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               {% endif %}
             </div>
             <h1>{{ form_title }}{% if mode == 'edit' and form.get('id') %} <span class="md-emp-form-id">#{{ form['id'] }}</span>{% endif %}</h1>

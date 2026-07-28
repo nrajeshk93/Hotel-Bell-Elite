@@ -7,15 +7,37 @@
 {% for outlet in product_outlets %}
   {% set outlet_ns.options = outlet_ns.options + [(outlet.key, outlet.label)] %}
 {% endfor %}
-{% set unit_ns = namespace(options=[]) %}
-{% for unit in default_units %}
-  {% set unit_ns.options = unit_ns.options + [(unit, unit)] %}
-{% endfor %}
+{% set default_pack_unit = 'gram' if 'gram' in default_units else (default_units[0] if default_units else 'kg') %}
+
+{% macro variant_unit_listbox(selected_unit, fid) -%}
+{% set sel = selected_unit or default_pack_unit %}
+<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-variant-unit-listbox" data-se-listbox data-st-variant-unit-listbox id="{{ fid }}-listbox">
+  <label class="se-filter-chip-label st-sr-only" id="{{ fid }}-label" for="{{ fid }}-trigger">Pack unit</label>
+  <div class="se-filter-chip-control">
+    <input type="hidden" id="{{ fid }}" name="variant_unit" value="{{ sel }}">
+    <button type="button" class="se-filter-chip-trigger" id="{{ fid }}-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ fid }}-list" aria-labelledby="{{ fid }}-label {{ fid }}-value" aria-label="Pack unit">
+      <span class="se-filter-chip-value" id="{{ fid }}-value">{{ sel }}</span>
+    </button>
+    <span class="se-filter-chip-chev" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+    </span>
+  </div>
+  <div class="se-filter-listbox" id="{{ fid }}-list" role="listbox" aria-labelledby="{{ fid }}-label" hidden>
+    {% if sel and sel not in default_units %}
+    <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="{{ sel }}" data-name="{{ sel|lower }}" data-label="{{ sel }}" aria-selected="true">{{ sel }}</button>
+    {% endif %}
+    {% for unit in default_units %}
+    <button type="button" class="se-filter-listbox-option{% if unit == sel %} is-selected{% endif %}" role="option" data-value="{{ unit }}" data-name="{{ unit|lower }}" data-label="{{ unit }}" aria-selected="{{ 'true' if unit == sel else 'false' }}">{{ unit }}</button>
+    {% endfor %}
+  </div>
+</div>
+{%- endmacro %}
 
 {# Product add/edit modal — same overlay pattern as Employee Add Credit #}
+{% set _pm_list_url = url_for('stores_product_master', outlet=selected_outlet, **({'embed': 1} if embed_page_shell|default(false) else {})) %}
 <div class="modal-overlay st-product-modal{% if show_form %} active{% endif %}"
      id="st-product-modal"
-     data-st-list-url="{{ url_for('stores_product_master', outlet=selected_outlet) }}"
+     data-st-list-url="{{ _pm_list_url }}"
      data-st-editing="{{ '1' if editing else '0' }}"
      role="dialog"
      aria-modal="true"
@@ -36,10 +58,11 @@
 
     <form id="st-product-form"
           method="post"
-          action="{{ url_for('stores_product_master', outlet=selected_outlet) }}"
-          class="st-product-modal-form">
+          action="{{ _pm_list_url }}"
+          class="st-product-modal-form"{% if embed_page_shell|default(false) %} data-md-full-nav="1"{% endif %}>
       <input type="hidden" name="action" value="save_product">
       <input type="hidden" name="list_outlet" value="{{ selected_outlet }}">
+      {% if embed_page_shell|default(false) %}<input type="hidden" name="embed" value="1">{% endif %}
       <input type="hidden" name="product_id" id="st-product-id" value="{{ form.product_id }}">
 
       <div class="st-product-modal-field">
@@ -60,7 +83,14 @@
           </button>
           {{ ep_listbox('category_id', 'Category *', cat_ns.options, form.category_id, placeholder='Select category…', field_id='st-product-category', extra_class='st-product-listbox st-product-cat-listbox') }}
         </div>
-        <div class="st-product-modal-field st-product-unit-field">
+        <div class="st-product-modal-field">
+          {{ ep_listbox('outlet', 'Outlet *', outlet_ns.options, form.outlet or '', placeholder='Select outlet…', field_id='st-product-outlet', extra_class='st-product-listbox') }}
+        </div>
+      </div>
+
+      <div class="st-product-modal-field st-product-variants-field">
+        <div class="st-product-variants-head">
+          <label>Pack variants</label>
           <button type="button"
                   class="st-add-category-btn"
                   id="st-add-unit-btn"
@@ -68,28 +98,45 @@
                   aria-label="Add unit"
                   aria-haspopup="dialog"
                   aria-controls="st-unit-modal">
-            Add
+            Add unit
           </button>
-          {{ ep_listbox('default_unit', 'Unit *', unit_ns.options, form.default_unit or 'kg', placeholder='Select unit', field_id='st-product-unit', extra_class='st-product-listbox st-product-unit-listbox') }}
         </div>
-      </div>
-
-      <div class="st-product-modal-grid">
-        <div class="st-product-modal-field">
-          {{ ep_listbox('outlet', 'Outlet *', outlet_ns.options, form.outlet or '', placeholder='Select outlet…', field_id='st-product-outlet', extra_class='st-product-listbox') }}
+        <div class="st-product-variants" id="st-product-variants" data-st-variants>
+          {% set variant_rows = form.variants if form.variants else [] %}
+          {% if not variant_rows %}
+          <div class="st-product-variant-row" data-st-variant-row>
+            <input type="text" name="variant_qty" value="" aria-label="Pack quantity" autocomplete="off">
+            {{ variant_unit_listbox(default_pack_unit, 'st-variant-unit-0') }}
+            <input type="number" name="variant_approximate_price" min="0" step="0.01" inputmode="decimal" value="" placeholder="₹ Price" aria-label="Pack price">
+            <button type="button" class="st-variant-remove" data-st-action="remove-variant-row" aria-label="Remove pack">×</button>
+          </div>
+          {% else %}
+          {% for variant in variant_rows %}
+          <div class="st-product-variant-row" data-st-variant-row>
+            <input type="text" name="variant_qty" value="{{ variant.qty }}" aria-label="Pack quantity" autocomplete="off">
+            {{ variant_unit_listbox(variant.unit or default_pack_unit, 'st-variant-unit-' ~ loop.index0) }}
+            <input type="number" name="variant_approximate_price" min="0" step="0.01" inputmode="decimal" value="{{ variant.approximate_price }}" placeholder="₹ Price" aria-label="Pack price">
+            <button type="button" class="st-variant-remove" data-st-action="remove-variant-row" aria-label="Remove pack">×</button>
+          </div>
+          {% endfor %}
+          {% endif %}
         </div>
-        <div class="st-product-modal-field">
-          <label for="st-product-approx-price">Approximate price (₹)</label>
-          <input id="st-product-approx-price" type="number" name="approximate_price" min="0" step="0.01" inputmode="decimal" value="{{ form.approximate_price }}" placeholder="Optional">
-        </div>
+        <button type="button" class="st-add-variant-btn" data-st-action="add-variant-row" id="st-add-variant-btn">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add pack
+        </button>
+        <template id="st-product-variant-template">
+          <div class="st-product-variant-row" data-st-variant-row>
+            <input type="text" name="variant_qty" value="" aria-label="Pack quantity" autocomplete="off">
+            {{ variant_unit_listbox(default_pack_unit, 'st-variant-unit-tpl') }}
+            <input type="number" name="variant_approximate_price" min="0" step="0.01" inputmode="decimal" value="" placeholder="₹ Price" aria-label="Pack price">
+            <button type="button" class="st-variant-remove" data-st-action="remove-variant-row" aria-label="Remove pack">×</button>
+          </div>
+        </template>
       </div>
 
       <div class="modal-actions">
-        <button type="submit" class="btn btn-primary" id="st-product-submit">
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span id="st-product-submit-label">{{ 'Save changes' if editing else 'Save product' }}</span>
-        </button>
-        <button type="button" class="btn btn-secondary" data-st-action="close-product-modal">Cancel</button>
+        <button type="button" class="btn btn-primary" data-st-action="done-product-modal" id="st-product-done">Done</button>
       </div>
     </form>
 
@@ -116,10 +163,11 @@
 
     <form id="st-add-category-form"
           method="post"
-          action="{{ url_for('stores_product_master', outlet=selected_outlet) }}"
-          class="st-category-modal-form">
+          action="{{ _pm_list_url }}"
+          class="st-category-modal-form"{% if embed_page_shell|default(false) %} data-md-full-nav="1"{% endif %}>
       <input type="hidden" name="action" value="save_category">
       <input type="hidden" name="list_outlet" value="{{ selected_outlet }}">
+      {% if embed_page_shell|default(false) %}<input type="hidden" name="embed" value="1">{% endif %}
 
       <div class="st-product-modal-field" style="margin-bottom:18px;">
         <label for="st-category-name">Category name *</label>
@@ -164,10 +212,11 @@
 
     <form id="st-add-unit-form"
           method="post"
-          action="{{ url_for('stores_product_master', outlet=selected_outlet) }}"
-          class="st-category-modal-form">
+          action="{{ _pm_list_url }}"
+          class="st-category-modal-form"{% if embed_page_shell|default(false) %} data-md-full-nav="1"{% endif %}>
       <input type="hidden" name="action" value="save_unit">
       <input type="hidden" name="list_outlet" value="{{ selected_outlet }}">
+      {% if embed_page_shell|default(false) %}<input type="hidden" name="embed" value="1">{% endif %}
 
       <div class="st-product-modal-field" style="margin-bottom:18px;">
         <label for="st-unit-name">Unit name *</label>
@@ -216,11 +265,25 @@
         </thead>
         <tbody>
           {% for product in products %}
-          <tr data-sort-row data-search="{{ [product.category_name or '', product.name or '', product.outlet_label or '', product.default_unit or '', product.approximate_price_display or '']|join(' ')|lower }}">
+          {% set has_packs = product.variant_count and product.variants %}
+          <tr data-sort-row
+              data-st-product-row
+              data-product-id="{{ product.id }}"
+              {% if has_packs %}data-has-packs="1" tabindex="0" role="button" aria-expanded="false"{% endif %}
+              data-search="{{ [product.category_name or '', product.name or '', product.outlet_label or '', product.default_unit or '', product.approximate_price_display or '', ((product.variants or [])|map(attribute='label')|list)|join(' ')]|join(' ')|lower }}">
             <td data-sort-value="{{ product.category_name }}">
               <span class="st-cat-pill">{{ product.category_name }}</span>
             </td>
-            <td class="pl-name" data-sort-value="{{ product.name }}">{{ product.name }}</td>
+            <td class="pl-name" data-sort-value="{{ product.name }}">
+              <div class="st-product-name-cell">
+                <span class="st-product-name-text">{{ product.name }}</span>
+                {% if has_packs %}
+                <span class="st-pack-badge" aria-hidden="true">
+                  {{ product.variant_count }} pack{% if product.variant_count != 1 %}s{% endif %}
+                </span>
+                {% endif %}
+              </div>
+            </td>
             <td data-sort-value="{{ product.outlet_label }}">
               <span class="st-outlet-pill st-outlet-pill--{{ product.outlet }}">{{ product.outlet_label }}</span>
             </td>
@@ -230,18 +293,64 @@
             </td>
             <td class="pl-col-actions">
               <div class="act-grp">
-                <a href="{{ url_for('stores_product_master', edit=product.id, outlet=selected_outlet) }}"
+                <a href="{{ url_for('stores_product_master', edit=product.id, outlet=selected_outlet, **({'embed': 1} if embed_page_shell|default(false) else {})) }}"
                    class="act-btn edit" data-tip="Edit" aria-label="Edit {{ product.name }}">
                   <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </a>
-                <a href="{{ url_for('stores_product_delete', product_id=product.id, outlet=selected_outlet) }}"
-                   class="act-btn del" data-tip="Delete" aria-label="Delete {{ product.name }}"
-                   onclick="return confirm({{ ('Delete ' ~ product.name ~ '? This cannot be undone.')|tojson }})">
+                <button type="button"
+                   class="act-btn del"
+                   data-tip="Delete"
+                   aria-label="Delete {{ product.name }}"
+                   data-st-product-delete
+                   data-delete-url="{{ url_for('stores_product_delete', product_id=product.id, outlet=selected_outlet, **({'embed': 1} if embed_page_shell|default(false) else {})) }}"
+                   data-product-id="{{ product.id }}"
+                   data-product-name="{{ product.name }}">
                   <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                </a>
+                </button>
               </div>
             </td>
           </tr>
+          {% if has_packs %}
+          {% for variant in product.variants %}
+          <tr class="st-product-pack-row"
+              data-pack-parent="{{ product.id }}"
+              hidden>
+            <td data-sort-value="{{ product.category_name }}">
+              <span class="st-cat-pill">{{ product.category_name }}</span>
+            </td>
+            <td class="pl-name" data-sort-value="{{ product.name }} — {{ variant.label }}">
+              <span class="st-product-pack-name">{{ product.name }} — {{ variant.label }}</span>
+            </td>
+            <td data-sort-value="{{ product.outlet_label }}">
+              <span class="st-outlet-pill st-outlet-pill--{{ product.outlet }}">{{ product.outlet_label }}</span>
+            </td>
+            <td data-sort-value="{{ variant.qty_in_base_display }} {{ product.default_unit }}">
+              {{ variant.qty_in_base_display }} {{ product.default_unit }}
+            </td>
+            <td class="st-approx-price" data-sort-value="{{ variant.approximate_price if variant.approximate_price is not none else '' }}">
+              {% if variant.approximate_price_display %}₹{{ variant.approximate_price_display }}{% else %}—{% endif %}
+            </td>
+            <td class="pl-col-actions">
+              <div class="act-grp">
+                <a href="{{ url_for('stores_product_master', edit=product.id, outlet=selected_outlet, **({'embed': 1} if embed_page_shell|default(false) else {})) }}"
+                   class="act-btn edit" data-tip="Edit" aria-label="Edit {{ product.name }}">
+                  <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </a>
+                <button type="button"
+                   class="act-btn del"
+                   data-tip="Delete"
+                   aria-label="Delete {{ product.name }}"
+                   data-st-product-delete
+                   data-delete-url="{{ url_for('stores_product_delete', product_id=product.id, outlet=selected_outlet, **({'embed': 1} if embed_page_shell|default(false) else {})) }}"
+                   data-product-id="{{ product.id }}"
+                   data-product-name="{{ product.name }}">
+                  <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                </button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -293,7 +402,13 @@
           else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
           return ascending ? cmp : -cmp;
         });
-        rows.forEach(function(row){ tbody.appendChild(row); });
+        rows.forEach(function(row){
+          tbody.appendChild(row);
+          var pid = row.getAttribute('data-product-id');
+          if (!pid) return;
+          Array.from(tbody.querySelectorAll('tr.st-product-pack-row[data-pack-parent="' + pid + '"]'))
+            .forEach(function(packRow){ tbody.appendChild(packRow); });
+        });
 
         headers.forEach(function(header){
           header.classList.remove('is-sorted-asc', 'is-sorted-desc');

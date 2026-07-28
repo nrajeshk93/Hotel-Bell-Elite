@@ -719,6 +719,19 @@ body.pos-module .de-main-inner.pos-tables-page{
   color:#0F172A;
   letter-spacing:-.01em;
 }
+.pos-today-invoice-row.is-unsettled{
+  cursor:pointer;
+}
+.pos-today-invoice-row.is-unsettled:hover{
+  background:#f8fafc;
+}
+.pos-today-invoice-row.is-unsettled:focus-visible{
+  outline:2px solid #2563eb;
+  outline-offset:-2px;
+}
+.pos-today-invoice-row.is-unsettled .pos-today-invoice-actions-cell{
+  cursor:default;
+}
 
 .pos-kot-token-actions{
   display:flex;

@@ -1853,12 +1853,14 @@
       var rows = lines
         .map(function (line) {
           var qty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
+          var note = String(line.notes || '').trim();
           return (
             '<tr><td class="qty">' +
             qty +
             '</td><td class="name">' +
             escapeHtml(line.name || '') +
             (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
+            (note ? '<div class="note">' + escapeHtml(note) + '</div>' : '') +
             '</td></tr>'
           );
         })
@@ -1876,6 +1878,7 @@
         'td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
         'td.qty{width:34px;font-weight:700}' +
         '.variant{font-size:11px;color:#555}' +
+        '.note{font-size:11px;color:#333;font-style:italic;margin-top:2px}' +
         '.foot{margin-top:12px;text-align:center;font-size:11px;color:#555}' +
         '@media print{body{width:auto;margin:0}}' +
         '</style></head><body>' +
@@ -2587,24 +2590,28 @@
         '<div><span>Subtotal</span><span>' +
         formatInvoiceMoney(totals.subtotal) +
         '</span></div>' +
-        '<div><span>Discount' +
-        (discHint ? ' ' + discHint : '') +
-        '</span><span>-' +
-        formatInvoiceMoney(totals.discount) +
-        '</span></div>' +
+        (Number(totals.discount) > 0 || Number(totals.discountValue) > 0
+          ? '<div><span>Discount' +
+            (discHint ? ' ' + discHint : '') +
+            '</span><span>-' +
+            formatInvoiceMoney(totals.discount) +
+            '</span></div>'
+          : '') +
         '<div><span>GST (' +
         GST_RATE * 100 +
         '%)</span><span>' +
         formatInvoiceMoney(totals.gst) +
         '</span></div>' +
-        '<div><span>Service Charge' +
-        (svcHint ? ' ' + svcHint : '') +
-        '</span><span>' +
-        formatInvoiceMoney(totals.service) +
-        '</span></div>' +
-        '<div><span>Tip</span><span>' +
-        formatInvoiceMoney(totals.tip) +
-        '</span></div>' +
+        (Number(totals.service) > 0 || Number(totals.serviceValue) > 0
+          ? '<div><span>Service Charge' +
+            (svcHint ? ' ' + svcHint : '') +
+            '</span><span>' +
+            formatInvoiceMoney(totals.service) +
+            '</span></div>'
+          : '') +
+        (Number(totals.tip) > 0
+          ? '<div><span>Tip</span><span>' + formatInvoiceMoney(totals.tip) + '</span></div>'
+          : '') +
         '<div><span>Round Off</span><span>' +
         formatInvoiceMoney(totals.roundOff) +
         '</span></div>' +
@@ -2715,10 +2722,19 @@
         var when = formatKotPendingWhen(inv.saved_at || inv.created_at);
         var id = inv.id;
         var orderNo = inv.order_no || '—';
+        var unsettled = statusKey !== 'closed';
         return (
-          '<tr data-today-invoice-id="' +
+          '<tr class="pos-today-invoice-row' +
+          (unsettled ? ' is-unsettled' : ' is-settled') +
+          '" data-today-invoice-id="' +
           escapeHtml(id) +
-          '">' +
+          '"' +
+          (unsettled
+            ? ' tabindex="0" role="button" aria-label="Open unsettled invoice ' +
+              escapeHtml(orderNo) +
+              '"'
+            : '') +
+          '>' +
           '<td><span class="pos-today-invoice-order">' +
           escapeHtml(orderNo) +
           '</span></td>' +
@@ -2828,6 +2844,7 @@
       var viewBtn = event.target.closest('[data-today-invoice-view]');
       if (viewBtn && modal.contains(viewBtn)) {
         event.preventDefault();
+        closeTodayInvoicesModal();
         navigateToInvoiceById(viewBtn.getAttribute('data-today-invoice-view'));
         return;
       }
@@ -2837,7 +2854,30 @@
         event.preventDefault();
         if (printBtn.disabled) return;
         printTodayInvoice(printBtn.getAttribute('data-today-invoice-print'), printBtn);
+        return;
       }
+
+      var unsettledRow = event.target.closest('tr.pos-today-invoice-row.is-unsettled');
+      if (
+        unsettledRow &&
+        modal.contains(unsettledRow) &&
+        !event.target.closest('.pos-today-invoice-actions-cell, .act-grp, .act-btn')
+      ) {
+        event.preventDefault();
+        closeTodayInvoicesModal();
+        navigateToInvoiceById(unsettledRow.getAttribute('data-today-invoice-id'));
+      }
+    });
+
+    modal.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      var row = event.target.closest
+        ? event.target.closest('tr.pos-today-invoice-row.is-unsettled')
+        : null;
+      if (!row || event.target !== row) return;
+      event.preventDefault();
+      closeTodayInvoicesModal();
+      navigateToInvoiceById(row.getAttribute('data-today-invoice-id'));
     });
   }
 

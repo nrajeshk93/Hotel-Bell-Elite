@@ -277,6 +277,23 @@
     </div>
   </div>
 
+  <div class="pos-inv-modal" id="pos-inv-line-note-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-inv-modal-close="line-note"></div>
+    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-line-note-title">
+      <h3 id="pos-inv-line-note-title">Customise item</h3>
+      <label class="pos-inv-field">
+        <span>Notes</span>
+        <textarea id="pos-inv-line-note-text" rows="3" maxlength="200" placeholder="e.g. No onion, extra spicy, less salt…"></textarea>
+        <span class="pos-inv-line-note-count" id="pos-inv-line-note-count" aria-live="polite">0 / 200</span>
+      </label>
+      <input type="hidden" id="pos-inv-line-note-uid" value="">
+      <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-line-note-clear">Clear</button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--primary" data-inv-modal-close="line-note">Done</button>
+      </div>
+    </div>
+  </div>
+
   <div class="pos-inv-modal" id="pos-inv-discount-modal" hidden>
     <div class="pos-inv-modal-backdrop" data-inv-modal-close="discount"></div>
     <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-discount-title">
@@ -433,7 +450,7 @@
 
 <script type="application/json" id="pos-inv-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["room_transfer","Room Transfer"],["bank_transfer","Bank Transfer"]]</script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=52"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=54"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

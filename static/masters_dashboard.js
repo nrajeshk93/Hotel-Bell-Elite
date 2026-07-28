@@ -219,6 +219,8 @@
       if (!reloadFn) return;
       var link = e.target.closest('a[href]');
       if (!link || shouldLeaveModal(link)) return;
+      // In-page AJAX actions (e.g. Product Master delete) — do not reload embed.
+      if (link.hasAttribute('data-de-no-soft-nav') || link.hasAttribute('data-st-product-delete')) return;
       var href = link.getAttribute('href');
       if (!href || href.charAt(0) === '#') return;
       e.preventDefault();
@@ -292,6 +294,15 @@
         loadMissingPageScripts(doc).then(afterScripts).catch(afterScripts);
       } else if (inject.querySelector('.md-master-embed--page-shell')) {
         ensureEmbedClose();
+        try {
+          if (inject.querySelector('#st-product-modal') && typeof global.initStoresPage === 'function') {
+            global.initStoresPage();
+          }
+        } catch (err) {
+          if (typeof console !== 'undefined' && console.error) {
+            console.error('Stores product embed init failed', err);
+          }
+        }
       }
 
       var titleEl = document.getElementById('md-master-modal-title');

@@ -841,7 +841,16 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-inv-col-qty{width:120px;text-align:center !important}
 .pos-inv-col-rate{width:110px;text-align:right !important}
 .pos-inv-col-amt{width:120px;text-align:right !important}
-.pos-inv-col-act{width:48px}
+.pos-inv-col-act{
+  width:84px;
+  text-align:right !important;
+}
+.pos-inv-col-act .pos-inv-act-btns{
+  display:inline-flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:4px;
+}
 .pos-inv-table tbody td{
   padding:14px 12px 14px 0;
   vertical-align:middle;
@@ -867,6 +876,17 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   font-size:12px;
   color:var(--pos-muted);
   font-weight:500;
+}
+.pos-inv-item-note{
+  margin-top:3px;
+  font-size:12px;
+  color:#64748B;
+  font-weight:500;
+  font-style:italic;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:280px;
 }
 .pos-inv-qty{
   display:inline-flex;
@@ -910,6 +930,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   font-variant-numeric:tabular-nums;
 }
 .pos-inv-amt{color:var(--pos-text)}
+.pos-inv-note-btn,
 .pos-inv-del{
   display:inline-flex;
   align-items:center;
@@ -923,6 +944,14 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   cursor:pointer;
   transition:background .12s ease,color .12s ease;
 }
+.pos-inv-note-btn:hover{
+  background:#EFF6FF;
+  color:#2563EB;
+}
+.pos-inv-note-btn.is-active{
+  background:#EFF6FF;
+  color:#2563EB;
+}
 .pos-inv-del:hover{
   background:var(--pos-danger-soft);
   color:var(--pos-danger);
@@ -933,9 +962,17 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   background:transparent;
   color:#94A3B8;
 }
+.pos-inv-note-btn svg,
 .pos-inv-del svg{
   width:16px;height:16px;
   stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;
+}
+.pos-inv-line-note-count{
+  display:block;
+  margin-top:6px;
+  text-align:right;
+  font-size:12px;
+  color:var(--pos-muted);
 }
 
 .pos-inv-empty{
@@ -1084,13 +1121,15 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-inv-field input[type="text"],
 .pos-inv-field input[type="tel"],
 .pos-inv-field input[type="number"],
-.pos-inv-field input[type="search"]{
+.pos-inv-field input[type="search"],
+.pos-inv-field textarea{
   min-height:42px;
   width:100%;
   padding:0 12px;
   border:1px solid var(--pos-border);
   border-radius:10px;
   font:inherit;
+  font-family:inherit;
   font-size:14px;
   font-weight:550;
   color:var(--pos-text);
@@ -1098,11 +1137,19 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   outline:none;
   transition:border-color .15s ease,box-shadow .15s ease;
 }
-.pos-inv-field input:focus{
+.pos-inv-field textarea{
+  min-height:72px;
+  padding:10px 12px;
+  line-height:1.4;
+  resize:vertical;
+}
+.pos-inv-field input:focus,
+.pos-inv-field textarea:focus{
   border-color:var(--pos-primary);
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
 }
-.pos-inv-field input::placeholder{color:#94A3B8;font-weight:450}
+.pos-inv-field input::placeholder,
+.pos-inv-field textarea::placeholder{color:#94A3B8;font-weight:450}
 .pos-inv-mobile-wrap,
 .pos-inv-name-wrap{
   position:relative;

@@ -130,7 +130,8 @@ class StoresFlowTests(unittest.TestCase):
         edit_page = self.client.get(f"/stores/product-master?edit={pid}")
         self.assertEqual(edit_page.status_code, 200)
         self.assertIn(b"Edit product", edit_page.data)
-        self.assertIn(b"Approximate price", edit_page.data)
+        self.assertIn(b"Pack variants", edit_page.data)
+        self.assertNotIn(b'id="st-product-approx-price"', edit_page.data)
 
         update = self.client.post(
             "/stores/product-master",
@@ -139,9 +140,10 @@ class StoresFlowTests(unittest.TestCase):
                 "product_id": str(pid),
                 "category_id": str(category_id),
                 "name": "Updated Product Name",
-                "default_unit": unit,
                 "outlet": "bar",
-                "approximate_price": "250",
+                "variant_qty": ["1"],
+                "variant_unit": [unit],
+                "variant_approximate_price": ["250"],
             },
             follow_redirects=True,
         )
@@ -168,6 +170,456 @@ class StoresFlowTests(unittest.TestCase):
                 "SELECT is_active FROM store_products WHERE id = ?", (pid,)
             ).fetchone()
             self.assertEqual(int(gone["is_active"]), 0)
+        finally:
+            conn.close()
+
+    def test_product_delete_json_stays_ok(self):
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(category)
+            category_id = category["id"]
+            conn.execute(
+                """
+                INSERT INTO store_products
+                  (category_id, name, default_unit, outlet, approximate_price, is_active, created_at, updated_at)
+                VALUES (?, 'Ajax Delete Me', 'kg', 'restaurant', 10, 1, datetime('now'), datetime('now'))
+                """,
+                (category_id,),
+            )
+            conn.commit()
+            pid = conn.execute(
+                "SELECT id FROM store_products WHERE lower(name)=lower('Ajax Delete Me') AND is_active=1"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+        resp = self.client.post(
+            f"/stores/product-master/{pid}/delete",
+            headers={
+                "Accept": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(int(payload.get("product_id")), pid)
+        conn = db_mod.get_db()
+        try:
+            gone = conn.execute(
+                "SELECT is_active FROM store_products WHERE id = ?", (pid,)
+            ).fetchone()
+            self.assertEqual(int(gone["is_active"]), 0)
+        finally:
+            conn.close()
+
+    def test_product_pack_variants_save_and_reload(self):
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(category)
+            category_id = category["id"]
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/product-master",
+            data={
+                "action": "save_product",
+                "category_id": str(category_id),
+                "name": "Test Masala Pack",
+                "outlet": "restaurant",
+                "variant_qty": ["200", "500"],
+                "variant_unit": ["gram", "gram"],
+                "variant_approximate_price": ["40", "90"],
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(create.status_code, 200)
+        self.assertIn(b"Product added to master", create.data)
+        self.assertIn(b"2 packs", create.data)
+
+        conn = db_mod.get_db()
+        try:
+            product = conn.execute(
+                """
+                SELECT id, default_unit, approximate_price FROM store_products
+                WHERE lower(name) = lower('Test Masala Pack') AND is_active = 1
+                """
+            ).fetchone()
+            self.assertIsNotNone(product)
+            pid = product["id"]
+            self.assertEqual(product["default_unit"], "kg")
+            # 500 gram @ ₹90 → ₹180 / kg (largest pack anchors product price)
+            self.assertAlmostEqual(float(product["approximate_price"]), 180.0)
+            variants = conn.execute(
+                """
+                SELECT label, qty_in_base, approximate_price
+                FROM store_product_variants
+                WHERE product_id = ? AND is_active = 1
+                ORDER BY sort_order, id
+                """,
+                (pid,),
+            ).fetchall()
+            self.assertEqual(len(variants), 2)
+            self.assertEqual(variants[0]["label"], "200 gram")
+            self.assertAlmostEqual(float(variants[0]["qty_in_base"]), 0.2)
+            self.assertAlmostEqual(float(variants[0]["approximate_price"]), 40.0)
+            self.assertEqual(variants[1]["label"], "500 gram")
+            self.assertAlmostEqual(float(variants[1]["qty_in_base"]), 0.5)
+        finally:
+            conn.close()
+
+        edit_page = self.client.get(f"/stores/product-master?edit={pid}")
+        self.assertEqual(edit_page.status_code, 200)
+        self.assertIn(b'name="variant_qty"', edit_page.data)
+        self.assertIn(b'value="200"', edit_page.data)
+        self.assertIn(b'value="500"', edit_page.data)
+        self.assertIn(b'value="gram"', edit_page.data)
+        self.assertIn(b"Pack variants", edit_page.data)
+        self.assertNotIn(b'id="st-product-unit-listbox"', edit_page.data)
+        self.assertNotIn(b'id="st-product-approx-price"', edit_page.data)
+
+        update = self.client.post(
+            "/stores/product-master",
+            data={
+                "action": "save_product",
+                "product_id": str(pid),
+                "category_id": str(category_id),
+                "name": "Test Masala Pack",
+                "outlet": "restaurant",
+                "variant_qty": ["500", "1"],
+                "variant_unit": ["gram", "kg"],
+                "variant_approximate_price": ["90", "170"],
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(update.status_code, 200)
+        self.assertIn(b"Product updated", update.data)
+
+        conn = db_mod.get_db()
+        try:
+            active = conn.execute(
+                """
+                SELECT label, qty_in_base FROM store_product_variants
+                WHERE product_id = ? AND is_active = 1
+                ORDER BY sort_order, id
+                """,
+                (pid,),
+            ).fetchall()
+            self.assertEqual([row["label"] for row in active], ["500 gram", "1 kg"])
+            self.assertAlmostEqual(float(active[0]["qty_in_base"]), 0.5)
+            self.assertAlmostEqual(float(active[1]["qty_in_base"]), 1.0)
+            inactive = conn.execute(
+                """
+                SELECT label FROM store_product_variants
+                WHERE product_id = ? AND is_active = 0 AND lower(label) = lower('200 gram')
+                """,
+                (pid,),
+            ).fetchone()
+            self.assertIsNotNone(inactive)
+        finally:
+            conn.close()
+
+        # Alphanumeric pack size is allowed and counts as 1 of the pack unit.
+        alpha = self.client.post(
+            "/stores/product-master",
+            data={
+                "action": "save_product",
+                "category_id": str(category_id),
+                "name": "Test Paneer Pack Alpha",
+                "outlet": "restaurant",
+                "variant_qty": ["Half"],
+                "variant_unit": ["kg"],
+                "variant_approximate_price": ["120"],
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(alpha.status_code, 200)
+        self.assertIn(b"Product added to master", alpha.data)
+        conn = db_mod.get_db()
+        try:
+            alpha_row = conn.execute(
+                """
+                SELECT v.label, v.qty_in_base
+                FROM store_product_variants v
+                JOIN store_products p ON p.id = v.product_id
+                WHERE lower(p.name) = lower('Test Paneer Pack Alpha')
+                  AND v.is_active = 1 AND p.is_active = 1
+                """
+            ).fetchone()
+            self.assertIsNotNone(alpha_row)
+            self.assertEqual(alpha_row["label"], "Half kg")
+            self.assertAlmostEqual(float(alpha_row["qty_in_base"]), 1.0)
+        finally:
+            conn.close()
+
+        # Product with no variants still saves cleanly.
+        plain = self.client.post(
+            "/stores/product-master",
+            data={
+                "action": "save_product",
+                "category_id": str(category_id),
+                "name": "Plain No Pack Product",
+                "outlet": "bar",
+                "variant_qty": [""],
+                "variant_unit": ["gram"],
+                "variant_approximate_price": [""],
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(plain.status_code, 200)
+        self.assertIn(b"Product added to master", plain.data)
+        conn = db_mod.get_db()
+        try:
+            plain_row = conn.execute(
+                """
+                SELECT id FROM store_products
+                WHERE lower(name) = lower('Plain No Pack Product') AND is_active = 1
+                """
+            ).fetchone()
+            count = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM store_product_variants
+                WHERE product_id = ? AND is_active = 1
+                """,
+                (plain_row["id"],),
+            ).fetchone()["c"]
+            self.assertEqual(count, 0)
+        finally:
+            conn.close()
+
+    def test_indent_pack_converts_to_base_qty_on_stock_receive(self):
+        from datetime import date
+
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            category_id = category["id"]
+            cur = conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, approximate_price, is_active, sort_order)
+                VALUES (?, 'Pack Convert Masala', 'kg', 'bar', 100, 1, 9990)
+                """,
+                (category_id,),
+            )
+            product_id = cur.lastrowid
+            conn.execute(
+                """
+                INSERT INTO store_product_variants
+                    (product_id, label, qty_in_base, approximate_price, sort_order, is_active)
+                VALUES (?, '500 gram', 0.5, 90, 10, 1)
+                """,
+                (product_id,),
+            )
+            conn.execute(
+                "INSERT INTO suppliers (name) VALUES (?)",
+                ("Pack Inward Supplier",),
+            )
+            supplier_id = conn.execute(
+                "SELECT id FROM suppliers WHERE name = 'Pack Inward Supplier'"
+            ).fetchone()["id"]
+            conn.execute(
+                "INSERT INTO cash_ledger_loads (company, load_date, description, amount) VALUES (?,?,?,?)",
+                ("HBE", date.today().isoformat(), "Pack test float", 5000),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "Pack inward",
+                "item_name": ["Pack Convert Masala"],
+                "quantity": ["2"],
+                "unit": ["kg"],
+                "approximate_price": ["90"],
+                "pack_label": ["500 gram"],
+                "pack_qty_in_base": ["0.5"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            indent = conn.execute(
+                "SELECT id FROM store_indents WHERE notes = 'Pack inward' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(indent)
+            indent_id = indent["id"]
+            line = conn.execute(
+                """
+                SELECT id, quantity, unit, pack_label, pack_qty_in_base
+                FROM store_indent_lines WHERE indent_id = ?
+                """,
+                (indent_id,),
+            ).fetchone()
+            self.assertEqual(float(line["quantity"]), 2.0)
+            self.assertEqual(line["unit"], "kg")
+            self.assertEqual(line["pack_label"], "500 gram")
+            self.assertAlmostEqual(float(line["pack_qty_in_base"]), 0.5)
+            line_id = int(line["id"])
+        finally:
+            conn.close()
+
+        decide = self.client.post(
+            f"/stores/indent/{indent_id}/decide",
+            data={"outlet": "bar", "decision": "approved", "decision_note": ""},
+            follow_redirects=False,
+        )
+        self.assertEqual(decide.status_code, 302)
+
+        confirm = self.client.post(
+            "/stores/purchase-requests/confirm-with-expense",
+            json={
+                "indent_id": indent_id,
+                "notes": "",
+                "lines": [
+                    {
+                        "line_id": line_id,
+                        "received_qty": 2,
+                        "unit_price": 95,
+                        "tax_percent": 0,
+                    }
+                ],
+                "date": date.today().isoformat(),
+                "description": "Pack stock inward",
+                "amount": 190,
+                "payment_type": "cash",
+                "category": "grocery",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(confirm.status_code, 200, confirm.data)
+        payload = confirm.get_json()
+        self.assertTrue(payload.get("ok"), payload)
+
+        conn = db_mod.get_db()
+        try:
+            stock = conn.execute(
+                """
+                SELECT qty_on_hand, unit FROM store_stock_items
+                WHERE outlet = 'bar' AND lower(item_name) = lower('Pack Convert Masala')
+                """
+            ).fetchone()
+            self.assertIsNotNone(stock)
+            self.assertEqual(stock["unit"], "kg")
+            # 2 packs × 0.5 kg = 1 kg stock
+            self.assertAlmostEqual(float(stock["qty_on_hand"]), 1.0)
+            movement = conn.execute(
+                """
+                SELECT qty_delta, unit_cost FROM store_stock_movements
+                WHERE outlet = 'bar' AND lower(item_name) = lower('Pack Convert Masala')
+                ORDER BY id DESC LIMIT 1
+                """
+            ).fetchone()
+            self.assertAlmostEqual(float(movement["qty_delta"]), 1.0)
+            # ₹95 / pack ÷ 0.5 kg = ₹190 per kg
+            self.assertAlmostEqual(float(movement["unit_cost"]), 190.0)
+            variant = conn.execute(
+                """
+                SELECT approximate_price FROM store_product_variants
+                WHERE product_id = ? AND lower(label) = lower('500 gram') AND is_active = 1
+                """,
+                (product_id,),
+            ).fetchone()
+            self.assertAlmostEqual(float(variant["approximate_price"]), 95.0)
+            product = conn.execute(
+                "SELECT approximate_price FROM store_products WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            self.assertAlmostEqual(float(product["approximate_price"]), 190.0)
+        finally:
+            conn.close()
+
+        # Ordering in base unit (no pack) still receives 1:1 into stock.
+        create2 = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "No pack inward",
+                "item_name": ["Pack Convert Masala"],
+                "quantity": ["3"],
+                "unit": ["kg"],
+                "approximate_price": ["100"],
+                "pack_label": [""],
+                "pack_qty_in_base": [""],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create2.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            indent2 = conn.execute(
+                "SELECT id FROM store_indents WHERE notes = 'No pack inward' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            indent2_id = indent2["id"]
+            line2 = conn.execute(
+                """
+                SELECT id FROM store_indent_lines WHERE indent_id = ?
+                """,
+                (indent2_id,),
+            ).fetchone()
+            line2_id = int(line2["id"])
+            before = conn.execute(
+                """
+                SELECT COALESCE(qty_on_hand, 0) AS qty FROM store_stock_items
+                WHERE outlet = 'bar' AND lower(item_name) = lower('Pack Convert Masala') AND lower(unit) = 'kg'
+                """
+            ).fetchone()
+            before_qty = float(before["qty"]) if before else 0.0
+        finally:
+            conn.close()
+        self.client.post(
+            f"/stores/indent/{indent2_id}/decide",
+            data={"outlet": "bar", "decision": "approved", "decision_note": ""},
+            follow_redirects=False,
+        )
+        confirm2 = self.client.post(
+            "/stores/purchase-requests/confirm-with-expense",
+            json={
+                "indent_id": indent2_id,
+                "notes": "",
+                "lines": [
+                    {
+                        "line_id": line2_id,
+                        "received_qty": 3,
+                        "unit_price": 100,
+                        "tax_percent": 0,
+                    }
+                ],
+                "date": date.today().isoformat(),
+                "description": "Base unit inward",
+                "amount": 300,
+                "payment_type": "cash",
+                "category": "grocery",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(confirm2.status_code, 200, confirm2.data)
+        self.assertTrue(confirm2.get_json().get("ok"), confirm2.get_json())
+        conn = db_mod.get_db()
+        try:
+            after = conn.execute(
+                """
+                SELECT qty_on_hand FROM store_stock_items
+                WHERE outlet = 'bar' AND lower(item_name) = lower('Pack Convert Masala') AND lower(unit) = 'kg'
+                """
+            ).fetchone()
+            self.assertAlmostEqual(float(after["qty_on_hand"]), before_qty + 3.0)
         finally:
             conn.close()
 

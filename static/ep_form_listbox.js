@@ -53,11 +53,21 @@
     return Array.from(optionsWrap.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)'));
   }
 
+  function isCombobox(root){
+    return !!(root && root.hasAttribute('data-se-listbox-combobox'));
+  }
+
+  function comboboxInput(root){
+    if (!root) return null;
+    return root.querySelector('input.se-filter-chip-trigger, input.se-filter-chip-combobox');
+  }
+
   function closeListbox(root){
     if (!root) return;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var list = root.querySelector('.se-filter-listbox');
     var search = root.querySelector('.ep-listbox-search');
+    var wasOpen = root.classList.contains('is-open');
     root.classList.remove('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
     if (list) {
@@ -68,6 +78,43 @@
     if (root.hasAttribute('data-se-listbox-searchable')) {
       filterSearchableOptions(root, '');
     }
+    if (wasOpen && isCombobox(root)) {
+      var combo = comboboxInput(root);
+      var typed = combo ? String(combo.value || '').trim() : '';
+      if (!typed) {
+        var hidden = root.querySelector('input[type="hidden"]');
+        var hadValue = !!(hidden && String(hidden.value || '').trim());
+        if (list) {
+          list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+            opt.classList.remove('is-selected');
+            opt.setAttribute('aria-selected', 'false');
+          });
+        }
+        updateDisplay(root, '', '');
+        if (hadValue) {
+          var changeHandler = root.getAttribute('data-se-listbox-change');
+          if (changeHandler && typeof window[changeHandler] === 'function') {
+            window[changeHandler](root, '', '');
+          }
+        }
+      } else {
+        restoreComboboxLabel(root);
+      }
+    }
+  }
+
+  function restoreComboboxLabel(root){
+    var input = comboboxInput(root);
+    if (!input) return;
+    var selected = root.querySelector('.se-filter-listbox-option.is-selected');
+    var label = selected
+      ? (selected.getAttribute('data-label') || selected.textContent || '').trim()
+      : '';
+    if (!label) {
+      var hidden = root.querySelector('input[type="hidden"]');
+      label = hidden ? String(hidden.value || '').trim() : '';
+    }
+    input.value = label;
   }
 
   function listboxRoots(selector){
@@ -196,8 +243,9 @@
     });
   }
 
-  function openListbox(root){
+  function openListbox(root, opts){
     if (!root || root.classList.contains('is-disabled')) return;
+    opts = opts || {};
     closeAllListboxes(root);
     try {
       document.dispatchEvent(new CustomEvent('ep-listbox-opened', { detail: { root: root } }));
@@ -205,6 +253,7 @@
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var list = root.querySelector('.se-filter-listbox');
     var search = root.querySelector('.ep-listbox-search');
+    var combo = comboboxInput(root);
     root.classList.add('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'true');
     if (list) {
@@ -215,9 +264,19 @@
         clearFixedListbox(list);
       }
       if (root.hasAttribute('data-se-listbox-searchable')) {
-        filterSearchableOptions(root, '');
-        scrollSelectedToTop(list);
-        if (search) {
+        var query = '';
+        if (isCombobox(root) && combo && opts.keepQuery) {
+          query = combo.value;
+        }
+        filterSearchableOptions(root, query);
+        if (!isCombobox(root) || !opts.keepQuery) {
+          scrollSelectedToTop(list);
+        }
+        if (isCombobox(root)) {
+          if (combo && opts.selectAll) {
+            try { combo.select(); } catch (err) {}
+          }
+        } else if (search) {
           search.value = '';
           search.focus();
         }
@@ -232,13 +291,18 @@
   function toggleListbox(root){
     if (!root) return;
     if (root.classList.contains('is-open')) closeListbox(root);
-    else openListbox(root);
+    else openListbox(root, { selectAll: isCombobox(root) });
   }
 
   function updateDisplay(root, label, value){
     var valueEl = root.querySelector('.se-filter-chip-value');
     var input = root.querySelector('input[type="hidden"]');
+    var combo = comboboxInput(root);
     if (input) input.value = value;
+    if (combo) {
+      combo.value = label || '';
+      combo.classList.toggle('is-placeholder', !value);
+    }
     if (valueEl) {
       valueEl.textContent = label;
       if (value) {
@@ -301,32 +365,101 @@
     var list = root.querySelector('.se-filter-listbox');
     var optionsWrap = optionsWrapFor(root);
     var search = root.querySelector('.ep-listbox-search');
+    var combo = isCombobox(root) ? comboboxInput(root) : null;
     if (!trigger || !list) return;
 
-    function onTriggerClick(e){
-      e.preventDefault();
-      e.stopPropagation();
-      toggleListbox(root);
+    if (combo) {
+      combo.addEventListener('focus', function(){
+        openListbox(root, { selectAll: true });
+      });
+      combo.addEventListener('click', function(e){
+        e.stopPropagation();
+        if (!root.classList.contains('is-open')) {
+          openListbox(root, { selectAll: true });
+        }
+      });
+      combo.addEventListener('input', function(){
+        if (!root.classList.contains('is-open')) {
+          openListbox(root, { keepQuery: true });
+        } else {
+          filterSearchableOptions(root, combo.value);
+          if (shouldUseFixedListbox(root)) positionFixedListbox(root, list);
+        }
+      });
+      combo.addEventListener('keydown', function(e){
+        var options = visibleOptions(root);
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closeListbox(root);
+          return;
+        }
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (!root.classList.contains('is-open')) {
+            openListbox(root, { keepQuery: true });
+            options = visibleOptions(root);
+          }
+          if (options[0]) options[0].focus();
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (root.classList.contains('is-open') && options.length) {
+            options[options.length - 1].focus();
+          }
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          if (!root.classList.contains('is-open')) {
+            openListbox(root, { keepQuery: true });
+            return;
+          }
+          var firstMatch = visibleOptions(root)[0];
+          if (firstMatch) selectOption(root, firstMatch);
+        }
+      });
+      // Keep focus in the field when choosing an option with the mouse.
+      list.addEventListener('mousedown', function(e){
+        if (e.target.closest('.se-filter-listbox-option')) e.preventDefault();
+      });
+    } else {
+      function onTriggerClick(e){
+        e.preventDefault();
+        e.stopPropagation();
+        toggleListbox(root);
+      }
+      trigger.addEventListener('click', onTriggerClick);
+      // Chevron / icon sit outside the button — still toggle the menu.
+      if (control) {
+        control.addEventListener('click', function(e){
+          if (e.target.closest('.se-filter-chip-trigger')) return;
+          if (e.target.closest('.se-filter-listbox')) return;
+          onTriggerClick(e);
+        });
+      }
+      trigger.addEventListener('keydown', function(e){
+        if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openListbox(root);
+        } else if (e.key === 'Escape') {
+          closeListbox(root);
+        }
+      });
     }
-    trigger.addEventListener('click', onTriggerClick);
-    // Chevron / icon sit outside the button — still toggle the menu.
-    if (control) {
+
+    if (control && combo) {
       control.addEventListener('click', function(e){
         if (e.target.closest('.se-filter-chip-trigger')) return;
         if (e.target.closest('.se-filter-listbox')) return;
-        onTriggerClick(e);
+        e.preventDefault();
+        e.stopPropagation();
+        combo.focus();
+        if (!root.classList.contains('is-open')) openListbox(root, { selectAll: true });
       });
     }
-    trigger.addEventListener('keydown', function(e){
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        openListbox(root);
-      } else if (e.key === 'Escape') {
-        closeListbox(root);
-      }
-    });
 
-    if (search) {
+    if (search && !combo) {
       search.addEventListener('input', function(){
         filterSearchableOptions(root, search.value);
       });
@@ -368,6 +501,10 @@
         options[Math.min(options.length - 1, Math.max(0, idx) + 1)].focus();
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
+        if (idx <= 0 && combo) {
+          combo.focus();
+          return;
+        }
         options[Math.max(0, (idx < 0 ? 0 : idx) - 1)].focus();
       } else if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
@@ -419,6 +556,11 @@
     if (!root) return;
     var input = document.getElementById(fieldId);
     if (input) input.value = value;
+    var combo = comboboxInput(root);
+    if (combo) {
+      combo.value = label || '';
+      combo.classList.toggle('is-placeholder', !value);
+    }
     var valueEl = root.querySelector('.se-filter-chip-value');
     if (valueEl) {
       valueEl.textContent = label;

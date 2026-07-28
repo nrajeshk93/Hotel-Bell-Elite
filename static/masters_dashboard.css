@@ -661,12 +661,37 @@ body.md-master-modal-open {
   margin-left: 4px;
 }
 
+.md-master-embed--page-shell .su-title-icon,
+#md-master-modal .md-master-embed--page-shell .su-title-icon {
+  width: 48px !important;
+  height: 48px !important;
+  min-width: 48px !important;
+  min-height: 48px !important;
+  max-width: 48px !important;
+  max-height: 48px !important;
+  border-radius: 14px;
+  background: var(--acc-bg, #EEF5FF);
+  color: var(--acc, #1877F2);
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 48px !important;
+  overflow: hidden !important;
+  box-sizing: border-box;
+}
+
+.md-master-embed--page-shell .su-title-icon svg,
 #md-master-modal .md-master-embed--page-shell .su-title-icon svg {
-  width: 22px;
-  height: 22px;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  max-width: 24px !important;
+  max-height: 24px !important;
+  display: block;
   stroke: currentColor;
   fill: none;
-  stroke-width: 2;
+  stroke-width: 1.75;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
@@ -755,6 +780,38 @@ body.md-master-modal-open {
 #md-master-modal .md-master-embed--page-shell .pl-search-chip .pl-search-input::-webkit-search-cancel-button,
 #md-master-modal .md-master-embed--page-shell .pl-search-chip input[type="search"]::-webkit-search-cancel-button {
   -webkit-appearance: none;
+}
+
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .st-product-search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0 8px 0 0;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #94A3B8;
+  cursor: pointer;
+  padding: 0;
+}
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .st-product-search-clear[hidden] {
+  display: none !important;
+}
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .st-product-search-clear:hover {
+  background: #E2E8F0;
+  color: #0F172A;
+}
+#md-master-modal .md-master-embed--page-shell .pl-search-chip .st-product-search-clear svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 #md-master-modal .md-master-embed--page-shell .pl-search-chip .pl-search-input::placeholder,

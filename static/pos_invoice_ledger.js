@@ -311,24 +311,28 @@
       '<div><span>Subtotal</span><span>' +
       formatMoney(invoice && invoice.subtotal) +
       '</span></div>' +
-      '<div><span>Discount' +
-      (discHint ? ' ' + discHint : '') +
-      '</span><span>-' +
-      formatMoney(invoice && invoice.discount) +
-      '</span></div>' +
+      (Number(invoice && invoice.discount) > 0 || Number(invoice && invoice.discount_value) > 0
+        ? '<div><span>Discount' +
+          (discHint ? ' ' + discHint : '') +
+          '</span><span>-' +
+          formatMoney(invoice && invoice.discount) +
+          '</span></div>'
+        : '') +
       '<div><span>GST (' +
       GST_RATE * 100 +
       '%)</span><span>' +
       formatMoney(invoice && invoice.gst) +
       '</span></div>' +
-      '<div><span>Service Charge' +
-      (svcHint ? ' ' + svcHint : '') +
-      '</span><span>' +
-      formatMoney(invoice && invoice.service) +
-      '</span></div>' +
-      '<div><span>Tip</span><span>' +
-      formatMoney(invoice && invoice.tip) +
-      '</span></div>' +
+      (Number(invoice && invoice.service) > 0 || Number(invoice && invoice.service_value) > 0
+        ? '<div><span>Service Charge' +
+          (svcHint ? ' ' + svcHint : '') +
+          '</span><span>' +
+          formatMoney(invoice && invoice.service) +
+          '</span></div>'
+        : '') +
+      (Number(invoice && invoice.tip) > 0
+        ? '<div><span>Tip</span><span>' + formatMoney(invoice && invoice.tip) + '</span></div>'
+        : '') +
       '<div><span>Round Off</span><span>' +
       formatMoney(invoice && invoice.round_off) +
       '</span></div>' +

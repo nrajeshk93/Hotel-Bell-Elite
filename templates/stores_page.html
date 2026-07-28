@@ -13,11 +13,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=54">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=64">
 {% if page_key == 'indent' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=56">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=56">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=41">
 {% endif %}
 <script>
@@ -92,6 +92,9 @@
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
               </span>
               <input type="search" id="st-product-search" class="st-product-search-input" placeholder="Category, product, outlet, unit…" autocomplete="off" aria-label="Search products">
+              <button type="button" class="st-product-search-clear" id="st-product-search-clear" hidden aria-label="Clear search">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
             </div>
           </div>
           {% elif page_key == 'stock' %}
@@ -272,8 +275,8 @@
   </section>
 </div>
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=18"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=25"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=66"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

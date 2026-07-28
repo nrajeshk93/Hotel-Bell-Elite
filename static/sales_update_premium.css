@@ -80,11 +80,15 @@ body.su-module .sb-pin-btn svg{width:18px;height:18px;stroke:currentColor;fill:n
 body.su-module .su-title{min-width:0;flex:1 1 auto}
 body.su-module .su-title-row{display:flex;align-items:center;gap:14px;min-width:0}
 body.su-module .su-title-icon{
-  width:48px;height:48px;border-radius:14px;background:var(--acc-bg);color:var(--acc);
-  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+  width:48px;height:48px;min-width:48px;min-height:48px;max-width:48px;max-height:48px;
+  border-radius:14px;background:var(--acc-bg);color:var(--acc);
+  display:flex;align-items:center;justify-content:center;flex:0 0 48px;overflow:hidden;box-sizing:border-box;
 }
 body.su-module .su-title-icon svg,
-body.su-module .su-title-icon i svg{width:24px;height:24px;stroke-width:1.75}
+body.su-module .su-title-icon i svg{
+  width:24px;height:24px;max-width:24px;max-height:24px;display:block;stroke-width:1.75;
+  stroke:currentColor;fill:none;stroke-linecap:round;stroke-linejoin:round;
+}
 body.su-module .su-title h1{font-size:34px;line-height:1.15;font-weight:700;color:#111827;letter-spacing:-.03em;margin:0}
 body.su-module .su-title p{margin-top:8px;font-size:16px;font-weight:400;color:#6B7280;line-height:1.5;max-width:62ch}
 body.su-module .su-header-tools{
