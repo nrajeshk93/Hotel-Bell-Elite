@@ -1,3 +1,6 @@
+{% set de_soft_body_class = 'de-open su-module master-module' %}
+{% set de_soft_page_title = 'Masters | Hotel Bell Elite' %}
+{% if not is_partial_main %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,8 +12,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=19">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=24">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=25">
 <link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=64">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
@@ -30,7 +33,22 @@
 </script>
 </head>
 <body class="de-open su-module master-module">
+{% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=64">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
+{% endif %}
 <div class="main-wrapper">
   <header class="se-sales-header su-header md-header" id="se-sales-header">
     <div class="su-header-top">
@@ -207,5 +225,7 @@
 <script src="{{ url_for('static', filename='employee_payroll.js') }}?v=4"></script>
 <script src="{{ url_for('static', filename='masters_dashboard.js') }}?v=15"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
 </body>
 </html>
+{% endif %}

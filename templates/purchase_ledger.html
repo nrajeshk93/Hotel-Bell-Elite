@@ -1,3 +1,6 @@
+{% set de_soft_body_class = 'de-open su-module' %}
+{% set de_soft_page_title = 'Purchase Ledger | Hotel Bell Elite' %}
+{% if not is_partial_main %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=25">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
@@ -24,7 +27,16 @@
 </script>
 </head>
 <body class="de-open su-module">
+{% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+{% endif %}
 <div class="main-wrapper">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
@@ -368,5 +380,7 @@
 {% include 'partials/purchase_ledger_filter_scripts.html' %}
 {% include 'partials/purchase_ledger_add_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
 </body>
 </html>
+{% endif %}

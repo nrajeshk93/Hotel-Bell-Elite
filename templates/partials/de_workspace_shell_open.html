@@ -1,5 +1,5 @@
 {% if is_partial_main|default(false) %}
-<div class="de-main-wrapper" data-de-partial="main">
+<div class="de-main-wrapper" data-de-partial="main"{% if de_soft_body_class is defined and de_soft_body_class %} data-de-body-class="{{ de_soft_body_class }}"{% endif %}{% if de_soft_page_title is defined and de_soft_page_title %} data-de-page-title="{{ de_soft_page_title }}"{% endif %}>
 {% else %}
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=3">

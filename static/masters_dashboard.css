@@ -496,11 +496,29 @@ body.md-master-modal-open {
   overflow: hidden;
 }
 
+/* Keep workspace left rail visible/clickable over the master sheet */
+body.md-master-modal-open .de-sidebar,
+body.md-master-modal-open .sidebar {
+  z-index: 1300;
+}
+
 #md-master-modal.modal-backdrop {
   z-index: 1200;
   padding: 0;
   align-items: stretch;
   justify-content: stretch;
+  /* Sit beside the collapsed rail instead of covering it */
+  left: var(--de-sidebar-collapsed, 72px);
+}
+
+body.sb-off #md-master-modal.modal-backdrop {
+  left: 0;
+}
+
+body.md-master-modal-open:has(#de-sidebar.is-pinned) #md-master-modal.modal-backdrop,
+body.md-master-modal-open:has(#de-sidebar.is-expanded) #md-master-modal.modal-backdrop,
+html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backdrop {
+  left: var(--de-sidebar-expanded, 252px);
 }
 
 #md-master-modal .md-master-dialog {

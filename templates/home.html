@@ -1,3 +1,6 @@
+{% set de_soft_body_class = 'de-open home-module' %}
+{% set de_soft_page_title = 'Home | Hotel Bell Elite' %}
+{% if not is_partial_main %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,8 +8,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Home | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=6">
 <script>
 (function(){
   try{
@@ -18,7 +21,11 @@
 </script>
 </head>
 <body class="de-open home-module">
+{% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=6">
+{% endif %}
 <div class="de-main-inner db-main-inner--home">
   <div id="dashboard-home-panel" class="db-home">
     <header class="db-home-header">
@@ -172,5 +179,7 @@
 </div>
 {% include 'partials/home_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
 </body>
 </html>
+{% endif %}

@@ -30,12 +30,19 @@ html.de-soft-navigating .de-main-wrapper,
 html.de-soft-navigating .de-main-wrapper *{
   animation:none!important;
 }
-/* Soft-nav session: skip Restaurant enter-from-opacity fades (replay feels like lag on AWS). */
+/* Soft-nav session: skip all enter-from-opacity fades (replay feels like a plain box on AWS). */
+html.de-soft-nav-session .de-main-wrapper,
+html.de-soft-nav-session .de-main-wrapper *{
+  animation:none!important;
+}
+html.de-soft-navigating .de-main-wrapper .db-home-card,
+html.de-soft-nav-session .de-main-wrapper .db-home-card,
 html.de-soft-nav-session .de-main-wrapper [class*="pos-tables-"],
 html.de-soft-nav-session .de-main-wrapper .pos-settings-page,
 html.de-soft-nav-session .de-main-wrapper .pos-settings-page [data-panel],
 html.de-soft-nav-session .de-main-wrapper [class*="pos-inv-"]{
-  animation:none!important;
+  opacity:1!important;
+  transform:none!important;
 }
 :root{
   --de-sidebar-collapsed:72px;

@@ -1,3 +1,6 @@
+{% set de_soft_body_class = 'de-open pos-module pos-settings-module' %}
+{% set de_soft_page_title = 'Settings | Restaurant | Hotel Bell Elite' %}
+{% if not is_partial_main %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5,7 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Settings | Restaurant | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=14">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=30">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=16">
@@ -20,8 +23,14 @@
 </script>
 </head>
 <body class="de-open pos-module pos-settings-module">
+{% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=16">
+{% endif %}
 
 <div class="de-main-inner pos-settings-page" id="pos-settings-page" data-pos-settings>
   <header class="pos-set-header">
@@ -498,5 +507,7 @@
 <script src="{{ url_for('static', filename='pos_settings.js') }}?v=21"></script>
 <script src="{{ url_for('static', filename='pos_menu.js') }}?v=29"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
 </body>
 </html>
+{% endif %}

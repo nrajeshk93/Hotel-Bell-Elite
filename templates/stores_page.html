@@ -1,3 +1,6 @@
+{% set de_soft_body_class = 'de-open su-module' ~ (' st-indent-shell' if page_key == 'indent' else (' st-inward-shell' if page_key == 'purchase_requests' else (' st-stock-shell' if page_key == 'stock' else ''))) %}
+{% set de_soft_page_title = (page_title ~ ' | Procurement & Inventory | Hotel Bell Elite') %}
+{% if not is_partial_main %}
 <!doctype html>
 <html lang="en">
 <head>
@@ -9,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=12">
@@ -31,7 +34,23 @@
 </script>
 </head>
 <body class="de-open su-module{% if page_key == 'indent' %} st-indent-shell{% elif page_key == 'purchase_requests' %} st-inward-shell{% elif page_key == 'stock' %} st-stock-shell{% endif %}">
+{% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=64">
+{% if page_key == 'indent' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
+{% elif page_key == 'purchase_requests' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=41">
+{% endif %}
+{% endif %}
 <div class="main-wrapper">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
@@ -278,5 +297,7 @@
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=25"></script>
 <script src="{{ url_for('static', filename='stores.js') }}?v=66"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
 </body>
 </html>
+{% endif %}

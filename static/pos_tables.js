@@ -7,6 +7,7 @@
   'use strict';
 
   var FLOOR_API = '/point-of-sale/api/floor';
+  var FLOOR_SESSION_KEY = 'hbe_pos_floor_snapshot';
   var INVOICE_BY_TABLE_API = '/point-of-sale/api/invoices/by-table';
   var TRANSFER_TABLE_API = '/point-of-sale/api/invoices/transfer-table';
   var MERGE_TABLES_API = '/point-of-sale/api/invoices/merge-tables';
@@ -369,11 +370,45 @@
     }
   }
 
+  function readFloorSessionSnapshot() {
+    try {
+      var raw = sessionStorage.getItem(FLOOR_SESSION_KEY);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (
+        parsed &&
+        Array.isArray(parsed.areas) &&
+        Array.isArray(parsed.tables)
+      ) {
+        return { areas: parsed.areas, tables: parsed.tables };
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function writeFloorSessionSnapshot(data) {
+    if (!data || !Array.isArray(data.areas) || !Array.isArray(data.tables)) return;
+    try {
+      sessionStorage.setItem(
+        FLOOR_SESSION_KEY,
+        JSON.stringify({ areas: data.areas, tables: data.tables })
+      );
+    } catch (e) {}
+  }
+
   function loadFloorDataCached() {
     if (currentFloor && Array.isArray(currentFloor.areas) && Array.isArray(currentFloor.tables)) {
       return {
         areas: currentFloor.areas,
         tables: currentFloor.tables
+      };
+    }
+    var snap = readFloorSessionSnapshot();
+    if (snap) {
+      currentFloor = snap;
+      return {
+        areas: snap.areas,
+        tables: snap.tables
       };
     }
     clearLegacyFloor();
@@ -441,6 +476,7 @@
         if (data && data.ok && Array.isArray(data.areas) && Array.isArray(data.tables)) {
           payload = { areas: data.areas, tables: data.tables };
           currentFloor = payload;
+          writeFloorSessionSnapshot(payload);
           paintKotPendingBanner(data.kot_pending);
         } else {
           payload = emptyFloor();

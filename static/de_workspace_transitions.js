@@ -4,8 +4,16 @@
   var HIDE_MS = 70;
   var NAV_FLAG = 'de-nav-transition';
   var FS_KEY = 'de-fullscreen-active';
-  var PREFETCH_TTL_MS = 45000;
-  var PREFETCH_MAX = 12;
+  var PREFETCH_TTL_MS = 90000;
+  var PREFETCH_MAX = 20;
+  var IDLE_PREFETCH_PATHS = [
+    '/home',
+    '/master',
+    '/stores/indent',
+    '/point-of-sale',
+    '/point-of-sale/invoice',
+    '/accounts/purchase-ledger'
+  ];
   var SKIP_SCRIPT_PARTS = [
     'de_fullscreen.js',
     'de_workspace_nav.js',
@@ -360,6 +368,7 @@
       document.documentElement.classList.remove('de-soft-navigating');
       hideSoftNavProgress();
       unlockFormSubmit(form);
+      try{ sessionStorage.removeItem(NAV_FLAG); } catch(e){}
       if(serverAccepted){
         // POST already ran on the server; reload/navigate instead of resubmitting.
         try{
@@ -635,25 +644,46 @@
     return false;
   }
 
-  function mergeHeadAssets(sourceDoc){
+  function mergeStylesheetLink(link, addedLinks){
+    var href = link.getAttribute('href');
+    if(!href) return;
+    var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).some(function(existing){
+      return existing.getAttribute('href') === href;
+    });
+    if(exists) return;
+    var clone = link.cloneNode(true);
+    document.head.appendChild(clone);
+    addedLinks.push(clone);
+  }
+
+  function mergeHeadAssets(sourceDoc, mainEl){
     var addedLinks = [];
-    sourceDoc.head.querySelectorAll('link[rel="stylesheet"]').forEach(function(link){
-      var href = link.getAttribute('href');
-      if(!href) return;
-      var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).some(function(existing){
-        return existing.getAttribute('href') === href;
+    if(sourceDoc && sourceDoc.head){
+      sourceDoc.head.querySelectorAll('link[rel="stylesheet"]').forEach(function(link){
+        mergeStylesheetLink(link, addedLinks);
       });
-      if(exists) return;
-      var clone = link.cloneNode(true);
-      document.head.appendChild(clone);
-      addedLinks.push(clone);
-    });
+    }
+    /* True partial=main fragments carry page CSS inside .de-main-wrapper (no <head>). */
+    if(mainEl){
+      mainEl.querySelectorAll('link[rel="stylesheet"]').forEach(function(link){
+        mergeStylesheetLink(link, addedLinks);
+      });
+    }
     var oldSoftStyles = Array.from(document.head.querySelectorAll('style[data-de-soft-nav]'));
-    sourceDoc.head.querySelectorAll('style').forEach(function(style){
-      var clone = style.cloneNode(true);
-      clone.setAttribute('data-de-soft-nav', '1');
-      document.head.appendChild(clone);
-    });
+    if(sourceDoc && sourceDoc.head){
+      sourceDoc.head.querySelectorAll('style').forEach(function(style){
+        var clone = style.cloneNode(true);
+        clone.setAttribute('data-de-soft-nav', '1');
+        document.head.appendChild(clone);
+      });
+    }
+    if(mainEl){
+      mainEl.querySelectorAll('style').forEach(function(style){
+        var clone = style.cloneNode(true);
+        clone.setAttribute('data-de-soft-nav', '1');
+        document.head.appendChild(clone);
+      });
+    }
     // Remove previous page inline styles only after new ones are attached (avoids FOUC/line flashes).
     oldSoftStyles.forEach(function(el){
       if(el.parentNode) el.parentNode.removeChild(el);
@@ -1381,11 +1411,19 @@
     if(!sidebarScroll) sidebarScroll = lockedSidebarScroll || captureSidebarScroll();
     lockSidebarScroll(sidebarScroll);
 
-    document.title = doc.title;
-    if(doc.body && doc.body.className){
+    var softTitle = nextMain && nextMain.getAttribute('data-de-page-title');
+    var softBodyClass = nextMain && nextMain.getAttribute('data-de-body-class');
+    if(softTitle){
+      document.title = softTitle;
+    } else if(doc.title){
+      document.title = doc.title;
+    }
+    if(softBodyClass){
+      document.body.className = softBodyClass;
+    } else if(doc.body && doc.body.className){
       document.body.className = doc.body.className;
     }
-    var addedLinks = mergeHeadAssets(doc);
+    var addedLinks = mergeHeadAssets(doc, nextMain);
     syncSidebarFromDoc(doc, url);
     restoreSidebarScroll(sidebarScroll);
 
@@ -1394,6 +1432,13 @@
       // Build off-DOM first; wait for new CSS; then swap in one shot under no veil.
       var frag = document.createDocumentFragment();
       content.nodes.forEach(function(node){
+        /* Page CSS for true partials is lifted into <head>; do not leave <link> in main. */
+        if(node.nodeType === 1 && node.tagName === 'LINK' && (node.getAttribute('rel') || '') === 'stylesheet'){
+          return;
+        }
+        if(node.nodeType === 1 && node.tagName === 'STYLE'){
+          return;
+        }
         frag.appendChild(document.importNode(node, true));
       });
 
@@ -1421,13 +1466,13 @@
             try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
           }
         }
-        // Old page stayed visible until this moment — finish UI without a blank veil.
-        finishSoftNavUi(done, navToken);
+        /* Run scripts / paint cached UI first, then reveal (avoids empty SSR flash). */
         runScriptNodes(content.scripts, function(){
           if(!isCurrentSoftNav(navToken)) return;
           finalizeSoftNav();
           restoreSidebarScrollAfterLayout(sidebarScroll);
           markMainLoading(false);
+          finishSoftNavUi(done, navToken);
           endSoftNavigatingClass();
         });
       };
@@ -1542,6 +1587,8 @@
       setSoftNavFlag(false);
       document.documentElement.classList.remove('de-soft-navigating');
       hideSoftNavProgress();
+      /* Disarm hard-nav #page-transition veil — soft-nav failure must not flash blank. */
+      try{ sessionStorage.removeItem(NAV_FLAG); } catch(e){}
       if(typeof done === 'function') done();
       // Soft-nav already pushState'd the target URL. Failing silently leaves a stale
       // page (month/year filters look broken until a manual refresh). Always hard-nav.
@@ -1842,11 +1889,28 @@
     }
   }
 
+  function idlePrefetchSidebarDestinations(){
+    if(!shouldSoftNavigate()) return;
+    var schedule = window.requestIdleCallback || function(cb){
+      return setTimeout(function(){ cb({ didTimeout: false, timeRemaining: function(){ return 0; } }); }, 400);
+    };
+    schedule(function(){
+      IDLE_PREFETCH_PATHS.forEach(function(path){
+        try{
+          var abs = new URL(path, window.location.origin).toString();
+          prefetchSoftNav(withSalesScope(abs));
+        } catch(e){}
+      });
+      prefetchRestaurantGroup();
+    }, { timeout: 1800 });
+  }
+
   function init(){
     installFormSubmitGuards();
     initDeSidebarPageTransitions();
     initPageEnterTransition();
     bootRestoreSidebarScroll();
+    idlePrefetchSidebarDestinations();
   }
 
   if(document.readyState === 'loading'){
