@@ -296,6 +296,8 @@
   const title0 = document.getElementById('se-cal-title0');
   const grid0 = document.getElementById('se-cal-grid0');
   if (!wrap || !trigger || !panel || !display || !form || !dateInput || !btnPrev || !btnNext || !title0 || !grid0) return;
+  if (wrap.getAttribute('data-se-entry-date-bound') === '1') return;
+  wrap.setAttribute('data-se-entry-date-bound', '1');
 
   const maxDateStr = (wrap.getAttribute('data-max-date') || '').trim();
   const initial = (dateInput.value || wrap.getAttribute('data-initial-date') || '').trim();

@@ -575,7 +575,20 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .staff-expense-payment-listbox .se-filter-chip-control{width:100%;min-height:44px;background:#fff;border:1px solid var(--border);border-radius:var(--rs)}
 .staff-expense-payment-listbox .se-filter-chip-icon svg{stroke:#64748B}
 .staff-expense-payment-listbox.is-open{z-index:60}
-#sales-expense-modal .se-filter-listbox{z-index:70}
+/* Absolute panels must escape the scrollable dialog; otherwise menus clip and feel "frozen". */
+#sales-expense-modal .sales-expense-modal-box,
+#sales-tips-modal .sales-expense-modal-box{
+  overflow:visible;
+}
+#sales-expense-modal .staff-credit-list,
+#sales-tips-modal .staff-credit-list{
+  max-height:min(220px,32vh);
+  overflow:auto;
+}
+#sales-expense-modal .se-filter-chip--listbox.is-open,
+#sales-tips-modal .se-filter-chip--listbox.is-open{z-index:80}
+#sales-expense-modal .se-filter-listbox,
+#sales-tips-modal .se-filter-listbox{z-index:90}
 .staff-supplier-field-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px}
 .staff-supplier-field-label{font-size:11px;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.4px}
 .staff-supplier-add-btn{height:28px;padding:0 10px;border:1px solid var(--border);border-radius:999px;background:#fff;color:var(--acc);font:700 11px Inter,system-ui,sans-serif;cursor:pointer}
@@ -586,7 +599,7 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .staff-supplier-placeholder,
 .se-filter-chip-value.is-placeholder{color:#94A3B8;font-weight:600}
 .se-filter-chip-value:not(.staff-supplier-placeholder):not(.is-placeholder){color:#111827;font-weight:600}
-#sales-expense-modal .staff-expense-supplier-listbox .se-filter-listbox{z-index:70;left:0;right:0;padding:6px}
+#sales-expense-modal .staff-expense-supplier-listbox .se-filter-listbox{z-index:90;left:0;right:0;padding:6px}
 .staff-expense-supplier-listbox .staff-supplier-search-wrap{padding:0 0 6px;margin:0 0 6px;border-bottom:1px solid #EEF2F7;background:#fff;position:sticky;top:0;z-index:1}
 .staff-expense-supplier-listbox .staff-supplier-search{width:100%;height:40px;border:1px solid #E5E7EB;border-radius:10px;padding:0 12px;font:500 14px Inter,system-ui,sans-serif;color:#111827;background:#F8FAFC;outline:none}
 .staff-expense-supplier-listbox .staff-supplier-search:focus{border-color:#2563EB;box-shadow:0 0 0 3px rgba(37,99,235,.12);background:#fff}

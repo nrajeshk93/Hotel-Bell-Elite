@@ -1,4 +1,4 @@
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=40"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=4"></script>
 <script>
 (function(){
@@ -45,6 +45,7 @@
 })();
 </script>
 <script>
+(function(){
   const wrap = document.getElementById('se-date-range-wrap');
   const trigger = document.getElementById('se-date-range-trigger');
   const backdrop = document.getElementById('se-date-range-backdrop');
@@ -59,6 +60,9 @@
   const title0 = document.getElementById('se-cal-title0');
   const grid0 = document.getElementById('se-cal-grid0');
   if (!wrap || !trigger || !panel || !display || !form || !dateInput || !btnPrev || !btnNext || !title0 || !grid0) return;
+  /* Soft-nav re-runs page scripts; avoid double click handlers (open then immediate close). */
+  if (wrap.getAttribute('data-se-entry-date-bound') === '1') return;
+  wrap.setAttribute('data-se-entry-date-bound', '1');
 
   const maxDateStr = (wrap.getAttribute('data-max-date') || '').trim();
   const initial = (dateInput.value || wrap.getAttribute('data-initial-date') || '').trim();

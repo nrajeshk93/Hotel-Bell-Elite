@@ -835,6 +835,12 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-inv-col-qty{width:120px;text-align:center !important}
 .pos-inv-col-rate{width:110px;text-align:right !important}
 .pos-inv-col-amt{width:120px;text-align:right !important}
+.pos-inv-col-select{
+  width:40px;
+  padding-right:8px !important;
+  text-align:center !important;
+  vertical-align:middle;
+}
 .pos-inv-col-act{
   width:84px;
   text-align:right !important;
@@ -1009,6 +1015,42 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   margin-top:12px;
   padding-top:12px;
   border-top:1px solid #F1F5F9;
+}
+.pos-inv-discount-select-bar{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-top:12px;
+  padding:12px 14px;
+  border:1px solid #DBEAFE;
+  border-radius:14px;
+  background:#EFF6FF;
+}
+.pos-inv-discount-select-bar[hidden]{display:none !important}
+.pos-inv-discount-select-copy{
+  margin:0;
+  font-size:13.5px;
+  font-weight:650;
+  color:#1E3A8A;
+}
+.pos-inv-discount-select-actions{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+}
+.pos-inv-line-check{
+  width:18px;
+  height:18px;
+  margin:0;
+  accent-color:#2563EB;
+  cursor:pointer;
+}
+.pos-invoice-page.is-discount-selecting .pos-inv-col-select{display:table-cell}
+.pos-invoice-page.is-discount-selecting tr.is-discount-checked{
+  background:rgba(37,99,235,.04);
 }
 .pos-inv-btn:disabled{
   cursor:not-allowed;
@@ -1507,7 +1549,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   .pos-inv-header-buttons .pos-inv-btn--kitchen span{display:inline}
   .pos-inv-col-rate,
   .pos-inv-table thead th.pos-inv-col-rate{display:none}
-  .pos-inv-table tbody td:nth-child(3){display:none}
+  .pos-inv-table tbody td.pos-inv-col-rate{display:none}
   .pos-inv-toolbar-primary{margin-left:0;width:100%}
   .pos-inv-tool span{display:none}
   .pos-inv-tool{

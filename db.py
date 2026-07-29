@@ -559,6 +559,10 @@ def ensure_pos_schema(conn):
         cursor.execute(
             "ALTER TABLE pos_invoices ADD COLUMN vat_amount REAL NOT NULL DEFAULT 0"
         )
+    if "discount_line_uids" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN discount_line_uids TEXT NOT NULL DEFAULT ''"
+        )
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_pos_invoices_table_open
@@ -589,6 +593,10 @@ def ensure_pos_schema(conn):
     if "notes" not in line_cols:
         cursor.execute(
             "ALTER TABLE pos_invoice_lines ADD COLUMN notes TEXT NOT NULL DEFAULT ''"
+        )
+    if "line_uid" not in line_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoice_lines ADD COLUMN line_uid TEXT NOT NULL DEFAULT ''"
         )
     cursor.execute(
         """
@@ -2653,10 +2661,38 @@ def _normalize_pos_order_type(value):
     return key
 
 
+def _parse_discount_line_uids(raw):
+    """Return unique line uid strings from JSON array text (or empty list)."""
+    text = str(raw or "").strip()
+    if not text:
+        return []
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    out = []
+    for item in data:
+        uid = str(item or "").strip()
+        if uid and uid not in out:
+            out.append(uid)
+    return out
+
+
+def _serialize_discount_line_uids(uids):
+    cleaned = []
+    for item in uids or []:
+        uid = str(item or "").strip()
+        if uid and uid not in cleaned:
+            cleaned.append(uid)
+    return json.dumps(cleaned) if cleaned else ""
+
+
 def _pos_invoice_line_dicts(conn, invoice_id):
     rows = conn.execute(
         """
-        SELECT id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty, notes
+        SELECT id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty, notes, line_uid
         FROM pos_invoice_lines
         WHERE invoice_id = ?
         ORDER BY sort_order ASC, id ASC
@@ -2664,16 +2700,23 @@ def _pos_invoice_line_dicts(conn, invoice_id):
         (int(invoice_id),),
     ).fetchall()
     lines = []
-    for row in rows:
+    for idx, row in enumerate(rows):
         qty = _pos_money(row["qty"])
         sent_qty = _pos_money(row["sent_qty"])
         if sent_qty > qty:
             sent_qty = qty
         keys = row.keys()
         notes = (row["notes"] if "notes" in keys else "") or ""
+        line_uid = ""
+        if "line_uid" in keys:
+            line_uid = str(row["line_uid"] or "").strip()
+        if not line_uid:
+            line_uid = f"L{idx + 1}"
         lines.append(
             {
                 "id": int(row["id"]),
+                "uid": line_uid,
+                "line_uid": line_uid,
                 "sort_order": int(row["sort_order"] or 0),
                 "menu_item_id": int(row["menu_item_id"]) if row["menu_item_id"] is not None else None,
                 "name": row["name"] or "",
@@ -2712,6 +2755,9 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "service_value": _pos_money(row["service_value"]),
         "tip_amount": _pos_money(row["tip_amount"]),
         "coupon_code": row["coupon_code"] or "",
+        "discount_line_uids": _parse_discount_line_uids(
+            row["discount_line_uids"] if "discount_line_uids" in row.keys() else ""
+        ),
         "subtotal": _pos_money(row["subtotal"]),
         "discount": _pos_money(row["discount_amount"]),
         "gst": _pos_money(row["gst_amount"]),
@@ -3011,7 +3057,8 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
         raise ValueError("Invalid invoice id.") from exc
     row = conn.execute(
         """
-        SELECT id, discount_type, discount_value, service_type, service_value, tip, tip_amount
+        SELECT id, discount_type, discount_value, service_type, service_value, tip, tip_amount,
+               discount_line_uids
         FROM pos_invoices
         WHERE id = ? AND is_active = 1
         """,
@@ -3022,7 +3069,7 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
 
     line_rows = conn.execute(
         """
-        SELECT l.rate, l.qty, l.menu_item_id, l.variant, c.name AS category_name,
+        SELECT l.rate, l.qty, l.menu_item_id, l.variant, l.line_uid, c.name AS category_name,
                i.item_kind, i.menu_type
         FROM pos_invoice_lines l
         LEFT JOIN pos_menu_items i ON i.id = l.menu_item_id
@@ -3033,9 +3080,20 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
     ).fetchall()
     subtotal = 0.0
     liquor_subtotal = 0.0
+    scoped_uids = set(
+        _parse_discount_line_uids(
+            row["discount_line_uids"] if "discount_line_uids" in row.keys() else ""
+        )
+    )
+    discount_base = 0.0
     for line in line_rows:
         line_total = _pos_money(line["rate"]) * _pos_money(line["qty"])
         subtotal += line_total
+        line_uid = ""
+        if "line_uid" in line.keys() and line["line_uid"]:
+            line_uid = str(line["line_uid"] or "").strip()
+        if not scoped_uids or (line_uid and line_uid in scoped_uids):
+            discount_base += line_total
         kind = ""
         if "item_kind" in line.keys() and line["item_kind"]:
             kind = str(line["item_kind"] or "").strip().lower()
@@ -3055,6 +3113,7 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
             liquor_subtotal += line_total
     subtotal = _pos_money(subtotal)
     liquor_subtotal = _pos_money(liquor_subtotal)
+    discount_base = _pos_money(discount_base if scoped_uids else subtotal)
 
     discount_type = str(row["discount_type"] or "pct").strip().lower() or "pct"
     service_type = str(row["service_type"] or "pct").strip().lower() or "pct"
@@ -3063,10 +3122,12 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
     tip = _pos_money(row["tip"] if row["tip"] is not None else row["tip_amount"])
 
     if discount_type == "inr":
-        discount = min(max(0.0, subtotal), max(0.0, discount_value))
+        discount = min(max(0.0, discount_base), max(0.0, discount_value))
+        discount = min(discount, max(0.0, subtotal))
     else:
         pct = min(100.0, max(0.0, discount_value))
-        discount = _pos_money(max(0.0, subtotal) * (pct / 100.0))
+        discount = _pos_money(max(0.0, discount_base) * (pct / 100.0))
+        discount = min(discount, max(0.0, subtotal))
     after_discount = max(0.0, subtotal - discount)
     liquor_share = (liquor_subtotal / subtotal) if subtotal > 0 else 0.0
     liquor_after = _pos_money(after_discount * liquor_share)
@@ -3914,6 +3975,15 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
     service_value = _pos_money(payload.get("serviceValue", totals.get("serviceValue")))
     tip_amount = _pos_money(payload.get("tipAmount", totals.get("tip")))
     coupon_code = str(payload.get("couponCode") or payload.get("coupon_code") or "").strip()
+    raw_discount_uids = payload.get("discountLineUids")
+    if raw_discount_uids is None:
+        raw_discount_uids = payload.get("discount_line_uids")
+    if isinstance(raw_discount_uids, str):
+        discount_line_uids = _parse_discount_line_uids(raw_discount_uids)
+    elif isinstance(raw_discount_uids, (list, tuple)):
+        discount_line_uids = _parse_discount_line_uids(json.dumps(list(raw_discount_uids)))
+    else:
+        discount_line_uids = []
 
     subtotal = _pos_money(totals.get("subtotal"))
     discount_amount = _pos_money(totals.get("discount"))
@@ -3949,6 +4019,9 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
         if sent_qty > qty:
             sent_qty = qty
         line_notes = " ".join(str(line.get("notes") or "").split()).strip()[:200]
+        line_uid = str(line.get("uid") or line.get("line_uid") or "").strip()
+        if not line_uid:
+            line_uid = f"L{idx + 1}"
         normalized_lines.append(
             {
                 "sort_order": idx,
@@ -3960,12 +4033,21 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 "line_total": line_total,
                 "sent_qty": sent_qty,
                 "notes": line_notes,
+                "line_uid": line_uid,
             }
         )
     if not normalized_lines:
         raise ValueError("Add at least one item before saving.")
     if subtotal <= 0:
         subtotal = _pos_money(computed_subtotal)
+
+    # Keep only uids that still exist on this save; empty = whole-bill discount.
+    live_uids = {line["line_uid"] for line in normalized_lines}
+    discount_line_uids = [uid for uid in discount_line_uids if uid in live_uids]
+    # Selecting every line is equivalent to whole-bill scope.
+    if discount_line_uids and len(discount_line_uids) >= len(normalized_lines):
+        discount_line_uids = []
+    discount_line_uids_json = _serialize_discount_line_uids(discount_line_uids)
 
     # A KOT send persists the order and marks lines as sent to the kitchen.
     # Occupancy is claimed on any dine-in save with a table (see below).
@@ -4047,6 +4129,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 service_value = ?,
                 tip_amount = ?,
                 coupon_code = ?,
+                discount_line_uids = ?,
                 subtotal = ?,
                 discount_amount = ?,
                 gst_amount = ?,
@@ -4077,6 +4160,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 service_value,
                 tip_amount,
                 coupon_code,
+                discount_line_uids_json,
                 subtotal,
                 discount_amount,
                 gst_amount,
@@ -4100,7 +4184,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 order_no, saved_at, order_date, order_type, table_label, captain,
                 customer_name, customer_mobile, notes,
                 discount_type, discount_value, service_type, service_value,
-                tip_amount, coupon_code,
+                tip_amount, coupon_code, discount_line_uids,
                 subtotal, discount_amount, gst_amount, vat_amount, service_amount, tip,
                 round_off, grand_total, created_by, status, kot_sent, first_kot_at,
                 customer_bill_sent, customer_bill_at, outlet,
@@ -4109,7 +4193,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?,
-                ?, ?,
+                ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, 'open', ?, ?,
                 ?, ?, ?,
@@ -4132,6 +4216,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 service_value,
                 tip_amount,
                 coupon_code,
+                discount_line_uids_json,
                 subtotal,
                 discount_amount,
                 gst_amount,
@@ -4154,8 +4239,8 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
         conn.execute(
             """
             INSERT INTO pos_invoice_lines (
-                invoice_id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                invoice_id, sort_order, menu_item_id, name, variant, rate, qty, line_total, sent_qty, notes, line_uid
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 invoice_id,
@@ -4168,6 +4253,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 line["line_total"],
                 line["sent_qty"],
                 line.get("notes") or "",
+                line.get("line_uid") or "",
             ),
         )
 

@@ -68,7 +68,13 @@ def main() -> int:
     bucket = _require("BACKUP_S3_BUCKET")
     prefix = os.environ.get("BACKUP_S3_PREFIX", "belleliteaccounts").strip().strip("/")
     region = os.environ.get("AWS_DEFAULT_REGION", "ap-south-1").strip()
-    storage_class = os.environ.get("BACKUP_S3_STORAGE_CLASS", "STANDARD").strip() or "STANDARD"
+    storage_class = (
+        os.environ.get("BACKUP_S3_STORAGE_CLASS", "DEEP_ARCHIVE").strip() or "DEEP_ARCHIVE"
+    )
+    if storage_class != "DEEP_ARCHIVE":
+        raise SystemExit(
+            f"Refusing storage class {storage_class!r}; only DEEP_ARCHIVE is allowed"
+        )
     _require("AWS_ACCESS_KEY_ID")
     _require("AWS_SECRET_ACCESS_KEY")
 

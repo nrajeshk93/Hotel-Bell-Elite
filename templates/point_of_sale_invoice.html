@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=38">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=44">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=45">
 <script>
 (function(){
   try{
@@ -26,7 +26,7 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=44">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=45">
 {% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox, ep_listbox %}
 
@@ -128,6 +128,7 @@
           <table class="pos-inv-table" id="pos-inv-table-lines">
             <thead>
               <tr>
+                <th scope="col" class="pos-inv-col-select" hidden><span class="pos-sr-only">Select</span></th>
                 <th scope="col">Item</th>
                 <th scope="col" class="pos-inv-col-qty">Qty</th>
                 <th scope="col" class="pos-inv-col-rate">Rate (₹)</th>
@@ -148,6 +149,15 @@
             </div>
             <p class="pos-inv-empty-title">Search and add items to begin billing</p>
             <p class="pos-inv-empty-copy">Search for menu items above. Selected items will appear here.</p>
+          </div>
+        </div>
+        <div class="pos-inv-discount-select-bar" id="pos-inv-discount-select-bar" hidden>
+          <p class="pos-inv-discount-select-copy" id="pos-inv-discount-select-copy">Select items for discount</p>
+          <div class="pos-inv-discount-select-actions">
+            <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-discount-select-all">Select all</button>
+            <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-discount-select-clear">Clear</button>
+            <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="pos-inv-discount-select-cancel">Cancel</button>
+            <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-inv-discount-select-continue">Continue</button>
           </div>
         </div>
         <div class="pos-inv-lines-footer">
@@ -473,7 +483,7 @@
 <script src="{{ url_for('static', filename='pos_offline.js') }}?v=4"></script>
 <script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=4"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=87"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=88"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

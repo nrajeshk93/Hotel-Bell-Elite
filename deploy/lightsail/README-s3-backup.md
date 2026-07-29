@@ -1,13 +1,12 @@
 # belleliteaccounts → S3 cold backup (every 6 hours, 30-day auto-delete)
 
-## Why S3 Standard (not Glacier storage class)
+## Storage class: Glacier Deep Archive
 
-For **30-day auto-delete**, Glacier storage classes are *more expensive*:
-- Glacier Instant / Flexible Retrieval: **90-day** minimum billable storage
-- Glacier Deep Archive: **180-day** minimum billable storage
+Uploads use `BACKUP_S3_STORAGE_CLASS=DEEP_ARCHIVE`.
 
-Deleting at day 30 still bills the minimum period (early-deletion charge).  
-With a ~1 MB DB and 4 backups/day, **S3 Standard + expire at 30 days** is the lowest cost (fractions of a cent/month) and still uses Amazon S3 (same platform as Glacier).
+Lifecycle still expires objects after **30 days**. Note AWS Deep Archive has a
+**180-day minimum billable storage** period, so deleting at day 30 incurs an
+early-deletion charge for the remaining days.
 
 ## Safety (no website impact)
 

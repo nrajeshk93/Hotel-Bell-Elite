@@ -18,6 +18,7 @@ from db import (
     ensure_pos_schema,
     ensure_stores_schema,
     get_db,
+    indian_fiscal_year_label,
     list_pos_menu_recipe_lines,
 )
 from embed_helpers import is_embed_request
@@ -410,6 +411,39 @@ def _next_doc_no(conn, table: str, column: str, prefix: str, outlet: str) -> str
         except ValueError:
             seq = 1
     return f"{prefix}-{outlet_code}-{day}-{seq:03d}"
+
+
+_IND_FY_NO_RE = re.compile(
+    r"^IND/(Bar|Restaurant)/(\d+)/(\d{4}-\d{2})$",
+    re.IGNORECASE,
+)
+
+
+def _next_indent_no(conn, outlet: str, when=None) -> str:
+    """Allocate IND/{Bar|Restaurant}/{n}/{FY}, series per outlet + fiscal year from 1."""
+    outlet_key = _parse_outlet(outlet)
+    outlet_label = _outlet_label(outlet_key)
+    fy = indian_fiscal_year_label(when)
+    rows = conn.execute(
+        """
+        SELECT indent_no
+        FROM store_indents
+        WHERE outlet = ?
+          AND upper(indent_no) LIKE 'IND/%'
+        """,
+        (outlet_key,),
+    ).fetchall()
+    max_n = 0
+    for row in rows:
+        match = _IND_FY_NO_RE.match(str(row["indent_no"] or "").strip())
+        if not match:
+            continue
+        if match.group(1).lower() != outlet_label.lower():
+            continue
+        if match.group(3) != fy:
+            continue
+        max_n = max(max_n, int(match.group(2)))
+    return f"IND/{outlet_label}/{max_n + 1}/{fy}"
 
 
 def _parse_lines_from_form(form) -> list[dict[str, Any]]:
@@ -2345,7 +2379,7 @@ def stores_indent():
                         )
                     )
 
-                indent_no = _next_doc_no(conn, "store_indents", "indent_no", "IND", write_outlet)
+                indent_no = _next_indent_no(conn, write_outlet)
                 try:
                     cur = conn.execute(
                         """

@@ -190,6 +190,11 @@
 
   function bindTipsEmployeeListbox(){
     if (!salesTipsEmployeeListbox || !salesTipsEmployeeTrigger || !salesTipsEmployeeList) return;
+    if (salesTipsEmployeeListbox.getAttribute('data-se-tips-listbox-bound') === '1') return;
+    salesTipsEmployeeListbox.setAttribute('data-se-tips-listbox-bound', '1');
+    salesTipsEmployeeListbox.__epListboxBound = true;
+    salesTipsEmployeeListbox.__suFilterListboxBound = true;
+    salesTipsEmployeeListbox.removeAttribute('data-se-listbox');
     salesTipsEmployeeTrigger.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();

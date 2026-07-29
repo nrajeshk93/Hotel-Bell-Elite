@@ -79,6 +79,84 @@ class StoresFlowTests(unittest.TestCase):
             "10:05 AM",
         )
 
+    def test_indent_no_format_per_outlet_fiscal_year(self):
+        from datetime import date
+
+        fy = db_mod.indian_fiscal_year_label(date(2026, 7, 29))
+        self.assertEqual(fy, "2026-27")
+        next_no = self.stores_mod._next_indent_no
+        conn = db_mod.get_db()
+        try:
+            bar1 = next_no(conn, "bar", when=date(2026, 7, 29))
+            self.assertEqual(bar1, "IND/Bar/1/2026-27")
+            conn.execute(
+                """
+                INSERT INTO store_indents
+                    (outlet, indent_no, status, notes, created_at)
+                VALUES ('bar', ?, 'draft', '', datetime('now','localtime'))
+                """,
+                (bar1,),
+            )
+            bar2 = next_no(conn, "bar", when=date(2026, 7, 29))
+            self.assertEqual(bar2, "IND/Bar/2/2026-27")
+            rest1 = next_no(conn, "restaurant", when=date(2026, 7, 29))
+            self.assertEqual(rest1, "IND/Restaurant/1/2026-27")
+            # Prior FY does not advance current-year series
+            conn.execute(
+                """
+                INSERT INTO store_indents
+                    (outlet, indent_no, status, notes, created_at)
+                VALUES ('bar', 'IND/Bar/9/2025-26', 'draft', '', datetime('now','localtime'))
+                """,
+            )
+            bar_still_2 = next_no(conn, "bar", when=date(2026, 7, 29))
+            self.assertEqual(bar_still_2, "IND/Bar/2/2026-27")
+        finally:
+            conn.close()
+
+        create_bar = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "Indent no format bar",
+                "item_name": ["Onion"],
+                "quantity": ["1"],
+                "unit": ["kg"],
+                "approximate_price": ["10"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create_bar.status_code, 302)
+        create_rest = self.client.post(
+            "/stores/indent?outlet=restaurant",
+            data={
+                "outlet": "restaurant",
+                "action": "submit",
+                "notes": "Indent no format restaurant",
+                "item_name": ["Onion"],
+                "quantity": ["1"],
+                "unit": ["kg"],
+                "approximate_price": ["10"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create_rest.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            bar = conn.execute(
+                "SELECT indent_no FROM store_indents WHERE notes = 'Indent no format bar'"
+            ).fetchone()
+            rest = conn.execute(
+                "SELECT indent_no FROM store_indents WHERE notes = 'Indent no format restaurant'"
+            ).fetchone()
+            self.assertIsNotNone(bar)
+            self.assertIsNotNone(rest)
+            self.assertRegex(bar["indent_no"], r"^IND/Bar/\d+/2026-27$")
+            self.assertRegex(rest["indent_no"], r"^IND/Restaurant/\d+/2026-27$")
+        finally:
+            conn.close()
+
     def test_product_master_seeded(self):
         conn = db_mod.get_db()
         try:

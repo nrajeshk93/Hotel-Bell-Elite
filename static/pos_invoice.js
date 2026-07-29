@@ -117,6 +117,11 @@
     lines: [],
     discountType: 'pct',
     discountValue: 0,
+    /* Empty = whole-bill discount; otherwise only these line uids contribute. */
+    discountLineUids: [],
+    /* null | 'discount' | 'coupon' — checkbox selection before existing modals. */
+    discountSelectMode: null,
+    discountSelectDraft: [],
     tipAmount: 0,
     tipEmployeeId: '',
     tipNote: '',
@@ -1103,6 +1108,41 @@
     return d;
   }
 
+  function normalizeDiscountLineUids(uids) {
+    var out = [];
+    (uids || []).forEach(function (uid) {
+      var key = String(uid || '').trim();
+      if (key && out.indexOf(key) === -1) out.push(key);
+    });
+    return out;
+  }
+
+  function pruneDiscountLineUids() {
+    var live = {};
+    state.lines.forEach(function (line) {
+      live[String(line.uid || '')] = true;
+    });
+    state.discountLineUids = normalizeDiscountLineUids(state.discountLineUids).filter(function (uid) {
+      return !!live[uid];
+    });
+    /* All lines selected ≡ whole-bill scope. */
+    if (state.discountLineUids.length && state.discountLineUids.length >= state.lines.length) {
+      state.discountLineUids = [];
+    }
+  }
+
+  function discountBaseForLines(lineUids) {
+    var scoped = normalizeDiscountLineUids(lineUids);
+    var base = 0;
+    state.lines.forEach(function (line) {
+      var lineTotal = (Number(line.rate) || 0) * (Number(line.qty) || 0);
+      if (!scoped.length || scoped.indexOf(String(line.uid || '')) !== -1) {
+        base += lineTotal;
+      }
+    });
+    return base;
+  }
+
   function calcAdjAmount(base, type, value) {
     var n = Number(value);
     if (isNaN(n) || n < 0) n = 0;
@@ -1118,6 +1158,8 @@
     var serviceType = o.serviceType != null ? o.serviceType : state.serviceType;
     var serviceValue = o.serviceValue != null ? o.serviceValue : state.serviceValue;
     var tipAmount = o.tipAmount != null ? o.tipAmount : state.tipAmount;
+    var discountLineUids =
+      o.discountLineUids != null ? o.discountLineUids : state.discountLineUids;
 
     var subtotal = 0;
     var liquorSubtotal = 0;
@@ -1126,7 +1168,10 @@
       subtotal += lineTotal;
       if (isLiquorLine(line)) liquorSubtotal += lineTotal;
     });
-    var discount = calcAdjAmount(subtotal, discountType, discountValue);
+    var scopedUids = normalizeDiscountLineUids(discountLineUids);
+    var discountBase = scopedUids.length ? discountBaseForLines(scopedUids) : subtotal;
+    var discount = calcAdjAmount(discountBase, discountType, discountValue);
+    if (discount > subtotal) discount = subtotal;
     var afterDiscount = Math.max(0, subtotal - discount);
     var liquorShare = subtotal > 0 ? liquorSubtotal / subtotal : 0;
     var liquorAfter = afterDiscount * liquorShare;
@@ -1146,6 +1191,8 @@
       discount: discount,
       discountType: discountType,
       discountValue: Number(discountValue) || 0,
+      discountLineUids: scopedUids,
+      discountItemCount: scopedUids.length,
       liquorSubtotal: liquorSubtotal,
       cgst: cgst,
       ugst: ugst,
@@ -1160,11 +1207,13 @@
     };
   }
 
-  function formatAdjHint(type, value) {
+  function formatAdjHint(type, value, itemCount) {
     var n = Number(value);
     if (isNaN(n) || n <= 0) return '';
-    if (type === 'inr') return '(₹' + n.toFixed(n % 1 ? 2 : 0) + ')';
-    return '(' + n + '%)';
+    var base = type === 'inr' ? '(₹' + n.toFixed(n % 1 ? 2 : 0) + ')' : '(' + n + '%)';
+    var count = Number(itemCount) || 0;
+    if (count > 0) return base + ' · ' + count + (count === 1 ? ' item' : ' items');
+    return base;
   }
 
   function renderSummary(page) {
@@ -1185,7 +1234,9 @@
       if (el) el.textContent = money(map[id]);
     });
     var discHint = $('#pos-inv-sum-discount-hint', page);
-    if (discHint) discHint.textContent = formatAdjHint(t.discountType, t.discountValue);
+    if (discHint) {
+      discHint.textContent = formatAdjHint(t.discountType, t.discountValue, t.discountItemCount);
+    }
     var discRow = $('#pos-inv-sum-discount-row', page);
     if (discRow) {
       var showDiscount = Number(t.discount) > 0 || Number(t.discountValue) > 0;
@@ -1234,6 +1285,11 @@
     if (empty) empty.hidden = true;
     var isAdmin = canEditKitchenSentLines(page);
     var locked = !!state.invoiceGenerated;
+    var selecting = !!state.discountSelectMode;
+    var draftSet = {};
+    (state.discountSelectDraft || []).forEach(function (uid) {
+      draftSet[String(uid)] = true;
+    });
 
     body.innerHTML = state.lines
       .map(function (line) {
@@ -1244,10 +1300,21 @@
         var canDecrease = !locked && (!lockReduce || Number(line.qty) > sentQty);
         var canDelete = !locked && !(!isAdmin && sentQty > 0);
         var lineNotes = String(line.notes || '').trim();
+        var checked = !!draftSet[String(line.uid)];
         return (
           '<tr data-line-id="' +
           escapeHtml(line.uid) +
-          '">' +
+          (checked ? '" class="is-discount-checked"' : '"') +
+          '>' +
+          (selecting
+            ? '<td class="pos-inv-col-select">' +
+              '<input type="checkbox" class="pos-inv-line-check" data-discount-check aria-label="Select ' +
+              escapeHtml(line.name) +
+              ' for discount"' +
+              (checked ? ' checked' : '') +
+              '>' +
+              '</td>'
+            : '') +
           '<td><div class="pos-inv-item-cell">' +
           '<div><div class="pos-inv-item-name">' +
           escapeHtml(line.name) +
@@ -1272,13 +1339,13 @@
           '</div></div></td>' +
           '<td class="pos-inv-col-qty"><div class="pos-inv-qty">' +
           '<button type="button" data-qty="-1" aria-label="Decrease quantity"' +
-          (canDecrease ? '' : ' disabled title="' + (locked ? 'Invoice locked — settle to continue' : 'Only an administrator can reduce quantity after KOT') + '"') +
+          (canDecrease && !selecting ? '' : ' disabled title="' + (selecting ? 'Finish item selection first' : locked ? 'Invoice locked — settle to continue' : 'Only an administrator can reduce quantity after KOT') + '"') +
           '>−</button>' +
           '<span>' +
           line.qty +
           '</span>' +
           '<button type="button" data-qty="1" aria-label="Increase quantity"' +
-          (locked ? ' disabled title="Invoice locked — settle to continue"' : '') +
+          (locked || selecting ? ' disabled title="' + (selecting ? 'Finish item selection first' : 'Invoice locked — settle to continue') + '"' : '') +
           '>+</button>' +
           '</div></td>' +
           '<td class="pos-inv-col-rate"><span class="pos-inv-rate">' +
@@ -1291,13 +1358,13 @@
           '<button type="button" class="pos-inv-note-btn' +
           (lineNotes ? ' is-active' : '') +
           '" data-line-note aria-label="Customise item"' +
-          (locked ? ' disabled title="Invoice locked — settle to continue"' : '') +
-          (lineNotes ? ' title="' + escapeHtml(lineNotes) + '"' : locked ? '' : ' title="Add customised note"') +
+          (locked || selecting ? ' disabled title="' + (locked ? 'Invoice locked — settle to continue' : 'Finish item selection first') + '"' : '') +
+          (lineNotes ? ' title="' + escapeHtml(lineNotes) + '"' : locked || selecting ? '' : ' title="Add customised note"') +
           '>' +
           '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
           '</button>' +
           '<button type="button" class="pos-inv-del" data-del aria-label="Remove item"' +
-          (canDelete ? '' : ' disabled title="' + (locked ? 'Invoice locked — settle to continue' : 'Only an administrator can remove items after KOT') + '"') +
+          (canDelete && !selecting ? '' : ' disabled title="' + (selecting ? 'Finish item selection first' : locked ? 'Invoice locked — settle to continue' : 'Only an administrator can remove items after KOT') + '"') +
           '>' +
           '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>' +
           '</button></div></td></tr>'
@@ -1305,6 +1372,7 @@
       })
       .join('');
 
+    syncDiscountSelectUi(page);
     renderSummary(page);
     updateKotBar(page);
     updateSettleBillButton(page);
@@ -2433,13 +2501,25 @@
     state.tableForOrder = invoice.table_label || invoice.table || '';
     state.discountType = invoice.discount_type || 'pct';
     state.discountValue = Number(invoice.discount_value) || 0;
+    state.discountLineUids = normalizeDiscountLineUids(
+      invoice.discount_line_uids || invoice.discountLineUids || []
+    );
+    state.discountSelectMode = null;
+    state.discountSelectDraft = [];
     state.serviceType = invoice.service_type || 'pct';
     state.serviceValue = Number(invoice.service_value) || 0;
     state.tipAmount = Number(invoice.tip_amount) || 0;
     state.couponCode = invoice.coupon_code || '';
     state.lineSeq = 0;
-    state.lines = (invoice.lines || []).map(function (line) {
-      state.lineSeq += 1;
+    state.lines = (invoice.lines || []).map(function (line, idx) {
+      var persistedUid = String(line.uid || line.line_uid || '').trim();
+      if (persistedUid) {
+        var match = /^L(\d+)$/i.exec(persistedUid);
+        if (match) state.lineSeq = Math.max(state.lineSeq, Number(match[1]) || 0);
+      } else {
+        state.lineSeq += 1;
+        persistedUid = 'L' + state.lineSeq;
+      }
       var menu = findMenuItem(line.menu_item_id || line.menuId);
       var category = (menu && menu.category) || line.category || '';
       var liquor =
@@ -2449,7 +2529,7 @@
         isLiquorCategory(category) ||
         isLiquorCategory(line.variant);
       return {
-        uid: 'L' + state.lineSeq,
+        uid: persistedUid,
         menuId: line.menu_item_id || line.menuId || null,
         name: line.name,
         category: category,
@@ -2463,6 +2543,7 @@
         notes: String(line.notes || '').trim()
       };
     });
+    pruneDiscountLineUids();
 
     var orderEl = $('#pos-inv-meta-order-no', page);
     if (orderEl) orderEl.textContent = state.orderNo;
@@ -2732,6 +2813,9 @@
     state.lines = [];
     state.discountType = 'pct';
     state.discountValue = 0;
+    state.discountLineUids = [];
+    state.discountSelectMode = null;
+    state.discountSelectDraft = [];
     state.tipAmount = 0;
     state.tipEmployeeId = '';
     state.tipNote = '';
@@ -3715,10 +3799,107 @@
     }
     var t = calcTotals(override);
     if (kind === 'discount') {
-      preview.textContent = 'Discount: ' + money(t.discount);
+      var scopeHint =
+        t.discountItemCount > 0
+          ? ' on ' + t.discountItemCount + (t.discountItemCount === 1 ? ' item' : ' items')
+          : '';
+      preview.textContent = 'Discount: ' + money(t.discount) + scopeHint;
     } else if (kind === 'service') {
       preview.textContent = 'Service charge: ' + money(t.service);
     }
+  }
+
+  function syncDiscountSelectUi(page) {
+    var root = page || document.getElementById('pos-invoice-page');
+    if (!root) return;
+    var selecting = !!state.discountSelectMode;
+    root.classList.toggle('is-discount-selecting', selecting);
+    var bar = $('#pos-inv-discount-select-bar', root);
+    if (bar) bar.hidden = !selecting;
+    var selectTh = root.querySelector('#pos-inv-table-lines thead .pos-inv-col-select');
+    if (selectTh) selectTh.hidden = !selecting;
+    var copy = $('#pos-inv-discount-select-copy', root);
+    if (copy) {
+      var n = (state.discountSelectDraft || []).length;
+      var kind = state.discountSelectMode === 'coupon' ? 'coupon' : 'discount';
+      copy.textContent =
+        n > 0
+          ? n + (n === 1 ? ' item' : ' items') + ' selected for ' + kind
+          : 'Select items for ' + kind;
+    }
+    var cont = $('#pos-inv-discount-select-continue', root);
+    if (cont) cont.disabled = !(state.discountSelectDraft || []).length;
+  }
+
+  function exitDiscountSelectMode(page, opts) {
+    var keepRender = opts && opts.keepRender;
+    state.discountSelectMode = null;
+    state.discountSelectDraft = [];
+    if (!keepRender) renderLines(page || document.getElementById('pos-invoice-page'));
+    else syncDiscountSelectUi(page || document.getElementById('pos-invoice-page'));
+  }
+
+  function beginDiscountSelectMode(page, mode) {
+    if (!state.lines.length) {
+      toast('Add items before applying a ' + (mode === 'coupon' ? 'coupon' : 'discount') + '.');
+      return;
+    }
+    state.discountSelectMode = mode === 'coupon' ? 'coupon' : 'discount';
+    pruneDiscountLineUids();
+    if (state.discountLineUids.length) {
+      state.discountSelectDraft = state.discountLineUids.slice();
+    } else {
+      state.discountSelectDraft = state.lines.map(function (line) {
+        return String(line.uid);
+      });
+    }
+    renderLines(page);
+    var bar = $('#pos-inv-discount-select-bar', page);
+    if (bar) {
+      try {
+        bar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (err) {}
+    }
+  }
+
+  function setDiscountSelectAll(page, selected) {
+    if (selected) {
+      state.discountSelectDraft = state.lines.map(function (line) {
+        return String(line.uid);
+      });
+    } else {
+      state.discountSelectDraft = [];
+    }
+    renderLines(page);
+  }
+
+  function toggleDiscountSelectUid(page, uid, force) {
+    var key = String(uid || '');
+    if (!key) return;
+    var draft = normalizeDiscountLineUids(state.discountSelectDraft);
+    var idx = draft.indexOf(key);
+    var shouldSelect = force == null ? idx === -1 : !!force;
+    if (shouldSelect && idx === -1) draft.push(key);
+    if (!shouldSelect && idx !== -1) draft.splice(idx, 1);
+    state.discountSelectDraft = draft;
+    renderLines(page);
+  }
+
+  function continueDiscountSelectMode(page) {
+    var draft = normalizeDiscountLineUids(state.discountSelectDraft);
+    if (!draft.length) {
+      toast('Select at least one item.');
+      return;
+    }
+    var mode = state.discountSelectMode;
+    state.discountLineUids = draft.slice();
+    /* Selecting every line keeps whole-bill semantics. */
+    if (state.discountLineUids.length >= state.lines.length) {
+      state.discountLineUids = [];
+    }
+    exitDiscountSelectMode(page);
+    if (mode === 'coupon') openCouponModal(page);
+    else openDiscountModal(page);
   }
 
   function openCustomModal(page) {
@@ -3979,8 +4160,11 @@
     if (type === 'pct' && n > 100) n = 100;
     state.discountType = type;
     state.discountValue = n;
+    if (!n) state.discountLineUids = [];
+    else pruneDiscountLineUids();
     closeInvModal(page, 'discount');
     renderSummary(page);
+    markOrderDirty(page);
     toast(n ? 'Discount applied.' : 'Discount cleared.');
   }
 
@@ -4001,9 +4185,11 @@
     var codeEl = $('#pos-inv-coupon-code', page);
     var code = codeEl ? String(codeEl.value || '').trim() : '';
     state.couponCode = code;
+    pruneDiscountLineUids();
     closeInvModal(page, 'coupon');
     if (code) {
       renderSummary(page);
+      markOrderDirty(page);
       toast('Coupon code saved. Validation is not configured yet.');
     } else {
       renderSummary(page);
@@ -4050,6 +4236,7 @@
       }),
       discountType: state.discountType,
       discountValue: state.discountValue,
+      discountLineUids: state.discountLineUids.slice(),
       serviceType: state.serviceType,
       serviceValue: state.serviceValue,
       tipAmount: state.tipAmount,
@@ -4447,7 +4634,7 @@
     }
     if (action === 'discount') {
       if (guardInvoiceLocked()) return;
-      openDiscountModal(page);
+      beginDiscountSelectMode(page, 'discount');
       return;
     }
     if (action === 'service') {
@@ -4462,7 +4649,7 @@
     }
     if (action === 'coupon') {
       if (guardInvoiceLocked()) return;
-      openCouponModal(page);
+      beginDiscountSelectMode(page, 'coupon');
       return;
     }
     if (action === 'add-custom') {
@@ -4783,6 +4970,20 @@
         }
       }
       if (!line) return;
+      if (state.discountSelectMode) {
+        var checkEl = e.target.closest('[data-discount-check]');
+        if (checkEl || e.target === row || e.target.closest('td')) {
+          if (e.target.closest('[data-qty], [data-del], [data-line-note]')) return;
+          var force = checkEl ? !!checkEl.checked : null;
+          if (checkEl) {
+            /* Native checkbox already toggled; sync draft to its new state. */
+            toggleDiscountSelectUid(page, id, !!checkEl.checked);
+          } else {
+            toggleDiscountSelectUid(page, id, force);
+          }
+        }
+        return;
+      }
       if (e.target.closest('[data-line-note]')) {
         if (guardInvoiceLocked()) return;
         openLineNoteModal(page, line);
@@ -4797,6 +4998,7 @@
         state.lines = state.lines.filter(function (l) {
           return l.uid !== id;
         });
+        pruneDiscountLineUids();
         renderLines(page);
         if (state.lines.length) markOrderDirty(page);
         else {
@@ -4941,6 +5143,11 @@
 
     page.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
+        if (state.discountSelectMode) {
+          e.preventDefault();
+          exitDiscountSelectMode(page);
+          return;
+        }
         var lineNoteModal = $('#' + modalId('line-note'), page);
         if (lineNoteModal && !lineNoteModal.hidden) {
           e.preventDefault();
@@ -5004,6 +5211,23 @@
     if (tipApply) tipApply.addEventListener('click', function () { applyTipModal(page); });
     var couponApply = $('#pos-inv-coupon-apply', page);
     if (couponApply) couponApply.addEventListener('click', function () { applyCouponModal(page); });
+
+    var selectAllBtn = $('#pos-inv-discount-select-all', page);
+    if (selectAllBtn) {
+      selectAllBtn.addEventListener('click', function () { setDiscountSelectAll(page, true); });
+    }
+    var selectClearBtn = $('#pos-inv-discount-select-clear', page);
+    if (selectClearBtn) {
+      selectClearBtn.addEventListener('click', function () { setDiscountSelectAll(page, false); });
+    }
+    var selectCancelBtn = $('#pos-inv-discount-select-cancel', page);
+    if (selectCancelBtn) {
+      selectCancelBtn.addEventListener('click', function () { exitDiscountSelectMode(page); });
+    }
+    var selectContinueBtn = $('#pos-inv-discount-select-continue', page);
+    if (selectContinueBtn) {
+      selectContinueBtn.addEventListener('click', function () { continueDiscountSelectMode(page); });
+    }
   }
 
   function initPosInvoicePage() {
@@ -5040,6 +5264,9 @@
       state.lines = [];
       state.discountType = 'pct';
       state.discountValue = 0;
+      state.discountLineUids = [];
+      state.discountSelectMode = null;
+      state.discountSelectDraft = [];
       state.tipAmount = 0;
       state.tipEmployeeId = '';
       state.tipNote = '';

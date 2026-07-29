@@ -124,8 +124,8 @@ AWS_DEFAULT_REGION=${REGION}
 BACKUP_S3_BUCKET=${BUCKET}
 BACKUP_S3_PREFIX=belleliteaccounts
 BACKUP_RETENTION_DAYS=${RETENTION_DAYS}
-# Lowest cost for 30-day auto-delete (no Glacier early-deletion minimums).
-BACKUP_S3_STORAGE_CLASS=STANDARD
+# Glacier Deep Archive (cheapest storage class; 180-day minimum billable period).
+BACKUP_S3_STORAGE_CLASS=DEEP_ARCHIVE
 EOF
 
 echo

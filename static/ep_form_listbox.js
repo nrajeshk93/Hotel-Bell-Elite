@@ -401,6 +401,8 @@
     if (!root || root.__epListboxBound || root.__suFilterListboxBound || root.__plFilterListboxBound) return;
     if (root.closest('#purchase-ledger-filter-form')) return;
     if (root.id === 'credit-payment-supplier-listbox') return;
+    // Expense / tips modals own their searchable listboxes (custom GST / employee search).
+    if (root.closest('#sales-expense-modal, #sales-tips-modal')) return;
     root.__epListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');

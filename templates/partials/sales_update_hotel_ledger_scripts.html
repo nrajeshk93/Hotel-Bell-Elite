@@ -358,8 +358,19 @@
     return Array.from(salesExpenseCategoryOptions.querySelectorAll('.staff-category-option:not(.is-filtered-out)'));
   }
 
+  function claimExpenseListbox(root){
+    if (!root) return;
+    /* Owned by this script — skip ep_form_listbox.js so open/toggle is not double-bound. */
+    root.__epListboxBound = true;
+    root.__suFilterListboxBound = true;
+    root.removeAttribute('data-se-listbox');
+  }
+
   function bindExpenseCategoryListbox(){
     if (!salesExpenseCategoryListbox || !salesExpenseCategoryTrigger || !salesExpenseCategoryList) return;
+    if (salesExpenseCategoryListbox.getAttribute('data-se-expense-listbox-bound') === '1') return;
+    salesExpenseCategoryListbox.setAttribute('data-se-expense-listbox-bound', '1');
+    claimExpenseListbox(salesExpenseCategoryListbox);
     salesExpenseCategoryTrigger.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -430,6 +441,9 @@
 
   function bindExpensePaymentListbox(){
     if (!salesExpensePaymentListbox || !salesExpensePaymentTrigger || !salesExpensePaymentList) return;
+    if (salesExpensePaymentListbox.getAttribute('data-se-expense-listbox-bound') === '1') return;
+    salesExpensePaymentListbox.setAttribute('data-se-expense-listbox-bound', '1');
+    claimExpenseListbox(salesExpensePaymentListbox);
     salesExpensePaymentTrigger.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -695,6 +709,9 @@
   function bindExpenseSupplierListbox(){
     renderSupplierOptions();
     if (!salesExpenseSupplierListbox || !salesExpenseSupplierTrigger || !salesExpenseSupplierList) return;
+    if (salesExpenseSupplierListbox.getAttribute('data-se-expense-listbox-bound') === '1') return;
+    salesExpenseSupplierListbox.setAttribute('data-se-expense-listbox-bound', '1');
+    claimExpenseListbox(salesExpenseSupplierListbox);
     salesExpenseSupplierTrigger.addEventListener('click', (event) => {
       event.preventDefault();
       event.stopPropagation();
