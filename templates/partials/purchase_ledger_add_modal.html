@@ -21,62 +21,68 @@
         <span class="staff-supplier-field-label">Supplier *</span>
         <button type="button" class="staff-supplier-add-btn" id="pl-add-supplier-btn">+ Add</button>
       </div>
-      <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox data-se-listbox-searchable id="pl-add-supplier-listbox">
+      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pl-add-supplier-listbox">
+        <span class="visually-hidden" id="pl-add-supplier-label">Supplier</span>
         <div class="se-filter-chip-control">
-          <span class="se-filter-chip-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-          </span>
-          <input type="hidden" id="pl-add-supplier-input" value="">
-          <button type="button" class="se-filter-chip-trigger" id="pl-add-supplier-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pl-add-supplier-list" aria-labelledby="pl-add-supplier-label pl-add-supplier-value">
-            <span class="se-filter-chip-value staff-supplier-placeholder" id="pl-add-supplier-value">Select supplier</span>
-          </button>
+          <input type="hidden" id="pl-add-supplier" value="">
+          <input type="search"
+                 class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                 id="pl-add-supplier-trigger"
+                 role="combobox"
+                 aria-autocomplete="list"
+                 aria-haspopup="listbox"
+                 aria-expanded="false"
+                 aria-controls="pl-add-supplier-list"
+                 aria-labelledby="pl-add-supplier-label"
+                 value=""
+                 placeholder="Select supplier"
+                 autocomplete="off"
+                 spellcheck="false">
           <span class="se-filter-chip-chev" aria-hidden="true">
             <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
           </span>
         </div>
-        <span class="visually-hidden" id="pl-add-supplier-label">Supplier</span>
-        <div class="se-filter-listbox staff-expense-supplier-panel" id="pl-add-supplier-list" role="listbox" aria-labelledby="pl-add-supplier-label" hidden>
-          <div class="staff-supplier-search-wrap">
-            <input type="search" class="staff-supplier-search" id="pl-add-supplier-search" placeholder="Search by name or GST..." autocomplete="off" aria-label="Search suppliers">
-          </div>
-          <div class="staff-supplier-options" id="pl-add-supplier-options">
+        <div class="se-filter-listbox" id="pl-add-supplier-list" role="listbox" aria-labelledby="pl-add-supplier-label" hidden>
+          <div class="ep-listbox-options" id="pl-add-supplier-options">
             {% for supplier in suppliers %}
-            <button type="button" class="se-filter-listbox-option staff-supplier-option" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }}" data-gst="{{ supplier.gst|lower }}" aria-selected="false">
+            <button type="button" class="se-filter-listbox-option staff-supplier-option" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }} {{ supplier.gst|lower }}" data-label="{{ supplier.name }}" aria-selected="false">
               <span class="staff-supplier-option-name">{{ supplier.name }}</span>
               <span class="staff-supplier-option-gst">{{ supplier.gst }}</span>
             </button>
             {% endfor %}
           </div>
-          <div class="staff-supplier-empty" id="pl-add-supplier-empty" hidden>No suppliers match your search.</div>
         </div>
       </div>
     </div>
     <div class="staff-grid pl-add-category-row">
       <div class="staff-field staff-field--inline">
-        <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox data-se-listbox-searchable id="pl-add-category-listbox">
+        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pl-add-category-listbox">
           <span class="se-filter-chip-label" id="pl-add-category-label">Category *</span>
           <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
-            </span>
-            <input type="hidden" id="pl-add-category-input" value="">
-            <button type="button" class="se-filter-chip-trigger" id="pl-add-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pl-add-category-list" aria-labelledby="pl-add-category-label pl-add-category-value">
-              <span class="se-filter-chip-value staff-supplier-placeholder" id="pl-add-category-value">Select category</span>
-            </button>
+            <input type="hidden" id="pl-add-category" value="">
+            <input type="search"
+                   class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                   id="pl-add-category-trigger"
+                   role="combobox"
+                   aria-autocomplete="list"
+                   aria-haspopup="listbox"
+                   aria-expanded="false"
+                   aria-controls="pl-add-category-list"
+                   aria-labelledby="pl-add-category-label"
+                   value=""
+                   placeholder="Select category"
+                   autocomplete="off"
+                   spellcheck="false">
             <span class="se-filter-chip-chev" aria-hidden="true">
               <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
           </div>
-          <div class="se-filter-listbox staff-expense-supplier-panel" id="pl-add-category-list" role="listbox" aria-labelledby="pl-add-category-label" hidden>
-            <div class="staff-supplier-search-wrap">
-              <input type="search" class="staff-supplier-search" id="pl-add-category-search" placeholder="Search category..." autocomplete="off" aria-label="Search categories">
-            </div>
-            <div class="staff-supplier-options" id="pl-add-category-options">
+          <div class="se-filter-listbox" id="pl-add-category-list" role="listbox" aria-labelledby="pl-add-category-label" hidden>
+            <div class="ep-listbox-options" id="pl-add-category-options">
               {% for category_key, category_label in expense_categories %}
-              <button type="button" class="se-filter-listbox-option staff-category-option" role="option" data-value="{{ category_key }}" data-name="{{ category_label|lower }}" aria-selected="false">{{ category_label }}</button>
+              <button type="button" class="se-filter-listbox-option staff-category-option" role="option" data-value="{{ category_key }}" data-name="{{ category_label|lower }}" data-label="{{ category_label }}" aria-selected="false">{{ category_label }}</button>
               {% endfor %}
             </div>
-            <div class="staff-supplier-empty" id="pl-add-category-empty" hidden>No categories match your search.</div>
           </div>
         </div>
       </div>
@@ -96,13 +102,10 @@
       </div>
     </div>
     <div class="staff-field">
-      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox staff-expense-payment-listbox" data-se-listbox id="pl-add-payment-listbox">
+      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-menu-field-listbox staff-expense-payment-listbox" data-se-listbox data-se-listbox-change="plAddPaymentChanged" id="pl-add-payment-listbox">
         <span class="se-filter-chip-label" id="pl-add-payment-label">Payment type *</span>
         <div class="se-filter-chip-control">
-          <span class="se-filter-chip-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-          </span>
-          <input type="hidden" id="pl-add-payment-input" value="">
+          <input type="hidden" id="pl-add-payment" value="">
           <button type="button" class="se-filter-chip-trigger" id="pl-add-payment-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pl-add-payment-list" aria-labelledby="pl-add-payment-label pl-add-payment-value">
             <span class="se-filter-chip-value staff-supplier-placeholder" id="pl-add-payment-value">Select payment type</span>
           </button>

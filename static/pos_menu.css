@@ -175,9 +175,9 @@ body.su-module #pos-menu-filter-form .pos-menu-filter-listbox,
   max-width:200px;
   z-index:25;
 }
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-label,
-.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-label,
-#md-master-modal #pos-menu-page .pos-menu-filter-listbox .se-filter-chip-label{
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-label,
+.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-label,
+#md-master-modal #pos-menu-page .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-label{
   color:#6B7280;
   text-align:left;
   text-transform:none;
@@ -185,34 +185,34 @@ body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-la
   font-size:12px;
   font-weight:500;
 }
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-control,
-#md-master-modal #pos-menu-page .pos-menu-filter-listbox .se-filter-chip-control{
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-control,
+.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-control{
   min-height:48px;
   border-radius:12px;
   border:1px solid #E5E7EB !important;
   background:#fff !important;
   overflow:visible;
 }
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-trigger,
-.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-trigger{
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-trigger,
+.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-trigger{
   height:48px;
   font:600 14px Inter,system-ui,sans-serif;
   color:#111827;
   padding:0 4px 0 0;
 }
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-value,
-.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-value,
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-value.is-placeholder,
-.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-value.is-placeholder{
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-value,
+.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-value,
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-value.is-placeholder,
+.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-value.is-placeholder{
   color:#111827;
   overflow:hidden;
   text-overflow:ellipsis;
 }
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox.is-filtered .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-filter-listbox.is-filtered .se-filter-chip-control,
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox.is-open .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-filter-listbox.is-open .se-filter-chip-control{
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox).is-filtered .se-filter-chip-control,
+.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox).is-filtered .se-filter-chip-control,
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox).is-open .se-filter-chip-control,
+.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox).is-open .se-filter-chip-control{
   border-color:#93C5FD !important;
   background:#EFF6FF !important;
 }
@@ -725,27 +725,131 @@ body.pos-settings-module #pos-set-panel-menu .pos-menu-toolbar{
   margin-top:4px;
 }
 
-/* Modal focus: blue ledger accent (not purple) */
-body.pos-menu-module #pos-menu-item-category,
-body.pos-settings-module #pos-menu-item-category,
-body.pos-menu-module #pos-menu-item-menu-type,
-body.pos-settings-module #pos-menu-item-menu-type{
+/* Menu Type / Category field listboxes (modal + toolbar filters) */
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox{
   width:100%;
-  height:42px;
-  padding:0 12px;
-  border:1px solid var(--pos-border, #E8EEF5);
-  border-radius:10px;
-  background:#fff;
-  font:600 13px Inter,system-ui,sans-serif;
-  color:var(--pos-text, #0F172A);
+  position:relative;
 }
-body.pos-menu-module #pos-menu-item-category:focus,
-body.pos-settings-module #pos-menu-item-category:focus,
-body.pos-menu-module #pos-menu-item-menu-type:focus,
-body.pos-settings-module #pos-menu-item-menu-type:focus{
-  border-color:var(--mmc-acc);
-  box-shadow:0 0 0 3px var(--mmc-acc-ring);
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2, #4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:44px;
+  background:#fff;
+  border:1px solid var(--border, #E2E8F0);
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  padding:0 8px 0 12px;
+  border:0;
+  background:transparent;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  text-align:left;
+  cursor:pointer;
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  align-self:stretch;
+  color:#94A3B8;
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox.is-open{
+  z-index:80;
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox.is-open .se-filter-chip-control,
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-control:focus-within{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff;
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox.is-open .se-filter-chip-chev{
+  color:#2563EB;
+  transform:rotate(180deg);
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-listbox{
+  padding:6px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  box-shadow:0 8px 24px rgba(15,23,42,.1);
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-listbox-option{
+  padding:10px 12px;
+  border-radius:8px;
+  font-size:13px;
+  font-weight:500;
+}
+:is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-listbox-option.is-selected{
+  background:rgba(37,99,235,.08);
+  color:#2563EB;
+  font-weight:600;
+}
+/* Toolbar category filter: override legacy filter-chip open/focus tint */
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-header-field.pos-menu-field-listbox.is-filtered .se-filter-chip-control,
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-header-field.pos-menu-field-listbox.is-open .se-filter-chip-control,
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-search-chip.pos-menu-field-listbox.is-active .se-filter-chip-control,
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-search-chip.pos-menu-field-listbox .se-filter-chip-control:focus-within{
+  border-color:#93C5FD !important;
+  background:#fff !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-search-chip.pos-menu-field-listbox input.pos-menu-header-search,
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-search-chip.pos-menu-field-listbox .pl-search-input{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:100%;
+  min-height:44px;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
   outline:none;
+  padding:0;
+  font:inherit;
+  font-size:13px;
+  font-weight:500;
+  color:#111827;
+  appearance:none;
+  -webkit-appearance:none;
+}
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-search-chip.pos-menu-field-listbox .pl-search-input::placeholder{
+  color:#94A3B8;
+  font-weight:500;
+}
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-search-chip.pos-menu-field-listbox .pl-search-input::-webkit-search-cancel-button{
+  -webkit-appearance:none;
+}
+:is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-header-field.pos-menu-filter-listbox .se-filter-listbox{
+  padding:6px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  box-shadow:0 8px 24px rgba(15,23,42,.1);
 }
 body.pos-menu-module .btn-primary,
 body.pos-menu-module #pos-menu-cat-save.btn-primary{
@@ -1513,6 +1617,26 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   gap:12px;
   margin-bottom:0;
 }
+#pos-menu-page[data-pos-outlet="bar"] #pos-menu-item-menu-type-field,
+#pos-settings-page[data-pos-outlet="bar"] #pos-menu-item-menu-type-field{
+  display:none !important;
+}
+#pos-menu-page[data-pos-outlet="bar"] #pos-menu-item-modal .staff-grid:has(#pos-menu-item-menu-type-field),
+#pos-settings-page[data-pos-outlet="bar"] #pos-menu-item-modal .staff-grid:has(#pos-menu-item-menu-type-field){
+  grid-template-columns:1fr;
+}
+#pos-menu-page[data-pos-outlet="bar"] #pos-menu-item-code-field,
+#pos-settings-page[data-pos-outlet="bar"] #pos-menu-item-code-field{
+  display:none !important;
+}
+#pos-menu-page[data-pos-outlet="bar"] #pos-menu-item-kind-field,
+#pos-settings-page[data-pos-outlet="bar"] #pos-menu-item-kind-field{
+  display:block !important;
+}
+#pos-menu-page:not([data-pos-outlet="bar"]) #pos-menu-item-kind-field,
+#pos-settings-page:not([data-pos-outlet="bar"]) #pos-menu-item-kind-field{
+  display:none !important;
+}
 #pos-menu-item-modal .staff-grid > .staff-field{
   margin-bottom:14px;
 }
@@ -1606,6 +1730,157 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   text-transform:uppercase;
   letter-spacing:.4px;
   margin-bottom:5px;
+}
+#pos-menu-item-modal .pos-menu-listbox{
+  width:100%;
+  position:relative;
+}
+#pos-menu-item-modal .pos-menu-listbox .se-filter-chip-control{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:44px;
+  height:44px;
+  padding:0 12px;
+  border:1px solid var(--border, #E2E8F0);
+  border-radius:8px;
+  background:#F8FBFF;
+  box-sizing:border-box;
+}
+#pos-menu-item-modal .pos-menu-listbox.is-open .se-filter-chip-control,
+#pos-menu-item-modal .pos-menu-listbox .se-filter-chip-control:focus-within{
+  border-color:#2563EB;
+  background:#EFF6FF;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+#pos-menu-item-modal .pos-menu-listbox .se-filter-chip-icon{
+  display:none;
+}
+#pos-menu-item-modal .pos-menu-listbox input.se-filter-chip-combobox{
+  flex:1 1 auto;
+  min-width:0;
+  height:100%;
+  border:0;
+  background:transparent;
+  box-shadow:none;
+  outline:none;
+  padding:0;
+  font:inherit;
+  font-size:13px;
+  font-weight:500;
+  color:#111827;
+  text-align:left;
+  cursor:text;
+  -webkit-appearance:none;
+  appearance:none;
+}
+#pos-menu-item-modal .pos-menu-listbox input.se-filter-chip-combobox::placeholder{
+  color:#93C5FD;
+  font-weight:500;
+}
+#pos-menu-item-modal .pos-menu-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button{
+  display:none;
+}
+#pos-menu-item-modal .pos-menu-listbox .se-filter-chip-chev{
+  flex:0 0 auto;
+  display:flex;
+  color:#94A3B8;
+}
+#pos-menu-item-modal .pos-menu-listbox .se-filter-chip-chev svg{
+  width:16px;
+  height:16px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#pos-menu-item-modal .pos-menu-item-modal-box.staff-credit-box:has(.pos-menu-listbox.is-open),
+#pos-menu-item-modal .pos-menu-item-modal-box.staff-credit-box:has(.pos-menu-unit-listbox.is-open),
+#pos-menu-item-modal .pos-menu-item-form:has(.pos-menu-listbox.is-open),
+#pos-menu-item-modal .pos-menu-item-form:has(.pos-menu-unit-listbox.is-open),
+#pos-menu-item-modal .pos-menu-item-modal-body:has(.pos-menu-listbox.is-open),
+#pos-menu-item-modal .pos-menu-item-modal-body:has(.pos-menu-unit-listbox.is-open){
+  overflow:visible;
+}
+#pos-menu-item-modal .pos-menu-unit-listbox{
+  position:relative;
+  z-index:1;
+}
+#pos-menu-item-modal .pos-menu-unit-listbox.is-open{
+  z-index:85;
+}
+#pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox{
+  background:#fff;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  box-shadow:0 10px 28px rgba(15,23,42,.16);
+  padding:4px;
+  box-sizing:border-box;
+  z-index:90;
+}
+#pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox-option{
+  display:block;
+  width:100%;
+  text-align:left;
+  padding:8px 10px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:#1A202C;
+  cursor:pointer;
+}
+#pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox-option:hover,
+#pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox-option:focus{
+  background:#F1F5F9;
+}
+#pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox-option.is-selected{
+  background:#EFF6FF;
+  color:#1D4ED8;
+  font-weight:600;
+}
+/* Fixed panel (JS) — keep opaque so table content never shows through. */
+#pos-menu-item-modal .pos-menu-listbox .se-filter-listbox[style*="position: fixed"],
+#pos-menu-item-modal .pos-menu-listbox .se-filter-listbox[style*="position:fixed"],
+#pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox[style*="position: fixed"],
+#pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox[style*="position:fixed"]{
+  background:#fff;
+  border:1px solid #E5E7EB;
+  border-radius:12px;
+  box-shadow:0 12px 36px rgba(15,23,42,.22);
+  padding:6px;
+  box-sizing:border-box;
+}
+#pos-menu-item-modal .pos-menu-listbox .ep-listbox-options{
+  max-height:none;
+}
+#pos-menu-item-modal .pos-menu-listbox .se-filter-listbox-option{
+  display:block;
+  width:100%;
+  text-align:left;
+  padding:10px 12px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:#1A202C;
+  cursor:pointer;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#pos-menu-item-modal .pos-menu-listbox .se-filter-listbox-option:hover,
+#pos-menu-item-modal .pos-menu-listbox .se-filter-listbox-option:focus{
+  background:#F1F5F9;
+}
+#pos-menu-item-modal .pos-menu-listbox .se-filter-listbox-option.is-selected{
+  background:#EFF6FF;
+  color:#1D4ED8;
+  font-weight:600;
+}
+#pos-menu-item-modal .pos-menu-listbox .ep-listbox-search-wrap{
+  display:none !important;
 }
 @media (max-width:520px){
   #pos-menu-item-modal .staff-grid{

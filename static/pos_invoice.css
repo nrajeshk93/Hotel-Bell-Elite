@@ -123,6 +123,10 @@ body.pos-invoice-module .de-main-inner.pos-invoice-page{
   flex:1 1 auto;
   overflow:visible;
 }
+/* Lift pills above sibling action buttons while a header listbox menu is open. */
+.pos-inv-header-pills:has(.pos-inv-header-listbox.is-open){
+  z-index:100;
+}
 /* Row 1, right — holds only the expand/fullscreen control, mounted by de_fullscreen.js */
 .pos-inv-header-actions{
   grid-column:2;
@@ -784,16 +788,6 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
-}
-.pos-inv-meta-item--order .pos-inv-icon-btn{
-  opacity:0;
-  pointer-events:none;
-  transition:opacity .15s ease,background .15s ease,color .15s ease;
-}
-.pos-inv-meta-item--order:hover .pos-inv-icon-btn,
-.pos-inv-meta-item--order:focus-within .pos-inv-icon-btn{
-  opacity:1;
-  pointer-events:auto;
 }
 .pos-inv-icon-btn{
   display:inline-flex;
@@ -2194,4 +2188,41 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 }
 @media print{
   .pos-inapp-print-toolbar{display:none !important}
+}
+
+.pos-inv-offline-banner{
+  display:none;
+  margin:0 0 12px;
+  padding:8px 12px;
+  border-radius:10px;
+  background:#FEF3C7;
+  border:1px solid #F59E0B;
+  color:#92400E;
+  font:600 13px/1.35 Inter,system-ui,sans-serif;
+}
+.pos-inv-offline-banner:not([hidden]){
+  display:block;
+}
+
+/* Generated invoice — cart locked until settle; print + pending KOT stay active */
+.pos-invoice-page.is-invoice-generated .pos-inv-search-card,
+.pos-invoice-page.is-invoice-generated .pos-inv-lines-card,
+.pos-invoice-page.is-invoice-generated .pos-inv-toolbar{
+  opacity:.72;
+}
+.pos-invoice-page.is-invoice-generated .pos-inv-search input,
+.pos-invoice-page.is-invoice-generated .pos-inv-qty button,
+.pos-invoice-page.is-invoice-generated .pos-inv-del,
+.pos-invoice-page.is-invoice-generated .pos-inv-note-btn,
+.pos-invoice-page.is-invoice-generated .pos-inv-tool:not([data-inv-action="print"]),
+.pos-invoice-page.is-invoice-generated #pos-inv-more-btn{
+  pointer-events:none;
+  cursor:not-allowed;
+}
+.pos-invoice-page.is-invoice-generated #pos-inv-send-kot:not(.is-pending){
+  pointer-events:none;
+  cursor:not-allowed;
+}
+.pos-invoice-page.is-invoice-generated #pos-inv-send-customer[hidden]{
+  display:none !important;
 }

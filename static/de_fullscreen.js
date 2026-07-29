@@ -548,12 +548,24 @@
       });
       return;
     }
+    enterAppFullscreenPreferred();
+  }
+
+  /** Enter fullscreen and remember preference (call from a user gesture when possible). */
+  function enterAppFullscreenPreferred(){
+    if(!supported){
+      return Promise.reject(new Error('unsupported'));
+    }
+    userExitIntent = false;
     setPreference(true);
     ensureFullscreenRoot();
-    if(attemptRestoreSync()) return;
-    requestAppFullscreen().then(updateButtons).catch(function(){
-      setPreference(false);
-      showToast('Unable to enter full screen.');
+    updateButtons();
+    if(getFullscreenElement()) return Promise.resolve();
+    if(attemptRestoreSync()) return Promise.resolve();
+    return requestAppFullscreen().then(updateButtons).catch(function(err){
+      /* Preference stays true so soft-nav restore can retry after navigation. */
+      updateButtons();
+      return Promise.reject(err);
     });
   }
 
@@ -733,6 +745,15 @@
   window.deFullscreen = {
     isActive: function(){ return !!getFullscreenElement(); },
     isPreferred: getPreference,
+    enter: enterAppFullscreenPreferred,
+    exit: function(){
+      userExitIntent = true;
+      setPreference(false);
+      return exitAppFullscreen().then(updateButtons).catch(function(err){
+        userExitIntent = false;
+        throw err;
+      });
+    },
     ensureRoot: ensureFullscreenRoot,
     restoreIfNeeded: function(){
       attemptRestoreSync();

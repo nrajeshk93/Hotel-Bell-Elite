@@ -37,10 +37,14 @@ html.de-soft-nav-session .de-main-wrapper *{
 }
 html.de-soft-navigating .de-main-wrapper .db-home-card,
 html.de-soft-nav-session .de-main-wrapper .db-home-card,
+html.de-soft-nav-session .de-main-wrapper .pos-tables-page,
+html.de-soft-nav-session .de-main-wrapper .pos-tables-page *,
 html.de-soft-nav-session .de-main-wrapper [class*="pos-tables-"],
 html.de-soft-nav-session .de-main-wrapper .pos-settings-page,
 html.de-soft-nav-session .de-main-wrapper .pos-settings-page [data-panel],
-html.de-soft-nav-session .de-main-wrapper [class*="pos-inv-"]{
+html.de-soft-nav-session .de-main-wrapper [class*="pos-inv-"],
+html.de-soft-nav-session .de-main-wrapper .pos-invoice-page,
+html.de-soft-nav-session .de-main-wrapper .pos-invoice-page *{
   opacity:1!important;
   transform:none!important;
 }
@@ -55,7 +59,7 @@ html.de-sidebar-wide-boot .de-sidebar{
 }
 html.de-sidebar-wide-boot .de-sidebar .sb-brand-text,
 html.de-sidebar-wide-boot .de-sidebar .de-nav-item span,
-html.de-sidebar-wide-boot .de-sidebar .de-nav-group-toggle span,
+html.de-sidebar-wide-boot .de-sidebar .de-nav-group-toggle span:not(.de-nav-icon-mask),
 html.de-sidebar-wide-boot .de-sidebar .de-nav-chevron,
 html.de-sidebar-wide-boot .de-sidebar .de-sidebar-pin-btn span{
   opacity:1!important;max-width:var(--de-nav-label-max)!important;
@@ -121,6 +125,23 @@ body.de-open.ep-module{overflow:auto;}
     scrollbar-gutter:stable;
     box-shadow:none;
   }
+  #main-app.de-module .de-sidebar.de-sidebar--snap-measure,
+  #ep-workspace.de-module .de-sidebar.de-sidebar--snap-measure,
+  #dashboard.de-module .de-sidebar.de-sidebar--snap-measure,
+  #main-app.de-module .de-sidebar.de-sidebar--snap-measure *,
+  #ep-workspace.de-module .de-sidebar.de-sidebar--snap-measure *,
+  #dashboard.de-module .de-sidebar.de-sidebar--snap-measure *{
+    transition:none!important;
+  }
+  /* Invisible expanded measure while the right panel is active — no wide flash. */
+  #main-app.de-module .de-sidebar.de-sidebar--preflight-hidden,
+  #ep-workspace.de-module .de-sidebar.de-sidebar--preflight-hidden,
+  #dashboard.de-module .de-sidebar.de-sidebar--preflight-hidden{
+    visibility:hidden!important;
+    pointer-events:none!important;
+  }
+  /* Width expands via .is-expanded / .is-pinned (JS) and :hover (pointer over rail).
+     Unpinned + not hovered must collapse — syncDeSidebarPointerState clears sticky is-expanded. */
   #main-app.de-module .de-sidebar:hover,
   #ep-workspace.de-module .de-sidebar:hover,
   #dashboard.de-module .de-sidebar:hover,
@@ -142,9 +163,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-nav-item span,
   #ep-workspace.de-module .de-nav-item span,
   #dashboard.de-module .de-nav-item span,
-  #main-app.de-module .de-nav-group-toggle span,
-  #ep-workspace.de-module .de-nav-group-toggle span,
-  #dashboard.de-module .de-nav-group-toggle span,
+  #main-app.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #ep-workspace.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #dashboard.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),
   #main-app.de-module .de-nav-chevron,
   #ep-workspace.de-module .de-nav-chevron,
   #dashboard.de-module .de-nav-chevron,
@@ -164,9 +185,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar:hover .de-nav-item span,
   #ep-workspace.de-module .de-sidebar:hover .de-nav-item span,
   #dashboard.de-module .de-sidebar:hover .de-nav-item span,
-  #main-app.de-module .de-sidebar:hover .de-nav-group-toggle span,
-  #ep-workspace.de-module .de-sidebar:hover .de-nav-group-toggle span,
-  #dashboard.de-module .de-sidebar:hover .de-nav-group-toggle span,
+  #main-app.de-module .de-sidebar:hover .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #ep-workspace.de-module .de-sidebar:hover .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #dashboard.de-module .de-sidebar:hover .de-nav-group-toggle span:not(.de-nav-icon-mask),
   #main-app.de-module .de-sidebar:hover .de-nav-chevron,
   #ep-workspace.de-module .de-sidebar:hover .de-nav-chevron,
   #dashboard.de-module .de-sidebar:hover .de-nav-chevron,
@@ -179,9 +200,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-expanded .de-nav-item span,
   #ep-workspace.de-module .de-sidebar.is-expanded .de-nav-item span,
   #dashboard.de-module .de-sidebar.is-expanded .de-nav-item span,
-  #main-app.de-module .de-sidebar.is-expanded .de-nav-group-toggle span,
-  #ep-workspace.de-module .de-sidebar.is-expanded .de-nav-group-toggle span,
-  #dashboard.de-module .de-sidebar.is-expanded .de-nav-group-toggle span,
+  #main-app.de-module .de-sidebar.is-expanded .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #ep-workspace.de-module .de-sidebar.is-expanded .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #dashboard.de-module .de-sidebar.is-expanded .de-nav-group-toggle span:not(.de-nav-icon-mask),
   #main-app.de-module .de-sidebar.is-expanded .de-nav-chevron,
   #ep-workspace.de-module .de-sidebar.is-expanded .de-nav-chevron,
   #dashboard.de-module .de-sidebar.is-expanded .de-nav-chevron,
@@ -194,9 +215,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-pinned .de-nav-item span,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-item span,
   #dashboard.de-module .de-sidebar.is-pinned .de-nav-item span,
-  #main-app.de-module .de-sidebar.is-pinned .de-nav-group-toggle span,
-  #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-group-toggle span,
-  #dashboard.de-module .de-sidebar.is-pinned .de-nav-group-toggle span,
+  #main-app.de-module .de-sidebar.is-pinned .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #dashboard.de-module .de-sidebar.is-pinned .de-nav-group-toggle span:not(.de-nav-icon-mask),
   #main-app.de-module .de-sidebar.is-pinned .de-nav-chevron,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-chevron,
   #dashboard.de-module .de-sidebar.is-pinned .de-nav-chevron,
@@ -454,9 +475,9 @@ body.de-open.ep-module{overflow:auto;}
   #dashboard.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle .de-nav-chevron{
     margin-top:4px;
   }
-  #main-app.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-group-toggle > span:not(.de-nav-chevron):not(.de-nav-label-multiline),
-  #ep-workspace.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-group-toggle > span:not(.de-nav-chevron):not(.de-nav-label-multiline),
-  #dashboard.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-group-toggle > span:not(.de-nav-chevron):not(.de-nav-label-multiline){
+  #main-app.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-group-toggle > span:not(.de-nav-chevron):not(.de-nav-label-multiline):not(.de-nav-icon-mask),
+  #ep-workspace.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-group-toggle > span:not(.de-nav-chevron):not(.de-nav-label-multiline):not(.de-nav-icon-mask),
+  #dashboard.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-group-toggle > span:not(.de-nav-chevron):not(.de-nav-label-multiline):not(.de-nav-icon-mask){
     flex:1 1 auto;
     min-width:0;
     /* Prefer full label; ellipsis only if space is still insufficient. */
@@ -509,6 +530,29 @@ body.de-open.ep-module{overflow:auto;}
     flex-shrink:0;
     transition:stroke .15s ease;
   }
+  #main-app.de-module .de-nav-group-toggle > .de-nav-icon-mask,
+  #ep-workspace.de-module .de-nav-group-toggle > .de-nav-icon-mask,
+  #dashboard.de-module .de-nav-group-toggle > .de-nav-icon-mask{
+    width:19px;
+    height:19px;
+    max-width:19px;
+    flex:0 0 19px;
+    flex-shrink:0;
+    display:inline-block;
+    opacity:1;
+    overflow:visible;
+    white-space:nowrap;
+    background:#64748B;
+    -webkit-mask-image:var(--glyph);
+    mask-image:var(--glyph);
+    -webkit-mask-size:contain;
+    mask-size:contain;
+    -webkit-mask-repeat:no-repeat;
+    mask-repeat:no-repeat;
+    -webkit-mask-position:center;
+    mask-position:center;
+    transition:background .15s ease;
+  }
   #main-app.de-module .de-nav-group-toggle:hover,
   #ep-workspace.de-module .de-nav-group-toggle:hover,
   #dashboard.de-module .de-nav-group-toggle:hover{
@@ -518,6 +562,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-nav-group-toggle:hover > svg:first-of-type,
   #ep-workspace.de-module .de-nav-group-toggle:hover > svg:first-of-type,
   #dashboard.de-module .de-nav-group-toggle:hover > svg:first-of-type{stroke:#64748B}
+  #main-app.de-module .de-nav-group-toggle:hover > .de-nav-icon-mask,
+  #ep-workspace.de-module .de-nav-group-toggle:hover > .de-nav-icon-mask,
+  #dashboard.de-module .de-nav-group-toggle:hover > .de-nav-icon-mask{background:#64748B}
   #main-app.de-module .de-nav-group.is-open .de-nav-group-toggle,
   #ep-workspace.de-module .de-nav-group.is-open .de-nav-group-toggle,
   #dashboard.de-module .de-nav-group.is-open .de-nav-group-toggle,
@@ -550,6 +597,12 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-nav-group.is-child-active .de-nav-group-toggle > svg:first-of-type,
   #ep-workspace.de-module .de-nav-group.is-child-active .de-nav-group-toggle > svg:first-of-type,
   #dashboard.de-module .de-nav-group.is-child-active .de-nav-group-toggle > svg:first-of-type{stroke:#2563EB}
+  #main-app.de-module .de-nav-group.is-open .de-nav-group-toggle > .de-nav-icon-mask,
+  #ep-workspace.de-module .de-nav-group.is-open .de-nav-group-toggle > .de-nav-icon-mask,
+  #dashboard.de-module .de-nav-group.is-open .de-nav-group-toggle > .de-nav-icon-mask,
+  #main-app.de-module .de-nav-group.is-child-active .de-nav-group-toggle > .de-nav-icon-mask,
+  #ep-workspace.de-module .de-nav-group.is-child-active .de-nav-group-toggle > .de-nav-icon-mask,
+  #dashboard.de-module .de-nav-group.is-child-active .de-nav-group-toggle > .de-nav-icon-mask{background:#2563EB}
   #main-app.de-module .de-nav-chevron,
   #ep-workspace.de-module .de-nav-chevron,
   #dashboard.de-module .de-nav-chevron{
@@ -642,13 +695,20 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub,
   #dashboard.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub{
-    max-height:360px;
+    max-height:none;
     opacity:1;
     transform:translateY(0);
     pointer-events:auto;
     margin:0 0 6px;
     padding:14px 0 0 28px;
-    overflow:hidden;
+    overflow:visible;
+  }
+  #main-app.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-subitem,
+  #ep-workspace.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-subitem,
+  #dashboard.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-subitem{
+    pointer-events:auto!important;
+    position:relative;
+    z-index:2;
   }
   #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub,
   #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub,
@@ -802,9 +862,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item span,
   #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item span,
   #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item span,
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span,
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
   #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
   #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
   #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
@@ -1169,9 +1229,9 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-pinned .de-nav-item span,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-item span,
   #dashboard.de-module .de-sidebar.is-pinned .de-nav-item span,
-  #main-app.de-module .de-sidebar.is-pinned .de-nav-group-toggle span,
-  #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-group-toggle span,
-  #dashboard.de-module .de-sidebar.is-pinned .de-nav-group-toggle span,
+  #main-app.de-module .de-sidebar.is-pinned .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #dashboard.de-module .de-sidebar.is-pinned .de-nav-group-toggle span:not(.de-nav-icon-mask),
   #main-app.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn span,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn span,
   #dashboard.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn span{display:block;}
@@ -1248,9 +1308,9 @@ body.de-open.sb-off #ep-workspace.de-module .de-sb-pin-btn svg{
   padding-bottom:env(safe-area-inset-bottom, 0px);
   padding-right:env(safe-area-inset-right, 0px);
 }
-#main-app.de-module .sb-brand-text,#main-app.de-module .de-nav-item span,#main-app.de-module .de-nav-group-toggle span,#main-app.de-module .de-nav-chevron,
-  #ep-workspace.de-module .sb-brand-text,#ep-workspace.de-module .de-nav-item span,#ep-workspace.de-module .de-nav-group-toggle span,#ep-workspace.de-module .de-nav-chevron,
-  #dashboard.de-module .sb-brand-text,#dashboard.de-module .de-nav-item span,#dashboard.de-module .de-nav-group-toggle span,#dashboard.de-module .de-nav-chevron{opacity:1;max-width:var(--de-nav-label-max);}
+#main-app.de-module .sb-brand-text,#main-app.de-module .de-nav-item span,#main-app.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),#main-app.de-module .de-nav-chevron,
+  #ep-workspace.de-module .sb-brand-text,#ep-workspace.de-module .de-nav-item span,#ep-workspace.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),#ep-workspace.de-module .de-nav-chevron,
+  #dashboard.de-module .sb-brand-text,#dashboard.de-module .de-nav-item span,#dashboard.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),#dashboard.de-module .de-nav-chevron{opacity:1;max-width:var(--de-nav-label-max);}
 #main-app.de-module .de-help-copy,#ep-workspace.de-module .de-help-copy,#dashboard.de-module .de-help-copy{opacity:1;max-width:none;overflow:visible;white-space:normal;}
 #main-app.de-module .de-nav-chevron,#ep-workspace.de-module .de-nav-chevron,#dashboard.de-module .de-nav-chevron{max-width:14px;}
 #main-app.de-module .sb-brand,#ep-workspace.de-module .sb-brand,#dashboard.de-module .sb-brand{justify-content:flex-start;padding:28px 8px 24px;}

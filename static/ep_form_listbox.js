@@ -27,8 +27,18 @@
     var options = Array.from(optionsWrap.querySelectorAll('.se-filter-listbox-option'));
 
     if (!needle) {
+      options.sort(function(a, b){
+        var aAll = (a.getAttribute('data-value') || '') === 'all';
+        var bAll = (b.getAttribute('data-value') || '') === 'all';
+        if (aAll && !bAll) return -1;
+        if (bAll && !aAll) return 1;
+        var aLabel = (a.getAttribute('data-label') || a.getAttribute('data-name') || a.textContent || '').trim();
+        var bLabel = (b.getAttribute('data-label') || b.getAttribute('data-name') || b.textContent || '').trim();
+        return aLabel.localeCompare(bLabel, undefined, { sensitivity: 'base', numeric: true });
+      });
       options.forEach(function(option){
         option.classList.remove('is-filtered-out');
+        optionsWrap.appendChild(option);
       });
       return;
     }
@@ -40,7 +50,12 @@
     });
 
     ranked.sort(function(a, b){
-      return b.score - a.score || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
+      return b.score - a.score
+        || (a.option.getAttribute('data-label') || a.option.getAttribute('data-name') || '').localeCompare(
+          b.option.getAttribute('data-label') || b.option.getAttribute('data-name') || '',
+          undefined,
+          { sensitivity: 'base', numeric: true }
+        );
     });
 
     options.forEach(function(option){ option.classList.add('is-filtered-out'); });
@@ -131,8 +146,11 @@
 
   function shouldUseFixedListbox(root){
     if (!root) return false;
-    // Invoice header/meta: overflow is visible; fixed + animated transform ancestors
-    // (e.g. .pos-inv-header posInvFadeUp) rebases fixed to the header and misaligns menus.
+    /* POS invoice header table/order pills — fixed escapes sibling action-button overlap. */
+    if (root.classList.contains('pos-inv-header-listbox')) {
+      return true;
+    }
+    // Invoice meta fields keep absolute positioning under their chip.
     if (root.closest('#pos-invoice-page, .pos-inv-header, .pos-inv-header-actions, .pos-inv-meta')) {
       return false;
     }
@@ -140,7 +158,27 @@
     if (root.closest('#pos-tables-page, .pos-tables-toolbar, .pos-status-filter-listbox')) {
       return false;
     }
-    // Floor props + menu item modals keep overflow:visible — absolute under the chip stays
+    /* Menu item modal listboxes sit in a scrollable body — absolute menus get clipped.
+       Fixed positioning escapes overflow so product/unit panels stay visible. */
+    if (
+      root.closest('#pos-menu-item-modal') &&
+      (root.id === 'pos-menu-item-product-listbox' ||
+        root.id === 'pos-menu-item-menu-type-listbox' ||
+        root.id === 'pos-menu-item-category-listbox' ||
+        root.classList.contains('pos-menu-unit-listbox') ||
+        root.classList.contains('pos-menu-listbox') ||
+        root.classList.contains('pos-menu-field-listbox') ||
+        root.classList.contains('ep-combobox-listbox'))
+    ) {
+      return true;
+    }
+    if (root.classList.contains('ep-combobox-listbox') && root.closest('.modal-backdrop, .modal-overlay, .staff-credit-box, .pos-inv-modal, [role="dialog"]')) {
+      return true;
+    }
+    if (root.classList.contains('ep-combobox-listbox') && root.closest('#credit-payment-filter-form, #purchase-ledger-filter-form')) {
+      return true;
+    }
+    // Floor props + category modals keep overflow:visible — absolute under the chip stays
     // aligned. Fixed + transformed workspace/page ancestors rebases coords and collapses
     // the panel to a thin strip above the modal actions.
     if (root.closest('#pos-menu-item-modal, #pos-floor-props-modal, #pos-menu-cat-modal')) {
@@ -170,7 +208,7 @@
     list.style.width = width + 'px';
     list.style.minWidth = width + 'px';
     list.style.maxHeight = maxHeight + 'px';
-    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal') ? '10100' : '10090';
+    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #sales-expense-modal') ? '10100' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '10090');
     if (openUp) {
       list.style.top = 'auto';
       list.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
@@ -195,7 +233,7 @@
     list.scrollTop = 0;
   }
 
-  /** Scroll selected to the top when the list overflows; shrink height so no empty gap under the last option. */
+  /** Scroll selected into view when the list overflows; never pad below the last option. */
   function scrollSelectedToTop(list){
     if (!list) return;
     var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
@@ -221,15 +259,14 @@
         return;
       }
 
+      // Prefer selected near the top, but never invent blank scroll space under the last row.
       var target = Math.max(0, selected.offsetTop - topPad);
       var naturalMax = Math.max(0, list.scrollHeight - cap);
-      if (target > naturalMax) {
-        list.style.paddingBottom = (target - naturalMax) + 'px';
-      }
+      list.style.paddingBottom = '';
       list.style.maxHeight = cap + 'px';
-      list.scrollTop = target;
+      list.scrollTop = Math.min(target, naturalMax);
 
-      // After pinning selection at the top, trim leftover blank space under the last year/option.
+      // Trim leftover blank space under the last option (viewport taller than needed).
       requestAnimationFrame(function(){
         var last = null;
         var visible = list.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)');
@@ -246,6 +283,10 @@
   function openListbox(root, opts){
     if (!root || root.classList.contains('is-disabled')) return;
     opts = opts || {};
+    var dateWrapId = root.getAttribute('data-se-listbox-close-date-wrap');
+    if (dateWrapId && global.SalesDateRangePicker && typeof global.SalesDateRangePicker.closeIfOpen === 'function') {
+      global.SalesDateRangePicker.closeIfOpen(dateWrapId);
+    }
     closeAllListboxes(root);
     try {
       document.dispatchEvent(new CustomEvent('ep-listbox-opened', { detail: { root: root } }));
@@ -358,25 +399,30 @@
   function bindListbox(root){
     // Skip chips already owned by sales / purchase / credit-payment filter listbox scripts.
     if (!root || root.__epListboxBound || root.__suFilterListboxBound || root.__plFilterListboxBound) return;
-    if (root.closest('#purchase-ledger-filter-form, #pl-add-purchase-modal, #credit-payment-filter-form')) return;
+    if (root.closest('#purchase-ledger-filter-form')) return;
+    if (root.id === 'credit-payment-supplier-listbox') return;
     root.__epListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');
     var list = root.querySelector('.se-filter-listbox');
-    var optionsWrap = optionsWrapFor(root);
     var search = root.querySelector('.ep-listbox-search');
     var combo = isCombobox(root) ? comboboxInput(root) : null;
     if (!trigger || !list) return;
 
     if (combo) {
-      combo.addEventListener('focus', function(){
-        openListbox(root, { selectAll: true });
-      });
-      combo.addEventListener('click', function(e){
+      combo.addEventListener('mousedown', function(e){
         e.stopPropagation();
         if (!root.classList.contains('is-open')) {
           openListbox(root, { selectAll: true });
         }
+      });
+      combo.addEventListener('focus', function(){
+        if (!root.classList.contains('is-open')) {
+          openListbox(root, { selectAll: true });
+        }
+      });
+      combo.addEventListener('click', function(e){
+        e.stopPropagation();
       });
       combo.addEventListener('input', function(){
         if (!root.classList.contains('is-open')) {
@@ -482,7 +528,10 @@
       });
     }
 
-    var clickTarget = optionsWrap || list;
+    /* Always bind to the listbox panel itself. Dynamic populators (e.g. POS
+       populateTables) replace list.innerHTML and would detach .ep-listbox-options
+       — leaving the click listener on a dead node so options look unclickable. */
+    var clickTarget = list;
     clickTarget.addEventListener('click', function(e){
       var option = e.target.closest('.se-filter-listbox-option');
       if (!option || !clickTarget.contains(option) || option.classList.contains('is-filtered-out') || isOptionDisabled(option)) return;
@@ -521,6 +570,14 @@
     listboxRoots('[data-se-listbox]').forEach(bindListbox);
   }
 
+  function rebindEpListbox(root){
+    if (!root) return;
+    root.__epListboxBound = false;
+    root.__suFilterListboxBound = false;
+    root.__plFilterListboxBound = false;
+    bindListbox(root);
+  }
+
   document.addEventListener('click', function(e){
     listboxRoots('[data-se-listbox].is-open').forEach(function(root){
       if (!root.contains(e.target)) closeListbox(root);
@@ -547,6 +604,7 @@
   }
 
   window.initEpListboxes = initEpListboxes;
+  window.rebindEpListbox = rebindEpListbox;
   window.closeAllEpListboxes = function(except){
     closeAllListboxes(except || null);
   };

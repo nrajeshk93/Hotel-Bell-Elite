@@ -4,6 +4,19 @@
 (function (global) {
   'use strict';
 
+  function resolvePosApiBase() {
+    var el = document.querySelector('[data-pos-api-base]');
+    var base = (el && el.getAttribute('data-pos-api-base')) || '';
+    if (!base) {
+      base =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? '/bar-point-of-sale'
+          : '/point-of-sale';
+    }
+    return String(base).replace(/\/$/, '') || '/point-of-sale';
+  }
+
+
   function $(sel, root) {
     return (root || document).querySelector(sel);
   }
@@ -192,6 +205,8 @@
   }
 
   var GST_RATE = 0.05;
+  var CGST_RATE = 0.025;
+  var UGST_RATE = 0.025;
   var ORDER_TYPE_LABELS = {
     dine_in: 'Dine In',
     takeaway: 'Takeaway',
@@ -225,6 +240,13 @@
 
   /** Same customer-bill HTML used when printing from POS / Tables. */
   function buildCustomerBillHtml(invoice) {
+    if (typeof global.buildPosCustomerBillHtml === 'function') {
+      return global.buildPosCustomerBillHtml(invoice, {});
+    }
+    return buildCustomerBillHtmlLegacy(invoice);
+  }
+
+  function buildCustomerBillHtmlLegacy(invoice) {
     var orderNo = (invoice && invoice.order_no) || '—';
     var table = (invoice && (invoice.table_label || invoice.table)) || '—';
     var orderTypeValue = (invoice && invoice.order_type) || 'dine_in';
@@ -251,9 +273,6 @@
         return (
           '<tr><td class="name">' +
           escapeHtml(line.name) +
-          (line.variant
-            ? '<div class="variant">' + escapeHtml(line.variant) + '</div>'
-            : '') +
           '</td><td class="qty">' +
           qty +
           '</td><td class="rate">' +
@@ -318,11 +337,21 @@
           formatMoney(invoice && invoice.discount) +
           '</span></div>'
         : '') +
-      '<div><span>GST (' +
-      GST_RATE * 100 +
+      '<div><span>CGST (' +
+      CGST_RATE * 100 +
       '%)</span><span>' +
-      formatMoney(invoice && invoice.gst) +
+      formatMoney(Number(invoice && invoice.gst ? invoice.gst : 0) / 2) +
       '</span></div>' +
+      '<div><span>UGST (' +
+      UGST_RATE * 100 +
+      '%)</span><span>' +
+      formatMoney(Number(invoice && invoice.gst ? invoice.gst : 0) / 2) +
+      '</span></div>' +
+      (Number(invoice && invoice.vat) > 0
+        ? '<div><span>VAT (10%)</span><span>' +
+          formatMoney(invoice.vat) +
+          '</span></div>'
+        : '') +
       (Number(invoice && invoice.service) > 0 || Number(invoice && invoice.service_value) > 0
         ? '<div><span>Service Charge' +
           (svcHint ? ' ' + svcHint : '') +
@@ -374,7 +403,7 @@
     body.innerHTML = '<p class="pos-il-modal-loading">Loading…</p>';
     if (title) title.textContent = 'Customer Bill';
 
-    fetch('/point-of-sale/api/invoices/' + encodeURIComponent(invoiceId), {
+    fetch(resolvePosApiBase() + '/api/invoices/' + encodeURIComponent(invoiceId), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
     })
@@ -415,7 +444,7 @@
   }
 
   function invoiceWorkspaceUrl(invoiceId) {
-    return '/point-of-sale/invoice?invoice=' + encodeURIComponent(invoiceId);
+    return resolvePosApiBase() + '/invoice?invoice=' + encodeURIComponent(invoiceId);
   }
 
   function navigateToInvoiceWorkspace(invoiceId) {
@@ -444,7 +473,7 @@
         var orderNo = delBtn.getAttribute('data-order-no') || id;
         if (!window.confirm('Delete invoice ' + orderNo + '?')) return;
         delBtn.disabled = true;
-        fetch('/point-of-sale/api/invoices/' + encodeURIComponent(id) + '/delete', {
+        fetch(resolvePosApiBase() + '/api/invoices/' + encodeURIComponent(id) + '/delete', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { Accept: 'application/json' }

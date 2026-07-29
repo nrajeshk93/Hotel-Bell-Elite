@@ -33,33 +33,34 @@
         {% if hide_location_filter|default(false) %}
         <input type="hidden" name="location" id="sales-location" value="{{ selected_location }}">
         {% else %}
-        <div class="se-filter-chip se-filter-chip--location">
-          <label class="se-filter-chip-label" for="sales-location">Location</label>
+        <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox ep-form-listbox ep-header-field-listbox" data-se-listbox data-se-listbox-submit="sales-filter-form">
+          <label class="se-filter-chip-label" id="sales-location-label">Location</label>
           <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M12 21s7-4.35 7-10a7 7 0 1 0-14 0c0 5.65 7 10 7 10z"/><circle cx="12" cy="11" r="2.5"/></svg>
-            </span>
-            <select id="sales-location" name="location">
-              {% for location in selected_locations %}
-              <option value="{{ location }}" {% if selected_location == location %}selected{% endif %}>{{ location }}</option>
-              {% endfor %}
-            </select>
+            <input type="hidden" id="sales-location" name="location" value="{{ selected_location }}">
+            <button type="button" class="se-filter-chip-trigger" id="sales-location-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="sales-location-list" aria-labelledby="sales-location-label sales-location-value">
+              <span class="se-filter-chip-value" id="sales-location-value">{{ selected_location }}</span>
+            </button>
             <span class="se-filter-chip-chev" aria-hidden="true">
               <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
+          </div>
+          <div class="se-filter-listbox" id="sales-location-list" role="listbox" aria-labelledby="sales-location-label" hidden>
+            <div class="ep-listbox-options">
+            {% for location in selected_locations %}
+            <button type="button" class="se-filter-listbox-option{% if selected_location == location %} is-selected{% endif %}" role="option" data-value="{{ location }}" data-name="{{ location|lower }}" data-label="{{ location }}" aria-selected="{{ 'true' if selected_location == location else 'false' }}">{{ location }}</button>
+            {% endfor %}
+            </div>
           </div>
         </div>
         {% endif %}
       </form>
       {% if not hide_date_filter|default(false) %}
-      <div class="se-filter-chip-date-host" id="se-date-entry-wrap">
-        <div class="se-filter-chip se-filter-chip--date">
+      <div class="se-filter-chip-date-host pl-header-field" id="se-date-entry-wrap">
+        <span class="se-filter-chip-label" id="se-date-range-label">Date</span>
+        <div class="se-filter-chip se-filter-chip--date pl-header-field-listbox ep-form-listbox">
           <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-            </span>
             <div class="an-range-wrap an-range-wrap--sales" id="se-date-range-wrap" data-max-date="{{ max_sales_date }}" data-initial-date="{{ selected_date }}">
-              <button type="button" class="an-range-trigger se-filter-chip-trigger" id="se-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="se-date-range-panel">
+              <button type="button" class="an-range-trigger se-filter-chip-trigger" id="se-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="se-date-range-panel" aria-labelledby="se-date-range-label se-date-range-display">
                 <span class="an-range-trigger-label">
                   {% set se_date_months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
                   {% if selected_date and selected_date|length >= 10 %}

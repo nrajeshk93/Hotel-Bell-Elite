@@ -61,7 +61,10 @@ class PosFloorTests(unittest.TestCase):
 
         conn = db_mod.get_db()
         try:
-            row = conn.execute("SELECT id FROM pos_floor_layout WHERE id = 1").fetchone()
+            row = conn.execute(
+                "SELECT outlet FROM pos_floor_layout WHERE outlet = ?",
+                (db_mod.POS_OUTLET_RESTAURANT,),
+            ).fetchone()
         finally:
             conn.close()
         self.assertIsNone(row)

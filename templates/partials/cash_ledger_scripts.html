@@ -67,6 +67,11 @@
       grid0Id: 'cl-cal-grid0',
       grid1Id: 'cl-cal-grid1',
       emptyLabel: 'Date',
+      onOpen: function(){
+        if (typeof window.closeSuFilterListboxes === 'function') {
+          window.closeSuFilterListboxes('cash-ledger-filter-form');
+        }
+      },
       onBeforeSubmit: function(){
         if (dateFromInput && !dateFromInput.value) dateFromInput.removeAttribute('name');
         if (dateToInput && !dateToInput.value) dateToInput.removeAttribute('name');

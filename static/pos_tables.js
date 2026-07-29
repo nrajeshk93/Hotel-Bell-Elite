@@ -1,7 +1,7 @@
 /**
  * Point of Sale — Tables page interactions (filter / view / KPI).
  * Soft-nav safe: expose window.initPosTablesPage and re-bind idempotently.
- * Floor tiles load from /point-of-sale/api/floor (SQLite); in-memory cache only.
+ * Floor tiles load from {posApiBase}/api/floor (SQLite); in-memory cache only.
  */
 (function (global) {
   'use strict';
@@ -12,8 +12,55 @@
   var TRANSFER_TABLE_API = '/point-of-sale/api/invoices/transfer-table';
   var MERGE_TABLES_API = '/point-of-sale/api/invoices/merge-tables';
   var UNMERGE_TABLES_API = '/point-of-sale/api/floor/unmerge-tables';
+  var INVOICE_PAGE_BASE = '/point-of-sale/invoice';
   var LEGACY_STORAGE_KEY = 'hbe_pos_floor_demo';
   var MIGRATE_FLAG = 'hbe_pos_floor_db_migrated';
+
+  function resolvePosApiBase() {
+    var el =
+      document.getElementById('pos-tables-page') ||
+      document.querySelector('[data-pos-api-base]');
+    var base = (el && el.getAttribute('data-pos-api-base')) || '';
+    if (!base) {
+      base =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? '/bar-point-of-sale'
+          : '/point-of-sale';
+    }
+    return String(base).replace(/\/$/, '') || '/point-of-sale';
+  }
+
+  function resolvePosOutlet() {
+    var el =
+      document.getElementById('pos-tables-page') ||
+      document.querySelector('[data-pos-outlet]');
+    var outlet = (el && el.getAttribute('data-pos-outlet')) || '';
+    if (!outlet) {
+      outlet =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? 'bar'
+          : 'restaurant';
+    }
+    return outlet;
+  }
+
+  function syncPosApiPaths() {
+    var base = resolvePosApiBase();
+    var outlet = resolvePosOutlet();
+    FLOOR_API = base + '/api/floor';
+    INVOICE_BY_TABLE_API = base + '/api/invoices/by-table';
+    TRANSFER_TABLE_API = base + '/api/invoices/transfer-table';
+    MERGE_TABLES_API = base + '/api/invoices/merge-tables';
+    UNMERGE_TABLES_API = base + '/api/floor/unmerge-tables';
+    INVOICE_PAGE_BASE = base + '/invoice';
+    FLOOR_SESSION_KEY =
+      outlet === 'bar' ? 'hbe_pos_floor_snapshot_bar' : 'hbe_pos_floor_snapshot';
+    LEGACY_STORAGE_KEY =
+      outlet === 'bar' ? 'hbe_pos_floor_demo_bar' : 'hbe_pos_floor_demo';
+    MIGRATE_FLAG =
+      outlet === 'bar' ? 'hbe_pos_floor_db_migrated_bar' : 'hbe_pos_floor_db_migrated';
+  }
+
   var STATUS_KEYS = ['available', 'occupied', 'reserved', 'cleaning', 'inactive'];
   var STATUS_LABELS = {
     available: 'Available',
@@ -252,7 +299,7 @@
   function sendKotForInvoice(invoiceId, btn) {
     if (!invoiceId) return Promise.resolve();
     if (btn) btn.disabled = true;
-    return fetch('/point-of-sale/api/invoices/' + encodeURIComponent(invoiceId) + '/send-kot', {
+    return fetch(resolvePosApiBase() + '/api/invoices/' + encodeURIComponent(invoiceId) + '/send-kot', {
       method: 'POST',
       credentials: 'same-origin',
       headers: apiHeaders()
@@ -284,7 +331,7 @@
     var count = ((currentKotPending && currentKotPending.tables) || []).length;
     if (!count) return;
     if (btn) btn.disabled = true;
-    return fetch('/point-of-sale/api/kot-pending/send-all', {
+    return fetch(resolvePosApiBase() + '/api/kot-pending/send-all', {
       method: 'POST',
       credentials: 'same-origin',
       headers: apiHeaders()
@@ -508,7 +555,7 @@
 
   function invoiceUrlForTable(name) {
     var table = String(name || '').trim() || 'Table';
-    return '/point-of-sale/invoice?table=' + encodeURIComponent(table);
+    return INVOICE_PAGE_BASE + '?table=' + encodeURIComponent(table);
   }
 
   function navigateToInvoice(name) {
@@ -2263,7 +2310,7 @@
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
     paintKotTokensModal({ tables: currentKotTokens || [] });
-    fetch('/point-of-sale/api/kot-tokens', {
+    fetch(resolvePosApiBase() + '/api/kot-tokens', {
       method: 'GET',
       credentials: 'same-origin',
       headers: apiHeaders()
@@ -2486,6 +2533,8 @@
     closed: 'Settled'
   };
   var GST_RATE = 0.05;
+  var CGST_RATE = 0.025;
+  var UGST_RATE = 0.025;
 
   function formatInvoiceMoney(n) {
     var v = Math.round((Number(n) || 0) * 100) / 100;
@@ -2503,7 +2552,7 @@
   }
 
   function invoiceWorkspaceUrl(invoiceId) {
-    return '/point-of-sale/invoice?invoice=' + encodeURIComponent(invoiceId);
+    return INVOICE_PAGE_BASE + '?invoice=' + encodeURIComponent(invoiceId);
   }
 
   function navigateToInvoiceById(invoiceId) {
@@ -2522,141 +2571,16 @@
         toast('Invoice not found.');
         return;
       }
+      if (typeof global.buildPosCustomerBillHtml !== 'function') {
+        toast('Could not print bill. Try again.');
+        return;
+      }
       var win = global.open('', '_blank', 'width=420,height=680');
       if (!win) {
         toast('Could not open the bill window. Check your pop-up blocker.');
         return;
       }
-      var now = new Date();
-      var orderNo = invoice.order_no || '—';
-      var table = invoice.table_label || invoice.table || '—';
-      var orderTypeValue = invoice.order_type || 'dine_in';
-      var orderType = ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue;
-      var customerName = invoice.customer_name || '';
-      var customerMobile = invoice.customer_mobile || '';
-      var lines = Array.isArray(invoice.lines) ? invoice.lines : [];
-      var totals = {
-        discountType: invoice.discount_type,
-        discountValue: invoice.discount_value,
-        serviceType: invoice.service_type,
-        serviceValue: invoice.service_value,
-        subtotal: invoice.subtotal,
-        discount: invoice.discount,
-        gst: invoice.gst,
-        service: invoice.service,
-        tip: invoice.tip,
-        roundOff: invoice.round_off,
-        total: invoice.grand_total
-      };
-      var rows = lines
-        .map(function (line) {
-          var qty = Number(line.qty) || 0;
-          var rate = Number(line.rate) || 0;
-          var amt = line.line_total != null ? Number(line.line_total) : rate * qty;
-          return (
-            '<tr><td class="name">' +
-            escapeHtml(line.name) +
-            (line.variant
-              ? '<div class="variant">' + escapeHtml(line.variant) + '</div>'
-              : '') +
-            '</td><td class="qty">' +
-            qty +
-            '</td><td class="rate">' +
-            formatInvoiceMoney(rate) +
-            '</td><td class="amt">' +
-            formatInvoiceMoney(amt) +
-            '</td></tr>'
-          );
-        })
-        .join('');
-      var discHint = formatAdjHint(totals.discountType, totals.discountValue);
-      var svcHint = formatAdjHint(totals.serviceType, totals.serviceValue);
-      var custRow = customerName
-        ? '<div><span>Customer</span><span>' +
-          escapeHtml(customerName) +
-          (customerMobile ? ' · +91 ' + escapeHtml(customerMobile) : '') +
-          '</span></div>'
-        : '';
-      var when = formatKotPendingWhen(invoice.saved_at || invoice.created_at);
-      var dateLabel = when.date || when.time || '';
-      var html =
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ' +
-        escapeHtml(orderNo) +
-        '</title><style>' +
-        'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:340px;margin:0 auto}' +
-        'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
-        '.sub{font-size:11px;text-align:center;color:#555;margin-bottom:10px}' +
-        '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
-        '.meta div{display:flex;justify-content:space-between;margin:2px 0;gap:8px}' +
-        'table.items{width:100%;border-collapse:collapse;font-size:12px}' +
-        'table.items th{text-align:left;font-size:11px;border-bottom:1px solid #333;padding:4px 0}' +
-        'table.items td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
-        'table.items td.qty,table.items th.qty{width:30px;text-align:center}' +
-        'table.items td.rate,table.items th.rate,table.items td.amt,table.items th.amt{width:64px;text-align:right}' +
-        '.variant{font-size:10px;color:#555}' +
-        '.totals{margin-top:10px;font-size:12px}' +
-        '.totals div{display:flex;justify-content:space-between;margin:2px 0}' +
-        '.totals .grand{font-size:15px;font-weight:700;border-top:1px solid #333;margin-top:6px;padding-top:6px}' +
-        '.foot{margin-top:14px;text-align:center;font-size:11px;color:#555}' +
-        '</style></head><body>' +
-        '<h1>Hotel Bell Elite</h1>' +
-        '<div class="sub">Customer Bill</div>' +
-        '<div class="meta">' +
-        '<div><span>Order</span><span>' +
-        escapeHtml(orderNo) +
-        '</span></div>' +
-        '<div><span>Table</span><span>' +
-        escapeHtml(table) +
-        '</span></div>' +
-        '<div><span>Type</span><span>' +
-        escapeHtml(orderType) +
-        '</span></div>' +
-        '<div><span>Date</span><span>' +
-        escapeHtml(dateLabel || now.toLocaleString()) +
-        (when.time && when.date ? ' ' + escapeHtml(when.time) : '') +
-        '</span></div>' +
-        custRow +
-        '</div>' +
-        '<table class="items"><thead><tr><th>Item</th><th class="qty">Qty</th><th class="rate">Rate</th><th class="amt">Amt</th></tr></thead>' +
-        '<tbody>' +
-        (rows ||
-          '<tr><td colspan="4" style="text-align:center;color:#555">No items</td></tr>') +
-        '</tbody></table>' +
-        '<div class="totals">' +
-        '<div><span>Subtotal</span><span>' +
-        formatInvoiceMoney(totals.subtotal) +
-        '</span></div>' +
-        (Number(totals.discount) > 0 || Number(totals.discountValue) > 0
-          ? '<div><span>Discount' +
-            (discHint ? ' ' + discHint : '') +
-            '</span><span>-' +
-            formatInvoiceMoney(totals.discount) +
-            '</span></div>'
-          : '') +
-        '<div><span>GST (' +
-        GST_RATE * 100 +
-        '%)</span><span>' +
-        formatInvoiceMoney(totals.gst) +
-        '</span></div>' +
-        (Number(totals.service) > 0 || Number(totals.serviceValue) > 0
-          ? '<div><span>Service Charge' +
-            (svcHint ? ' ' + svcHint : '') +
-            '</span><span>' +
-            formatInvoiceMoney(totals.service) +
-            '</span></div>'
-          : '') +
-        (Number(totals.tip) > 0
-          ? '<div><span>Tip</span><span>' + formatInvoiceMoney(totals.tip) + '</span></div>'
-          : '') +
-        '<div><span>Round Off</span><span>' +
-        formatInvoiceMoney(totals.roundOff) +
-        '</span></div>' +
-        '<div class="grand"><span>Total</span><span>' +
-        formatInvoiceMoney(totals.total) +
-        '</span></div>' +
-        '</div>' +
-        '<div class="foot">Thank you for dining with us!</div>' +
-        '</body></html>';
+      var html = global.buildPosCustomerBillHtml(invoice, {});
       win.document.write(html);
       win.document.close();
       win.focus();
@@ -2675,7 +2599,7 @@
   function printTodayInvoice(invoiceId, btn) {
     if (!invoiceId) return;
     if (btn) btn.disabled = true;
-    fetch('/point-of-sale/api/invoices/' + encodeURIComponent(invoiceId), {
+    fetch(resolvePosApiBase() + '/api/invoices/' + encodeURIComponent(invoiceId), {
       method: 'GET',
       credentials: 'same-origin',
       headers: apiHeaders()
@@ -2833,7 +2757,7 @@
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
     paintTodayInvoicesModal({ invoices: currentTodayInvoices || [] });
-    fetch('/point-of-sale/api/today-invoices', {
+    fetch(resolvePosApiBase() + '/api/today-invoices', {
       method: 'GET',
       credentials: 'same-origin',
       headers: apiHeaders()
@@ -2918,10 +2842,12 @@
   }
 
   function initPosTablesPage() {
+    syncPosApiPaths();
     var root = document.getElementById('pos-tables-page');
     if (!root) return;
     /* Soft-nav: paint cache first, then refresh from SQLite API */
-    paintTablesPage(root, loadFloorDataCached());
+    var cached = loadFloorDataCached();
+    paintTablesPage(root, cached);
     paintKotPendingBanner(currentKotPending);
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();

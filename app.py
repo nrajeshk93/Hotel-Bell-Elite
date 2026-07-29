@@ -36,6 +36,8 @@ from db import (
     POS_INVOICE_ORDER_TYPE_LABELS,
     POS_INVOICE_SETTLEMENT_STATUSES,
     POS_INVOICE_SETTLEMENT_STATUS_LABELS,
+    POS_OUTLET_BAR,
+    POS_OUTLET_RESTAURANT,
     clear_all_pos_tables,
     close_pos_invoice_and_free_table,
     delete_customer_record,
@@ -60,6 +62,7 @@ from db import (
     list_pos_menu_categories,
     list_pos_menu_items,
     list_store_products_lite,
+    normalize_pos_outlet,
     pos_invoice_kpis,
     save_customer_record,
     save_pos_floor_layout,
@@ -458,6 +461,8 @@ def enforce_access():
     endpoint = request.endpoint or ""
     if (
         endpoint in _PUBLIC_ENDPOINTS
+        or endpoint == "service_worker"
+        or request.path == "/sw.js"
         or request.path.startswith("/static/")
         or request.path.startswith("/webhook/")
     ):
@@ -2974,6 +2979,20 @@ def favicon():
     )
 
 
+@app.route("/sw.js")
+def service_worker():
+    """Serve the POS offline service worker at root so scope can be '/'."""
+    response = send_from_directory(
+        app.static_folder,
+        "sw.js",
+        mimetype="application/javascript",
+        max_age=0,
+    )
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.route("/")
 def index():
     if get_current_user():
@@ -3127,6 +3146,12 @@ def login():
             )
 
         auth_security.clear_login_failures(conn, int(row["id"]))
+        auth_security.upgrade_password_hash_if_needed(
+            conn,
+            int(row["id"]),
+            password,
+            row["password_hash"],
+        )
         conn.commit()
     finally:
         conn.close()
@@ -3250,19 +3275,137 @@ def reports():
     )
 
 
-@app.route("/point-of-sale")
-def point_of_sale():
-    """Point of Sale Tables floor — counter workspace (not Sales Analytics)."""
-    return render_template(
-        "point_of_sale.html",
-        de_nav_section="pos",
-        de_nav_pos_view="tables",
+def _pos_outlet_from_request():
+    """Resolve restaurant|bar from path or endpoint (Bar twin routes)."""
+    path = request.path or ""
+    if path.startswith("/bar-point-of-sale"):
+        return POS_OUTLET_BAR
+    endpoint = request.endpoint or ""
+    if endpoint.startswith("bar_point_of_sale") or endpoint.startswith("bar_export_pos"):
+        return POS_OUTLET_BAR
+    return POS_OUTLET_RESTAURANT
+
+
+def _pos_menu_list_outlets(outlet):
+    """
+    Outlets for menu catalog GET.
+    Restaurant POS may pass ?include_outlets=bar (and Bar POS ?include_outlets=restaurant)
+    so each bill can search/add the other outlet's menu. Settings CRUD stays single-outlet.
+    """
+    outlet = normalize_pos_outlet(outlet)
+    raw = (request.args.get("include_outlets") or "").strip().lower()
+    if not raw:
+        return [outlet]
+    allowed = {
+        POS_OUTLET_RESTAURANT: POS_OUTLET_BAR,
+        POS_OUTLET_BAR: POS_OUTLET_RESTAURANT,
+    }
+    peer = allowed.get(outlet)
+    extras = []
+    for part in raw.replace(";", ",").split(","):
+        key = part.strip()
+        if key in ("bar", POS_OUTLET_BAR) and peer == POS_OUTLET_BAR:
+            extras.append(POS_OUTLET_BAR)
+        elif key in ("restaurant", "resto", POS_OUTLET_RESTAURANT) and peer == POS_OUTLET_RESTAURANT:
+            extras.append(POS_OUTLET_RESTAURANT)
+    if not extras:
+        return [outlet]
+    return [outlet] + extras
+
+
+def _pos_api_base(outlet):
+    return (
+        "/bar-point-of-sale"
+        if normalize_pos_outlet(outlet) == POS_OUTLET_BAR
+        else "/point-of-sale"
     )
 
 
-@app.route("/point-of-sale/invoice")
+def _pos_nav_section(outlet):
+    return "bar_pos" if normalize_pos_outlet(outlet) == POS_OUTLET_BAR else "pos"
+
+
+def _pos_label(outlet):
+    return "Bar" if normalize_pos_outlet(outlet) == POS_OUTLET_BAR else "Restaurant"
+
+
+def _pos_tip_location(outlet):
+    return OUTLET_BAR if normalize_pos_outlet(outlet) == POS_OUTLET_BAR else OUTLET_RESTAURANT
+
+
+def _pos_endpoint(name, outlet):
+    """Map shared view name to restaurant or bar Flask endpoint."""
+    outlet = normalize_pos_outlet(outlet)
+    if outlet != POS_OUTLET_BAR:
+        return name
+    if name.startswith("point_of_sale"):
+        return "bar_" + name
+    if name == "export_pos_invoice_ledger_report":
+        return "bar_export_pos_invoice_ledger_report"
+    return name
+
+
+POS_RESTAURANT_RECEIPT_CONFIG = {
+    "business_name": "SPICE MULTICUISINE",
+    "address": "Gurudwara Lane, Aberdeen bazar, Sri Vijaya Puram, Andaman & Nicobar 744101",
+    "gst": "35AAANFH8592H1ZS",
+    "logo_url": "/static/pos/spice-receipt-logo.jpg",
+    "user_label": "RESTAURANT",
+}
+
+POS_BAR_RECEIPT_CONFIG = {
+    "business_name": "IRISH BARREL HOUSE BAR",
+    "address": "Gurudwara Lane, Aberdeen bazar, Sri Vijaya Puram, Andaman & Nicobar 744101",
+    "gst": "35AAANFH8592H1ZS",
+    "logo_url": "/static/pos/irish-barrel-house-logo.png",
+    "user_label": "BAR",
+}
+
+
+def _pos_receipt_config(outlet):
+    """Thermal bill branding for restaurant vs bar outlets."""
+    if normalize_pos_outlet(outlet) == POS_OUTLET_BAR:
+        return POS_BAR_RECEIPT_CONFIG
+    return POS_RESTAURANT_RECEIPT_CONFIG
+
+
+def _pos_page_context(outlet, pos_view, **extra):
+    outlet = normalize_pos_outlet(outlet)
+    ctx = {
+        "de_nav_section": _pos_nav_section(outlet),
+        "de_nav_pos_view": pos_view,
+        "pos_outlet": outlet,
+        "pos_api_base": _pos_api_base(outlet),
+        "pos_label": _pos_label(outlet),
+        "pos_store_outlet": "bar" if outlet == POS_OUTLET_BAR else "restaurant",
+        "pos_receipt_config": _pos_receipt_config(outlet),
+    }
+    ctx.update(extra)
+    return ctx
+
+
+def _pos_invoice_belongs_to_outlet(invoice, outlet):
+    if not invoice:
+        return False
+    return normalize_pos_outlet(invoice.get("outlet")) == normalize_pos_outlet(outlet)
+
+
+@app.route("/point-of-sale", endpoint="point_of_sale")
+@app.route("/bar-point-of-sale", endpoint="bar_point_of_sale")
+def point_of_sale():
+    """Point of Sale Tables floor — counter workspace (not Sales Analytics)."""
+    outlet = _pos_outlet_from_request()
+    return render_template(
+        "point_of_sale.html",
+        **_pos_page_context(outlet, "tables"),
+    )
+
+
+@app.route("/point-of-sale/invoice", endpoint="point_of_sale_invoice")
+@app.route("/bar-point-of-sale/invoice", endpoint="bar_point_of_sale_invoice")
 def point_of_sale_invoice():
     """POS Invoice workspace."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         tip_employees = _active_employees_for_tips(conn)
@@ -3284,32 +3427,33 @@ def point_of_sale_invoice():
         tip_employees=tip_employees,
         tip_employee_options=tip_employee_options,
         tip_company=DEFAULT_COMPANY,
-        tip_location=OUTLET_RESTAURANT,
+        tip_location=_pos_tip_location(outlet),
         tip_add_url=url_for("sales_update_add_tip"),
         tip_edit_url=url_for("sales_update_edit_tip"),
         tip_delete_url=url_for("sales_update_delete_tip"),
-        de_nav_section="pos",
-        de_nav_pos_view="invoice",
+        **_pos_page_context(outlet, "invoice"),
     )
 
 
-@app.route("/point-of-sale/settings")
+@app.route("/point-of-sale/settings", endpoint="point_of_sale_settings")
+@app.route("/bar-point-of-sale/settings", endpoint="bar_point_of_sale_settings")
 def point_of_sale_settings():
-    """Restaurant Settings — floor layout and outlet configuration."""
+    """Restaurant/Bar Settings — floor layout and outlet configuration."""
+    outlet = _pos_outlet_from_request()
     return render_template(
         "point_of_sale_settings.html",
-        de_nav_section="pos",
-        de_nav_pos_view="settings",
+        **_pos_page_context(outlet, "settings"),
     )
 
 
-@app.route("/point-of-sale/menu")
+@app.route("/point-of-sale/menu", endpoint="point_of_sale_menu")
+@app.route("/bar-point-of-sale/menu", endpoint="bar_point_of_sale_menu")
 def point_of_sale_menu():
-    """Restaurant Menu catalog — categories and items (Product Master linked)."""
+    """Menu catalog — categories and items (Product Master linked)."""
+    outlet = _pos_outlet_from_request()
     return render_template(
         "point_of_sale_menu.html",
-        de_nav_section="pos",
-        de_nav_pos_view="menu",
+        **_pos_page_context(outlet, "menu"),
     )
 
 
@@ -3346,9 +3490,11 @@ def _pos_invoice_ledger_filters(args):
     }
 
 
-@app.route("/point-of-sale/invoice-ledger")
+@app.route("/point-of-sale/invoice-ledger", endpoint="point_of_sale_invoice_ledger")
+@app.route("/bar-point-of-sale/invoice-ledger", endpoint="bar_point_of_sale_invoice_ledger")
 def point_of_sale_invoice_ledger():
     """POS Invoice Ledger — saved invoices with KPIs (Expense Ledger–style)."""
+    outlet = _pos_outlet_from_request()
     filters = _pos_invoice_ledger_filters(request.args)
 
     conn = get_db()
@@ -3360,6 +3506,7 @@ def point_of_sale_invoice_ledger():
             date_to=filters["query_date_to"].isoformat(),
             order_type=filters["order_type_filter"],
             settlement=filters["settlement_filter"],
+            outlet=outlet,
         )
         kpis = pos_invoice_kpis(conn, invoices, today=filters["today"].isoformat())
     finally:
@@ -3393,6 +3540,10 @@ def point_of_sale_invoice_ledger():
         report_kwargs["date_from"] = filters["date_from"].isoformat()
         report_kwargs["date_to"] = filters["date_to"].isoformat()
 
+    ledger_ep = _pos_endpoint("point_of_sale_invoice_ledger", outlet)
+    report_ep = _pos_endpoint("export_pos_invoice_ledger_report", outlet)
+    invoice_ep = _pos_endpoint("point_of_sale_invoice", outlet)
+
     return render_template(
         "point_of_sale_invoice_ledger.html",
         page_title="Invoice Ledger",
@@ -3408,21 +3559,22 @@ def point_of_sale_invoice_ledger():
         date_to=filters["date_to"].isoformat() if filters["date_to"] else "",
         today_iso=filters["today"].isoformat(),
         active_date_filter=filters["date_filter_active"],
-        filter_form_action=url_for("point_of_sale_invoice_ledger"),
-        invoice_ledger_clear_url=url_for("point_of_sale_invoice_ledger", **clear_kwargs),
-        invoice_ledger_report_url=url_for("export_pos_invoice_ledger_report", **report_kwargs),
-        new_invoice_url=url_for("point_of_sale_invoice"),
-        de_nav_section="pos",
-        de_nav_pos_view="invoice_ledger",
+        filter_form_action=url_for(ledger_ep),
+        invoice_ledger_clear_url=url_for(ledger_ep, **clear_kwargs),
+        invoice_ledger_report_url=url_for(report_ep, **report_kwargs),
+        new_invoice_url=url_for(invoice_ep),
+        **_pos_page_context(outlet, "invoice_ledger"),
     )
 
 
-@app.route("/point-of-sale/invoice-ledger/report")
+@app.route("/point-of-sale/invoice-ledger/report", endpoint="export_pos_invoice_ledger_report")
+@app.route("/bar-point-of-sale/invoice-ledger/report", endpoint="bar_export_pos_invoice_ledger_report")
 def export_pos_invoice_ledger_report():
     """Excel download of saved POS invoices for the selected filters."""
     from openpyxl import Workbook
     from openpyxl.styles import Font
 
+    outlet = _pos_outlet_from_request()
     filters = _pos_invoice_ledger_filters(request.args)
 
     conn = get_db()
@@ -3434,6 +3586,7 @@ def export_pos_invoice_ledger_report():
             date_to=filters["query_date_to"].isoformat(),
             order_type=filters["order_type_filter"],
             settlement=filters["settlement_filter"],
+            outlet=outlet,
         )
     finally:
         conn.close()
@@ -3509,10 +3662,15 @@ def export_pos_invoice_ledger_report():
     )
 
 
-@app.route("/point-of-sale/api/invoices", methods=["POST"])
+@app.route("/point-of-sale/api/invoices", methods=["POST"], endpoint="point_of_sale_api_invoices_save")
+@app.route("/bar-point-of-sale/api/invoices", methods=["POST"], endpoint="bar_point_of_sale_api_invoices_save")
 def point_of_sale_api_invoices_save():
     """Create or update a POS invoice from the Create Invoice workspace."""
+    outlet = _pos_outlet_from_request()
     data = request.get_json(silent=True) or {}
+    if isinstance(data, dict):
+        data = dict(data)
+        data["outlet"] = outlet
     user = get_current_user()
     created_by = ""
     if user:
@@ -3529,6 +3687,7 @@ def point_of_sale_api_invoices_save():
                 created_by=created_by,
                 actor_is_admin=bool(user and user.get("is_admin")),
             )
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3541,38 +3700,44 @@ def point_of_sale_api_invoices_save():
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/<int:invoice_id>", methods=["GET"])
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>", methods=["GET"], endpoint="point_of_sale_api_invoice_detail")
+@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>", methods=["GET"], endpoint="bar_point_of_sale_api_invoice_detail")
 def point_of_sale_api_invoice_detail(invoice_id):
     """Return one saved POS invoice with line items."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         invoice = get_pos_invoice(conn, invoice_id)
-        if not invoice:
+        if not invoice or not _pos_invoice_belongs_to_outlet(invoice, outlet):
             return jsonify({"ok": False, "error": "Invoice not found."}), 404
         return jsonify({"ok": True, "invoice": invoice})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/by-table", methods=["GET"])
+@app.route("/point-of-sale/api/invoices/by-table", methods=["GET"], endpoint="point_of_sale_api_invoice_by_table")
+@app.route("/bar-point-of-sale/api/invoices/by-table", methods=["GET"], endpoint="bar_point_of_sale_api_invoice_by_table")
 def point_of_sale_api_invoice_by_table():
     """Look up the open dine-in order for a table, if any — shared by the Tables
     page tile tap and the Create Invoice table picker to resume a bill instead
     of blocking on 'occupied'."""
+    outlet = _pos_outlet_from_request()
     table = (request.args.get("table") or "").strip()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
-        invoice = get_open_pos_invoice_for_table(conn, table) if table else None
+        invoice = get_open_pos_invoice_for_table(conn, table, outlet) if table else None
         return jsonify({"ok": True, "invoice": invoice})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/transfer-table", methods=["POST"])
+@app.route("/point-of-sale/api/invoices/transfer-table", methods=["POST"], endpoint="point_of_sale_api_invoice_transfer_table")
+@app.route("/bar-point-of-sale/api/invoices/transfer-table", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_transfer_table")
 def point_of_sale_api_invoice_transfer_table():
     """Move an open dine-in bill from one table to another available table."""
+    outlet = _pos_outlet_from_request()
     payload = request.get_json(silent=True) or {}
     from_table = (payload.get("from_table") or payload.get("fromTable") or "").strip()
     to_table = (payload.get("to_table") or payload.get("toTable") or "").strip()
@@ -3580,9 +3745,9 @@ def point_of_sale_api_invoice_transfer_table():
     try:
         ensure_pos_schema(conn)
         try:
-            invoice = transfer_pos_invoice_table(conn, from_table, to_table)
-            sync_pos_floor_occupancy_from_open_orders(conn)
-            layout = get_pos_floor_layout(conn)
+            invoice = transfer_pos_invoice_table(conn, from_table, to_table, outlet)
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+            layout = get_pos_floor_layout(conn, outlet)
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3599,9 +3764,11 @@ def point_of_sale_api_invoice_transfer_table():
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/merge-tables", methods=["POST"])
+@app.route("/point-of-sale/api/invoices/merge-tables", methods=["POST"], endpoint="point_of_sale_api_invoice_merge_tables")
+@app.route("/bar-point-of-sale/api/invoices/merge-tables", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_merge_tables")
 def point_of_sale_api_invoice_merge_tables():
     """Combine two open dine-in bills into one invoice on the destination table."""
+    outlet = _pos_outlet_from_request()
     payload = request.get_json(silent=True) or {}
     from_table = (payload.get("from_table") or payload.get("fromTable") or "").strip()
     to_table = (payload.get("to_table") or payload.get("toTable") or "").strip()
@@ -3609,9 +3776,9 @@ def point_of_sale_api_invoice_merge_tables():
     try:
         ensure_pos_schema(conn)
         try:
-            invoice = merge_pos_invoice_tables(conn, from_table, to_table)
-            sync_pos_floor_occupancy_from_open_orders(conn)
-            layout = get_pos_floor_layout(conn)
+            invoice = merge_pos_invoice_tables(conn, from_table, to_table, outlet)
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+            layout = get_pos_floor_layout(conn, outlet)
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3629,14 +3796,19 @@ def point_of_sale_api_invoice_merge_tables():
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/<int:invoice_id>/close", methods=["POST"])
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/close", methods=["POST"], endpoint="point_of_sale_api_invoice_close")
+@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/close", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_close")
 def point_of_sale_api_invoice_close(invoice_id):
     """Close a bill and free its table — legacy path without payment details.
     Prefer /settle for staff Settle Bill (payment + optional split)."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         try:
+            existing = get_pos_invoice(conn, invoice_id)
+            if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
+                return jsonify({"ok": False, "error": "Invoice not found."}), 404
             user = get_current_user()
             user_id = user.get("id") if user else None
             invoice = close_pos_invoice_and_free_table(conn, invoice_id, user_id=user_id)
@@ -3649,15 +3821,20 @@ def point_of_sale_api_invoice_close(invoice_id):
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/<int:invoice_id>/settle", methods=["POST"])
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/settle", methods=["POST"], endpoint="point_of_sale_api_invoice_settle")
+@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/settle", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_settle")
 def point_of_sale_api_invoice_settle(invoice_id):
     """Settle a bill with payment mode(s) — same split rules as Room Transfer
     Clear Payment — then close the order and free the table when dine-in."""
+    outlet = _pos_outlet_from_request()
     payload = request.get_json(silent=True) or {}
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         try:
+            existing = get_pos_invoice(conn, invoice_id)
+            if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
+                return jsonify({"ok": False, "error": "Invoice not found."}), 404
             user = get_current_user()
             user_id = user.get("id") if user else None
             invoice = settle_pos_invoice(
@@ -3677,15 +3854,20 @@ def point_of_sale_api_invoice_settle(invoice_id):
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/<int:invoice_id>/send-kot", methods=["POST"])
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/send-kot", methods=["POST"], endpoint="point_of_sale_api_invoice_send_kot")
+@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/send-kot", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_send_kot")
 def point_of_sale_api_invoice_send_kot(invoice_id):
     """Send pending (unsent) lines for one open invoice to the kitchen."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         try:
+            existing = get_pos_invoice(conn, invoice_id)
+            if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
+                return jsonify({"ok": False, "error": "Invoice not found."}), 404
             invoice = send_pos_invoice_pending_kot(conn, invoice_id)
-            kot_pending = list_pos_kot_pending_summary(conn)
+            kot_pending = list_pos_kot_pending_summary(conn, outlet)
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3695,13 +3877,15 @@ def point_of_sale_api_invoice_send_kot(invoice_id):
         conn.close()
 
 
-@app.route("/point-of-sale/api/kot-pending/send-all", methods=["POST"])
+@app.route("/point-of-sale/api/kot-pending/send-all", methods=["POST"], endpoint="point_of_sale_api_kot_pending_send_all")
+@app.route("/bar-point-of-sale/api/kot-pending/send-all", methods=["POST"], endpoint="bar_point_of_sale_api_kot_pending_send_all")
 def point_of_sale_api_kot_pending_send_all():
     """Send pending KOT lines for every open dine-in table listed in the summary."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
-        summary = list_pos_kot_pending_summary(conn)
+        summary = list_pos_kot_pending_summary(conn, outlet)
         sent = []
         errors = []
         for entry in summary.get("tables") or []:
@@ -3711,7 +3895,7 @@ def point_of_sale_api_kot_pending_send_all():
                 sent.append({"invoice_id": invoice_id, "table": entry.get("name") or "", "order_no": invoice.get("order_no")})
             except ValueError as exc:
                 errors.append({"invoice_id": invoice_id, "error": str(exc)})
-        kot_pending = list_pos_kot_pending_summary(conn)
+        kot_pending = list_pos_kot_pending_summary(conn, outlet)
         conn.commit()
         return jsonify(
             {
@@ -3726,39 +3910,48 @@ def point_of_sale_api_kot_pending_send_all():
         conn.close()
 
 
-@app.route("/point-of-sale/api/kot-tokens", methods=["GET"])
+@app.route("/point-of-sale/api/kot-tokens", methods=["GET"], endpoint="point_of_sale_api_kot_tokens")
+@app.route("/bar-point-of-sale/api/kot-tokens", methods=["GET"], endpoint="bar_point_of_sale_api_kot_tokens")
 def point_of_sale_api_kot_tokens():
     """List open dine-in KOTs already sent to kitchen (for resend / reprint)."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
-        payload = list_pos_kot_tokens(conn)
+        payload = list_pos_kot_tokens(conn, outlet)
         conn.commit()
         return jsonify({"ok": True, **payload})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/today-invoices", methods=["GET"])
+@app.route("/point-of-sale/api/today-invoices", methods=["GET"], endpoint="point_of_sale_api_today_invoices")
+@app.route("/bar-point-of-sale/api/today-invoices", methods=["GET"], endpoint="bar_point_of_sale_api_today_invoices")
 def point_of_sale_api_today_invoices():
     """List today's active POS invoices for the Tables Invoice hub (newest first)."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
-        payload = list_pos_today_invoices(conn)
+        payload = list_pos_today_invoices(conn, outlet=outlet)
         conn.commit()
         return jsonify({"ok": True, **payload})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"])
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"], endpoint="point_of_sale_api_invoice_delete")
+@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"], endpoint="bar_point_of_sale_api_invoice_delete")
 def point_of_sale_api_invoice_delete(invoice_id):
     """Soft-delete a saved POS invoice."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         try:
+            existing = get_pos_invoice(conn, invoice_id)
+            if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
+                return jsonify({"ok": False, "error": "Invoice not found."}), 404
             soft_delete_pos_invoice(conn, invoice_id)
             conn.commit()
         except ValueError as exc:
@@ -3769,7 +3962,8 @@ def point_of_sale_api_invoice_delete(invoice_id):
         conn.close()
 
 
-@app.route("/point-of-sale/api/customers", methods=["GET"])
+@app.route("/point-of-sale/api/customers", methods=["GET"], endpoint="point_of_sale_api_customers")
+@app.route("/bar-point-of-sale/api/customers", methods=["GET"], endpoint="bar_point_of_sale_api_customers")
 def point_of_sale_api_customers():
     """Search Customer Master for POS Customer Details autocomplete."""
     query = request.args.get("q") or request.args.get("mobile") or ""
@@ -3783,9 +3977,9 @@ def point_of_sale_api_customers():
         conn.close()
 
 
-def _pos_floor_api_payload(conn, layout=None):
+def _pos_floor_api_payload(conn, layout=None, outlet=POS_OUTLET_RESTAURANT):
     """Floor JSON for API responses with merged-table display helpers."""
-    layout = layout or get_pos_floor_layout(conn)
+    layout = layout or get_pos_floor_layout(conn, outlet)
     tables = enrich_pos_floor_tables_for_display(layout.get("tables") or [])
     return {
         "areas": layout.get("areas") or [],
@@ -3793,43 +3987,50 @@ def _pos_floor_api_payload(conn, layout=None):
     }
 
 
-@app.route("/point-of-sale/api/floor", methods=["GET", "PUT", "POST"])
+@app.route("/point-of-sale/api/floor", methods=["GET", "PUT", "POST"], endpoint="point_of_sale_api_floor")
+@app.route("/bar-point-of-sale/api/floor", methods=["GET", "PUT", "POST"], endpoint="bar_point_of_sale_api_floor")
 def point_of_sale_api_floor():
-    """Load or replace restaurant floor layout (areas + tables) in SQLite."""
+    """Load or replace outlet floor layout (areas + tables) in SQLite."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         if request.method == "GET":
-            sync_pos_floor_occupancy_from_open_orders(conn)
-            payload = _pos_floor_api_payload(conn)
-            kot_pending = list_pos_kot_pending_summary(conn)
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+            payload = _pos_floor_api_payload(conn, outlet=outlet)
+            kot_pending = list_pos_kot_pending_summary(conn, outlet)
             conn.commit()
-            return jsonify({"ok": True, **payload, "kot_pending": kot_pending})
+            resp = jsonify({"ok": True, **payload, "kot_pending": kot_pending})
+            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            resp.headers["Pragma"] = "no-cache"
+            return resp
 
         data = request.get_json(silent=True) or {}
         areas = data.get("areas")
         tables = data.get("tables")
         if not isinstance(areas, list) or not isinstance(tables, list):
             return jsonify({"ok": False, "error": "areas and tables arrays are required."}), 400
-        saved = save_pos_floor_layout(conn, areas, tables)
+        saved = save_pos_floor_layout(conn, areas, tables, outlet)
         conn.commit()
-        return jsonify({"ok": True, **_pos_floor_api_payload(conn, saved)})
+        return jsonify({"ok": True, **_pos_floor_api_payload(conn, saved, outlet)})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/floor/unmerge-tables", methods=["POST"])
+@app.route("/point-of-sale/api/floor/unmerge-tables", methods=["POST"], endpoint="point_of_sale_api_floor_unmerge_tables")
+@app.route("/bar-point-of-sale/api/floor/unmerge-tables", methods=["POST"], endpoint="bar_point_of_sale_api_floor_unmerge_tables")
 def point_of_sale_api_floor_unmerge_tables():
     """Split a visually merged table group back into separate floor tiles."""
+    outlet = _pos_outlet_from_request()
     payload = request.get_json(silent=True) or {}
     table = (payload.get("table") or payload.get("table_label") or payload.get("from_table") or "").strip()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         try:
-            result = unmerge_pos_floor_tables(conn, table)
-            sync_pos_floor_occupancy_from_open_orders(conn)
-            floor = _pos_floor_api_payload(conn, result.get("layout"))
+            result = unmerge_pos_floor_tables(conn, table, outlet)
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+            floor = _pos_floor_api_payload(conn, result.get("layout"), outlet)
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3848,32 +4049,36 @@ def point_of_sale_api_floor_unmerge_tables():
         conn.close()
 
 
-@app.route("/point-of-sale/api/floor/clear-all", methods=["POST"])
+@app.route("/point-of-sale/api/floor/clear-all", methods=["POST"], endpoint="point_of_sale_api_floor_clear_all")
+@app.route("/bar-point-of-sale/api/floor/clear-all", methods=["POST"], endpoint="bar_point_of_sale_api_floor_clear_all")
 def point_of_sale_api_floor_clear_all():
     """Free every table back to available in one shot (Tables page 'Clear all
     tables' — day close / demo reset). Also closes any dangling open bills."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         user = get_current_user()
         user_id = user.get("id") if user else None
-        payload = clear_all_pos_tables(conn, user_id=user_id)
-        kot_pending = list_pos_kot_pending_summary(conn)
+        payload = clear_all_pos_tables(conn, user_id=user_id, outlet=outlet)
+        kot_pending = list_pos_kot_pending_summary(conn, outlet)
         conn.commit()
-        floor = _pos_floor_api_payload(conn, payload)
+        floor = _pos_floor_api_payload(conn, payload, outlet)
         return jsonify({"ok": True, **floor, "kot_pending": kot_pending})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/settings", methods=["GET", "PUT", "POST"])
+@app.route("/point-of-sale/api/settings", methods=["GET", "PUT", "POST"], endpoint="point_of_sale_api_settings")
+@app.route("/bar-point-of-sale/api/settings", methods=["GET", "PUT", "POST"], endpoint="bar_point_of_sale_api_settings")
 def point_of_sale_api_settings():
-    """Load or replace restaurant settings JSON blob in SQLite."""
+    """Load or replace outlet settings JSON blob in SQLite."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         if request.method == "GET":
-            settings = get_pos_restaurant_settings(conn)
+            settings = get_pos_restaurant_settings(conn, outlet)
             return jsonify({"ok": True, "settings": settings})
 
         data = request.get_json(silent=True) or {}
@@ -3883,21 +4088,25 @@ def point_of_sale_api_settings():
             settings = data
         if not isinstance(settings, dict):
             return jsonify({"ok": False, "error": "settings object is required."}), 400
-        saved = save_pos_restaurant_settings(conn, settings)
+        saved = save_pos_restaurant_settings(conn, settings, outlet)
         conn.commit()
         return jsonify({"ok": True, "settings": saved})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/menu/categories", methods=["GET", "POST", "PUT"])
+@app.route("/point-of-sale/api/menu/categories", methods=["GET", "POST", "PUT"], endpoint="point_of_sale_api_menu_categories")
+@app.route("/bar-point-of-sale/api/menu/categories", methods=["GET", "POST", "PUT"], endpoint="bar_point_of_sale_api_menu_categories")
 def point_of_sale_api_menu_categories():
-    """List or create/update restaurant menu categories."""
+    """List or create/update outlet menu categories."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
         if request.method == "GET":
-            categories = list_pos_menu_categories(conn)
+            categories = list_pos_menu_categories(
+                conn, outlets=_pos_menu_list_outlets(outlet)
+            )
             conn.commit()
             return jsonify({"ok": True, "categories": categories})
 
@@ -3914,19 +4123,22 @@ def point_of_sale_api_menu_categories():
                 name=data.get("name"),
                 is_visible=bool(data.get("is_visible", True)),
                 sort_order=data.get("sort_order"),
+                outlet=outlet,
             )
             conn.commit()
         except ValueError as exc:
             conn.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
-        return jsonify({"ok": True, "category": saved, "categories": list_pos_menu_categories(conn)})
+        return jsonify({"ok": True, "category": saved, "categories": list_pos_menu_categories(conn, outlet=outlet)})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/menu/categories/<int:category_id>/delete", methods=["POST", "DELETE"])
+@app.route("/point-of-sale/api/menu/categories/<int:category_id>/delete", methods=["POST", "DELETE"], endpoint="point_of_sale_api_menu_category_delete")
+@app.route("/bar-point-of-sale/api/menu/categories/<int:category_id>/delete", methods=["POST", "DELETE"], endpoint="bar_point_of_sale_api_menu_category_delete")
 def point_of_sale_api_menu_category_delete(category_id):
     """Soft-delete a menu category."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
@@ -3936,14 +4148,16 @@ def point_of_sale_api_menu_category_delete(category_id):
         except ValueError as exc:
             conn.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 404
-        return jsonify({"ok": True, "categories": list_pos_menu_categories(conn)})
+        return jsonify({"ok": True, "categories": list_pos_menu_categories(conn, outlet=outlet)})
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/menu/items", methods=["GET", "POST", "PUT"])
+@app.route("/point-of-sale/api/menu/items", methods=["GET", "POST", "PUT"], endpoint="point_of_sale_api_menu_items")
+@app.route("/bar-point-of-sale/api/menu/items", methods=["GET", "POST", "PUT"], endpoint="bar_point_of_sale_api_menu_items")
 def point_of_sale_api_menu_items():
-    """List or create/update restaurant menu items with optional recipe ingredients."""
+    """List or create/update outlet menu items with optional recipe ingredients."""
+    outlet = _pos_outlet_from_request()
     conn = get_db()
     try:
         ensure_pos_schema(conn)
@@ -3954,7 +4168,11 @@ def point_of_sale_api_menu_items():
                 category_id = int(category_id) if category_id not in (None, "") else None
             except (TypeError, ValueError):
                 return jsonify({"ok": False, "error": "Invalid category id."}), 400
-            items = list_pos_menu_items(conn, category_id=category_id)
+            items = list_pos_menu_items(
+                conn,
+                category_id=category_id,
+                outlets=_pos_menu_list_outlets(outlet),
+            )
             conn.commit()
             return jsonify({"ok": True, "items": items, "category_id": category_id})
 
@@ -3984,6 +4202,7 @@ def point_of_sale_api_menu_items():
                 sort_order=data.get("sort_order"),
                 recipe=data["recipe"] if "recipe" in data else None,
                 menu_type=data["menu_type"] if "menu_type" in data else None,
+                item_kind=data["item_kind"] if "item_kind" in data else None,
                 portion_size=data["portion_size"] if "portion_size" in data else None,
                 prep_time_mins=data["prep_time_mins"] if "prep_time_mins" in data else None,
                 shelf_life=data["shelf_life"] if "shelf_life" in data else None,
@@ -3991,6 +4210,7 @@ def point_of_sale_api_menu_items():
                 target_margin_pct=data["target_margin_pct"] if "target_margin_pct" in data else None,
                 updated_by=updated_by or None,
                 price_change_reason=data.get("price_change_reason") or "",
+                outlet=outlet,
             )
             conn.commit()
         except ValueError as exc:
@@ -4004,15 +4224,16 @@ def point_of_sale_api_menu_items():
             {
                 "ok": True,
                 "item": saved,
-                "items": list_pos_menu_items(conn, category_id=category_id),
-                "categories": list_pos_menu_categories(conn),
+                "items": list_pos_menu_items(conn, category_id=category_id, outlet=outlet),
+                "categories": list_pos_menu_categories(conn, outlet=outlet),
             }
         )
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/menu/items/<int:item_id>", methods=["GET"])
+@app.route("/point-of-sale/api/menu/items/<int:item_id>", methods=["GET"], endpoint="point_of_sale_api_menu_item_detail")
+@app.route("/bar-point-of-sale/api/menu/items/<int:item_id>", methods=["GET"], endpoint="bar_point_of_sale_api_menu_item_detail")
 def point_of_sale_api_menu_item_detail(item_id):
     """Menu Details popup payload: recipe, FIFO costing, price history, analysis."""
     conn = get_db()
@@ -4028,7 +4249,8 @@ def point_of_sale_api_menu_item_detail(item_id):
         conn.close()
 
 
-@app.route("/point-of-sale/api/menu/items/<int:item_id>/delete", methods=["POST", "DELETE"])
+@app.route("/point-of-sale/api/menu/items/<int:item_id>/delete", methods=["POST", "DELETE"], endpoint="point_of_sale_api_menu_item_delete")
+@app.route("/bar-point-of-sale/api/menu/items/<int:item_id>/delete", methods=["POST", "DELETE"], endpoint="bar_point_of_sale_api_menu_item_delete")
 def point_of_sale_api_menu_item_delete(item_id):
     """Soft-delete a menu item."""
     conn = get_db()
@@ -4047,19 +4269,21 @@ def point_of_sale_api_menu_item_delete(item_id):
             category_id = int(category_id) if category_id not in (None, "") else None
         except (TypeError, ValueError):
             category_id = None
+        outlet = _pos_outlet_from_request()
         payload = {
             "ok": True,
-            "categories": list_pos_menu_categories(conn),
+            "categories": list_pos_menu_categories(conn, outlet=outlet),
         }
         if category_id is not None:
-            payload["items"] = list_pos_menu_items(conn, category_id=category_id)
+            payload["items"] = list_pos_menu_items(conn, category_id=category_id, outlet=outlet)
             payload["category_id"] = category_id
         return jsonify(payload)
     finally:
         conn.close()
 
 
-@app.route("/point-of-sale/api/menu/products", methods=["GET"])
+@app.route("/point-of-sale/api/menu/products", methods=["GET"], endpoint="point_of_sale_api_menu_products")
+@app.route("/bar-point-of-sale/api/menu/products", methods=["GET"], endpoint="bar_point_of_sale_api_menu_products")
 @app.route("/stores/api/products-lite", methods=["GET"])
 def point_of_sale_api_menu_products():
     """Lite Product Master list for menu item pickers."""
@@ -4068,12 +4292,18 @@ def point_of_sale_api_menu_products():
         ensure_stores_schema(conn)
         q = (request.args.get("q") or "").strip()
         outlet = (request.args.get("outlet") or "").strip().lower()
+        if not outlet and (request.path or "").startswith("/bar-point-of-sale"):
+            outlet = "bar"
+        elif not outlet and (request.path or "").startswith("/point-of-sale"):
+            outlet = "restaurant"
         if outlet == "restaurant":
             outlets = ["restaurant", "both"]
         elif outlet == "bar":
             outlets = ["bar", "both"]
         elif outlet == "both":
             outlets = ["both"]
+        elif outlet in ("all", "*"):
+            outlets = None
         else:
             outlets = None
         products = list_store_products_lite(conn, outlets=outlets, q=q)

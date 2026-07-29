@@ -10,18 +10,18 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>
@@ -31,9 +31,10 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -66,21 +67,15 @@
               data-clear-url="{{ purchase_ledger_clear_url }}">
           <input type="hidden" id="purchase-ledger-date-from" name="date_from" value="{{ date_from }}">
           <input type="hidden" id="purchase-ledger-date-to" name="date_to" value="{{ date_to }}">
-          <div class="se-filter-chip se-filter-chip--search pl-search-chip" id="pl-search-chip">
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="pl-search-chip">
             <label class="se-filter-chip-label" for="purchase-ledger-search">Search</label>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              </span>
-              <input type="search" id="purchase-ledger-search" class="pl-search-input" placeholder="Invoice, supplier, expense…" autocomplete="off" aria-label="Search purchases">
+              <input type="search" id="purchase-ledger-search" class="pl-search-input pl-header-search" placeholder="Invoice, supplier, expense…" autocomplete="off" aria-label="Search purchases">
             </div>
           </div>
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field pl-supplier-filter-listbox" data-se-listbox id="purchase-ledger-supplier-listbox">
             <span class="se-filter-chip-label" id="purchase-ledger-supplier-label">Supplier</span>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-              </span>
               <input type="hidden" id="purchase-ledger-supplier" name="supplier" value="{{ selected_supplier }}">
               <button type="button" class="se-filter-chip-trigger" id="purchase-ledger-supplier-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="purchase-ledger-supplier-list" aria-labelledby="purchase-ledger-supplier-label purchase-ledger-supplier-value">
                 <span class="se-filter-chip-value" id="purchase-ledger-supplier-value">{{ selected_supplier_label }}</span>
@@ -89,28 +84,21 @@
                 <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
               </span>
             </div>
-            <div class="se-filter-listbox pl-supplier-listbox" id="purchase-ledger-supplier-list" role="listbox" aria-labelledby="purchase-ledger-supplier-label" hidden>
-              <div class="pl-supplier-search-wrap">
-                <input type="search" class="pl-supplier-search" id="purchase-ledger-supplier-search" placeholder="Search by name or GST..." autocomplete="off" aria-label="Search suppliers">
-              </div>
-              <div class="pl-supplier-options" id="purchase-ledger-supplier-options">
-                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all suppliers" data-gst="" aria-selected="{{ 'true' if selected_supplier == 'all' else 'false' }}">All suppliers</button>
+            <div class="se-filter-listbox" id="purchase-ledger-supplier-list" role="listbox" aria-labelledby="purchase-ledger-supplier-label" hidden>
+              <div class="pl-supplier-options ep-listbox-options" id="purchase-ledger-supplier-options">
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all suppliers" data-label="All suppliers" aria-selected="{{ 'true' if selected_supplier == 'all' else 'false' }}">All suppliers</button>
                 {% for supplier in suppliers %}
-                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == (supplier.id|string) %} is-selected{% endif %}" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }}" data-gst="{{ supplier.gst|lower }}" aria-selected="{{ 'true' if selected_supplier == (supplier.id|string) else 'false' }}">
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == (supplier.id|string) %} is-selected{% endif %}" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }} {{ supplier.gst|lower }}" data-label="{{ supplier.name }}" aria-selected="{{ 'true' if selected_supplier == (supplier.id|string) else 'false' }}">
                   <span class="pl-supplier-option-name">{{ supplier.name }}</span>
                   <span class="pl-supplier-option-gst">{{ supplier.gst }}</span>
                 </button>
                 {% endfor %}
               </div>
-              <div class="pl-supplier-empty" id="purchase-ledger-supplier-empty" hidden>No suppliers match your search.</div>
             </div>
           </div>
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field pl-supplier-filter-listbox" data-se-listbox id="purchase-ledger-category-listbox">
             <span class="se-filter-chip-label" id="purchase-ledger-category-label">Category</span>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
-              </span>
               <input type="hidden" id="purchase-ledger-category" name="category" value="{{ selected_category }}">
               <button type="button" class="se-filter-chip-trigger" id="purchase-ledger-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="purchase-ledger-category-list" aria-labelledby="purchase-ledger-category-label purchase-ledger-category-value">
                 <span class="se-filter-chip-value" id="purchase-ledger-category-value">{{ selected_category_label }}</span>
@@ -119,25 +107,18 @@
                 <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
               </span>
             </div>
-            <div class="se-filter-listbox pl-supplier-listbox" id="purchase-ledger-category-list" role="listbox" aria-labelledby="purchase-ledger-category-label" hidden>
-              <div class="pl-supplier-search-wrap">
-                <input type="search" class="pl-supplier-search" id="purchase-ledger-category-search" placeholder="Search category..." autocomplete="off" aria-label="Search categories">
-              </div>
-              <div class="pl-category-options" id="purchase-ledger-category-options">
-                <button type="button" class="se-filter-listbox-option pl-filter-option{% if selected_category == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all categories" aria-selected="{{ 'true' if selected_category == 'all' else 'false' }}">All categories</button>
+            <div class="se-filter-listbox" id="purchase-ledger-category-list" role="listbox" aria-labelledby="purchase-ledger-category-label" hidden>
+              <div class="pl-category-options ep-listbox-options" id="purchase-ledger-category-options">
+                <button type="button" class="se-filter-listbox-option pl-filter-option{% if selected_category == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all categories" data-label="All categories" aria-selected="{{ 'true' if selected_category == 'all' else 'false' }}">All categories</button>
                 {% for category_key, category_label in expense_categories %}
-                <button type="button" class="se-filter-listbox-option pl-filter-option{% if selected_category == category_key %} is-selected{% endif %}" role="option" data-value="{{ category_key }}" data-name="{{ category_label|lower }}" aria-selected="{{ 'true' if selected_category == category_key else 'false' }}">{{ category_label }}</button>
+                <button type="button" class="se-filter-listbox-option pl-filter-option{% if selected_category == category_key %} is-selected{% endif %}" role="option" data-value="{{ category_key }}" data-name="{{ category_label|lower }}" data-label="{{ category_label }}" aria-selected="{{ 'true' if selected_category == category_key else 'false' }}">{{ category_label }}</button>
                 {% endfor %}
               </div>
-              <div class="pl-supplier-empty" id="purchase-ledger-category-empty" hidden>No categories match your search.</div>
             </div>
           </div>
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox" data-se-listbox>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox id="purchase-ledger-payment-listbox">
             <span class="se-filter-chip-label" id="purchase-ledger-payment-label">Payment</span>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-              </span>
               <input type="hidden" id="purchase-ledger-payment" name="payment" value="{{ selected_payment }}">
               <button type="button" class="se-filter-chip-trigger" id="purchase-ledger-payment-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="purchase-ledger-payment-list" aria-labelledby="purchase-ledger-payment-label purchase-ledger-payment-value">
                 <span class="se-filter-chip-value" id="purchase-ledger-payment-value">{{ selected_payment_label }}</span>
@@ -147,22 +128,20 @@
               </span>
             </div>
             <div class="se-filter-listbox" id="purchase-ledger-payment-list" role="listbox" aria-labelledby="purchase-ledger-payment-label" hidden>
-              <button type="button" class="se-filter-listbox-option{% if selected_payment == 'all' %} is-selected{% endif %}" role="option" data-value="all" aria-selected="{{ 'true' if selected_payment == 'all' else 'false' }}">All payments</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_payment == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all payments" data-label="All payments" aria-selected="{{ 'true' if selected_payment == 'all' else 'false' }}">All payments</button>
               {% for payment_key, payment_label in expense_payment_types %}
-              <button type="button" class="se-filter-listbox-option{% if selected_payment == payment_key %} is-selected{% endif %}" role="option" data-value="{{ payment_key }}" aria-selected="{{ 'true' if selected_payment == payment_key else 'false' }}">{{ payment_label }}</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_payment == payment_key %} is-selected{% endif %}" role="option" data-value="{{ payment_key }}" data-name="{{ payment_label|lower }}" data-label="{{ payment_label }}" aria-selected="{{ 'true' if selected_payment == payment_key else 'false' }}">{{ payment_label }}</button>
               {% endfor %}
             </div>
           </div>
-          <div class="se-filter-chip-date-host pl-date-range-host" id="pl-date-range-host">
-            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range{% if active_date_filter %} is-filtered{% endif %}">
+          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="pl-date-range-host">
+            <span class="se-filter-chip-label" id="pl-date-range-label">Date</span>
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
               <div class="se-filter-chip-control">
-                <span class="se-filter-chip-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-                </span>
                 <div class="an-range-wrap an-range-wrap--sales" id="pl-date-range-wrap" data-max-date="{{ today_iso }}">
-                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="pl-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="pl-date-range-panel">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="pl-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="pl-date-range-panel" aria-labelledby="pl-date-range-label pl-date-range-display">
                     <span class="an-range-trigger-label">
-                      <span id="pl-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Date{% endif %}</span>
+                      <span id="pl-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Select date…{% endif %}</span>
                     </span>
                   </button>
                   <div class="an-range-backdrop" id="pl-date-range-backdrop" aria-hidden="true"></div>
@@ -376,7 +355,8 @@
 </div>
 {% include 'partials/purchase_ledger_add_modal.html' %}
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=9"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
 {% include 'partials/purchase_ledger_filter_scripts.html' %}
 {% include 'partials/purchase_ledger_add_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}

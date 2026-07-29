@@ -14,6 +14,84 @@
   var ITEMS_API = '/point-of-sale/api/menu/items';
   var PRODUCTS_API = '/point-of-sale/api/menu/products';
 
+  function resolvePosApiBase() {
+    var el =
+      document.getElementById('pos-menu-page') ||
+      document.querySelector('[data-pos-api-base]');
+    var base = (el && el.getAttribute('data-pos-api-base')) || '';
+    if (!base) {
+      base =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? '/bar-point-of-sale'
+          : '/point-of-sale';
+    }
+    return String(base).replace(/\/$/, '') || '/point-of-sale';
+  }
+
+  function resolvePosOutlet() {
+    var el =
+      document.getElementById('pos-menu-page') ||
+      document.querySelector('[data-pos-outlet]');
+    var outlet = (el && el.getAttribute('data-pos-outlet')) || '';
+    if (!outlet) {
+      outlet =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? 'bar'
+          : 'restaurant';
+    }
+    return outlet;
+  }
+
+  function isBarOutlet() {
+    return resolvePosOutlet() === 'bar';
+  }
+
+  function syncPosApiPaths() {
+    var base = resolvePosApiBase();
+    CATEGORIES_API = base + '/api/menu/categories';
+    ITEMS_API = base + '/api/menu/items';
+    PRODUCTS_API = base + '/api/menu/products';
+  }
+
+  function peerOutlet() {
+    return isBarOutlet() ? 'restaurant' : 'bar';
+  }
+
+  /** List URLs include the peer outlet so Bar categories show on Restaurant Menu and vice versa. */
+  function menuListUrl(path) {
+    var url = path || '';
+    url += (url.indexOf('?') === -1 ? '?' : '&') + 'include_outlets=' + encodeURIComponent(peerOutlet());
+    return url;
+  }
+
+  function apiBaseForOutlet(outlet) {
+    return String(outlet || '').toLowerCase() === 'bar'
+      ? '/bar-point-of-sale'
+      : '/point-of-sale';
+  }
+
+  function categoryOutlet(cat) {
+    return String((cat && cat.outlet) || resolvePosOutlet()).toLowerCase() === 'bar'
+      ? 'bar'
+      : 'restaurant';
+  }
+
+  function categoryDisplayName(cat) {
+    var name = (cat && cat.name) || '';
+    var outlet = categoryOutlet(cat);
+    if (outlet !== resolvePosOutlet()) {
+      name += outlet === 'bar' ? ' · Bar' : ' · Restaurant';
+    }
+    return name;
+  }
+
+  function itemOutlet(it) {
+    if (it && it.outlet) return categoryOutlet({ outlet: it.outlet });
+    var cat = it && it.category_id != null ? findCategory(it.category_id) : null;
+    return categoryOutlet(cat);
+  }
+
+
   /** Margin band thresholds — keep in sync with db.POS_MENU_MARGIN_* */
   var MARGIN_HEALTHY_PCT = 60;
   var MARGIN_MODERATE_PCT = 30;
@@ -24,6 +102,8 @@
   var productsById = {};
   var selectedCategoryId = null;
   var productsLoaded = false;
+  var productsLoadedForOutlet = null;
+  var productOutletFilter = '';
   var busy = false;
   var detailsItem = null;
   var detailsBusy = false;
@@ -38,6 +118,7 @@
   var itemSaveInflight = null;
 
   var filterSearch = '';
+  var filterOutlet = '';
   var filterCategory = '';
   var filterStatus = '';
   /** Active column sort — persists across filter / table re-renders (Expense Ledger pattern). */
@@ -130,12 +211,24 @@
     return 'low';
   }
 
-  var PRODUCT_PLACEHOLDER = 'Add ingredient…';
+  var PRODUCT_PLACEHOLDER = '';
   var recipeDraft = [];
 
   function setListboxValue(fieldId, value, label) {
     if (typeof global.resetEpListbox === 'function') {
-      global.resetEpListbox(fieldId, value || '', label || PRODUCT_PLACEHOLDER);
+      var display = label;
+      if (display == null) {
+        display = fieldId === 'pos-menu-item-product' ? '' : 'Select…';
+      }
+      global.resetEpListbox(fieldId, value || '', display);
+      if (fieldId === 'pos-menu-item-product') {
+        var combo = document.getElementById('pos-menu-item-product-trigger');
+        if (combo) {
+          combo.value = '';
+          combo.classList.add('is-placeholder');
+          combo.setAttribute('placeholder', '');
+        }
+      }
       return;
     }
     var input = document.getElementById(fieldId);
@@ -144,7 +237,12 @@
 
   function productLabel(p) {
     if (!p) return '';
-    return String(p.name || '').trim();
+    var name = String(p.name || '').trim();
+    var o = String(p.outlet || '').toLowerCase();
+    if (!productOutletFilter && o && o !== 'both') {
+      name += o === 'bar' ? ' · Bar' : ' · Restaurant';
+    }
+    return name;
   }
 
   function normalizeProductUnit(productUnit) {
@@ -349,7 +447,7 @@
     for (var i = 0; i < recipeDraft.length; i++) {
       if (Number(recipeDraft[i].product_id) === pid) {
         showToast('That product is already in the recipe.');
-        setListboxValue('pos-menu-item-product', '', PRODUCT_PLACEHOLDER);
+        clearProductPicker();
         return;
       }
     }
@@ -363,7 +461,7 @@
       unit: coerceRecipeUnit(productUnit, unit)
     });
     renderRecipeRows();
-    setListboxValue('pos-menu-item-product', '', PRODUCT_PLACEHOLDER);
+    clearProductPicker();
     markItemDirty();
     setTimeout(function () {
       var rows = document.querySelectorAll('#pos-menu-recipe-list [data-recipe-qty]');
@@ -406,21 +504,16 @@
     if (!list) return;
     var wrap = list.querySelector('.ep-listbox-options');
     if (!wrap) {
-      var searchWrap = list.querySelector('.ep-listbox-search-wrap');
-      if (!searchWrap) {
-        list.innerHTML =
-          '<div class="ep-listbox-search-wrap">' +
-          '<input type="search" class="ep-listbox-search" placeholder="Search…" autocomplete="off" aria-label="Search Product Master">' +
-          '</div><div class="ep-listbox-options"></div>';
-        var root = list.closest('[data-se-listbox]');
-        if (root) root.__epListboxBound = false;
-      } else if (!list.querySelector('.ep-listbox-options')) {
-        var options = document.createElement('div');
-        options.className = 'ep-listbox-options';
-        list.appendChild(options);
-      }
-      wrap = list.querySelector('.ep-listbox-options') || list;
+      wrap = document.createElement('div');
+      wrap.className = 'ep-listbox-options';
+      list.innerHTML = '';
+      list.appendChild(wrap);
+      var root = list.closest('[data-se-listbox]');
+      if (root) root.__epListboxBound = false;
     }
+    /* Combobox searches in the chip input — strip any legacy dropdown search field. */
+    var legacySearch = list.querySelector('.ep-listbox-search-wrap');
+    if (legacySearch) legacySearch.remove();
     var html = products
       .map(function (p) {
         var id = String(p.id);
@@ -443,7 +536,11 @@
       })
       .join('');
     wrap.innerHTML = html || '<div class="pos-menu-empty" style="padding:10px 12px">No products in Product Master.</div>';
-    setListboxValue('pos-menu-item-product', '', PRODUCT_PLACEHOLDER);
+    clearProductPicker();
+  }
+
+  function clearProductPicker() {
+    setListboxValue('pos-menu-item-product', '', '');
   }
 
   function clearFilterListboxPlaceholder(root) {
@@ -452,12 +549,50 @@
     if (valueEl) valueEl.classList.remove('is-placeholder', 'staff-supplier-placeholder');
   }
 
+  function ensureFilterOutlet() {
+    if (filterOutlet === 'bar' || filterOutlet === 'restaurant' || filterOutlet === '') {
+      return filterOutlet;
+    }
+    filterOutlet = resolvePosOutlet();
+    return filterOutlet;
+  }
+
+  function outletFilterLabel(outlet) {
+    if (!outlet) return 'All';
+    return String(outlet).toLowerCase() === 'bar' ? 'Bar' : 'Restaurant';
+  }
+
+  function categoriesForOutletFilter() {
+    var outlet = ensureFilterOutlet();
+    if (!outlet) return categories.slice();
+    return categories.filter(function (c) {
+      return categoryOutlet(c) === outlet;
+    });
+  }
+
+  function syncOutletFilterListbox() {
+    var outlet = ensureFilterOutlet();
+    var root = $('#pos-menu-filter-outlet-listbox');
+    var list = $('#pos-menu-filter-outlet-list');
+    var label = outletFilterLabel(outlet);
+    setListboxValue('pos-menu-filter-outlet', outlet, label);
+    if (list) {
+      $all('.se-filter-listbox-option', list).forEach(function (btn) {
+        var on = String(btn.getAttribute('data-value') || '') === String(outlet || '');
+        btn.classList.toggle('is-selected', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    clearFilterListboxPlaceholder(root);
+  }
+
   function fillCategoryFilterListbox(filterVal) {
     var wrap = $('#pos-menu-filter-category-options');
     var root = $('#pos-menu-filter-category-listbox');
+    var visibleCats = categoriesForOutletFilter();
     var want = filterVal == null ? filterCategory : filterVal;
     want = want == null ? '' : String(want);
-    if (want && !categories.some(function (c) { return String(c.id) === want; })) {
+    if (want && !visibleCats.some(function (c) { return String(c.id) === want; })) {
       want = '';
       filterCategory = '';
     }
@@ -468,11 +603,11 @@
       '" role="option" data-value="" data-name="all categories" data-label="All Categories" aria-selected="' +
       (!want ? 'true' : 'false') +
       '">All Categories</button>' +
-      categories
+      visibleCats
         .map(function (c) {
           var id = String(c.id);
           var on = id === want;
-          var name = c.name || '';
+          var name = !ensureFilterOutlet() ? categoryDisplayName(c) : c.name || '';
           return (
             '<button type="button" class="se-filter-listbox-option' +
             (on ? ' is-selected' : '') +
@@ -494,7 +629,9 @@
     var label = 'All Categories';
     if (want) {
       var cat = findCategory(want);
-      label = (cat && cat.name) || 'All Categories';
+      label =
+        (cat && (!ensureFilterOutlet() ? categoryDisplayName(cat) : cat.name)) ||
+        'All Categories';
       if (!cat) want = '';
     }
     setListboxValue('pos-menu-filter-category', want, label);
@@ -506,8 +643,43 @@
     var modal = $('#pos-menu-item-category');
     var filterVal = filterCategory || (filter ? filter.value : '') || '';
     var modalVal = modal ? modal.value : '';
+    syncOutletFilterListbox();
     fillCategoryFilterListbox(filterVal);
-    if (modal) {
+    var optionsWrap = $('#pos-menu-item-category-list');
+    if (optionsWrap && optionsWrap.classList.contains('se-filter-listbox')) {
+      optionsWrap.innerHTML = categories
+        .map(function (c) {
+          var id = String(c.id);
+          var selected = modalVal && String(modalVal) === id;
+          var name = categoryDisplayName(c);
+          return (
+            '<button type="button" class="se-filter-listbox-option' +
+            (selected ? ' is-selected' : '') +
+            '" role="option" data-value="' +
+            escapeHtml(id) +
+            '" data-name="' +
+            escapeHtml(String(name).toLowerCase()) +
+            '" data-label="' +
+            escapeHtml(name) +
+            '" aria-selected="' +
+            (selected ? 'true' : 'false') +
+            '">' +
+            escapeHtml(name) +
+            '</button>'
+          );
+        })
+        .join('');
+      if (modalVal) {
+        var cat = findCategory(modalVal);
+        setListboxValue(
+          'pos-menu-item-category',
+          String(modalVal),
+          (cat && categoryDisplayName(cat)) || 'Select category…'
+        );
+      } else {
+        setListboxValue('pos-menu-item-category', '', 'Select category…');
+      }
+    } else if (modal && modal.tagName === 'SELECT') {
       modal.innerHTML =
         '<option value="">Select category…</option>' +
         categories
@@ -516,7 +688,7 @@
               '<option value="' +
               escapeHtml(c.id) +
               '">' +
-              escapeHtml(c.name) +
+              escapeHtml(categoryDisplayName(c)) +
               '</option>'
             );
           })
@@ -538,6 +710,8 @@
       .trim()
       .toLowerCase();
     return items.filter(function (it) {
+      var outletWant = ensureFilterOutlet();
+      if (outletWant && itemOutlet(it) !== outletWant) return false;
       if (filterCategory && Number(it.category_id) !== Number(filterCategory)) return false;
       var st = itemStatus(it);
       if (filterStatus && st !== filterStatus) return false;
@@ -551,12 +725,19 @@
   }
 
   function itemCategoryName(it) {
-    return it.category_name || (findCategory(it.category_id) || {}).name || '';
+    var cat = findCategory(it.category_id);
+    if (cat) return cat.name || '';
+    return it.category_name || '';
+  }
+
+  function itemOutletLabel(it) {
+    return outletFilterLabel(itemOutlet(it));
   }
 
   function itemSortValue(it, key, type) {
     var raw = '';
     if (key === 'name') raw = it.name || '';
+    else if (key === 'outlet') raw = itemOutletLabel(it);
     else if (key === 'category') raw = itemCategoryName(it);
     else if (key === 'rate') raw = it.rate;
     else if (key === 'food_cost') raw = it.food_cost;
@@ -686,18 +867,6 @@
     );
   }
 
-  function statusHtml(it) {
-    var st = itemStatus(it);
-    var label = st === 'hidden' ? 'Hidden' : 'Visible';
-    return (
-      '<span class="pos-menu-status pos-menu-status--' +
-      st +
-      '"><span class="pos-menu-status-dot" aria-hidden="true"></span>' +
-      label +
-      '</span>'
-    );
-  }
-
   function renderTable() {
     var body = $('#pos-menu-table-body');
     if (!body) return;
@@ -722,12 +891,11 @@
 
     body.innerHTML = rows
       .map(function (it) {
+        var outletLabel = itemOutletLabel(it);
         var catName = itemCategoryName(it) || '—';
         var meta = [];
         if (it.code) meta.push(it.code);
         if (it.variant) meta.push(it.variant);
-        var st = itemStatus(it);
-        var statusLabel = st === 'hidden' ? 'Hidden' : 'Visible';
         var itemId = escapeHtml(it.id);
         return (
           '<tr class="pos-menu-data-row" data-sort-row data-item-id="' +
@@ -743,6 +911,11 @@
           (meta.length
             ? '<span class="pl-meta pos-menu-item-meta">' + escapeHtml(meta.join(' · ')) + '</span>'
             : '') +
+          '</td>' +
+          '<td data-sort-value="' +
+          escapeHtml(outletLabel) +
+          '">' +
+          escapeHtml(outletLabel) +
           '</td>' +
           '<td data-sort-value="' +
           escapeHtml(catName === '—' ? '' : catName) +
@@ -768,11 +941,6 @@
           escapeHtml(it.margin_pct != null ? String(it.margin_pct) : '') +
           '">' +
           badgeHtml(it) +
-          '</td>' +
-          '<td data-sort-value="' +
-          escapeHtml(statusLabel) +
-          '">' +
-          statusHtml(it) +
           '</td>' +
           '<td class="pl-col-actions pos-menu-actions-col">' +
           '<div class="act-grp">' +
@@ -852,6 +1020,7 @@
     var t = String(type || '').toLowerCase();
     if (t === 'veg') return 'Veg';
     if (t === 'non_veg') return 'Non-Veg';
+    if (t === 'liquor' || t === 'liquour') return 'Liquor';
     return '—';
   }
 
@@ -923,7 +1092,9 @@
     if (!id || detailsBusy) return;
     detailsBusy = true;
     setErr($('#pos-md-err'), '');
-    fetch(ITEMS_API + '/' + encodeURIComponent(id), {
+    var existing = findItem(id);
+    var itemsApi = apiBaseForOutlet(itemOutlet(existing)) + '/api/menu/items';
+    fetch(itemsApi + '/' + encodeURIComponent(id), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
     })
@@ -967,19 +1138,29 @@
     var chips = $('#pos-md-chips');
     if (chips) {
       var portion = item.portion_size || item.variant || '—';
-      chips.innerHTML =
+      var chipHtml =
         '<span class="pos-md-chip">Category <strong>' +
         escapeHtml(item.category_name || '—') +
         '</strong></span>' +
         '<span class="pos-md-chip">Selling Price <strong>' +
         escapeHtml(formatMoney(item.rate)) +
-        '</strong></span>' +
-        '<span class="pos-md-chip">Menu Type <strong>' +
-        escapeHtml(menuTypeLabel(item.menu_type)) +
-        '</strong></span>' +
+        '</strong></span>';
+      if (!isBarOutlet()) {
+        chipHtml +=
+          '<span class="pos-md-chip">Menu Type <strong>' +
+          escapeHtml(menuTypeLabel(item.menu_type)) +
+          '</strong></span>';
+      } else {
+        chipHtml +=
+          '<span class="pos-md-chip">Item Type <strong>' +
+          escapeHtml(item.item_kind === 'liquor' ? 'Liquor' : 'Food') +
+          '</strong></span>';
+      }
+      chipHtml +=
         '<span class="pos-md-chip">Portion Size <strong>' +
         escapeHtml(portion || '—') +
         '</strong></span>';
+      chips.innerHTML = chipHtml;
     }
 
     var displayCost =
@@ -1047,11 +1228,15 @@
       '<div class="pos-md-field-card"><label for="pos-md-portion">Portion Size</label><input type="text" id="pos-md-portion" maxlength="80" value="' +
       escapeHtml(portion) +
       '" placeholder="e.g. Full / 300g"></div>' +
-      '<div class="pos-md-field-card"><label for="pos-md-menu-type">Menu Type</label><select id="pos-md-menu-type"><option value="">—</option><option value="veg"' +
-      (item.menu_type === 'veg' ? ' selected' : '') +
-      '>Veg</option><option value="non_veg"' +
-      (item.menu_type === 'non_veg' ? ' selected' : '') +
-      '>Non-Veg</option></select></div>' +
+      (isBarOutlet()
+        ? ''
+        : '<div class="pos-md-field-card"><label for="pos-md-menu-type">Menu Type</label><select id="pos-md-menu-type"><option value="">—</option><option value="veg"' +
+          (item.menu_type === 'veg' ? ' selected' : '') +
+          '>Veg</option><option value="non_veg"' +
+          (item.menu_type === 'non_veg' ? ' selected' : '') +
+          '>Non-Veg</option><option value="liquor"' +
+          (item.menu_type === 'liquor' ? ' selected' : '') +
+          '>Liquor</option></select></div>') +
       '<div class="pos-md-field-card"><label>Last Updated</label><div class="pos-md-field-value' +
       (item.updated_at ? '' : ' is-muted') +
       '">' +
@@ -1260,7 +1445,10 @@
           unit: line.unit
         };
       }),
-      menu_type: ($('#pos-md-menu-type') && $('#pos-md-menu-type').value) || '',
+      menu_type: isBarOutlet()
+        ? ''
+        : ($('#pos-md-menu-type') && $('#pos-md-menu-type').value) || '',
+      item_kind: detailsItem.item_kind || 'food',
       portion_size: ($('#pos-md-portion') && $('#pos-md-portion').value) || '',
       prep_time_mins: prepVal === '' ? '' : Number(prepVal),
       shelf_life: ($('#pos-md-shelf') && $('#pos-md-shelf').value) || '',
@@ -1279,7 +1467,8 @@
     }
     detailsBusy = true;
     setErr(err, '');
-    fetch(ITEMS_API, {
+    var itemsApi = apiBaseForOutlet(itemOutlet(detailsItem)) + '/api/menu/items';
+    fetch(itemsApi, {
       method: 'POST',
       credentials: 'same-origin',
       headers: {
@@ -1302,10 +1491,11 @@
           showToast(msg);
           return;
         }
-        if (res.data.categories) applyCategories(res.data.categories, Number(payload.category_id));
         showToast('Menu details saved');
-        fetchAllItemsThen(function () {
-          openMenuDetails(payload.id);
+        fetchCategoriesThen(function () {
+          fetchAllItemsThen(function () {
+            openMenuDetails(payload.id);
+          });
         });
       })
       .catch(function () {
@@ -1319,6 +1509,7 @@
     var rows = sortedFilteredItems();
     var header = [
       'Menu Item',
+      'Outlet',
       'Category',
       'Selling Price',
       'Food Cost',
@@ -1337,6 +1528,7 @@
       lines.push(
         [
           cell(it.name),
+          cell(itemOutletLabel(it)),
           cell(catName),
           cell(it.rate != null ? Number(it.rate).toFixed(2) : ''),
           cell(it.food_cost != null ? Number(it.food_cost).toFixed(2) : ''),
@@ -1373,7 +1565,7 @@
   }
 
   function fetchCategoriesThen(cb) {
-    fetch(CATEGORIES_API, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    fetch(menuListUrl(CATEGORIES_API), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(parseJsonResponse)
       .then(function (res) {
         if (!res.ok || !res.data || !res.data.ok) {
@@ -1395,7 +1587,7 @@
   }
 
   function fetchAllItemsThen(cb) {
-    fetch(ITEMS_API, {
+    fetch(menuListUrl(ITEMS_API), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
     })
@@ -1416,12 +1608,55 @@
       });
   }
 
-  function fetchProductsThen(cb) {
-    if (productsLoaded && products.length) {
+  function ensureProductOutletFilter() {
+    if (
+      productOutletFilter === 'bar' ||
+      productOutletFilter === 'restaurant' ||
+      productOutletFilter === ''
+    ) {
+      return productOutletFilter;
+    }
+    productOutletFilter = resolvePosOutlet();
+    return productOutletFilter;
+  }
+
+  function defaultProductOutletFilter() {
+    syncCategoryHiddenFromSelect();
+    var catId =
+      ($('#pos-menu-item-category-id') && $('#pos-menu-item-category-id').value) ||
+      ($('#pos-menu-item-category') && $('#pos-menu-item-category').value) ||
+      '';
+    var cat = findCategory(catId);
+    if (cat) return categoryOutlet(cat);
+    if (filterOutlet === 'bar' || filterOutlet === 'restaurant') return filterOutlet;
+    return resolvePosOutlet();
+  }
+
+  function syncProductOutletListbox() {
+    var outlet = ensureProductOutletFilter();
+    var root = $('#pos-menu-item-product-outlet-listbox');
+    var list = $('#pos-menu-item-product-outlet-list');
+    var label = outletFilterLabel(outlet);
+    setListboxValue('pos-menu-item-product-outlet', outlet, label);
+    if (list) {
+      $all('.se-filter-listbox-option', list).forEach(function (btn) {
+        var on = String(btn.getAttribute('data-value') || '') === String(outlet || '');
+        btn.classList.toggle('is-selected', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+    clearFilterListboxPlaceholder(root);
+  }
+
+  function fetchProductsThen(cb, force) {
+    var outlet = ensureProductOutletFilter();
+    var cacheKey = outlet || 'all';
+    if (!force && productsLoaded && productsLoadedForOutlet === cacheKey && products.length) {
       if (typeof cb === 'function') cb();
       return;
     }
-    fetch(PRODUCTS_API, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+    var url = PRODUCTS_API + '?outlet=' + encodeURIComponent(outlet || 'all');
+    fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
       .then(function (r) {
         return r.json().then(function (data) {
           return { ok: r.ok, data: data };
@@ -1437,12 +1672,26 @@
           productsById[String(p.id)] = p;
         });
         productsLoaded = true;
+        productsLoadedForOutlet = cacheKey;
         if (typeof cb === 'function') cb();
       })
       .catch(function (err) {
         showToast(err.message || 'Could not load Product Master.');
         if (typeof cb === 'function') cb(err);
       });
+  }
+
+  function reloadProductPicker() {
+    syncProductOutletListbox();
+    fetchProductsThen(function () {
+      rebuildProductListbox();
+      clearProductPicker();
+      if (typeof global.initEpListboxes === 'function') {
+        try {
+          global.initEpListboxes();
+        } catch (err) {}
+      }
+    }, true);
   }
 
   function openModal(id) {
@@ -1493,7 +1742,12 @@
       name: ($('#pos-menu-item-name').value || '').trim(),
       code: ($('#pos-menu-item-code').value || '').trim(),
       variant: ($('#pos-menu-item-variant').value || '').trim(),
-      menuType: ($('#pos-menu-item-menu-type') && $('#pos-menu-item-menu-type').value) || '',
+      menuType: isBarOutlet()
+        ? ''
+        : ($('#pos-menu-item-menu-type') && $('#pos-menu-item-menu-type').value) || '',
+      itemKind: isBarOutlet()
+        ? (($('#pos-menu-item-kind') && $('#pos-menu-item-kind').value) || 'food')
+        : 'food',
       rate: ($('#pos-menu-item-rate').value || '').trim()
     };
   }
@@ -1565,41 +1819,100 @@
     if (sel && hidden) hidden.value = sel.value || '';
   }
 
+  global.onPosMenuItemCategoryChanged = function () {
+    syncCategoryHiddenFromSelect();
+    markItemDirty();
+    var next = defaultProductOutletFilter();
+    if (next !== ensureProductOutletFilter()) {
+      productOutletFilter = next;
+      reloadProductPicker();
+    }
+  };
+
+  global.onPosMenuProductOutletChanged = function (root, value) {
+    var raw = String(value || '').trim().toLowerCase();
+    productOutletFilter =
+      raw === 'bar' ? 'bar' : raw === 'restaurant' ? 'restaurant' : '';
+    reloadProductPicker();
+  };
+
+  global.onPosMenuItemMenuTypeChanged = function () {
+    markItemDirty();
+  };
+
+  global.onPosMenuItemKindChanged = function () {
+    markItemDirty();
+  };
+
+  function setItemKindListbox(value) {
+    var v = String(value || 'food').toLowerCase();
+    if (v === 'liquour' || v === 'alcohol' || v === 'bar') v = 'liquor';
+    if (v !== 'liquor') v = 'food';
+    setListboxValue('pos-menu-item-kind', v, v === 'liquor' ? 'Liquor' : 'Food');
+  }
+
+  function setMenuTypeListbox(value) {
+    var v = String(value || '');
+    var label = 'Select…';
+    if (v === 'veg') label = 'Veg';
+    else if (v === 'non_veg') label = 'Non-Veg';
+    else if (v === 'liquor') label = 'Liquor';
+    setListboxValue('pos-menu-item-menu-type', v, label);
+  }
+
   function openItemModal(item) {
     var isEdit = !!(item && item.id);
     resetItemAutosaveState();
-    var catId =
-      isEdit && item.category_id != null
-        ? Number(item.category_id)
-        : filterCategory
-          ? Number(filterCategory)
-          : selectedCategoryId;
+    var catId = null;
+    if (isEdit && item.category_id != null) {
+      var editCatId = Number(item.category_id);
+      if (findCategory(editCatId)) catId = editCatId;
+    }
     if (!categories.length) {
       showToast('Add a category first.');
       openCategoryModal(null);
       return;
     }
-    if (!catId || !findCategory(catId)) {
-      catId = Number(categories[0].id);
+    if (!isEdit) {
+      var catHidden = $('#pos-menu-item-category');
+      if (catHidden) catHidden.value = '';
+      $('#pos-menu-item-category-id').value = '';
     }
-    var cat = findCategory(catId);
     fillCategorySelects();
     $('#pos-menu-item-title').textContent = isEdit ? 'Edit menu item' : 'Add menu item';
-    $('#pos-menu-item-copy').textContent =
-      'Set the menu name and rate, then add ingredients with the quantity required.';
     $('#pos-menu-item-id').value = isEdit ? String(item.id) : '';
-    var catSel = $('#pos-menu-item-category');
-    if (catSel) catSel.value = String(catId);
-    $('#pos-menu-item-category-id').value = String(catId);
+    if (catId) {
+      var cat = findCategory(catId);
+      $('#pos-menu-item-category-id').value = String(catId);
+      setListboxValue(
+        'pos-menu-item-category',
+        String(catId),
+        (cat && categoryDisplayName(cat)) || 'Select category…'
+      );
+    } else {
+      $('#pos-menu-item-category-id').value = '';
+      setListboxValue('pos-menu-item-category', '', 'Select category…');
+    }
+    syncCategoryHiddenFromSelect();
+    productOutletFilter = defaultProductOutletFilter();
+    syncProductOutletListbox();
     $('#pos-menu-item-name').value = isEdit ? item.name || '' : '';
     $('#pos-menu-item-code').value = isEdit ? item.code || '' : '';
     $('#pos-menu-item-rate').value = isEdit ? String(item.rate != null ? item.rate : '') : '';
     $('#pos-menu-item-variant').value = isEdit ? item.variant || '' : '';
-    var menuTypeSel = $('#pos-menu-item-menu-type');
-    if (menuTypeSel) {
+    if (isBarOutlet()) {
+      var kind = isEdit ? String(item.item_kind || 'food').toLowerCase() : 'food';
+      setItemKindListbox(kind);
+    } else {
+      setItemKindListbox('food');
+    }
+    if (isBarOutlet()) {
+      setMenuTypeListbox('');
+    } else {
       var mt = isEdit ? String(item.menu_type || '').toLowerCase() : '';
       if (mt === 'non-veg' || mt === 'nonveg' || mt === 'non veg') mt = 'non_veg';
-      menuTypeSel.value = mt === 'veg' || mt === 'non_veg' ? mt : '';
+      if (mt === 'liquour' || mt === 'alcohol') mt = 'liquor';
+      setMenuTypeListbox(mt === 'veg' || mt === 'non_veg' || mt === 'liquor' ? mt : '');
     }
     recipeDraft = [];
     if (isEdit && Array.isArray(item.recipe)) {
@@ -1626,7 +1939,6 @@
         if (name) name.focus();
       }, 30);
     });
-    if (cat) selectedCategoryId = Number(cat.id);
   }
 
   global.onPosMenuProductPicked = function (root, value) {
@@ -1652,7 +1964,11 @@
     busy = true;
     var payload = { name: name, is_visible: visible };
     if (idVal) payload.id = Number(idVal);
-    fetch(CATEGORIES_API, {
+    var editCat = idVal ? findCategory(idVal) : null;
+    var catApi =
+      apiBaseForOutlet(editCat ? categoryOutlet(editCat) : resolvePosOutlet()) +
+      '/api/menu/categories';
+    fetch(catApi, {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -1670,10 +1986,13 @@
           return;
         }
         var savedId = res.data.category && res.data.category.id;
-        applyCategories(res.data.categories, savedId);
         closeModal('pos-menu-cat-modal');
         showToast(idVal ? 'Category updated' : 'Category added');
-        fetchAllItemsThen();
+        fetchCategoriesThen(function () {
+          if (savedId) selectedCategoryId = Number(savedId);
+          fillCategorySelects();
+          fetchAllItemsThen();
+        });
       })
       .catch(function () {
         busy = false;
@@ -1685,8 +2004,10 @@
     var idVal = ($('#pos-menu-cat-id').value || '').trim();
     if (!idVal || busy) return;
     if (!window.confirm('Delete this category and its menu items?')) return;
+    var cat = findCategory(idVal);
+    var catApi = apiBaseForOutlet(categoryOutlet(cat)) + '/api/menu/categories';
     busy = true;
-    fetch(CATEGORIES_API + '/' + encodeURIComponent(idVal) + '/delete', {
+    fetch(catApi + '/' + encodeURIComponent(idVal) + '/delete', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
@@ -1703,10 +2024,11 @@
           return;
         }
         selectedCategoryId = null;
-        applyCategories(res.data.categories);
         closeModal('pos-menu-cat-modal');
         showToast('Category deleted');
-        fetchAllItemsThen();
+        fetchCategoriesThen(function () {
+          fetchAllItemsThen();
+        });
       })
       .catch(function () {
         busy = false;
@@ -1764,6 +2086,8 @@
       code: fields.code,
       variant: fields.variant,
       menu_type: fields.menuType || '',
+      item_kind:
+        fields.menuType === 'liquor' || fields.itemKind === 'liquor' ? 'liquor' : fields.itemKind || 'food',
       rate: Number(fields.rate),
       recipe: recipeResult.recipe
     };
@@ -1784,7 +2108,10 @@
     };
     if (keepalive) fetchOpts.keepalive = true;
 
-    itemSaveInflight = fetch(ITEMS_API, fetchOpts)
+    var cat = findCategory(fields.categoryId);
+    var itemsApi = apiBaseForOutlet(categoryOutlet(cat)) + '/api/menu/items';
+
+    itemSaveInflight = fetch(itemsApi, fetchOpts)
       .then(function (r) {
         return r
           .json()
@@ -1812,7 +2139,6 @@
           var title = $('#pos-menu-item-title');
           if (title) title.textContent = 'Edit menu item';
         }
-        if (res.data.categories) applyCategories(res.data.categories, Number(fields.categoryId));
         selectedCategoryId = Number(fields.categoryId);
         clearItemDirtyAfterPersist(epochAtStart);
         if (toastOnSuccess) {
@@ -1820,7 +2146,9 @@
         } else if (silent && wasCreate) {
           showToast('Item saved');
         }
-        fetchAllItemsThen();
+        fetchCategoriesThen(function () {
+          fetchAllItemsThen();
+        });
         return { ok: true, item: saved, created: wasCreate };
       })
       .catch(function () {
@@ -1850,7 +2178,9 @@
     resetItemAutosaveState();
     var runDelete = function () {
       busy = true;
-      fetch(ITEMS_API + '/' + encodeURIComponent(id) + '/delete', {
+      var existing = findItem(id) || detailsItem;
+      var itemsApi = apiBaseForOutlet(itemOutlet(existing)) + '/api/menu/items';
+      fetch(itemsApi + '/' + encodeURIComponent(id) + '/delete', {
         method: 'POST',
         credentials: 'same-origin',
         headers: { Accept: 'application/json' }
@@ -1867,10 +2197,11 @@
             showToast((res.data && res.data.error) || 'Could not delete item.');
             return;
           }
-          if (res.data.categories) applyCategories(res.data.categories, selectedCategoryId);
           closeModal('pos-menu-item-modal');
           showToast('Item deleted');
-          fetchAllItemsThen();
+          fetchCategoriesThen(function () {
+            fetchAllItemsThen();
+          });
         })
         .catch(function () {
           busy = false;
@@ -1899,6 +2230,11 @@
     if (searchChip) {
       searchChip.classList.toggle('is-active', !!(search.value || '').trim());
     }
+    var outletFilter = $('#pos-menu-filter-outlet', page);
+    var outletChip = outletFilter && outletFilter.closest('.pos-menu-filter-listbox');
+    if (outletChip) {
+      outletChip.classList.toggle('is-filtered', !!ensureFilterOutlet());
+    }
     var catFilter = $('#pos-menu-filter-category', page);
     var catChip = catFilter && catFilter.closest('.pos-menu-filter-listbox');
     if (catChip) catChip.classList.toggle('is-filtered', !!(catFilter.value || '').trim());
@@ -1907,6 +2243,17 @@
     if (statusChip) {
       statusChip.classList.toggle('is-filtered', !!(statusFilter.value || '').trim());
     }
+  }
+
+  function onOutletFilterChanged(root, value) {
+    var raw = String(value || '').trim().toLowerCase();
+    filterOutlet = raw === 'bar' ? 'bar' : raw === 'restaurant' ? 'restaurant' : '';
+    filterCategory = '';
+    syncOutletFilterListbox();
+    fillCategoryFilterListbox('');
+    if (!filterOutlet) clearFilterListboxPlaceholder(root || $('#pos-menu-filter-outlet-listbox'));
+    syncFilterChipState();
+    renderTable();
   }
 
   function onCategoryFilterChanged(root, value) {
@@ -1923,6 +2270,7 @@
     renderTable();
   }
 
+  global.posMenuOutletFilterChanged = onOutletFilterChanged;
   global.posMenuCategoryFilterChanged = onCategoryFilterChanged;
   global.posMenuStatusFilterChanged = onStatusFilterChanged;
 
@@ -1940,6 +2288,8 @@
     try {
       if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
     } catch (err) {}
+    syncOutletFilterListbox();
+    clearFilterListboxPlaceholder($('#pos-menu-filter-outlet-listbox', page));
     clearFilterListboxPlaceholder($('#pos-menu-filter-category-listbox', page));
     clearFilterListboxPlaceholder($('#pos-menu-filter-status-listbox', page));
     syncFilterChipState(page);
@@ -2112,6 +2462,9 @@
           t.id === 'pos-menu-item-code' ||
           t.id === 'pos-menu-item-rate' ||
           t.id === 'pos-menu-item-variant' ||
+          t.id === 'pos-menu-item-kind' ||
+          t.id === 'pos-menu-item-menu-type' ||
+          t.id === 'pos-menu-item-category' ||
           t.hasAttribute('data-recipe-qty')
         ) {
           markItemDirty();
@@ -2123,6 +2476,7 @@
         if (
           t.id === 'pos-menu-item-category' ||
           t.id === 'pos-menu-item-menu-type' ||
+          t.id === 'pos-menu-item-kind' ||
           t.hasAttribute('data-recipe-unit')
         ) {
           if (t.id === 'pos-menu-item-category') syncCategoryHiddenFromSelect();
@@ -2207,6 +2561,8 @@
   }
 
   function initPosMenuSettings() {
+    syncPosApiPaths();
+    ensureFilterOutlet();
     var page = getMenuPageRoot();
     if (!page) return;
     ensureMenuPanelVisible(page);
@@ -2219,6 +2575,7 @@
       }
     }
     productsLoaded = false;
+    productsLoadedForOutlet = null;
     fetchCategoriesThen(function () {
       fetchAllItemsThen();
     });
@@ -2226,6 +2583,7 @@
 
   /** Soft-nav / Masters modal entry for the dedicated /point-of-sale/menu page. */
   function initPosMenuPage() {
+    syncPosApiPaths();
     if (!document.getElementById('pos-menu-page')) return;
     initPosMenuSettings();
     if (typeof global.initEpListboxes === 'function') {

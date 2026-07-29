@@ -1,12 +1,25 @@
 import json
 import os
+import re
 import sqlite3
 from datetime import datetime
 
-from werkzeug.security import generate_password_hash
+import auth_security
 
 DATABASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bell_elite.db")
 SQL_NOW = "datetime('now','localtime')"
+
+_POS_LIQUOR_CATEGORY_RE = re.compile(
+    r"\b(liquou?r|alcohol|whisky|whiskey|beer|wine|vodka|gin|rum|brandy|"
+    r"spirit|spirits|imfl|cocktail|cocktails|shots?|scotch|tequila|"
+    r"champagne|cider|liqueur|aperitif)\b",
+    re.IGNORECASE,
+)
+
+
+def is_pos_liquor_category(name):
+    """True when a POS menu category is treated as liquor (VAT 10%)."""
+    return bool(_POS_LIQUOR_CATEGORY_RE.search(str(name or "").strip()))
 
 
 def get_db():
@@ -15,6 +28,43 @@ def get_db():
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
+
+
+# POS workspace outlets (path/nav keys). Distinct from Sales Update OUTLET_* labels.
+POS_OUTLET_RESTAURANT = "restaurant"
+POS_OUTLET_BAR = "bar"
+POS_OUTLETS = (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR)
+
+
+def normalize_pos_outlet(value):
+    """Return restaurant|bar; unknown/empty → restaurant."""
+    key = str(value or "").strip().lower()
+    if key in ("bar",):
+        return POS_OUTLET_BAR
+    return POS_OUTLET_RESTAURANT
+
+
+def resolve_pos_outlets(outlet=None, outlets=None):
+    """Return a unique tuple of restaurant|bar outlets for list queries."""
+    if outlets is not None:
+        if isinstance(outlets, (str, bytes)):
+            raw = [outlets]
+        else:
+            try:
+                raw = list(outlets)
+            except TypeError:
+                raw = [outlets]
+        resolved = []
+        seen = set()
+        for value in raw:
+            key = normalize_pos_outlet(value)
+            if key in seen:
+                continue
+            seen.add(key)
+            resolved.append(key)
+        if resolved:
+            return tuple(resolved)
+    return (normalize_pos_outlet(outlet),)
 
 
 def empty_pos_floor_payload():
@@ -73,27 +123,128 @@ def _normalize_pos_floor_payload(areas, tables):
     return {"areas": clean_areas, "tables": clean_tables}
 
 
+def default_bar_pos_floor_payload():
+    """Bar Tables 1–16 (4 seats) + Counter Chairs 1–6 (1 seat) from venue sheet."""
+    areas = [
+        {"id": "bar_tables", "type": "area", "name": "Tables"},
+        {"id": "bar_counter", "type": "area", "name": "Counter"},
+    ]
+    tables = []
+    for i in range(1, 17):
+        tables.append(
+            {
+                "id": f"bar_t{i}",
+                "type": "table",
+                "name": f"Table {i}",
+                "seats": 4,
+                "shape": "square",
+                "status": "available",
+                "areaId": "bar_tables",
+                "mergeGroupId": None,
+                "mergePrimary": False,
+            }
+        )
+    for i in range(1, 7):
+        tables.append(
+            {
+                "id": f"bar_c{i}",
+                "type": "table",
+                "name": f"Chair {i}",
+                "seats": 1,
+                "shape": "square",
+                "status": "available",
+                "areaId": "bar_counter",
+                "mergeGroupId": None,
+                "mergePrimary": False,
+            }
+        )
+    return _normalize_pos_floor_payload(areas, tables)
+
+
 def ensure_pos_schema(conn):
     """Create lean POS floor, settings, and menu tables (soft migration)."""
     cursor = conn.cursor()
+    # --- Floor layout: migrate singleton id=1 → outlet-keyed rows ---
     cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS pos_floor_layout (
-            id          INTEGER PRIMARY KEY CHECK (id = 1),
-            payload     TEXT    NOT NULL,
-            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
-        )
-        """
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='pos_floor_layout'"
     )
+    if not cursor.fetchone():
+        cursor.execute(
+            """
+            CREATE TABLE pos_floor_layout (
+                outlet     TEXT    NOT NULL PRIMARY KEY,
+                payload    TEXT    NOT NULL,
+                updated_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+    else:
+        floor_cols = {
+            row[1] for row in cursor.execute("PRAGMA table_info(pos_floor_layout)").fetchall()
+        }
+        if "outlet" not in floor_cols:
+            cursor.execute("ALTER TABLE pos_floor_layout RENAME TO pos_floor_layout_legacy")
+            cursor.execute(
+                """
+                CREATE TABLE pos_floor_layout (
+                    outlet     TEXT    NOT NULL PRIMARY KEY,
+                    payload    TEXT    NOT NULL,
+                    updated_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO pos_floor_layout (outlet, payload, updated_at)
+                SELECT ?, payload, COALESCE(NULLIF(updated_at, ''), datetime('now','localtime'))
+                FROM pos_floor_layout_legacy
+                """,
+                (POS_OUTLET_RESTAURANT,),
+            )
+            cursor.execute("DROP TABLE pos_floor_layout_legacy")
+
+    # --- Settings: same outlet migration ---
     cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS pos_restaurant_settings (
-            id          INTEGER PRIMARY KEY CHECK (id = 1),
-            payload     TEXT    NOT NULL DEFAULT '{}',
-            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
-        )
-        """
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='pos_restaurant_settings'"
     )
+    if not cursor.fetchone():
+        cursor.execute(
+            """
+            CREATE TABLE pos_restaurant_settings (
+                outlet     TEXT    NOT NULL PRIMARY KEY,
+                payload    TEXT    NOT NULL DEFAULT '{}',
+                updated_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+            )
+            """
+        )
+    else:
+        settings_cols = {
+            row[1]
+            for row in cursor.execute("PRAGMA table_info(pos_restaurant_settings)").fetchall()
+        }
+        if "outlet" not in settings_cols:
+            cursor.execute(
+                "ALTER TABLE pos_restaurant_settings RENAME TO pos_restaurant_settings_legacy"
+            )
+            cursor.execute(
+                """
+                CREATE TABLE pos_restaurant_settings (
+                    outlet     TEXT    NOT NULL PRIMARY KEY,
+                    payload    TEXT    NOT NULL DEFAULT '{}',
+                    updated_at TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+                )
+                """
+            )
+            cursor.execute(
+                """
+                INSERT INTO pos_restaurant_settings (outlet, payload, updated_at)
+                SELECT ?, payload, COALESCE(NULLIF(updated_at, ''), datetime('now','localtime'))
+                FROM pos_restaurant_settings_legacy
+                """,
+                (POS_OUTLET_RESTAURANT,),
+            )
+            cursor.execute("DROP TABLE pos_restaurant_settings_legacy")
+
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS pos_menu_categories (
@@ -133,6 +284,7 @@ def ensure_pos_schema(conn):
         cursor.execute("ALTER TABLE pos_menu_items ADD COLUMN product_id INTEGER")
     _pos_menu_item_extra_cols = {
         "menu_type": "TEXT NOT NULL DEFAULT ''",
+        "item_kind": "TEXT NOT NULL DEFAULT 'food'",
         "portion_size": "TEXT NOT NULL DEFAULT ''",
         "prep_time_mins": "INTEGER",
         "shelf_life": "TEXT NOT NULL DEFAULT ''",
@@ -264,6 +416,10 @@ def ensure_pos_schema(conn):
         cursor.execute(
             "ALTER TABLE pos_invoices ADD COLUMN stock_deducted_at TEXT NOT NULL DEFAULT ''"
         )
+    if "vat_amount" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN vat_amount REAL NOT NULL DEFAULT 0"
+        )
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_pos_invoices_table_open
@@ -333,6 +489,77 @@ def ensure_pos_schema(conn):
         cursor.execute(
             "ALTER TABLE pos_invoices ADD COLUMN settled_at TEXT NOT NULL DEFAULT ''"
         )
+
+    # Outlet columns (default restaurant for existing rows)
+    cat_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(pos_menu_categories)").fetchall()
+    }
+    if "outlet" not in cat_cols:
+        cursor.execute(
+            "ALTER TABLE pos_menu_categories ADD COLUMN outlet TEXT NOT NULL DEFAULT 'restaurant'"
+        )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_menu_categories_outlet
+        ON pos_menu_categories(outlet, is_active, sort_order)
+        """
+    )
+    item_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(pos_menu_items)").fetchall()
+    }
+    if "outlet" not in item_cols:
+        cursor.execute(
+            "ALTER TABLE pos_menu_items ADD COLUMN outlet TEXT NOT NULL DEFAULT 'restaurant'"
+        )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_menu_items_outlet
+        ON pos_menu_items(outlet, category_id, is_active)
+        """
+    )
+    invoice_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(pos_invoices)").fetchall()
+    }
+    if "outlet" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN outlet TEXT NOT NULL DEFAULT 'restaurant'"
+        )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_invoices_outlet_table_open
+        ON pos_invoices(outlet, table_label, status, order_type, is_active)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pos_invoices_outlet_date
+        ON pos_invoices(outlet, order_date, is_active)
+        """
+    )
+
+    # Seed Bar floor once (never overwrite a saved Bar layout)
+    bar_row = cursor.execute(
+        "SELECT outlet FROM pos_floor_layout WHERE outlet = ?",
+        (POS_OUTLET_BAR,),
+    ).fetchone()
+    if not bar_row:
+        bar_payload = default_bar_pos_floor_payload()
+        blob = json.dumps(bar_payload, separators=(",", ":"))
+        cursor.execute(
+            f"""
+            INSERT INTO pos_floor_layout (outlet, payload, updated_at)
+            VALUES (?, ?, {SQL_NOW})
+            """,
+            (POS_OUTLET_BAR, blob),
+        )
+        cursor.execute(
+            f"""
+            INSERT OR IGNORE INTO pos_restaurant_settings (outlet, payload, updated_at)
+            VALUES (?, '{{}}', {SQL_NOW})
+            """,
+            (POS_OUTLET_BAR,),
+        )
+
     ensure_customers_schema(conn)
     conn.commit()
 
@@ -587,30 +814,41 @@ def delete_customer_record(conn, customer_id):
     return cursor.rowcount > 0
 
 
-def list_pos_menu_categories(conn, include_inactive=False):
-    """Return menu categories with active item counts."""
+def list_pos_menu_categories(
+    conn, include_inactive=False, outlet=POS_OUTLET_RESTAURANT, outlets=None
+):
+    """Return menu categories with active item counts for one or more outlets."""
     ensure_pos_schema(conn)
-    where = "" if include_inactive else "WHERE c.is_active = 1"
+    outlet_list = resolve_pos_outlets(outlet=outlet, outlets=outlets)
+    placeholders = ", ".join("?" for _ in outlet_list)
+    clauses = [f"c.outlet IN ({placeholders})"]
+    params = list(outlet_list)
+    if not include_inactive:
+        clauses.append("c.is_active = 1")
+    where = "WHERE " + " AND ".join(clauses)
     rows = conn.execute(
         f"""
         SELECT
             c.id,
             c.name,
+            c.outlet,
             c.sort_order,
             c.is_visible,
             c.is_active,
             COALESCE(SUM(CASE WHEN i.is_active = 1 THEN 1 ELSE 0 END), 0) AS item_count
         FROM pos_menu_categories c
-        LEFT JOIN pos_menu_items i ON i.category_id = c.id
+        LEFT JOIN pos_menu_items i ON i.category_id = c.id AND i.outlet = c.outlet
         {where}
         GROUP BY c.id
-        ORDER BY c.sort_order ASC, c.name COLLATE NOCASE ASC, c.id ASC
-        """
+        ORDER BY c.outlet ASC, c.sort_order ASC, c.name COLLATE NOCASE ASC, c.id ASC
+        """,
+        params,
     ).fetchall()
     return [
         {
             "id": int(r["id"]),
             "name": r["name"] or "",
+            "outlet": normalize_pos_outlet(r["outlet"]),
             "sort_order": int(r["sort_order"] or 0),
             "is_visible": bool(r["is_visible"]),
             "is_active": bool(r["is_active"]),
@@ -620,9 +858,10 @@ def list_pos_menu_categories(conn, include_inactive=False):
     ]
 
 
-def save_pos_menu_category(conn, *, category_id=None, name="", is_visible=True, sort_order=None):
+def save_pos_menu_category(conn, *, category_id=None, name="", is_visible=True, sort_order=None, outlet=POS_OUTLET_RESTAURANT):
     """Create or update a menu category. Returns the saved row dict."""
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     clean_name = " ".join(str(name or "").split()).strip()
     if not clean_name:
         raise ValueError("Category name is required.")
@@ -632,17 +871,17 @@ def save_pos_menu_category(conn, *, category_id=None, name="", is_visible=True, 
     visible = 1 if is_visible else 0
     if category_id:
         existing = conn.execute(
-            "SELECT id FROM pos_menu_categories WHERE id = ? AND is_active = 1",
-            (int(category_id),),
+            "SELECT id FROM pos_menu_categories WHERE id = ? AND is_active = 1 AND outlet = ?",
+            (int(category_id), outlet),
         ).fetchone()
         if not existing:
             raise ValueError("Category not found.")
         dup = conn.execute(
             """
             SELECT id FROM pos_menu_categories
-            WHERE is_active = 1 AND id != ? AND lower(name) = lower(?)
+            WHERE is_active = 1 AND outlet = ? AND id != ? AND lower(name) = lower(?)
             """,
-            (int(category_id), clean_name),
+            (outlet, int(category_id), clean_name),
         ).fetchone()
         if dup:
             raise ValueError("A category with this name already exists.")
@@ -669,23 +908,24 @@ def save_pos_menu_category(conn, *, category_id=None, name="", is_visible=True, 
         dup = conn.execute(
             """
             SELECT id FROM pos_menu_categories
-            WHERE is_active = 1 AND lower(name) = lower(?)
+            WHERE is_active = 1 AND outlet = ? AND lower(name) = lower(?)
             """,
-            (clean_name,),
+            (outlet, clean_name),
         ).fetchone()
         if dup:
             raise ValueError("A category with this name already exists.")
         if sort_order is None:
             max_row = conn.execute(
-                "SELECT COALESCE(MAX(sort_order), 0) AS m FROM pos_menu_categories WHERE is_active = 1"
+                "SELECT COALESCE(MAX(sort_order), 0) AS m FROM pos_menu_categories WHERE is_active = 1 AND outlet = ?",
+                (outlet,),
             ).fetchone()
             sort_order = int(max_row["m"] or 0) + 10
         cur = conn.execute(
             f"""
-            INSERT INTO pos_menu_categories (name, sort_order, is_visible, is_active, created_at, updated_at)
-            VALUES (?, ?, ?, 1, {SQL_NOW}, {SQL_NOW})
+            INSERT INTO pos_menu_categories (name, sort_order, is_visible, is_active, outlet, created_at, updated_at)
+            VALUES (?, ?, ?, 1, ?, {SQL_NOW}, {SQL_NOW})
             """,
-            (clean_name, int(sort_order), visible),
+            (clean_name, int(sort_order), visible, outlet),
         )
         saved_id = int(cur.lastrowid)
 
@@ -1139,6 +1379,12 @@ def _pos_menu_item_dict(row):
         "barcode": row["barcode"] or "",
         "variant": row["variant"] or "",
         "menu_type": _text("menu_type"),
+        "item_kind": (
+            "liquor"
+            if str(_text("item_kind") or "food").strip().lower()
+            in ("liquor", "liquour", "alcohol", "bar")
+            else "food"
+        ),
         "portion_size": portion,
         "prep_time_mins": prep_time,
         "shelf_life": _text("shelf_life"),
@@ -1150,6 +1396,7 @@ def _pos_menu_item_dict(row):
         "rate": float(rate or 0),
         "sort_order": int(row["sort_order"] or 0),
         "is_active": bool(row["is_active"]),
+        "outlet": normalize_pos_outlet(row["outlet"] if "outlet" in keys else None),
         "status": "visible" if category_visible else "hidden",
         "recipe": [],
         "food_cost": None,
@@ -1172,7 +1419,9 @@ _POS_MENU_ITEM_SELECT = """
             i.rate,
             i.sort_order,
             i.is_active,
+            i.outlet,
             i.menu_type,
+            i.item_kind,
             i.portion_size,
             i.prep_time_mins,
             i.shelf_life,
@@ -1188,12 +1437,16 @@ _POS_MENU_ITEM_SELECT = """
 """
 
 
-def list_pos_menu_items(conn, category_id=None, include_inactive=False):
-    """Return menu items, optionally filtered by category."""
+def list_pos_menu_items(
+    conn, category_id=None, include_inactive=False, outlet=POS_OUTLET_RESTAURANT, outlets=None
+):
+    """Return menu items, optionally filtered by category and one or more outlets."""
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
-    clauses = []
-    params = []
+    outlet_list = resolve_pos_outlets(outlet=outlet, outlets=outlets)
+    placeholders = ", ".join("?" for _ in outlet_list)
+    clauses = [f"i.outlet IN ({placeholders})"]
+    params = list(outlet_list)
     if not include_inactive:
         clauses.append("i.is_active = 1")
     if category_id is not None:
@@ -1208,7 +1461,7 @@ def list_pos_menu_items(conn, category_id=None, include_inactive=False):
         LEFT JOIN pos_menu_categories c ON c.id = i.category_id
         LEFT JOIN store_products p ON p.id = i.product_id
         {where}
-        ORDER BY i.sort_order ASC, i.name COLLATE NOCASE ASC, i.id ASC
+        ORDER BY i.outlet ASC, i.sort_order ASC, i.name COLLATE NOCASE ASC, i.id ASC
         """,
         params,
     ).fetchall()
@@ -1250,6 +1503,7 @@ def save_pos_menu_item(
     sort_order=None,
     recipe=None,
     menu_type=None,
+    item_kind=None,
     portion_size=None,
     prep_time_mins=None,
     shelf_life=None,
@@ -1257,10 +1511,12 @@ def save_pos_menu_item(
     target_margin_pct=None,
     updated_by=None,
     price_change_reason="",
+    outlet=POS_OUTLET_RESTAURANT,
 ):
     """Create or update a menu item; optional recipe[] replaces ingredient lines."""
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
 
     try:
         cat_id = int(category_id) if category_id not in (None, "") else None
@@ -1269,8 +1525,8 @@ def save_pos_menu_item(
     if not cat_id:
         raise ValueError("Category is required.")
     cat = conn.execute(
-        "SELECT id FROM pos_menu_categories WHERE id = ? AND is_active = 1",
-        (cat_id,),
+        "SELECT id FROM pos_menu_categories WHERE id = ? AND is_active = 1 AND outlet = ?",
+        (cat_id, outlet),
     ).fetchone()
     if not cat:
         raise ValueError("Category not found.")
@@ -1323,7 +1579,7 @@ def save_pos_menu_item(
     if item_id:
         existing_row = conn.execute(
             """
-            SELECT id, rate, menu_type, portion_size, prep_time_mins, shelf_life,
+            SELECT id, rate, menu_type, item_kind, portion_size, prep_time_mins, shelf_life,
                    notes, target_margin_pct, updated_by, variant
             FROM pos_menu_items
             WHERE id = ? AND is_active = 1
@@ -1335,6 +1591,9 @@ def save_pos_menu_item(
 
     if existing_row:
         cur_menu_type = (existing_row["menu_type"] or "") if "menu_type" in existing_row.keys() else ""
+        cur_item_kind = (
+            (existing_row["item_kind"] or "food") if "item_kind" in existing_row.keys() else "food"
+        )
         cur_portion = (existing_row["portion_size"] or "") if "portion_size" in existing_row.keys() else ""
         cur_prep = existing_row["prep_time_mins"] if "prep_time_mins" in existing_row.keys() else None
         cur_shelf = (existing_row["shelf_life"] or "") if "shelf_life" in existing_row.keys() else ""
@@ -1345,6 +1604,7 @@ def save_pos_menu_item(
         cur_updated_by = (existing_row["updated_by"] or "") if "updated_by" in existing_row.keys() else ""
     else:
         cur_menu_type = ""
+        cur_item_kind = "food"
         cur_portion = ""
         cur_prep = None
         cur_shelf = ""
@@ -1358,9 +1618,26 @@ def save_pos_menu_item(
         clean_menu_type = str(menu_type or "").strip().lower()
     if clean_menu_type in ("non-veg", "nonveg", "non veg"):
         clean_menu_type = "non_veg"
-    if clean_menu_type not in ("", "veg", "non_veg"):
-        raise ValueError("Menu type must be Veg or Non-Veg.")
+    if clean_menu_type in ("liquour", "alcohol"):
+        clean_menu_type = "liquor"
+    if clean_menu_type not in ("", "veg", "non_veg", "liquor"):
+        raise ValueError("Menu type must be Veg, Non-Veg, or Liquor.")
     clean_menu_type = clean_menu_type[:20]
+
+    if item_kind is None:
+        # Liquor menu type implies liquor tax class when kind wasn't sent.
+        if clean_menu_type == "liquor":
+            clean_item_kind = "liquor"
+        else:
+            clean_item_kind = str(cur_item_kind or "food").strip().lower()
+    else:
+        clean_item_kind = str(item_kind or "food").strip().lower()
+    if clean_menu_type == "liquor":
+        clean_item_kind = "liquor"
+    if clean_item_kind in ("liquour", "alcohol", "bar"):
+        clean_item_kind = "liquor"
+    if clean_item_kind not in ("food", "liquor"):
+        raise ValueError("Item type must be Food or Liquor.")
 
     if portion_size is not None:
         clean_portion = " ".join(str(portion_size or "").split()).strip()[:80]
@@ -1424,7 +1701,7 @@ def save_pos_menu_item(
                 f"""
                 UPDATE pos_menu_items
                 SET category_id = ?, product_id = ?, name = ?, code = ?, barcode = ?,
-                    variant = ?, rate = ?, menu_type = ?, portion_size = ?,
+                    variant = ?, rate = ?, menu_type = ?, item_kind = ?, portion_size = ?,
                     prep_time_mins = ?, shelf_life = ?, notes = ?,
                     target_margin_pct = ?, updated_by = ?, updated_at = {SQL_NOW}
                 WHERE id = ?
@@ -1438,6 +1715,7 @@ def save_pos_menu_item(
                     clean_variant,
                     rate_val,
                     clean_menu_type,
+                    clean_item_kind,
                     clean_portion,
                     clean_prep,
                     clean_shelf,
@@ -1452,7 +1730,8 @@ def save_pos_menu_item(
                 f"""
                 UPDATE pos_menu_items
                 SET category_id = ?, product_id = ?, name = ?, code = ?, barcode = ?,
-                    variant = ?, rate = ?, sort_order = ?, menu_type = ?, portion_size = ?,
+                    variant = ?, rate = ?, sort_order = ?, menu_type = ?, item_kind = ?,
+                    portion_size = ?,
                     prep_time_mins = ?, shelf_life = ?, notes = ?,
                     target_margin_pct = ?, updated_by = ?, updated_at = {SQL_NOW}
                 WHERE id = ?
@@ -1467,6 +1746,7 @@ def save_pos_menu_item(
                     rate_val,
                     int(sort_order),
                     clean_menu_type,
+                    clean_item_kind,
                     clean_portion,
                     clean_prep,
                     clean_shelf,
@@ -1501,11 +1781,11 @@ def save_pos_menu_item(
             f"""
             INSERT INTO pos_menu_items (
                 category_id, product_id, name, code, barcode, variant, rate,
-                sort_order, is_active, menu_type, portion_size, prep_time_mins,
-                shelf_life, notes, target_margin_pct, updated_by,
+                sort_order, is_active, menu_type, item_kind, portion_size, prep_time_mins,
+                shelf_life, notes, target_margin_pct, updated_by, outlet,
                 created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, {SQL_NOW}, {SQL_NOW})
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, {SQL_NOW}, {SQL_NOW})
             """,
             (
                 cat_id,
@@ -1517,12 +1797,14 @@ def save_pos_menu_item(
                 rate_val,
                 int(sort_order),
                 clean_menu_type,
+                clean_item_kind,
                 clean_portion,
                 clean_prep,
                 clean_shelf,
                 clean_notes,
                 clean_target,
                 clean_updated_by,
+                outlet,
             ),
         )
         saved_id = int(cur.lastrowid)
@@ -1933,11 +2215,17 @@ def list_store_products_lite(conn, *, outlets=None, q=""):
     return result
 
 
-def get_pos_floor_layout(conn):
-    """Load floor areas/tables JSON; returns empty lists when unset."""
+def get_pos_floor_layout(conn, outlet=POS_OUTLET_RESTAURANT):
+    """Load floor areas/tables JSON for an outlet; returns empty lists when unset."""
     ensure_pos_schema(conn)
-    row = conn.execute("SELECT payload FROM pos_floor_layout WHERE id = 1").fetchone()
+    outlet = normalize_pos_outlet(outlet)
+    row = conn.execute(
+        "SELECT payload FROM pos_floor_layout WHERE outlet = ?",
+        (outlet,),
+    ).fetchone()
     if not row:
+        if outlet == POS_OUTLET_BAR:
+            return default_bar_pos_floor_payload()
         return empty_pos_floor_payload()
     try:
         parsed = json.loads(row["payload"] or "{}")
@@ -1952,20 +2240,21 @@ def get_pos_floor_layout(conn):
     return _normalize_pos_floor_payload(areas, tables)
 
 
-def save_pos_floor_layout(conn, areas, tables):
-    """Replace singleton floor layout payload."""
+def save_pos_floor_layout(conn, areas, tables, outlet=POS_OUTLET_RESTAURANT):
+    """Replace floor layout payload for an outlet."""
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     payload = _normalize_pos_floor_payload(areas, tables)
     blob = json.dumps(payload, separators=(",", ":"))
     conn.execute(
         f"""
-        INSERT INTO pos_floor_layout (id, payload, updated_at)
-        VALUES (1, ?, {SQL_NOW})
-        ON CONFLICT(id) DO UPDATE SET
+        INSERT INTO pos_floor_layout (outlet, payload, updated_at)
+        VALUES (?, ?, {SQL_NOW})
+        ON CONFLICT(outlet) DO UPDATE SET
             payload = excluded.payload,
             updated_at = {SQL_NOW}
         """
-    , (blob,))
+    , (outlet, blob))
     return payload
 
 
@@ -2003,7 +2292,7 @@ def format_pos_merged_table_label(names):
     return ", ".join(clean[:-1]) + f" and {clean[-1]}"
 
 
-def link_pos_floor_tables_as_merged(conn, primary_label, member_labels):
+def link_pos_floor_tables_as_merged(conn, primary_label, member_labels, outlet=POS_OUTLET_RESTAURANT):
     """Visually join floor tables under one merge group.
 
     ``primary_label`` is the host tile (usually the bill destination). Members
@@ -2011,6 +2300,7 @@ def link_pos_floor_tables_as_merged(conn, primary_label, member_labels):
     \"Table 1 and Table 2\". Returns the updated layout payload.
     """
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     primary_name = str(primary_label or "").strip()
     members = []
     for raw in member_labels or []:
@@ -2020,9 +2310,9 @@ def link_pos_floor_tables_as_merged(conn, primary_label, member_labels):
     if not primary_name:
         raise ValueError("Primary table is required.")
     if not members:
-        return get_pos_floor_layout(conn)
+        return get_pos_floor_layout(conn, outlet)
 
-    layout = get_pos_floor_layout(conn)
+    layout = get_pos_floor_layout(conn, outlet)
     tables = layout.get("tables") or []
     primary = _pos_find_table_by_name(tables, primary_name)
     if not primary:
@@ -2057,20 +2347,21 @@ def link_pos_floor_tables_as_merged(conn, primary_label, member_labels):
         t["mergeGroupId"] = group_id
         t["mergePrimary"] = tid == primary_id
 
-    return save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+    return save_pos_floor_layout(conn, layout.get("areas") or [], tables, outlet)
 
 
-def unmerge_pos_floor_tables(conn, table_label):
+def unmerge_pos_floor_tables(conn, table_label, outlet=POS_OUTLET_RESTAURANT):
     """Split a visual merge group back into separate floor tiles.
 
     Does not move or close any open bill — the invoice stays on its current
     ``table_label``. Returns ``{layout, group_names, primary_name, label}``.
     """
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     name = str(table_label or "").strip()
     if not name:
         raise ValueError("Table is required.")
-    layout = get_pos_floor_layout(conn)
+    layout = get_pos_floor_layout(conn, outlet)
     tables = layout.get("tables") or []
     tile = _pos_find_table_by_name(tables, name)
     if not tile:
@@ -2090,7 +2381,7 @@ def unmerge_pos_floor_tables(conn, table_label):
         t["mergeGroupId"] = None
         t["mergePrimary"] = False
 
-    payload = save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+    payload = save_pos_floor_layout(conn, layout.get("areas") or [], tables, outlet)
     return {
         "layout": payload,
         "group_names": group_names,
@@ -2154,10 +2445,14 @@ def enrich_pos_floor_tables_for_display(tables):
     return tables
 
 
-def get_pos_restaurant_settings(conn):
-    """Load restaurant settings JSON blob (empty dict when unset)."""
+def get_pos_restaurant_settings(conn, outlet=POS_OUTLET_RESTAURANT):
+    """Load outlet settings JSON blob (empty dict when unset)."""
     ensure_pos_schema(conn)
-    row = conn.execute("SELECT payload FROM pos_restaurant_settings WHERE id = 1").fetchone()
+    outlet = normalize_pos_outlet(outlet)
+    row = conn.execute(
+        "SELECT payload FROM pos_restaurant_settings WHERE outlet = ?",
+        (outlet,),
+    ).fetchone()
     if not row:
         return {}
     try:
@@ -2167,21 +2462,22 @@ def get_pos_restaurant_settings(conn):
     return parsed if isinstance(parsed, dict) else {}
 
 
-def save_pos_restaurant_settings(conn, settings):
-    """Replace singleton restaurant settings JSON."""
+def save_pos_restaurant_settings(conn, settings, outlet=POS_OUTLET_RESTAURANT):
+    """Replace outlet settings JSON."""
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     if not isinstance(settings, dict):
         settings = {}
     blob = json.dumps(settings, separators=(",", ":"))
     conn.execute(
         f"""
-        INSERT INTO pos_restaurant_settings (id, payload, updated_at)
-        VALUES (1, ?, {SQL_NOW})
-        ON CONFLICT(id) DO UPDATE SET
+        INSERT INTO pos_restaurant_settings (outlet, payload, updated_at)
+        VALUES (?, ?, {SQL_NOW})
+        ON CONFLICT(outlet) DO UPDATE SET
             payload = excluded.payload,
             updated_at = {SQL_NOW}
         """
-    , (blob,))
+    , (outlet, blob))
     return settings
 
 
@@ -2280,6 +2576,7 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "subtotal": _pos_money(row["subtotal"]),
         "discount": _pos_money(row["discount_amount"]),
         "gst": _pos_money(row["gst_amount"]),
+        "vat": _pos_money(row["vat_amount"]) if "vat_amount" in row.keys() else 0.0,
         "service": _pos_money(row["service_amount"]),
         "tip": _pos_money(row["tip"]),
         "round_off": _pos_money(row["round_off"]),
@@ -2293,6 +2590,7 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "customer_bill_sent": bool(row["customer_bill_sent"]) if "customer_bill_sent" in row.keys() else False,
         "customer_bill_at": (row["customer_bill_at"] or "") if "customer_bill_at" in row.keys() else "",
         "stock_deducted_at": (row["stock_deducted_at"] or "") if "stock_deducted_at" in row.keys() else "",
+        "outlet": normalize_pos_outlet(row["outlet"]) if "outlet" in row.keys() else POS_OUTLET_RESTAURANT,
         "item_count": int(row["item_count"]) if "item_count" in row.keys() else 0,
         "payment_modes": [],
         "payment_mode_label": "Unsettled",
@@ -2386,7 +2684,7 @@ def _pos_floor_table_status(layout, table_label):
     return None
 
 
-def _pos_mark_table_occupied(conn, table_label):
+def _pos_mark_table_occupied(conn, table_label, outlet=POS_OUTLET_RESTAURANT):
     """Flip a table to occupied when a dine-in bill claims it (save / autosave / KOT).
 
     Best-effort: only advances tables that are currently available — never
@@ -2395,7 +2693,8 @@ def _pos_mark_table_occupied(conn, table_label):
     needle = str(table_label or "").strip().lower()
     if not needle:
         return
-    layout = get_pos_floor_layout(conn)
+    outlet = normalize_pos_outlet(outlet)
+    layout = get_pos_floor_layout(conn, outlet)
     tables = layout.get("tables") or []
     changed = False
     for t in tables:
@@ -2405,10 +2704,10 @@ def _pos_mark_table_occupied(conn, table_label):
                 changed = True
             break
     if changed:
-        save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+        save_pos_floor_layout(conn, layout.get("areas") or [], tables, outlet)
 
 
-def _pos_mark_table_available(conn, table_label):
+def _pos_mark_table_available(conn, table_label, outlet=POS_OUTLET_RESTAURANT):
     """Free a table back to available — used when a bill is explicitly closed.
     Unlike _pos_mark_table_occupied this is an unconditional override: closing a
     bill is a deliberate staff action, so it wins over whatever status the table
@@ -2416,7 +2715,8 @@ def _pos_mark_table_available(conn, table_label):
     needle = str(table_label or "").strip().lower()
     if not needle:
         return
-    layout = get_pos_floor_layout(conn)
+    outlet = normalize_pos_outlet(outlet)
+    layout = get_pos_floor_layout(conn, outlet)
     tables = layout.get("tables") or []
     changed = False
     for t in tables:
@@ -2426,16 +2726,19 @@ def _pos_mark_table_available(conn, table_label):
                 changed = True
             break
     if changed:
-        save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+        save_pos_floor_layout(conn, layout.get("areas") or [], tables, outlet)
 
 
-def sync_pos_floor_occupancy_from_open_orders(conn):
-    """Mark Available tables Occupied when they already have an open dine-in bill.
+def sync_pos_floor_occupancy_from_open_orders(conn, outlet=POS_OUTLET_RESTAURANT):
+    """Align floor tiles with open dine-in bills.
 
-    Repairs tiles that still show Available after items were saved under the
-    older KOT-only occupancy rule, and keeps floor status aligned with open orders.
+    - Available → Occupied when an open bill exists on that table.
+    - Occupied → Available when no open bill exists (repairs stale tiles after
+      table moves, closes, or bad saves). Reserved / cleaning / inactive are
+      never changed.
     """
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     rows = conn.execute(
         """
         SELECT DISTINCT table_label
@@ -2443,19 +2746,42 @@ def sync_pos_floor_occupancy_from_open_orders(conn):
         WHERE is_active = 1
           AND status = 'open'
           AND order_type = 'dine_in'
+          AND outlet = ?
           AND TRIM(COALESCE(table_label, '')) != ''
-        """
+        """,
+        (outlet,),
     ).fetchall()
+    occupied_labels = set()
     for row in rows:
-        _pos_mark_table_occupied(conn, row["table_label"] if row else "")
+        label = str((row["table_label"] if row else "") or "").strip()
+        if not label:
+            continue
+        occupied_labels.add(label.lower())
+        _pos_mark_table_occupied(conn, label, outlet)
+
+    layout = get_pos_floor_layout(conn, outlet)
+    tables = layout.get("tables") or []
+    changed = False
+    for t in tables:
+        name = str(t.get("name") or "").strip()
+        if not name:
+            continue
+        status = str(t.get("status") or "available").strip().lower() or "available"
+        if status != "occupied":
+            continue
+        if name.lower() not in occupied_labels:
+            t["status"] = "available"
+            changed = True
+    if changed:
+        save_pos_floor_layout(conn, layout.get("areas") or [], tables, outlet)
 
 
-
-def get_open_pos_invoice_for_table(conn, table_label):
+def get_open_pos_invoice_for_table(conn, table_label, outlet=POS_OUTLET_RESTAURANT):
     """Return the most recent open dine-in invoice for a table (with lines), or
     None. This is the shared lookup behind 'resume this table's order' on both
     the Tables page and the Create Invoice table picker."""
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     needle = str(table_label or "").strip()
     if not needle:
         return None
@@ -2470,16 +2796,17 @@ def get_open_pos_invoice_for_table(conn, table_label):
         WHERE i.is_active = 1
           AND i.status = 'open'
           AND i.order_type = 'dine_in'
+          AND i.outlet = ?
           AND LOWER(i.table_label) = LOWER(?)
         ORDER BY i.id DESC
         LIMIT 1
         """,
-        (needle,),
+        (outlet, needle),
     ).fetchone()
     return _pos_invoice_row_to_dict(conn, row, include_lines=True)
 
 
-def transfer_pos_invoice_table(conn, from_table, to_table):
+def transfer_pos_invoice_table(conn, from_table, to_table, outlet=POS_OUTLET_RESTAURANT):
     """Move an open dine-in bill from one floor table to another available table.
 
     Updates ``pos_invoices.table_label``, frees the source tile, and marks the
@@ -2487,6 +2814,7 @@ def transfer_pos_invoice_table(conn, from_table, to_table):
     validation failure.
     """
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     from_label = str(from_table or "").strip()
     to_label = str(to_table or "").strip()
     if not from_label:
@@ -2496,14 +2824,14 @@ def transfer_pos_invoice_table(conn, from_table, to_table):
     if from_label.lower() == to_label.lower():
         raise ValueError("Choose a different destination table.")
 
-    invoice = get_open_pos_invoice_for_table(conn, from_label)
+    invoice = get_open_pos_invoice_for_table(conn, from_label, outlet)
     if not invoice:
         raise ValueError(f"No open bill on {from_label}.")
 
-    if get_open_pos_invoice_for_table(conn, to_label):
+    if get_open_pos_invoice_for_table(conn, to_label, outlet):
         raise ValueError(f"{to_label} already has an open bill.")
 
-    layout = get_pos_floor_layout(conn)
+    layout = get_pos_floor_layout(conn, outlet)
     tables = layout.get("tables") or []
     dest = None
     for t in tables:
@@ -2525,16 +2853,17 @@ def transfer_pos_invoice_table(conn, from_table, to_table):
         "UPDATE pos_invoices SET table_label = ? WHERE id = ?",
         (to_canonical, int(invoice["id"])),
     )
-    _pos_mark_table_available(conn, from_canonical)
-    _pos_mark_table_occupied(conn, to_canonical)
+    _pos_mark_table_available(conn, from_canonical, outlet)
+    _pos_mark_table_occupied(conn, to_canonical, outlet)
     return get_pos_invoice(conn, int(invoice["id"]))
 
 
 def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
-    """Recalculate subtotal/discount/gst/service/tip/total from current lines.
+    """Recalculate subtotal/discount/gst/vat/service/tip/total from current lines.
 
-    Uses the destination invoice's stored discount/service/tip settings and the
-    same 5% GST + round-half-to-nearest rule as the Create Invoice UI.
+    Uses the destination invoice's stored discount/service/tip settings.
+    Non-liquor lines: 5% GST (CGST+UGST). Liquor category lines: 10% VAT.
+    Round half to nearest rupee — same rule as the Create Invoice UI.
     """
     ensure_pos_schema(conn)
     try:
@@ -2553,13 +2882,40 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
         raise ValueError("Invoice not found.")
 
     line_rows = conn.execute(
-        "SELECT rate, qty FROM pos_invoice_lines WHERE invoice_id = ?",
+        """
+        SELECT l.rate, l.qty, l.menu_item_id, l.variant, c.name AS category_name,
+               i.item_kind, i.menu_type
+        FROM pos_invoice_lines l
+        LEFT JOIN pos_menu_items i ON i.id = l.menu_item_id
+        LEFT JOIN pos_menu_categories c ON c.id = i.category_id
+        WHERE l.invoice_id = ?
+        """,
         (invoice_id,),
     ).fetchall()
     subtotal = 0.0
+    liquor_subtotal = 0.0
     for line in line_rows:
-        subtotal += _pos_money(line["rate"]) * _pos_money(line["qty"])
+        line_total = _pos_money(line["rate"]) * _pos_money(line["qty"])
+        subtotal += line_total
+        kind = ""
+        if "item_kind" in line.keys() and line["item_kind"]:
+            kind = str(line["item_kind"] or "").strip().lower()
+        if kind in ("liquour", "alcohol", "bar"):
+            kind = "liquor"
+        menu_type = ""
+        if "menu_type" in line.keys() and line["menu_type"]:
+            menu_type = str(line["menu_type"] or "").strip().lower()
+        if menu_type in ("liquour", "alcohol"):
+            menu_type = "liquor"
+        cat = ""
+        if "category_name" in line.keys() and line["category_name"]:
+            cat = line["category_name"]
+        elif line["variant"]:
+            cat = line["variant"]
+        if kind == "liquor" or menu_type == "liquor" or is_pos_liquor_category(cat):
+            liquor_subtotal += line_total
     subtotal = _pos_money(subtotal)
+    liquor_subtotal = _pos_money(liquor_subtotal)
 
     discount_type = str(row["discount_type"] or "pct").strip().lower() or "pct"
     service_type = str(row["service_type"] or "pct").strip().lower() or "pct"
@@ -2573,14 +2929,18 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
         pct = min(100.0, max(0.0, discount_value))
         discount = _pos_money(max(0.0, subtotal) * (pct / 100.0))
     after_discount = max(0.0, subtotal - discount)
-    gst = _pos_money(after_discount * 0.05)
+    liquor_share = (liquor_subtotal / subtotal) if subtotal > 0 else 0.0
+    liquor_after = _pos_money(after_discount * liquor_share)
+    non_liquor_after = max(0.0, after_discount - liquor_after)
+    gst = _pos_money(non_liquor_after * 0.05)
+    vat = _pos_money(liquor_after * 0.1)
     if service_type == "inr":
         service = min(max(0.0, after_discount), max(0.0, service_value))
     else:
         pct = min(100.0, max(0.0, service_value))
         service = _pos_money(max(0.0, after_discount) * (pct / 100.0))
     tip = max(0.0, tip)
-    before_round = after_discount + gst + service + tip
+    before_round = after_discount + gst + vat + service + tip
     rounded = float(round(before_round))
     round_off = _pos_money(rounded - before_round)
     grand_total = _pos_money(rounded)
@@ -2591,6 +2951,7 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
             subtotal = ?,
             discount_amount = ?,
             gst_amount = ?,
+            vat_amount = ?,
             service_amount = ?,
             tip = ?,
             tip_amount = ?,
@@ -2603,6 +2964,7 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
             subtotal,
             discount,
             gst,
+            vat,
             service,
             tip,
             tip,
@@ -2614,7 +2976,7 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
     return get_pos_invoice(conn, invoice_id)
 
 
-def merge_pos_invoice_tables(conn, from_table, to_table):
+def merge_pos_invoice_tables(conn, from_table, to_table, outlet=POS_OUTLET_RESTAURANT):
     """Merge two floor tables onto the destination (“Merge into”).
 
     - Both have open bills: combine lines onto dest, soft-delete source, free
@@ -2629,6 +2991,7 @@ def merge_pos_invoice_tables(conn, from_table, to_table):
     ``None`` when the merge was visual-only (no open bill on either table).
     """
     ensure_pos_schema(conn)
+    outlet = normalize_pos_outlet(outlet)
     from_label = str(from_table or "").strip()
     to_label = str(to_table or "").strip()
     if not from_label:
@@ -2638,10 +3001,10 @@ def merge_pos_invoice_tables(conn, from_table, to_table):
     if from_label.lower() == to_label.lower():
         raise ValueError("Choose a different destination table.")
 
-    source = get_open_pos_invoice_for_table(conn, from_label)
-    dest = get_open_pos_invoice_for_table(conn, to_label)
+    source = get_open_pos_invoice_for_table(conn, from_label, outlet)
+    dest = get_open_pos_invoice_for_table(conn, to_label, outlet)
 
-    layout = get_pos_floor_layout(conn)
+    layout = get_pos_floor_layout(conn, outlet)
     tables = layout.get("tables") or []
     dest_tile = None
     source_tile = None
@@ -2661,7 +3024,7 @@ def merge_pos_invoice_tables(conn, from_table, to_table):
 
     # Visual-only (or dest already holds the only bill): join tiles, keep bill.
     if not source:
-        link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical])
+        link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical], outlet)
         if dest:
             return get_pos_invoice(conn, int(dest["id"]))
         return None
@@ -2675,10 +3038,10 @@ def merge_pos_invoice_tables(conn, from_table, to_table):
             "UPDATE pos_invoices SET table_label = ? WHERE id = ?",
             (to_canonical, source_id),
         )
-        _pos_mark_table_available(conn, from_canonical)
-        _pos_mark_table_occupied(conn, to_canonical)
+        _pos_mark_table_available(conn, from_canonical, outlet)
+        _pos_mark_table_occupied(conn, to_canonical, outlet)
         try:
-            link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical])
+            link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical], outlet)
         except ValueError:
             pass
         return get_pos_invoice(conn, source_id)
@@ -2726,16 +3089,16 @@ def merge_pos_invoice_tables(conn, from_table, to_table):
         )
 
     soft_delete_pos_invoice(conn, source_id)
-    _pos_mark_table_available(conn, from_canonical)
-    _pos_mark_table_occupied(conn, to_canonical)
+    _pos_mark_table_available(conn, from_canonical, outlet)
+    _pos_mark_table_occupied(conn, to_canonical, outlet)
     try:
-        link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical])
+        link_pos_floor_tables_as_merged(conn, to_canonical, [from_canonical], outlet)
     except ValueError:
         pass
     return _recompute_pos_invoice_money_from_lines(conn, dest_id)
 
 
-def list_pos_kot_pending_summary(conn):
+def list_pos_kot_pending_summary(conn, outlet=POS_OUTLET_RESTAURANT):
     """Open dine-in orders with unsents (qty > sent_qty) — same rule as the
     invoice page KOT pending check. Powers the Tables page Kitchen Orders
     Pending banner and details modal.
@@ -2745,7 +3108,8 @@ def list_pos_kot_pending_summary(conn):
     filter here.
     """
     ensure_pos_schema(conn)
-    layout = get_pos_floor_layout(conn)
+    outlet = normalize_pos_outlet(outlet)
+    layout = get_pos_floor_layout(conn, outlet)
     floor_by_name = {}
     for t in (layout or {}).get("tables") or []:
         key = str(t.get("name") or "").strip().lower()
@@ -2770,10 +3134,12 @@ def list_pos_kot_pending_summary(conn):
         WHERE i.is_active = 1
           AND i.status = 'open'
           AND i.order_type = 'dine_in'
+          AND i.outlet = ?
           AND TRIM(COALESCE(i.table_label, '')) != ''
         GROUP BY i.id, i.order_no, i.table_label, i.saved_at, i.updated_at, i.first_kot_at
         ORDER BY i.id ASC
-        """
+        """,
+        (outlet,),
     ).fetchall()
     tables = []
     pending_item_count = 0
@@ -2829,7 +3195,7 @@ def send_pos_invoice_pending_kot(conn, invoice_id):
 
     row = conn.execute(
         """
-        SELECT id, order_no, table_label, order_type, kot_sent, first_kot_at, status
+        SELECT id, order_no, table_label, order_type, kot_sent, first_kot_at, status, outlet
         FROM pos_invoices
         WHERE id = ? AND is_active = 1
         """,
@@ -2874,20 +3240,22 @@ def send_pos_invoice_pending_kot(conn, invoice_id):
 
     table_label = (row["table_label"] or "").strip()
     order_type = _normalize_pos_order_type(row["order_type"])
+    inv_outlet = normalize_pos_outlet(row["outlet"] if "outlet" in row.keys() else None)
     if table_label and order_type == "dine_in":
-        _pos_mark_table_occupied(conn, table_label)
+        _pos_mark_table_occupied(conn, table_label, inv_outlet)
 
     return get_pos_invoice(conn, invoice_id)
 
 
-def list_pos_kot_tokens(conn):
+def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
     """Open dine-in bills that already have kitchen-sent qty — Tables KOT hub.
 
     Used to resend / reprint a token when kitchen missed the slip. Only lines with
     sent_qty > 0 are included (the last confirmed kitchen copy).
     """
     ensure_pos_schema(conn)
-    layout = get_pos_floor_layout(conn)
+    outlet = normalize_pos_outlet(outlet)
+    layout = get_pos_floor_layout(conn, outlet)
     floor_by_name = {}
     for t in (layout or {}).get("tables") or []:
         key = str(t.get("name") or "").strip().lower()
@@ -2915,13 +3283,15 @@ def list_pos_kot_tokens(conn):
         WHERE i.is_active = 1
           AND i.status = 'open'
           AND i.order_type = 'dine_in'
+          AND i.outlet = ?
           AND TRIM(COALESCE(i.table_label, '')) != ''
         GROUP BY
             i.id, i.order_no, i.table_label, i.order_type,
             i.first_kot_at, i.saved_at, i.updated_at,
             i.customer_bill_sent, i.customer_bill_at
         ORDER BY i.table_label ASC, i.id ASC
-        """
+        """,
+        (outlet,),
     ).fetchall()
 
     tables = []
@@ -3003,7 +3373,7 @@ def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     except (TypeError, ValueError) as exc:
         raise ValueError("Invalid invoice id.") from exc
     row = conn.execute(
-        "SELECT id, table_label, order_type FROM pos_invoices WHERE id = ? AND is_active = 1",
+        "SELECT id, table_label, order_type, outlet FROM pos_invoices WHERE id = ? AND is_active = 1",
         (invoice_id,),
     ).fetchone()
     if not row:
@@ -3017,8 +3387,9 @@ def close_pos_invoice_and_free_table(conn, invoice_id, *, user_id=None):
     )
     table_label = row["table_label"] or ""
     order_type = _normalize_pos_order_type(row["order_type"])
+    inv_outlet = normalize_pos_outlet(row["outlet"] if "outlet" in row.keys() else None)
     if table_label and order_type == "dine_in":
-        _pos_mark_table_available(conn, table_label)
+        _pos_mark_table_available(conn, table_label, inv_outlet)
     try:
         from stores import deduct_stock_for_pos_invoice
 
@@ -3219,12 +3590,13 @@ def list_pos_invoice_payments(conn, invoice_id):
     return out
 
 
-def clear_all_pos_tables(conn, *, user_id=None):
+def clear_all_pos_tables(conn, *, user_id=None, outlet=POS_OUTLET_RESTAURANT):
     """Bulk-free every table on the floor back to available (Tables page 'Clear
     all tables'). Also closes any dangling open dine-in bills tied to those
     tables so a later resume lookup can't resurrect a stale order."""
     ensure_pos_schema(conn)
-    layout = get_pos_floor_layout(conn)
+    outlet = normalize_pos_outlet(outlet)
+    layout = get_pos_floor_layout(conn, outlet)
     tables = layout.get("tables") or []
     closed_ids = []
     for t in tables:
@@ -3234,9 +3606,10 @@ def clear_all_pos_tables(conn, *, user_id=None):
                 """
                 SELECT id FROM pos_invoices
                 WHERE is_active = 1 AND status = 'open' AND order_type = 'dine_in'
+                  AND outlet = ?
                   AND LOWER(table_label) = LOWER(?)
                 """,
-                (label,),
+                (outlet, label),
             ).fetchall()
             for open_row in open_rows:
                 closed_ids.append(int(open_row["id"]))
@@ -3244,9 +3617,10 @@ def clear_all_pos_tables(conn, *, user_id=None):
                 f"""
                 UPDATE pos_invoices SET status = 'closed', updated_at = {SQL_NOW}
                 WHERE is_active = 1 AND status = 'open' AND order_type = 'dine_in'
+                  AND outlet = ?
                   AND LOWER(table_label) = LOWER(?)
                 """,
-                (label,),
+                (outlet, label),
             )
         t["status"] = "available"
         t["mergeGroupId"] = None
@@ -3271,7 +3645,7 @@ def clear_all_pos_tables(conn, *, user_id=None):
             logging.getLogger(__name__).exception(
                 "POS stock deduction unavailable during clear-all"
             )
-    return save_pos_floor_layout(conn, layout.get("areas") or [], tables)
+    return save_pos_floor_layout(conn, layout.get("areas") or [], tables, outlet)
 
 
 def _pos_invoice_line_kitchen_key(menu_item_id, name, variant):
@@ -3326,6 +3700,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
     if not isinstance(payload, dict):
         raise ValueError("Invalid invoice payload.")
 
+    outlet = normalize_pos_outlet(payload.get("outlet") or payload.get("posOutlet"))
     order_no = " ".join(str(payload.get("orderNo") or payload.get("order_no") or "").split()).strip()
     if not order_no:
         raise ValueError("Order number is required.")
@@ -3383,6 +3758,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
     subtotal = _pos_money(totals.get("subtotal"))
     discount_amount = _pos_money(totals.get("discount"))
     gst_amount = _pos_money(totals.get("gst"))
+    vat_amount = _pos_money(totals.get("vat"))
     service_amount = _pos_money(totals.get("service"))
     tip = _pos_money(totals.get("tip", tip_amount))
     round_off = _pos_money(totals.get("roundOff") or totals.get("round_off"))
@@ -3437,20 +3813,32 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
 
     existing = conn.execute(
         """
-        SELECT id, kot_sent, first_kot_at, customer_bill_sent, customer_bill_at
+        SELECT id, kot_sent, first_kot_at, customer_bill_sent, customer_bill_at, outlet
         FROM pos_invoices
         WHERE order_no = ? AND is_active = 1
         LIMIT 1
         """,
         (order_no,),
     ).fetchone()
+    if existing:
+        existing_outlet = normalize_pos_outlet(
+            existing["outlet"] if "outlet" in existing.keys() else None
+        )
+        # Never rewrite a Restaurant bill from Bar (or vice versa) — order numbers
+        # are globally unique, so a mismatched outlet is a conflict, not an update.
+        if existing_outlet != outlet:
+            raise ValueError(
+                f'Order "{order_no}" already exists for {existing_outlet}. '
+                "Use a new order number or open that outlet's POS."
+            )
+        outlet = existing_outlet
 
     # A brand-new dine-in bill must not be openable against a table the Tables
     # page already shows as occupied — same floor/tables source of truth used
     # there. Editing an already-saved order (existing order_no) is a resume of
     # that same bill, so it is never blocked here.
     if not existing and table_label and order_type == "dine_in":
-        floor_status = _pos_floor_table_status(get_pos_floor_layout(conn), table_label)
+        floor_status = _pos_floor_table_status(get_pos_floor_layout(conn, outlet), table_label)
         if floor_status == "occupied":
             raise ValueError(
                 f'Table "{table_label}" is occupied. Free it on the Tables page or choose another table.'
@@ -3464,6 +3852,8 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
 
     customer_bill = bool(payload.get("customerBill") or payload.get("customer_bill"))
     was_bill_sent = bool(existing["customer_bill_sent"]) if existing else False
+    if was_bill_sent:
+        raise ValueError("Invoice already generated; settle the bill instead.")
     next_bill_sent = 1 if (customer_bill or was_bill_sent) else 0
     customer_bill_at = (existing["customer_bill_at"] if existing else "") or ""
     if customer_bill and not customer_bill_at:
@@ -3500,6 +3890,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 subtotal = ?,
                 discount_amount = ?,
                 gst_amount = ?,
+                vat_amount = ?,
                 service_amount = ?,
                 tip = ?,
                 round_off = ?,
@@ -3529,6 +3920,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 subtotal,
                 discount_amount,
                 gst_amount,
+                vat_amount,
                 service_amount,
                 tip,
                 round_off,
@@ -3549,18 +3941,18 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 customer_name, customer_mobile, notes,
                 discount_type, discount_value, service_type, service_value,
                 tip_amount, coupon_code,
-                subtotal, discount_amount, gst_amount, service_amount, tip,
+                subtotal, discount_amount, gst_amount, vat_amount, service_amount, tip,
                 round_off, grand_total, created_by, status, kot_sent, first_kot_at,
-                customer_bill_sent, customer_bill_at,
+                customer_bill_sent, customer_bill_at, outlet,
                 is_active, created_at, updated_at
             ) VALUES (
                 ?, ?, ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?,
-                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, 'open', ?, ?,
-                ?, ?,
+                ?, ?, ?,
                 1, {SQL_NOW}, {SQL_NOW}
             )
             """,
@@ -3583,6 +3975,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 subtotal,
                 discount_amount,
                 gst_amount,
+                vat_amount,
                 service_amount,
                 tip,
                 round_off,
@@ -3592,6 +3985,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
                 first_kot_at,
                 next_bill_sent,
                 customer_bill_at,
+                outlet,
             ),
         )
         invoice_id = int(cursor.lastrowid)
@@ -3621,7 +4015,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
     # autosave, Send to Kitchen, Send to Customer). Available → occupied only;
     # reserved/cleaning/inactive are left alone.
     if table_label and order_type == "dine_in":
-        _pos_mark_table_occupied(conn, table_label)
+        _pos_mark_table_occupied(conn, table_label, outlet)
 
     return get_pos_invoice(conn, invoice_id)
 
@@ -3648,6 +4042,7 @@ def get_pos_invoice(conn, invoice_id):
     invoice = _pos_invoice_row_to_dict(conn, row, include_lines=True)
     if invoice:
         _apply_pos_invoice_payment_modes(conn, invoice)
+        invoice["payments"] = list_pos_invoice_payments(conn, invoice_id)
     return invoice
 
 
@@ -3683,11 +4078,15 @@ def list_pos_invoices(
     order_type=None,
     settlement=None,
     q="",
+    outlet=None,
 ):
     """List active invoices with optional filters (newest first)."""
     ensure_pos_schema(conn)
     clauses = ["i.is_active = 1"]
     params = []
+    if outlet is not None:
+        clauses.append("i.outlet = ?")
+        params.append(normalize_pos_outlet(outlet))
     if date_from:
         clauses.append("i.order_date >= ?")
         params.append(str(date_from))
@@ -3751,7 +4150,7 @@ def list_pos_invoices(
     return _enrich_pos_invoices_payment_modes(conn, invoices)
 
 
-def list_pos_today_invoices(conn, *, today=None):
+def list_pos_today_invoices(conn, *, today=None, outlet=POS_OUTLET_RESTAURANT):
     """Active POS invoices for the business day — Tables Invoice hub.
 
     Includes dine-in and other order types created today (open and closed).
@@ -3761,7 +4160,9 @@ def list_pos_today_invoices(conn, *, today=None):
         today = datetime.now().strftime("%Y-%m-%d")
     else:
         today = str(today)
-    invoices = list_pos_invoices(conn, date_from=today, date_to=today)
+    invoices = list_pos_invoices(
+        conn, date_from=today, date_to=today, outlet=normalize_pos_outlet(outlet)
+    )
     return {
         "date": today,
         "invoice_count": len(invoices),
@@ -4959,7 +5360,7 @@ def init_db():
         cursor.execute(
             """INSERT INTO users (username, full_name, password_hash, is_admin, is_active, created_at, updated_at)
                VALUES (?, ?, ?, 1, 1, ?, ?)""",
-            ("admin", "Administrator", generate_password_hash("admin"), now, now),
+            ("admin", "Administrator", auth_security.hash_password("admin"), now, now),
         )
 
     conn.commit()

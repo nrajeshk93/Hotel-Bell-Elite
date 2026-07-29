@@ -125,6 +125,52 @@
     }, 120);
   }
 
+  var FLOOR_SESSION_KEY = 'hbe_pos_floor_snapshot';
+  var FLOOR_SESSION_KEY_BAR = 'hbe_pos_floor_snapshot_bar';
+
+  function writePosFloorSnapshot(data, outlet){
+    if(!data || !Array.isArray(data.areas) || !Array.isArray(data.tables)) return false;
+    var key = outlet === 'bar' ? FLOOR_SESSION_KEY_BAR : FLOOR_SESSION_KEY;
+    try{
+      sessionStorage.setItem(key, JSON.stringify({
+        areas: data.areas,
+        tables: data.tables
+      }));
+      return true;
+    } catch(e){
+      return false;
+    }
+  }
+
+  /** Fetch Tables floor JSON and persist for sync paint on first soft-nav (avoids empty SSR). */
+  function warmPosFloorSnapshot(signal, outlet){
+    outlet = outlet === 'bar' ? 'bar' : 'restaurant';
+    var apiBase = outlet === 'bar' ? '/bar-point-of-sale' : '/point-of-sale';
+    var opts = {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    };
+    if(signal) opts.signal = signal;
+    return fetch(apiBase + '/api/floor', opts).then(function(res){
+      return res.json().catch(function(){ return null; });
+    }).then(function(data){
+      if(data && data.ok && Array.isArray(data.areas) && Array.isArray(data.tables)){
+        writePosFloorSnapshot({ areas: data.areas, tables: data.tables }, outlet);
+        return data;
+      }
+      return null;
+    }).catch(function(){ return null; });
+  }
+
+  function isPosTablesUrl(url){
+    try{
+      var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+      return path === '/point-of-sale' || path === '/bar-point-of-sale';
+    } catch(e){
+      return false;
+    }
+  }
+
   function prefetchRestaurantGroup(){
     if(!shouldSoftNavigate()) return;
     var group = document.getElementById('de-nav-pos-group');
@@ -135,10 +181,35 @@
       if(!href || href.indexOf('javascript:') === 0) continue;
       prefetchSoftNav(withSalesScope(links[i].href || href));
     }
-    // Warm Restaurant JSON APIs so Tables/POS/Settings hydrate from browser cache on AWS.
+    // Warm Restaurant JSON + persist floor snapshot so first Tables soft-nav paints tiles.
     if(!window.__dePosApiWarm){
       window.__dePosApiWarm = true;
-      ['/point-of-sale/api/floor', '/point-of-sale/api/menu/items', '/point-of-sale/api/menu/categories'].forEach(function(apiUrl){
+      warmPosFloorSnapshot(null, 'restaurant');
+      ['/point-of-sale/api/menu/items', '/point-of-sale/api/menu/categories'].forEach(function(apiUrl){
+        try{
+          fetch(apiUrl, {
+            credentials: 'same-origin',
+            headers: { Accept: 'application/json' }
+          }).catch(function(){});
+        } catch(e){}
+      });
+    }
+  }
+
+  function prefetchBarPosGroup(){
+    if(!shouldSoftNavigate()) return;
+    var group = document.getElementById('de-nav-bar-pos-group');
+    if(!group) return;
+    var links = group.querySelectorAll('a.de-nav-subitem[href]');
+    for(var i = 0; i < links.length; i++){
+      var href = links[i].getAttribute('href') || '';
+      if(!href || href.indexOf('javascript:') === 0) continue;
+      prefetchSoftNav(withSalesScope(links[i].href || href));
+    }
+    if(!window.__deBarPosApiWarm){
+      window.__deBarPosApiWarm = true;
+      warmPosFloorSnapshot(null, 'bar');
+      ['/bar-point-of-sale/api/menu/items', '/bar-point-of-sale/api/menu/categories'].forEach(function(apiUrl){
         try{
           fetch(apiUrl, {
             credentials: 'same-origin',
@@ -154,6 +225,9 @@
     if(!target) return;
     if(target.closest('#de-nav-pos-group, #de-nav-pos-toggle, #de-nav-pos-sub')){
       prefetchRestaurantGroup();
+    }
+    if(target.closest('#de-nav-bar-pos-group, #de-nav-bar-pos-toggle, #de-nav-bar-pos-sub')){
+      prefetchBarPosGroup();
     }
     var link = target.closest('.de-sidebar a[href], .sidebar a[href], a[href]');
     if(!link) return;
@@ -508,7 +582,8 @@
     if(sameAppUrl(url, window.location.href)) return;
     try{
       var path = new URL(url, window.location.href).pathname.toLowerCase();
-      if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1 || path.indexOf('/report') !== -1) return;
+      if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1) return;
+      /* Payroll HTML /report — not a file download. Do not treat /reports hub as export. */
       if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path)) return;
     } catch(e){}
     var key = navCacheKey(url);
@@ -593,10 +668,17 @@
     }
   }
 
+  function isPosSettingsPath(pathname){
+    var path = String(pathname || '').replace(/\/$/, '') || '/';
+    return path === '/point-of-sale/settings' || path === '/bar-point-of-sale/settings';
+  }
+
   function urlWithPosSettingsSection(url){
     try{
       var target = new URL(url, window.location.href);
-      if(target.pathname.indexOf('/point-of-sale/settings') === -1) return url;
+      /* Exact path match — do NOT use indexOf (bar-point-of-sale/settings contains
+         the restaurant path as a substring and was wrongly rewritten). */
+      if(!isPosSettingsPath(target.pathname)) return url;
       if(target.hash && target.hash.length > 1) return target.toString();
       var stored = posSettingsSectionFromStorage();
       if(stored && stored !== 'general') target.hash = stored;
@@ -606,22 +688,111 @@
     }
   }
 
+  /** Detect soft-nav that updated the URL but left stale main content. */
+  function softNavMainH1(main){
+    var h = main && main.querySelector('h1');
+    return h ? String(h.textContent || '').replace(/\s+/g, ' ').trim() : '';
+  }
+
+  function softNavSalesLocation(main){
+    var el = main && (main.querySelector('#sales-location') || main.querySelector('[data-location]'));
+    if(!el) return '';
+    return String(el.value || el.getAttribute('data-location') || '').trim().toLowerCase();
+  }
+
+  function softNavContentMatchesUrl(url){
+    try{
+      var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+      var main = document.querySelector('.de-main-wrapper');
+      if(!main) return false;
+      var h1 = softNavMainH1(main);
+
+      /* POS — restaurant + bar */
+      if(path === '/point-of-sale/settings' || path === '/bar-point-of-sale/settings'){
+        return !!main.querySelector('#pos-settings-page, [data-pos-settings]');
+      }
+      if(path === '/point-of-sale/menu' || path === '/bar-point-of-sale/menu'){
+        return !!main.querySelector('#pos-menu-page, [data-pos-menu]');
+      }
+      if(path === '/point-of-sale/invoice' || path === '/bar-point-of-sale/invoice'){
+        return !!main.querySelector('#pos-invoice-page, [data-pos-invoice]');
+      }
+      if(path === '/point-of-sale/invoice-ledger' || path === '/bar-point-of-sale/invoice-ledger'){
+        return !!main.querySelector('#pos-invoice-ledger-page, [data-pos-invoice-ledger]');
+      }
+      if(path === '/point-of-sale' || path === '/bar-point-of-sale'){
+        return !!main.querySelector('#pos-tables-page, [data-pos-tables]');
+      }
+
+      /* Home / masters / reports / access */
+      if(path === '/home') return !!main.querySelector('#dashboard-home-panel, .db-home');
+      if(path === '/dashboard') return !!main.querySelector('#dashboard-coming-soon-title');
+      if(path === '/master') return !!main.querySelector('#md-master-grid, #md-search-input');
+      if(path === '/reports') return !!main.querySelector('#rd-report-sections, #rd-search-input');
+      if(path === '/access-management') return !!main.querySelector('#am-users-filter-form, #am-users-search');
+
+      /* Accounts */
+      if(path === '/accounts/purchase-ledger'){
+        return !!main.querySelector('#purchase-ledger-filter-form, #pl-open-add-purchase');
+      }
+      if(path === '/accounts/cash-ledger') return !!main.querySelector('#cash-ledger-page');
+      if(path === '/accounts/credit-payment'){
+        return !!main.querySelector('#credit-payment-page') && /credit payment/i.test(h1);
+      }
+      if(path === '/accounts/purchase-verification'){
+        return !!main.querySelector('#credit-payment-page') && /purchase verification/i.test(h1);
+      }
+      if(path === '/suppliers') return !!main.querySelector('#sm-supplier-table, #sm-supplier-list-panel');
+
+      /* Sales analytics */
+      if(path === '/sales_update/hotel') return softNavSalesLocation(main) === 'hotel';
+      if(path === '/sales_update/bar') return softNavSalesLocation(main) === 'bar';
+      if(path === '/sales_update/restaurant') return softNavSalesLocation(main) === 'restaurant';
+      if(path === '/sales_update/room_transfer'){
+        return !!main.querySelector('#room-transfer-page') && /room transfer/i.test(h1);
+      }
+      if(path === '/sales_update/credit'){
+        return !!main.querySelector('#room-transfer-page') && /^credit$/i.test(h1);
+      }
+      if(path === '/sales_update/tips'){
+        return !!main.querySelector('#tips-analytics-page, #tips-filter-form, #tips-search');
+      }
+
+      /* Payroll */
+      if(path === '/employees'){
+        return !!main.querySelector('#emp-search-chip, #emp-main-table');
+      }
+      if(path === '/attendance_overview' || path === '/attendance_date' || path.indexOf('/attendance/') === 0){
+        return !!main.querySelector('#attendance-search-chip, #emp-attendance-overview-table, .ep-att-header');
+      }
+      if(path === '/credits' || path.indexOf('/credits/') === 0){
+        return !!main.querySelector('#credits-dashboard-form, #cd-search, #emp-credit-history-table');
+      }
+      if(path === '/report'){
+        return !!main.querySelector('#report-month-form, #emp-salary-breakdown-table');
+      }
+
+      /* Stores */
+      if(path === '/stores/indent') return !!main.querySelector('#st-indent-search, #st-indent-list-count');
+      if(path === '/stores/purchase-requests') return !!main.querySelector('#st-inward-indent, #st-inward-indent-listbox');
+      if(path === '/stores/stock') return !!main.querySelector('#st-stock-search, #st-stock-out-filter');
+    } catch(e){}
+    return true;
+  }
+
   function rememberSidebarState(){
     try{
       var pinned = false;
-      var expanded = false;
       document.querySelectorAll('.de-sidebar').forEach(function(sidebar){
         if(sidebar.classList.contains('is-pinned')) pinned = true;
-        if(sidebar.classList.contains('is-expanded') || sidebar.classList.contains('is-pinned')){
-          expanded = true;
-        }
       });
       persistOpenNavGroups();
       if(pinned){
         localStorage.setItem('de-sidebar-pinned', '1');
         sessionStorage.setItem('de-sidebar-expanded', '1');
-      } else if(expanded){
-        sessionStorage.setItem('de-sidebar-expanded', '1');
+      } else {
+        localStorage.setItem('de-sidebar-pinned', '0');
+        sessionStorage.removeItem('de-sidebar-expanded');
       }
       if(isFullscreenActive() || isFullscreenPreferred()){
         sessionStorage.setItem(FS_KEY, '1');
@@ -719,6 +890,28 @@
       });
       external.onload = external.onerror = function(){ resolve(); };
       document.body.appendChild(external);
+    });
+  }
+
+  /** Load destination external scripts while the previous page stays visible. */
+  function preloadExternalScripts(scriptNodes, done){
+    var loaded = window.__deSoftNavScripts = window.__deSoftNavScripts || {};
+    var pending = [];
+    (scriptNodes || []).forEach(function(old){
+      if(shouldSkipScript(old)) return;
+      var src = old.getAttribute('src');
+      if(!src || loaded[src]) return;
+      loaded[src] = true;
+      pending.push(loadExternalScript(old));
+    });
+    if(!pending.length){
+      if(typeof done === 'function') done();
+      return;
+    }
+    Promise.all(pending).then(function(){
+      if(typeof done === 'function') done();
+    }).catch(function(){
+      if(typeof done === 'function') done();
     });
   }
 
@@ -1232,14 +1425,10 @@
     var sidebar = document.querySelector('#de-sidebar, .de-sidebar');
     if(!sidebar) return lockedSidebarScroll || readStoredSidebarScroll();
     var nav = sidebar.querySelector('.de-sb-nav');
-    var snapshot = {
+    return {
       sidebarTop: sidebar.scrollTop || 0,
       navTop: nav ? (nav.scrollTop || 0) : 0
     };
-    try{
-      sessionStorage.setItem(SIDEBAR_SCROLL_KEY, JSON.stringify(snapshot));
-    } catch(e){}
-    return snapshot;
   }
 
   function restoreSidebarScroll(snapshot){
@@ -1260,8 +1449,16 @@
     return !!(lockedSidebarScroll && (window.__deSoftNavInProgress || Date.now() <= sidebarScrollLockUntil));
   }
 
+  function isSidebarExpandedForScroll(){
+    var sidebar = document.querySelector('#de-sidebar, .de-sidebar');
+    if(!sidebar) return false;
+    if(sidebar.classList.contains('is-expanded') || sidebar.classList.contains('is-pinned')) return true;
+    try{ return sidebar.matches(':hover'); } catch(e){ return false; }
+  }
+
   function onSidebarScrollLockEvent(event){
     if(!isSidebarScrollLocked()) return;
+    if(isSidebarExpandedForScroll()) return;
     var target = event && event.target;
     if(!target) return;
     var sidebar = document.querySelector('#de-sidebar, .de-sidebar');
@@ -1276,11 +1473,23 @@
     return lockedSidebarScroll;
   }
 
+  function clearSidebarScrollLock(){
+    lockedSidebarScroll = null;
+    sidebarScrollLockUntil = 0;
+    if(sidebarScrollLockTimer){
+      clearInterval(sidebarScrollLockTimer);
+      sidebarScrollLockTimer = null;
+    }
+    if(sidebarScrollReleaseTimer){
+      clearTimeout(sidebarScrollReleaseTimer);
+      sidebarScrollReleaseTimer = null;
+    }
+  }
+
   function lockSidebarScroll(snapshot){
     lockedSidebarScroll = snapshot || lockedSidebarScroll || captureSidebarScroll();
     if(!lockedSidebarScroll) return;
-    // Keep restoring through soft-nav + late layout (icons, fonts, focus).
-    sidebarScrollLockUntil = Date.now() + 2500;
+    sidebarScrollLockUntil = Date.now() + 900;
     if(sidebarScrollReleaseTimer){
       clearTimeout(sidebarScrollReleaseTimer);
       sidebarScrollReleaseTimer = null;
@@ -1290,60 +1499,23 @@
       document.addEventListener('scroll', onSidebarScrollLockEvent, true);
     }
     restoreSidebarScroll(lockedSidebarScroll);
-    if(sidebarScrollLockTimer) clearInterval(sidebarScrollLockTimer);
-    sidebarScrollLockTimer = setInterval(function(){
-      if(!lockedSidebarScroll) return;
-      if(!isSidebarScrollLocked()){
-        clearInterval(sidebarScrollLockTimer);
-        sidebarScrollLockTimer = null;
-        return;
-      }
-      restoreSidebarScroll(lockedSidebarScroll);
-    }, 50);
   }
 
   function releaseSidebarScrollLock(delayMs){
     if(sidebarScrollReleaseTimer) clearTimeout(sidebarScrollReleaseTimer);
     sidebarScrollReleaseTimer = setTimeout(function(){
       sidebarScrollReleaseTimer = null;
-      restoreSidebarScroll(lockedSidebarScroll);
-      // Keep active item on-screen without jumping the rail to the top.
-      try{
-        if(typeof window.scheduleActiveNavIntoView === 'function'){
-          window.scheduleActiveNavIntoView({ behavior: 'auto', padding: 12 });
-        } else {
-          var active = document.querySelector('#de-sidebar a.is-active, #de-sidebar a[aria-current="page"]');
-          if(active && typeof window.ensureVisibleInScroller === 'function'){
-            window.ensureVisibleInScroller(active, { behavior: 'auto', padding: 12 });
-          }
-        }
-      } catch(e){}
-      lockedSidebarScroll = null;
-      sidebarScrollLockUntil = 0;
-      if(sidebarScrollLockTimer){
-        clearInterval(sidebarScrollLockTimer);
-        sidebarScrollLockTimer = null;
+      clearSidebarScrollLock();
+      if(typeof window.preflightActiveNavScroll === 'function'){
+        var sb = document.querySelector('#de-sidebar, .de-sidebar');
+        if(sb) window.preflightActiveNavScroll(sb);
       }
     }, typeof delayMs === 'number' ? delayMs : 0);
   }
 
   function restoreSidebarScrollAfterLayout(snapshot){
     if(snapshot) lockedSidebarScroll = snapshot;
-    // Extend lock — do not shorten or clear here (late page scripts still run).
-    sidebarScrollLockUntil = Math.max(sidebarScrollLockUntil, Date.now() + 1200);
-    restoreSidebarScroll(lockedSidebarScroll || snapshot);
-    requestAnimationFrame(function(){
-      restoreSidebarScroll(lockedSidebarScroll || snapshot);
-      requestAnimationFrame(function(){
-        restoreSidebarScroll(lockedSidebarScroll || snapshot);
-      });
-    });
-    setTimeout(function(){
-      restoreSidebarScroll(lockedSidebarScroll || snapshot);
-    }, 100);
-    setTimeout(function(){
-      restoreSidebarScroll(lockedSidebarScroll || snapshot);
-    }, 400);
+    sidebarScrollLockUntil = Math.max(sidebarScrollLockUntil, Date.now() + 600);
   }
 
   function setSoftNavFlag(active){
@@ -1356,10 +1528,11 @@
       window.deFullscreen.setSoftNavInProgress(!!active);
     }
     if(!active){
-      // Final restores after soft-nav flag drops, then release the lock.
-      restoreSidebarScroll(lockedSidebarScroll);
-      sidebarScrollLockUntil = Math.max(sidebarScrollLockUntil, Date.now() + 400);
-      releaseSidebarScrollLock(450);
+      sidebarScrollLockUntil = Math.max(sidebarScrollLockUntil, Date.now() + 200);
+      releaseSidebarScrollLock(300);
+      if(typeof window.syncDeSidebarPointerState === 'function'){
+        window.syncDeSidebarPointerState();
+      }
     }
   }
 
@@ -1422,7 +1595,6 @@
        plain gray box for the whole stylesheet-wait window (worst on first cold open). */
     var addedLinks = mergeHeadAssets(doc, nextMain);
     syncSidebarFromDoc(doc, url);
-    restoreSidebarScroll(sidebarScroll);
 
     if(curMain && nextMain){
       var content = collectNodesAndScripts(nextMain);
@@ -1441,38 +1613,40 @@
 
       var finishSwap = function(){
         if(!isCurrentSoftNav(navToken)) return;
-        document.documentElement.classList.add('de-soft-navigating');
-        if(nextTitle) document.title = nextTitle;
-        if(nextBodyClass) document.body.className = nextBodyClass;
-        if(typeof curMain.replaceChildren === 'function'){
-          curMain.replaceChildren(frag);
-        } else {
-          while(curMain.firstChild) curMain.removeChild(curMain.firstChild);
-          curMain.appendChild(frag);
-        }
-        scrollMainToTop();
-        restoreSidebarScroll(sidebarScroll);
-
-        var syncUrl = urlWithPosSettingsSection(url);
-        try{
-          var current = new URL(window.location.href);
-          var next = new URL(syncUrl, window.location.href);
-          if(current.pathname !== next.pathname || current.search !== next.search || current.hash !== next.hash){
-            history.replaceState({ deSoftNav: true }, '', syncUrl);
-          }
-        } catch(e){
-          if(window.location.href !== syncUrl){
-            try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
-          }
-        }
-        /* Run scripts / paint cached UI first, then reveal (avoids empty SSR flash). */
-        runScriptNodes(content.scripts, function(){
+        /* Keep previous page visible while destination JS downloads (Restaurant Tables). */
+        preloadExternalScripts(content.scripts, function(){
           if(!isCurrentSoftNav(navToken)) return;
-          finalizeSoftNav();
-          restoreSidebarScrollAfterLayout(sidebarScroll);
-          markMainLoading(false);
-          finishSoftNavUi(done, navToken);
-          endSoftNavigatingClass();
+          document.documentElement.classList.add('de-soft-navigating');
+          if(nextTitle) document.title = nextTitle;
+          if(nextBodyClass) document.body.className = nextBodyClass;
+          if(typeof curMain.replaceChildren === 'function'){
+            curMain.replaceChildren(frag);
+          } else {
+            while(curMain.firstChild) curMain.removeChild(curMain.firstChild);
+            curMain.appendChild(frag);
+          }
+          scrollMainToTop();
+
+          var syncUrl = urlWithPosSettingsSection(url);
+          try{
+            var current = new URL(window.location.href);
+            var next = new URL(syncUrl, window.location.href);
+            if(current.pathname !== next.pathname || current.search !== next.search || current.hash !== next.hash){
+              history.replaceState({ deSoftNav: true }, '', syncUrl);
+            }
+          } catch(e){
+            if(window.location.href !== syncUrl){
+              try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
+            }
+          }
+          runScriptNodes(content.scripts, function(){
+            if(!isCurrentSoftNav(navToken)) return;
+            finalizeSoftNav();
+            restoreSidebarScrollAfterLayout(sidebarScroll);
+            markMainLoading(false);
+            finishSoftNavUi(done, navToken);
+            endSoftNavigatingClass();
+          });
         });
       };
 
@@ -1558,6 +1732,16 @@
 
     /* Start leave saves immediately so they overlap the destination HTML fetch. */
     var leavePromise = runBeforeSoftNavHandlers();
+    /* Tables: warm floor snapshot in parallel with HTML so first paint is not empty SSR. */
+    var floorOutlet = (function(){
+      try{
+        var p = new URL(url, window.location.href).pathname || '';
+        return p.indexOf('/bar-point-of-sale') === 0 ? 'bar' : 'restaurant';
+      } catch(e){
+        return 'restaurant';
+      }
+    })();
+    var floorPromise = isPosTablesUrl(url) ? warmPosFloorSnapshot(nav.signal, floorOutlet) : Promise.resolve(null);
 
     var htmlPromise = prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
@@ -1568,7 +1752,7 @@
       return response.text();
     });
 
-    Promise.all([htmlPromise, leavePromise]).then(function(results){
+    Promise.all([htmlPromise, leavePromise, floorPromise]).then(function(results){
       if(!isCurrentSoftNav(nav.token)) return;
       var html = results[0];
       if(!html) throw new Error('empty soft nav html');
@@ -1598,6 +1782,35 @@
     });
   }
 
+  function isPosInvoiceAppUrl(url){
+    try{
+      var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+      return path === '/point-of-sale/invoice' || path === '/bar-point-of-sale/invoice';
+    } catch(e){
+      return false;
+    }
+  }
+
+  /** POS Create Invoice: fullscreen + unpinned rail for maximum billing space.
+   *  Call from a user-gesture click so browsers allow requestFullscreen. */
+  function applyPosInvoiceImmersiveMode(){
+    try{
+      if(typeof window.setDeSidebarPinned === 'function'){
+        window.setDeSidebarPinned(false);
+      } else {
+        document.querySelectorAll('.de-sidebar').forEach(function(sb){
+          sb.classList.remove('is-pinned', 'is-expanded');
+        });
+        try{ localStorage.setItem('de-sidebar-pinned', '0'); } catch(e0){}
+      }
+    } catch(e1){}
+    try{
+      if(window.deFullscreen && typeof window.deFullscreen.enter === 'function'){
+        window.deFullscreen.enter().catch(function(){});
+      }
+    } catch(e2){}
+  }
+
   function sameAppUrl(a, b){
     try{
       var ua = new URL(a, window.location.href);
@@ -1617,6 +1830,9 @@
     }
     url = withSalesScope(url);
     url = urlWithPosSettingsSection(url);
+    if(isPosInvoiceAppUrl(url)){
+      applyPosInvoiceImmersiveMode();
+    }
     // Already on this page — do not soft-refresh / hard-reload (that exits fullscreen).
     if(sameAppUrl(url, window.location.href)) return;
     rememberSidebarState();
@@ -1672,10 +1888,19 @@
     if(!isSameOriginLink(link)) return false;
     var url = withSalesScope(link.href);
     if(!url) return false;
+    if(isPosInvoiceAppUrl(url)){
+      applyPosInvoiceImmersiveMode();
+    }
     // Same page: block default navigation so a hard reload cannot exit fullscreen.
+    // If a prior soft-nav left a stale main panel, force soft-refresh instead of no-op.
     if(sameAppUrl(url, window.location.href)){
       event.preventDefault();
       event.stopPropagation();
+      if(!softNavContentMatchesUrl(url)){
+        lockSidebarScroll(lockedSidebarScroll || captureSidebarScroll());
+        link.classList.add('is-navigating');
+        softNavigate(url, hideSoftNavProgress);
+      }
       return true;
     }
     event.preventDefault();
@@ -1699,7 +1924,8 @@
     try{
       path = new URL(link.href, window.location.href).pathname.toLowerCase();
     } catch(e){}
-    if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1 || path.indexOf('/report') !== -1 || path.indexOf('/purchase-order') !== -1) return true;
+    if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1 || path.indexOf('/purchase-order') !== -1) return true;
+    if(path.indexOf('/export/') !== -1) return true;
     if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path) || /\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(rawHref)){
       return true;
     }
@@ -1771,6 +1997,7 @@
   window.deNavigateWithTransition = navigateWithTransition;
   window.deHidePageTransition = hideOverlay;
   window.deSoftSubmitForm = softSubmitForm;
+  window.clearSidebarScrollLock = clearSidebarScrollLock;
   /** Soft-reload current (or given) URL without a hard navigation, so fullscreen can stay. */
   window.deSoftRefresh = function(url){
     url = withSalesScope(url || window.location.href);
@@ -1867,27 +2094,9 @@
 
   function bootRestoreSidebarScroll(){
     try{ if('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch(e){}
-    var snapshot = readStoredSidebarScroll();
-    if(snapshot){
-      lockedSidebarScroll = snapshot;
-      restoreSidebarScroll(snapshot);
-      requestAnimationFrame(function(){
-        restoreSidebarScroll(snapshot);
-        requestAnimationFrame(function(){
-          restoreSidebarScroll(snapshot);
-          // Drop boot lock so the user can scroll freely after first paint.
-          lockedSidebarScroll = null;
-          // If restore left the active item clipped (e.g. more groups open), nudge nearest.
-          if(typeof window.scheduleActiveNavIntoView === 'function'){
-            window.scheduleActiveNavIntoView({ behavior: 'auto', padding: 12 });
-          }
-        });
-      });
-      return;
-    }
-    // No stored rail scroll — bring the active module into view once (nearest).
+    clearSidebarScrollLock();
     if(typeof window.scheduleActiveNavIntoView === 'function'){
-      window.scheduleActiveNavIntoView({ behavior: 'auto', padding: 12 });
+      window.scheduleActiveNavIntoView({ behavior: 'auto' });
     }
   }
 

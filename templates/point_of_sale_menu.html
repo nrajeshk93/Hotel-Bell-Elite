@@ -3,23 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Menu & Margin Calculator | Restaurant | Hotel Bell Elite</title>
+<title>Menu & Margin Calculator | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=32">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=25">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=30">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=31">
 <script>
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>
@@ -28,7 +27,7 @@
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% include 'partials/de_workspace_shell_open.html' %}
 
-<div class="main-wrapper" id="pos-menu-page" data-pos-menu>
+<div class="main-wrapper" id="pos-menu-page" data-pos-menu data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -55,21 +54,32 @@
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
         <div id="pos-menu-filter-form" class="sr-topbar-filters pos-menu-filter-form" aria-label="Menu filters">
-          <div class="se-filter-chip se-filter-chip--search pl-search-chip pos-menu-search-chip" id="pos-menu-search-chip">
+          <div class="se-filter-chip se-filter-chip--search pos-menu-search-chip pos-menu-field-listbox pos-menu-header-field" id="pos-menu-search-chip">
             <label class="se-filter-chip-label" for="pos-menu-search">Search</label>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              </span>
-              <input type="search" id="pos-menu-search" class="pl-search-input" placeholder="Menu item, code, category…" autocomplete="off" aria-label="Search menu items">
+              <input type="search" id="pos-menu-search" class="pl-search-input pos-menu-header-search" placeholder="Menu item, code, category…" autocomplete="off" aria-label="Search menu items">
             </div>
           </div>
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pos-menu-filter-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-change="posMenuCategoryFilterChanged" id="pos-menu-filter-category-listbox">
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-menu-field-listbox pos-menu-filter-listbox pos-menu-header-field" data-se-listbox data-se-listbox-change="posMenuOutletFilterChanged" id="pos-menu-filter-outlet-listbox">
+            <span class="se-filter-chip-label" id="pos-menu-filter-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="pos-menu-filter-outlet" value="restaurant">
+              <button type="button" class="se-filter-chip-trigger" id="pos-menu-filter-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-filter-outlet-list" aria-labelledby="pos-menu-filter-outlet-label pos-menu-filter-outlet-value">
+                <span class="se-filter-chip-value" id="pos-menu-filter-outlet-value">Restaurant</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="pos-menu-filter-outlet-list" role="listbox" aria-labelledby="pos-menu-filter-outlet-label" hidden>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="" data-name="all" data-label="All" aria-selected="false">All</button>
+              <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="restaurant" data-name="restaurant" data-label="Restaurant" aria-selected="true">Restaurant</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="bar" data-name="bar" data-label="Bar" aria-selected="false">Bar</button>
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-menu-field-listbox pos-menu-filter-listbox pos-menu-header-field" data-se-listbox data-se-listbox-change="posMenuCategoryFilterChanged" id="pos-menu-filter-category-listbox">
             <span class="se-filter-chip-label" id="pos-menu-filter-category-label">Category</span>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
-              </span>
               <input type="hidden" id="pos-menu-filter-category" value="">
               <button type="button" class="se-filter-chip-trigger" id="pos-menu-filter-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-filter-category-list" aria-labelledby="pos-menu-filter-category-label pos-menu-filter-category-value">
                 <span class="se-filter-chip-value" id="pos-menu-filter-category-value">All Categories</span>
@@ -79,20 +89,14 @@
               </span>
             </div>
             <div class="se-filter-listbox" id="pos-menu-filter-category-list" role="listbox" aria-labelledby="pos-menu-filter-category-label" hidden>
-              <div class="ep-listbox-search-wrap">
-                <input type="search" class="ep-listbox-search" placeholder="Search category…" autocomplete="off" aria-label="Search categories">
-              </div>
               <div class="ep-listbox-options" id="pos-menu-filter-category-options">
                 <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="" data-name="all categories" data-label="All Categories" aria-selected="true">All Categories</button>
               </div>
             </div>
           </div>
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pos-menu-filter-listbox" data-se-listbox data-se-listbox-change="posMenuStatusFilterChanged" id="pos-menu-filter-status-listbox">
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-menu-field-listbox pos-menu-filter-listbox pos-menu-header-field" data-se-listbox data-se-listbox-change="posMenuStatusFilterChanged" id="pos-menu-filter-status-listbox">
             <span class="se-filter-chip-label" id="pos-menu-filter-status-label">Status</span>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/></svg>
-              </span>
               <input type="hidden" id="pos-menu-filter-status" value="">
               <button type="button" class="se-filter-chip-trigger" id="pos-menu-filter-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-filter-status-list" aria-labelledby="pos-menu-filter-status-label pos-menu-filter-status-value">
                 <span class="se-filter-chip-value" id="pos-menu-filter-status-value">All</span>
@@ -122,8 +126,8 @@
   {% include 'partials/pos_menu_modals.html' %}
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=24"></script>
-<script src="{{ url_for('static', filename='pos_menu.js') }}?v=29"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
+<script src="{{ url_for('static', filename='pos_menu.js') }}?v=36"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

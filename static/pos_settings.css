@@ -374,6 +374,13 @@ body.pos-settings-module .pos-set-listbox .se-filter-chip-label{
 }
 .pos-set-badge--muted{background:#F1F5F9;color:var(--pos-muted)}
 .pos-set-badge--warn{background:#FFF7ED;color:var(--pos-warn)}
+.pos-set-badge--pc{background:#EEF2FF;color:#4338CA;flex-shrink:0}
+.pos-set-pc-hint{
+  margin:0 0 16px;padding:10px 12px;border-radius:10px;
+  background:#F8FAFC;border:1px solid var(--pos-border);
+  font-size:12px;line-height:1.45;color:var(--pos-muted);font-weight:500;
+}
+.pos-set-pc-hint strong{color:var(--pos-text);font-weight:650}
 
 .pos-set-table-wrap{overflow:auto}
 .pos-set-table{

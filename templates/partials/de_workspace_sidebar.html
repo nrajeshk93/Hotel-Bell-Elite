@@ -12,6 +12,7 @@
 {% set payroll_open = nav_section == 'payroll' %}
 {% set stores_open = nav_section == 'stores' %}
 {% set pos_open = nav_section == 'pos' %}
+{% set bar_pos_open = nav_section == 'bar_pos' %}
 {% set master_open = nav_section == 'master' %}
 {% set report_open = nav_section == 'report' %}
 {% set nav_year = sel_year|default(today_year|default('')) %}
@@ -130,11 +131,28 @@
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-pos-sub">
-        <a class="de-nav-subitem{% if pos_view == 'tables' or pos_view == 'home' %} is-active{% endif %}" id="de-nav-pos-tables" href="{{ url_for('point_of_sale') }}"{% if pos_view == 'tables' or pos_view == 'home' %} aria-current="page"{% endif %}>Tables</a>
-        <a class="de-nav-subitem{% if pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-pos-invoice" href="{{ url_for('point_of_sale_invoice') }}"{% if pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
-        <a class="de-nav-subitem{% if pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-pos-invoice-ledger" href="{{ url_for('point_of_sale_invoice_ledger') }}"{% if pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
-        <a class="de-nav-subitem{% if pos_view == 'menu' %} is-active{% endif %}" id="de-nav-pos-menu" href="{{ url_for('point_of_sale_menu') }}"{% if pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
-        <a class="de-nav-subitem{% if pos_view == 'settings' %} is-active{% endif %}" id="de-nav-pos-settings" href="{{ url_for('point_of_sale_settings') }}"{% if pos_view == 'settings' %} aria-current="page"{% endif %}>Settings</a>
+        <a class="de-nav-subitem{% if pos_open and (pos_view == 'tables' or pos_view == 'home') %} is-active{% endif %}" id="de-nav-pos-tables" href="{{ url_for('point_of_sale') }}"{% if pos_open and (pos_view == 'tables' or pos_view == 'home') %} aria-current="page"{% endif %}>Tables</a>
+        <a class="de-nav-subitem{% if pos_open and pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-pos-invoice" href="{{ url_for('point_of_sale_invoice') }}"{% if pos_open and pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
+        <a class="de-nav-subitem{% if pos_open and pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-pos-invoice-ledger" href="{{ url_for('point_of_sale_invoice_ledger') }}"{% if pos_open and pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+        <a class="de-nav-subitem{% if pos_open and pos_view == 'menu' %} is-active{% endif %}" id="de-nav-pos-menu" href="{{ url_for('point_of_sale_menu') }}"{% if pos_open and pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
+        <a class="de-nav-subitem{% if pos_open and pos_view == 'settings' %} is-active{% endif %}" id="de-nav-pos-settings" href="{{ url_for('point_of_sale_settings') }}"{% if pos_open and pos_view == 'settings' %} aria-current="page"{% endif %}>Settings</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_dashboard_access('point_of_sale_bar') %}
+    <div class="de-nav-group{% if bar_pos_open %} is-open is-child-active{% endif %}" id="de-nav-bar-pos-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-bar-pos-toggle" aria-expanded="{{ 'true' if bar_pos_open else 'false' }}" aria-controls="de-nav-bar-pos-sub" onclick="toggleDeNavGroup(event, 'de-nav-bar-pos-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 22h8"/><path d="M12 15v7"/><path d="M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z"/></svg>
+        <span>Bar</span>
+        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <div class="de-nav-sub" id="de-nav-bar-pos-sub">
+        <a class="de-nav-subitem{% if bar_pos_open and (pos_view == 'tables' or pos_view == 'home') %} is-active{% endif %}" id="de-nav-bar-pos-tables" href="{{ url_for('bar_point_of_sale') }}"{% if bar_pos_open and (pos_view == 'tables' or pos_view == 'home') %} aria-current="page"{% endif %}>Tables</a>
+        <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-bar-pos-invoice" href="{{ url_for('bar_point_of_sale_invoice') }}"{% if bar_pos_open and pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
+        <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-bar-pos-invoice-ledger" href="{{ url_for('bar_point_of_sale_invoice_ledger') }}"{% if bar_pos_open and pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+        <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'menu' %} is-active{% endif %}" id="de-nav-bar-pos-menu" href="{{ url_for('bar_point_of_sale_menu') }}"{% if bar_pos_open and pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
+        <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'settings' %} is-active{% endif %}" id="de-nav-bar-pos-settings" href="{{ url_for('bar_point_of_sale_settings') }}"{% if bar_pos_open and pos_view == 'settings' %} aria-current="page"{% endif %}>Settings</a>
       </div>
     </div>
     {% endif %}

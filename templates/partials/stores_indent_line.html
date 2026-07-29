@@ -15,7 +15,7 @@
 {% set has_packs = pack_ns.variants|length > 0 %}
 <div class="st-line{% if has_item %} is-product-selected{% endif %}{% if has_packs %} has-packs{% endif %}">
   <div class="st-field st-field--product" data-st-label="Item">
-    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-product-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="stProductPicked" id="{{ fid }}-listbox">
+    <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox st-product-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="stProductPicked" id="{{ fid }}-listbox">
       <label class="se-filter-chip-label st-sr-only" id="{{ fid }}-label" for="{{ fid }}-trigger">Item</label>
       <div class="se-filter-chip-control">
         <input type="hidden" id="{{ fid }}" name="item_name" value="{{ line.item_name }}">

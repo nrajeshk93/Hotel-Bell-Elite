@@ -1,22 +1,22 @@
 {% set de_soft_body_class = 'de-open pos-module pos-invoice-module' %}
-{% set de_soft_page_title = 'Invoice | Restaurant | Hotel Bell Elite' %}
+{% set de_soft_page_title = 'Invoice | ' ~ (pos_label|default('Restaurant')) ~ ' | Hotel Bell Elite' %}
 {% if not is_partial_main %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Invoice | Restaurant | Hotel Bell Elite</title>
+<title>Invoice | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=39">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=44">
 <script>
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>
@@ -25,8 +25,8 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=39">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=44">
 {% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox, ep_listbox %}
 
@@ -35,7 +35,7 @@
      data-tip-location="{{ tip_location }}"
      data-tip-add-url="{{ tip_add_url }}"
      data-tip-edit-url="{{ tip_edit_url }}"
-     data-tip-delete-url="{{ tip_delete_url }}">
+     data-tip-delete-url="{{ tip_delete_url }}" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
   <header class="pos-inv-header">
     <div class="pos-inv-header-title-row">
       <span class="pos-inv-header-icon" aria-hidden="true">
@@ -81,6 +81,10 @@
     </div>
   </header>
 
+  <div id="pos-inv-offline-banner" class="pos-inv-offline-banner" hidden role="status" aria-live="polite">
+    Offline — changes sync when you are back online.
+  </div>
+
   <div class="pos-inv-layout">
     <div class="pos-inv-main">
       <section class="pos-inv-card pos-inv-search-card" aria-label="Search and order details">
@@ -104,9 +108,6 @@
               </span>
               <span class="pos-inv-meta-stat-value pos-inv-meta-stat-value--order">
                 <span id="pos-inv-meta-order-no">—</span>
-                <button type="button" class="pos-inv-icon-btn" id="pos-inv-edit-order-no" title="Edit order number" aria-label="Edit order number">
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 20h9"/><path d="m16.5 3.5 3.5 3.5L7 20l-4 1 1-4Z"/></svg>
-                </button>
               </span>
             </div>
           </div>
@@ -207,8 +208,16 @@
             <dd id="pos-inv-sum-discount">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row">
-            <dt>GST <span class="pos-inv-summary-muted">(5%)</span></dt>
-            <dd id="pos-inv-sum-gst">₹0.00</dd>
+            <dt>CGST <span class="pos-inv-summary-muted">(2.5%)</span></dt>
+            <dd id="pos-inv-sum-cgst">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>UGST <span class="pos-inv-summary-muted">(2.5%)</span></dt>
+            <dd id="pos-inv-sum-ugst">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row" id="pos-inv-sum-vat-row" hidden>
+            <dt>VAT <span class="pos-inv-summary-muted">(10%)</span></dt>
+            <dd id="pos-inv-sum-vat">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row" id="pos-inv-sum-service-row" hidden>
             <dt>Service Charge <span class="pos-inv-summary-muted" id="pos-inv-sum-service-hint"></span></dt>
@@ -258,9 +267,9 @@
         <span>PDF</span>
       </button>
     </div>
-    <button type="button" class="pos-inv-btn pos-inv-btn--primary pos-inv-toolbar-primary" id="pos-inv-send-customer" data-inv-action="send" title="Save and generate the customer bill">
+    <button type="button" class="pos-inv-btn pos-inv-btn--primary pos-inv-toolbar-primary" id="pos-inv-send-customer" data-inv-action="send" title="Save, print the bill, and lock this order">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg>
-      Send to Customer
+      Generate Invoice
     </button>
   </div>
 
@@ -457,8 +466,14 @@
 </div>
 
 <script type="application/json" id="pos-inv-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["room_transfer","Room Transfer"],["bank_transfer","Bank Transfer"]]</script>
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=23"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=54"></script>
+{% if pos_receipt_config %}
+<script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
+{% endif %}
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=39"></script>
+<script src="{{ url_for('static', filename='pos_offline.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=83"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

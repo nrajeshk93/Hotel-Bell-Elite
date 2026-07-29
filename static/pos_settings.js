@@ -8,6 +8,44 @@
 
   var FLOOR_API = '/point-of-sale/api/floor';
   var SETTINGS_API = '/point-of-sale/api/settings';
+
+  function resolvePosApiBase() {
+    var el =
+      document.getElementById('pos-settings-page') ||
+      document.querySelector('[data-pos-api-base]');
+    var base = (el && el.getAttribute('data-pos-api-base')) || '';
+    if (!base) {
+      base =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? '/bar-point-of-sale'
+          : '/point-of-sale';
+    }
+    return String(base).replace(/\/$/, '') || '/point-of-sale';
+  }
+
+  function resolvePosOutlet() {
+    var el =
+      document.getElementById('pos-settings-page') ||
+      document.querySelector('[data-pos-outlet]');
+    var outlet = (el && el.getAttribute('data-pos-outlet')) || '';
+    if (!outlet) {
+      outlet =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? 'bar'
+          : 'restaurant';
+    }
+    return outlet;
+  }
+
+  function syncPosApiPaths() {
+    var base = resolvePosApiBase();
+    var outlet = resolvePosOutlet();
+    FLOOR_API = base + '/api/floor';
+    SETTINGS_API = base + '/api/settings';
+    LEGACY_STORAGE_KEY = 'hbe_pos_floor_demo_' + outlet;
+    MIGRATE_FLAG = 'hbe_pos_floor_db_migrated_' + outlet;
+  }
+
   var LEGACY_STORAGE_KEY = 'hbe_pos_floor_demo';
   var MIGRATE_FLAG = 'hbe_pos_floor_db_migrated';
   var state = null;
@@ -379,6 +417,7 @@
     var panels = settings && settings.panels && typeof settings.panels === 'object' ? settings.panels : null;
     if (!panels) return;
     Object.keys(panels).forEach(function (key) {
+      if (key === 'printers') return; /* Per-PC prefs — ignore server payload. */
       if (opts.skipDirty && settingsDirty[key]) return;
       var panel = document.querySelector('#pos-settings-page [data-panel="' + key + '"]');
       if (panel) applyPanelFields(panel, panels[key]);
@@ -389,6 +428,14 @@
     opts = opts || {};
     var panel = document.querySelector('#pos-settings-page [data-panel="' + section + '"]');
     if (!panel || section === 'floor' || section === 'tables' || section === 'areas') return;
+    /* Printers are per-PC (localStorage) — never push to shared outlet settings. */
+    if (section === 'printers') {
+      if (global.hbePosPrinterPrefs && typeof global.hbePosPrinterPrefs.saveFromPanel === 'function') {
+        global.hbePosPrinterPrefs.saveFromPanel(panel, resolvePosOutlet());
+        setSaveStatus('Saved on this PC', true, false);
+      }
+      return;
+    }
     syncAllHoursRows(panel);
     var next = Object.assign({}, restaurantSettings);
     if (!next.panels || typeof next.panels !== 'object') next.panels = {};
@@ -1641,6 +1688,7 @@
   }
 
   function initPosSettingsPage() {
+    syncPosApiPaths();
     var page = document.getElementById('pos-settings-page');
     if (!page) return;
     var section = readStoredSection();
@@ -1660,6 +1708,9 @@
     bindSearch(page);
     bindNav(page);
     bindSettingsAutoSave(page);
+    if (global.hbePosPrinterPrefs && typeof global.hbePosPrinterPrefs.bindPanel === 'function') {
+      global.hbePosPrinterPrefs.bindPanel(page);
+    }
     bindFloorActions(page);
     bindPropsModal(page);
     bindFloorList(page);

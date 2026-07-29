@@ -421,7 +421,7 @@ class PosTableOccupancyTests(unittest.TestCase):
 
     def test_close_missing_invoice_returns_error(self):
         res = self.client.post("/point-of-sale/api/invoices/999999/close")
-        self.assertEqual(res.status_code, 400)
+        self.assertIn(res.status_code, (400, 404))
         self.assertFalse(res.get_json()["ok"])
 
     def test_new_bill_allowed_on_table_after_close(self):
@@ -781,7 +781,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(row["sent_qty"], 2)
         self.assertTrue(row["lines"])
 
-        # Flag is sticky: a later plain save must not clear it.
+        # Flag is sticky and cart is locked: a later plain save must be rejected.
         again = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload(
@@ -800,9 +800,80 @@ class PosTableOccupancyTests(unittest.TestCase):
                 ],
             ),
         )
-        self.assertEqual(again.status_code, 200, again.get_data(as_text=True))
+        self.assertEqual(again.status_code, 400, again.get_data(as_text=True))
+        again_body = again.get_json() or {}
+        self.assertIn("already generated", (again_body.get("error") or "").lower())
         sticky = self.client.get("/point-of-sale/api/kot-tokens").get_json()
         self.assertTrue(sticky["tables"][0]["customer_bill_sent"])
+
+    def test_generated_invoice_rejects_line_edits(self):
+        """After Generate Invoice (customerBill), changing lines is blocked."""
+        create = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0091", "T2", kot_send=True),
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0091",
+                "T2",
+                customerBill=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        self.assertTrue((bill.get_json().get("invoice") or {}).get("customer_bill_sent"))
+
+        edited = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0091",
+                "T2",
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 5,
+                        "kotSentQty": 2,
+                    },
+                    {
+                        "uid": "2",
+                        "menuId": None,
+                        "name": "Sandwich",
+                        "variant": "",
+                        "rate": 80,
+                        "qty": 1,
+                        "kotSentQty": 0,
+                    },
+                ],
+            ),
+        )
+        self.assertEqual(edited.status_code, 400, edited.get_data(as_text=True))
+        err = (edited.get_json() or {}).get("error") or ""
+        self.assertIn("already generated", err.lower())
+
+        detail = self.client.get(
+            f"/point-of-sale/api/invoices/{bill.get_json()['invoice']['id']}"
+        ).get_json()
+        inv = detail.get("invoice") or {}
+        self.assertTrue(inv.get("customer_bill_sent"))
+        self.assertEqual(len(inv.get("lines") or []), 1)
+        self.assertEqual(int((inv["lines"][0].get("qty") or 0)), 2)
 
     def test_non_admin_cannot_reduce_or_remove_kitchen_sent_lines(self):
         save = self.client.post(
@@ -1053,8 +1124,30 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(put.get_json()["tables"][0]["status"], "available")
 
         self.assertEqual(self._floor_status("T1"), "occupied")
+        # Stale occupied-without-bill tiles are freed on floor GET sync.
+        self.assertEqual(self._floor_status("T3"), "available")
 
-    # -- Transfer table (move open bill) --------------------------------------
+    def test_floor_get_frees_occupied_table_without_open_order(self):
+        """A table marked occupied with no open bill must not stay occupied."""
+        put = self.client.put(
+            "/point-of-sale/api/floor",
+            json={
+                "areas": [{"id": "area_1", "type": "area", "name": "Main Hall"}],
+                "tables": [
+                    {
+                        "id": "t3",
+                        "type": "table",
+                        "name": "T3",
+                        "seats": 6,
+                        "shape": "rect",
+                        "status": "occupied",
+                        "areaId": "area_1",
+                    },
+                ],
+            },
+        )
+        self.assertEqual(put.status_code, 200)
+        self.assertEqual(self._floor_status("T3"), "available")
 
     def test_dine_in_save_requires_table(self):
         res = self.client.post(

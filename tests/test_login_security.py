@@ -255,6 +255,111 @@ class LoginSecurityTests(unittest.TestCase):
         self.assertFalse(row["locked_at"])
         self.assertEqual(row["failed_login_attempts"], 0)
 
+    def test_hash_password_uses_argon2id(self):
+        encoded = auth_security.hash_password("fresh-secret")
+        self.assertTrue(encoded.startswith("$argon2id$"))
+        self.assertTrue(auth_security.verify_password(encoded, "fresh-secret"))
+        self.assertFalse(auth_security.verify_password(encoded, "wrong"))
+        self.assertFalse(auth_security.password_needs_rehash(encoded))
+
+    def test_legacy_werkzeug_login_upgrades_to_argon2id(self):
+        row = self._user_row()
+        self.assertFalse(str(row["password_hash"]).startswith("$argon2"))
+        self.assertTrue(auth_security.password_needs_rehash(row["password_hash"]))
+
+        resp = self.client.post(
+            "/login",
+            data={"username": "locke", "password": "secret123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+
+        row = self._user_row()
+        self.assertTrue(str(row["password_hash"]).startswith("$argon2id$"))
+        self.assertTrue(auth_security.verify_password(row["password_hash"], "secret123"))
+        self.assertFalse(auth_security.password_needs_rehash(row["password_hash"]))
+
+        # Second login still works with the upgraded hash.
+        self.client.get("/logout", follow_redirects=False)
+        resp = self.client.post(
+            "/login",
+            data={"username": "locke", "password": "secret123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+
+    def test_access_user_create_and_reset_store_argon2id(self):
+        import workspace_access
+
+        conn = db_mod.get_db()
+        try:
+            user_id, flag = workspace_access.save_access_user_record(
+                conn,
+                user_id=None,
+                username="argon_user",
+                full_name="Argon User",
+                password="ArgonPass1!",
+                is_admin=False,
+                dashboard_modules=[],
+                sales_analytics_modules=[],
+                user_access_modules=[],
+                sql_now="datetime('now','localtime')",
+                email="argon@example.com",
+            )
+            self.assertEqual(flag, "created")
+            stored = conn.execute(
+                "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+            ).fetchone()["password_hash"]
+            self.assertTrue(str(stored).startswith("$argon2id$"))
+            self.assertTrue(auth_security.verify_password(stored, "ArgonPass1!"))
+
+            workspace_access.save_access_user_record(
+                conn,
+                user_id=user_id,
+                username="argon_user",
+                full_name="Argon User",
+                password="ResetPass2!",
+                is_admin=False,
+                dashboard_modules=[],
+                sales_analytics_modules=[],
+                user_access_modules=[],
+                sql_now="datetime('now','localtime')",
+                email="argon@example.com",
+            )
+            reset = conn.execute(
+                "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+            ).fetchone()["password_hash"]
+            self.assertTrue(str(reset).startswith("$argon2id$"))
+            self.assertTrue(auth_security.verify_password(reset, "ResetPass2!"))
+            self.assertFalse(auth_security.verify_password(reset, "ArgonPass1!"))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_admin_seed_uses_argon2id(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        tmp.close()
+        path = tmp.name
+        orig = db_mod.DATABASE_PATH
+        try:
+            db_mod.DATABASE_PATH = path
+            db_mod.init_db()
+            conn = db_mod.get_db()
+            try:
+                stored = conn.execute(
+                    "SELECT password_hash FROM users WHERE username = 'admin'"
+                ).fetchone()["password_hash"]
+            finally:
+                conn.close()
+            self.assertTrue(str(stored).startswith("$argon2id$"))
+            self.assertTrue(auth_security.verify_password(stored, "admin"))
+        finally:
+            db_mod.DATABASE_PATH = orig
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -444,10 +444,26 @@ body.home-module .de-main-inner.db-main-inner--home{
     stroke-linecap:round;
     stroke-linejoin:round;
   }
+  .db-home .db-home-card-glyph{
+    display:block;
+    width:36px;
+    height:36px;
+    background:currentColor;
+    -webkit-mask-image:var(--glyph);
+    mask-image:var(--glyph);
+    -webkit-mask-size:contain;
+    mask-size:contain;
+    -webkit-mask-repeat:no-repeat;
+    mask-repeat:no-repeat;
+    -webkit-mask-position:center;
+    mask-position:center;
+  }
   .db-home .db-home-card--blue .db-home-card-icon{background:rgba(59,130,246,.08);color:#2563EB}
   .db-home .db-home-card--emerald .db-home-card-icon{background:rgba(16,185,129,.08);color:#059669}
   .db-home .db-home-card--orange .db-home-card-icon{background:rgba(249,115,22,.08);color:#EA580C}
   .db-home .db-home-card--indigo .db-home-card-icon{background:rgba(99,102,241,.08);color:#4F46E5}
+  .db-home .db-home-card--amber .db-home-card-icon{background:rgba(180,83,9,.10);color:#B45309}
+  .db-home .db-home-card--wine .db-home-card-icon{background:rgba(157,23,77,.10);color:#9F1239}
   .db-home .db-home-card--purple .db-home-card-icon{background:rgba(168,85,247,.08);color:#9333EA}
   .db-home .db-home-card--cyan .db-home-card-icon{background:rgba(6,182,212,.08);color:#0891B2}
   .db-home .db-kpi-section{margin:0 0 28px;padding:0}
@@ -472,6 +488,15 @@ body.home-module .de-main-inner.db-main-inner--home{
     font-size:20px;
     line-height:1;
     transition:transform .3s ease-out,color .3s ease-out;
+  }
+  .db-home .db-home-card-arrow svg{
+    width:20px;
+    height:20px;
+    stroke:currentColor;
+    fill:none;
+    stroke-width:1.75;
+    stroke-linecap:round;
+    stroke-linejoin:round;
   }
   .db-home .db-home-card:hover .db-home-card-arrow{
     transform:translateX(6px);

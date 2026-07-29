@@ -10,12 +10,12 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=64">
 {% if page_key == 'indent' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
@@ -27,8 +27,7 @@
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>
@@ -38,11 +37,11 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=64">
 {% if page_key == 'indent' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
@@ -294,8 +293,8 @@
   </section>
 </div>
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=25"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=66"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=68"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

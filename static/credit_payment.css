@@ -61,6 +61,36 @@ body.su-module .cp-search-chip.is-active .se-filter-chip-control{
   background:#EFF6FF !important;
 }
 body.su-module .cp-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
+/* Supplier combobox — match header field chips (white bg, type-to-search in chip) */
+body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control{
+  background:#fff !important;
+}
+body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox.is-open .se-filter-chip-control,
+body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control:focus-within{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
+}
+body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox{
+  min-height:44px;
+  font-size:13px;
+  font-weight:600;
+  padding:0 0 0 12px;
+}
+body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
+  color:#94A3B8;
+  font-weight:500;
+}
+body.su-module #credit-payment-filter-form #credit-payment-supplier-listbox.is-open{
+  z-index:100;
+}
+body.su-module #credit-payment-filter-form #credit-payment-supplier-listbox .se-filter-listbox{
+  z-index:100;
+}
+body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox.is-open .se-filter-chip-chev{
+  color:#2563EB;
+  transform:rotate(180deg);
+}
 body.su-module .cp-date-range-host{
   flex:0 0 auto;
   min-width:0;

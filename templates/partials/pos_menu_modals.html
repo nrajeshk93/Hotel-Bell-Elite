@@ -35,49 +35,126 @@
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       <span id="pos-menu-item-title">Add menu item</span>
     </div>
-    <p class="staff-credit-copy" id="pos-menu-item-copy">Set the menu name and rate, then add ingredients with the quantity required.</p>
     <div id="pos-menu-item-err" class="pos-menu-modal-err staff-credit-error" hidden></div>
     <form id="pos-menu-item-form" class="pos-menu-item-form" autocomplete="off" novalidate data-de-hard-nav>
       <div class="pos-menu-item-modal-body">
         <input type="hidden" id="pos-menu-item-id" value="">
         <input type="hidden" id="pos-menu-item-category-id" value="">
         <div class="staff-field">
-          <label for="pos-menu-item-category">Category *</label>
-          <select id="pos-menu-item-category" class="staff-input" required>
-            <option value="">Select category…</option>
-          </select>
-        </div>
-        <div class="staff-field">
           <label for="pos-menu-item-name">Menu *</label>
           <input type="text" id="pos-menu-item-name" class="staff-input" maxlength="120" placeholder="e.g. Menu item name" required>
         </div>
         <div class="staff-grid">
-          <div class="staff-field">
+          <div class="staff-field" id="pos-menu-item-code-field">
             <label for="pos-menu-item-code">Code</label>
             <input type="text" id="pos-menu-item-code" class="staff-input" maxlength="40" placeholder="Optional SKU">
+          </div>
+          <div class="staff-field" id="pos-menu-item-kind-field" hidden>
+            <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-menu-field-listbox" data-se-listbox data-se-listbox-change="onPosMenuItemKindChanged" id="pos-menu-item-kind-listbox">
+              <span class="se-filter-chip-label" id="pos-menu-item-kind-label">Item Type</span>
+              <div class="se-filter-chip-control">
+                <input type="hidden" id="pos-menu-item-kind" name="item_kind" value="food">
+                <button type="button" class="se-filter-chip-trigger" id="pos-menu-item-kind-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-item-kind-list" aria-labelledby="pos-menu-item-kind-label pos-menu-item-kind-value">
+                  <span class="se-filter-chip-value" id="pos-menu-item-kind-value">Food</span>
+                </button>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+              <div class="se-filter-listbox" id="pos-menu-item-kind-list" role="listbox" aria-labelledby="pos-menu-item-kind-label" hidden>
+                <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="food" data-name="food" data-label="Food" aria-selected="true">Food</button>
+                <button type="button" class="se-filter-listbox-option" role="option" data-value="liquor" data-name="liquor" data-label="Liquor" aria-selected="false">Liquor</button>
+              </div>
+            </div>
           </div>
           <div class="staff-field">
             <label for="pos-menu-item-rate">Rate (₹) *</label>
             <input type="number" id="pos-menu-item-rate" class="staff-input" min="0" step="0.01" placeholder="0.00" required>
           </div>
         </div>
+        <input type="hidden" id="pos-menu-item-variant" value="">
         <div class="staff-grid">
-          <div class="staff-field">
-            <label for="pos-menu-item-variant">Variant</label>
-            <input type="text" id="pos-menu-item-variant" class="staff-input" maxlength="80" placeholder="e.g. Half / Full (optional)">
+          <div class="staff-field" id="pos-menu-item-menu-type-field">
+            <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-menu-field-listbox" data-se-listbox data-se-listbox-change="onPosMenuItemMenuTypeChanged" id="pos-menu-item-menu-type-listbox">
+              <span class="se-filter-chip-label" id="pos-menu-item-menu-type-label">Menu Type</span>
+              <div class="se-filter-chip-control">
+                <input type="hidden" id="pos-menu-item-menu-type" name="menu_type" value="">
+                <button type="button" class="se-filter-chip-trigger" id="pos-menu-item-menu-type-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-item-menu-type-list" aria-labelledby="pos-menu-item-menu-type-label pos-menu-item-menu-type-value">
+                  <span class="se-filter-chip-value is-placeholder staff-supplier-placeholder" id="pos-menu-item-menu-type-value">Select…</span>
+                </button>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+              <div class="se-filter-listbox" id="pos-menu-item-menu-type-list" role="listbox" aria-labelledby="pos-menu-item-menu-type-label" hidden>
+                <button type="button" class="se-filter-listbox-option" role="option" data-value="veg" data-name="veg" data-label="Veg" aria-selected="false">Veg</button>
+                <button type="button" class="se-filter-listbox-option" role="option" data-value="non_veg" data-name="non-veg" data-label="Non-Veg" aria-selected="false">Non-Veg</button>
+                <button type="button" class="se-filter-listbox-option" role="option" data-value="liquor" data-name="liquor" data-label="Liquor" aria-selected="false">Liquor</button>
+              </div>
+            </div>
           </div>
-          <div class="staff-field">
-            <label for="pos-menu-item-menu-type">Menu Type</label>
-            <select id="pos-menu-item-menu-type" class="staff-input">
-              <option value="">Select…</option>
-              <option value="veg">Veg</option>
-              <option value="non_veg">Non-Veg</option>
-            </select>
+          <div class="staff-field" id="pos-menu-item-category-field">
+            <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-menu-field-listbox" data-se-listbox data-se-listbox-change="onPosMenuItemCategoryChanged" id="pos-menu-item-category-listbox">
+              <span class="se-filter-chip-label" id="pos-menu-item-category-label">Category *</span>
+              <div class="se-filter-chip-control">
+                <input type="hidden" id="pos-menu-item-category" name="category_id" value="" required>
+                <button type="button" class="se-filter-chip-trigger" id="pos-menu-item-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-item-category-list" aria-labelledby="pos-menu-item-category-label pos-menu-item-category-value">
+                  <span class="se-filter-chip-value is-placeholder staff-supplier-placeholder" id="pos-menu-item-category-value">Select category…</span>
+                </button>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+              <div class="se-filter-listbox" id="pos-menu-item-category-list" role="listbox" aria-labelledby="pos-menu-item-category-label" hidden></div>
+            </div>
           </div>
         </div>
         <div class="pos-menu-recipe-block">
+          <div class="staff-field" id="pos-menu-item-product-outlet-field">
+            <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-menu-field-listbox" data-se-listbox data-se-listbox-change="onPosMenuProductOutletChanged" id="pos-menu-item-product-outlet-listbox">
+              <span class="se-filter-chip-label" id="pos-menu-item-product-outlet-label">Outlet</span>
+              <div class="se-filter-chip-control">
+                <input type="hidden" id="pos-menu-item-product-outlet" value="restaurant">
+                <button type="button" class="se-filter-chip-trigger" id="pos-menu-item-product-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-item-product-outlet-list" aria-labelledby="pos-menu-item-product-outlet-label pos-menu-item-product-outlet-value">
+                  <span class="se-filter-chip-value" id="pos-menu-item-product-outlet-value">Restaurant</span>
+                </button>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+              <div class="se-filter-listbox" id="pos-menu-item-product-outlet-list" role="listbox" aria-labelledby="pos-menu-item-product-outlet-label" hidden>
+                <button type="button" class="se-filter-listbox-option" role="option" data-value="" data-name="all" data-label="All" aria-selected="false">All</button>
+                <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="restaurant" data-name="restaurant" data-label="Restaurant" aria-selected="true">Restaurant</button>
+                <button type="button" class="se-filter-listbox-option" role="option" data-value="bar" data-name="bar" data-label="Bar" aria-selected="false">Bar</button>
+              </div>
+            </div>
+          </div>
           <div class="staff-field">
-            {{ ep_listbox('add_ingredient', 'Ingredients', [], '', placeholder='Add ingredient…', searchable=true, field_id='pos-menu-item-product', change_handler='onPosMenuProductPicked', extra_class='pos-floor-props-listbox pos-menu-listbox') }}
+            <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pos-menu-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="onPosMenuProductPicked" id="pos-menu-item-product-listbox">
+              <label class="se-filter-chip-label" id="pos-menu-item-product-label" for="pos-menu-item-product-trigger">Ingredients</label>
+              <div class="se-filter-chip-control">
+                <input type="hidden" id="pos-menu-item-product" name="add_ingredient" value="">
+                <input type="search"
+                       class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                       id="pos-menu-item-product-trigger"
+                       role="combobox"
+                       aria-autocomplete="list"
+                       aria-haspopup="listbox"
+                       aria-expanded="false"
+                       aria-controls="pos-menu-item-product-list"
+                       aria-labelledby="pos-menu-item-product-label"
+                       value=""
+                       placeholder=""
+                       autocomplete="off"
+                       spellcheck="false">
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+              <div class="se-filter-listbox" id="pos-menu-item-product-list" role="listbox" aria-labelledby="pos-menu-item-product-label" hidden>
+                <div class="ep-listbox-options"></div>
+              </div>
+            </div>
           </div>
           <ul class="pos-menu-recipe-list" id="pos-menu-recipe-list" aria-label="Recipe ingredients"></ul>
           <p class="pos-menu-recipe-empty" id="pos-menu-recipe-empty">No ingredients yet. Pick products from Product Master.</p>

@@ -41,7 +41,7 @@
   }
 
   function syncAvailableCashDisplay(){
-    var paymentInput = document.getElementById('pl-add-payment-input');
+    var paymentInput = document.getElementById('pl-add-payment');
     var method = paymentInput ? (paymentInput.value || '') : '';
     var isCash = method === 'cash';
     if (availableWrap) availableWrap.hidden = !isCash;
@@ -93,151 +93,20 @@
     el.setAttribute('aria-hidden', 'true');
   }
 
-  function closeAllListboxes(except){
-    document.querySelectorAll('#pl-add-purchase-modal [data-se-listbox].is-open').forEach(function(root){
-      if (root !== except) closeListbox(root);
-    });
+  function closeAllListboxes() {
+    if (typeof window.closeAllEpListboxes === 'function') window.closeAllEpListboxes();
   }
 
-  function closeListbox(root){
-    if (!root) return;
-    var trigger = root.querySelector('.se-filter-chip-trigger');
-    var list = root.querySelector('.se-filter-listbox');
-    var search = root.querySelector('.staff-supplier-search, .pl-supplier-search');
-    root.classList.remove('is-open');
-    if (trigger) trigger.setAttribute('aria-expanded', 'false');
-    if (list) list.hidden = true;
-    if (search) search.value = '';
-    if (root.hasAttribute('data-se-listbox-searchable')) filterSearchableOptions(root, '');
-  }
+  window.plAddPaymentChanged = function () {
+    syncTransactionVisibility();
+  };
 
-  function scoreSearchOption(option, needle){
-    if (!needle) return 0;
-    var name = (option.getAttribute('data-name') || '').toLowerCase();
-    var gst = (option.getAttribute('data-gst') || '').toLowerCase();
-    var terms = needle.split(/\s+/).filter(Boolean);
-    var score = 0;
-    for (var i = 0; i < terms.length; i++) {
-      var term = terms[i];
-      if (name === term || (gst && gst === term)) score += 120;
-      else if (name.indexOf(term) === 0) score += 90;
-      else if (gst && gst.indexOf(term) === 0) score += 80;
-      else if (name.indexOf(term) !== -1) score += 60;
-      else if (gst && gst.indexOf(term) !== -1) score += 50;
-      else return -1;
-    }
-    return score;
-  }
-
-  function filterSearchableOptions(root, query){
-    var optionsWrap = root.querySelector('.staff-supplier-options');
-    var emptyEl = root.querySelector('.staff-supplier-empty');
-    if (!optionsWrap) return;
-    var needle = String(query || '').trim().toLowerCase();
-    var options = Array.from(optionsWrap.querySelectorAll('.staff-supplier-option, .staff-category-option'));
-    if (!needle) {
-      options.sort(function(a, b){
-        return (a.getAttribute('data-name') || '').localeCompare(b.getAttribute('data-name') || '');
-      });
-      options.forEach(function(option){
-        option.classList.remove('is-filtered-out');
-        optionsWrap.appendChild(option);
-      });
-      if (emptyEl) emptyEl.hidden = options.length > 0;
+  function setListboxValue(prefix, value, label, placeholder) {
+    if (typeof window.resetEpListbox === 'function') {
+      window.resetEpListbox(prefix, value || '', value ? (label || value) : (placeholder || 'Select'));
       return;
     }
-    var ranked = options.map(function(option){
-      return { option: option, score: scoreSearchOption(option, needle) };
-    }).filter(function(entry){
-      return entry.score >= 0 && (entry.option.getAttribute('data-value') || '') !== 'all';
-    });
-    ranked.sort(function(a, b){
-      return b.score - a.score || (a.option.getAttribute('data-name') || '').localeCompare(b.option.getAttribute('data-name') || '');
-    });
-    var best = ranked.length ? [ranked[0]] : [];
-    options.forEach(function(option){ option.classList.add('is-filtered-out'); });
-    best.forEach(function(entry){ entry.option.classList.remove('is-filtered-out'); });
-    if (emptyEl) emptyEl.hidden = true;
-  }
-
-  function scrollSelectedToTop(list){
-    if (!list) return;
-    var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"], .staff-supplier-option.is-selected, .staff-category-option.is-selected');
-    if (!selected) return;
-    requestAnimationFrame(function(){
-      var searchWrap = list.querySelector('.staff-supplier-search-wrap, .pl-supplier-search-wrap, .ep-listbox-search-wrap');
-      var topPad = searchWrap ? searchWrap.offsetHeight : 0;
-      list.scrollTop = Math.max(0, selected.offsetTop - topPad);
-    });
-  }
-
-  function bindListbox(root){
-    if (!root || root.__plAddListboxBound) return;
-    root.__plAddListboxBound = true;
-    root.__suFilterListboxBound = true;
-    var trigger = root.querySelector('.se-filter-chip-trigger');
-    var list = root.querySelector('.se-filter-listbox');
-    var hidden = root.querySelector('input[type="hidden"]');
-    var valueEl = root.querySelector('.se-filter-chip-value');
-    var search = root.querySelector('.staff-supplier-search');
-    if (!trigger || !list || !hidden) return;
-
-    trigger.addEventListener('click', function(e){
-      e.preventDefault();
-      e.stopPropagation();
-      var open = root.classList.contains('is-open');
-      closeAllListboxes();
-      if (open) return;
-      root.classList.add('is-open');
-      trigger.setAttribute('aria-expanded', 'true');
-      list.hidden = false;
-      if (search) {
-        search.focus();
-        filterSearchableOptions(root, search.value);
-      }
-      scrollSelectedToTop(list);
-    });
-
-    list.addEventListener('click', function(e){
-      var option = e.target.closest('.se-filter-listbox-option');
-      if (!option || option.classList.contains('is-filtered-out')) return;
-      list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
-        opt.classList.remove('is-selected');
-        opt.setAttribute('aria-selected', 'false');
-      });
-      option.classList.add('is-selected');
-      option.setAttribute('aria-selected', 'true');
-      hidden.value = option.getAttribute('data-value') || '';
-      if (valueEl) {
-        var nameEl = option.querySelector('.staff-supplier-option-name');
-        valueEl.textContent = nameEl ? nameEl.textContent : option.textContent.trim();
-        valueEl.classList.remove('staff-supplier-placeholder');
-      }
-      closeListbox(root);
-      if (root.id === 'pl-add-payment-listbox') {
-        syncTransactionVisibility();
-        syncAvailableCashDisplay();
-      }
-    });
-
-    if (search) {
-      search.addEventListener('input', function(){ filterSearchableOptions(root, search.value); });
-      search.addEventListener('keydown', function(e){ e.stopPropagation(); });
-    }
-  }
-
-  document.querySelectorAll('#pl-add-purchase-modal [data-se-listbox]').forEach(bindListbox);
-
-  function syncTransactionVisibility(){
-    var paymentInput = document.getElementById('pl-add-payment-input');
-    var method = paymentInput ? (paymentInput.value || '') : '';
-    if (transactionWrap) transactionWrap.hidden = method !== 'bank_transfer';
-    if (method !== 'bank_transfer' && transactionEl) transactionEl.value = '';
-    syncAvailableCashDisplay();
-  }
-
-  function setListboxValue(prefix, value, label, placeholder){
-    var hidden = document.getElementById(prefix + '-input');
+    var hidden = document.getElementById(prefix);
     var valueEl = document.getElementById(prefix + '-value');
     var list = document.getElementById(prefix + '-list');
     if (hidden) hidden.value = value || '';
@@ -251,12 +120,24 @@
       }
     }
     if (list) {
-      list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+      list.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
         var selected = String(opt.getAttribute('data-value') || '') === String(value || '');
         opt.classList.toggle('is-selected', selected);
         opt.setAttribute('aria-selected', selected ? 'true' : 'false');
       });
     }
+  }
+
+  function initPlAddListboxes() {
+    if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+  }
+
+  function syncTransactionVisibility(){
+    var paymentInput = document.getElementById('pl-add-payment');
+    var method = paymentInput ? (paymentInput.value || '') : '';
+    if (transactionWrap) transactionWrap.hidden = method !== 'bank_transfer';
+    if (method !== 'bank_transfer' && transactionEl) transactionEl.value = '';
+    syncAvailableCashDisplay();
   }
 
   function setModalMode(isEdit){
@@ -285,6 +166,7 @@
   function openPurchaseModal(){
     resetForm();
     openModal(modal);
+    initPlAddListboxes();
     if (descriptionEl) descriptionEl.focus();
   }
 
@@ -313,6 +195,7 @@
     syncTransactionVisibility();
     refreshAvailableCash();
     openModal(modal);
+    initPlAddListboxes();
     if (descriptionEl) descriptionEl.focus();
   }
 
@@ -369,9 +252,9 @@
     var purchaseDate = dateEl ? dateEl.value : todayIso;
     var description = descriptionEl ? descriptionEl.value.trim() : '';
     var amountRaw = amountEl ? amountEl.value : '';
-    var supplierId = document.getElementById('pl-add-supplier-input') ? document.getElementById('pl-add-supplier-input').value : '';
-    var category = document.getElementById('pl-add-category-input') ? document.getElementById('pl-add-category-input').value : '';
-    var paymentType = document.getElementById('pl-add-payment-input') ? document.getElementById('pl-add-payment-input').value : '';
+    var supplierId = document.getElementById('pl-add-supplier') ? document.getElementById('pl-add-supplier').value : '';
+    var category = document.getElementById('pl-add-category') ? document.getElementById('pl-add-category').value : '';
+    var paymentType = document.getElementById('pl-add-payment') ? document.getElementById('pl-add-payment').value : '';
     var transactionId = transactionEl ? transactionEl.value.trim() : '';
     var invoiceNumber = invoiceEl ? invoiceEl.value.trim() : '';
 
@@ -477,8 +360,8 @@
     btn.className = 'se-filter-listbox-option staff-supplier-option is-selected';
     btn.setAttribute('role', 'option');
     btn.setAttribute('data-value', String(supplier.id));
-    btn.setAttribute('data-name', String(supplier.name || '').toLowerCase());
-    btn.setAttribute('data-gst', String(supplier.gst || '').toLowerCase());
+    btn.setAttribute('data-name', String(supplier.name || '').toLowerCase() + ' ' + String(supplier.gst || '').toLowerCase());
+    btn.setAttribute('data-label', String(supplier.name || ''));
     btn.setAttribute('aria-selected', 'true');
     btn.innerHTML =
       '<span class="staff-supplier-option-name">' + (supplier.name || '') + '</span>' +
@@ -494,15 +377,7 @@
     });
     if (insertBefore) supplierOptions.insertBefore(btn, insertBefore);
     else supplierOptions.appendChild(btn);
-    var hidden = document.getElementById('pl-add-supplier-input');
-    var valueEl = document.getElementById('pl-add-supplier-value');
-    if (hidden) hidden.value = String(supplier.id);
-    if (valueEl) {
-      valueEl.textContent = supplier.name || '';
-      valueEl.classList.remove('staff-supplier-placeholder');
-    }
-    var emptyEl = document.getElementById('pl-add-supplier-empty');
-    if (emptyEl) emptyEl.hidden = true;
+    setListboxValue('pl-add-supplier', String(supplier.id), supplier.name || '', 'Select supplier');
   }
 
   async function saveSupplier(){

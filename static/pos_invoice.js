@@ -14,6 +14,45 @@
   var LEGACY_FLOOR_KEY = 'hbe_pos_floor_demo';
   var INVOICE_API = '/point-of-sale/api/invoices';
   var INVOICE_BY_TABLE_API = '/point-of-sale/api/invoices/by-table';
+
+  function resolvePosApiBase() {
+    var el =
+      document.getElementById('pos-invoice-page') ||
+      document.querySelector('[data-pos-api-base]');
+    var base = (el && el.getAttribute('data-pos-api-base')) || '';
+    if (!base) {
+      base =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? '/bar-point-of-sale'
+          : '/point-of-sale';
+    }
+    return String(base).replace(/\/$/, '') || '/point-of-sale';
+  }
+
+  function resolvePosOutlet() {
+    var el =
+      document.getElementById('pos-invoice-page') ||
+      document.querySelector('[data-pos-outlet]');
+    var outlet = (el && el.getAttribute('data-pos-outlet')) || '';
+    if (!outlet) {
+      outlet =
+        (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+          ? 'bar'
+          : 'restaurant';
+    }
+    return outlet;
+  }
+
+  function syncPosApiPaths() {
+    var base = resolvePosApiBase();
+    FLOOR_API = base + '/api/floor';
+    MENU_ITEMS_API = base + '/api/menu/items';
+    MENU_CATEGORIES_API = base + '/api/menu/categories';
+    CUSTOMERS_API = base + '/api/customers';
+    INVOICE_API = base + '/api/invoices';
+    INVOICE_BY_TABLE_API = base + '/api/invoices/by-table';
+  }
+
   var floorTablesCache = null;
   var floorTablesLoaded = false;
   var menuCatalog = [];
@@ -24,6 +63,11 @@
   var customerCacheQuery = '';
   var customerSearchTimer = null;
   var GST_RATE = 0.05;
+  var CGST_RATE = 0.025;
+  var UGST_RATE = 0.025;
+  var VAT_RATE = 0.1;
+  var LIQUOR_CATEGORY_RE =
+    /\b(liquou?r|alcohol|whisky|whiskey|beer|wine|vodka|gin|rum|brandy|spirit|spirits|imfl|cocktail|cocktails|shots?|scotch|tequila|champagne|cider|liqueur|aperitif)\b/i;
   var DEFAULT_SERVICE_PCT = 0;
   var MIN_QUERY = 2;
   var NOTES_MAX = 200;
@@ -39,6 +83,7 @@
   /* Bumps on every local edit so an in-flight save cannot clear dirty and
      drop a name/mobile change that happened after the request started. */
   var dirtyEpoch = 0;
+  var offlineFlushBound = false;
 
   var ORDER_TYPE_LABELS = {
     dine_in: 'Dine In',
@@ -83,6 +128,7 @@
     customerActiveIndex: -1,
     customerSuggestMode: '',
     orderNo: '',
+    localId: '',
     lineSeq: 0,
     /* Set once this session's order has a real DB row (first Save or first KOT
        send). Resuming an occupied table's order also sets this — it is what
@@ -94,6 +140,8 @@
     resumeTableLabel: 'Select table…',
     /* True when local lines/meta differ from the last successful persist. */
     dirty: false,
+    /* True after Generate Invoice (customer_bill_sent) — cart edits are locked. */
+    invoiceGenerated: false,
     adjDraft: {
       discount: 'pct',
       service: 'pct'
@@ -130,12 +178,166 @@
     return h12 + ':' + (m < 10 ? '0' : '') + m + ' ' + ap;
   }
 
+  function offlineApi() {
+    return global.HbePosOffline || null;
+  }
+
+  function ensureLocalId() {
+    if (state.localId) return state.localId;
+    var api = offlineApi();
+    state.localId = api && api.uuid ? api.uuid() : String(Date.now());
+    return state.localId;
+  }
+
   function makeOrderNo(d) {
+    var api = offlineApi();
+    if (api && typeof api.makeLocalOrderNo === 'function') {
+      return api.makeLocalOrderNo();
+    }
     var yy = String(d.getFullYear()).slice(-2);
     var mm = String(d.getMonth() + 1);
     if (mm.length < 2) mm = '0' + mm;
     var seq = String(40 + (d.getMinutes() % 50));
     return 'ORD-' + yy + mm + '-' + seq.padStart(4, '0');
+  }
+
+  function isBrowserOnline() {
+    var api = offlineApi();
+    if (api && typeof api.isOnline === 'function') return api.isOnline();
+    return !(typeof navigator !== 'undefined' && navigator.onLine === false);
+  }
+
+  function updateOfflineBanner() {
+    var banner = document.getElementById('pos-inv-offline-banner');
+    if (!banner) return;
+    var offline = !isBrowserOnline();
+    banner.hidden = !offline;
+    if (offline) {
+      banner.textContent = 'Offline — changes sync when you are back online.';
+    }
+  }
+
+  function mirrorDraft(page, payload) {
+    var api = offlineApi();
+    if (!api || typeof api.saveDraft !== 'function') return;
+    ensureLocalId();
+    api.saveDraft(state.localId, {
+      invoiceId: state.invoiceId,
+      orderNo: state.orderNo,
+      payload: payload || collectOrderPayload(page),
+      dirty: !!state.dirty
+    });
+  }
+
+  function queueOfflineSave(page, payload, opts) {
+    opts = opts || {};
+    var api = offlineApi();
+    ensureLocalId();
+    payload = Object.assign({}, payload || {});
+    payload.clientLocalId = state.localId;
+    if (!payload.orderNo) {
+      payload.orderNo = state.orderNo || makeOrderNo(new Date());
+      state.orderNo = payload.orderNo;
+    }
+    var epochAtStart = opts.epochAtStart != null ? opts.epochAtStart : dirtyEpoch;
+    var silent = !!opts.silent;
+    return Promise.resolve()
+      .then(function () {
+        if (api && typeof api.saveDraft === 'function') {
+          return api.saveDraft(state.localId, {
+            invoiceId: state.invoiceId,
+            orderNo: state.orderNo,
+            payload: payload,
+            dirty: true
+          });
+        }
+      })
+      .then(function () {
+        if (api && typeof api.enqueueOutbox === 'function') {
+          return api.enqueueOutbox({ localId: state.localId, payload: payload });
+        }
+      })
+      .then(function () {
+        clearDirtyAfterPersist(epochAtStart, page);
+        if (!silent && opts.toastOnSuccess !== false) {
+          toast('Order ' + payload.orderNo + ' saved offline. Will sync when online.');
+        } else if (silent) {
+          /* keep quiet for autosave */
+        }
+        syncFloorOccupancyAfterSave(page, payload, null);
+        updateSettleBillButton(page);
+        return { ok: true, offline: true, invoice: null, payload: payload };
+      });
+  }
+
+  function flushOfflineOutbox() {
+    var api = offlineApi();
+    if (!api || typeof api.flushOutbox !== 'function' || !isBrowserOnline()) {
+      return Promise.resolve({ flushed: 0 });
+    }
+    return api.flushOutbox({
+      onSynced: function (localId, invoice, payload) {
+        if (localId && localId === state.localId && invoice) {
+          state.invoiceId = invoice.id;
+          state.orderNo = invoice.order_no || (payload && payload.orderNo) || state.orderNo;
+          state.tableForOrder =
+            invoice.table_label || invoice.table || state.tableForOrder;
+          if (
+            (payload && payload.customerBill) ||
+            (invoice && invoice.customer_bill_sent)
+          ) {
+            markInvoiceGenerated(document.getElementById('pos-invoice-page'), invoice);
+          } else {
+            updateSettleBillButton(document.getElementById('pos-invoice-page'));
+          }
+          syncFloorOccupancyAfterSave(
+            document.getElementById('pos-invoice-page'),
+            payload,
+            invoice
+          );
+        } else if (payload) {
+          syncFloorOccupancyAfterSave(
+            document.getElementById('pos-invoice-page'),
+            payload,
+            invoice
+          );
+        }
+        if (localId && api.saveDraft) {
+          api.saveDraft(localId, {
+            invoiceId: invoice && invoice.id,
+            orderNo: (invoice && invoice.order_no) || (payload && payload.orderNo) || '',
+            payload: payload || {},
+            dirty: false
+          });
+        }
+      }
+    }).then(function (summary) {
+      if (summary && summary.authExpired) {
+        toast('Session expired; reconnect to sync offline invoices.');
+      } else if (summary && summary.flushed > 0) {
+        toast(
+          summary.flushed === 1
+            ? 'Synced 1 offline invoice.'
+            : 'Synced ' + summary.flushed + ' offline invoices.'
+        );
+      } else if (summary && summary.error && summary.flushed === 0) {
+        /* Leave draft; user can retry when online. */
+      }
+      updateSettleBillButton(document.getElementById('pos-invoice-page'));
+      return summary;
+    });
+  }
+
+  function bindOfflineSyncListeners() {
+    if (offlineFlushBound) return;
+    offlineFlushBound = true;
+    global.addEventListener('online', function () {
+      updateOfflineBanner();
+      flushOfflineOutbox();
+    });
+    global.addEventListener('offline', function () {
+      updateOfflineBanner();
+    });
   }
 
   function queryParam(name) {
@@ -164,30 +366,233 @@
     }
   }
 
+  function rememberFloorCatalog(floorData) {
+    var api = offlineApi();
+    if (!api || !api.loadCatalog || !api.saveCatalog) return;
+    api.loadCatalog().then(function (snap) {
+      api.saveCatalog({
+        floor: floorData,
+        menuItems: snap && snap.menuItems,
+        menuCategories: snap && snap.menuCategories
+      });
+    });
+  }
+
+  function applyFloorTablesToUi(page, tables) {
+    if (!page || !Array.isArray(tables)) return;
+    var keep =
+      fieldValue('pos-inv-table', page) ||
+      String(state.tableForOrder || '').trim() ||
+      String(state.resumeTableValue || '').trim();
+    /* Prefer in-place badge updates so the chip never flashes back to
+       "Select table…" (full rebuild + listbox rebind was clearing it). */
+    if (updateFloorTableStatusBadges(page, tables)) {
+      if (keep) {
+        state.tableForOrder = keep;
+        state.resumeTableValue = keep;
+        setListboxValue(
+          'pos-inv-table',
+          keep,
+          state.resumeTableLabel && state.resumeTableLabel !== 'Select table…'
+            ? state.resumeTableLabel
+            : keep
+        );
+      }
+      return;
+    }
+    populateTables(page, tables, { loading: false, preserveTable: keep });
+  }
+
+  /** Update OCCUPIED badges without wiping options or the selected chip. */
+  function updateFloorTableStatusBadges(page, tables) {
+    var list = $('#pos-inv-table-list', page);
+    if (!list || !Array.isArray(tables)) return false;
+    var options = list.querySelectorAll('.se-filter-listbox-option[data-value]');
+    if (!options.length) return false;
+
+    var byName = {};
+    tables.forEach(function (t) {
+      var key = String(t.name || '').trim().toLowerCase();
+      if (key) byName[key] = mapTableStatus(t.status);
+    });
+
+    options.forEach(function (opt) {
+      var name = String(opt.getAttribute('data-value') || '').trim();
+      var key = name.toLowerCase();
+      if (!byName.hasOwnProperty(key)) return;
+      var status = byName[key];
+      var blocked = tableBlocksNewBill(status);
+      var baseLabel = opt.getAttribute('data-label') || name;
+      var statusText = blocked ? TABLE_STATUS_LABELS[status] || status : '';
+      opt.setAttribute('data-status', status);
+      opt.classList.toggle('is-occupied', blocked);
+      if (blocked) {
+        opt.setAttribute('title', 'Occupied — tap to resume its open order.');
+      } else {
+        opt.removeAttribute('title');
+      }
+      var textEl = opt.querySelector('.se-filter-listbox-option-text');
+      if (textEl) textEl.textContent = baseLabel;
+      var statusEl = opt.querySelector('.se-filter-listbox-option-status');
+      if (statusText) {
+        if (!statusEl) {
+          statusEl = document.createElement('span');
+          statusEl.className = 'se-filter-listbox-option-status';
+          opt.appendChild(statusEl);
+        }
+        statusEl.textContent = statusText;
+      } else if (statusEl) {
+        statusEl.remove();
+      }
+    });
+    return true;
+  }
+
+  /** Instantly flip a table to occupied in the in-memory picker (optimistic). */
+  function markFloorTableOccupiedLocal(tableName) {
+    var needle = String(tableName || '').trim().toLowerCase();
+    if (!needle || !Array.isArray(floorTablesCache)) return false;
+    var changed = false;
+    for (var i = 0; i < floorTablesCache.length; i++) {
+      var name = String(floorTablesCache[i].name || '').trim().toLowerCase();
+      if (name === needle) {
+        var cur = mapTableStatus(floorTablesCache[i].status);
+        if (cur !== 'occupied') {
+          floorTablesCache[i].status = 'occupied';
+          changed = true;
+        }
+        break;
+      }
+    }
+    return changed;
+  }
+
+  function markFloorTableAvailableLocal(tableName) {
+    var needle = String(tableName || '').trim().toLowerCase();
+    if (!needle || !Array.isArray(floorTablesCache)) return false;
+    var changed = false;
+    for (var i = 0; i < floorTablesCache.length; i++) {
+      var name = String(floorTablesCache[i].name || '').trim().toLowerCase();
+      if (name === needle) {
+        if (mapTableStatus(floorTablesCache[i].status) !== 'available') {
+          floorTablesCache[i].status = 'available';
+          changed = true;
+        }
+        break;
+      }
+    }
+    return changed;
+  }
+
+  /**
+   * Force-refresh floor from network (bypass SW/HTTP/memory cache) and update the
+   * table picker immediately. Used after save/settle so OCCUPIED badges stay live.
+   */
+  function refreshFloorTables(page, opts) {
+    opts = opts || {};
+    var preserve =
+      opts.preserveTable ||
+      (page && fieldValue('pos-inv-table', page)) ||
+      String(state.tableForOrder || '').trim() ||
+      String(state.resumeTableValue || '').trim();
+    var url = FLOOR_API + (FLOOR_API.indexOf('?') === -1 ? '?' : '&') + '_ts=' + Date.now();
+    return fetch(url, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache'
+      }
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok && data && data.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !Array.isArray(result.data.tables)) {
+          throw new Error('floor refresh failed');
+        }
+        floorTablesCache = result.data.tables;
+        floorTablesLoaded = true;
+        rememberFloorCatalog(result.data);
+        if (page) {
+          applyFloorTablesToUi(page, floorTablesCache);
+          if (preserve) {
+            state.tableForOrder = preserve;
+            state.resumeTableValue = preserve;
+            var match = floorTablesCache.find(function (t) {
+              return tableNameMatches(t.name || '', preserve);
+            });
+            var label = match
+              ? String(match.name || preserve) +
+                (match.seats != null ? ' (' + match.seats + ' Seats)' : '')
+              : preserve;
+            state.resumeTableLabel = label;
+            setListboxValue('pos-inv-table', match ? match.name : preserve, label);
+          }
+        }
+        if (typeof opts.done === 'function') opts.done(floorTablesCache);
+        return floorTablesCache;
+      })
+      .catch(function () {
+        if (typeof opts.done === 'function') opts.done(floorTablesCache || []);
+        return floorTablesCache || [];
+      });
+  }
+
+  function syncFloorOccupancyAfterSave(page, payload, invoice) {
+    var orderType =
+      (payload && payload.orderType) ||
+      (invoice && (invoice.order_type || invoice.orderType)) ||
+      '';
+    var table =
+      (invoice && (invoice.table_label || invoice.table)) ||
+      (payload && payload.table) ||
+      state.tableForOrder ||
+      state.resumeTableValue ||
+      (page && fieldValue('pos-inv-table', page)) ||
+      '';
+    table = String(table || '').trim();
+    if (String(orderType).toLowerCase() !== 'dine_in' || !table) {
+      return;
+    }
+    state.tableForOrder = table;
+    state.resumeTableValue = table;
+    markFloorTableOccupiedLocal(table);
+    if (page && floorTablesCache) {
+      applyFloorTablesToUi(page, floorTablesCache);
+      setListboxValue(
+        'pos-inv-table',
+        table,
+        state.resumeTableLabel && state.resumeTableLabel !== 'Select table…'
+          ? state.resumeTableLabel
+          : table
+      );
+    }
+    refreshFloorTables(page, { preserveTable: table });
+  }
+
   function loadFloorTables(done) {
     if (floorTablesLoaded && Array.isArray(floorTablesCache) && floorTablesCache.length) {
       if (typeof done === 'function') done(floorTablesCache);
-      /* Stale-while-revalidate: refresh in background for next visit. */
-      fetch(FLOOR_API, {
-        credentials: 'same-origin',
-        headers: { Accept: 'application/json' }
-      })
-        .then(function (res) {
-          return res.json().then(function (data) {
-            return { ok: res.ok && data && data.ok, data: data };
-          });
-        })
-        .then(function (result) {
-          if (result.ok && Array.isArray(result.data.tables)) {
-            floorTablesCache = result.data.tables;
-          }
-        })
-        .catch(function () {});
+      /* Stale-while-revalidate: refresh and update the open picker when status changes. */
+      refreshFloorTables(document.getElementById('pos-invoice-page'), {
+        done: function (tables) {
+          if (typeof done === 'function') done(tables);
+        }
+      });
       return;
     }
-    fetch(FLOOR_API, {
+    fetch(FLOOR_API + (FLOOR_API.indexOf('?') === -1 ? '?' : '&') + '_ts=' + Date.now(), {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' }
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache'
+      }
     })
       .then(function (res) {
         return res.json().then(function (data) {
@@ -197,16 +602,30 @@
       .then(function (result) {
         if (result.ok && Array.isArray(result.data.tables)) {
           floorTablesCache = result.data.tables;
+          rememberFloorCatalog(result.data);
         } else {
-          floorTablesCache = emptyFloorTables();
+          throw new Error('floor fetch failed');
         }
         floorTablesLoaded = true;
         if (typeof done === 'function') done(floorTablesCache);
       })
       .catch(function () {
-        floorTablesCache = emptyFloorTables();
-        floorTablesLoaded = true;
-        if (typeof done === 'function') done(floorTablesCache);
+        var api = offlineApi();
+        if (!api || !api.loadCatalog) {
+          floorTablesCache = emptyFloorTables();
+          floorTablesLoaded = true;
+          if (typeof done === 'function') done(floorTablesCache);
+          return;
+        }
+        api.loadCatalog().then(function (snap) {
+          if (snap && snap.floor && Array.isArray(snap.floor.tables)) {
+            floorTablesCache = snap.floor.tables;
+          } else {
+            floorTablesCache = emptyFloorTables();
+          }
+          floorTablesLoaded = true;
+          if (typeof done === 'function') done(floorTablesCache);
+        });
       });
   }
 
@@ -225,17 +644,63 @@
     }, 2200);
   }
 
+  function menuCatalogUrl(path) {
+    var url = path || MENU_ITEMS_API;
+    var outlet = resolvePosOutlet();
+    var include = outlet === 'bar' ? 'restaurant' : 'bar';
+    url += (url.indexOf('?') === -1 ? '?' : '&') + 'include_outlets=' + include;
+    return url;
+  }
+
   function normalizeMenuItem(raw, categoryName) {
+    var category = categoryName || '';
+    var kind = String((raw && raw.item_kind) || 'food')
+      .trim()
+      .toLowerCase();
+    var menuType = String((raw && raw.menu_type) || '')
+      .trim()
+      .toLowerCase();
+    if (kind === 'liquour' || kind === 'alcohol' || kind === 'bar') kind = 'liquor';
+    if (menuType === 'liquour' || menuType === 'alcohol') menuType = 'liquor';
+    var liquor = kind === 'liquor' || menuType === 'liquor' || isLiquorCategory(category);
+    var outlet = String((raw && raw.outlet) || 'restaurant')
+      .trim()
+      .toLowerCase();
+    if (outlet !== 'bar') outlet = 'restaurant';
     return {
       id: String(raw.id),
       name: raw.name || '',
       code: raw.code || '',
       barcode: raw.barcode || '',
-      category: categoryName || '',
+      category: category,
       variant: raw.variant || '',
       rate: Number(raw.rate) || 0,
-      emoji: '🍽️'
+      menuType: menuType,
+      itemKind: liquor ? 'liquor' : 'food',
+      isLiquor: liquor,
+      outlet: outlet,
+      emoji: liquor || outlet === 'bar' ? '🍸' : '🍽️'
     };
+  }
+
+  function isLiquorCategory(name) {
+    return LIQUOR_CATEGORY_RE.test(String(name || '').trim());
+  }
+
+  function isLiquorLine(line) {
+    if (!line) return false;
+    if (line.isLiquor === true || line.itemKind === 'liquor') return true;
+    if (line.isLiquor === false && line.itemKind === 'food') return false;
+    if (line.menuId) {
+      var menu = findMenuItem(line.menuId);
+      if (menu) {
+        if (menu.isLiquor || menu.itemKind === 'liquor') return true;
+        if (menu.itemKind === 'food') return false;
+      }
+    }
+    var cat = line.category || '';
+    if (!cat) cat = line.variant || '';
+    return isLiquorCategory(cat);
   }
 
   function buildMenuCatalog(rawItems, categories) {
@@ -275,7 +740,24 @@
     var categoriesPayload = null;
     var failed = false;
 
-    menuCatalogInflight = fetch(MENU_ITEMS_API, {
+    function applyCachedMenu() {
+      var api = offlineApi();
+      if (!api || !api.loadCatalog) return Promise.resolve(false);
+      return api.loadCatalog().then(function (snap) {
+        if (
+          snap &&
+          Array.isArray(snap.menuItems) &&
+          snap.menuItems.length &&
+          Array.isArray(snap.menuCategories)
+        ) {
+          buildMenuCatalog(snap.menuItems, snap.menuCategories);
+          return menuCatalogStatus === 'ready';
+        }
+        return false;
+      });
+    }
+
+    menuCatalogInflight = fetch(menuCatalogUrl(MENU_ITEMS_API), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
     })
@@ -290,7 +772,7 @@
           return null;
         }
         itemsPayload = result.data.items;
-        return fetch(MENU_CATEGORIES_API, {
+        return fetch(menuCatalogUrl(MENU_CATEGORIES_API), {
           credentials: 'same-origin',
           headers: { Accept: 'application/json' }
         });
@@ -303,29 +785,33 @@
         });
       })
       .then(function (result) {
-        if (failed) {
-          menuCatalog.length = 0;
-          menuCatalogById = {};
-          menuCatalogStatus = 'error';
-          return false;
-        }
+        if (failed) return applyCachedMenu();
         if (!result || !result.ok || !Array.isArray(result.data.categories)) {
-          menuCatalog.length = 0;
-          menuCatalogById = {};
-          menuCatalogStatus = 'error';
-          return false;
+          return applyCachedMenu();
         }
         categoriesPayload = result.data.categories;
         buildMenuCatalog(itemsPayload, categoriesPayload);
-        return true;
+        var api = offlineApi();
+        if (api && api.loadCatalog && api.saveCatalog) {
+          api.loadCatalog().then(function (snap) {
+            api.saveCatalog({
+              floor: snap && snap.floor,
+              menuItems: itemsPayload,
+              menuCategories: categoriesPayload
+            });
+          });
+        }
+        return menuCatalogStatus === 'ready' || menuCatalogStatus === 'empty';
       })
       .catch(function () {
-        menuCatalog.length = 0;
-        menuCatalogById = {};
-        menuCatalogStatus = 'error';
-        return false;
+        return applyCachedMenu();
       })
       .then(function (ok) {
+        if (!ok) {
+          menuCatalog.length = 0;
+          menuCatalogById = {};
+          menuCatalogStatus = 'error';
+        }
         menuCatalogInflight = null;
         if (typeof done === 'function') done(!!ok);
         return !!ok;
@@ -447,16 +933,25 @@
     var tipAmount = o.tipAmount != null ? o.tipAmount : state.tipAmount;
 
     var subtotal = 0;
+    var liquorSubtotal = 0;
     state.lines.forEach(function (line) {
-      subtotal += (Number(line.rate) || 0) * (Number(line.qty) || 0);
+      var lineTotal = (Number(line.rate) || 0) * (Number(line.qty) || 0);
+      subtotal += lineTotal;
+      if (isLiquorLine(line)) liquorSubtotal += lineTotal;
     });
     var discount = calcAdjAmount(subtotal, discountType, discountValue);
     var afterDiscount = Math.max(0, subtotal - discount);
-    var gst = afterDiscount * GST_RATE;
+    var liquorShare = subtotal > 0 ? liquorSubtotal / subtotal : 0;
+    var liquorAfter = afterDiscount * liquorShare;
+    var nonLiquorAfter = Math.max(0, afterDiscount - liquorAfter);
+    var cgst = nonLiquorAfter * CGST_RATE;
+    var ugst = nonLiquorAfter * UGST_RATE;
+    var gst = cgst + ugst;
+    var vat = liquorAfter * VAT_RATE;
     var service = calcAdjAmount(afterDiscount, serviceType, serviceValue);
     var tip = Number(tipAmount) || 0;
     if (tip < 0) tip = 0;
-    var beforeRound = afterDiscount + gst + service + tip;
+    var beforeRound = afterDiscount + gst + vat + service + tip;
     var rounded = Math.round(beforeRound);
     var roundOff = Math.round((rounded - beforeRound) * 100) / 100;
     return {
@@ -464,7 +959,11 @@
       discount: discount,
       discountType: discountType,
       discountValue: Number(discountValue) || 0,
+      liquorSubtotal: liquorSubtotal,
+      cgst: cgst,
+      ugst: ugst,
       gst: gst,
+      vat: vat,
       service: service,
       serviceType: serviceType,
       serviceValue: Number(serviceValue) || 0,
@@ -486,7 +985,9 @@
     var map = {
       'pos-inv-sum-subtotal': t.subtotal,
       'pos-inv-sum-discount': t.discount,
-      'pos-inv-sum-gst': t.gst,
+      'pos-inv-sum-cgst': t.cgst,
+      'pos-inv-sum-ugst': t.ugst,
+      'pos-inv-sum-vat': t.vat,
       'pos-inv-sum-service': t.service,
       'pos-inv-sum-tip': t.tip,
       'pos-inv-sum-round': t.roundOff,
@@ -503,6 +1004,8 @@
       var showDiscount = Number(t.discount) > 0 || Number(t.discountValue) > 0;
       discRow.hidden = !showDiscount;
     }
+    var vatRow = $('#pos-inv-sum-vat-row', page);
+    if (vatRow) vatRow.hidden = !(Number(t.vat) > 0);
     var svcHint = $('#pos-inv-sum-service-hint', page);
     if (svcHint) svcHint.textContent = formatAdjHint(t.serviceType, t.serviceValue) || '';
     var svcRow = $('#pos-inv-sum-service-row', page);
@@ -543,15 +1046,16 @@
 
     if (empty) empty.hidden = true;
     var isAdmin = canEditKitchenSentLines(page);
+    var locked = !!state.invoiceGenerated;
 
     body.innerHTML = state.lines
       .map(function (line) {
         var amt = (Number(line.rate) || 0) * (Number(line.qty) || 0);
         var pendingQty = pendingKotQty(line);
         var sentQty = lineKitchenSentQty(line);
-        var lockReduce = !isAdmin && sentQty > 0;
-        var canDecrease = !lockReduce || Number(line.qty) > sentQty;
-        var canDelete = !lockReduce;
+        var lockReduce = locked || (!isAdmin && sentQty > 0);
+        var canDecrease = !locked && (!lockReduce || Number(line.qty) > sentQty);
+        var canDelete = !locked && !(!isAdmin && sentQty > 0);
         var lineNotes = String(line.notes || '').trim();
         return (
           '<tr data-line-id="' +
@@ -581,12 +1085,14 @@
           '</div></div></td>' +
           '<td class="pos-inv-col-qty"><div class="pos-inv-qty">' +
           '<button type="button" data-qty="-1" aria-label="Decrease quantity"' +
-          (canDecrease ? '' : ' disabled title="Only an administrator can reduce quantity after KOT"') +
+          (canDecrease ? '' : ' disabled title="' + (locked ? 'Invoice locked — settle to continue' : 'Only an administrator can reduce quantity after KOT') + '"') +
           '>−</button>' +
           '<span>' +
           line.qty +
           '</span>' +
-          '<button type="button" data-qty="1" aria-label="Increase quantity">+</button>' +
+          '<button type="button" data-qty="1" aria-label="Increase quantity"' +
+          (locked ? ' disabled title="Invoice locked — settle to continue"' : '') +
+          '>+</button>' +
           '</div></td>' +
           '<td class="pos-inv-col-rate"><span class="pos-inv-rate">' +
           money(line.rate) +
@@ -598,12 +1104,13 @@
           '<button type="button" class="pos-inv-note-btn' +
           (lineNotes ? ' is-active' : '') +
           '" data-line-note aria-label="Customise item"' +
-          (lineNotes ? ' title="' + escapeHtml(lineNotes) + '"' : ' title="Add customised note"') +
+          (locked ? ' disabled title="Invoice locked — settle to continue"' : '') +
+          (lineNotes ? ' title="' + escapeHtml(lineNotes) + '"' : locked ? '' : ' title="Add customised note"') +
           '>' +
           '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
           '</button>' +
           '<button type="button" class="pos-inv-del" data-del aria-label="Remove item"' +
-          (canDelete ? '' : ' disabled title="Only an administrator can remove items after KOT"') +
+          (canDelete ? '' : ' disabled title="' + (locked ? 'Invoice locked — settle to continue' : 'Only an administrator can remove items after KOT') + '"') +
           '>' +
           '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>' +
           '</button></div></td></tr>'
@@ -711,6 +1218,74 @@
   /** Customer-facing bill HTML — same layout used by Print and Send to Customer. */
   function buildCustomerBillHtml(page, invoice) {
     var now = new Date();
+    var outlet = (page && page.getAttribute('data-pos-outlet')) || 'restaurant';
+    var lines =
+      invoice && Array.isArray(invoice.lines) && invoice.lines.length
+        ? invoice.lines
+        : state.lines;
+    var totals = invoice
+      ? normalizeTotals(invoice)
+      : calcTotals();
+    var billData = invoice
+      ? Object.assign({}, invoice)
+      : {
+          outlet: outlet,
+          order_no: state.orderNo || '—',
+          table_label: fieldValue('pos-inv-table', page) || '—',
+          order_type:
+            fieldValue('pos-inv-order-type-header', page) ||
+            fieldValue('pos-inv-order-type', page) ||
+            'dine_in',
+          customer_name: fieldValue('pos-inv-customer-name', page) || '',
+          customer_mobile: digitsOnly(fieldValue('pos-inv-customer-mobile', page), 10) || '',
+          lines: lines,
+          discount_type: totals.discountType,
+          discount_value: totals.discountValue,
+          service_type: totals.serviceType,
+          service_value: totals.serviceValue,
+          subtotal: totals.subtotal,
+          discount: totals.discount,
+          gst: totals.gst,
+          vat: totals.vat,
+          cgst: totals.cgst,
+          ugst: totals.ugst,
+          service: totals.service,
+          tip: totals.tip,
+          round_off: totals.roundOff,
+          grand_total: totals.total,
+          payments: []
+        };
+    if (!billData.outlet) billData.outlet = outlet;
+    if (!Array.isArray(billData.lines)) billData.lines = lines;
+    if (typeof global.buildPosCustomerBillHtml === 'function') {
+      return global.buildPosCustomerBillHtml(billData, { now: now, outlet: outlet });
+    }
+    return buildCustomerBillHtmlLegacy(page, invoice);
+  }
+
+  function normalizeTotals(invoice) {
+    var gst = Number(invoice && invoice.gst != null ? invoice.gst : 0);
+    return {
+      discountType: invoice && invoice.discount_type,
+      discountValue: invoice && invoice.discount_value,
+      serviceType: invoice && invoice.service_type,
+      serviceValue: invoice && invoice.service_value,
+      subtotal: Number(invoice && invoice.subtotal != null ? invoice.subtotal : 0),
+      discount: Number(invoice && invoice.discount != null ? invoice.discount : 0),
+      gst: gst,
+      vat: Number(invoice && invoice.vat != null ? invoice.vat : 0),
+      cgst: invoice && invoice.cgst != null ? Number(invoice.cgst) : gst / 2,
+      ugst: invoice && invoice.ugst != null ? Number(invoice.ugst) : gst / 2,
+      service: Number(invoice && invoice.service != null ? invoice.service : 0),
+      tip: Number(invoice && invoice.tip != null ? invoice.tip : 0),
+      roundOff: Number(invoice && invoice.round_off != null ? invoice.round_off : 0),
+      total: Number(invoice && invoice.grand_total != null ? invoice.grand_total : 0)
+    };
+  }
+
+  /** Fallback if pos_customer_bill.js is not loaded. */
+  function buildCustomerBillHtmlLegacy(page, invoice) {
+    var now = new Date();
     var orderNo = (invoice && invoice.order_no) || state.orderNo || '—';
     var table = (invoice && (invoice.table_label || invoice.table)) || fieldValue('pos-inv-table', page) || '—';
     var orderTypeValue =
@@ -735,6 +1310,9 @@
           subtotal: invoice.subtotal,
           discount: invoice.discount,
           gst: invoice.gst,
+          vat: invoice.vat,
+          cgst: Number(invoice.gst || 0) / 2,
+          ugst: Number(invoice.gst || 0) / 2,
           service: invoice.service,
           tip: invoice.tip,
           roundOff: invoice.round_off,
@@ -747,11 +1325,10 @@
         var qty = Number(line.qty) || 0;
         var rate = Number(line.rate) || 0;
         var amt = line.line_total != null ? Number(line.line_total) : rate * qty;
-        // Line notes are kitchen-only (KOT) — never print on the customer bill.
+        // Line notes and category/variant are staff-only — never print on customer bill.
         return (
           '<tr><td class="name">' +
           escapeHtml(line.name) +
-          (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
           '</td><td class="qty">' +
           qty +
           '</td><td class="rate">' +
@@ -828,11 +1405,23 @@
           money(totals.discount) +
           '</span></div>'
         : '') +
-      '<div><span>GST (' +
-      GST_RATE * 100 +
+      '<div><span>CGST (' +
+      CGST_RATE * 100 +
       '%)</span><span>' +
-      money(totals.gst) +
+      money(totals.cgst != null ? totals.cgst : Number(totals.gst || 0) / 2) +
       '</span></div>' +
+      '<div><span>UGST (' +
+      UGST_RATE * 100 +
+      '%)</span><span>' +
+      money(totals.ugst != null ? totals.ugst : Number(totals.gst || 0) / 2) +
+      '</span></div>' +
+      (Number(totals.vat) > 0
+        ? '<div><span>VAT (' +
+          VAT_RATE * 100 +
+          '%)</span><span>' +
+          money(totals.vat) +
+          '</span></div>'
+        : '') +
       (Number(totals.service) > 0 || Number(totals.serviceValue) > 0
         ? '<div><span>Service Charge' +
           (svcHint ? ' ' + svcHint : '') +
@@ -1000,12 +1589,87 @@
     printCustomerBill(page, null, { autoPrint: false });
   }
 
+  function syncKotSentFromInvoice(invoice) {
+    if (!invoice || !Array.isArray(invoice.lines)) return;
+    invoice.lines.forEach(function (serverLine) {
+      var name = String(serverLine.name || '').trim();
+      var rate = Number(serverLine.rate) || 0;
+      var sent = Number(serverLine.sent_qty != null ? serverLine.sent_qty : serverLine.kotSentQty) || 0;
+      state.lines.forEach(function (local) {
+        if (String(local.name || '').trim() === name && Number(local.rate) === rate) {
+          local.sentQty = sent;
+        }
+      });
+    });
+  }
+
+  /** After Generate Invoice, use the dedicated send-kot endpoint (cart is locked). */
+  function sendKotForGeneratedInvoice(page, pending) {
+    if (!isBrowserOnline()) {
+      toast('Send to Kitchen requires an internet connection after the invoice is generated.');
+      return Promise.resolve();
+    }
+    if (!state.invoiceId) {
+      toast('Sync required before sending to kitchen. Reconnect to the network.');
+      return Promise.resolve();
+    }
+
+    var btn = $('#pos-inv-send-kot', page);
+    if (btn) btn.disabled = true;
+
+    return fetch(INVOICE_API + '/' + encodeURIComponent(state.invoiceId) + '/send-kot', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    })
+      .then(function (res) {
+        return res
+          .json()
+          .catch(function () {
+            return {};
+          })
+          .then(function (data) {
+            return { ok: res.ok && !!(data && data.ok), data: data || {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          toast((result.data && result.data.error) || 'Could not send KOT.');
+          return;
+        }
+        syncKotSentFromInvoice(result.data.invoice);
+        if (
+          !global.hbePosPrinterPrefs ||
+          global.hbePosPrinterPrefs.shouldAutoPrintKot(
+            (page && page.getAttribute('data-pos-outlet')) || undefined
+          )
+        ) {
+          printKotTicket(page, pending);
+        }
+        var count = pending.length;
+        renderLines(page);
+        toast('KOT sent to kitchen for ' + count + (count === 1 ? ' item.' : ' items.'));
+      })
+      .catch(function () {
+        toast('Could not send KOT. Check your connection and try again.');
+      })
+      .then(function () {
+        if (btn) btn.disabled = false;
+        updateKotBar(page);
+      });
+  }
+
   function sendKot(page) {
     var pending = pendingKotLines();
     if (!pending.length) {
       toast('Nothing new to send — kitchen is already up to date.');
       return;
     }
+    if (state.invoiceGenerated && state.invoiceId) {
+      sendKotForGeneratedInvoice(page, pending);
+      return;
+    }
+    if (guardInvoiceLocked()) return;
 
     var customerName = fieldValue('pos-inv-customer-name', page);
     if (!customerName) {
@@ -1032,9 +1696,11 @@
     }
 
     if (!state.orderNo) initMeta(page);
+    ensureLocalId();
 
     var payload = collectOrderPayload(page);
     payload.kotSend = true;
+    payload.clientLocalId = state.localId;
     var pendingUids = {};
     pending.forEach(function (entry) {
       pendingUids[entry.line.uid] = true;
@@ -1047,51 +1713,99 @@
     var btn = $('#pos-inv-send-kot', page);
     if (btn) btn.disabled = true;
 
-    fetch(INVOICE_API, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    })
-      .then(function (res) {
-        return res
-          .json()
-          .then(function (data) {
-            return { ok: res.ok, data: data || {} };
-          })
-          .catch(function () {
-            return { ok: false, data: {} };
-          });
-      })
-      .then(function (result) {
-        if (!result.ok || !result.data.ok) {
-          toast((result.data && result.data.error) || 'Could not send KOT.');
-          return;
-        }
-        var invoice = result.data.invoice;
-        if (invoice) {
-          state.invoiceId = invoice.id;
-          state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
-        }
-        clearDirtyAfterPersist(epochAtStart, page);
-        if (!state.dirty) cancelAutosaveTimer();
+    function finishKotSuccess(invoice) {
+      if (invoice) {
+        state.invoiceId = invoice.id;
+        state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
+        if (invoice.order_no) state.orderNo = invoice.order_no;
+      }
+      clearDirtyAfterPersist(epochAtStart, page);
+      if (!state.dirty) cancelAutosaveTimer();
+      syncFloorOccupancyAfterSave(page, payload, invoice);
+      if (
+        !global.hbePosPrinterPrefs ||
+        global.hbePosPrinterPrefs.shouldAutoPrintKot(
+          (page && page.getAttribute('data-pos-outlet')) || undefined
+        )
+      ) {
         printKotTicket(page, pending);
-        pending.forEach(function (entry) {
-          entry.line.sentQty = Number(entry.line.qty) || 0;
-        });
-        var count = pending.length;
-        renderLines(page);
-        toast('KOT sent to kitchen for ' + count + (count === 1 ? ' item.' : ' items.'));
-      })
-      .catch(function () {
-        toast('Could not send KOT. Check your connection and try again.');
-      })
-      .then(function () {
-        updateKotBar(page);
+      }
+      pending.forEach(function (entry) {
+        entry.line.sentQty = Number(entry.line.qty) || 0;
       });
+      var count = pending.length;
+      renderLines(page);
+      toast(
+        isBrowserOnline()
+          ? 'KOT sent to kitchen for ' + count + (count === 1 ? ' item.' : ' items.')
+          : 'KOT printed offline for ' + count + (count === 1 ? ' item.' : ' items.') + ' Will sync when online.'
+      );
+    }
+
+    function runKotSave() {
+      if (!isBrowserOnline()) {
+        return queueOfflineSave(page, payload, {
+          silent: true,
+          toastOnSuccess: false,
+          epochAtStart: epochAtStart
+        }).then(function (outcome) {
+          if (outcome && outcome.ok) finishKotSuccess(null);
+          else toast('Could not save KOT offline.');
+        });
+      }
+      var api = offlineApi();
+      var post =
+        api && api.tryPostWithConflictRetry
+          ? api.tryPostWithConflictRetry(payload)
+          : fetch(INVOICE_API, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
+            }).then(function (res) {
+              return res
+                .json()
+                .then(function (data) {
+                  return { ok: res.ok && !!(data && data.ok), data: data || {} };
+                })
+                .catch(function () {
+                  return { ok: false, data: {} };
+                });
+            });
+      return post
+        .then(function (result) {
+          if (!result.ok || !(result.data && result.data.ok)) {
+            return queueOfflineSave(page, payload, {
+              silent: true,
+              toastOnSuccess: false,
+              epochAtStart: epochAtStart
+            }).then(function (outcome) {
+              if (outcome && outcome.ok) finishKotSuccess(null);
+              else toast((result.data && result.data.error) || 'Could not send KOT.');
+            });
+          }
+          finishKotSuccess(result.data.invoice);
+          mirrorDraft(page, payload);
+        })
+        .catch(function () {
+          return queueOfflineSave(page, payload, {
+            silent: true,
+            toastOnSuccess: false,
+            epochAtStart: epochAtStart
+          }).then(function (outcome) {
+            if (outcome && outcome.ok) finishKotSuccess(null);
+            else toast('Could not send KOT. Check your connection and try again.');
+          });
+        });
+    }
+
+    runKotSave().then(function () {
+      if (btn) btn.disabled = false;
+      updateKotBar(page);
+    });
   }
 
   /** "Send to Customer" — generates the customer-facing bill. Distinct from
@@ -1101,8 +1815,9 @@
    *  line, discount/GST/service/tip and the grand total. Does not close or
    *  free the table — that stays a separate, explicit action. */
   function sendToCustomer(page) {
+    if (guardInvoiceLocked()) return;
     if (!state.lines.length) {
-      toast('Add at least one item before sending the bill.');
+      toast('Add at least one item before generating the invoice.');
       var search = $('#pos-inv-search', page);
       if (search) search.focus();
       return;
@@ -1110,7 +1825,7 @@
 
     var customerName = fieldValue('pos-inv-customer-name', page);
     if (!customerName) {
-      toast('Enter customer name before sending the bill.');
+      toast('Enter customer name before generating the invoice.');
       var nameEl = $('#pos-inv-customer-name', page);
       if (nameEl) nameEl.focus();
       return;
@@ -1125,59 +1840,103 @@
     }
 
     if (!state.orderNo) initMeta(page);
+    ensureLocalId();
 
     var payload = collectOrderPayload(page);
     /* Marks the order so Kitchen Order Tokens can disable Resend after the
        customer bill has been generated / printed. Sticky once set on server. */
     payload.customerBill = true;
+    payload.clientLocalId = state.localId;
     var epochAtStart = dirtyEpoch;
     var btn = $('#pos-inv-send-customer', page) || page.querySelector('[data-inv-action="send"]');
     if (btn) btn.disabled = true;
 
-    fetch(INVOICE_API, {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    })
-      .then(function (res) {
-        return res
-          .json()
-          .then(function (data) {
-            return { ok: res.ok, data: data || {} };
-          })
-          .catch(function () {
-            return { ok: false, data: {} };
+    function finishCustomerBill(invoice) {
+      if (invoice) {
+        state.invoiceId = invoice.id;
+        state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
+        if (invoice.order_no) state.orderNo = invoice.order_no;
+      }
+      clearDirtyAfterPersist(epochAtStart, page);
+      if (!state.dirty) cancelAutosaveTimer();
+      syncFloorOccupancyAfterSave(page, payload, invoice);
+      markInvoiceGenerated(page, invoice);
+      printCustomerBill(page, invoice || null);
+      toast(
+        'Invoice generated for ' +
+          ((invoice && invoice.order_no) || state.orderNo) +
+          (isBrowserOnline() ? '. Settle the bill to continue.' : ' (offline — will sync).')
+      );
+    }
+
+    function runCustomerSave() {
+      if (!isBrowserOnline()) {
+        return queueOfflineSave(page, payload, {
+          silent: true,
+          toastOnSuccess: false,
+          epochAtStart: epochAtStart
+        }).then(function (outcome) {
+          if (outcome && outcome.ok) finishCustomerBill(null);
+          else toast('Could not save bill offline.');
+        });
+      }
+      var api = offlineApi();
+      var post =
+        api && api.tryPostWithConflictRetry
+          ? api.tryPostWithConflictRetry(payload)
+          : fetch(INVOICE_API, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(payload)
+            }).then(function (res) {
+              return res
+                .json()
+                .then(function (data) {
+                  return { ok: res.ok && !!(data && data.ok), data: data || {} };
+                })
+                .catch(function () {
+                  return { ok: false, data: {} };
+                });
+            });
+      return post
+        .then(function (result) {
+          if (!result.ok || !(result.data && result.data.ok)) {
+            return queueOfflineSave(page, payload, {
+              silent: true,
+              toastOnSuccess: false,
+              epochAtStart: epochAtStart
+            }).then(function (outcome) {
+              if (outcome && outcome.ok) finishCustomerBill(null);
+              else toast((result.data && result.data.error) || 'Could not generate the bill.');
+            });
+          }
+          finishCustomerBill(result.data.invoice);
+          mirrorDraft(page, payload);
+        })
+        .catch(function () {
+          return queueOfflineSave(page, payload, {
+            silent: true,
+            toastOnSuccess: false,
+            epochAtStart: epochAtStart
+          }).then(function (outcome) {
+            if (outcome && outcome.ok) finishCustomerBill(null);
+            else toast('Could not generate the bill. Check your connection and try again.');
           });
-      })
-      .then(function (result) {
-        if (!result.ok || !result.data.ok) {
-          toast((result.data && result.data.error) || 'Could not generate the bill.');
-          return;
-        }
-        var invoice = result.data.invoice;
-        if (invoice) {
-          state.invoiceId = invoice.id;
-          state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
-        }
-        clearDirtyAfterPersist(epochAtStart, page);
-        if (!state.dirty) cancelAutosaveTimer();
-        printCustomerBill(page, invoice);
-        toast('Bill ready for ' + ((invoice && invoice.order_no) || state.orderNo) + '.');
-      })
-      .catch(function () {
-        toast('Could not generate the bill. Check your connection and try again.');
-      })
-      .then(function () {
-        if (btn) btn.disabled = false;
-        updateSettleBillButton(page);
-      });
+        });
+    }
+
+    runCustomerSave().then(function () {
+      if (btn) btn.disabled = false;
+      updateSettleBillButton(page);
+    });
   }
 
   function addItem(page, item, qty) {
+    if (guardInvoiceLocked()) return;
     var existing = null;
     var i;
     for (i = 0; i < state.lines.length; i++) {
@@ -1194,9 +1953,12 @@
         uid: 'L' + state.lineSeq,
         menuId: item.id || null,
         name: item.name,
+        category: item.category || '',
         variant: item.variant || item.category || '',
         rate: Number(item.rate) || 0,
         qty: qty || 1,
+        isLiquor: !!item.isLiquor || item.itemKind === 'liquor' || isLiquorCategory(item.category),
+        itemKind: item.itemKind === 'liquor' || item.isLiquor ? 'liquor' : 'food',
         emoji: item.emoji || '🍽️',
         /* KOT is not fired on add — sentQty tracks how much of this line has
            already been confirmed to the kitchen so only the delta re-KOTs. */
@@ -1253,6 +2015,12 @@
     if (input) input.setAttribute('aria-expanded', 'true');
     box.innerHTML = results
       .map(function (item, idx) {
+        var metaParts = [item.code, item.category];
+        if (item.variant) metaParts.push(item.variant);
+        if (item.outlet === 'bar') metaParts.push('Bar');
+        if (item.outlet === 'restaurant' && resolvePosOutlet() === 'bar') {
+          metaParts.push('Restaurant');
+        }
         return (
           '<button type="button" class="pos-inv-suggest-item' +
           (idx === state.activeIndex ? ' is-active' : '') +
@@ -1269,10 +2037,7 @@
           escapeHtml(item.name) +
           '</span>' +
           '<span class="pos-inv-suggest-meta">' +
-          escapeHtml(item.code) +
-          ' · ' +
-          escapeHtml(item.category) +
-          (item.variant ? ' · ' + escapeHtml(item.variant) : '') +
+          escapeHtml(metaParts.filter(Boolean).join(' · ')) +
           '</span></span>' +
           '<span class="pos-inv-suggest-price">' +
           money(item.rate) +
@@ -1320,6 +2085,24 @@
     }
   }
 
+  function resolvePreferredTable(page, opts) {
+    opts = opts || {};
+    if (opts.preserveTable) return String(opts.preserveTable || '').trim();
+    var current =
+      fieldValue('pos-inv-table', page) ||
+      String(state.tableForOrder || '').trim() ||
+      String(state.resumeTableValue || '').trim();
+    if (current) return current;
+    return queryParam('table').trim();
+  }
+
+  function tableNameMatches(name, pref) {
+    if (!name || !pref) return false;
+    var a = String(name).trim().toLowerCase();
+    var b = String(pref).trim().toLowerCase();
+    return a === b || ('table ' + a) === b || a === ('table ' + b);
+  }
+
   function applyPreferredTable(page, tableName) {
     var name = String(tableName || '').trim();
     if (!name) return;
@@ -1333,13 +2116,16 @@
     var list = $('#pos-inv-table-list', page);
     var input = $('#pos-inv-table', page);
     if (!list || !input) return;
-    var pref = queryParam('table').trim();
+    /* Prefer the live selection over stale ?table= in the URL. After item add /
+       autosave we refresh occupancy badges — that must not jump the chip back
+       to Table 1 from an old query param. */
+    var pref = resolvePreferredTable(page, opts);
     /* Floor data hasn't come back from the API yet — show a status row instead
        of leaving the panel blank, so the chip never looks unresponsive while it
        opens correctly but has nothing to render yet. */
     if (opts && opts.loading && !(tablesIn && tablesIn.length)) {
       list.innerHTML = '<div class="se-filter-listbox-status" role="presentation">Loading tables…</div>';
-      /* Still bind ?table= so early Save/KOT cannot post a dine-in bill with no table. */
+      /* Still bind a preferred table so early Save/KOT cannot post a dine-in bill with no table. */
       if (pref) applyPreferredTable(page, pref);
       return;
     }
@@ -1359,7 +2145,7 @@
       var on = false;
       /* Occupied tables stay selectable — picking one resumes its open order
          instead of starting a new bill; see posInvTableChanged(). */
-      if (pref && (name.toLowerCase() === pref.toLowerCase() || ('table ' + name).toLowerCase() === pref.toLowerCase())) {
+      if (pref && tableNameMatches(name, pref)) {
         on = true;
         selected = name;
         selectedLabel = baseLabel;
@@ -1387,8 +2173,7 @@
     });
     if (pref) {
       var matched = tables.some(function (t) {
-        var name = String(t.name || '');
-        return name.toLowerCase() === pref.toLowerCase() || ('table ' + name).toLowerCase() === pref.toLowerCase();
+        return tableNameMatches(t.name || '', pref);
       });
       if (!matched) {
         selected = pref;
@@ -1409,12 +2194,21 @@
     setListboxValue('pos-inv-table', selected, selectedLabel);
     state.resumeTableValue = selected;
     state.resumeTableLabel = selectedLabel;
-    if (selected) state.tableForOrder = selected;
+    if (selected) {
+      state.tableForOrder = selected;
+    } else if (pref) {
+      /* Keep prior order table if rebuild failed to match — never blank the chip. */
+      state.tableForOrder = pref;
+      state.resumeTableValue = pref;
+      state.resumeTableLabel = pref;
+      setListboxValue('pos-inv-table', pref, pref);
+    }
   }
 
   function posInvOrderTypeChanged(root, value, label) {
     var page = document.getElementById('pos-invoice-page');
     if (!page) return;
+    if (guardInvoiceLocked()) return;
     var display = label || ORDER_TYPE_LABELS[value] || value;
     setListboxValue('pos-inv-order-type-header', value, display);
   }
@@ -1448,13 +2242,24 @@
     state.lineSeq = 0;
     state.lines = (invoice.lines || []).map(function (line) {
       state.lineSeq += 1;
+      var menu = findMenuItem(line.menu_item_id || line.menuId);
+      var category = (menu && menu.category) || line.category || '';
+      var liquor =
+        (menu && (menu.isLiquor || menu.itemKind === 'liquor')) ||
+        line.item_kind === 'liquor' ||
+        line.itemKind === 'liquor' ||
+        isLiquorCategory(category) ||
+        isLiquorCategory(line.variant);
       return {
         uid: 'L' + state.lineSeq,
-        menuId: line.menu_item_id || null,
+        menuId: line.menu_item_id || line.menuId || null,
         name: line.name,
+        category: category,
         variant: line.variant || '',
         rate: Number(line.rate) || 0,
         qty: Number(line.qty) || 0,
+        isLiquor: liquor,
+        itemKind: liquor ? 'liquor' : 'food',
         emoji: '🍽️',
         sentQty: Number(line.sent_qty) || 0,
         notes: String(line.notes || '').trim()
@@ -1490,8 +2295,14 @@
       clearTimeout(autosaveTimer);
       autosaveTimer = null;
     }
+    state.invoiceGenerated = !!(invoice.customer_bill_sent);
     renderLines(page);
-    toast('Resumed order ' + state.orderNo + '.');
+    syncInvoiceGeneratedUi(page);
+    toast(
+      state.invoiceGenerated
+        ? 'Resumed invoice ' + state.orderNo + ' (locked — settle to continue).'
+        : 'Resumed order ' + state.orderNo + '.'
+    );
   }
 
   /** Shared lookup: is there an open dine-in order for this table? Used by both
@@ -1557,52 +2368,166 @@
   function posInvTableChanged(root, value, label) {
     var page = document.getElementById('pos-invoice-page');
     if (!page) return;
+
     var prevValue = state.resumeTableValue;
     var prevLabel = state.resumeTableLabel;
+    var status = value ? selectedTableStatus(page) : '';
+
+    if (state.invoiceGenerated) {
+      var current = state.resumeTableValue || state.tableForOrder || '';
+      if (!value || String(value).toLowerCase() === String(current).toLowerCase()) {
+        return;
+      }
+      var lockedStatus = selectedTableStatus(page);
+      if (tableBlocksNewBill(lockedStatus)) {
+        state.resumeTableValue = value;
+        state.resumeTableLabel = label;
+        resumeOrderForTable(page, value, {
+          notFound: function () {
+            resetOrderSession(page, { tableValue: value, tableLabel: label });
+          }
+        });
+        return;
+      }
+      // Generated bill stays on its table; open a blank session on the free table.
+      resetOrderSession(page, { tableValue: value, tableLabel: label });
+      return;
+    }
+
     if (!value) {
       state.resumeTableValue = '';
       state.resumeTableLabel = 'Select table…';
       return;
     }
-    var status = selectedTableStatus(page);
+    status = selectedTableStatus(page);
     if (!tableBlocksNewBill(status)) {
+      var hasExistingOrder = !!(state.invoiceId || state.orderNo || state.tableForOrder);
+      var switchingAway =
+        hasExistingOrder &&
+        String(value).toLowerCase() !== String(state.tableForOrder || '').toLowerCase();
+      if (switchingAway) {
+        // Leave current order on its table (flush if dirty), then open a blank bill.
+        // No confirm — staff expect the chip change to apply immediately.
+        var assignFree = function () {
+          resetOrderSession(page, { tableValue: value, tableLabel: label });
+        };
+        flushLeavingTableOrder(page, { silent: true }).then(assignFree, assignFree);
+        return;
+      }
       state.resumeTableValue = value;
       state.resumeTableLabel = label;
+      state.tableForOrder = value;
       /* Table chosen after items were added — kick autosave so leave/resume works. */
       if (state.lines.length) markOrderDirty(page);
       return;
     }
     var switchingTable = String(value).toLowerCase() !== String(state.tableForOrder || '').toLowerCase();
-    if (switchingTable && state.lines.length) {
-      var ok = global.confirm(
-        'Switch to the open order for ' + value + '? Unsaved items in the current order will be discarded.'
-      );
-      if (!ok) {
-        setListboxValue('pos-inv-table', prevValue, prevLabel);
-        return;
-      }
+    function startBlankOnTable() {
+      resetOrderSession(page, { tableValue: value, tableLabel: label });
     }
-    state.resumeTableValue = value;
-    state.resumeTableLabel = label;
-    resumeOrderForTable(page, value, {
-      notFound: function () {
-        toast(value + ' is marked occupied but has no active order. Ask a manager to free it on the Tables page.');
-        setListboxValue('pos-inv-table', prevValue, prevLabel);
-        state.resumeTableValue = prevValue;
-        state.resumeTableLabel = prevLabel;
-      }
-    });
+    function resumeOccupied() {
+      state.resumeTableValue = value;
+      state.resumeTableLabel = label;
+      resumeOrderForTable(page, value, {
+        notFound: startBlankOnTable
+      });
+    }
+    /* Save current bill on its table first, then load the destination order. */
+    if (switchingTable && state.lines.length) {
+      flushLeavingTableOrder(page, { silent: true }).then(resumeOccupied, resumeOccupied);
+      return;
+    }
+    resumeOccupied();
   }
 
   function updateSettleBillButton(page) {
     var btn = $('#pos-inv-settle-bill', page) || $('#pos-inv-close-table', page);
     if (!btn) return;
-    btn.hidden = !(state.invoiceId && state.lines && state.lines.length);
+    btn.hidden = !(
+      state.invoiceGenerated &&
+      state.invoiceId &&
+      state.lines &&
+      state.lines.length
+    );
+  }
+
+  function guardInvoiceLocked(actionLabel) {
+    if (!state.invoiceGenerated) return false;
+    toast(
+      actionLabel
+        ? 'Invoice already generated. Settle the bill to continue.'
+        : 'Invoice already generated. Settle the bill to continue.'
+    );
+    return true;
+  }
+
+  function syncInvoiceGeneratedUi(page) {
+    if (!page) page = document.getElementById('pos-invoice-page');
+    if (!page) return;
+    page.classList.toggle('is-invoice-generated', !!state.invoiceGenerated);
+
+    var genBtn = $('#pos-inv-send-customer', page) || page.querySelector('[data-inv-action="send"]');
+    if (genBtn) {
+      genBtn.hidden = !!state.invoiceGenerated;
+      genBtn.disabled = !!state.invoiceGenerated;
+    }
+
+    var search = $('#pos-inv-search', page);
+    if (search) {
+      search.disabled = !!state.invoiceGenerated;
+      search.readOnly = !!state.invoiceGenerated;
+      if (state.invoiceGenerated) search.blur();
+    }
+
+    var lockSelectors = [
+      '#pos-inv-customer-name',
+      '#pos-inv-customer-mobile',
+      '#pos-inv-notes',
+      '#pos-inv-captain-trigger',
+      '#pos-inv-order-type-header-trigger',
+      '#pos-inv-save',
+      '#pos-inv-more-btn'
+    ];
+    lockSelectors.forEach(function (sel) {
+      var el = $(sel, page) || document.querySelector(sel);
+      if (el) el.disabled = !!state.invoiceGenerated;
+    });
+
+    /* Table picker stays clickable — staff can open the list and jump to another
+       table's open order even while the current bill is locked until settle. */
+    var tableTrigger = $('#pos-inv-table-trigger', page);
+    if (tableTrigger) tableTrigger.disabled = false;
+
+    var sendKotBtn = $('#pos-inv-send-kot', page);
+    if (sendKotBtn) {
+      var hasPendingKot = pendingKotLines().length > 0;
+      sendKotBtn.disabled = !hasPendingKot;
+    }
+
+    page.querySelectorAll('[data-inv-action="discount"], [data-inv-action="service"], [data-inv-action="tip"], [data-inv-action="coupon"], [data-inv-action="add-custom"], [data-inv-action="clear"], [data-inv-action="duplicate"], [data-inv-action="hold"]').forEach(function (el) {
+      el.disabled = !!state.invoiceGenerated;
+      if (state.invoiceGenerated) el.setAttribute('aria-disabled', 'true');
+      else el.removeAttribute('aria-disabled');
+    });
+
+    updateSettleBillButton(page);
+    renderLines(page);
+  }
+
+  function markInvoiceGenerated(page, invoice) {
+    state.invoiceGenerated = true;
+    if (invoice && invoice.id) state.invoiceId = invoice.id;
+    cancelAutosaveTimer();
+    state.dirty = false;
+    syncInvoiceGeneratedUi(page);
   }
 
   /** Reset the on-screen session to a fresh, blank order — used after Settle
    *  Bill so staff isn't left staring at a closed bill. */
-  function resetOrderSession(page) {
+  function resetOrderSession(page, opts) {
+    opts = opts || {};
+    var nextTable = opts.tableValue != null ? String(opts.tableValue) : '';
+    var nextLabel = opts.tableLabel != null ? String(opts.tableLabel) : (nextTable || 'Select table…');
     state.lines = [];
     state.discountType = 'pct';
     state.discountValue = 0;
@@ -1614,8 +2539,10 @@
     state.serviceValue = DEFAULT_SERVICE_PCT;
     state.couponCode = '';
     state.orderNo = '';
+    state.localId = '';
     state.lineSeq = 0;
     state.invoiceId = null;
+    state.invoiceGenerated = false;
     state.tableForOrder = '';
     state.customerActiveIndex = -1;
     state.dirty = false;
@@ -1623,20 +2550,33 @@
     state.adjDraft = { discount: 'pct', service: 'pct' };
     initMeta(page);
     var nameEl = $('#pos-inv-customer-name', page);
-    if (nameEl) nameEl.value = DEFAULT_AUTOSAVE_CUSTOMER;
+    if (nameEl) {
+      nameEl.value = DEFAULT_AUTOSAVE_CUSTOMER;
+      nameEl.disabled = false;
+    }
     var mobileEl = $('#pos-inv-customer-mobile', page);
-    if (mobileEl) mobileEl.value = '';
+    if (mobileEl) {
+      mobileEl.value = '';
+      mobileEl.disabled = false;
+    }
     var notesEl = $('#pos-inv-notes', page);
     if (notesEl) {
       notesEl.value = '';
+      notesEl.disabled = false;
       updateNotesCount(page);
     }
-    setListboxValue('pos-inv-table', '', 'Select table…');
-    state.resumeTableValue = '';
-    state.resumeTableLabel = 'Select table…';
+    setListboxValue('pos-inv-table', nextTable, nextLabel || 'Select table…');
+    state.resumeTableValue = nextTable;
+    state.resumeTableLabel = nextLabel || 'Select table…';
     renderLines(page);
+    syncInvoiceGeneratedUi(page);
     loadFloorTables(function (tables) {
       populateTables(page, tables, { loading: false });
+      if (nextTable) {
+        setListboxValue('pos-inv-table', nextTable, nextLabel || nextTable);
+        state.resumeTableValue = nextTable;
+        state.resumeTableLabel = nextLabel || nextTable;
+      }
       if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
     });
   }
@@ -2192,6 +3132,18 @@
   }
 
   function openSettleBillModal(page) {
+    if (!isBrowserOnline()) {
+      toast('Settle Bill requires an internet connection.');
+      return;
+    }
+    if (state.invoiceGenerated && !state.invoiceId) {
+      toast('Sync required before settle. Reconnect to the network.');
+      return;
+    }
+    if (!state.invoiceGenerated) {
+      toast('Generate the invoice before settling the bill.');
+      return;
+    }
     if (!state.invoiceId) {
       toast('Save the order before settling the bill.');
       return;
@@ -2242,6 +3194,11 @@
   }
 
   function submitSettleBill(page) {
+    if (!isBrowserOnline()) {
+      setSettleError('Settle Bill requires an internet connection.');
+      syncSettleSubmitEnabled();
+      return;
+    }
     if (!state.invoiceId) return;
     var collected = collectSettleSplits();
     if (collected.error) {
@@ -2290,7 +3247,19 @@
           return;
         }
         closeSettleModal();
+        var settledInvoice = result.data && result.data.invoice ? result.data.invoice : null;
+        var outlet = (page && page.getAttribute('data-pos-outlet')) || undefined;
+        if (
+          global.hbePosPrinterPrefs &&
+          global.hbePosPrinterPrefs.shouldAutoPrintReceiptOnSettle(outlet)
+        ) {
+          printCustomerBill(page, settledInvoice, { autoPrint: true });
+        }
         var table = fieldValue('pos-inv-table', page);
+        if (table && markFloorTableAvailableLocal(table)) {
+          applyFloorTablesToUi(page, floorTablesCache);
+        }
+        refreshFloorTables(page);
         toast(
           table
             ? 'Bill settled. ' + table + ' is now available.'
@@ -2848,6 +3817,7 @@
       queryParam('table').trim();
     return {
       orderNo: state.orderNo,
+      outlet: resolvePosOutlet(),
       savedAt: new Date().toISOString(),
       orderType: fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in',
       table: table,
@@ -2860,9 +3830,11 @@
           uid: line.uid,
           menuId: line.menuId,
           name: line.name,
+          category: line.category || '',
           variant: line.variant || '',
           rate: Number(line.rate) || 0,
           qty: Number(line.qty) || 0,
+          isLiquor: !!line.isLiquor || isLiquorLine(line),
           emoji: line.emoji || '',
           kotSentQty: Number(line.sentQty) || 0,
           notes: String(line.notes || '').trim()
@@ -2893,6 +3865,7 @@
   /** Autosave / leave-flush only for dine-in carts with a table and at least one
    *  line. Empty carts are never POSTed (avoids wiping a server order). */
   function shouldAutosave(page) {
+    if (state.invoiceGenerated) return false;
     if (!page || !state.lines.length) return false;
     var orderType =
       fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
@@ -2910,6 +3883,7 @@
   }
 
   function markOrderDirty(page) {
+    if (state.invoiceGenerated) return;
     dirtyEpoch += 1;
     state.dirty = true;
     scheduleAutosave(page);
@@ -2954,8 +3928,30 @@
     return persistOrder(page, Object.assign({ silent: true }, opts || {}));
   }
 
+  /** Persist the open cart on the table it belongs to — not the picker value the
+   *  user just clicked (listbox updates the field before change handlers run). */
+  function flushLeavingTableOrder(page, opts) {
+    opts = opts || {};
+    cancelAutosaveTimer();
+    if (!page || !state.dirty || !state.lines.length) {
+      return Promise.resolve({ ok: true, skipped: true });
+    }
+    if (state.invoiceGenerated) {
+      return Promise.resolve({ ok: true, skipped: true });
+    }
+    var leaveTable = String(state.tableForOrder || state.resumeTableValue || '').trim();
+    if (!leaveTable) {
+      return Promise.resolve({ ok: true, skipped: true });
+    }
+    return persistOrder(page, Object.assign({ silent: true, tableOverride: leaveTable }, opts));
+  }
+
   function persistOrder(page, opts) {
     opts = opts || {};
+    if (state.invoiceGenerated && !opts.allowGenerated) {
+      if (!opts.silent) guardInvoiceLocked();
+      return Promise.resolve({ ok: false, locked: true });
+    }
     var silent = !!opts.silent;
     var requireCustomer = opts.requireCustomer !== false && !silent;
     var toastOnSuccess = opts.toastOnSuccess != null ? !!opts.toastOnSuccess : !silent;
@@ -3000,6 +3996,7 @@
     }
 
     if (!state.orderNo) initMeta(page);
+    ensureLocalId();
 
     if (saveInflight) {
       return saveInflight.then(function () {
@@ -3009,7 +4006,9 @@
     }
 
     var payload = collectOrderPayload(page);
+    if (opts.tableOverride) payload.table = String(opts.tableOverride).trim();
     payload.customerName = customerName;
+    payload.clientLocalId = state.localId;
     var epochAtStart = dirtyEpoch;
 
     var saveBtn = null;
@@ -3018,30 +4017,76 @@
       if (saveBtn) saveBtn.disabled = true;
     }
 
-    var fetchOpts = {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    };
-    if (keepalive) fetchOpts.keepalive = true;
-
-    saveInflight = fetch(INVOICE_API, fetchOpts)
-      .then(function (res) {
-        return res
-          .json()
-          .then(function (data) {
-            return { ok: res.ok, data: data || {} };
-          })
-          .catch(function () {
-            return { ok: false, data: {} };
-          });
+    if (!isBrowserOnline()) {
+      saveInflight = queueOfflineSave(page, payload, {
+        silent: silent,
+        toastOnSuccess: toastOnSuccess,
+        epochAtStart: epochAtStart
       })
+        .then(function (outcome) {
+          if (saveBtn) saveBtn.disabled = false;
+          updateSettleBillButton(page);
+          saveInflight = null;
+          return outcome;
+        });
+      return saveInflight;
+    }
+
+    var api = offlineApi();
+    var postFn =
+      api && typeof api.tryPostWithConflictRetry === 'function'
+        ? function (body) {
+            return api.tryPostWithConflictRetry(body).then(function (result) {
+              if (result.payloadUsed && result.payloadUsed.orderNo) {
+                state.orderNo = result.payloadUsed.orderNo;
+              }
+              return result;
+            });
+          }
+        : null;
+
+    var networkPromise;
+    if (postFn) {
+      networkPromise = postFn(payload);
+    } else {
+      var fetchOpts = {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      };
+      if (keepalive) fetchOpts.keepalive = true;
+      networkPromise = fetch(INVOICE_API, fetchOpts)
+        .then(function (res) {
+          return res
+            .json()
+            .then(function (data) {
+              return { ok: res.ok && !!(data && data.ok), data: data || {} };
+            })
+            .catch(function () {
+              return { ok: false, data: {} };
+            });
+        });
+    }
+
+    saveInflight = networkPromise
       .then(function (result) {
-        if (!result.ok || !result.data.ok) {
+        if (!result.ok || !(result.data && result.data.ok)) {
+          if (result.authExpired) {
+            if (!silent) toast('Session expired; reconnect to sync.');
+            return { ok: false, error: 'auth' };
+          }
+          /* Network-shaped failure → queue offline. */
+          if (!result.status || result.status >= 500 || result.network) {
+            return queueOfflineSave(page, payload, {
+              silent: silent,
+              toastOnSuccess: toastOnSuccess,
+              epochAtStart: epochAtStart
+            });
+          }
           if (!silent) {
             toast((result.data && result.data.error) || 'Could not save invoice.');
           }
@@ -3052,14 +4097,20 @@
         if (invoice) {
           state.invoiceId = invoice.id;
           state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
+          if (invoice.order_no) state.orderNo = invoice.order_no;
         }
         clearDirtyAfterPersist(epochAtStart, page);
+        mirrorDraft(page, payload);
+        syncFloorOccupancyAfterSave(page, payload, invoice);
         if (toastOnSuccess) toast('Order ' + orderNo + ' saved.');
         return { ok: true, invoice: invoice };
       })
       .catch(function () {
-        if (!silent) toast('Could not save invoice. Check your connection and try again.');
-        return { ok: false, error: 'network' };
+        return queueOfflineSave(page, payload, {
+          silent: silent,
+          toastOnSuccess: toastOnSuccess,
+          epochAtStart: epochAtStart
+        });
       })
       .then(function (outcome) {
         if (saveBtn) saveBtn.disabled = false;
@@ -3117,6 +4168,7 @@
   function handleAction(page, action) {
     if (!action) return;
     if (action === 'save') {
+      if (guardInvoiceLocked()) return;
       saveOrder(page);
       return;
     }
@@ -3125,6 +4177,10 @@
       return;
     }
     if (action === 'settle-bill' || action === 'close-table') {
+      if (state.invoiceGenerated && !state.invoiceId) {
+        toast('Sync required before settle. Reconnect to the network.');
+        return;
+      }
       openSettleBillModal(page);
       return;
     }
@@ -3142,11 +4198,13 @@
     }
     if (action === 'hold') {
       closeMoreMenu(page);
+      if (guardInvoiceLocked()) return;
       toast('Order hold is not available yet.');
       return;
     }
     if (action === 'clear') {
       closeMoreMenu(page);
+      if (guardInvoiceLocked()) return;
       var kept = [];
       if (!canEditKitchenSentLines(page)) {
         kept = state.lines.filter(function (line) {
@@ -3171,30 +4229,37 @@
     }
     if (action === 'duplicate') {
       closeMoreMenu(page);
+      if (guardInvoiceLocked()) return;
       toast('Duplicate order is not available yet.');
       return;
     }
     if (action === 'discount') {
+      if (guardInvoiceLocked()) return;
       openDiscountModal(page);
       return;
     }
     if (action === 'service') {
+      if (guardInvoiceLocked()) return;
       openServiceModal(page);
       return;
     }
     if (action === 'tip') {
+      if (guardInvoiceLocked()) return;
       openTipModal(page);
       return;
     }
     if (action === 'coupon') {
+      if (guardInvoiceLocked()) return;
       openCouponModal(page);
       return;
     }
     if (action === 'add-custom') {
+      if (guardInvoiceLocked()) return;
       openCustomModal(page);
       return;
     }
     if (action === 'note-templates') {
+      if (guardInvoiceLocked()) return;
       var notes = $('#pos-inv-notes', page);
       if (notes) {
         var snippet = 'Less spicy · Serve hot';
@@ -3507,10 +4572,12 @@
       }
       if (!line) return;
       if (e.target.closest('[data-line-note]')) {
+        if (guardInvoiceLocked()) return;
         openLineNoteModal(page, line);
         return;
       }
       if (e.target.closest('[data-del]')) {
+        if (guardInvoiceLocked()) return;
         if (lineHasKitchenSent(line) && !canEditKitchenSentLines(page)) {
           toast('Only an administrator can remove items after they were sent to the kitchen.');
           return;
@@ -3528,6 +4595,7 @@
       }
       var qtyBtn = e.target.closest('[data-qty]');
       if (qtyBtn) {
+        if (guardInvoiceLocked()) return;
         if (qtyBtn.disabled) return;
         var delta = Number(qtyBtn.getAttribute('data-qty')) || 0;
         var nextQty = Math.max(1, (Number(line.qty) || 1) + delta);
@@ -3559,42 +4627,34 @@
     global.posInvCloseCustomerSuggest = closeCustomerSuggest;
     global.posInvCloseAllModals = closeAllInvModals;
 
-    if (page.getAttribute('data-header-bound') === '1') return;
-    page.setAttribute('data-header-bound', '1');
-
-    var moreBtn = $('#pos-inv-more-btn', page);
-    if (moreBtn) {
-      moreBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var menu = $('#pos-inv-more-menu', page);
-        if (!menu) return;
-        if (menu.hidden) openMoreMenu(page);
-        else closeMoreMenu(page);
-      });
+    if (page.getAttribute('data-header-bound') !== '1') {
+      page.setAttribute('data-header-bound', '1');
+      var moreBtn = $('#pos-inv-more-btn', page);
+      if (moreBtn) {
+        moreBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          var menu = $('#pos-inv-more-menu', page);
+          if (!menu) return;
+          if (menu.hidden) openMoreMenu(page);
+          else closeMoreMenu(page);
+        });
+      }
     }
 
-    var editOrder = $('#pos-inv-edit-order-no', page);
-    if (editOrder) {
-      editOrder.addEventListener('click', function () {
-        var next = global.prompt('Order number', state.orderNo);
-        if (next === null) return;
-        next = String(next).trim();
-        if (!next) return;
-        state.orderNo = next;
-        var el = $('#pos-inv-meta-order-no', page);
-        if (el) el.textContent = next;
+    if (!document.__posInvActionClickBound) {
+      document.__posInvActionClickBound = true;
+      document.addEventListener('click', function (e) {
+        var pageRoot = document.getElementById('pos-invoice-page');
+        if (!pageRoot) return;
+        var actionEl = e.target.closest('[data-inv-action]');
+        if (actionEl && pageRoot.contains(actionEl)) {
+          handleAction(pageRoot, actionEl.getAttribute('data-inv-action'));
+        }
+        if (!e.target.closest('.pos-inv-more-wrap')) {
+          closeMoreMenu(pageRoot);
+        }
       });
     }
-
-    page.addEventListener('click', function (e) {
-      var actionEl = e.target.closest('[data-inv-action]');
-      if (actionEl && page.contains(actionEl)) {
-        handleAction(page, actionEl.getAttribute('data-inv-action'));
-      }
-      if (!e.target.closest('.pos-inv-more-wrap')) {
-        closeMoreMenu(page);
-      }
-    });
 
     if (!document.__posInvMoreDocBound) {
       document.__posInvMoreDocBound = true;
@@ -3735,12 +4795,35 @@
   }
 
   function initPosInvoicePage() {
+    syncPosApiPaths();
+    closeInAppPrintPage();
     var page = document.getElementById('pos-invoice-page');
     if (!page) return;
+
+    /* Immersive billing: unpin rail; enter/restore fullscreen when preferred. */
+    try {
+      if (typeof global.setDeSidebarPinned === 'function') {
+        global.setDeSidebarPinned(false);
+      }
+    } catch (ePin) {}
+    try {
+      if (global.deFullscreen) {
+        if (typeof global.deFullscreen.enter === 'function' && !global.deFullscreen.isActive()) {
+          global.deFullscreen.enter().catch(function () {});
+        } else if (typeof global.deFullscreen.restoreIfNeeded === 'function') {
+          global.deFullscreen.restoreIfNeeded();
+        }
+        if (typeof global.deFullscreen.reinit === 'function') {
+          global.deFullscreen.reinit();
+        }
+      }
+    } catch (eFs) {}
 
     /* Soft-nav remounts DOM — clear bind flags on fresh nodes; keep line state only on same session page */
     var freshMount = page.getAttribute('data-inv-mounted') !== '1';
     if (freshMount) {
+      page.removeAttribute('data-header-bound');
+      page.removeAttribute('data-modals-bound');
       page.setAttribute('data-inv-mounted', '1');
       state.lines = [];
       state.discountType = 'pct';
@@ -3753,8 +4836,10 @@
       state.serviceValue = DEFAULT_SERVICE_PCT;
       state.couponCode = '';
       state.orderNo = '';
+      state.localId = '';
       state.lineSeq = 0;
       state.invoiceId = null;
+      state.invoiceGenerated = false;
       state.tableForOrder = '';
       state.customerActiveIndex = -1;
       state.dirty = false;
@@ -3762,6 +4847,10 @@
       state.adjDraft = { discount: 'pct', service: 'pct' };
     }
 
+    ensureLocalId();
+    bindOfflineSyncListeners();
+    updateOfflineBanner();
+    flushOfflineOutbox();
     registerInvoiceLeaveHooks();
     populateTables(page, loadFloorTablesSync(), { loading: !floorTablesLoaded });
     initMeta(page);
@@ -3774,6 +4863,7 @@
     bindNotes(page);
     bindCustomer(page);
     renderLines(page);
+    syncInvoiceGeneratedUi(page);
     updateNotesCount(page);
 
     if (typeof global.initEpListboxes === 'function') {

@@ -6,9 +6,9 @@
 <title>Room Transfer | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=11">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
@@ -17,8 +17,7 @@
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>

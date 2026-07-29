@@ -8,14 +8,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Home | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=9">
 <script>
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>
@@ -24,7 +23,7 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=9">
 {% endif %}
 <div class="de-main-inner db-main-inner--home">
   <div id="dashboard-home-panel" class="db-home">
@@ -86,7 +85,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
         </div>
         <h2>Sales Analytics</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         <p class="db-home-card-desc">Sales updates, room transfers, and analytics for Hotel Bell Elite.</p>
       </a>
       {% endif %}
@@ -97,7 +96,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 2.5-5 6-5s6 2 6 5"/><path d="M18 8h3"/><path d="M19.5 6.5v3"/></svg>
         </div>
         <h2>User &amp; Access</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         <p class="db-home-card-desc">Manage user accounts, roles, and module permissions.</p>
       </a>
       {% endif %}
@@ -108,7 +107,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/><path d="M7 15h4M13 15h4"/></svg>
         </div>
         <h2>Accounts</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         <p class="db-home-card-desc">Ledger, payments, and financial records.</p>
       </a>
       {% endif %}
@@ -119,7 +118,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg>
         </div>
         <h2>Employee Payroll</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         <p class="db-home-card-desc">Manage employee salaries, EPF, ESIC and payroll records.</p>
       </a>
       {% endif %}
@@ -130,8 +129,19 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h2"/><path d="M15 9h2v6h-2z"/></svg>
         </div>
         <h2>Restaurant</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         <p class="db-home-card-desc">Counter billing and guest invoices.</p>
+      </a>
+      {% endif %}
+
+      {% if has_dashboard_access('point_of_sale_bar') %}
+      <a class="db-home-card db-home-card--wine" role="listitem" href="{{ url_for('bar_point_of_sale') }}" data-search="bar point of sale pos counter invoice billing drinks" aria-label="Open Bar">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 22h8"/><path d="M12 15v7"/><path d="M12 15a5 5 0 0 0 5-5c0-2-.5-4-2-8H9c-1.5 4-2 6-2 8a5 5 0 0 0 5 5Z"/></svg>
+        </div>
+        <h2>Bar</h2>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
+        <p class="db-home-card-desc">Bar counter billing and guest invoices.</p>
       </a>
       {% endif %}
 
@@ -141,7 +151,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
         </div>
         <h2>Procurement &amp; Inventory</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         <p class="db-home-card-desc">Simple indent-to-stock flow for Bar and Kitchen.</p>
       </a>
       {% endif %}
@@ -152,7 +162,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/></svg>
         </div>
         <h2>Master</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         <p class="db-home-card-desc">Central master data for Hotel Bell Elite.</p>
       </a>
       {% endif %}
@@ -163,12 +173,12 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
         </div>
         <h2>Report</h2>
-        <span class="db-home-card-arrow" aria-hidden="true">→</span>
+        <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         <p class="db-home-card-desc">View and download reports across all modules.</p>
       </a>
       {% endif %}
 
-      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('stores') and not has_dashboard_access('master') and not has_dashboard_access('reports') %}
+      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('point_of_sale_bar') and not has_dashboard_access('stores') and not has_dashboard_access('master') and not has_dashboard_access('reports') %}
       <div class="db-home-empty" role="status">
         <h2>No modules assigned yet</h2>
         <p>This account is active, but no dashboard modules have been assigned. Ask an administrator to grant access so your modules appear here.</p>

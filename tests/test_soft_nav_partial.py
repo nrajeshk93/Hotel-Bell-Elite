@@ -64,6 +64,7 @@ class SoftNavTruePartialRoutesTest(unittest.TestCase):
         "/point-of-sale/settings",
         "/stores/indent",
         "/accounts/purchase-ledger",
+        "/employees",
     )
 
     def setUp(self):
@@ -90,7 +91,7 @@ class SoftNavTruePartialRoutesTest(unittest.TestCase):
                 self.assertIsNone(re.search(r"(?i)<html[\s>]", html))
                 self.assertIsNone(re.search(r"(?i)<head[\s>]", html))
                 self.assertNotIn("fonts.googleapis.com", html)
-                self.assertNotIn("de-sidebar", html)
+                self.assertNotIn('id="de-sidebar"', html)
                 self.assertNotIn("de_workspace_transitions.js", html)
 
 

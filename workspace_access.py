@@ -1,6 +1,6 @@
 """Workspace module registry and permission helpers for Hotel Bell Elite."""
 
-from werkzeug.security import generate_password_hash
+import auth_security
 
 _SALES_ANALYTICS_SUBMODULES = (
     {"key": "dashboard", "label": "Dashboard"},
@@ -98,6 +98,14 @@ _WORKSPACE_MODULE_REGISTRY = (
         "permission_children": (),
     },
     {
+        "key": "point_of_sale_bar",
+        "label": "Bar",
+        # Parallel POS workspace for Bar (Tables, POS, Ledger, Menu, Settings).
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
+    },
+    {
         "key": "stores",
         "label": "Procurement & Inventory",
         "permission_scope": "stores",
@@ -175,6 +183,13 @@ _ACCESS_MODULE_UI_META = {
             "After a KOT is sent, only Administrators can reduce qty or delete those lines."
         ),
     },
+    "point_of_sale_bar": {
+        "icon": "receipt",
+        "description": (
+            "Bar counter billing and invoice workspace. "
+            "After a KOT is sent, only Administrators can reduce qty or delete those lines."
+        ),
+    },
     "stores": {
         "icon": "store",
         "description": "Simple indent-to-stock flow for Bar and Kitchen stores.",
@@ -208,6 +223,26 @@ _POINT_OF_SALE_ENDPOINTS = {
     "point_of_sale_api_invoice_detail",
     "point_of_sale_api_invoice_delete",
     "point_of_sale_api_customers",
+}
+
+_POINT_OF_SALE_BAR_ENDPOINTS = {
+    "bar_point_of_sale",
+    "bar_point_of_sale_invoice",
+    "bar_point_of_sale_invoice_ledger",
+    "bar_point_of_sale_menu",
+    "bar_point_of_sale_settings",
+    "bar_export_pos_invoice_ledger_report",
+    "bar_point_of_sale_api_floor",
+    "bar_point_of_sale_api_settings",
+    "bar_point_of_sale_api_menu_categories",
+    "bar_point_of_sale_api_menu_category_delete",
+    "bar_point_of_sale_api_menu_items",
+    "bar_point_of_sale_api_menu_item_delete",
+    "bar_point_of_sale_api_menu_products",
+    "bar_point_of_sale_api_invoices_save",
+    "bar_point_of_sale_api_invoice_detail",
+    "bar_point_of_sale_api_invoice_delete",
+    "bar_point_of_sale_api_customers",
 }
 
 _STORES_ENDPOINT_GROUPS = {
@@ -682,6 +717,8 @@ def user_can_access_customer_master(user):
         return True
     if user_can_access_dashboard(user, "point_of_sale"):
         return True
+    if user_can_access_dashboard(user, "point_of_sale_bar"):
+        return True
     return False
 
 
@@ -768,6 +805,8 @@ def get_endpoint_dashboard_module(endpoint):
         return "employee_payroll"
     if endpoint in _POINT_OF_SALE_ENDPOINTS:
         return "point_of_sale"
+    if endpoint in _POINT_OF_SALE_BAR_ENDPOINTS:
+        return "point_of_sale_bar"
     if endpoint in _STORES_ENDPOINTS:
         return "stores"
     if endpoint in _MASTER_ENDPOINTS:
@@ -1107,7 +1146,7 @@ def save_access_user_record(
         )
         if password:
             update_sql += ", password_hash = ?"
-            params.append(generate_password_hash(password))
+            params.append(auth_security.hash_password(password))
         update_sql += " WHERE id = ?"
         params.append(user_id)
         conn.execute(update_sql, tuple(params))
@@ -1118,7 +1157,7 @@ def save_access_user_record(
             f"""INSERT INTO users
                 (username, full_name, email, password_hash, is_admin, is_active, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, 1, {sql_now}, {sql_now})""",
-            (username, full_name, email, generate_password_hash(password), int(is_admin)),
+            (username, full_name, email, auth_security.hash_password(password), int(is_admin)),
         )
         saved_user_id = conn.execute(
             "SELECT id FROM users WHERE LOWER(username) = LOWER(?)",

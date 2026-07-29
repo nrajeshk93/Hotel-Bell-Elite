@@ -11,7 +11,9 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from werkzeug.security import check_password_hash, generate_password_hash
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
+from werkzeug.security import check_password_hash
 
 # Thresholds
 CAPTCHA_AFTER_FAILURES = 2
@@ -20,8 +22,11 @@ UNLOCK_TOKEN_TTL_HOURS = 1
 IP_THROTTLE_LIMIT = 20
 IP_THROTTLE_WINDOW_SEC = 15 * 60
 
+# Argon2id hasher (argon2-cffi defaults: type=ID, time_cost=2, memory_cost=65536, parallelism=4).
+_PASSWORD_HASHER = PasswordHasher()
+
 # Precomputed dummy hash so missing-user checks take similar time.
-_DUMMY_PASSWORD_HASH = generate_password_hash("hotel-bell-elite-dummy-password")
+_DUMMY_PASSWORD_HASH = _PASSWORD_HASHER.hash("hotel-bell-elite-dummy-password")
 
 _ip_lock = threading.Lock()
 _ip_attempts: dict[str, list[float]] = {}
@@ -53,17 +58,68 @@ def captcha_is_required(row) -> bool:
         return False
 
 
-def verify_password(password_hash: str | None, password: str) -> bool:
+def hash_password(password: str) -> str:
+    """Hash a password with Argon2id for storage."""
+    return _PASSWORD_HASHER.hash(password or "")
+
+
+def _is_argon2_hash(password_hash: str) -> bool:
+    return bool(password_hash) and str(password_hash).startswith("$argon2")
+
+
+def password_needs_rehash(password_hash: str | None) -> bool:
+    """True when the stored hash should be upgraded to current Argon2id params."""
     if not password_hash:
-        check_password_hash(_DUMMY_PASSWORD_HASH, password or "")
+        return True
+    if not _is_argon2_hash(password_hash):
+        return True
+    try:
+        return bool(_PASSWORD_HASHER.check_needs_rehash(password_hash))
+    except Exception:
+        return True
+
+
+def verify_password(password_hash: str | None, password: str) -> bool:
+    plain = password or ""
+    if not password_hash:
+        try:
+            _PASSWORD_HASHER.verify(_DUMMY_PASSWORD_HASH, plain)
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            pass
         return False
-    return bool(check_password_hash(password_hash, password or ""))
+    if _is_argon2_hash(password_hash):
+        try:
+            return bool(_PASSWORD_HASHER.verify(password_hash, plain))
+        except (VerifyMismatchError, VerificationError, InvalidHashError):
+            return False
+    # Legacy Werkzeug hashes (scrypt / pbkdf2).
+    return bool(check_password_hash(password_hash, plain))
 
 
 def verify_password_for_row(row, password: str) -> bool:
     if not row:
         return verify_password(None, password)
     return verify_password(row["password_hash"], password)
+
+
+def upgrade_password_hash_if_needed(conn, user_id: int, password: str, password_hash: str | None) -> bool:
+    """Rewrite password_hash to Argon2id when the stored encoding is legacy or outdated.
+
+    Returns True when the row was updated.
+    """
+    if not user_id or not password_needs_rehash(password_hash):
+        return False
+    new_hash = hash_password(password)
+    conn.execute(
+        """
+        UPDATE users
+           SET password_hash = ?,
+               updated_at = ?
+         WHERE id = ?
+        """,
+        (new_hash, sql_now(), int(user_id)),
+    )
+    return True
 
 
 def clear_login_failures(conn, user_id: int) -> None:

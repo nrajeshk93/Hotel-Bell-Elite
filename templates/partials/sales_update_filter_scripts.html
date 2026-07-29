@@ -1,3 +1,4 @@
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=4"></script>
 <script>
 (function(){
@@ -25,24 +26,25 @@
   if (!params.get('date_from')) params.set('date_from', saved);
   if (!params.get('date_to')) params.set('date_to', saved);
   var qs = params.toString();
-  window.location.replace(window.location.pathname + (qs ? '?' + qs : ''));
+  var next = window.location.pathname + (qs ? '?' + qs : '');
+  /* Hard location.replace exits browser fullscreen after soft-nav. Prefer soft refresh. */
+  if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh(next);
+  else window.location.replace(next);
 })();
 </script>
 <script>
 (function(){
   var f = document.getElementById('sales-filter-form');
-  var co = document.getElementById('sales-company');
-  var loc = document.getElementById('sales-location');
   if (!f) return;
   var panelInput = document.getElementById('se-filter-panel');
   function submitScope(){
     if (panelInput) panelInput.value = '';
     f.submit();
   }
-  if (loc) loc.addEventListener('change', submitScope);
+  /* Location filter uses ep_form_listbox with data-se-listbox-submit="sales-filter-form". */
 })();
-
-(function(){
+</script>
+<script>
   const wrap = document.getElementById('se-date-range-wrap');
   const trigger = document.getElementById('se-date-range-trigger');
   const backdrop = document.getElementById('se-date-range-backdrop');

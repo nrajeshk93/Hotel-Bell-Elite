@@ -1,23 +1,22 @@
 {% set de_soft_body_class = 'de-open pos-module pos-settings-module' %}
-{% set de_soft_page_title = 'Settings | Restaurant | Hotel Bell Elite' %}
+{% set de_soft_page_title = 'Settings | ' ~ (pos_label|default('Restaurant')) ~ ' | Hotel Bell Elite' %}
 {% if not is_partial_main %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Settings | Restaurant | Hotel Bell Elite</title>
+<title>Settings | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=14">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=30">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=31">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=31">
 <script>
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>
@@ -27,15 +26,15 @@
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=14">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=30">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=31">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=31">
 {% endif %}
 
-<div class="de-main-inner pos-settings-page" id="pos-settings-page" data-pos-settings>
+<div class="de-main-inner pos-settings-page" id="pos-settings-page" data-pos-settings data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
   <header class="pos-set-header">
     <div class="pos-set-header-copy">
-      <p class="pos-set-eyebrow">Restaurant</p>
+      <p class="pos-set-eyebrow">{{ pos_label|default('Restaurant') }}</p>
       <h1>Settings</h1>
     </div>
     <div class="pos-set-header-actions"></div>
@@ -351,19 +350,45 @@
       {# ——— Menu ——— #}
       {% include 'partials/pos_menu_panel.html' %}
 
-      {# ——— Printers ——— #}
+      {# ——— Printers (per-PC localStorage — not shared across machines) ——— #}
       <section class="pos-set-panel" id="pos-set-panel-printers" data-panel="printers" role="tabpanel" hidden>
         <div class="pos-set-panel-head">
           <div>
             <h2>Printers</h2>
-            <p>Receipt and kitchen printers.</p>
+            <p>Default printers and auto-print for this computer.</p>
           </div>
+          <span class="pos-set-badge pos-set-badge--pc" title="Preferences stay on this browser / PC">Saved on this PC only</span>
         </div>
         <div class="pos-set-card">
-          <p class="pos-menu-empty" id="pos-set-printers-empty">No printers configured yet.</p>
+          <p class="pos-set-pc-hint">
+            Set this PC’s Windows or macOS <strong>default printer</strong> to the receipt or kitchen printer at this station.
+            Labels below are a reminder for staff — print jobs use this PC’s system default.
+          </p>
+          <div class="pos-set-fields">
+            <label class="pos-set-field">
+              <span>Station name</span>
+              <input type="text" data-pos-pc-printer="stationName" placeholder="e.g. Counter 1" autocomplete="off">
+            </label>
+            <label class="pos-set-field">
+              <span>Default receipt printer</span>
+              <input type="text" data-pos-pc-printer="receiptPrinterLabel" placeholder="e.g. Epson TM-T82 (Counter)" autocomplete="off">
+            </label>
+            <label class="pos-set-field">
+              <span>Default kitchen printer</span>
+              <input type="text" data-pos-pc-printer="kitchenPrinterLabel" placeholder="e.g. Kitchen KOT printer" autocomplete="off">
+            </label>
+          </div>
           <div class="pos-set-fields" style="margin-top:16px">
-            <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Auto-print kitchen on fire</span></label>
-            <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Print guest receipt on settle</span></label>
+            <label class="pos-set-toggle">
+              <input type="checkbox" data-pos-pc-printer="autoPrintKot" checked>
+              <span class="pos-set-toggle-ui"></span>
+              <span>Auto-print kitchen on fire</span>
+            </label>
+            <label class="pos-set-toggle">
+              <input type="checkbox" data-pos-pc-printer="autoPrintReceiptOnSettle">
+              <span class="pos-set-toggle-ui"></span>
+              <span>Print guest receipt on settle</span>
+            </label>
           </div>
         </div>
       </section>
@@ -456,7 +481,7 @@
   {% include 'partials/pos_menu_modals.html' %}
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=24"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
 <script>
 (function(global){
   'use strict';
@@ -504,8 +529,9 @@
   applySectionBoot(readStoredSection());
 })(window);
 </script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=1"></script>
 <script src="{{ url_for('static', filename='pos_settings.js') }}?v=21"></script>
-<script src="{{ url_for('static', filename='pos_menu.js') }}?v=29"></script>
+<script src="{{ url_for('static', filename='pos_menu.js') }}?v=36"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

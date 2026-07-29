@@ -1,9 +1,22 @@
 <script>
 (function(){
   var LISTBOX_FORM_SELECTOR = '#room-transfer-filter-form, #cash-ledger-filter-form, #tips-filter-form';
+  var DATE_WRAP_BY_FORM = {
+    'cash-ledger-filter-form': 'cl-date-range-wrap',
+    'room-transfer-filter-form': 'rt-date-range-wrap',
+    'tips-filter-form': 'tips-date-range-wrap'
+  };
 
   function closestFilterForm(el){
     return el ? el.closest(LISTBOX_FORM_SELECTOR) : null;
+  }
+
+  function closeDatePickerForForm(form){
+    if (!form || !window.SalesDateRangePicker) return;
+    var wrapId = DATE_WRAP_BY_FORM[form.id];
+    if (wrapId && typeof window.SalesDateRangePicker.closeIfOpen === 'function') {
+      window.SalesDateRangePicker.closeIfOpen(wrapId);
+    }
   }
 
   function submitScope(root){
@@ -32,6 +45,11 @@
     });
   }
 
+  function closeListboxesInForm(formId){
+    if (!formId) return;
+    document.querySelectorAll('#' + formId + ' [data-se-listbox].is-open').forEach(closeListbox);
+  }
+
   function scrollSelectedToTop(list){
     if (!list) return;
     var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
@@ -55,6 +73,7 @@
 
   function openListbox(root){
     if (!root || root.classList.contains('is-disabled')) return;
+    closeDatePickerForForm(closestFilterForm(root));
     closeAllListboxes(root);
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var list = root.querySelector('.se-filter-listbox');
@@ -163,6 +182,7 @@
 
   initSuFilterListboxes();
   window.initSuFilterListboxes = initSuFilterListboxes;
+  window.closeSuFilterListboxes = closeListboxesInForm;
 
   if (!window.__suFilterListboxDocBound) {
     window.__suFilterListboxDocBound = true;

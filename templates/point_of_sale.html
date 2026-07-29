@@ -1,22 +1,22 @@
 {% set de_soft_body_class = 'de-open pos-module' %}
-{% set de_soft_page_title = 'Tables | Restaurant | Hotel Bell Elite' %}
+{% set de_soft_page_title = 'Tables | ' ~ (pos_label|default('Restaurant')) ~ ' | Hotel Bell Elite' %}
 {% if not is_partial_main %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Tables | Restaurant | Hotel Bell Elite</title>
+<title>Tables | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=31">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=35">
 <script>
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>
@@ -25,7 +25,7 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=35">
 {% endif %}
 
@@ -52,7 +52,7 @@
   {% set areas = derived_areas %}
 {% endif %}
 
-<div class="de-main-inner pos-tables-page" id="pos-tables-page" data-pos-tables>
+<div class="de-main-inner pos-tables-page" id="pos-tables-page" data-pos-tables data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
   <header class="pos-tables-header">
     <div class="pos-tables-header-copy">
       <h1>Tables</h1>
@@ -75,7 +75,7 @@
         <input type="date" id="pos-tables-biz-date" value="{{ business_date }}" aria-label="Business date">
       </label>
       {% endif %}
-      <a class="pos-tables-btn-primary" href="{{ url_for('point_of_sale_invoice') }}">
+      <a class="pos-tables-btn-primary" href="{{ url_for('bar_point_of_sale_invoice') if (pos_outlet|default('restaurant')) == 'bar' else url_for('point_of_sale_invoice') }}">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         New Order
       </a>
@@ -484,23 +484,27 @@
       <p class="pos-inv-modal-lead" id="pos-transfer-table-lead">Move the open bill to another table.</p>
       <div class="pos-inv-field">
         <span>Destination table</span>
-        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-transfer-dest-listbox" data-se-listbox data-se-listbox-searchable id="pos-transfer-dest-listbox">
+        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pos-transfer-dest-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pos-transfer-dest-listbox">
           <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="8" rx="2"/><path d="M7 10V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
-            </span>
             <input type="hidden" id="pos-transfer-dest" name="to_table" value="">
-            <button type="button" class="se-filter-chip-trigger" id="pos-transfer-dest-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-transfer-dest-list" aria-labelledby="pos-transfer-dest-value">
-              <span class="se-filter-chip-value is-placeholder" id="pos-transfer-dest-value">Select table…</span>
-            </button>
+            <input type="search"
+                   class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                   id="pos-transfer-dest-trigger"
+                   role="combobox"
+                   aria-autocomplete="list"
+                   aria-haspopup="listbox"
+                   aria-expanded="false"
+                   aria-controls="pos-transfer-dest-list"
+                   aria-label="Destination table"
+                   value=""
+                   placeholder="Select table…"
+                   autocomplete="off"
+                   spellcheck="false">
             <span class="se-filter-chip-chev" aria-hidden="true">
               <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
           </div>
           <div class="se-filter-listbox" id="pos-transfer-dest-list" role="listbox" hidden>
-            <div class="ep-listbox-search-wrap">
-              <input type="search" class="ep-listbox-search" placeholder="Search tables…" autocomplete="off" aria-label="Search destination table">
-            </div>
             <div class="ep-listbox-options" id="pos-transfer-dest-options"></div>
           </div>
         </div>
@@ -520,46 +524,54 @@
       <p class="pos-inv-modal-lead" id="pos-merge-tables-lead">Join tables on the floor — open bills are optional.</p>
       <div class="pos-inv-field" id="pos-merge-source-field" hidden>
         <span>Merge with</span>
-        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-merge-source-listbox" data-se-listbox data-se-listbox-searchable id="pos-merge-source-listbox">
+        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pos-merge-source-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pos-merge-source-listbox">
           <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="8" rx="2"/><path d="M7 10V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
-            </span>
             <input type="hidden" id="pos-merge-source" name="from_table" value="">
-            <button type="button" class="se-filter-chip-trigger" id="pos-merge-source-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-merge-source-list" aria-labelledby="pos-merge-source-value">
-              <span class="se-filter-chip-value is-placeholder" id="pos-merge-source-value">Select table…</span>
-            </button>
+            <input type="search"
+                   class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                   id="pos-merge-source-trigger"
+                   role="combobox"
+                   aria-autocomplete="list"
+                   aria-haspopup="listbox"
+                   aria-expanded="false"
+                   aria-controls="pos-merge-source-list"
+                   aria-label="Source table"
+                   value=""
+                   placeholder="Select table…"
+                   autocomplete="off"
+                   spellcheck="false">
             <span class="se-filter-chip-chev" aria-hidden="true">
               <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
           </div>
           <div class="se-filter-listbox" id="pos-merge-source-list" role="listbox" hidden>
-            <div class="ep-listbox-search-wrap">
-              <input type="search" class="ep-listbox-search" placeholder="Search tables…" autocomplete="off" aria-label="Search source table">
-            </div>
             <div class="ep-listbox-options" id="pos-merge-source-options"></div>
           </div>
         </div>
       </div>
       <div class="pos-inv-field">
         <span>Merge into</span>
-        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-merge-dest-listbox" data-se-listbox data-se-listbox-searchable id="pos-merge-dest-listbox">
+        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pos-merge-dest-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pos-merge-dest-listbox">
           <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="3" y="10" width="18" height="8" rx="2"/><path d="M7 10V8a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/></svg>
-            </span>
             <input type="hidden" id="pos-merge-dest" name="to_table" value="">
-            <button type="button" class="se-filter-chip-trigger" id="pos-merge-dest-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-merge-dest-list" aria-labelledby="pos-merge-dest-value">
-              <span class="se-filter-chip-value is-placeholder" id="pos-merge-dest-value">Select table…</span>
-            </button>
+            <input type="search"
+                   class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                   id="pos-merge-dest-trigger"
+                   role="combobox"
+                   aria-autocomplete="list"
+                   aria-haspopup="listbox"
+                   aria-expanded="false"
+                   aria-controls="pos-merge-dest-list"
+                   aria-label="Destination table"
+                   value=""
+                   placeholder="Select table…"
+                   autocomplete="off"
+                   spellcheck="false">
             <span class="se-filter-chip-chev" aria-hidden="true">
               <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
             </span>
           </div>
           <div class="se-filter-listbox" id="pos-merge-dest-list" role="listbox" hidden>
-            <div class="ep-listbox-search-wrap">
-              <input type="search" class="ep-listbox-search" placeholder="Search tables…" autocomplete="off" aria-label="Search destination table">
-            </div>
             <div class="ep-listbox-options" id="pos-merge-dest-options"></div>
           </div>
         </div>
@@ -575,8 +587,13 @@
   <div class="pos-tables-toast" id="pos-tables-toast" role="status" aria-live="polite" hidden></div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=24"></script>
-<script src="{{ url_for('static', filename='pos_tables.js') }}?v=44"></script>
+{% if pos_receipt_config %}
+<script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
+{% endif %}
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='pos_tables.js') }}?v=51"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

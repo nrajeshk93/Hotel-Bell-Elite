@@ -628,3 +628,139 @@ body.se-cash-mode #se-cash-date-range-host {
   max-width: 280px;
   text-align: right;
 }
+
+/* App-wide header filter fields — Add menu / Purchase Ledger pattern */
+.se-sales-header-filters .se-filter-chip-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--txt2, #4A5568);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.se-sales-header-filters .se-filter-chip-icon {
+  display: none !important;
+}
+
+.se-sales-header-filters .se-filter-chip-control {
+  min-height: 44px;
+  border-radius: 8px;
+  background: #fff !important;
+  border: 1px solid var(--border, #E2E8F0) !important;
+  overflow: hidden;
+}
+
+.se-sales-header-filters .se-filter-chip--company .se-filter-chip-control,
+.se-sales-header-filters .se-filter-chip--location .se-filter-chip-control,
+.se-sales-header-filters .se-filter-chip--date .se-filter-chip-control,
+.se-sales-header-filters .se-filter-chip--payment .se-filter-chip-control {
+  background: #fff !important;
+  border-color: var(--border, #E2E8F0) !important;
+}
+
+.se-sales-header-filters .se-filter-chip--listbox.is-open .se-filter-chip-control,
+.se-sales-header-filters .se-filter-chip--listbox .se-filter-chip-control:focus-within,
+.se-sales-header-filters .se-filter-chip--search.is-active .se-filter-chip-control,
+.se-sales-header-filters .pl-search-chip.is-active .se-filter-chip-control,
+.se-sales-header-filters .cl-search-chip.is-active .se-filter-chip-control,
+.se-sales-header-filters .cp-search-chip.is-active .se-filter-chip-control,
+.se-sales-header-filters .st-product-search-chip.is-active .se-filter-chip-control,
+.se-sales-header-filters .st-stock-search-chip.is-active .se-filter-chip-control,
+.se-sales-header-filters .se-filter-chip--date-range.is-filtered .se-filter-chip-control {
+  border-color: #93C5FD !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
+}
+
+.se-sales-header-filters .se-filter-chip-trigger,
+.se-sales-header-filters .an-range-trigger.se-filter-chip-trigger {
+  min-height: 44px;
+  padding: 0 8px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.se-sales-header-filters select {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px 0 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.se-sales-header-filters .se-filter-chip--listbox .se-filter-chip-chev {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  align-self: stretch;
+  color: #94A3B8;
+}
+
+.se-sales-header-filters .se-filter-chip--listbox.is-open .se-filter-chip-chev {
+  color: #2563EB;
+  transform: rotate(180deg);
+}
+
+.se-sales-header-filters .se-filter-chip--listbox .se-filter-listbox {
+  padding: 6px;
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+}
+
+.se-sales-header-filters .se-filter-listbox-option {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.se-sales-header-filters .se-filter-listbox-option.is-selected {
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563EB;
+  font-weight: 600;
+}
+
+.se-sales-header-filters input[type="search"]:not(.se-filter-chip-combobox) {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: #111827;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.se-sales-header-filters input[type="search"]::placeholder {
+  color: #94A3B8;
+  font-weight: 500;
+}
+
+.se-sales-header-filters .se-filter-chip-date-host > .se-filter-chip-label,
+.se-sales-header-filters .pl-date-range-host > .se-filter-chip-label,
+.se-sales-header-filters .cp-date-range-host > .se-filter-chip-label {
+  display: block;
+  margin-bottom: 5px;
+}

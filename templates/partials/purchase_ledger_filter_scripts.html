@@ -130,6 +130,9 @@
 
   function openListbox(root){
     if (!root || root.classList.contains('is-disabled')) return;
+    if (window.SalesDateRangePicker && typeof window.SalesDateRangePicker.closeIfOpen === 'function') {
+      window.SalesDateRangePicker.closeIfOpen('pl-date-range-wrap');
+    }
     closeAllListboxes(root);
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var list = root.querySelector('.se-filter-listbox');
@@ -166,7 +169,8 @@
     var list = root.querySelector('.se-filter-listbox');
     var value = option.getAttribute('data-value') || '';
     var nameEl = option.querySelector('.pl-supplier-option-name');
-    var label = nameEl ? nameEl.textContent.trim() : (option.textContent || '').trim();
+    var label = option.getAttribute('data-label')
+      || (nameEl ? nameEl.textContent.trim() : (option.textContent || '').trim());
     if (input) input.value = value;
     if (valueEl) valueEl.textContent = label;
     if (list) {
@@ -410,7 +414,10 @@
         title1Id: 'pl-cal-title1',
         grid0Id: 'pl-cal-grid0',
         grid1Id: 'pl-cal-grid1',
-        emptyLabel: 'Date',
+        emptyLabel: 'Select date…',
+        onOpen: function(){
+          closeAllListboxes();
+        },
         onBeforeSubmit: function(){
           if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
           if (dateTo && !dateTo.value) dateTo.removeAttribute('name');

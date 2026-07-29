@@ -9,16 +9,16 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
 <script>
 (function(){
   try{
     var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
-    var expanded = sessionStorage.getItem('de-sidebar-expanded') === '1';
-    if(pinned || expanded){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
   }catch(e){}
 })();
 </script>
@@ -278,37 +278,9 @@
   </div>
 </div>
 
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=4"></script>
 <script>
-
-(function(){
-  var f = document.getElementById('sales-filter-form');
-  var co = document.getElementById('sales-company');
-  var loc = document.getElementById('sales-location');
-  if (!f) return;
-  var panelInput = document.getElementById('se-filter-panel');
-  function submitScope(){
-    if (panelInput && panelInput.value === 'cash') {
-      var params = new URLSearchParams();
-      if (co) params.set('company', co.value);
-      if (loc) params.set('location', loc.value);
-      params.set('panel', 'cash');
-      var df = document.getElementById('se-filter-date-from');
-      var dt = document.getElementById('se-filter-date-to');
-      var day = document.getElementById('se-filter-date');
-      var fromVal = (df && df.value) || (day && day.value) || '';
-      var toVal = (dt && dt.value) || fromVal;
-      if (fromVal) params.set('date_from', fromVal);
-      if (toVal) params.set('date_to', toVal);
-      window.location.href = f.action + '?' + params.toString();
-      return;
-    }
-    if (panelInput) panelInput.value = '';
-    f.submit();
-  }
-  if (loc) loc.addEventListener('change', submitScope);
-})();
-
 (function(){
   const wrap = document.getElementById('se-date-range-wrap');
   const trigger = document.getElementById('se-date-range-trigger');

@@ -289,6 +289,11 @@
     }
 
     function openPanel() {
+      if (typeof cfg.onOpen === 'function') {
+        try {
+          cfg.onOpen();
+        } catch (err) {}
+      }
       openSnapshot = { from: ff.value, to: ft.value };
       selFrom = openSnapshot.from;
       selTo = openSnapshot.to;
@@ -402,10 +407,19 @@
 
     syncFormHidden();
     refreshTriggerText();
+    wrap.__sdrClose = closePanel;
+  }
+
+  function closeIfOpen(wrapId) {
+    var wrap = document.getElementById(wrapId);
+    if (wrap && wrap.classList.contains('open') && typeof wrap.__sdrClose === 'function') {
+      wrap.__sdrClose();
+    }
   }
 
   global.SalesDateRangePicker = {
     init: init,
+    closeIfOpen: closeIfOpen,
     positionPanel: positionPanel,
     clearPanelPosition: clearPanelPosition,
     /**
