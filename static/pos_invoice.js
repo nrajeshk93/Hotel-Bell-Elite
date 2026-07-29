@@ -189,16 +189,78 @@
     return state.localId;
   }
 
+  function indianFiscalYearLabel(d) {
+    var dt = d instanceof Date ? d : new Date();
+    var year = dt.getFullYear();
+    var month = dt.getMonth() + 1;
+    var startYear = month >= 4 ? year : year - 1;
+    return startYear + '-' + String(startYear + 1).slice(-2);
+  }
+
+  function noteOutletOrderSeq(orderNo) {
+    var text = String(orderNo || '').trim();
+    var spc = /^SPC\/(\d+)\/(\d{4}-\d{2})$/i.exec(text);
+    if (spc) {
+      var spcKey = 'hbe_pos_spc_seq_' + spc[2];
+      var spcN = parseInt(spc[1], 10) || 0;
+      if (spcN >= 1) {
+        try {
+          var spcCur = parseInt(localStorage.getItem(spcKey) || '0', 10) || 0;
+          if (spcN > spcCur) localStorage.setItem(spcKey, String(spcN));
+        } catch (e) {}
+      }
+      return;
+    }
+    var inv = /^INV\/(\d+)\/(\d{4}-\d{2})$/i.exec(text);
+    if (!inv) return;
+    var invKey = 'hbe_pos_inv_seq_' + inv[2];
+    var invN = parseInt(inv[1], 10) || 0;
+    if (invN < 1) return;
+    try {
+      var invCur = parseInt(localStorage.getItem(invKey) || '0', 10) || 0;
+      if (invN > invCur) localStorage.setItem(invKey, String(invN));
+    } catch (e2) {}
+  }
+
   function makeOrderNo(d) {
+    var outlet = resolvePosOutlet();
+    var when = d instanceof Date ? d : new Date();
+    var fy = indianFiscalYearLabel(when);
+    if (outlet === 'restaurant') {
+      var spcKey = 'hbe_pos_spc_seq_' + fy;
+      var spcSeq = 0;
+      try {
+        spcSeq = parseInt(localStorage.getItem(spcKey) || '0', 10) || 0;
+      } catch (e) {}
+      spcSeq += 1;
+      try {
+        localStorage.setItem(spcKey, String(spcSeq));
+      } catch (e2) {}
+      /* Restaurant format: SPC/{invoice number}/{FY} e.g. SPC/12/2026-27 */
+      return 'SPC/' + spcSeq + '/' + fy;
+    }
+    if (outlet === 'bar') {
+      var invKey = 'hbe_pos_inv_seq_' + fy;
+      var invSeq = 0;
+      try {
+        invSeq = parseInt(localStorage.getItem(invKey) || '0', 10) || 0;
+      } catch (e3) {}
+      invSeq += 1;
+      try {
+        localStorage.setItem(invKey, String(invSeq));
+      } catch (e4) {}
+      /* Bar format: INV/{invoice number}/{FY} e.g. INV/12/2026-27 */
+      return 'INV/' + invSeq + '/' + fy;
+    }
     var api = offlineApi();
     if (api && typeof api.makeLocalOrderNo === 'function') {
       return api.makeLocalOrderNo();
     }
-    var yy = String(d.getFullYear()).slice(-2);
-    var mm = String(d.getMonth() + 1);
+    var yy = String(when.getFullYear()).slice(-2);
+    var mm = String(when.getMonth() + 1);
     if (mm.length < 2) mm = '0' + mm;
-    var seq = String(40 + (d.getMinutes() % 50));
-    return 'ORD-' + yy + mm + '-' + seq.padStart(4, '0');
+    var seqOrd = String(40 + (when.getMinutes() % 50));
+    return 'ORD-' + yy + mm + '-' + seqOrd.padStart(4, '0');
   }
 
   function isBrowserOnline() {
@@ -346,6 +408,131 @@
     } catch (err) {
       return '';
     }
+  }
+
+  function resumeStorageKey() {
+    return 'hbe_pos_invoice_resume_' + resolvePosOutlet();
+  }
+
+  function readStoredResumeContext() {
+    var keys = [resumeStorageKey()];
+    var i;
+    for (i = 0; i < keys.length; i += 1) {
+      try {
+        var raw = sessionStorage.getItem(keys[i]) || localStorage.getItem(keys[i]);
+        if (!raw) continue;
+        var parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') continue;
+        var table = String(parsed.table || '').trim();
+        var invoiceId = String(parsed.invoiceId || '').trim();
+        if (!table && !invoiceId) continue;
+        return { table: table, invoiceId: invoiceId };
+      } catch (err) {}
+    }
+    return null;
+  }
+
+  function clearInvoiceResumeContext() {
+    var key = resumeStorageKey();
+    try {
+      sessionStorage.removeItem(key);
+    } catch (err) {}
+    try {
+      localStorage.removeItem(key);
+    } catch (err2) {}
+    try {
+      var url = new URL(global.location.href);
+      var path = String(url.pathname || '');
+      if (path.indexOf('/invoice') === -1 || path.indexOf('invoice-ledger') !== -1) return;
+      var had = url.searchParams.has('table') || url.searchParams.has('invoice');
+      url.searchParams.delete('table');
+      url.searchParams.delete('invoice');
+      if (!had) return;
+      var next = url.pathname + (url.searchParams.toString() ? '?' + url.searchParams.toString() : '') + url.hash;
+      global.history.replaceState(global.history.state, '', next);
+    } catch (err3) {}
+  }
+
+  /** Keep ?table= / ?invoice= (and storage) in sync so a browser refresh
+   *  reopens the same dine-in bill instead of a blank Create Invoice page. */
+  function persistInvoiceResumeContext() {
+    var table = String(state.tableForOrder || state.resumeTableValue || '').trim();
+    var invoiceId = state.invoiceId ? String(state.invoiceId) : '';
+    if (!table && !invoiceId) {
+      clearInvoiceResumeContext();
+      return;
+    }
+    var payload = JSON.stringify({
+      table: table,
+      invoiceId: invoiceId,
+      outlet: resolvePosOutlet(),
+      at: Date.now()
+    });
+    var key = resumeStorageKey();
+    try {
+      sessionStorage.setItem(key, payload);
+    } catch (err) {}
+    try {
+      localStorage.setItem(key, payload);
+    } catch (err2) {}
+    try {
+      var url = new URL(global.location.href);
+      var path = String(url.pathname || '');
+      if (path.indexOf('/invoice') === -1 || path.indexOf('invoice-ledger') !== -1) return;
+      if (table) url.searchParams.set('table', table);
+      else url.searchParams.delete('table');
+      if (invoiceId) url.searchParams.set('invoice', invoiceId);
+      else url.searchParams.delete('invoice');
+      var qs = url.searchParams.toString();
+      var next = url.pathname + (qs ? '?' + qs : '') + url.hash;
+      var cur = global.location.pathname + global.location.search + global.location.hash;
+      if (next !== cur) {
+        global.history.replaceState(
+          Object.assign({}, global.history.state || {}, { deSoftNav: true }),
+          '',
+          next
+        );
+      }
+    } catch (err3) {}
+  }
+
+  function resolveResumePrefs() {
+    var prefInvoice = queryParam('invoice').trim();
+    var prefTable = queryParam('table').trim();
+    if (!prefInvoice && !prefTable) {
+      var stored = readStoredResumeContext();
+      if (stored) {
+        prefInvoice = stored.invoiceId || '';
+        prefTable = stored.table || '';
+      }
+    }
+    return { invoiceId: prefInvoice, table: prefTable };
+  }
+
+  function restoreResumeOrder(page, prefs) {
+    prefs = prefs || resolveResumePrefs();
+    var prefInvoice = String((prefs && prefs.invoiceId) || '').trim();
+    var prefTable = String((prefs && prefs.table) || '').trim();
+    if (prefTable) applyPreferredTable(page, prefTable);
+
+    function resumeTableFallback() {
+      if (!prefTable) return;
+      applyPreferredTable(page, prefTable);
+      resumeOrderForTable(page, prefTable, {
+        silent: true,
+        notFound: function () {
+          applyPreferredTable(page, prefTable);
+        }
+      });
+    }
+
+    if (prefInvoice) {
+      resumeOrderById(page, prefInvoice, {
+        notFound: resumeTableFallback
+      });
+      return;
+    }
+    if (prefTable) resumeTableFallback();
   }
 
   function emptyFloorTables() {
@@ -1717,7 +1904,10 @@
       if (invoice) {
         state.invoiceId = invoice.id;
         state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
-        if (invoice.order_no) state.orderNo = invoice.order_no;
+        if (invoice.order_no) {
+          state.orderNo = invoice.order_no;
+          noteOutletOrderSeq(invoice.order_no);
+        }
       }
       clearDirtyAfterPersist(epochAtStart, page);
       if (!state.dirty) cancelAutosaveTimer();
@@ -1855,7 +2045,10 @@
       if (invoice) {
         state.invoiceId = invoice.id;
         state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
-        if (invoice.order_no) state.orderNo = invoice.order_no;
+        if (invoice.order_no) {
+          state.orderNo = invoice.order_no;
+          noteOutletOrderSeq(invoice.order_no);
+        }
       }
       clearDirtyAfterPersist(epochAtStart, page);
       if (!state.dirty) cancelAutosaveTimer();
@@ -2093,7 +2286,10 @@
       String(state.tableForOrder || '').trim() ||
       String(state.resumeTableValue || '').trim();
     if (current) return current;
-    return queryParam('table').trim();
+    var fromQuery = queryParam('table').trim();
+    if (fromQuery) return fromQuery;
+    var stored = readStoredResumeContext();
+    return stored && stored.table ? stored.table : '';
   }
 
   function tableNameMatches(name, pref) {
@@ -2110,6 +2306,7 @@
     state.resumeTableValue = name;
     state.resumeTableLabel = name;
     if (!state.tableForOrder) state.tableForOrder = name;
+    persistInvoiceResumeContext();
   }
 
   function populateTables(page, tablesIn, opts) {
@@ -2232,6 +2429,7 @@
     if (!invoice) return;
     state.invoiceId = invoice.id;
     state.orderNo = invoice.order_no || state.orderNo;
+    noteOutletOrderSeq(state.orderNo);
     state.tableForOrder = invoice.table_label || invoice.table || '';
     state.discountType = invoice.discount_type || 'pct';
     state.discountValue = Number(invoice.discount_value) || 0;
@@ -2298,6 +2496,7 @@
     state.invoiceGenerated = !!(invoice.customer_bill_sent);
     renderLines(page);
     syncInvoiceGeneratedUi(page);
+    persistInvoiceResumeContext();
     toast(
       state.invoiceGenerated
         ? 'Resumed invoice ' + state.orderNo + ' (locked — settle to continue).'
@@ -2417,6 +2616,7 @@
       state.resumeTableValue = value;
       state.resumeTableLabel = label;
       state.tableForOrder = value;
+      persistInvoiceResumeContext();
       /* Table chosen after items were added — kick autosave so leave/resume works. */
       if (state.lines.length) markOrderDirty(page);
       return;
@@ -2520,6 +2720,7 @@
     cancelAutosaveTimer();
     state.dirty = false;
     syncInvoiceGeneratedUi(page);
+    persistInvoiceResumeContext();
   }
 
   /** Reset the on-screen session to a fresh, blank order — used after Settle
@@ -2568,6 +2769,12 @@
     setListboxValue('pos-inv-table', nextTable, nextLabel || 'Select table…');
     state.resumeTableValue = nextTable;
     state.resumeTableLabel = nextLabel || 'Select table…';
+    if (nextTable) {
+      state.tableForOrder = nextTable;
+      persistInvoiceResumeContext();
+    } else {
+      clearInvoiceResumeContext();
+    }
     renderLines(page);
     syncInvoiceGeneratedUi(page);
     loadFloorTables(function (tables) {
@@ -2576,6 +2783,7 @@
         setListboxValue('pos-inv-table', nextTable, nextLabel || nextTable);
         state.resumeTableValue = nextTable;
         state.resumeTableLabel = nextLabel || nextTable;
+        persistInvoiceResumeContext();
       }
       if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
     });
@@ -4097,7 +4305,11 @@
         if (invoice) {
           state.invoiceId = invoice.id;
           state.tableForOrder = invoice.table_label || invoice.table || state.tableForOrder;
-          if (invoice.order_no) state.orderNo = invoice.order_no;
+          if (invoice.order_no) {
+            state.orderNo = invoice.order_no;
+            noteOutletOrderSeq(invoice.order_no);
+          }
+          persistInvoiceResumeContext();
         }
         clearDirtyAfterPersist(epochAtStart, page);
         mirrorDraft(page, payload);
@@ -4852,6 +5064,15 @@
     updateOfflineBanner();
     flushOfflineOutbox();
     registerInvoiceLeaveHooks();
+
+    /* Resolve resume prefs before floor populate so sync cache callbacks keep the chip. */
+    var resumePrefs = resolveResumePrefs();
+    if (freshMount && resumePrefs.table) {
+      state.tableForOrder = resumePrefs.table;
+      state.resumeTableValue = resumePrefs.table;
+      state.resumeTableLabel = resumePrefs.table;
+    }
+
     populateTables(page, loadFloorTablesSync(), { loading: !floorTablesLoaded });
     initMeta(page);
     if (freshMount) ensureDefaultCustomerName(page);
@@ -4871,29 +5092,21 @@
     }
 
     loadFloorTables(function (tables) {
-      populateTables(page, tables, { loading: false });
+      var keep =
+        String(state.tableForOrder || '').trim() ||
+        String(state.resumeTableValue || '').trim() ||
+        (resumePrefs && resumePrefs.table) ||
+        '';
+      populateTables(page, tables, { loading: false, preserveTable: keep || undefined });
+      if (keep) applyPreferredTable(page, keep);
       if (typeof global.initEpListboxes === 'function') {
         global.initEpListboxes();
       }
     });
 
-    /* Arriving with ?invoice=... (Tables Invoice hub View) loads that bill.
-       ?table=... still resumes the open dine-in order for a floor tile tap. */
-    var prefInvoice = queryParam('invoice').trim();
-    var prefTable = queryParam('table').trim();
-    if (freshMount && prefTable) {
-      applyPreferredTable(page, prefTable);
-    }
-    if (freshMount && prefInvoice) {
-      resumeOrderById(page, prefInvoice);
-    } else if (freshMount && prefTable) {
-      resumeOrderForTable(page, prefTable, {
-        silent: true,
-        notFound: function () {
-          /* No open bill yet — keep the floor tile's table selected for the new order. */
-          applyPreferredTable(page, prefTable);
-        }
-      });
+    /* Arriving with ?invoice=... / ?table=... (or stored resume) reloads the open bill. */
+    if (freshMount && (resumePrefs.invoiceId || resumePrefs.table)) {
+      restoreResumeOrder(page, resumePrefs);
     }
 
     loadMenuCatalog(function () {
@@ -4907,7 +5120,7 @@
     });
 
     var search = $('#pos-inv-search', page);
-    if (search && !prefInvoice && !prefTable) {
+    if (search && !(resumePrefs.invoiceId || resumePrefs.table)) {
       /* Prefer search focus for billing flow */
       try {
         search.focus({ preventScroll: true });

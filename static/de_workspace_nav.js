@@ -171,8 +171,8 @@
   }
 
   /**
-   * Synchronously center the active nav row while the rail is in expanded layout.
-   * Uses direct scrollTop writes only — no timers, rAF, or smooth scrolling.
+   * Keep the active nav row visible in expanded layout (nearest — never force
+   * vertical center). Used to warm the hover-expand scroll cache.
    */
   function snapActiveNavSync(sidebar){
     sidebar = sidebar || getSidebar();
@@ -187,6 +187,8 @@
         group.classList.add('is-open');
         var toggle = group.querySelector('.de-nav-group-toggle');
         if(toggle) toggle.setAttribute('aria-expanded', 'true');
+        var sub = group.querySelector('.de-nav-sub');
+        if(sub) markNavSubSettled(sub, true);
       }
     }
 
@@ -202,15 +204,12 @@
     }
     if(!target || !isNavLinkScrollable(target, { allowCollapsed: true })) return null;
 
-    var elRect = target.getBoundingClientRect();
-    var scRect = scroller.getBoundingClientRect();
-    var nextTop =
-      scroller.scrollTop +
-      (elRect.top + elRect.height / 2) -
-      (scRect.top + scRect.height / 2);
-    var maxTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-    nextTop = Math.max(0, Math.min(maxTop, nextTop));
-    scroller.scrollTop = nextTop;
+    ensureVisibleInScroller(target, {
+      behavior: 'auto',
+      scroller: scroller,
+      padding: 16
+    });
+    var nextTop = scroller.scrollTop;
     writeCachedExpandedNavScrollTop(nextTop, sidebar);
     return nextTop;
   }
@@ -224,14 +223,12 @@
     if(!sidebar || window.innerWidth <= 760) return;
     if(document.body.classList.contains('sb-off')) return;
 
+    /* Already wide (pinned/hovered): leave scroll alone — never re-snap on idle. */
     if(
       isDeSidebarPinned(sidebar) ||
       sidebar.classList.contains('is-expanded') ||
       (isHoverExpandAllowed() && sidebar.matches(':hover'))
     ){
-      beginSidebarSnapMeasure(sidebar);
-      snapActiveNavSync(sidebar);
-      endSidebarSnapMeasure(sidebar);
       return;
     }
 
@@ -256,22 +253,50 @@
     return true;
   }
 
-  function expandSidebarAndSnap(sidebar){
+  function expandSidebarAndSnap(sidebar, opts){
     sidebar = sidebar || getSidebar();
+    opts = opts || {};
     if(!sidebar) return;
     if(typeof window.clearSidebarScrollLock === 'function'){
       window.clearSidebarScrollLock();
     }
     sidebar.classList.remove('de-sidebar--preflight-hidden');
-    beginSidebarSnapMeasure(sidebar);
+
+    /*
+      Only class-based width counts here — :hover is already true on mouseenter,
+      so isDeSidebarExpandedState() would wrongly skip the first expand.
+      Cursor re-entry on an already-wide rail must not rewrite scrollTop.
+    */
+    var alreadyWide =
+      sidebar.classList.contains('is-expanded') ||
+      sidebar.classList.contains('is-pinned');
+    if(alreadyWide){
+      if(opts.ensureVisible){
+        var keep = getActiveNavTarget(sidebar);
+        if(keep){
+          ensureVisibleInScroller(keep, {
+            behavior: 'auto',
+            scroller: getNavScroller(sidebar),
+            padding: 16
+          });
+        }
+      }
+      return;
+    }
+
+    /* Collapsed → wide: restore preflight position, then only nudge if clipped. */
+    applyCachedNavScroll(sidebar);
     setDeSidebarExpanded(true, sidebar);
     void sidebar.offsetWidth;
     applyCachedNavScroll(sidebar);
-    snapActiveNavSync(sidebar);
-    /* Drop measure class after layout — keeping it forever can leave odd hit-testing. */
-    requestAnimationFrame(function(){
-      endSidebarSnapMeasure(sidebar);
-    });
+    var active = getActiveNavTarget(sidebar);
+    if(active){
+      ensureVisibleInScroller(active, {
+        behavior: 'auto',
+        scroller: getNavScroller(sidebar),
+        padding: 16
+      });
+    }
   }
 
   function centerInScroller(el, opts){
@@ -390,7 +415,8 @@
     var scroller = getNavScroller(sidebar);
     if(!scroller) return;
     var behavior = opts.behavior || 'auto';
-    var block = opts.block || 'center';
+    /* Default nearest — centering jumps Menu to mid-rail on hover/soft-nav. */
+    var block = opts.block || 'nearest';
     if(block === 'center'){
       centerInScroller(active, {
         behavior: behavior,
@@ -458,11 +484,45 @@
     return applyCachedNavScroll(sidebar);
   }
 
+  var NAV_SUB_SETTLE_MS = 260;
+
+  function markNavSubSettled(sub, settled){
+    if(!sub) return;
+    if(settled) sub.classList.add('de-nav-sub--settled');
+    else sub.classList.remove('de-nav-sub--settled');
+  }
+
+  function settleOpenNavSub(group){
+    if(!group) return;
+    var sub = group.querySelector('.de-nav-sub');
+    if(!sub) return;
+    markNavSubSettled(sub, false);
+    if(prefersReducedMotion() || group.classList.contains('is-flyout-active')){
+      markNavSubSettled(sub, true);
+      return;
+    }
+    var done = false;
+    function finish(ev){
+      if(done) return;
+      if(ev && ev.target !== sub) return;
+      if(ev && ev.propertyName && ev.propertyName !== 'max-height') return;
+      done = true;
+      sub.removeEventListener('transitionend', finish);
+      if(group.classList.contains('is-open') && !group.classList.contains('is-flyout-active')){
+        markNavSubSettled(sub, true);
+      }
+    }
+    sub.addEventListener('transitionend', finish);
+    window.setTimeout(function(){ finish(null); }, NAV_SUB_SETTLE_MS);
+  }
+
   function scheduleEnsureNavGroupVisible(group){
     if(!group) return;
     // Flyouts sit outside the nav scroller; scrolling the rail does not help.
     if(group.classList.contains('is-flyout-active')) return;
+    if(window.__deSoftNavInProgress) return;
     function reveal(){
+      if(window.__deSoftNavInProgress) return;
       if(!group.classList.contains('is-open')) return;
       if(group.classList.contains('is-flyout-active')) return;
       var active = group.querySelector('a.is-active, a[aria-current="page"]');
@@ -471,22 +531,28 @@
       /* Prefer an active child; otherwise bring the opened submenu into view
          (bottom groups like User & Access expand below the fold). */
       var target = active || lastItem || (sub && sub.lastElementChild) || group.querySelector('.de-nav-group-toggle') || group;
-      if(active && isNavLinkScrollable(active)){
-        centerInScroller(active, { behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
-      } else {
-        ensureVisibleInScroller(target, {
-          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-          padding: 16
-        });
-      }
-    }
-    /* Wait for .de-nav-sub max-height transition (~200ms) so bottom is measurable. */
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        reveal();
-        window.setTimeout(reveal, prefersReducedMotion() ? 0 : 220);
+      /* After accordion settle: nearest visibility only — never force mid-rail. */
+      ensureVisibleInScroller(target, {
+        behavior: 'auto',
+        padding: 16
       });
-    });
+    }
+    var sub = group.querySelector('.de-nav-sub');
+    if(prefersReducedMotion() || !sub){
+      reveal();
+      return;
+    }
+    var scrolled = false;
+    function afterMotion(ev){
+      if(scrolled) return;
+      if(ev && ev.target !== sub) return;
+      if(ev && ev.propertyName && ev.propertyName !== 'max-height') return;
+      scrolled = true;
+      sub.removeEventListener('transitionend', afterMotion);
+      reveal();
+    }
+    sub.addEventListener('transitionend', afterMotion);
+    window.setTimeout(function(){ afterMotion(null); }, NAV_SUB_SETTLE_MS);
   }
 
   function isPointerOverSidebar(sidebar){
@@ -597,7 +663,7 @@
     } catch(e){}
     updateDeSidebarPinButton();
     if(pinned){
-      expandSidebarAndSnap(sidebar);
+      expandSidebarAndSnap(sidebar, { ensureVisible: true });
     } else {
       syncDeSidebarPointerState();
     }
@@ -635,6 +701,12 @@
 
     group.classList.toggle('is-open', opening);
     group.classList.toggle('is-flyout-active', opening && !sidebarExpanded);
+    var subEl = group.querySelector('.de-nav-sub');
+    if(opening){
+      settleOpenNavSub(group);
+    } else if(subEl){
+      markNavSubSettled(subEl, false);
+    }
     var toggle = group.querySelector('.de-nav-group-toggle');
     if(toggle){
       toggle.setAttribute('aria-expanded', opening ? 'true' : 'false');
@@ -865,6 +937,8 @@
       var shouldOpen = !!idSet[group.id] || group.classList.contains('is-child-active');
       group.classList.toggle('is-open', shouldOpen);
       if(!shouldOpen) group.classList.remove('is-flyout-active');
+      var sub = group.querySelector('.de-nav-sub');
+      if(sub) markNavSubSettled(sub, shouldOpen);
       var toggle = group.querySelector('.de-nav-group-toggle');
       if(toggle) toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
     });

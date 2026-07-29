@@ -110,13 +110,37 @@
     });
   }
 
-  function makeLocalOrderNo() {
+  function makeLocalOrderNo(outlet) {
     var d = new Date();
+    var resolved = String(outlet || '').trim().toLowerCase();
+    if (!resolved && typeof document !== 'undefined') {
+      var el =
+        document.getElementById('pos-invoice-page') ||
+        document.querySelector('[data-pos-outlet]');
+      if (el) resolved = String(el.getAttribute('data-pos-outlet') || '').trim().toLowerCase();
+    }
+    if (!resolved && typeof window !== 'undefined') {
+      var path = String((window.location && window.location.pathname) || '');
+      resolved = path.indexOf('/bar-point-of-sale') === 0 ? 'bar' : 'restaurant';
+    }
+    var year = d.getFullYear();
+    var month = d.getMonth() + 1;
+    var startYear = month >= 4 ? year : year - 1;
+    var fy = startYear + '-' + String(startYear + 1).slice(-2);
+    var suffix = uuid().replace(/-/g, '').slice(0, 6).toUpperCase();
+    if (resolved === 'restaurant') {
+      /* Offline draft; server replaces with SPC/{n}/{fy} on first successful sync. */
+      return 'SPC/' + suffix + '/' + fy;
+    }
+    if (resolved === 'bar') {
+      /* Offline draft; server replaces with INV/{n}/{fy} on first successful sync. */
+      return 'INV/' + suffix + '/' + fy;
+    }
     var yy = String(d.getFullYear()).slice(-2);
     var mm = String(d.getMonth() + 1);
     if (mm.length < 2) mm = '0' + mm;
-    var suffix = uuid().replace(/-/g, '').slice(0, 8).toUpperCase();
-    return 'ORD-L-' + yy + mm + '-' + suffix;
+    var offlineSuffix = uuid().replace(/-/g, '').slice(0, 8).toUpperCase();
+    return 'ORD-L-' + yy + mm + '-' + offlineSuffix;
   }
 
   function saveCatalog(snapshot) {

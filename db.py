@@ -44,6 +44,145 @@ def normalize_pos_outlet(value):
     return POS_OUTLET_RESTAURANT
 
 
+_SPC_FY_ORDER_RE = re.compile(r"^SPC/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
+_SPC_LEGACY_ORDER_RE = re.compile(r"^SPC/(\d+)$", re.IGNORECASE)
+_INV_FY_ORDER_RE = re.compile(r"^INV/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
+_INV_LEGACY_ORDER_RE = re.compile(r"^INV/(\d+)$", re.IGNORECASE)
+
+
+def indian_fiscal_year_label(value=None):
+    """Indian FY label (Apr–Mar), e.g. 2026-07-29 → '2026-27'."""
+    if value is None:
+        d = datetime.now().date()
+    elif isinstance(value, datetime):
+        d = value.date()
+    elif hasattr(value, "year") and hasattr(value, "month") and not isinstance(value, str):
+        d = value
+    else:
+        text = str(value or "").strip()
+        if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+            try:
+                d = datetime.strptime(text[:10], "%Y-%m-%d").date()
+            except ValueError:
+                d = datetime.now().date()
+        else:
+            d = datetime.now().date()
+    if d.month >= 4:
+        start_year = d.year
+    else:
+        start_year = d.year - 1
+    return f"{start_year}-{str(start_year + 1)[-2:]}"
+
+
+def is_restaurant_spc_order_no(order_no, fiscal_year=None):
+    """True when order_no is SPC/{n}/{fy} (optionally matching a specific FY)."""
+    match = _SPC_FY_ORDER_RE.match(str(order_no or "").strip())
+    if not match:
+        return False
+    if fiscal_year and match.group(2) != str(fiscal_year):
+        return False
+    return True
+
+
+def is_bar_inv_order_no(order_no, fiscal_year=None):
+    """True when order_no is INV/{n}/{fy} (optionally matching a specific FY)."""
+    match = _INV_FY_ORDER_RE.match(str(order_no or "").strip())
+    if not match:
+        return False
+    if fiscal_year and match.group(2) != str(fiscal_year):
+        return False
+    return True
+
+
+def is_provisional_pos_order_no(order_no, outlet=None):
+    """Client placeholders that should be replaced on first outlet save."""
+    text = str(order_no or "").strip()
+    if not text:
+        return True
+    outlet_key = normalize_pos_outlet(outlet) if outlet is not None else None
+    upper = text.upper()
+    # Offline-local drafts (ORD-L-…) become SPC|INV/{n}/{fy} on first sync.
+    if upper.startswith("ORD-L-"):
+        return True
+    # Offline drafts: PREFIX/{hex}/{fy}; numeric PREFIX/{n}/{fy} is final.
+    if upper.startswith("SPC/") and not is_restaurant_spc_order_no(text):
+        if outlet_key in (None, POS_OUTLET_RESTAURANT):
+            return bool(re.match(r"^SPC/[^/]+/\d{4}-\d{2}$", text, re.IGNORECASE))
+    if upper.startswith("INV/") and not is_bar_inv_order_no(text):
+        if outlet_key in (None, POS_OUTLET_BAR):
+            return bool(re.match(r"^INV/[^/]+/\d{4}-\d{2}$", text, re.IGNORECASE))
+    return False
+
+
+def _next_prefixed_invoice_seq(conn, outlet, prefix, fy_re, legacy_re, fiscal_year):
+    """Next numeric sequence for PREFIX/{n}/{fy} within an outlet + FY."""
+    fy = str(fiscal_year or "").strip()
+    prefix = str(prefix or "").strip().upper()
+    max_n = 0
+    rows = conn.execute(
+        """
+        SELECT order_no, order_date
+        FROM pos_invoices
+        WHERE outlet = ?
+          AND upper(order_no) LIKE ?
+        """,
+        (normalize_pos_outlet(outlet), f"{prefix}/%"),
+    ).fetchall()
+    for row in rows:
+        order_no = str(row["order_no"] or "").strip()
+        match = fy_re.match(order_no)
+        if match and match.group(2) == fy:
+            max_n = max(max_n, int(match.group(1)))
+            continue
+        legacy = legacy_re.match(order_no)
+        if legacy:
+            try:
+                row_fy = indian_fiscal_year_label(row["order_date"] if "order_date" in row.keys() else None)
+            except Exception:
+                row_fy = ""
+            if row_fy == fy:
+                max_n = max(max_n, int(legacy.group(1)))
+    return max_n + 1
+
+
+def next_restaurant_invoice_seq(conn, fiscal_year):
+    """Next SPC sequence for Restaurant within the given FY."""
+    return _next_prefixed_invoice_seq(
+        conn,
+        POS_OUTLET_RESTAURANT,
+        "SPC",
+        _SPC_FY_ORDER_RE,
+        _SPC_LEGACY_ORDER_RE,
+        fiscal_year,
+    )
+
+
+def next_bar_invoice_seq(conn, fiscal_year):
+    """Next INV sequence for Bar within the given FY."""
+    return _next_prefixed_invoice_seq(
+        conn,
+        POS_OUTLET_BAR,
+        "INV",
+        _INV_FY_ORDER_RE,
+        _INV_LEGACY_ORDER_RE,
+        fiscal_year,
+    )
+
+
+def allocate_pos_restaurant_order_no(conn, order_date=None):
+    """Allocate SPC/{n}/{fy} for a new Restaurant invoice."""
+    fy = indian_fiscal_year_label(order_date)
+    seq = next_restaurant_invoice_seq(conn, fy)
+    return f"SPC/{seq}/{fy}"
+
+
+def allocate_pos_bar_order_no(conn, order_date=None):
+    """Allocate INV/{n}/{fy} for a new Bar invoice."""
+    fy = indian_fiscal_year_label(order_date)
+    seq = next_bar_invoice_seq(conn, fy)
+    return f"INV/{seq}/{fy}"
+
+
 def resolve_pos_outlets(outlet=None, outlets=None):
     """Return a unique tuple of restaurant|bar outlets for list queries."""
     if outlets is not None:
@@ -3702,7 +3841,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
 
     outlet = normalize_pos_outlet(payload.get("outlet") or payload.get("posOutlet"))
     order_no = " ".join(str(payload.get("orderNo") or payload.get("order_no") or "").split()).strip()
-    if not order_no:
+    if not order_no and outlet not in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
         raise ValueError("Order number is required.")
 
     customer_name = " ".join(
@@ -3726,6 +3865,27 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
         order_date = saved_at[:10] if len(saved_at) >= 10 else datetime.now().strftime("%Y-%m-%d")
     if "T" in order_date:
         order_date = order_date.split("T", 1)[0]
+
+    # Restaurant: SPC/{n}/{FY}. Bar: INV/{n}/{FY}.
+    # Mint when empty or offline hex draft; keep client PREFIX/{n}/{fy} and legacy ORD-*.
+    if outlet in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        existing_probe = None
+        if order_no:
+            existing_probe = conn.execute(
+                """
+                SELECT id FROM pos_invoices
+                WHERE order_no = ? AND is_active = 1
+                LIMIT 1
+                """,
+                (order_no,),
+            ).fetchone()
+        if not existing_probe and (
+            not order_no or is_provisional_pos_order_no(order_no, outlet)
+        ):
+            if outlet == POS_OUTLET_BAR:
+                order_no = allocate_pos_bar_order_no(conn, order_date)
+            else:
+                order_no = allocate_pos_restaurant_order_no(conn, order_date)
 
     customer_mobile = "".join(
         ch for ch in str(payload.get("customerMobile") or payload.get("customer_mobile") or "") if ch.isdigit()

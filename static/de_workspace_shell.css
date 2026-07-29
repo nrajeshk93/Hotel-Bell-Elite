@@ -52,6 +52,10 @@ html.de-soft-nav-session .de-main-wrapper .pos-invoice-page *{
   --de-sidebar-collapsed:72px;
   --de-sidebar-expanded:252px;
   --de-nav-label-max:180px;
+  --de-sb-ease:cubic-bezier(0.22, 1, 0.36, 1);
+  --de-sb-rail-ms:280ms;
+  --de-sb-label-ms:220ms;
+  --de-sb-sub-ms:240ms;
 }
 html.de-sidebar-wide-boot .de-sidebar{
   width:var(--de-sidebar-expanded)!important;min-width:var(--de-sidebar-expanded)!important;max-width:var(--de-sidebar-expanded)!important;
@@ -119,7 +123,7 @@ body.de-open.ep-module{overflow:auto;}
     min-width:var(--de-sidebar-collapsed);
     max-width:var(--de-sidebar-collapsed);
     align-self:start;
-    transition:width .25s ease,min-width .25s ease,max-width .25s ease,transform .25s ease;
+    transition:width var(--de-sb-rail-ms) var(--de-sb-ease),min-width var(--de-sb-rail-ms) var(--de-sb-ease),max-width var(--de-sb-rail-ms) var(--de-sb-ease),transform var(--de-sb-rail-ms) var(--de-sb-ease);
     overflow-x:hidden;
     overflow-y:hidden;
     scrollbar-gutter:stable;
@@ -177,7 +181,7 @@ body.de-open.ep-module{overflow:auto;}
     max-width:0;
     overflow:hidden;
     white-space:nowrap;
-    transition:opacity .2s ease,max-width .25s ease;
+    transition:opacity var(--de-sb-label-ms) var(--de-sb-ease),max-width var(--de-sb-rail-ms) var(--de-sb-ease);
   }
   #main-app.de-module .de-sidebar:hover .sb-brand-text,
   #ep-workspace.de-module .de-sidebar:hover .sb-brand-text,
@@ -606,7 +610,7 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-nav-chevron,
   #ep-workspace.de-module .de-nav-chevron,
   #dashboard.de-module .de-nav-chevron{
-    display:none;
+    display:block;
     width:14px;
     height:14px;
     margin-left:auto;
@@ -615,14 +619,9 @@ body.de-open.ep-module{overflow:auto;}
     stroke-width:1.75;
     stroke-linecap:round;
     stroke-linejoin:round;
-    transition:transform .2s ease,opacity .15s ease,stroke .15s ease;
+    transition:transform var(--de-sb-sub-ms) var(--de-sb-ease),opacity var(--de-sb-label-ms) var(--de-sb-ease),stroke .15s ease,max-width var(--de-sb-rail-ms) var(--de-sb-ease);
     transform:rotate(0deg);
     flex-shrink:0;
-  }
-  #main-app.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-chevron,
-  #ep-workspace.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-chevron,
-  #dashboard.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-chevron{
-    display:block;
   }
   #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
   #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
@@ -641,12 +640,16 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron,
   #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron,
   #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron{
-    display:none;
+    visibility:hidden;
+    opacity:0;
+    max-width:0;
     margin-left:0;
+    pointer-events:none;
   }
   #main-app.de-module .de-nav-group.is-open .de-nav-chevron,
   #ep-workspace.de-module .de-nav-group.is-open .de-nav-chevron,
   #dashboard.de-module .de-nav-group.is-open .de-nav-chevron{transform:rotate(90deg);stroke:#64748B}
+  /* Accordion submenu: keep in flow when rail is wide so max-height can ease. */
   #main-app.de-module .de-nav-sub,
   #ep-workspace.de-module .de-nav-sub,
   #dashboard.de-module .de-nav-sub{
@@ -661,7 +664,7 @@ body.de-open.ep-module{overflow:auto;}
     overflow:hidden;
     transform:translateY(-4px);
     pointer-events:none;
-    transition:max-height .2s ease,opacity .2s ease,transform .2s ease,margin .2s ease,padding .2s ease;
+    transition:max-height var(--de-sb-sub-ms) var(--de-sb-ease),opacity var(--de-sb-sub-ms) var(--de-sb-ease),transform var(--de-sb-sub-ms) var(--de-sb-ease),margin var(--de-sb-sub-ms) var(--de-sb-ease),padding var(--de-sb-sub-ms) var(--de-sb-ease);
   }
   #main-app.de-module .de-nav-sub::before,
   #ep-workspace.de-module .de-nav-sub::before,
@@ -695,12 +698,23 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub,
   #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub,
   #dashboard.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub{
-    max-height:none;
+    max-height:480px;
     opacity:1;
     transform:translateY(0);
     pointer-events:auto;
     margin:0 0 6px;
     padding:14px 0 0 28px;
+    overflow:hidden;
+  }
+  #main-app.de-module .de-sidebar:hover .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled,
+  #ep-workspace.de-module .de-sidebar:hover .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled,
+  #dashboard.de-module .de-sidebar:hover .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled,
+  #main-app.de-module .de-sidebar.is-expanded .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled,
+  #ep-workspace.de-module .de-sidebar.is-expanded .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled,
+  #dashboard.de-module .de-sidebar.is-expanded .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled,
+  #main-app.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled,
+  #ep-workspace.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled,
+  #dashboard.de-module .de-sidebar.is-pinned .de-nav-group.is-open .de-nav-sub.de-nav-sub--settled{
     overflow:visible;
   }
   #main-app.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) .de-nav-subitem,
@@ -1179,12 +1193,27 @@ body.de-open.ep-module{overflow:auto;}
   #dashboard.de-module .de-nav-item.is-navigating{opacity:1}
 @media (prefers-reduced-motion: reduce){
     #main-app.de-module, #ep-workspace.de-module, #main-app.de-module, #ep-workspace.de-module, #dashboard.de-module .de-view-panel{transition:none}
+    #main-app.de-module .de-sidebar,
+    #ep-workspace.de-module .de-sidebar,
+    #dashboard.de-module .de-sidebar{transition:none}
     #main-app.de-module .de-nav-sub,
     #ep-workspace.de-module .de-nav-sub,
     #dashboard.de-module .de-nav-sub,
     #main-app.de-module .de-nav-chevron,
     #ep-workspace.de-module .de-nav-chevron,
-    #dashboard.de-module .de-nav-chevron{transition:none}
+    #dashboard.de-module .de-nav-chevron,
+    #main-app.de-module .sb-brand-text,
+    #ep-workspace.de-module .sb-brand-text,
+    #dashboard.de-module .sb-brand-text,
+    #main-app.de-module .de-nav-item span,
+    #ep-workspace.de-module .de-nav-item span,
+    #dashboard.de-module .de-nav-item span,
+    #main-app.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),
+    #ep-workspace.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),
+    #dashboard.de-module .de-nav-group-toggle span:not(.de-nav-icon-mask),
+    #main-app.de-module .de-help-copy,
+    #ep-workspace.de-module .de-help-copy,
+    #dashboard.de-module .de-help-copy{transition:none}
 }
   #main-app.de-module .de-supplier-page,
   #ep-workspace.de-module .de-supplier-page,
