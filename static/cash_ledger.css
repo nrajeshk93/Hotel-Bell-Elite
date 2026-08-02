@@ -1,8 +1,8 @@
-/* Beat shared .pl-summary-row 4-col from hbe_kpi.css (cash has 5 KPIs) */
+/* Beat shared .pl-summary-row 4-col from hbe_kpi.css (cash has 6 KPIs) */
 body.su-module .pl-summary-row.cl-summary-row,
 body.su-module .cl-summary-row{
   display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
+  grid-template-columns:repeat(6,minmax(0,1fr));
   gap:14px;
   margin-bottom:18px;
 }
@@ -41,6 +41,10 @@ body.su-module .cl-type-pill--sales_cash{
 body.su-module .cl-type-pill--load_cash{
   color:#047857;
   background:rgba(16,185,129,.12);
+}
+body.su-module .cl-type-pill--credit_cash{
+  color:#0F766E;
+  background:rgba(20,184,166,.12);
 }
 body.su-module .cl-type-pill--expense{
   color:#B45309;

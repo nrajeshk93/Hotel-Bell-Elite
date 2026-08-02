@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='room_transfer.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='room_transfer.css') }}?v=16">
 <script>
 (function(){
   try{
@@ -40,9 +40,6 @@
         </div>
         <div class="su-title">
           <div class="su-title-row">
-            <div class="su-title-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
-            </div>
             <h1>{{ page_title }}</h1>
           </div>
         </div>
@@ -71,6 +68,7 @@
     {% include 'partials/sales_update_room_transfer_panel.html' %}
   </section>
 </div>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=47"></script>
 {% include 'partials/sales_update_filter_listbox_scripts.html' %}
 {% include 'partials/sales_update_room_transfer_clearance_modal.html' %}
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=6"></script>

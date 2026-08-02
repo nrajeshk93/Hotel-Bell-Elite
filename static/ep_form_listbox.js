@@ -333,10 +333,15 @@
         clearFixedListbox(list);
       }
     }
-    /* Next frame so opacity/transform transition runs from closed state. */
-    global.requestAnimationFrame(function () {
+    /* Add is-open immediately so header filters (opacity overridden) paint on first click.
+       Keep a frame delay only for panels that still rely on the opacity transition. */
+    if (root.closest('#room-transfer-filter-form, #purchase-ledger-filter-form, #credits-dashboard-filter-form')) {
       root.classList.add('is-open');
-    });
+    } else {
+      global.requestAnimationFrame(function () {
+        root.classList.add('is-open');
+      });
+    }
     if (trigger) trigger.setAttribute('aria-expanded', 'true');
     if (list) {
       if (root.hasAttribute('data-se-listbox-searchable')) {

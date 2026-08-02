@@ -20,7 +20,7 @@
     </div>
   </div>
 
-  <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox id="room-transfer-status-listbox">
+  <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-submit="room-transfer-filter-form" id="room-transfer-status-listbox">
     <span class="se-filter-chip-label" id="room-transfer-status-label">Status</span>
     <div class="se-filter-chip-control">
       <input type="hidden" id="room-transfer-status" name="status" value="{{ selected_payment_status }}">
@@ -39,7 +39,7 @@
   </div>
 
   {% if show_outlet_filter %}
-  <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field rt-location-chip" data-se-listbox id="room-transfer-location-listbox">
+  <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field rt-location-chip" data-se-listbox data-se-listbox-submit="room-transfer-filter-form" id="room-transfer-location-listbox">
     <span class="se-filter-chip-label" id="room-transfer-location-label">Outlet</span>
     <div class="se-filter-chip-control">
       <input type="hidden" id="room-transfer-location" name="location" value="{{ selected_location }}">

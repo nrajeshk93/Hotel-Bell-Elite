@@ -60,6 +60,28 @@ def _memory_conn():
             description TEXT NOT NULL DEFAULT '',
             amount REAL NOT NULL DEFAULT 0
         );
+        CREATE TABLE room_transfer_payments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company TEXT NOT NULL,
+            payment_date TEXT NOT NULL,
+            payment_method TEXT NOT NULL DEFAULT 'cash',
+            transaction_id TEXT NOT NULL DEFAULT '',
+            total_amount REAL NOT NULL DEFAULT 0,
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
+        CREATE TABLE room_transfer_payment_allocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_transfer_payment_id INTEGER NOT NULL,
+            room_transfer_entry_id INTEGER NOT NULL,
+            amount REAL NOT NULL DEFAULT 0,
+            invoice_number TEXT NOT NULL DEFAULT '',
+            guest_name TEXT NOT NULL DEFAULT '',
+            location TEXT NOT NULL DEFAULT '',
+            sales_date TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        );
         """
     )
     return conn
@@ -123,6 +145,7 @@ class CashLedgerHelperTests(unittest.TestCase):
 
         self.assertEqual(totals["sales_total"], 1750.0)
         self.assertEqual(totals["load_total"], 200.0)
+        self.assertEqual(totals["credit_total"], 0.0)
         self.assertEqual(totals["expense_total"], 150.0)
         self.assertEqual(totals["transfer_total"], 450.0)
         self.assertEqual(totals["available_total"], 1350.0)
@@ -205,6 +228,70 @@ class CashLedgerHelperTests(unittest.TestCase):
             app_module._normalize_cash_ledger_transfer_destination("petty"),
             "",
         )
+
+    def test_cash_credit_repayment_updates_available(self):
+        conn = _memory_conn()
+        conn.execute(
+            "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
+            ("HBE", "Hotel", "2026-07-01", json.dumps({"actual_cash": 100})),
+        )
+        cash_payment = conn.execute(
+            """INSERT INTO room_transfer_payments
+               (company, payment_date, payment_method, total_amount, notes)
+               VALUES (?,?,?,?,?)""",
+            ("HBE", "2026-07-02", "cash", 400, ""),
+        ).lastrowid
+        upi_payment = conn.execute(
+            """INSERT INTO room_transfer_payments
+               (company, payment_date, payment_method, total_amount, notes)
+               VALUES (?,?,?,?,?)""",
+            ("HBE", "2026-07-02", "upi", 250, ""),
+        ).lastrowid
+        conn.execute(
+            """INSERT INTO room_transfer_payment_allocations
+               (room_transfer_payment_id, room_transfer_entry_id, amount,
+                invoice_number, guest_name, location, sales_date)
+               VALUES (?,?,?,?,?,?,?)""",
+            (cash_payment, 1, 250, "INV-1", "Ada", "Hotel", "2026-06-20"),
+        )
+        conn.execute(
+            """INSERT INTO room_transfer_payment_allocations
+               (room_transfer_payment_id, room_transfer_entry_id, amount,
+                invoice_number, guest_name, location, sales_date)
+               VALUES (?,?,?,?,?,?,?)""",
+            (cash_payment, 2, 150, "INV-2", "Ada", "Bar", "2026-06-21"),
+        )
+        conn.execute(
+            """INSERT INTO room_transfer_payment_allocations
+               (room_transfer_payment_id, room_transfer_entry_id, amount,
+                invoice_number, guest_name, location, sales_date)
+               VALUES (?,?,?,?,?,?,?)""",
+            (upi_payment, 3, 250, "INV-3", "Bob", "Hotel", "2026-06-22"),
+        )
+        conn.commit()
+
+        entries = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2026, 7, 1), date(2026, 7, 2)
+        )
+        totals = app_module._cash_ledger_totals(entries)
+        self.assertEqual(totals["credit_total"], 400.0)
+        self.assertEqual(totals["credit_count"], 1)
+        self.assertEqual(totals["available_total"], 500.0)
+
+        credit_rows = [e for e in entries if e["entry_type"] == "credit_cash"]
+        self.assertEqual(len(credit_rows), 1)
+        self.assertEqual(credit_rows[0]["amount"], 400.0)
+        self.assertIn("INV-1", credit_rows[0]["description"])
+        self.assertIn("Hotel", credit_rows[0]["detail"])
+        self.assertIn("Bar", credit_rows[0]["detail"])
+
+        hotel_entries = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2026, 7, 1), date(2026, 7, 2), location="Hotel"
+        )
+        hotel_totals = app_module._cash_ledger_totals(hotel_entries)
+        self.assertEqual(hotel_totals["credit_total"], 250.0)
+        self.assertEqual(hotel_totals["available_total"], 350.0)
+        conn.close()
 
     def test_export_cash_ledger_report_route_registered(self):
         rules = [rule.rule for rule in app_module.app.url_map.iter_rules()]

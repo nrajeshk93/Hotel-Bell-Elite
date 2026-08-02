@@ -240,19 +240,22 @@ CASH_LEDGER_FILTER_ALL = "All"
 CASH_LEDGER_FILTER_LOCATIONS = (CASH_LEDGER_FILTER_ALL, *CASH_LEDGER_OUTLETS)
 CASH_LEDGER_ENTRY_SALES = "sales_cash"
 CASH_LEDGER_ENTRY_LOAD = "load_cash"
+CASH_LEDGER_ENTRY_CREDIT = "credit_cash"
 CASH_LEDGER_ENTRY_EXPENSE = "expense"
 CASH_LEDGER_ENTRY_TRANSFER = "transfer_out"
 CASH_LEDGER_ENTRY_LABELS = {
     CASH_LEDGER_ENTRY_SALES: "Actual Cash",
     CASH_LEDGER_ENTRY_LOAD: "Load Cash",
+    CASH_LEDGER_ENTRY_CREDIT: "Credit Cash",
     CASH_LEDGER_ENTRY_EXPENSE: "Expense",
     CASH_LEDGER_ENTRY_TRANSFER: "Transfer Out",
 }
 CASH_LEDGER_ENTRY_RANK = {
     CASH_LEDGER_ENTRY_SALES: 0,
     CASH_LEDGER_ENTRY_LOAD: 1,
-    CASH_LEDGER_ENTRY_EXPENSE: 2,
-    CASH_LEDGER_ENTRY_TRANSFER: 3,
+    CASH_LEDGER_ENTRY_CREDIT: 2,
+    CASH_LEDGER_ENTRY_EXPENSE: 3,
+    CASH_LEDGER_ENTRY_TRANSFER: 4,
 }
 CASH_LEDGER_TRANSFER_DESTINATIONS = (
     ("bank", "Bank"),
@@ -845,7 +848,50 @@ def _room_transfer_entry_to_dict(row):
         item["sales_date_label"] = f"{parsed.day} {parsed.strftime('%b')}, {parsed.year}"
     except (TypeError, ValueError):
         item["sales_date_label"] = sales_date
+    item.setdefault("payment_mode_label", "")
     return item
+
+
+def _room_transfer_payment_modes_for_entries(conn, entry_ids):
+    """Map entry id → display label for recorded clearance payment methods."""
+    ids = []
+    for raw in entry_ids or []:
+        try:
+            entry_id = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if entry_id and entry_id not in ids:
+            ids.append(entry_id)
+    if not ids:
+        return {}
+    placeholders = ",".join("?" for _ in ids)
+    rows = conn.execute(
+        f"""SELECT a.room_transfer_entry_id AS entry_id, p.payment_method
+            FROM room_transfer_payment_allocations a
+            JOIN room_transfer_payments p ON p.id = a.room_transfer_payment_id
+            WHERE a.room_transfer_entry_id IN ({placeholders})
+            ORDER BY a.room_transfer_entry_id, p.id""",
+        ids,
+    ).fetchall()
+    by_entry = {}
+    for row in rows:
+        method = _normalize_room_transfer_payment_method(row["payment_method"])
+        if not method:
+            continue
+        label = ROOM_TRANSFER_PAYMENT_METHOD_LABELS.get(method, method)
+        bucket = by_entry.setdefault(int(row["entry_id"]), [])
+        if label not in bucket:
+            bucket.append(label)
+    return {entry_id: " + ".join(labels) for entry_id, labels in by_entry.items()}
+
+
+def _attach_room_transfer_payment_modes(conn, entries):
+    modes = _room_transfer_payment_modes_for_entries(
+        conn, [entry.get("id") for entry in (entries or [])]
+    )
+    for entry in entries or []:
+        entry["payment_mode_label"] = modes.get(int(entry.get("id") or 0), "") or ""
+    return entries
 
 
 def load_room_transfer_entries(conn, company, sales_date):
@@ -920,7 +966,10 @@ def load_room_transfer_entries_by_status(
            ORDER BY e.sales_date DESC, e.location, e.sort_order, e.id""",
         params,
     ).fetchall()
-    return [_room_transfer_entry_to_dict(r) for r in rows]
+    entries = [_room_transfer_entry_to_dict(r) for r in rows]
+    if normalized == "paid":
+        _attach_room_transfer_payment_modes(conn, entries)
+    return entries
 
 
 def rollup_room_transfer_entries(entries):
@@ -5517,6 +5566,112 @@ def _cash_ledger_load_rows(conn, company, date_from, date_to):
     return entries
 
 
+def _cash_ledger_split_concat(value):
+    """Split sqlite GROUP_CONCAT output into unique non-empty parts."""
+    parts = []
+    seen = set()
+    for raw in str(value or "").split(","):
+        item = raw.strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        parts.append(item)
+    return parts
+
+
+def _cash_ledger_credit_description(invoices, guests, notes=""):
+    invoices = [item for item in (invoices or []) if item]
+    guests = [item for item in (guests or []) if item]
+    if len(invoices) == 1:
+        desc = f"Credit collection — {invoices[0]}"
+        if guests:
+            desc = f"{desc} — {guests[0]}"
+    elif 1 < len(invoices) <= 3:
+        desc = f"Credit collection — {' + '.join(invoices)}"
+    elif len(invoices) > 3:
+        desc = f"Credit collection — {len(invoices)} invoices"
+    elif guests:
+        desc = f"Credit collection — {guests[0]}"
+    else:
+        desc = "Credit collection"
+    note = (notes or "").strip()
+    if note:
+        desc = f"{desc} — {note}"
+    return desc
+
+
+def _cash_ledger_credit_rows(conn, company, date_from, date_to, location=None):
+    """Cash repayments from Credit / Room Transfer clearance."""
+    has_table = conn.execute(
+        """SELECT 1 FROM sqlite_master
+           WHERE type = 'table' AND name = 'room_transfer_payments'"""
+    ).fetchone()
+    if not has_table:
+        return []
+
+    location = _normalize_cash_ledger_location(location)
+    params = [company, ROOM_TRANSFER_PAYMENT_CASH, date_from.isoformat(), date_to.isoformat()]
+    location_sql = ""
+    if location != CASH_LEDGER_FILTER_ALL:
+        location_sql = "AND a.location = ?"
+        params.append(location)
+
+    rows = conn.execute(
+        f"""SELECT p.id AS payment_id,
+                   p.payment_date,
+                   p.notes,
+                   SUM(a.amount) AS amount,
+                   GROUP_CONCAT(a.location) AS locations,
+                   GROUP_CONCAT(a.invoice_number) AS invoices,
+                   GROUP_CONCAT(a.guest_name) AS guests
+            FROM room_transfer_payments p
+            JOIN room_transfer_payment_allocations a
+              ON a.room_transfer_payment_id = p.id
+            WHERE p.company = ?
+              AND p.payment_method = ?
+              AND p.payment_date >= ? AND p.payment_date <= ?
+              {location_sql}
+            GROUP BY p.id, p.payment_date, p.notes
+            ORDER BY p.payment_date, p.id""",
+        params,
+    ).fetchall()
+
+    entries = []
+    for row in rows:
+        item = dict(row)
+        amount = round_half_up(item.get("amount"), 2)
+        if amount <= 0:
+            continue
+        locations = _cash_ledger_split_concat(item.get("locations"))
+        invoices = _cash_ledger_split_concat(item.get("invoices"))
+        guests = _cash_ledger_split_concat(item.get("guests"))
+        if location != CASH_LEDGER_FILTER_ALL:
+            detail = location
+        elif len(locations) == 1:
+            detail = locations[0]
+        elif locations:
+            detail = " + ".join(locations)
+        else:
+            detail = "Credit"
+        entries.append(
+            {
+                "id": f"credit-{item['payment_id']}",
+                "source_id": item["payment_id"],
+                "entry_type": CASH_LEDGER_ENTRY_CREDIT,
+                "entry_date": item["payment_date"],
+                "location": detail,
+                "detail": detail,
+                "description": _cash_ledger_credit_description(
+                    invoices, guests, item.get("notes") or ""
+                ),
+                "amount": amount,
+                "signed_amount": amount,
+                "can_delete": False,
+            }
+        )
+    return entries
+
+
 def _cash_ledger_transfer_rows(conn, company, date_from, date_to):
     rows = conn.execute(
         """SELECT id, transfer_date, destination, description, amount
@@ -5559,6 +5714,7 @@ def _build_cash_ledger_entries(conn, company, date_from, date_to, location=None)
     # Loads/transfers are company-level; show them only when viewing all locations.
     if location == CASH_LEDGER_FILTER_ALL:
         entries.extend(_cash_ledger_load_rows(conn, company, date_from, date_to))
+    entries.extend(_cash_ledger_credit_rows(conn, company, date_from, date_to, location=location))
     entries.extend(_cash_ledger_expense_rows(conn, company, date_from, date_to, location=location))
     if location == CASH_LEDGER_FILTER_ALL:
         entries.extend(_cash_ledger_transfer_rows(conn, company, date_from, date_to))
@@ -5580,9 +5736,10 @@ def _build_cash_ledger_entries(conn, company, date_from, date_to, location=None)
 def _cash_ledger_totals(entries):
     sales_total = 0.0
     load_total = 0.0
+    credit_total = 0.0
     expense_total = 0.0
     transfer_total = 0.0
-    sales_count = load_count = expense_count = transfer_count = 0
+    sales_count = load_count = credit_count = expense_count = transfer_count = 0
     for entry in entries:
         kind = entry.get("entry_type")
         amount = round_half_up(entry.get("amount"), 2)
@@ -5592,18 +5749,25 @@ def _cash_ledger_totals(entries):
         elif kind == CASH_LEDGER_ENTRY_LOAD:
             load_total += amount
             load_count += 1
+        elif kind == CASH_LEDGER_ENTRY_CREDIT:
+            credit_total += amount
+            credit_count += 1
         elif kind == CASH_LEDGER_ENTRY_EXPENSE:
             expense_total += amount
             expense_count += 1
         elif kind == CASH_LEDGER_ENTRY_TRANSFER:
             transfer_total += amount
             transfer_count += 1
-    available = round_half_up(sales_total + load_total - expense_total - transfer_total, 2)
+    available = round_half_up(
+        sales_total + load_total + credit_total - expense_total - transfer_total, 2
+    )
     return {
         "sales_total": round_half_up(sales_total, 2),
         "sales_count": sales_count,
         "load_total": round_half_up(load_total, 2),
         "load_count": load_count,
+        "credit_total": round_half_up(credit_total, 2),
+        "credit_count": credit_count,
         "expense_total": round_half_up(expense_total, 2),
         "expense_count": expense_count,
         "transfer_total": round_half_up(transfer_total, 2),
@@ -6201,6 +6365,8 @@ def cash_ledger():
         sales_count=totals["sales_count"],
         load_total=totals["load_total"],
         load_count=totals["load_count"],
+        credit_total=totals["credit_total"],
+        credit_count=totals["credit_count"],
         expense_total=totals["expense_total"],
         expense_count=totals["expense_count"],
         transfer_total=totals["transfer_total"],
@@ -6322,6 +6488,7 @@ def export_cash_ledger_report():
     summary_rows = [
         ("Actual Cash", totals["sales_total"], totals["sales_count"]),
         ("Load Cash", totals["load_total"], totals["load_count"]),
+        ("Credit Cash", totals["credit_total"], totals["credit_count"]),
         ("Expense", totals["expense_total"], totals["expense_count"]),
         ("Transfer Out", totals["transfer_total"], totals["transfer_count"]),
         ("Available Cash", totals["available_total"], len(entries)),

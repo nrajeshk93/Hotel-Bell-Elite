@@ -2,6 +2,7 @@
 {% set summary = room_transfer_summary_rollup|default(room_transfer_rollup) %}
 {% set status_labels = dict(room_transfer_payment_statuses) %}
 {% set allow_selection = status_filter in ('unpaid', 'paid') and room_transfer_entries %}
+{% set show_payment_mode = status_filter == 'paid' %}
 {% set action_button_label = 'Clear Payment' if status_filter == 'unpaid' else 'Mark Un Paid' %}
 {% set panel_title = receivables_panel_title|default('Room transfers') %}
 {% set empty_noun = receivables_empty_noun|default('room transfers') %}
@@ -82,7 +83,9 @@
             <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
             <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
             <th class="pl-sortable" data-sort="invoice" scope="col" tabindex="0" aria-sort="none">Invoice</th>
-            <th class="pl-sortable" data-sort="detail" scope="col" tabindex="0" aria-sort="none">Detail</th>
+            {% if show_payment_mode %}
+            <th class="pl-sortable" data-sort="payment_mode" scope="col" tabindex="0" aria-sort="none">Payment Mode</th>
+            {% endif %}
             <th class="pl-sortable" data-sort="guest" scope="col" tabindex="0" aria-sort="none">Description</th>
             <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
           </tr>
@@ -90,6 +93,7 @@
         <tbody id="room-transfer-body">
           {% for entry in room_transfer_entries %}
           {% set detail_text = [entry.location, entry.table_room, entry.outlet_name]|select|join(' · ') %}
+          {% set payment_mode_label = entry.payment_mode_label|default('') %}
           {% set search_blob = [
             entry.sales_date_label,
             entry.invoice_number,
@@ -98,6 +102,7 @@
             entry.outlet_name,
             entry.guest_name,
             entry.ledger_detail,
+            payment_mode_label,
             status_labels.get(entry.payment_status, entry.payment_status),
             entry.balance if entry.balance is defined else entry.amount
           ]|select|join(' ')|lower %}
@@ -119,10 +124,13 @@
               <span class="rt-type-pill rt-type-pill--{{ entry.payment_status }}">{{ status_labels.get(entry.payment_status, entry.payment_status) }}</span>
             </td>
             <td class="pl-col-code" data-sort-value="{{ entry.invoice_number or '' }}">{{ entry.invoice_number or '—' }}</td>
-            <td data-sort-value="{{ detail_text }}">{{ detail_text or '—' }}</td>
+            {% if show_payment_mode %}
+            <td data-sort-value="{{ payment_mode_label }}">{{ payment_mode_label or '—' }}</td>
+            {% endif %}
             <td data-sort-value="{{ entry.guest_name or '' }}">
               <div class="pl-name">{{ entry.guest_name or '—' }}</div>
               {% if entry.ledger_detail %}<div class="pl-meta">{{ entry.ledger_detail }}</div>{% endif %}
+              {% if not show_payment_mode and detail_text %}<div class="pl-meta">{{ detail_text }}</div>{% endif %}
             </td>
             <td class="pl-col-amount rt-amount pl-amount" data-amount="{{ display_amount }}" data-sort-value="{{ display_amount }}">{{ display_amount }}</td>
           </tr>

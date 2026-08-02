@@ -115,6 +115,8 @@
 
   function bindListbox(root){
     if (!root || root.__suFilterListboxBound || root.__epListboxBound) return;
+    /* Credit / Room Transfer status+outlet use ep_form_listbox.js (data-se-listbox-submit). */
+    if (root.id === 'room-transfer-status-listbox' || root.id === 'room-transfer-location-listbox') return;
     root.__suFilterListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');
