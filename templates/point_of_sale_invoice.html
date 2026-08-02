@@ -9,9 +9,10 @@
 <title>Invoice | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=38">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=45">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=51">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 <script>
 (function(){
   try{
@@ -25,8 +26,9 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=45">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=51">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 {% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox, ep_listbox %}
 
@@ -218,15 +220,15 @@
             <dd id="pos-inv-sum-discount">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row">
-            <dt>CGST <span class="pos-inv-summary-muted">(2.5%)</span></dt>
+            <dt>CGST <span class="pos-inv-summary-muted" id="pos-inv-sum-cgst-rate">(2.5%)</span></dt>
             <dd id="pos-inv-sum-cgst">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row">
-            <dt>UGST <span class="pos-inv-summary-muted">(2.5%)</span></dt>
+            <dt>UGST <span class="pos-inv-summary-muted" id="pos-inv-sum-ugst-rate">(2.5%)</span></dt>
             <dd id="pos-inv-sum-ugst">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row" id="pos-inv-sum-vat-row" hidden>
-            <dt>VAT <span class="pos-inv-summary-muted">(10%)</span></dt>
+            <dt>VAT <span class="pos-inv-summary-muted" id="pos-inv-sum-vat-rate">(10%)</span></dt>
             <dd id="pos-inv-sum-vat">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row" id="pos-inv-sum-service-row" hidden>
@@ -325,7 +327,6 @@
     <div class="pos-inv-modal-backdrop" data-inv-modal-close="discount"></div>
     <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-discount-title">
       <h3 id="pos-inv-discount-title">Add Discount</h3>
-      <p class="pos-inv-modal-lead">Update the discount applied to this bill.</p>
       <div class="pos-inv-field">
         <span>Discount type</span>
         <div class="pos-inv-seg" role="group" aria-label="Discount type">
@@ -335,9 +336,13 @@
       </div>
       <label class="pos-inv-field">
         <span id="pos-inv-discount-amount-label">Amount (%)</span>
-        <input type="number" id="pos-inv-discount-amount" min="0" step="0.01" value="0" inputmode="decimal">
+        <input type="number" id="pos-inv-discount-amount" min="0" step="0.01" value="" placeholder="Enter discount" inputmode="decimal">
       </label>
       <p class="pos-inv-modal-preview" id="pos-inv-discount-preview">Discount: ₹0.00</p>
+      <label class="pos-inv-field" id="pos-inv-discount-reason-field" hidden>
+        <span>Reason <span class="pos-inv-summary-muted" id="pos-inv-discount-reason-hint">(required over 15%)</span></span>
+        <input type="text" id="pos-inv-discount-reason" maxlength="200" placeholder="Why is this discount over 15%?" autocomplete="off" disabled>
+      </label>
       <div class="pos-inv-modal-actions">
         <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-inv-modal-close="discount">Cancel</button>
         <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-inv-discount-apply">Apply</button>
@@ -415,75 +420,18 @@
     </div>
   </div>
 
-  <div class="pos-inv-modal" id="pos-inv-settle-modal" hidden>
-    <div class="pos-inv-modal-backdrop" data-settle-close tabindex="-1" aria-hidden="true"></div>
-    <div class="staff-credit-box cp-modal-box pos-inv-settle-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-settle-title">
-      <div class="staff-credit-head">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-        <span id="pos-inv-settle-title">Payment Details</span>
-      </div>
-      <div id="pos-inv-settle-error" class="staff-credit-error"></div>
-      <div class="staff-field">
-        <div class="rt-split-head">
-          <label>Payment mode *</label>
-          <button type="button" class="rt-link-btn" id="pos-inv-settle-add-split">Split Payment</button>
-        </div>
-        <div id="pos-inv-settle-splits" class="rt-payment-splits" aria-label="Payment mode splits"></div>
-        <div class="rt-split-balance" id="pos-inv-settle-balance" hidden>
-          <span>Modes total</span>
-          <strong id="pos-inv-settle-split-total" data-amount="0">0</strong>
-          <span class="rt-split-vs">of</span>
-          <strong id="pos-inv-settle-split-target" data-amount="0">0</strong>
-        </div>
-      </div>
-      <div class="staff-field">
-        <label for="pos-inv-settle-notes">Notes</label>
-        <input id="pos-inv-settle-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
-      </div>
-      <div class="cp-alloc-wrap">
-        <div class="cp-alloc-head">
-          <span>Bill</span>
-          <span id="pos-inv-settle-alloc-meta"></span>
-        </div>
-        <div class="cp-alloc-table-wrap">
-          <table class="cp-alloc-table" aria-label="Bill payment">
-            <colgroup>
-              <col class="cp-alloc-col-order">
-              <col class="cp-alloc-col-total">
-              <col class="cp-alloc-col-pay">
-            </colgroup>
-            <thead>
-              <tr>
-                <th scope="col">Order</th>
-                <th class="pl-col-amount" scope="col">Total</th>
-                <th class="pl-col-amount" scope="col">Pay now</th>
-              </tr>
-            </thead>
-            <tbody id="pos-inv-settle-alloc-body"></tbody>
-          </table>
-        </div>
-        <div class="cp-alloc-total">
-          <span>Payment total</span>
-          <strong id="pos-inv-settle-total" data-amount="0">0</strong>
-        </div>
-      </div>
-      <div class="staff-credit-actions">
-        <button type="button" class="btn" data-settle-close>Back</button>
-        <button type="button" class="btn btn-primary" id="pos-inv-settle-submit" disabled>Record Payment</button>
-      </div>
-    </div>
-  </div>
+  {% include 'partials/pos_settle_modal.html' %}
 </div>
 
-<script type="application/json" id="pos-inv-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["room_transfer","Room Transfer"],["bank_transfer","Bank Transfer"]]</script>
 {% if pos_receipt_config %}
 <script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
 {% endif %}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=39"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
 <script src="{{ url_for('static', filename='pos_offline.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='pos_printers.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=88"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='pos_settle.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=105"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

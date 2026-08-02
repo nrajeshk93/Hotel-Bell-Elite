@@ -1,0 +1,117 @@
+{# Shared Credit / Room Transfer header filters — Expense Ledger field style. #}
+{% set selected_status_label = dict(room_transfer_filter_statuses).get(selected_payment_status, selected_payment_status) %}
+{% set show_outlet_filter = show_outlet_filter|default(true) %}
+{% set filter_aria_label = filter_aria_label|default('Credit filters') %}
+{% set search_aria_label = search_aria_label|default('Search credits') %}
+{% set filter_clear_url = filter_clear_url|default(url_for(receivables_page_endpoint, company=selected_company, location=selected_location, status=selected_payment_status)) %}
+<form id="room-transfer-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters rt-filter-form" aria-label="{{ filter_aria_label }}"
+      data-clear-url="{{ filter_clear_url }}">
+  <input type="hidden" name="company" value="{{ selected_company }}">
+  <input type="hidden" id="room-transfer-date-from" name="date_from" value="{{ date_from }}">
+  <input type="hidden" id="room-transfer-date-to" name="date_to" value="{{ date_to }}">
+  {% if not show_outlet_filter %}
+  <input type="hidden" id="room-transfer-location" name="location" value="All">
+  {% endif %}
+
+  <div class="se-filter-chip se-filter-chip--search pl-search-chip rt-search-chip pl-header-field-listbox pl-header-field" id="rt-search-chip">
+    <label class="se-filter-chip-label" for="room-transfer-search">Search</label>
+    <div class="se-filter-chip-control">
+      <input type="search" id="room-transfer-search" class="pl-search-input rt-search-input" placeholder="Invoice, guest, room…" autocomplete="off" aria-label="{{ search_aria_label }}">
+    </div>
+  </div>
+
+  <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox id="room-transfer-status-listbox">
+    <span class="se-filter-chip-label" id="room-transfer-status-label">Status</span>
+    <div class="se-filter-chip-control">
+      <input type="hidden" id="room-transfer-status" name="status" value="{{ selected_payment_status }}">
+      <button type="button" class="se-filter-chip-trigger" id="room-transfer-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="room-transfer-status-list" aria-labelledby="room-transfer-status-label room-transfer-status-value">
+        <span class="se-filter-chip-value" id="room-transfer-status-value">{{ selected_status_label }}</span>
+      </button>
+      <span class="se-filter-chip-chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+    </div>
+    <div class="se-filter-listbox" id="room-transfer-status-list" role="listbox" aria-labelledby="room-transfer-status-label" hidden>
+      {% for status_key, status_label in room_transfer_filter_statuses %}
+      <button type="button" class="se-filter-listbox-option{% if selected_payment_status == status_key %} is-selected{% endif %}" role="option" data-value="{{ status_key }}" data-name="{{ status_label|lower }}" data-label="{{ status_label }}" aria-selected="{{ 'true' if selected_payment_status == status_key else 'false' }}">{{ status_label }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if show_outlet_filter %}
+  <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field rt-location-chip" data-se-listbox id="room-transfer-location-listbox">
+    <span class="se-filter-chip-label" id="room-transfer-location-label">Outlet</span>
+    <div class="se-filter-chip-control">
+      <input type="hidden" id="room-transfer-location" name="location" value="{{ selected_location }}">
+      <button type="button" class="se-filter-chip-trigger" id="room-transfer-location-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="room-transfer-location-list" aria-labelledby="room-transfer-location-label room-transfer-location-value">
+        <span class="se-filter-chip-value" id="room-transfer-location-value">{{ selected_location }}</span>
+      </button>
+      <span class="se-filter-chip-chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+    </div>
+    <div class="se-filter-listbox" id="room-transfer-location-list" role="listbox" aria-labelledby="room-transfer-location-label" hidden>
+      {% for location in room_transfer_filter_locations %}
+      <button type="button" class="se-filter-listbox-option{% if selected_location == location %} is-selected{% endif %}" role="option" data-value="{{ location }}" data-name="{{ location|lower }}" data-label="{{ location }}" aria-selected="{{ 'true' if selected_location == location else 'false' }}">{{ location }}</button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="se-filter-chip-date-host rt-date-range-host pl-date-range-host pl-header-field" id="rt-date-range-host">
+    <span class="se-filter-chip-label" id="rt-date-range-label">Date</span>
+    <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+      <div class="se-filter-chip-control">
+        <div class="an-range-wrap an-range-wrap--sales" id="rt-date-range-wrap" data-max-date="{{ today_iso }}">
+          <button type="button" class="an-range-trigger se-filter-chip-trigger" id="rt-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="rt-date-range-panel" aria-labelledby="rt-date-range-label rt-date-range-display">
+            <span class="an-range-trigger-label">
+              <span id="rt-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Select date…{% endif %}</span>
+            </span>
+          </button>
+          <div class="an-range-backdrop" id="rt-date-range-backdrop" aria-hidden="true"></div>
+          <div class="an-range-panel" id="rt-date-range-panel" role="dialog" aria-labelledby="rt-date-range-panel-title" hidden>
+            <div class="an-range-panel-inner">
+              <div class="an-range-panel-h" id="rt-date-range-panel-title">Date range</div>
+              <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+              <div class="an-cal-dual">
+                <div class="an-cal-pane">
+                  <div class="an-cal-pane-hdr">
+                    <button type="button" class="an-cal-nav-btn" id="rt-cal-prev" aria-label="Previous months">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <h4 class="an-cal-month-title" id="rt-cal-title0">—</h4>
+                    <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                  </div>
+                  <div class="an-cal-dow" aria-hidden="true">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  </div>
+                  <div class="an-cal-grid" id="rt-cal-grid0"></div>
+                </div>
+                <div class="an-cal-pane">
+                  <div class="an-cal-pane-hdr">
+                    <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                    <h4 class="an-cal-month-title" id="rt-cal-title1">—</h4>
+                    <button type="button" class="an-cal-nav-btn" id="rt-cal-next" aria-label="Next months">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                  <div class="an-cal-dow" aria-hidden="true">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  </div>
+                  <div class="an-cal-grid" id="rt-cal-grid1"></div>
+                </div>
+              </div>
+            </div>
+            <div class="an-range-actions">
+              <button type="button" class="btn" id="rt-date-range-clear">Clear</button>
+              <button type="button" class="btn btn-primary" id="rt-date-range-apply">Apply</button>
+            </div>
+          </div>
+        </div>
+        <span class="se-filter-chip-chev" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
+    </div>
+  </div>
+</form>

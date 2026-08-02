@@ -7,7 +7,8 @@
   var DEFAULT_RECEIPT_CONFIG = {
     business_name: 'SPICE MULTICUISINE',
     address: 'Gurudwara Lane, Aberdeen bazar, Sri Vijaya Puram, Andaman & Nicobar 744101',
-    gst: '35AAANFH8592H1ZS',
+    gst: '35AANFH8592H1ZS',
+    fssai: '12922101000132',
     logo_url: '/static/pos/spice-receipt-logo.jpg',
     user_label: 'RESTAURANT'
   };
@@ -15,7 +16,8 @@
   var BAR_RECEIPT_CONFIG = {
     business_name: 'IRISH BARREL HOUSE BAR',
     address: 'Gurudwara Lane, Aberdeen bazar, Sri Vijaya Puram, Andaman & Nicobar 744101',
-    gst: '35AAANFH8592H1ZS',
+    gst: '35AANFH8592H1ZS',
+    fssai: '12922101000132',
     logo_url: '/static/pos/irish-barrel-house-logo.png',
     user_label: 'BAR'
   };
@@ -30,6 +32,29 @@
   var UGST_RATE = 0.025;
   var VAT_RATE = 0.1;
 
+  function activeTaxRates() {
+    var rates = global.HBE_POS_TAX_RATES;
+    if (!rates || typeof rates !== 'object') {
+      return { cgst: CGST_RATE, ugst: UGST_RATE, vat: VAT_RATE };
+    }
+    return {
+      cgst: rates.cgst != null && isFinite(Number(rates.cgst)) ? Number(rates.cgst) : CGST_RATE,
+      ugst: rates.ugst != null && isFinite(Number(rates.ugst)) ? Number(rates.ugst) : UGST_RATE,
+      vat: rates.vat != null && isFinite(Number(rates.vat)) ? Number(rates.vat) : VAT_RATE
+    };
+  }
+
+  /* Correct known typo still embedded in soft-nav / cached receipt JSON. */
+  var GST_NUMBER_CORRECTIONS = {
+    '35AAANFH8592H1ZS': '35AANFH8592H1ZS'
+  };
+
+  function normalizeReceiptGst(value, fallback) {
+    var gst = String(value == null || value === '' ? fallback || '' : value).trim();
+    if (GST_NUMBER_CORRECTIONS[gst]) return GST_NUMBER_CORRECTIONS[gst];
+    return gst || String(fallback || '').trim();
+  }
+
   function getPosReceiptConfig(outlet) {
     var key = String(outlet || '').trim().toLowerCase();
     var fallback = key === 'bar' ? BAR_RECEIPT_CONFIG : DEFAULT_RECEIPT_CONFIG;
@@ -42,7 +67,8 @@
         return {
           business_name: parsed.business_name || fallback.business_name,
           address: parsed.address || fallback.address,
-          gst: parsed.gst || fallback.gst,
+          gst: normalizeReceiptGst(parsed.gst, fallback.gst),
+          fssai: parsed.fssai || fallback.fssai,
           logo_url: parsed.logo_url || fallback.logo_url,
           user_label: parsed.user_label || fallback.user_label
         };
@@ -239,18 +265,18 @@
           '</span></div>'
         : '') +
       '<div><span>CGST (' +
-      CGST_RATE * 100 +
+      activeTaxRates().cgst * 100 +
       '%)</span><span>' +
       formatLegacyMoney(totals.cgst) +
       '</span></div>' +
       '<div><span>UGST (' +
-      UGST_RATE * 100 +
+      activeTaxRates().ugst * 100 +
       '%)</span><span>' +
       formatLegacyMoney(totals.ugst) +
       '</span></div>' +
       (Number(totals.vat) > 0
         ? '<div><span>VAT (' +
-          VAT_RATE * 100 +
+          activeTaxRates().vat * 100 +
           '%)</span><span>' +
           formatLegacyMoney(totals.vat) +
           '</span></div>'
@@ -330,6 +356,7 @@
       '.logo{display:block;margin:0 auto 8px;max-width:260px;height:auto}' +
       '.brand{font-size:14px;font-weight:700;text-align:center;letter-spacing:.06em;margin:0 0 4px}' +
       '.addr,.gst-no{font-size:11px;text-align:center;margin:0 0 3px}' +
+      '.gst-no .fssai{white-space:nowrap}' +
       '.rule{border:0;border-top:1px dashed #333;margin:8px 0}' +
       '.meta{font-size:12px;margin:0 0 8px}' +
       '.meta div{display:flex;justify-content:space-between;margin:2px 0;gap:8px}' +
@@ -366,6 +393,11 @@
       '</div>' +
       '<div class="gst-no">GST ' +
       escapeHtml(cfg.gst) +
+      (cfg.fssai
+        ? ' &nbsp;|&nbsp; <span class="fssai">FSSAI No - ' +
+          escapeHtml(cfg.fssai) +
+          '</span>'
+        : '') +
       '</div>' +
       '<hr class="rule">' +
       '<div class="meta">' +
@@ -395,18 +427,18 @@
           '</span></div>'
         : '') +
       '<div><span>CGST @ ' +
-      CGST_RATE * 100 +
+      activeTaxRates().cgst * 100 +
       '%</span><span>' +
       formatThermalAmount(totals.cgst) +
       '</span></div>' +
       '<div><span>UGST @ ' +
-      UGST_RATE * 100 +
+      activeTaxRates().ugst * 100 +
       '%</span><span>' +
       formatThermalAmount(totals.ugst) +
       '</span></div>' +
       (Number(totals.vat) > 0
         ? '<div><span>VAT @ ' +
-          VAT_RATE * 100 +
+          activeTaxRates().vat * 100 +
           '%</span><span>' +
           formatThermalAmount(totals.vat) +
           '</span></div>'

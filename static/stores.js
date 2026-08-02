@@ -1576,7 +1576,11 @@
   }
 
   function initStoresSortableTables() {
-    document.querySelectorAll('table.pl-table').forEach(initPlSortableTable);
+    document.querySelectorAll('table.pl-table').forEach(function (table) {
+      /* Weekly Stock Audit owns sort + KPI reorder in stores_stock_audit.js */
+      if (table.classList.contains('st-audit-queue-table')) return;
+      initPlSortableTable(table);
+    });
     applyStockDefaultSort(document.getElementById('st-stock-table'));
     applyMovementsDefaultSort(document.getElementById('st-stock-movements-table'));
     applyApprovalsDefaultSort(document.getElementById('st-approvals-pending-table'));
@@ -3430,6 +3434,7 @@
     initProductPackRowToggle();
     initIndentListSearch();
     initStockSearch();
+    if (typeof window.initStockAudit === 'function') window.initStockAudit();
     syncIndentLineTotals(document.getElementById('st-indent-form'));
     document.querySelectorAll('.st-line.has-packs').forEach(function (line) {
       syncUnitForPack(line);

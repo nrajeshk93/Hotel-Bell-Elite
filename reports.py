@@ -6,7 +6,7 @@ REPORT_CATEGORY_LABELS = {
     "all": "All",
     "restaurant": "Restaurant",
     "accounts": "Accounts",
-    "hr": "HR",
+    "hr": "Employee Payroll",
     "sales": "Sales",
     "inventory": "Inventory",
     "masters": "Masters",
@@ -95,22 +95,22 @@ REPORT_DEFINITIONS = [
     {
         "id": "employee_master",
         "name": "Employee Master Report",
-        "description": "Download the full employee master Excel.",
+        "description": "View employee master records and download Excel.",
         "icon": "person",
         "icon_tone": "cyan",
         "category": "hr",
-        "view_route": "employees",
+        "view_route": "employee_master",
         "download_route": "export_employee_master",
         "downloadable": True,
     },
     {
         "id": "monthly_payroll",
         "name": "Monthly Payroll Report",
-        "description": "Export monthly payroll worksheet.",
+        "description": "Attendance-based salary ledger — view and export Excel.",
         "icon": "wage",
         "icon_tone": "blue",
         "category": "hr",
-        "view_route": "report",
+        "view_route": "monthly_payroll_report",
         "download_route": "export_employees",
         "downloadable": True,
     },
@@ -143,7 +143,7 @@ REPORT_DEFINITIONS = [
         "icon": "bank",
         "icon_tone": "green",
         "category": "hr",
-        "view_route": "report",
+        "view_route": "bank_report",
         "download_route": "export_bank_report",
         "downloadable": True,
     },
@@ -191,14 +191,25 @@ REPORT_DEFINITIONS = [
         "download_route": None,
         "downloadable": True,
     },
+    {
+        "id": "stock_audit",
+        "name": "Stock Audit Report",
+        "description": "Detailed stock adjustments from weekly audits — view and export Excel.",
+        "icon": "package",
+        "icon_tone": "teal",
+        "category": "inventory",
+        "view_route": "stores_stock_audit_report",
+        "download_route": "stores_stock_audit_report_export",
+        "downloadable": True,
+    },
 ]
 
 
-def _resolve_href(route_name, url_for_fn, fallback="#"):
+def _resolve_href(route_name, url_for_fn, fallback="#", **kwargs):
     if not route_name:
         return fallback
     try:
-        return url_for_fn(route_name)
+        return url_for_fn(route_name, **kwargs) if kwargs else url_for_fn(route_name)
     except Exception:
         return fallback
 
@@ -208,7 +219,15 @@ def build_reports_dashboard(url_for_fn):
     reports = []
     for item in REPORT_DEFINITIONS:
         report = dict(item)
-        report["view_href"] = _resolve_href(item.get("view_route"), url_for_fn)
+        view_kwargs = {}
+        if isinstance(item.get("view_kwargs"), dict):
+            view_kwargs.update(item["view_kwargs"])
+        # Drill-in from Reports hub → destination pages show Back to Reports.
+        if item.get("view_route"):
+            view_kwargs.setdefault("from_hub", "reports")
+        report["view_href"] = _resolve_href(
+            item.get("view_route"), url_for_fn, **view_kwargs
+        )
         report["download_href"] = _resolve_href(
             item.get("download_route"), url_for_fn, fallback=""
         )

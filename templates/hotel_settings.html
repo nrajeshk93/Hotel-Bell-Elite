@@ -1,0 +1,289 @@
+{% set de_soft_body_class = 'de-open hotel-module hotel-settings-module pos-settings-module' %}
+{% set de_soft_page_title = 'Settings | Hotel | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings | Hotel | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=35">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_settings.css') }}?v=2">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open hotel-module hotel-settings-module pos-settings-module">
+{% endif %}
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=35">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_settings.css') }}?v=2">
+{% endif %}
+
+<div class="de-main-inner pos-settings-page" id="hotel-settings-page" data-hotel-settings data-hotel-api-base="/hotel">
+  <header class="pos-set-header">
+    <div class="pos-set-header-main">
+      <a class="pos-set-back" href="{{ url_for('settings') }}" data-hotel-set-back aria-label="Back to Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+      </a>
+      <div class="pos-set-header-copy">
+        <p class="pos-set-eyebrow">Hotel</p>
+        <h1>Settings</h1>
+      </div>
+    </div>
+    <div class="pos-set-header-actions"></div>
+  </header>
+
+  <div class="pos-set-shell">
+    <aside class="pos-set-rail" aria-label="Hotel settings sections">
+      <label class="pos-set-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="search" id="hotel-set-search" placeholder="Search settings…" autocomplete="off" aria-label="Search settings">
+      </label>
+      <nav class="pos-set-nav" id="hotel-set-nav" role="tablist" aria-orientation="vertical">
+        <button type="button" class="pos-set-nav-item is-active" role="tab" aria-selected="true" data-section="floor" data-search="floor layout floors levels">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 3v18"/></svg>
+          <span>Floor Layout</span>
+        </button>
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="rooms" data-search="rooms inventory type number">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-8h6v8"/></svg>
+          <span>Rooms</span>
+        </button>
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="tariff" data-search="tariff rates charges mattress early late airport pickup deluxe suite premium">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.41 0l6.58-6.58a1 1 0 0 0 0-1.41L12 2Z"/><path d="M7 7h.01"/></svg>
+          <span>Tariff</span>
+        </button>
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="taxes" data-search="taxes cgst ugst gst">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12M6 8h12"/><path d="M6 13h3c6.667 0 6.667-10 0-10"/><path d="M6 13l8.5 8"/></svg>
+          <span>Taxes</span>
+        </button>
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="invoice" data-search="invoice folio prefix footer numbering">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
+          <span>Invoice</span>
+        </button>
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="payment" data-search="payment cash card upi bank credit">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+          <span>Payment</span>
+        </button>
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="printers" data-search="printers folio invoice station">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17h12v4H6z"/></svg>
+          <span>Printers</span>
+        </button>
+      </nav>
+      <p class="pos-set-nav-empty" id="hotel-set-nav-empty" hidden>No matching sections</p>
+    </aside>
+
+    <div class="pos-set-main">
+      <section class="pos-set-panel is-active" id="hotel-set-panel-floor" data-panel="floor" role="tabpanel">
+        <div class="pos-set-panel-head">
+          <div>
+            <h2>Floor Layout</h2>
+            <p>Floors used on the Hotel Rooms board. Changes save automatically.</p>
+          </div>
+          <button type="button" class="pos-set-btn pos-set-btn--primary" data-hotel-action="add-floor">Add floor</button>
+        </div>
+        <div class="pos-set-card-grid" id="hotel-set-floors-grid"></div>
+      </section>
+
+      <section class="pos-set-panel" id="hotel-set-panel-rooms" data-panel="rooms" role="tabpanel" hidden>
+        <div class="pos-set-panel-head">
+          <div>
+            <h2>Rooms</h2>
+            <p>Room inventory — number, floor, and type. Occupied or reserved rooms cannot be deleted.</p>
+          </div>
+          <button type="button" class="pos-set-btn pos-set-btn--primary" data-hotel-action="add-room">Add room</button>
+        </div>
+        <div class="hotel-set-rooms-table-wrap">
+          <table class="hotel-set-rooms-table" id="hotel-set-rooms-table">
+            <thead>
+              <tr>
+                <th>Number</th>
+                <th>Floor</th>
+                <th>Type</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="hotel-set-rooms-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="pos-set-panel" id="hotel-set-panel-tariff" data-panel="tariff" role="tabpanel" hidden>
+        <div class="pos-set-panel-head">
+          <div>
+            <h2>Tariff</h2>
+            <p>Default hotel charges used for new check-ins and special services. Amounts in ₹.</p>
+          </div>
+        </div>
+        <div class="pos-set-card-grid">
+          <article class="pos-set-card">
+            <h3>Room tariffs</h3>
+            <div class="pos-set-fields">
+              <label class="pos-set-field"><span>Premium Room</span><input type="number" step="1" min="0" data-hotel-set-field data-hotel-set-key="rate_premium_without_balcony" inputmode="decimal" value="3500"></label>
+              <label class="pos-set-field"><span>Deluxe with Balcony</span><input type="number" step="1" min="0" data-hotel-set-field data-hotel-set-key="rate_premium_deluxe_balcony" inputmode="decimal" value="4500"></label>
+              <label class="pos-set-field"><span>Suite Room</span><input type="number" step="1" min="0" data-hotel-set-field data-hotel-set-key="rate_premium_suite_tub" inputmode="decimal" value="7500"></label>
+            </div>
+          </article>
+          <article class="pos-set-card">
+            <h3>Extra charges</h3>
+            <div class="pos-set-fields">
+              <label class="pos-set-field"><span>Extra Mattress</span><input type="number" step="1" min="0" data-hotel-set-field data-hotel-set-key="rate_extra_mattress" inputmode="decimal" value="1000"></label>
+              <label class="pos-set-field"><span>Early Check-in</span><input type="number" step="1" min="0" data-hotel-set-field data-hotel-set-key="rate_early_checkin" inputmode="decimal" value="500"></label>
+              <label class="pos-set-field"><span>Late Check-out</span><input type="number" step="1" min="0" data-hotel-set-field data-hotel-set-key="rate_late_checkout" inputmode="decimal" value="500"></label>
+              <label class="pos-set-field"><span>Airport Pickup</span><input type="number" step="1" min="0" data-hotel-set-field data-hotel-set-key="rate_airport_pickup" inputmode="decimal" value="1500"></label>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="pos-set-panel" id="hotel-set-panel-taxes" data-panel="taxes" role="tabpanel" hidden>
+        <div class="pos-set-panel-head">
+          <div>
+            <h2>Taxes</h2>
+            <p>CGST / UGST applied to room folio and invoices.</p>
+          </div>
+        </div>
+        <div class="pos-set-card">
+          <div class="pos-set-fields pos-set-fields--inline">
+            <label class="pos-set-field"><span>CGST %</span><input type="number" step="0.01" min="0" data-hotel-set-field data-hotel-set-key="cgst_pct" inputmode="decimal"></label>
+            <label class="pos-set-field"><span>UGST %</span><input type="number" step="0.01" min="0" data-hotel-set-field data-hotel-set-key="ugst_pct" inputmode="decimal"></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="pos-set-panel" id="hotel-set-panel-invoice" data-panel="invoice" role="tabpanel" hidden>
+        <div class="pos-set-panel-head">
+          <div>
+            <h2>Invoice</h2>
+            <p>Guest copy and branding for room invoices.</p>
+          </div>
+        </div>
+        <div class="pos-set-card-grid">
+          <article class="pos-set-card">
+            <h3>Numbering</h3>
+            <div class="pos-set-fields">
+              <label class="pos-set-field"><span>Prefix</span><input type="text" data-hotel-set-field data-hotel-set-key="invoice_prefix" placeholder="HBE/RM"></label>
+            </div>
+          </article>
+          <article class="pos-set-card">
+            <h3>Guest copy</h3>
+            <div class="pos-set-fields">
+              <label class="pos-set-field"><span>Header line</span><input type="text" data-hotel-set-field data-hotel-set-key="invoice_header"></label>
+              <label class="pos-set-field"><span>Footer</span><textarea rows="3" data-hotel-set-field data-hotel-set-key="invoice_footer"></textarea></label>
+              <label class="pos-set-field"><span>Notes</span><textarea rows="2" data-hotel-set-field data-hotel-set-key="invoice_notes"></textarea></label>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="pos-set-panel" id="hotel-set-panel-payment" data-panel="payment" role="tabpanel" hidden>
+        <div class="pos-set-panel-head">
+          <div>
+            <h2>Payment</h2>
+            <p>Accepted tenders for room advances and settlements.</p>
+          </div>
+        </div>
+        <div class="pos-set-card">
+          <div class="pos-set-fields">
+            <label class="pos-set-toggle"><input type="checkbox" data-hotel-set-field data-hotel-set-key="pay_cash" checked><span class="pos-set-toggle-ui"></span><span>Cash</span></label>
+            <label class="pos-set-toggle"><input type="checkbox" data-hotel-set-field data-hotel-set-key="pay_upi" checked><span class="pos-set-toggle-ui"></span><span>UPI</span></label>
+            <label class="pos-set-toggle"><input type="checkbox" data-hotel-set-field data-hotel-set-key="pay_card" checked><span class="pos-set-toggle-ui"></span><span>Card</span></label>
+            <label class="pos-set-toggle"><input type="checkbox" data-hotel-set-field data-hotel-set-key="pay_bank_transfer" checked><span class="pos-set-toggle-ui"></span><span>Bank Transfer</span></label>
+            <label class="pos-set-toggle"><input type="checkbox" data-hotel-set-field data-hotel-set-key="pay_credit" checked><span class="pos-set-toggle-ui"></span><span>Credit</span></label>
+          </div>
+        </div>
+      </section>
+
+      <section class="pos-set-panel" id="hotel-set-panel-printers" data-panel="printers" role="tabpanel" hidden>
+        <div class="pos-set-panel-head">
+          <div>
+            <h2>Printers</h2>
+            <p>Default printers for this computer.</p>
+          </div>
+          <span class="pos-set-badge pos-set-badge--pc" title="Preferences stay on this browser / PC">Saved on this PC only</span>
+        </div>
+        <div class="pos-set-card">
+          <div class="pos-set-fields pos-set-fields--inline pos-set-fields--2">
+            <label class="pos-set-field">
+              <span>Station name</span>
+              <input type="text" data-hotel-pc-printer="stationName" placeholder="e.g. Front desk" autocomplete="off">
+            </label>
+            <label class="pos-set-field">
+              <span>Hotel Folio</span>
+              <input type="text" data-hotel-pc-printer="folioPrinterLabel" placeholder="e.g. Front desk folio" autocomplete="off">
+            </label>
+            <label class="pos-set-field">
+              <span>Hotel Invoice</span>
+              <input type="text" data-hotel-pc-printer="invoicePrinterLabel" placeholder="e.g. Front desk invoice" autocomplete="off">
+            </label>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="pos-set-toast" id="hotel-set-toast" role="status" aria-live="polite" hidden></div>
+</div>
+
+<script type="application/json" id="hotel-set-room-types">{{ hotel_room_types|default([])|tojson }}</script>
+<script>
+(function(global){
+  'use strict';
+  var KEY = 'hbe_hotel_settings_section';
+  var DEFAULT = 'floor';
+  var VALID = ['floor','rooms','tariff','taxes','invoice','payment','printers'];
+  function normalizeKey(key){
+    key = String(key || '').replace(/^#/, '').trim().toLowerCase();
+    return VALID.indexOf(key) >= 0 ? key : '';
+  }
+  function readStoredSection(){
+    var fromHash = normalizeKey(global.location.hash);
+    if(fromHash) return fromHash;
+    try{
+      var stored = normalizeKey(global.sessionStorage.getItem(KEY));
+      if(stored) return stored;
+    }catch(e){}
+    return DEFAULT;
+  }
+  function applySectionBoot(key){
+    var page = document.getElementById('hotel-settings-page');
+    if(!page) return DEFAULT;
+    key = normalizeKey(key) || DEFAULT;
+    page.querySelectorAll('.pos-set-nav-item').forEach(function(btn){
+      var active = btn.getAttribute('data-section') === key;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    page.querySelectorAll('.pos-set-panel').forEach(function(panel){
+      var match = panel.getAttribute('data-panel') === key;
+      panel.classList.toggle('is-active', match);
+      panel.hidden = !match;
+    });
+    return key;
+  }
+  global.HBE_HOTEL_SETTINGS = global.HBE_HOTEL_SETTINGS || {};
+  global.HBE_HOTEL_SETTINGS.SECTION_STORAGE_KEY = KEY;
+  global.HBE_HOTEL_SETTINGS.VALID_SECTIONS = VALID;
+  global.HBE_HOTEL_SETTINGS.readStoredSection = readStoredSection;
+  global.HBE_HOTEL_SETTINGS.applySectionBoot = applySectionBoot;
+  applySectionBoot(readStoredSection());
+})(window);
+</script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
+<script src="{{ url_for('static', filename='hotel_settings.js') }}?v=3"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

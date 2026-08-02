@@ -5,16 +5,20 @@
 {% set payroll_view = de_nav_payroll_view|default('') %}
 {% set stores_view = de_nav_stores_view|default('') %}
 {% set pos_view = de_nav_pos_view|default('') %}
+{% set hotel_view = de_nav_hotel_view|default('') %}
 {% set master_view = de_nav_master_view|default('') %}
 {% set report_view = de_nav_report_view|default('') %}
+{% set settings_view = de_nav_settings_view|default('') %}
 {% set analytics_open = nav_section == 'analytics' %}
 {% set accounts_open = nav_section == 'accounts' %}
 {% set payroll_open = nav_section == 'payroll' %}
 {% set stores_open = nav_section == 'stores' %}
 {% set pos_open = nav_section == 'pos' %}
 {% set bar_pos_open = nav_section == 'bar_pos' %}
+{% set hotel_open = nav_section == 'hotel' %}
 {% set master_open = nav_section == 'master' %}
 {% set report_open = nav_section == 'report' %}
+{% set settings_open = nav_section == 'settings' %}
 {% set nav_year = sel_year|default(today_year|default('')) %}
 {% set nav_month = sel_month|default(today_month|default('')) %}
 {% set payroll_period = {'year': nav_year, 'month': nav_month} if nav_year and nav_month else {} %}
@@ -126,7 +130,7 @@
     {% if has_dashboard_access('point_of_sale') %}
     <div class="de-nav-group{% if pos_open %} is-open is-child-active{% endif %}" id="de-nav-pos-group">
       <button type="button" class="de-nav-group-toggle" id="de-nav-pos-toggle" aria-expanded="{{ 'true' if pos_open else 'false' }}" aria-controls="de-nav-pos-sub" onclick="toggleDeNavGroup(event, 'de-nav-pos-group')">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h2"/><path d="M15 9h2v6h-2z"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
         <span>Restaurant</span>
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
@@ -135,7 +139,6 @@
         <a class="de-nav-subitem{% if pos_open and pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-pos-invoice" href="{{ url_for('point_of_sale_invoice') }}"{% if pos_open and pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
         <a class="de-nav-subitem{% if pos_open and pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-pos-invoice-ledger" href="{{ url_for('point_of_sale_invoice_ledger') }}"{% if pos_open and pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
         <a class="de-nav-subitem{% if pos_open and pos_view == 'menu' %} is-active{% endif %}" id="de-nav-pos-menu" href="{{ url_for('point_of_sale_menu') }}"{% if pos_open and pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
-        <a class="de-nav-subitem{% if pos_open and pos_view == 'settings' %} is-active{% endif %}" id="de-nav-pos-settings" href="{{ url_for('point_of_sale_settings') }}"{% if pos_open and pos_view == 'settings' %} aria-current="page"{% endif %}>Settings</a>
       </div>
     </div>
     {% endif %}
@@ -152,7 +155,20 @@
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-bar-pos-invoice" href="{{ url_for('bar_point_of_sale_invoice') }}"{% if bar_pos_open and pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-bar-pos-invoice-ledger" href="{{ url_for('bar_point_of_sale_invoice_ledger') }}"{% if bar_pos_open and pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'menu' %} is-active{% endif %}" id="de-nav-bar-pos-menu" href="{{ url_for('bar_point_of_sale_menu') }}"{% if bar_pos_open and pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
-        <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'settings' %} is-active{% endif %}" id="de-nav-bar-pos-settings" href="{{ url_for('bar_point_of_sale_settings') }}"{% if bar_pos_open and pos_view == 'settings' %} aria-current="page"{% endif %}>Settings</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_dashboard_access('hotel_rooms') %}
+    <div class="de-nav-group{% if hotel_open %} is-open is-child-active{% endif %}" id="de-nav-hotel-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-hotel-toggle" aria-expanded="{{ 'true' if hotel_open else 'false' }}" aria-controls="de-nav-hotel-sub" onclick="toggleDeNavGroup(event, 'de-nav-hotel-group')">
+        {% include 'partials/hotel_icon.svg.html' %}
+        <span>Hotel</span>
+        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <div class="de-nav-sub" id="de-nav-hotel-sub">
+        <a class="de-nav-subitem{% if hotel_open and hotel_view == 'rooms' %} is-active{% endif %}" id="de-nav-hotel-rooms" href="{{ url_for('hotel_rooms') }}"{% if hotel_open and hotel_view == 'rooms' %} aria-current="page"{% endif %}>Rooms</a>
+        <a class="de-nav-subitem{% if hotel_open and hotel_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-hotel-invoice-ledger" href="{{ url_for('hotel_invoice_ledger') }}"{% if hotel_open and hotel_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
       </div>
     </div>
     {% endif %}
@@ -173,6 +189,9 @@
         {% endif %}
         {% if has_stores_access('stock') %}
         <a class="de-nav-subitem{% if stores_view == 'stock' %} is-active{% endif %}" id="de-nav-stores-stock" href="{{ url_for('stores_stock') }}"{% if stores_view == 'stock' %} aria-current="page"{% endif %}>Stock</a>
+        {% endif %}
+        {% if has_stores_access('stock_audit') %}
+        <a class="de-nav-subitem{% if stores_view == 'stock_audit' %} is-active{% endif %}" id="de-nav-stores-stock-audit" href="{{ url_for('stores_stock_audit') }}"{% if stores_view == 'stock_audit' %} aria-current="page"{% endif %}>Stock Audit</a>
         {% endif %}
       </div>
     </div>
@@ -218,6 +237,19 @@
         {% if has_user_access_submodule('add') %}
         <a class="de-nav-subitem{% if access_view == 'add' %} is-active{% endif %}" id="de-nav-access-add" href="{{ url_for('access_management', focus='form') }}"{% if access_view == 'add' %} aria-current="page"{% endif %}>Add User</a>
         {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_dashboard_access('settings') %}
+    <div class="de-nav-group{% if settings_open %} is-open is-child-active{% endif %}" id="de-nav-settings-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-settings-toggle" aria-expanded="{{ 'true' if settings_open else 'false' }}" aria-controls="de-nav-settings-sub" onclick="toggleDeNavGroup(event, 'de-nav-settings-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c.2.6.7 1 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        <span>Settings</span>
+        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <div class="de-nav-sub" id="de-nav-settings-sub">
+        <a class="de-nav-subitem{% if settings_view == 'home' %} is-active{% endif %}" id="de-nav-settings-home" href="{{ url_for('settings') }}"{% if settings_view == 'home' %} aria-current="page"{% endif %}>Overview</a>
       </div>
     </div>
     {% endif %}

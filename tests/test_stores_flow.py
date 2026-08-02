@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime, timedelta
 from unittest import mock
 
 import db as db_mod
@@ -2297,6 +2298,331 @@ class StoresFlowTests(unittest.TestCase):
             self.assertEqual(float(line["quantity_received"]), 0.0)
         finally:
             conn.close()
+
+
+    def _seed_stock_item(self, *, outlet="restaurant", item_name="Tomato", unit="kg", qty=35.0):
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_stores_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO store_stock_items (outlet, item_name, unit, qty_on_hand, updated_at)
+                VALUES (?, ?, ?, ?, datetime('now','localtime'))
+                """,
+                (outlet, item_name, unit, qty),
+            )
+            conn.commit()
+            row = conn.execute(
+                """
+                SELECT id FROM store_stock_items
+                WHERE outlet = ? AND item_name = ? AND unit = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (outlet, item_name, unit),
+            ).fetchone()
+            return int(row["id"])
+        finally:
+            conn.close()
+
+    def test_stock_audit_seeds_and_zero_variance_verify(self):
+        self._seed_stock_item(qty=10.0)
+        page = self.client.get("/stores/stock-audit?outlet=restaurant")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Stock Audit", page.data)
+        self.assertIn(b"Tomato", page.data)
+        self.assertIn(b'id="st-audit-page"', page.data)
+
+        conn = db_mod.get_db()
+        try:
+            line = conn.execute(
+                """
+                SELECT l.id, l.system_qty, l.status
+                FROM store_stock_audit_lines l
+                JOIN store_stock_audits a ON a.id = l.audit_id
+                WHERE a.outlet = 'restaurant' AND a.status = 'open'
+                  AND l.item_name = 'Tomato'
+                ORDER BY l.id DESC LIMIT 1
+                """
+            ).fetchone()
+            self.assertIsNotNone(line)
+            self.assertEqual(line["status"], "pending")
+            self.assertAlmostEqual(float(line["system_qty"]), 10.0)
+            line_id = int(line["id"])
+        finally:
+            conn.close()
+
+        verify = self.client.post(
+            "/stores/stock-audit/verify",
+            json={"line_id": line_id, "actual_qty": 10, "reason": "", "remarks": ""},
+        )
+        self.assertEqual(verify.status_code, 200)
+        payload = verify.get_json()
+        self.assertTrue(payload.get("ok"))
+
+        conn = db_mod.get_db()
+        try:
+            line = conn.execute(
+                "SELECT status, variance_qty FROM store_stock_audit_lines WHERE id = ?",
+                (line_id,),
+            ).fetchone()
+            self.assertEqual(line["status"], "verified")
+            self.assertAlmostEqual(float(line["variance_qty"] or 0), 0.0)
+            stock = conn.execute(
+                "SELECT qty_on_hand FROM store_stock_items WHERE item_name = 'Tomato' AND outlet = 'restaurant'"
+            ).fetchone()
+            self.assertAlmostEqual(float(stock["qty_on_hand"]), 10.0)
+            moves = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM store_stock_movements
+                WHERE ref_type = 'stock_audit' AND item_name = 'Tomato'
+                """
+            ).fetchone()
+            self.assertEqual(int(moves["c"]), 0)
+        finally:
+            conn.close()
+
+    def test_stock_audit_variance_requires_reason_and_adjusts(self):
+        self._seed_stock_item(item_name="Onion", qty=20.0)
+        page = self.client.get("/stores/stock-audit?outlet=restaurant")
+        self.assertEqual(page.status_code, 200)
+
+        conn = db_mod.get_db()
+        try:
+            line = conn.execute(
+                """
+                SELECT l.id FROM store_stock_audit_lines l
+                JOIN store_stock_audits a ON a.id = l.audit_id
+                WHERE a.outlet = 'restaurant' AND a.status = 'open'
+                  AND l.item_name = 'Onion'
+                ORDER BY l.id DESC LIMIT 1
+                """
+            ).fetchone()
+            line_id = int(line["id"])
+        finally:
+            conn.close()
+
+        blocked = self.client.post(
+            "/stores/stock-audit/verify",
+            json={"line_id": line_id, "actual_qty": 18, "reason": "", "remarks": ""},
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn("reason", (blocked.get_json() or {}).get("error", "").lower())
+
+        ok = self.client.post(
+            "/stores/stock-audit/verify",
+            json={
+                "line_id": line_id,
+                "actual_qty": 18,
+                "reason": "kitchen_wastage",
+                "remarks": "Trim loss",
+                "go_next": "1",
+            },
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertTrue((ok.get_json() or {}).get("ok"))
+
+        conn = db_mod.get_db()
+        try:
+            stock = conn.execute(
+                "SELECT qty_on_hand FROM store_stock_items WHERE item_name = 'Onion' AND outlet = 'restaurant'"
+            ).fetchone()
+            self.assertAlmostEqual(float(stock["qty_on_hand"]), 18.0)
+            move = conn.execute(
+                """
+                SELECT qty_delta, movement_type, notes
+                FROM store_stock_movements
+                WHERE ref_type = 'stock_audit' AND item_name = 'Onion'
+                ORDER BY id DESC LIMIT 1
+                """
+            ).fetchone()
+            self.assertIsNotNone(move)
+            self.assertEqual(move["movement_type"], "adjustment")
+            self.assertAlmostEqual(float(move["qty_delta"]), -2.0)
+            self.assertIn("Kitchen Wastage", move["notes"] or "")
+        finally:
+            conn.close()
+
+    def test_stock_audit_skip_stays_pending_and_verified_expires(self):
+        self._seed_stock_item(item_name="Pepper", qty=12.0)
+        page = self.client.get("/stores/stock-audit?outlet=restaurant")
+        self.assertEqual(page.status_code, 200)
+
+        conn = db_mod.get_db()
+        try:
+            line = conn.execute(
+                """
+                SELECT l.id FROM store_stock_audit_lines l
+                JOIN store_stock_audits a ON a.id = l.audit_id
+                WHERE a.outlet = 'restaurant' AND a.status = 'open'
+                  AND l.item_name = 'Pepper'
+                ORDER BY l.id DESC LIMIT 1
+                """
+            ).fetchone()
+            line_id = int(line["id"])
+        finally:
+            conn.close()
+
+        skipped = self.client.post(
+            "/stores/stock-audit/skip",
+            json={"line_id": line_id},
+        )
+        self.assertEqual(skipped.status_code, 200)
+        self.assertTrue((skipped.get_json() or {}).get("ok"))
+
+        conn = db_mod.get_db()
+        try:
+            line = conn.execute(
+                "SELECT status FROM store_stock_audit_lines WHERE id = ?",
+                (line_id,),
+            ).fetchone()
+            self.assertEqual(line["status"], "pending")
+
+            verify = self.client.post(
+                "/stores/stock-audit/verify",
+                json={"line_id": line_id, "actual_qty": 12, "reason": "", "remarks": ""},
+            )
+            self.assertEqual(verify.status_code, 200)
+            self.assertTrue((verify.get_json() or {}).get("ok"))
+
+            stale = (datetime.now() - timedelta(days=8)).strftime("%Y-%m-%d %H:%M:%S")
+            conn.execute(
+                """
+                UPDATE store_stock_audit_lines
+                SET verified_at = ?, status = 'verified'
+                WHERE id = ?
+                """,
+                (stale, line_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        page2 = self.client.get("/stores/stock-audit?outlet=restaurant")
+        self.assertEqual(page2.status_code, 200)
+        self.assertNotIn(b"Skipped", page2.data)
+
+        conn = db_mod.get_db()
+        try:
+            line = conn.execute(
+                "SELECT status, actual_qty, verified_at FROM store_stock_audit_lines WHERE id = ?",
+                (line_id,),
+            ).fetchone()
+            self.assertEqual(line["status"], "pending")
+            self.assertIsNone(line["actual_qty"])
+            self.assertIsNone(line["verified_at"])
+        finally:
+            conn.close()
+
+    def test_stock_audit_report_shows_adjustments_and_export(self):
+        self._seed_stock_item(item_name="Carrot", qty=10.0)
+        self._seed_stock_item(item_name="Beans", qty=8.0)
+        page = self.client.get("/stores/stock-audit?outlet=restaurant")
+        self.assertEqual(page.status_code, 200)
+
+        conn = db_mod.get_db()
+        try:
+            carrot = conn.execute(
+                """
+                SELECT l.id FROM store_stock_audit_lines l
+                JOIN store_stock_audits a ON a.id = l.audit_id
+                WHERE a.outlet = 'restaurant' AND a.status = 'open'
+                  AND l.item_name = 'Carrot'
+                ORDER BY l.id DESC LIMIT 1
+                """
+            ).fetchone()
+            beans = conn.execute(
+                """
+                SELECT l.id FROM store_stock_audit_lines l
+                JOIN store_stock_audits a ON a.id = l.audit_id
+                WHERE a.outlet = 'restaurant' AND a.status = 'open'
+                  AND l.item_name = 'Beans'
+                ORDER BY l.id DESC LIMIT 1
+                """
+            ).fetchone()
+            self.assertIsNotNone(carrot)
+            self.assertIsNotNone(beans)
+            carrot_id = int(carrot["id"])
+            beans_id = int(beans["id"])
+        finally:
+            conn.close()
+
+        zero = self.client.post(
+            "/stores/stock-audit/verify",
+            json={"line_id": carrot_id, "actual_qty": 10, "reason": "", "remarks": ""},
+        )
+        self.assertEqual(zero.status_code, 200)
+        self.assertTrue((zero.get_json() or {}).get("ok"))
+
+        adjusted = self.client.post(
+            "/stores/stock-audit/verify",
+            json={
+                "line_id": beans_id,
+                "actual_qty": 6,
+                "reason": "kitchen_wastage",
+                "remarks": "Prep loss",
+            },
+        )
+        self.assertEqual(adjusted.status_code, 200)
+        self.assertTrue((adjusted.get_json() or {}).get("ok"))
+
+        report = self.client.get("/stores/stock-audit/report?outlet=restaurant")
+        self.assertEqual(report.status_code, 200)
+        self.assertIn(b"Stock Audit Report", report.data)
+        self.assertIn(b"Beans", report.data)
+        self.assertIn(b"Kitchen Wastage", report.data)
+        self.assertIn(b"Prep loss", report.data)
+        self.assertNotIn(b"Carrot", report.data)
+
+        export = self.client.get("/stores/stock-audit/report/export?outlet=restaurant")
+        self.assertEqual(export.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            export.content_type,
+        )
+        self.assertTrue(export.data[:2] == b"PK")
+
+        viewer = {
+            "id": self.admin_id,
+            "username": "stockonly2",
+            "full_name": "Stock Only 2",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"stores"},
+            "stores_access": {"stock"},
+            "sales_analytics_access": set(),
+            "user_access": set(),
+            "payroll_access": set(),
+            "accounts_access": set(),
+        }
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=viewer), mock.patch.object(
+            self.stores_mod, "_get_user", return_value=viewer
+        ):
+            denied = self.client.get("/stores/stock-audit/report?outlet=restaurant")
+        self.assertIn(denied.status_code, (302, 403))
+
+    def test_stock_audit_access_gate(self):
+        self._seed_stock_item(item_name="Chicken", qty=5.0)
+        viewer = {
+            "id": self.admin_id,
+            "username": "stockonly",
+            "full_name": "Stock Only",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"stores"},
+            "stores_access": {"stock"},
+            "sales_analytics_access": set(),
+            "user_access": set(),
+            "payroll_access": set(),
+            "accounts_access": set(),
+        }
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=viewer), mock.patch.object(
+            self.stores_mod, "_get_user", return_value=viewer
+        ):
+            denied = self.client.get("/stores/stock-audit?outlet=restaurant")
+        self.assertIn(denied.status_code, (302, 403))
+        if denied.status_code == 302:
+            # Permission helper usually flashes and redirects away from the page.
+            self.assertNotIn(b'id="st-audit-page"', denied.data)
 
 
 if __name__ == "__main__":

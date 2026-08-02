@@ -1,0 +1,263 @@
+{% set kpis = audit_kpis|default({}) %}
+{% set lines = audit_lines|default([]) %}
+{% set selected = audit_selected %}
+{% set sel_idx = audit_selected_index|default(0) %}
+{% set total = kpis.total|default(lines|length) %}
+{% set verified = kpis.verified|default(0) %}
+{% set pending = kpis.pending|default(0) %}
+{% set variance_value = kpis.variance_value|default(0) %}
+<div
+  class="st-audit-page"
+  id="st-audit-page"
+  data-outlet="{{ selected_outlet }}"
+  data-verify-url="{{ audit_verify_url }}"
+  data-skip-url="{{ audit_skip_url }}"
+  data-new-url="{{ audit_new_url }}"
+  data-history-url="{{ audit_history_url }}"
+  data-page-url="{{ url_for('stores_stock_audit', outlet=selected_outlet) }}"
+>
+  <div class="pl-summary-row st-audit-kpi-row" id="st-audit-kpi-row" aria-label="Audit summary" role="toolbar">
+    <button type="button" class="card pl-summary-card hbe-kpi-card st-audit-kpi is-active" data-kpi="total" aria-pressed="true" aria-label="Show all products">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Total Products</div>
+          <div class="pl-summary-value" id="st-audit-kpi-total">{{ total }}</div>
+          <div class="pl-summary-meta">Items</div>
+        </div>
+      </div>
+    </button>
+    <button type="button" class="card pl-summary-card hbe-kpi-card st-audit-kpi" data-kpi="pending" aria-pressed="false" aria-label="Sort pending items first">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Pending</div>
+          <div class="pl-summary-value" id="st-audit-kpi-pending">{{ pending }}</div>
+          <div class="pl-summary-meta">Items</div>
+        </div>
+      </div>
+    </button>
+    <button type="button" class="card pl-summary-card hbe-kpi-card st-audit-kpi" data-kpi="verified" aria-pressed="false" aria-label="Sort verified items first">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Verified</div>
+          <div class="pl-summary-value" id="st-audit-kpi-verified">{{ verified }}</div>
+          <div class="pl-summary-meta">Items</div>
+        </div>
+      </div>
+    </button>
+  </div>
+
+  <div class="st-audit-layout{% if selected %} is-panel-open{% endif %}" id="st-audit-layout">
+    <section class="card pl-list-panel st-panel st-audit-queue-card" aria-label="Audit queue">
+      <div class="card-hdr">
+        <div class="card-title"><span>Audit Queue (Verify one by one)</span></div>
+        <span class="pl-count" id="st-audit-queue-count">{{ total }} product{% if total != 1 %}s{% endif %}</span>
+      </div>
+      <div class="card-body" style="padding:0;">
+        {% if lines %}
+        <div class="pl-table-wrap" id="st-audit-queue" tabindex="0">
+          <table class="pl-table st-audit-queue-table" aria-label="Audit queue">
+            <thead>
+              <tr>
+                <th class="st-audit-col-num">#</th>
+                <th class="pl-sortable" data-sort="product" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Product</th>
+                <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Category</th>
+                <th class="pl-sortable pl-col-amount" data-sort="system" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">System Stock</th>
+                <th class="pl-sortable" data-sort="unit" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Unit</th>
+                <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for line in lines %}
+              {% set is_active = selected and selected.id == line.id %}
+              <tr
+                class="st-audit-row{% if is_active %} is-active{% endif %}"
+                data-sort-row
+                data-line-id="{{ line.id }}"
+                data-status="{{ 'pending' if line.status == 'skipped' else line.status }}"
+                {% set display_qty = line.actual_qty if line.status == 'verified' and line.actual_qty is not none else line.system_qty %}
+                data-system-qty="{{ display_qty }}"
+                data-snapshot-qty="{{ line.system_qty }}"
+                data-unit="{{ line.unit }}"
+                data-name="{{ line.item_name }}"
+                data-category="{{ (line.category_name or 'Uncategorised') }}"
+                data-search="{{ (line.item_name ~ ' ' ~ (line.category_name or 'Uncategorised') ~ ' ' ~ line.unit ~ ' ' ~ line.status)|lower }}"
+                data-initials="{{ line.initials }}"
+                data-actual="{{ line.actual_qty if line.actual_qty is not none else '' }}"
+                data-reason="{{ line.reason or '' }}"
+                data-remarks="{{ line.remarks or '' }}"
+                data-updated="{{ line.stock_updated_at or '' }}"
+                data-purchase="{{ line.last_purchase_at or '' }}"
+                data-variance-qty="{{ line.variance_qty if line.variance_qty is not none else '' }}"
+                data-variance-value="{{ line.variance_value if line.variance_value is not none else '' }}"
+                data-order="{{ loop.index0 }}"
+              >
+                <td class="st-audit-col-num">{{ loop.index }}</td>
+                <td class="st-audit-product" data-sort-value="{{ line.item_name or '' }}">{{ line.item_name }}</td>
+                <td class="st-audit-category" data-sort-value="{{ (line.category_name or 'Uncategorised')|lower }}">{{ line.category_name or 'Uncategorised' }}</td>
+                <td class="pl-col-amount pl-amount st-audit-qty" data-sort-value="{{ display_qty }}">{{ '%.2f'|format(display_qty|float) }}</td>
+                <td data-sort-value="{{ line.unit or '' }}">{{ line.unit }}</td>
+                <td data-sort-value="{{ 'pending' if line.status == 'skipped' else line.status }}">
+                  {% if line.status == 'verified' %}
+                  <span class="st-audit-badge st-audit-badge--verified">Verified</span>
+                  {% else %}
+                  <span class="st-audit-badge st-audit-badge--pending">Pending</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="pl-empty" id="st-audit-search-empty" hidden>No products match your search.</div>
+        <div class="st-audit-queue-foot">
+          <span id="st-audit-showing">Showing 1 to {{ total }} of {{ total }} products</span>
+          <span class="st-audit-remaining" id="st-audit-remaining">Remaining: {{ pending }} items</span>
+        </div>
+        {% else %}
+        <div class="pl-empty">No stock items to audit for this outlet. Receive stock first, then start an audit.</div>
+        {% endif %}
+      </div>
+    </section>
+
+    <aside class="st-audit-panel card pl-list-panel st-panel{% if not selected %} is-empty{% endif %}" id="st-audit-panel" aria-label="Audit item" {% if not selected %}hidden{% endif %}>
+      {% if selected %}
+      <div class="st-audit-panel-body">
+        <div class="st-audit-panel-head">
+          <div class="st-audit-panel-title">
+            <h3 id="st-audit-panel-name">{{ selected.item_name }}</h3>
+            <span class="st-audit-cat" id="st-audit-panel-cat">{{ selected.category_name or 'Uncategorised' }}</span>
+          </div>
+        </div>
+
+        <div class="st-audit-facts" aria-label="Stock snapshot">
+          <div class="st-audit-fact">
+            <div class="st-audit-fact-label">System Stock</div>
+            {% set selected_display_qty = selected.actual_qty if selected.status == 'verified' and selected.actual_qty is not none else selected.system_qty %}
+            <div class="st-audit-fact-value" id="st-audit-system">{{ '%.2f'|format(selected_display_qty|float) }} {{ selected.unit }}</div>
+          </div>
+        </div>
+
+        <form class="st-audit-form" id="st-audit-form" autocomplete="off">
+          <input type="hidden" name="line_id" id="st-audit-line-id" value="{{ selected.id }}">
+
+          <label class="st-audit-field">
+            <span>Actual Count <em>*</em></span>
+            <div class="st-audit-count-wrap">
+              <input type="number" step="0.001" min="0" name="actual_qty" id="st-audit-actual" required value="{{ selected.actual_qty if selected.actual_qty is not none else selected.system_qty }}">
+              <span class="st-audit-unit" id="st-audit-unit">{{ selected.unit }}</span>
+            </div>
+          </label>
+
+          <div class="st-audit-variance" id="st-audit-variance" hidden>
+            <span id="st-audit-variance-text">Variance 0</span>
+            <span class="st-audit-variance-pct" id="st-audit-variance-pct">0%</span>
+          </div>
+
+          <div class="st-audit-field st-audit-reason-field">
+            <div
+              class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-audit-reason-listbox{% if selected.status == 'verified' %} is-disabled{% endif %}"
+              data-se-listbox
+              id="st-audit-reason-listbox"
+            >
+              <span class="se-filter-chip-label" id="st-audit-reason-label">Reason <em id="st-audit-reason-req" hidden>*</em></span>
+              <div class="se-filter-chip-control">
+                <input type="hidden" id="st-audit-reason" name="reason" value="{{ selected.reason or '' }}">
+                {% set reason_ns = namespace(display='Select reason…', has_value=false) %}
+                {% for key, label in audit_reasons %}
+                  {% if selected.reason == key %}
+                    {% set reason_ns.display = label %}
+                    {% set reason_ns.has_value = true %}
+                  {% endif %}
+                {% endfor %}
+                <button type="button" class="se-filter-chip-trigger" id="st-audit-reason-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-audit-reason-list" aria-labelledby="st-audit-reason-label st-audit-reason-value"{% if selected.status == 'verified' %} disabled{% endif %}>
+                  <span class="se-filter-chip-value{% if not reason_ns.has_value %} is-placeholder{% endif %}" id="st-audit-reason-value">{{ reason_ns.display }}</span>
+                </button>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+              <div class="se-filter-listbox" id="st-audit-reason-list" role="listbox" aria-labelledby="st-audit-reason-label" hidden>
+                <div class="ep-listbox-options" id="st-audit-reason-options">
+                  <button type="button" class="se-filter-listbox-option{% if not selected.reason %} is-selected{% endif %}" role="option" data-value="" data-name="select reason" data-label="Select reason…" data-variance-sign="any" aria-selected="{{ 'true' if not selected.reason else 'false' }}">Select reason…</button>
+                  {% for key, label in audit_reasons_negative|default(audit_reasons) %}
+                  {% if key != 'other' %}
+                  <button type="button" class="se-filter-listbox-option st-audit-reason-opt{% if selected.reason == key %} is-selected{% endif %}" role="option" data-value="{{ key }}" data-name="{{ label|lower }}" data-label="{{ label }}" data-variance-sign="negative" aria-selected="{{ 'true' if selected.reason == key else 'false' }}">{{ label }}</button>
+                  {% endif %}
+                  {% endfor %}
+                  {% for key, label in audit_reasons_positive|default([]) %}
+                  {% if key != 'other' %}
+                  <button type="button" class="se-filter-listbox-option st-audit-reason-opt{% if selected.reason == key %} is-selected{% endif %}" role="option" data-value="{{ key }}" data-name="{{ label|lower }}" data-label="{{ label }}" data-variance-sign="positive" aria-selected="{{ 'true' if selected.reason == key else 'false' }}">{{ label }}</button>
+                  {% endif %}
+                  {% endfor %}
+                  <button type="button" class="se-filter-listbox-option st-audit-reason-opt{% if selected.reason == 'other' %} is-selected{% endif %}" role="option" data-value="other" data-name="other" data-label="Other" data-variance-sign="any" aria-selected="{{ 'true' if selected.reason == 'other' else 'false' }}">Other</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <label class="st-audit-field">
+            <span>Remarks <small>(optional)</small></span>
+            <textarea name="remarks" id="st-audit-remarks" maxlength="200" rows="2" placeholder="Add a note…">{{ selected.remarks or '' }}</textarea>
+            <span class="st-audit-char" id="st-audit-char">{{ (selected.remarks or '')|length }}/200</span>
+          </label>
+
+          <div class="st-audit-callout" id="st-audit-callout" hidden>
+            Variance detected. Please select a reason and verify.
+          </div>
+          <div class="st-audit-reason-error" id="st-audit-reason-error" hidden role="alert">
+            Please select reason to save
+          </div>
+
+          <div class="st-audit-footer">
+            <div class="st-audit-actions">
+              <button type="button" class="btn btn-primary" id="st-audit-verify">Adjust &amp; Verify</button>
+            </div>
+          </div>
+        </form>
+      </div>
+      {% else %}
+      <div class="pl-empty">Select an item from the queue to begin.</div>
+      {% endif %}
+    </aside>
+  </div>
+
+  <div class="modal-overlay st-audit-history-modal" id="st-audit-history-modal" hidden>
+    <div class="modal-backdrop" data-st-audit-history-close></div>
+    <div class="modal-card st-audit-history-card" role="dialog" aria-modal="true" aria-labelledby="st-audit-history-title">
+      <div class="modal-hdr">
+        <h3 id="st-audit-history-title">Audit History</h3>
+        <button type="button" class="modal-close" data-st-audit-history-close aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="st-audit-history-body">
+        {% if audit_history %}
+        <table class="pl-table">
+          <thead>
+            <tr><th>Audit</th><th>Completed</th><th>By</th><th>Verified</th></tr>
+          </thead>
+          <tbody>
+            {% for row in audit_history %}
+            <tr>
+              <td>{{ row.label or ('Audit #' ~ row.id) }}</td>
+              <td>{{ stores_dt(row.completed_at) if row.completed_at else '—' }}</td>
+              <td>{{ row.started_by_name or '—' }}</td>
+              <td>{{ row.verified_count or 0 }}/{{ row.line_count or 0 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="pl-empty">No completed audits yet.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>

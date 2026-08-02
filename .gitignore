@@ -5,3 +5,4 @@ __pycache__/
 bell_elite.db
 db_backups/
 .env
+uploads/

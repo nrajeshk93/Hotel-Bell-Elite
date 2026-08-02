@@ -1,0 +1,67 @@
+{# Shared Payment Details / Settle Bill dialog — Create Invoice + Tables. #}
+<div class="pos-inv-modal" id="pos-inv-settle-modal" hidden>
+  <div class="pos-inv-modal-backdrop" data-settle-close tabindex="-1" aria-hidden="true"></div>
+  <div class="staff-credit-box cp-modal-box pos-inv-settle-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-settle-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+      <span id="pos-inv-settle-title">Payment Details</span>
+    </div>
+    <div id="pos-inv-settle-error" class="staff-credit-error"></div>
+    <div class="staff-field">
+      <div class="rt-split-head">
+        <label>Payment mode *</label>
+        <button type="button" class="rt-link-btn" id="pos-inv-settle-add-split">Split Payment</button>
+      </div>
+      <div id="pos-inv-settle-splits" class="rt-payment-splits" aria-label="Payment mode splits"></div>
+      <div class="rt-split-balance" id="pos-inv-settle-balance" hidden>
+        <span>Modes total</span>
+        <strong id="pos-inv-settle-split-total" data-amount="0">0</strong>
+        <span class="rt-split-vs">of</span>
+        <strong id="pos-inv-settle-split-target" data-amount="0">0</strong>
+      </div>
+    </div>
+    <div class="staff-field" id="pos-inv-settle-room-field" hidden>
+      <label for="pos-inv-settle-hotel-room">Hotel room *</label>
+      <select id="pos-inv-settle-hotel-room" class="staff-input" aria-label="Hotel room for Room Transfer">
+        <option value="">Select occupied room…</option>
+      </select>
+      <p class="pos-inv-settle-room-hint">Required when paying by Room Transfer — posts to Estimated Charges on that stay.</p>
+    </div>
+    <div class="staff-field">
+      <label for="pos-inv-settle-notes">Notes</label>
+      <input id="pos-inv-settle-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
+    </div>
+    <div class="cp-alloc-wrap">
+      <div class="cp-alloc-head">
+        <span>Bill</span>
+        <span id="pos-inv-settle-alloc-meta"></span>
+      </div>
+      <div class="cp-alloc-table-wrap">
+        <table class="cp-alloc-table" aria-label="Bill payment">
+          <colgroup>
+            <col class="cp-alloc-col-order">
+            <col class="cp-alloc-col-total">
+            <col class="cp-alloc-col-pay">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Order</th>
+              <th class="pl-col-amount" scope="col">Total</th>
+              <th class="pl-col-amount" scope="col">Pay now</th>
+            </tr>
+          </thead>
+          <tbody id="pos-inv-settle-alloc-body"></tbody>
+        </table>
+      </div>
+      <div class="cp-alloc-total">
+        <span>Payment total</span>
+        <strong id="pos-inv-settle-total" data-amount="0">0</strong>
+      </div>
+    </div>
+    <div class="staff-credit-actions">
+      <button type="button" class="btn" data-settle-close>Back</button>
+      <button type="button" class="btn btn-primary" id="pos-inv-settle-submit" disabled>Record Payment</button>
+    </div>
+  </div>
+</div>
+<script type="application/json" id="pos-inv-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["room_transfer","Room Transfer"],["bank_transfer","Bank Transfer"]]</script>

@@ -8,10 +8,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Settings | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=38">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=31">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=31">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=35">
 <script>
 (function(){
   try{
@@ -24,18 +24,24 @@
 <body class="de-open pos-module pos-settings-module">
 {% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
+{% from 'partials/hotel_date_macros.html' import hotel_time_field %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=31">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=31">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=35">
 {% endif %}
 
 <div class="de-main-inner pos-settings-page" id="pos-settings-page" data-pos-settings data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
   <header class="pos-set-header">
-    <div class="pos-set-header-copy">
-      <p class="pos-set-eyebrow">{{ pos_label|default('Restaurant') }}</p>
-      <h1>Settings</h1>
+    <div class="pos-set-header-main">
+      <a class="pos-set-back" href="{{ url_for('settings') }}" data-pos-set-back aria-label="Back to Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+      </a>
+      <div class="pos-set-header-copy">
+        <p class="pos-set-eyebrow">{{ pos_label|default('Restaurant') }}</p>
+        <h1>Settings</h1>
+      </div>
     </div>
     <div class="pos-set-header-actions"></div>
   </header>
@@ -63,10 +69,6 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V8l8-4 8 4v12"/><path d="M9 20v-6h6v6"/></svg>
           <span>Areas</span>
         </button>
-        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="kitchen" data-search="kitchen display kds stations courses">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11h16v9H4z"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><path d="M12 3v2"/></svg>
-          <span>Kitchen</span>
-        </button>
         <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="taxes" data-search="taxes gst vat service charge inclusive inr rupee">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12M6 8h12"/><path d="M6 13h3c6.667 0 6.667-10 0-10"/><path d="M6 13l8.5 8"/></svg>
           <span>Taxes</span>
@@ -75,21 +77,13 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/></svg>
           <span>Invoice</span>
         </button>
-        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="payment" data-search="payment cash card upi tips tipsplit">
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="payment" data-search="payment cash card upi room transfer employee credit">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
           <span>Payment</span>
         </button>
-        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="menu" data-search="menu food beverage recipe categories">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
-          <span>Menu</span>
-        </button>
-        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="printers" data-search="printers kitchen receipt network">
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="printers" data-search="printers kitchen kot invoice billing receipt network restaurant">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17h12v4H6z"/></svg>
           <span>Printers</span>
-        </button>
-        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="integrations" data-search="integrations api webhook swiggy zomato">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 0 0-7.07-7.07L10.7 5.2"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13.3 18.8"/></svg>
-          <span>Integrations</span>
         </button>
       </nav>
       <p class="pos-set-nav-empty" id="pos-set-nav-empty" hidden>No matching sections</p>
@@ -133,15 +127,16 @@
             <h3>Business hours</h3>
             <div class="pos-set-hours" role="list">
               {% for day in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] %}
+              {% set day_key = day|lower %}
               <div class="pos-set-hours-row" role="listitem">
                 <label class="pos-set-toggle pos-set-toggle--compact">
                   <input type="checkbox" data-pos-set-field>
                   <span class="pos-set-toggle-ui" aria-hidden="true"></span>
                   <span>{{ day }}</span>
                 </label>
-                <input type="time" data-pos-set-field disabled>
+                {{ hotel_time_field('', 'Opens', field_id='pos-set-hours-' ~ day_key ~ '-open', extra_class='pos-set-hours-time', panel_title=day ~ ' opens', empty_label='--:-- --') }}
                 <span class="pos-set-hours-sep">to</span>
-                <input type="time" data-pos-set-field disabled>
+                {{ hotel_time_field('', 'Closes', field_id='pos-set-hours-' ~ day_key ~ '-close', extra_class='pos-set-hours-time', panel_title=day ~ ' closes', empty_label='--:-- --') }}
               </div>
               {% endfor %}
             </div>
@@ -231,52 +226,23 @@
         <div class="pos-set-card-grid" id="pos-set-areas-grid"></div>
       </section>
 
-      {# ——— Kitchen ——— #}
-      <section class="pos-set-panel" id="pos-set-panel-kitchen" data-panel="kitchen" role="tabpanel" hidden>
-        <div class="pos-set-panel-head">
-          <div>
-            <h2>Kitchen</h2>
-            <p>Display stations and ticket routing.</p>
-          </div>
-        </div>
-        <div class="pos-set-card-grid">
-          <article class="pos-set-card">
-            <h3>Stations</h3>
-            <p class="pos-menu-empty">No kitchen stations configured yet.</p>
-          </article>
-          <article class="pos-set-card">
-            <h3>Ticket rules</h3>
-            <div class="pos-set-fields">
-              <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Auto-bump after 45 minutes</span></label>
-              <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Show allergen flags</span></label>
-              <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Course fire sequence</span></label>
-              {{ ep_listbox('expo_chime', 'Expo chime', [
-                ('Soft chime', 'Soft chime'),
-                ('Standard', 'Standard'),
-                ('Urgent', 'Urgent')
-              ], '', placeholder='Select chime…', field_id='pos-set-expo-chime', extra_class='pos-set-listbox') }}
-            </div>
-          </article>
-        </div>
-      </section>
-
       {# ——— Taxes ——— #}
       <section class="pos-set-panel" id="pos-set-panel-taxes" data-panel="taxes" role="tabpanel" hidden>
         <div class="pos-set-panel-head">
           <div>
             <h2>Taxes</h2>
-            <p>Rates applied at checkout.</p>
+            <p>CGST / UGST on food. VAT on Bar Alcohol only.</p>
           </div>
         </div>
         <div class="pos-set-card">
           <div class="pos-set-fields pos-set-fields--inline">
-            <label class="pos-set-field"><span>CGST %</span><input type="number" step="0.01" data-pos-set-field></label>
-            <label class="pos-set-field"><span>SGST %</span><input type="number" step="0.01" data-pos-set-field></label>
-            <label class="pos-set-field"><span>Service charge %</span><input type="number" step="0.01" data-pos-set-field></label>
+            <label class="pos-set-field"><span>CGST %</span><input type="number" step="0.01" min="0" data-pos-set-field data-pos-set-key="cgst_pct" inputmode="decimal"></label>
+            <label class="pos-set-field"><span>UGST %</span><input type="number" step="0.01" min="0" data-pos-set-field data-pos-set-key="ugst_pct" inputmode="decimal"></label>
+            <label class="pos-set-field"><span>VAT % <em class="pos-set-field-hint">(Bar Alcohol)</em></span><input type="number" step="0.01" min="0" data-pos-set-field data-pos-set-key="vat_pct" title="Applies only to Bar Alcohol items" inputmode="decimal"></label>
           </div>
           <div class="pos-set-fields" style="margin-top:16px">
-            <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Prices include tax</span></label>
-            <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Show tax breakdown on invoice</span></label>
+            <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field data-pos-set-key="prices_include_tax"><span class="pos-set-toggle-ui"></span><span>Prices include tax</span></label>
+            <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field data-pos-set-key="show_tax_breakdown"><span class="pos-set-toggle-ui"></span><span>Show tax breakdown on invoice</span></label>
           </div>
         </div>
       </section>
@@ -318,7 +284,7 @@
         <div class="pos-set-panel-head">
           <div>
             <h2>Payment</h2>
-            <p>Accepted tenders and tip handling.</p>
+            <p>Accepted tenders.</p>
           </div>
         </div>
         <div class="pos-set-card-grid">
@@ -332,23 +298,8 @@
               <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Employee credit</span></label>
             </div>
           </article>
-          <article class="pos-set-card">
-            <h3>Tips</h3>
-            <div class="pos-set-fields">
-              <label class="pos-set-toggle"><input type="checkbox" data-pos-set-field><span class="pos-set-toggle-ui"></span><span>Prompt for tip on card</span></label>
-              <label class="pos-set-field"><span>Suggested %</span><input type="text" data-pos-set-field></label>
-              {{ ep_listbox('tip_pool', 'Tip pool', [
-                ('Shared house pool', 'Shared house pool'),
-                ('Server only', 'Server only'),
-                ('Custom split', 'Custom split')
-              ], '', placeholder='Select tip pool…', field_id='pos-set-tip-pool', extra_class='pos-set-listbox') }}
-            </div>
-          </article>
         </div>
       </section>
-
-      {# ——— Menu ——— #}
-      {% include 'partials/pos_menu_panel.html' %}
 
       {# ——— Printers (per-PC localStorage — not shared across machines) ——— #}
       <section class="pos-set-panel" id="pos-set-panel-printers" data-panel="printers" role="tabpanel" hidden>
@@ -360,66 +311,31 @@
           <span class="pos-set-badge pos-set-badge--pc" title="Preferences stay on this browser / PC">Saved on this PC only</span>
         </div>
         <div class="pos-set-card">
-          <p class="pos-set-pc-hint">
-            Set this PC’s Windows or macOS <strong>default printer</strong> to the receipt or kitchen printer at this station.
-            Labels below are a reminder for staff — print jobs use this PC’s system default.
-          </p>
-          <div class="pos-set-fields">
+          <div class="pos-set-fields pos-set-fields--inline pos-set-fields--2">
             <label class="pos-set-field">
               <span>Station name</span>
               <input type="text" data-pos-pc-printer="stationName" placeholder="e.g. Counter 1" autocomplete="off">
             </label>
             <label class="pos-set-field">
-              <span>Default receipt printer</span>
-              <input type="text" data-pos-pc-printer="receiptPrinterLabel" placeholder="e.g. Epson TM-T82 (Counter)" autocomplete="off">
+              <span>{% if (pos_outlet|default('restaurant')) == 'bar' %}Bar KOT{% else %}Restaurant KOT{% endif %}</span>
+              <input type="text" data-pos-pc-printer="receiptPrinterLabel" placeholder="{% if (pos_outlet|default('restaurant')) == 'bar' %}e.g. Bar KOT printer{% else %}e.g. Spice Receipt / Kitchen KOT{% endif %}" autocomplete="off">
             </label>
             <label class="pos-set-field">
-              <span>Default kitchen printer</span>
-              <input type="text" data-pos-pc-printer="kitchenPrinterLabel" placeholder="e.g. Kitchen KOT printer" autocomplete="off">
+              <span>{% if (pos_outlet|default('restaurant')) == 'bar' %}Bar Invoice{% else %}Restaurant Invoice{% endif %}</span>
+              <input type="text" data-pos-pc-printer="kitchenPrinterLabel" placeholder="{% if (pos_outlet|default('restaurant')) == 'bar' %}e.g. Bar billing printer{% else %}e.g. Counter billing printer{% endif %}" autocomplete="off">
             </label>
-          </div>
-          <div class="pos-set-fields" style="margin-top:16px">
-            <label class="pos-set-toggle">
-              <input type="checkbox" data-pos-pc-printer="autoPrintKot" checked>
-              <span class="pos-set-toggle-ui"></span>
-              <span>Auto-print kitchen on fire</span>
+            {% if (pos_outlet|default('restaurant')) == 'bar' %}
+            <label class="pos-set-field">
+              <span>Restaurant KOT</span>
+              <input type="text" data-pos-pc-printer="restaurantKotPrinterLabel" placeholder="e.g. Kitchen KOT printer" autocomplete="off">
             </label>
-            <label class="pos-set-toggle">
-              <input type="checkbox" data-pos-pc-printer="autoPrintReceiptOnSettle">
-              <span class="pos-set-toggle-ui"></span>
-              <span>Print guest receipt on settle</span>
+            {% else %}
+            <label class="pos-set-field">
+              <span>Bar KOT</span>
+              <input type="text" data-pos-pc-printer="barKotPrinterLabel" placeholder="e.g. Bar menu KOT printer" autocomplete="off">
             </label>
+            {% endif %}
           </div>
-        </div>
-      </section>
-
-      {# ——— Integrations ——— #}
-      <section class="pos-set-panel" id="pos-set-panel-integrations" data-panel="integrations" role="tabpanel" hidden>
-        <div class="pos-set-panel-head">
-          <div>
-            <h2>Integrations</h2>
-            <p>External channels. Placeholders — no OAuth or API keys stored.</p>
-          </div>
-        </div>
-        <div class="pos-set-card-grid">
-          <article class="pos-set-card pos-set-card--integration">
-            <div class="pos-set-int-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7h16v10H4z"/><path d="M8 11h8"/></svg></div>
-            <h3>Delivery aggregators</h3>
-            <p>Swiggy / Zomato order import</p>
-            <span class="pos-set-badge pos-set-badge--muted">Not connected</span>
-          </article>
-          <article class="pos-set-card pos-set-card--integration">
-            <div class="pos-set-int-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 3h12M6 8h12"/><path d="M6 13h3c6.667 0 6.667-10 0-10"/><path d="M6 13l8.5 8"/></svg></div>
-            <h3>Payment gateway</h3>
-            <p>UPI / card terminal sync</p>
-            <span class="pos-set-badge pos-set-badge--muted">Not connected</span>
-          </article>
-          <article class="pos-set-card pos-set-card--integration">
-            <div class="pos-set-int-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.07 0l2.12-2.12a5 5 0 1 0-7.07-7.07L10.7 5.2"/><path d="M14 11a5 5 0 0 0-7.07 0L4.8 13.12a5 5 0 0 0 7.07 7.07L13.3 18.8"/></svg></div>
-            <h3>Webhooks</h3>
-            <p>Order events to your URL</p>
-            <button type="button" class="pos-set-btn pos-set-btn--ghost" disabled title="Coming soon">Configure</button>
-          </article>
         </div>
       </section>
     </div>
@@ -478,16 +394,15 @@
     </div>
   </div>
 
-  {% include 'partials/pos_menu_modals.html' %}
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
 <script>
 (function(global){
   'use strict';
   var KEY = 'hbe_pos_settings_section';
   var DEFAULT = 'general';
-  var VALID = ['general','floor','tables','areas','kitchen','taxes','invoice','payment','menu','printers','integrations'];
+  var VALID = ['general','floor','tables','areas','taxes','invoice','payment','printers'];
 
   function normalizeKey(key){
     key = String(key || '').replace(/^#/, '').trim().toLowerCase();
@@ -529,9 +444,9 @@
   applySectionBoot(readStoredSection());
 })(window);
 </script>
-<script src="{{ url_for('static', filename='pos_printers.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='pos_settings.js') }}?v=21"></script>
-<script src="{{ url_for('static', filename='pos_menu.js') }}?v=36"></script>
+<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='pos_settings.js') }}?v=25"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

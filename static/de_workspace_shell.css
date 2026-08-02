@@ -1,3 +1,18 @@
+/* Shared secondary-page back control (Reports hub drill-ins, Tips, masters). */
+.su-page-back{
+  width:42px;height:42px;border-radius:999px;border:1px solid #E2E8F0;background:#fff;
+  display:inline-flex;align-items:center;justify-content:center;color:#475569;flex-shrink:0;
+  text-decoration:none;box-shadow:0 1px 2px rgba(15,23,42,.04);
+  transition:background .15s ease,border-color .15s ease,color .15s ease;
+}
+.su-page-back svg{
+  width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.2;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+.su-page-back:hover{
+  background:#F8FAFC;border-color:#CBD5E1;color:#2563EB;
+}
+
 #page-transition{
   /* Hard-nav only. Soft-nav must NOT use a full-screen veil — on AWS RTT it reads as a blank flash. */
   display:none;position:fixed;inset:0;z-index:8000;
@@ -30,10 +45,15 @@ html.de-soft-navigating .de-main-wrapper,
 html.de-soft-navigating .de-main-wrapper *{
   animation:none!important;
 }
-/* Soft-nav session: skip all enter-from-opacity fades (replay feels like a plain box on AWS). */
+/* Soft-nav session: skip cold enter fades (replay feels like a plain box on AWS). */
 html.de-soft-nav-session .de-main-wrapper,
 html.de-soft-nav-session .de-main-wrapper *{
   animation:none!important;
+}
+/* Allow one-shot post-swap reveal on the main shell only (not nested card keyframes). */
+html.de-soft-navigating .de-main-wrapper.de-main-enter,
+html.de-soft-nav-session .de-main-wrapper.de-main-enter{
+  animation:de-fade-up var(--de-motion, 240ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1)) both!important;
 }
 html.de-soft-navigating .de-main-wrapper .db-home-card,
 html.de-soft-nav-session .de-main-wrapper .db-home-card,
@@ -44,7 +64,11 @@ html.de-soft-nav-session .de-main-wrapper .pos-settings-page,
 html.de-soft-nav-session .de-main-wrapper .pos-settings-page [data-panel],
 html.de-soft-nav-session .de-main-wrapper [class*="pos-inv-"],
 html.de-soft-nav-session .de-main-wrapper .pos-invoice-page,
-html.de-soft-nav-session .de-main-wrapper .pos-invoice-page *{
+html.de-soft-nav-session .de-main-wrapper .pos-invoice-page *,
+html.de-soft-nav-session .de-main-wrapper .hotel-rooms-page,
+html.de-soft-nav-session .de-main-wrapper .hotel-rooms-page *,
+html.de-soft-nav-session .de-main-wrapper .hotel-room-detail-page,
+html.de-soft-nav-session .de-main-wrapper .hotel-room-detail-page *{
   opacity:1!important;
   transform:none!important;
 }
@@ -56,6 +80,57 @@ html.de-soft-nav-session .de-main-wrapper .pos-invoice-page *{
   --de-sb-rail-ms:280ms;
   --de-sb-label-ms:220ms;
   --de-sb-sub-ms:240ms;
+  /* Sarvam-like motion language (shell + soft-nav + overlays) */
+  --de-ease-out:cubic-bezier(0.2, 0, 0, 1);
+  --de-ease-soft:cubic-bezier(0.25, 1, 0.5, 1);
+  --de-ease-material:cubic-bezier(0.4, 0, 0.2, 1);
+  --de-motion-fast:180ms;
+  --de-motion:240ms;
+  --de-motion-slow:360ms;
+}
+
+/* One-shot utilities (soft-nav reveal, overlays) */
+@keyframes de-fade-up{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
+}
+@keyframes de-scale-in{
+  from{opacity:0;transform:scale(.96) translateY(6px)}
+  to{opacity:1;transform:scale(1) translateY(0)}
+}
+@keyframes de-overlay-fade{
+  from{opacity:0}
+  to{opacity:1}
+}
+.de-motion-fade-up{
+  animation:de-fade-up var(--de-motion) var(--de-ease-soft) both;
+  backface-visibility:hidden;
+  transform:translateZ(0);
+}
+.de-motion-scale-in{
+  animation:de-scale-in var(--de-motion) var(--de-ease-out) both;
+  backface-visibility:hidden;
+  transform:translateZ(0);
+}
+.de-overlay-enter{
+  animation:de-overlay-fade var(--de-motion-fast) var(--de-ease-material) both;
+}
+/* Soft-nav: animate main content only after swap (never while loading empty shells). */
+.de-main-wrapper.de-main-enter{
+  animation:de-fade-up var(--de-motion) var(--de-ease-soft) both;
+  backface-visibility:hidden;
+  transform:translateZ(0);
+}
+@media (prefers-reduced-motion: reduce){
+  .de-motion-fade-up,
+  .de-motion-scale-in,
+  .de-overlay-enter,
+  .de-main-wrapper.de-main-enter{
+    animation:none!important;
+    transition:none!important;
+    opacity:1!important;
+    transform:none!important;
+  }
 }
 html.de-sidebar-wide-boot .de-sidebar{
   width:var(--de-sidebar-expanded)!important;min-width:var(--de-sidebar-expanded)!important;max-width:var(--de-sidebar-expanded)!important;
@@ -344,7 +419,7 @@ body.de-open.ep-module{overflow:auto;}
     line-height:1.45;
     background:transparent;
     box-shadow:none;
-    transition:background .15s ease,color .15s ease;
+    transition:background var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1)),color var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
     justify-content:center;
     cursor:pointer;
   }
@@ -368,7 +443,7 @@ body.de-open.ep-module{overflow:auto;}
     stroke-linecap:round;
     stroke-linejoin:round;
     flex-shrink:0;
-    transition:stroke .15s ease;
+    transition:stroke var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
   }
   #main-app.de-module .de-nav-item:hover,
   #ep-workspace.de-module .de-nav-item:hover,
@@ -455,7 +530,7 @@ body.de-open.ep-module{overflow:auto;}
     font-family:inherit;
     text-align:left;
     box-shadow:none;
-    transition:background .15s ease,color .15s ease;
+    transition:background var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1)),color var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
     outline:none;
     box-sizing:border-box;
   }
@@ -532,7 +607,7 @@ body.de-open.ep-module{overflow:auto;}
     stroke-linecap:round;
     stroke-linejoin:round;
     flex-shrink:0;
-    transition:stroke .15s ease;
+    transition:stroke var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
   }
   #main-app.de-module .de-nav-group-toggle > .de-nav-icon-mask,
   #ep-workspace.de-module .de-nav-group-toggle > .de-nav-icon-mask,
@@ -555,7 +630,7 @@ body.de-open.ep-module{overflow:auto;}
     mask-repeat:no-repeat;
     -webkit-mask-position:center;
     mask-position:center;
-    transition:background .15s ease;
+    transition:background var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
   }
   #main-app.de-module .de-nav-group-toggle:hover,
   #ep-workspace.de-module .de-nav-group-toggle:hover,
@@ -744,7 +819,8 @@ body.de-open.ep-module{overflow:auto;}
     border-radius:12px;
     box-shadow:0 8px 24px rgba(15,23,42,.08);
     z-index:40;
-    transition:none;
+    opacity:1;
+    transform:none;
   }
   #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub::before,
   #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub::before,
@@ -760,6 +836,7 @@ body.de-open.ep-module{overflow:auto;}
   #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group.is-flyout-active .de-nav-sub,
   #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group.is-flyout-active .de-nav-sub{
     display:flex!important;
+    animation:de-scale-in var(--de-motion-fast, 180ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
   }
   #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem,
   #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem,
@@ -791,7 +868,7 @@ body.de-open.ep-module{overflow:auto;}
     line-height:1.4;
     background:transparent;
     box-shadow:none;
-    transition:background .15s ease,color .15s ease;
+    transition:background var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1)),color var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
     cursor:pointer;
   }
   #main-app.de-module .de-nav-subitem:visited,
@@ -947,7 +1024,7 @@ body.de-open.ep-module{overflow:auto;}
     display:flex;align-items:center;justify-content:center;gap:12px;
     width:52px;height:44px;margin:0 auto;padding:0;border:none;border-radius:12px;
     background:#F8FAFC;color:#64748B;cursor:pointer;flex-shrink:0;
-    transition:background .15s ease,color .15s ease,box-shadow .15s ease;
+    transition:background var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1)),color var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1)),box-shadow var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
   }
   #main-app.de-module .de-sidebar-pin-btn:hover,
   #ep-workspace.de-module .de-sidebar-pin-btn:hover,
@@ -1154,9 +1231,39 @@ body.de-open.ep-module{overflow:auto;}
     background:#F8FAFC;
     position:relative;
   }
-  #main-app.de-module .de-view-panel,
-  #ep-workspace.de-module .de-view-panel,
-  #dashboard.de-module .de-view-panel{
+/* Shared modal overlay enter (Sarvam-like fade + scale) */
+.modal-backdrop.open,
+.modal-overlay.active,
+.hrd-modal-overlay:not([hidden]):not(.is-hidden){
+  animation:de-overlay-fade var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1)) both;
+}
+.modal-backdrop.open .cash-modal,
+.modal-backdrop.open .modal-card,
+.modal-overlay.active .modal-box,
+.modal-overlay.active .modal-card,
+.hrd-modal-overlay:not([hidden]):not(.is-hidden) .hrd-modal,
+.hrd-modal-overlay:not([hidden]):not(.is-hidden) .hrd-dialog{
+  animation:de-scale-in var(--de-motion, 240ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
+  backface-visibility:hidden;
+  transform:translateZ(0);
+}
+@media (prefers-reduced-motion: reduce){
+  .modal-backdrop.open,
+  .modal-overlay.active,
+  .hrd-modal-overlay:not([hidden]):not(.is-hidden),
+  .modal-backdrop.open .cash-modal,
+  .modal-backdrop.open .modal-card,
+  .modal-overlay.active .modal-box,
+  .modal-overlay.active .modal-card,
+  .hrd-modal-overlay:not([hidden]):not(.is-hidden) .hrd-modal,
+  .hrd-modal-overlay:not([hidden]):not(.is-hidden) .hrd-dialog{
+    animation:none!important;
+  }
+}
+
+#main-app.de-module .de-view-panel,
+#ep-workspace.de-module .de-view-panel,
+#dashboard.de-module .de-view-panel{
     grid-area:panel;
     width:100%;
     max-width:100%;
@@ -1166,7 +1273,7 @@ body.de-open.ep-module{overflow:auto;}
     box-sizing:border-box;
     opacity:0;
     pointer-events:none;
-    transition:opacity .16s ease;
+    transition:opacity var(--de-motion-fast, 180ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1));
   }
   #main-app.de-module .de-view-panel.de-view-active,
   #ep-workspace.de-module .de-view-panel.de-view-active,

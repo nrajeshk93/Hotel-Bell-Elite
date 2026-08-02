@@ -1,0 +1,122 @@
+/* Hotel Invoice Ledger — Expense Ledger–style page chrome */
+body.hotel-invoice-ledger-module .se-sales-header-filters:has(#hil-filter-form){
+  justify-content:stretch;
+}
+body.hotel-invoice-ledger-module #hil-filter-form.sr-topbar-filters{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:flex-end;
+  justify-content:flex-start;
+  gap:12px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  flex:1 1 auto;
+}
+body.hotel-invoice-ledger-module #hil-filter-form .pl-header-field{
+  flex:0 1 auto;
+  width:clamp(120px,12vw,180px);
+  min-width:112px;
+  max-width:200px;
+}
+body.hotel-invoice-ledger-module #hil-filter-form .pl-search-chip{
+  position:relative;
+  flex:1 1 auto;
+  width:auto;
+  min-width:96px;
+  max-width:100%;
+  z-index:20;
+}
+body.hotel-invoice-ledger-module #hil-filter-form .pl-date-range-host{
+  flex:0 0 auto;
+  width:auto;
+  min-width:0;
+  max-width:none;
+  z-index:30;
+}
+body.hotel-invoice-ledger-module #hil-filter-form .pl-header-field .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2,#4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+body.hotel-invoice-ledger-module #hil-filter-form .pl-header-field-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:44px;
+  background:#fff !important;
+  border:1px solid var(--border,#E2E8F0) !important;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+}
+body.hotel-invoice-ledger-module #hil-filter-form .pl-search-chip .pl-search-input{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  border:0 !important;
+  background:transparent !important;
+  padding:0 12px;
+  font:inherit;
+  font-size:13px;
+  font-weight:500;
+  outline:none;
+}
+
+/* Wide ledger: scroll as one row (same as Expense / Purchase ledger). */
+body.hotel-invoice-ledger-module #hil-table{
+  min-width:1080px;
+}
+body.hotel-invoice-ledger-module #hil-table .pl-col-status{
+  min-width:108px;
+  white-space:nowrap;
+}
+body.hotel-invoice-ledger-module #hil-table th.pl-col-actions,
+body.hotel-invoice-ledger-module #hil-table td.pl-col-actions{
+  min-width:88px;
+  white-space:nowrap;
+}
+body.hotel-invoice-ledger-module #hil-table .pl-col-amount{
+  white-space:nowrap;
+}
+
+#hil-table tbody tr.hil-row:hover td{
+  background:#F8FAFC;
+}
+#hil-table tr.hil-row.is-open{
+  cursor:pointer;
+}
+#hil-table tr.hil-row.is-open:focus-visible{
+  outline:2px solid #2563eb;
+  outline-offset:-2px;
+}
+#hil-table tr.hil-row.is-open .pl-col-actions{
+  cursor:default;
+}
+#hil-table tr.hil-row.is-open .hil-status-settle{
+  cursor:pointer;
+}
+
+body.hotel-invoice-ledger-module .hil-print-btn svg{
+  width:14px;
+  height:14px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+@media (max-width:900px){
+  body.hotel-invoice-ledger-module #hil-filter-form.sr-topbar-filters{
+    flex-wrap:wrap;
+  }
+  body.hotel-invoice-ledger-module #hil-filter-form .pl-search-chip{
+    flex:1 1 100%;
+    order:-1;
+  }
+}

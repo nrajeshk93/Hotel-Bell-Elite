@@ -19,7 +19,10 @@
     '.pos-header-tools',
     '.pos-tables-header-actions',
     '.pos-set-header-actions',
-    '.pos-inv-header-actions'
+    '.pos-inv-header-actions',
+    '.hotel-rooms-header-actions',
+    '.hrd-header-actions',
+    '.hrd-modal-head-actions'
   ];
 
   var TOP_CONTAINERS = [
@@ -599,6 +602,21 @@
       slot.className = 'de-fullscreen-slot' + (corner ? ' de-fullscreen-slot--corner' : '');
       slot.appendChild(btn);
       container.appendChild(slot);
+      return;
+    }
+    /* Room detail: keep fullscreen at the far right, after primary actions. */
+    if(container.classList.contains('hrd-header-actions')){
+      container.appendChild(btn);
+      return;
+    }
+    /* Check-in / transfer modal: place fullscreen just before Close. */
+    if(container.classList.contains('hrd-modal-head-actions')){
+      var closeBtn = container.querySelector('.hrd-modal-close');
+      if(closeBtn){
+        container.insertBefore(btn, closeBtn);
+      } else {
+        container.appendChild(btn);
+      }
       return;
     }
     var before = preferredInsertTarget(container);

@@ -8,6 +8,7 @@
   var MASTER_FALLBACK_URLS = {
     supplier: '/suppliers',
     customer: '/customers',
+    agency: '/agencies',
     product: '/stores/product-master',
     employee: '/employees'
   };

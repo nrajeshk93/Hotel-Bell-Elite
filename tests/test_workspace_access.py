@@ -54,11 +54,16 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Accounts",
                 "Employee Payroll",
                 "Restaurant",
+                "Bar",
+                "Hotel",
                 "Procurement & Inventory",
                 "Master",
+                "Report",
+                "Settings",
             ],
         )
-        stores_children = [child["label"] for child in tree[5]["children"]]
+        stores = next(node for node in tree if node["label"] == "Procurement & Inventory")
+        stores_children = [child["label"] for child in stores["children"]]
         self.assertEqual(
             stores_children,
             [
@@ -66,9 +71,10 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Approvals",
                 "Stock Inward",
                 "Stock",
+                "Stock Audit",
             ],
         )
-        indent_node = next(child for child in tree[5]["children"] if child["label"] == "Indent")
+        indent_node = next(child for child in stores["children"] if child["label"] == "Indent")
         self.assertEqual(
             [child["label"] for child in indent_node["children"]],
             ["Products"],
@@ -87,6 +93,10 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Credit",
             ],
         )
+        settings = next(node for node in tree if node["label"] == "Settings")
+        self.assertEqual(settings["id"], "settings")
+        self.assertEqual(settings["icon"], "settings")
+        self.assertEqual(settings["children"], [])
         accounts_children = [child["label"] for child in tree[2]["children"]]
         self.assertEqual(
             accounts_children,
@@ -103,10 +113,13 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(pos["children"], [])
         stores = next(node for node in tree if node["label"] == "Procurement & Inventory")
         self.assertEqual(stores["dashboardKey"], "stores")
-        self.assertEqual(len(stores["children"]), 4)
+        self.assertEqual(len(stores["children"]), 5)
         master = next(node for node in tree if node["label"] == "Master")
         self.assertEqual(master["dashboardKey"], "master")
         self.assertEqual(master["children"], [])
+        report = next(node for node in tree if node["label"] == "Report")
+        self.assertEqual(report["dashboardKey"], "reports")
+        self.assertEqual(report["children"], [])
 
     def test_supplier_master_uses_accounts_access(self):
         user = {
@@ -165,6 +178,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         user["sales_analytics_access"] = {"restaurant"}
         self.assertTrue(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
         user["sales_analytics_access"] = {"hotel"}
+        self.assertTrue(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
+        user["sales_analytics_access"] = {"room_transfer"}
         self.assertFalse(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
 
     def test_set_user_permissions_auto_adds_parent_module(self):
@@ -220,6 +235,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_invoice_detail"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_invoice_delete"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("master"), "master")
+        self.assertEqual(get_endpoint_dashboard_module("reports"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("settings"), "settings")
         self.assertEqual(
             get_endpoint_sales_analytics_submodules("save_sales_update"),
             ["hotel", "bar", "restaurant"],

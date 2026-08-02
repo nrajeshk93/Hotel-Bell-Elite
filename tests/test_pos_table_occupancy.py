@@ -401,6 +401,55 @@ class PosTableOccupancyTests(unittest.TestCase):
         res = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
         self.assertIsNone(res.get_json()["invoice"])
 
+    def test_generate_invoice_frees_table_before_settle(self):
+        """Generate Invoice frees the floor tile; Settle can finish later."""
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-GenFree-01", "T1", kot_send=True),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        self.assertEqual(self._floor_status("T1"), "occupied")
+
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-GenFree-01",
+                "T1",
+                customerBill=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        invoice = bill.get_json()["invoice"]
+        self.assertTrue(invoice.get("customer_bill_sent"))
+        self.assertEqual(invoice.get("status"), "open")
+        self.assertEqual(self._floor_status("T1"), "available")
+
+        # Table is free for a new party while the generated bill awaits settle.
+        fresh = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-GenFree-02", "T1"),
+        )
+        self.assertEqual(fresh.status_code, 200, fresh.get_data(as_text=True))
+        self.assertEqual(self._floor_status("T1"), "occupied")
+
+        # Resume-by-table must pick the new pre-invoice bill, not the generated one.
+        resume = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
+        self.assertEqual(resume.status_code, 200)
+        resumed = resume.get_json().get("invoice") or {}
+        self.assertEqual(resumed.get("order_no"), fresh.get_json()["invoice"]["order_no"])
+        self.assertFalse(resumed.get("customer_bill_sent"))
+
     # -- Close & Free Table -------------------------------------------------
 
     def test_close_and_free_table_frees_directly_no_cleaning_buffer(self):
@@ -532,6 +581,23 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertIn("transaction", settle.get_json()["error"].lower())
 
     def test_settle_bill_accepts_room_transfer_mode(self):
+        checkin = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000001",
+                    "checkInDate": "2026-07-29",
+                    "roomRate": 2000,
+                    "nights": 1,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(checkin.status_code, 200, checkin.get_data(as_text=True))
+
         saved = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload("ORD-2607-Settle-05", "T1", kot_send=True),
@@ -540,7 +606,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         invoice_id = invoice["id"]
         total = float(invoice["grand_total"])
 
-        settle = self.client.post(
+        missing_room = self.client.post(
             f"/point-of-sale/api/invoices/{invoice_id}/settle",
             json={
                 "payment_splits": [
@@ -548,10 +614,38 @@ class PosTableOccupancyTests(unittest.TestCase):
                 ],
             },
         )
+        self.assertEqual(missing_room.status_code, 400)
+        self.assertIn("hotel room", missing_room.get_json()["error"].lower())
+
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "room_transfer", "amount": total},
+                ],
+                "hotel_room_id": "room-101",
+            },
+        )
         self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
-        methods = {p["payment_method"] for p in settle.get_json()["invoice"]["payments"]}
+        body = settle.get_json()
+        methods = {p["payment_method"] for p in body["invoice"]["payments"]}
         self.assertEqual(methods, {"room_transfer"})
         self.assertEqual(self._floor_status("T1"), "available")
+
+        charge = body["invoice"].get("folio_charge") or {}
+        self.assertEqual(charge.get("kind"), "restaurant_room_transfer")
+        self.assertEqual(float(charge.get("amount") or 0), total)
+
+        room = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        folio = room["stay"]["folioCharges"]
+        self.assertEqual(len(folio), 1)
+        self.assertEqual(folio[0]["kind"], "restaurant_room_transfer")
+        self.assertEqual(float(folio[0]["amount"]), total)
+        self.assertEqual(
+            float(room["stay"]["estimatedTotal"]),
+            round(2000 + total, 2),
+        )
+        self.assertEqual(float(room["stay"]["balanceAmount"]), round(2000 + total, 2))
 
     def test_settle_bill_rejects_credit_mode(self):
         saved = self.client.post(

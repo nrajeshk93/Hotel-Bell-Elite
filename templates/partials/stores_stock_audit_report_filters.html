@@ -1,0 +1,146 @@
+{% set filters = audit_report_filters|default({}) %}
+{% set reasons = audit_report_reasons|default([]) %}
+{% set categories = audit_report_categories|default([]) %}
+{% set selected_reason = filters.reason|default('all') %}
+{% set selected_category = filters.category|default('all') %}
+{% set date_from = filters.date_from or '' %}
+{% set date_to = filters.date_to or '' %}
+{% set active_date_filter = date_from or date_to %}
+{% set label_ns = namespace(reason='All reasons', category='All categories') %}
+{% if selected_category and selected_category != 'all' %}
+  {% set label_ns.category = selected_category %}
+{% endif %}
+{% for key, label in reasons %}
+  {% if key == selected_reason %}
+    {% set label_ns.reason = label %}
+  {% endif %}
+{% endfor %}
+
+<form id="st-audit-report-filter-form"
+      method="get"
+      action="{{ url_for('stores_stock_audit_report') }}"
+      class="sr-topbar-filters st-outlet-filter-form st-audit-report-filter-form"
+      aria-label="Stock audit report filters"
+      data-clear-url="{{ url_for('stores_stock_audit_report', outlet=selected_outlet) }}">
+  <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field st-audit-report-search-chip" id="st-audit-report-search-chip">
+    <label class="se-filter-chip-label" for="st-audit-report-search">Search</label>
+    <div class="se-filter-chip-control">
+      <input type="search" id="st-audit-report-search" class="pl-search-input pl-header-search" placeholder="Product, reason, remarks…" autocomplete="off" aria-label="Search adjustments">
+    </div>
+  </div>
+
+  <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="stAuditReportFilterChanged" id="st-audit-report-outlet-listbox">
+    <span class="se-filter-chip-label" id="st-audit-report-outlet-label">Outlet</span>
+    <div class="se-filter-chip-control">
+      <input type="hidden" id="st-audit-report-outlet" name="outlet" value="{{ selected_outlet }}">
+      <button type="button" class="se-filter-chip-trigger" id="st-audit-report-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-audit-report-outlet-list" aria-labelledby="st-audit-report-outlet-label st-audit-report-outlet-value">
+        <span class="se-filter-chip-value" id="st-audit-report-outlet-value">{{ selected_outlet_label }}</span>
+      </button>
+      <span class="se-filter-chip-chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+    </div>
+    <div class="se-filter-listbox" id="st-audit-report-outlet-list" role="listbox" aria-labelledby="st-audit-report-outlet-label" hidden>
+      {% for outlet in stores_outlets %}
+      <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="stAuditReportFilterChanged" id="st-audit-report-reason-listbox">
+    <span class="se-filter-chip-label" id="st-audit-report-reason-label">Reason</span>
+    <div class="se-filter-chip-control">
+      <input type="hidden" id="st-audit-report-reason" name="reason" value="{{ selected_reason }}">
+      <button type="button" class="se-filter-chip-trigger" id="st-audit-report-reason-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-audit-report-reason-list" aria-labelledby="st-audit-report-reason-label st-audit-report-reason-value">
+        <span class="se-filter-chip-value" id="st-audit-report-reason-value">{{ label_ns.reason }}</span>
+      </button>
+      <span class="se-filter-chip-chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+    </div>
+    <div class="se-filter-listbox" id="st-audit-report-reason-list" role="listbox" aria-labelledby="st-audit-report-reason-label" hidden>
+      <button type="button" class="se-filter-listbox-option{% if selected_reason == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all reasons" data-label="All reasons" aria-selected="{{ 'true' if selected_reason == 'all' else 'false' }}">All reasons</button>
+      {% for key, label in reasons %}
+      <button type="button" class="se-filter-listbox-option{% if selected_reason == key %} is-selected{% endif %}" role="option" data-value="{{ key }}" data-name="{{ label|lower }}" data-label="{{ label }}" aria-selected="{{ 'true' if selected_reason == key else 'false' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="stAuditReportFilterChanged" id="st-audit-report-category-listbox">
+    <span class="se-filter-chip-label" id="st-audit-report-category-label">Category</span>
+    <div class="se-filter-chip-control">
+      <input type="hidden" id="st-audit-report-category" name="category" value="{{ selected_category }}">
+      <button type="button" class="se-filter-chip-trigger" id="st-audit-report-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-audit-report-category-list" aria-labelledby="st-audit-report-category-label st-audit-report-category-value">
+        <span class="se-filter-chip-value" id="st-audit-report-category-value">{{ label_ns.category }}</span>
+      </button>
+      <span class="se-filter-chip-chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+    </div>
+    <div class="se-filter-listbox" id="st-audit-report-category-list" role="listbox" aria-labelledby="st-audit-report-category-label" hidden>
+      <button type="button" class="se-filter-listbox-option{% if selected_category == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all categories" data-label="All categories" aria-selected="{{ 'true' if selected_category == 'all' else 'false' }}">All categories</button>
+      {% for cat in categories %}
+      <button type="button" class="se-filter-listbox-option{% if selected_category|lower == cat|lower %} is-selected{% endif %}" role="option" data-value="{{ cat }}" data-name="{{ cat|lower }}" data-label="{{ cat }}" aria-selected="{{ 'true' if selected_category|lower == cat|lower else 'false' }}">{{ cat }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <input type="hidden" id="st-audit-report-date-from" name="date_from" value="{{ date_from }}">
+  <input type="hidden" id="st-audit-report-date-to" name="date_to" value="{{ date_to }}">
+  <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="st-audit-report-date-range-host">
+    <span class="se-filter-chip-label" id="st-audit-report-date-range-label">Date</span>
+    <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+      <div class="se-filter-chip-control">
+        <div class="an-range-wrap an-range-wrap--sales" id="st-audit-report-date-range-wrap" data-max-date="{{ audit_report_today_iso }}">
+          <button type="button" class="an-range-trigger se-filter-chip-trigger" id="st-audit-report-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="st-audit-report-date-range-panel" aria-labelledby="st-audit-report-date-range-label st-audit-report-date-range-display">
+            <span class="an-range-trigger-label">
+              <span id="st-audit-report-date-range-display">{% if active_date_filter %}{{ date_from }}{% if date_to %} – {{ date_to }}{% endif %}{% else %}Select date…{% endif %}</span>
+            </span>
+          </button>
+          <div class="an-range-backdrop" id="st-audit-report-date-range-backdrop" aria-hidden="true"></div>
+          <div class="an-range-panel" id="st-audit-report-date-range-panel" role="dialog" aria-labelledby="st-audit-report-date-range-panel-title" hidden>
+            <div class="an-range-panel-inner">
+              <div class="an-range-panel-h" id="st-audit-report-date-range-panel-title">Date range</div>
+              <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+              <div class="an-cal-dual">
+                <div class="an-cal-pane">
+                  <div class="an-cal-pane-hdr">
+                    <button type="button" class="an-cal-nav-btn" id="st-audit-report-cal-prev" aria-label="Previous months">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <h4 class="an-cal-month-title" id="st-audit-report-cal-title0">—</h4>
+                    <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                  </div>
+                  <div class="an-cal-dow" aria-hidden="true">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  </div>
+                  <div class="an-cal-grid" id="st-audit-report-cal-grid0"></div>
+                </div>
+                <div class="an-cal-pane">
+                  <div class="an-cal-pane-hdr">
+                    <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                    <h4 class="an-cal-month-title" id="st-audit-report-cal-title1">—</h4>
+                    <button type="button" class="an-cal-nav-btn" id="st-audit-report-cal-next" aria-label="Next months">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                  </div>
+                  <div class="an-cal-dow" aria-hidden="true">
+                    <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                  </div>
+                  <div class="an-cal-grid" id="st-audit-report-cal-grid1"></div>
+                </div>
+              </div>
+            </div>
+            <div class="an-range-actions">
+              <button type="button" class="btn" id="st-audit-report-date-range-clear">Clear</button>
+              <button type="button" class="btn btn-primary" id="st-audit-report-date-range-apply">Apply</button>
+            </div>
+          </div>
+        </div>
+        <span class="se-filter-chip-chev" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        </span>
+      </div>
+    </div>
+  </div>
+</form>

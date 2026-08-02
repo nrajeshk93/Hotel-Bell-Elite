@@ -7,7 +7,7 @@ import logging
 import re
 import sqlite3
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, send_file, url_for
@@ -119,6 +119,22 @@ PAGE_META = {
         "step": "4 · Stock",
         "list_endpoint": "stores_stock",
         "cta": None,
+    },
+    "stock_audit": {
+        "title": "Stock Audit",
+        "subtitle": "Verify and adjust your stock accuracy, one item at a time.",
+        "step": "5 · Stock Audit",
+        "list_endpoint": "stores_stock_audit",
+        "cta": None,
+        "show_outlet_tabs": True,
+    },
+    "stock_audit_report": {
+        "title": "Stock Audit Report",
+        "subtitle": "Stock adjustments from verified audits.",
+        "step": "Reports · Stock Audit",
+        "list_endpoint": "stores_stock_audit_report",
+        "cta": None,
+        "show_outlet_tabs": True,
     },
 }
 
@@ -1676,6 +1692,7 @@ def _first_stores_endpoint(user) -> str | None:
         "approvals",
         "purchase_requests",
         "stock",
+        "stock_audit",
     )
     endpoint_map = {
         "product_master": "stores_product_master",
@@ -1683,6 +1700,7 @@ def _first_stores_endpoint(user) -> str | None:
         "approvals": "stores_approvals",
         "purchase_requests": "stores_purchase_requests",
         "stock": "stores_stock",
+        "stock_audit": "stores_stock_audit",
     }
     for key in preferred:
         if user_can_access_stores_submodule(user, key):
@@ -3874,6 +3892,1121 @@ def stores_stock():
         stock_has_prices=has_prices,
         stock_has_inward_prices=has_inward_prices,
         movements=[dict(row) for row in movements],
+    )
+
+
+STOCK_AUDIT_REASONS_NEGATIVE = (
+    ("kitchen_wastage", "Kitchen Wastage"),
+    ("spillage", "Spillage"),
+    ("theft_loss", "Theft/Loss"),
+    ("counting_error", "Counting Error"),
+    ("other", "Other"),
+)
+STOCK_AUDIT_REASONS_POSITIVE = (
+    ("supplier_excess_delivery", "Supplier Excess Delivery"),
+    ("stock_found_during_audit", "Stock Found During Audit"),
+    ("transfer_in_not_recorded", "Transfer In Not Recorded"),
+    ("production_return", "Production Return"),
+    ("recipe_underconsumption", "Recipe Underconsumption"),
+    ("inventory_correction", "Inventory Correction"),
+    ("other", "Other"),
+)
+STOCK_AUDIT_REASONS = tuple(
+    dict(STOCK_AUDIT_REASONS_NEGATIVE + STOCK_AUDIT_REASONS_POSITIVE).items()
+)
+STOCK_AUDIT_REASON_KEYS = {key for key, _ in STOCK_AUDIT_REASONS}
+STOCK_AUDIT_REASON_KEYS_NEGATIVE = {key for key, _ in STOCK_AUDIT_REASONS_NEGATIVE}
+STOCK_AUDIT_REASON_KEYS_POSITIVE = {key for key, _ in STOCK_AUDIT_REASONS_POSITIVE}
+STOCK_AUDIT_EPS = 0.0001
+STOCK_AUDIT_VERIFY_TTL_DAYS = 7
+
+
+def _parse_audit_ts(raw: Any) -> datetime | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    for fmt, size in (
+        ("%Y-%m-%d %H:%M:%S", 19),
+        ("%Y-%m-%dT%H:%M:%S", 19),
+        ("%Y-%m-%d", 10),
+    ):
+        try:
+            return datetime.strptime(text[:size], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _current_audit_stock_qty(
+    conn, outlet: str, stock_item_id: Any, item_name: str, unit: str
+) -> float | None:
+    try:
+        sid = int(stock_item_id) if stock_item_id is not None else None
+    except (TypeError, ValueError):
+        sid = None
+    if sid is not None:
+        row = conn.execute(
+            "SELECT qty_on_hand FROM store_stock_items WHERE id = ?",
+            (sid,),
+        ).fetchone()
+        if row is not None:
+            try:
+                return float(row["qty_on_hand"] or 0)
+            except (TypeError, ValueError):
+                return 0.0
+    row = conn.execute(
+        """
+        SELECT qty_on_hand FROM store_stock_items
+        WHERE outlet = ? AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
+        """,
+        (outlet, item_name or "", unit or "pcs"),
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        return float(row["qty_on_hand"] or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _audit_refresh_line_statuses(conn, audit_id: int, outlet: str) -> bool:
+    """Convert skipped→pending and expire verified lines older than one week."""
+    changed = False
+    skipped = conn.execute(
+        """
+        UPDATE store_stock_audit_lines
+        SET status = 'pending', verified_at = NULL, verified_by = NULL
+        WHERE audit_id = ? AND lower(status) = 'skipped'
+        """,
+        (audit_id,),
+    )
+    if skipped.rowcount:
+        changed = True
+
+    cutoff = datetime.now() - timedelta(days=STOCK_AUDIT_VERIFY_TTL_DAYS)
+    rows = conn.execute(
+        """
+        SELECT id, stock_item_id, item_name, unit, system_qty, verified_at
+        FROM store_stock_audit_lines
+        WHERE audit_id = ? AND lower(status) = 'verified'
+        """,
+        (audit_id,),
+    ).fetchall()
+    for row in rows:
+        when = _parse_audit_ts(row["verified_at"])
+        if when is not None and when > cutoff:
+            continue
+        live_qty = _current_audit_stock_qty(
+            conn,
+            outlet,
+            row["stock_item_id"],
+            row["item_name"] or "",
+            row["unit"] or "pcs",
+        )
+        try:
+            system_qty = (
+                round(float(live_qty), 3)
+                if live_qty is not None
+                else round(float(row["system_qty"] or 0), 3)
+            )
+        except (TypeError, ValueError):
+            system_qty = 0.0
+        conn.execute(
+            """
+            UPDATE store_stock_audit_lines
+            SET status = 'pending',
+                system_qty = ?,
+                actual_qty = NULL,
+                variance_qty = NULL,
+                variance_value = NULL,
+                reason = '',
+                remarks = '',
+                verified_at = NULL,
+                verified_by = NULL
+            WHERE id = ?
+            """,
+            (system_qty, int(row["id"])),
+        )
+        changed = True
+    return changed
+
+
+def _audit_concrete_outlet(outlet: str) -> str:
+    """Audits are per concrete outlet; All defaults to Restaurant."""
+    key = (outlet or "").strip().lower()
+    if key in OUTLET_KEYS:
+        return key
+    return "restaurant"
+
+
+def _audit_week_label(when: datetime | None = None) -> str:
+    dt = when or datetime.now()
+    week_start = dt.date() - timedelta(days=dt.weekday())
+    return f"Week of {week_start.day} {week_start.strftime('%b %Y')}"
+
+
+def _audit_initials(name: str) -> str:
+    parts = [p for p in str(name or "").strip().split() if p]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+def _audit_line_dict(row) -> dict[str, Any]:
+    item = dict(row)
+    try:
+        system_qty = float(item.get("system_qty") or 0)
+    except (TypeError, ValueError):
+        system_qty = 0.0
+    actual_raw = item.get("actual_qty")
+    try:
+        actual_qty = float(actual_raw) if actual_raw is not None else None
+    except (TypeError, ValueError):
+        actual_qty = None
+    try:
+        variance_qty = (
+            float(item["variance_qty"])
+            if item.get("variance_qty") is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        variance_qty = None
+    if variance_qty is None and actual_qty is not None:
+        variance_qty = round(actual_qty - system_qty, 3)
+    try:
+        unit_cost = float(item["unit_cost"]) if item.get("unit_cost") is not None else None
+    except (TypeError, ValueError):
+        unit_cost = None
+    variance_value = item.get("variance_value")
+    if variance_value is None and variance_qty is not None and unit_cost is not None:
+        variance_value = round(variance_qty * unit_cost, 2)
+    status = (item.get("status") or "pending").strip().lower()
+    item["system_qty"] = system_qty
+    item["actual_qty"] = actual_qty
+    item["variance_qty"] = variance_qty
+    item["variance_value"] = variance_value
+    item["unit_cost"] = unit_cost
+    item["status"] = status
+    item["initials"] = _audit_initials(item.get("item_name") or "")
+    item["category_name"] = (item.get("category_name") or "").strip()
+    return item
+
+
+def _audit_kpis(lines: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(lines)
+    pending = sum(
+        1 for line in lines if line.get("status") in ("pending", "skipped")
+    )
+    verified = sum(1 for line in lines if line.get("status") == "verified")
+    skipped = 0
+    with_variance = 0
+    variance_value = 0.0
+    for line in lines:
+        if line.get("status") != "verified":
+            continue
+        vq = line.get("variance_qty")
+        try:
+            vq_f = float(vq) if vq is not None else 0.0
+        except (TypeError, ValueError):
+            vq_f = 0.0
+        if abs(vq_f) > STOCK_AUDIT_EPS:
+            with_variance += 1
+        vv = line.get("variance_value")
+        try:
+            if vv is not None:
+                variance_value += float(vv)
+            elif line.get("unit_cost") is not None:
+                variance_value += vq_f * float(line["unit_cost"])
+        except (TypeError, ValueError):
+            pass
+    return {
+        "total": total,
+        "pending": pending,
+        "verified": verified,
+        "skipped": skipped,
+        "with_variance": with_variance,
+        "variance_value": round(variance_value, 2),
+        "remaining": pending,
+        "progress_pct": int(round((verified / total) * 100)) if total else 0,
+    }
+
+
+def _last_purchase_dates(
+    conn, outlet: str, lines: list[dict[str, Any]]
+) -> dict[tuple[str, str], str]:
+    if not lines:
+        return {}
+    rows = conn.execute(
+        """
+        SELECT lower(item_name) AS name_key, lower(unit) AS unit_key,
+               MAX(created_at) AS last_at
+        FROM store_stock_movements
+        WHERE outlet = ? AND movement_type = 'receive' AND qty_delta > 0
+        GROUP BY lower(item_name), lower(unit)
+        """,
+        (outlet,),
+    ).fetchall()
+    return {
+        ((row["name_key"] or "").strip(), (row["unit_key"] or "").strip()): row["last_at"]
+        for row in rows
+    }
+
+
+def _seed_audit_lines(conn, audit_id: int, outlet: str) -> None:
+    items = conn.execute(
+        """
+        SELECT * FROM store_stock_items
+        WHERE outlet = ?
+        ORDER BY lower(item_name), lower(unit)
+        """,
+        (outlet,),
+    ).fetchall()
+    stock_items = _enrich_stock_items(conn, [dict(row) for row in items])
+    for item in stock_items:
+        try:
+            system_qty = float(item.get("qty_on_hand") or 0)
+        except (TypeError, ValueError):
+            system_qty = 0.0
+        unit_cost = item.get("approximate_price")
+        try:
+            unit_cost = float(unit_cost) if unit_cost is not None else None
+        except (TypeError, ValueError):
+            unit_cost = None
+        conn.execute(
+            """
+            INSERT INTO store_stock_audit_lines (
+                audit_id, stock_item_id, item_name, unit, category_name,
+                system_qty, status, unit_cost
+            ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+            """,
+            (
+                audit_id,
+                item.get("id"),
+                item.get("item_name") or "",
+                item.get("unit") or "pcs",
+                item.get("category_name") or "",
+                round(system_qty, 3),
+                unit_cost,
+            ),
+        )
+
+
+def _get_or_create_open_audit(conn, outlet: str, user_id: int | None) -> dict[str, Any]:
+    row = conn.execute(
+        """
+        SELECT * FROM store_stock_audits
+        WHERE outlet = ? AND status = 'open'
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (outlet,),
+    ).fetchone()
+    if row:
+        return dict(row)
+    label = _audit_week_label()
+    cur = conn.execute(
+        """
+        INSERT INTO store_stock_audits (outlet, status, label, started_at, started_by)
+        VALUES (?, 'open', ?, ?, ?)
+        """,
+        (outlet, label, _now(), user_id),
+    )
+    audit_id = int(cur.lastrowid)
+    _seed_audit_lines(conn, audit_id, outlet)
+    conn.commit()
+    created = conn.execute(
+        "SELECT * FROM store_stock_audits WHERE id = ?", (audit_id,)
+    ).fetchone()
+    return dict(created)
+
+
+def _load_audit_lines(conn, audit_id: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT * FROM store_stock_audit_lines
+        WHERE audit_id = ?
+        ORDER BY id ASC
+        """,
+        (audit_id,),
+    ).fetchall()
+    return [_audit_line_dict(row) for row in rows]
+
+
+def _serialize_audit_line(line: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": line.get("id"),
+        "item_name": line.get("item_name") or "",
+        "unit": line.get("unit") or "",
+        "category_name": line.get("category_name") or "",
+        "system_qty": line.get("system_qty"),
+        "actual_qty": line.get("actual_qty"),
+        "variance_qty": line.get("variance_qty"),
+        "variance_value": line.get("variance_value"),
+        "status": line.get("status") or "pending",
+        "reason": line.get("reason") or "",
+        "remarks": line.get("remarks") or "",
+        "unit_cost": line.get("unit_cost"),
+        "initials": line.get("initials") or "?",
+        "last_purchase_at": line.get("last_purchase_at") or "",
+        "stock_updated_at": line.get("stock_updated_at") or "",
+    }
+
+
+@stores_bp.route("/stores/stock-audit")
+def stores_stock_audit():
+    filter_outlet = _parse_outlet_filter(request.args.get("outlet"))
+    outlet = _audit_concrete_outlet(filter_outlet)
+    line_id_raw = request.args.get("line_id")
+    try:
+        selected_line_id = int(line_id_raw) if line_id_raw else None
+    except (TypeError, ValueError):
+        selected_line_id = None
+    user = _get_user() if _get_user else None
+    user_id = user.get("id") if user else None
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        audit = _get_or_create_open_audit(conn, outlet, user_id)
+        if _audit_refresh_line_statuses(conn, int(audit["id"]), outlet):
+            conn.commit()
+        lines = _load_audit_lines(conn, audit["id"])
+        if not lines:
+            _seed_audit_lines(conn, audit["id"], outlet)
+            conn.commit()
+            lines = _load_audit_lines(conn, audit["id"])
+        purchases = _last_purchase_dates(conn, outlet, lines)
+        stock_meta = {
+            int(row["id"]): row["updated_at"]
+            for row in conn.execute(
+                "SELECT id, updated_at FROM store_stock_items WHERE outlet = ?",
+                (outlet,),
+            ).fetchall()
+            if row["id"] is not None
+        }
+        for line in lines:
+            name_key = (line.get("item_name") or "").strip().lower()
+            unit_key = (line.get("unit") or "").strip().lower()
+            line["last_purchase_at"] = purchases.get((name_key, unit_key), "") or ""
+            sid = line.get("stock_item_id")
+            try:
+                sid_i = int(sid) if sid is not None else None
+            except (TypeError, ValueError):
+                sid_i = None
+            line["stock_updated_at"] = stock_meta.get(sid_i, "") if sid_i else ""
+        kpis = _audit_kpis(lines)
+        selected = None
+        if selected_line_id:
+            for line in lines:
+                if int(line.get("id") or 0) == selected_line_id:
+                    selected = line
+                    break
+        if selected is None:
+            for line in lines:
+                if line.get("status") == "pending":
+                    selected = line
+                    break
+        if selected is None and lines:
+            selected = lines[0]
+        selected_index = 0
+        if selected:
+            for idx, line in enumerate(lines):
+                if int(line.get("id") or 0) == int(selected.get("id") or 0):
+                    selected_index = idx
+                    break
+        history = conn.execute(
+            """
+            SELECT a.*, u.full_name AS started_by_name,
+                   (SELECT COUNT(*) FROM store_stock_audit_lines l WHERE l.audit_id = a.id) AS line_count,
+                   (SELECT COUNT(*) FROM store_stock_audit_lines l
+                    WHERE l.audit_id = a.id AND l.status = 'verified') AS verified_count
+            FROM store_stock_audits a
+            LEFT JOIN users u ON u.id = a.started_by
+            WHERE a.outlet = ? AND a.status = 'completed'
+            ORDER BY a.completed_at DESC, a.id DESC
+            LIMIT 20
+            """,
+            (outlet,),
+        ).fetchall()
+    finally:
+        conn.close()
+    audit_categories = sorted(
+        {
+            ((line.get("category_name") or "").strip() or "Uncategorised")
+            for line in lines
+        },
+        key=lambda name: name.lower(),
+    )
+    return _page_render(
+        "stock_audit",
+        outlet=outlet,
+        audit=audit,
+        audit_lines=lines,
+        audit_kpis=kpis,
+        audit_selected=selected,
+        audit_selected_index=selected_index,
+        audit_reasons=STOCK_AUDIT_REASONS,
+        audit_reasons_negative=STOCK_AUDIT_REASONS_NEGATIVE,
+        audit_reasons_positive=STOCK_AUDIT_REASONS_POSITIVE,
+        audit_categories=audit_categories,
+        audit_history=[dict(row) for row in history],
+        audit_verify_url=url_for("stores_stock_audit_verify"),
+        audit_skip_url=url_for("stores_stock_audit_skip"),
+        audit_new_url=url_for("stores_stock_audit_new"),
+        audit_history_url=url_for("stores_stock_audit_history"),
+    )
+
+
+@stores_bp.route("/stores/stock-audit/verify", methods=["POST"])
+def stores_stock_audit_verify():
+    user = _get_user() if _get_user else None
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    data = request.get_json(silent=True) or request.form
+    try:
+        line_id = int(data.get("line_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Select an audit line."}), 400
+    try:
+        actual_qty = float(data.get("actual_qty"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Enter a valid actual count."}), 400
+    if actual_qty < 0:
+        return jsonify({"ok": False, "error": "Actual count cannot be negative."}), 400
+    reason = str(data.get("reason") or "").strip().lower()
+    remarks = str(data.get("remarks") or "").strip()[:200]
+    go_next = str(data.get("go_next") or "").strip().lower() in ("1", "true", "yes")
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        line_row = conn.execute(
+            """
+            SELECT l.*, a.outlet, a.status AS audit_status, a.id AS audit_pk
+            FROM store_stock_audit_lines l
+            JOIN store_stock_audits a ON a.id = l.audit_id
+            WHERE l.id = ?
+            """,
+            (line_id,),
+        ).fetchone()
+        if not line_row:
+            return jsonify({"ok": False, "error": "Audit line not found."}), 404
+        if (line_row["audit_status"] or "") != "open":
+            return jsonify({"ok": False, "error": "This audit is already completed."}), 400
+        if (line_row["status"] or "") == "verified":
+            return jsonify({"ok": False, "error": "This item is already verified."}), 400
+        system_qty = float(line_row["system_qty"] or 0)
+        variance = round(actual_qty - system_qty, 3)
+        if abs(variance) > STOCK_AUDIT_EPS:
+            allowed = (
+                STOCK_AUDIT_REASON_KEYS_POSITIVE
+                if variance > 0
+                else STOCK_AUDIT_REASON_KEYS_NEGATIVE
+            )
+            if reason not in allowed:
+                return jsonify(
+                    {"ok": False, "error": "Please select reason to save"}
+                ), 400
+        if abs(variance) <= STOCK_AUDIT_EPS:
+            reason = reason if reason in STOCK_AUDIT_REASON_KEYS else ""
+        unit_cost = line_row["unit_cost"]
+        try:
+            unit_cost_f = float(unit_cost) if unit_cost is not None else None
+        except (TypeError, ValueError):
+            unit_cost_f = None
+        variance_value = (
+            round(variance * unit_cost_f, 2) if unit_cost_f is not None else None
+        )
+        notes = reason.replace("_", " ").title() if reason else "Stock audit"
+        if remarks:
+            notes = f"{notes}: {remarks}" if reason else remarks
+        # Reconcile live stock to the counted quantity (not only snapshot delta).
+        stock_row = None
+        try:
+            sid = int(line_row["stock_item_id"]) if line_row["stock_item_id"] is not None else None
+        except (TypeError, ValueError):
+            sid = None
+        if sid is not None:
+            stock_row = conn.execute(
+                "SELECT id, outlet, qty_on_hand FROM store_stock_items WHERE id = ?",
+                (sid,),
+            ).fetchone()
+        if stock_row is None:
+            stock_row = conn.execute(
+                """
+                SELECT id, outlet, qty_on_hand FROM store_stock_items
+                WHERE outlet = ? AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
+                """,
+                (line_row["outlet"], line_row["item_name"], line_row["unit"]),
+            ).fetchone()
+        current_qty = float(stock_row["qty_on_hand"] or 0) if stock_row else 0.0
+        stock_outlet = (stock_row["outlet"] if stock_row else None) or line_row["outlet"]
+        live_delta = round(actual_qty - current_qty, 3)
+        adjusted = False
+        if abs(live_delta) > STOCK_AUDIT_EPS or stock_row is None:
+            applied = _adjust_stock(
+                conn,
+                outlet=stock_outlet,
+                item_name=line_row["item_name"],
+                unit=line_row["unit"],
+                qty_delta=live_delta if stock_row is not None else round(actual_qty, 3),
+                movement_type="adjustment",
+                ref_type="stock_audit",
+                ref_id=int(line_row["audit_pk"]),
+                notes=notes,
+                user_id=user.get("id"),
+                unit_cost=unit_cost_f,
+                allow_shortfall=True,
+            )
+            adjusted = abs(float(applied or 0)) > STOCK_AUDIT_EPS
+        conn.execute(
+            """
+            UPDATE store_stock_audit_lines
+            SET actual_qty = ?, variance_qty = ?, variance_value = ?,
+                status = 'verified', reason = ?, remarks = ?,
+                verified_at = ?, verified_by = ?
+            WHERE id = ?
+            """,
+            (
+                round(actual_qty, 3),
+                variance,
+                variance_value,
+                reason,
+                remarks,
+                _now(),
+                user.get("id"),
+                line_id,
+            ),
+        )
+        conn.commit()
+        lines = _load_audit_lines(conn, int(line_row["audit_pk"]))
+        kpis = _audit_kpis(lines)
+        next_line = None
+        if go_next:
+            for line in lines:
+                if line.get("status") == "pending":
+                    next_line = line
+                    break
+        current = None
+        for line in lines:
+            if int(line.get("id") or 0) == line_id:
+                current = line
+                break
+        serialized = _serialize_audit_line(current or {})
+        serialized["qty_on_hand"] = round(actual_qty, 3)
+        return jsonify(
+            {
+                "ok": True,
+                "line": serialized,
+                "next_line_id": next_line.get("id") if next_line else None,
+                "kpis": kpis,
+                "message": "Stock verified"
+                + (" and adjusted." if adjusted or abs(variance) > STOCK_AUDIT_EPS else "."),
+            }
+        )
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        conn.rollback()
+        logger.exception("stock audit verify failed")
+        return jsonify({"ok": False, "error": str(exc) or "Could not verify."}), 500
+    finally:
+        conn.close()
+
+
+@stores_bp.route("/stores/stock-audit/skip", methods=["POST"])
+def stores_stock_audit_skip():
+    user = _get_user() if _get_user else None
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    data = request.get_json(silent=True) or request.form
+    try:
+        line_id = int(data.get("line_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Select an audit line."}), 400
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        line_row = conn.execute(
+            """
+            SELECT l.*, a.status AS audit_status, a.id AS audit_pk
+            FROM store_stock_audit_lines l
+            JOIN store_stock_audits a ON a.id = l.audit_id
+            WHERE l.id = ?
+            """,
+            (line_id,),
+        ).fetchone()
+        if not line_row:
+            return jsonify({"ok": False, "error": "Audit line not found."}), 404
+        if (line_row["audit_status"] or "") != "open":
+            return jsonify({"ok": False, "error": "This audit is already completed."}), 400
+        # Skip for Now leaves the item pending so it stays in the queue.
+        conn.execute(
+            """
+            UPDATE store_stock_audit_lines
+            SET status = 'pending', verified_at = NULL, verified_by = NULL
+            WHERE id = ?
+            """,
+            (line_id,),
+        )
+        conn.commit()
+        lines = _load_audit_lines(conn, int(line_row["audit_pk"]))
+        kpis = _audit_kpis(lines)
+        next_line = None
+        for line in lines:
+            if line.get("status") == "pending" and int(line.get("id") or 0) != line_id:
+                next_line = line
+                break
+        return jsonify(
+            {
+                "ok": True,
+                "kpis": kpis,
+                "next_line_id": next_line.get("id") if next_line else None,
+                "message": "Left as pending.",
+            }
+        )
+    finally:
+        conn.close()
+
+
+@stores_bp.route("/stores/stock-audit/history")
+def stores_stock_audit_history():
+    filter_outlet = _parse_outlet_filter(request.args.get("outlet"))
+    outlet = _audit_concrete_outlet(filter_outlet)
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        rows = conn.execute(
+            """
+            SELECT a.*, u.full_name AS started_by_name,
+                   (SELECT COUNT(*) FROM store_stock_audit_lines l WHERE l.audit_id = a.id) AS line_count,
+                   (SELECT COUNT(*) FROM store_stock_audit_lines l
+                    WHERE l.audit_id = a.id AND l.status = 'verified') AS verified_count
+            FROM store_stock_audits a
+            LEFT JOIN users u ON u.id = a.started_by
+            WHERE a.outlet = ? AND a.status = 'completed'
+            ORDER BY a.completed_at DESC, a.id DESC
+            LIMIT 50
+            """,
+            (outlet,),
+        ).fetchall()
+    finally:
+        conn.close()
+    history = []
+    for row in rows:
+        item = dict(row)
+        history.append(
+            {
+                "id": item.get("id"),
+                "label": item.get("label") or "",
+                "started_at": item.get("started_at") or "",
+                "completed_at": item.get("completed_at") or "",
+                "started_by_name": item.get("started_by_name") or "",
+                "line_count": int(item.get("line_count") or 0),
+                "verified_count": int(item.get("verified_count") or 0),
+            }
+        )
+    return jsonify({"ok": True, "outlet": outlet, "history": history})
+
+
+@stores_bp.route("/stores/stock-audit/new", methods=["POST"])
+def stores_stock_audit_new():
+    user = _get_user() if _get_user else None
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    data = request.get_json(silent=True) or request.form
+    filter_outlet = _parse_outlet_filter(
+        data.get("outlet") if data.get("outlet") is not None else request.args.get("outlet")
+    )
+    outlet = _audit_concrete_outlet(filter_outlet)
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        open_row = conn.execute(
+            """
+            SELECT id FROM store_stock_audits
+            WHERE outlet = ? AND status = 'open'
+            ORDER BY id DESC LIMIT 1
+            """,
+            (outlet,),
+        ).fetchone()
+        if open_row:
+            conn.execute(
+                """
+                UPDATE store_stock_audits
+                SET status = 'completed', completed_at = ?
+                WHERE id = ?
+                """,
+                (_now(), open_row["id"]),
+            )
+        audit = _get_or_create_open_audit(conn, outlet, user.get("id"))
+        lines = _load_audit_lines(conn, audit["id"])
+        if not lines:
+            _seed_audit_lines(conn, audit["id"], outlet)
+            conn.commit()
+            lines = _load_audit_lines(conn, audit["id"])
+        return jsonify(
+            {
+                "ok": True,
+                "audit_id": audit["id"],
+                "redirect": url_for("stores_stock_audit", outlet=outlet),
+                "line_count": len(lines),
+            }
+        )
+    except Exception as exc:
+        conn.rollback()
+        logger.exception("stock audit new failed")
+        return jsonify({"ok": False, "error": str(exc) or "Could not start audit."}), 500
+    finally:
+        conn.close()
+
+
+def _parse_report_date(raw: Any) -> date | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        return datetime.strptime(text[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+
+def _audit_reason_label(reason_key: str) -> str:
+    key = str(reason_key or "").strip().lower()
+    for item_key, label in STOCK_AUDIT_REASONS:
+        if item_key == key:
+            return label
+    if not key:
+        return ""
+    return key.replace("_", " ").title()
+
+
+def _load_stock_audit_adjustment_rows(
+    conn,
+    *,
+    outlet: str,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    reason: str = "",
+    category: str = "",
+    q: str = "",
+) -> list[dict[str, Any]]:
+    outlet_sql, outlet_params = _outlet_match_sql("a.outlet", outlet)
+    clauses = [
+        outlet_sql,
+        "lower(coalesce(l.status, '')) = 'verified'",
+        f"abs(coalesce(l.variance_qty, 0)) > {STOCK_AUDIT_EPS}",
+    ]
+    params: list[Any] = list(outlet_params)
+    if date_from is not None:
+        clauses.append("date(l.verified_at) >= date(?)")
+        params.append(date_from.isoformat())
+    if date_to is not None:
+        clauses.append("date(l.verified_at) <= date(?)")
+        params.append(date_to.isoformat())
+    reason_key = str(reason or "").strip().lower()
+    if reason_key and reason_key != "all":
+        clauses.append("lower(coalesce(l.reason, '')) = ?")
+        params.append(reason_key)
+    category_key = str(category or "").strip().lower()
+    if category_key and category_key != "all":
+        if category_key == "uncategorised":
+            clauses.append(
+                "(trim(coalesce(l.category_name, '')) = '' OR lower(trim(l.category_name)) = 'uncategorised')"
+            )
+        else:
+            clauses.append("lower(trim(coalesce(l.category_name, ''))) = ?")
+            params.append(category_key)
+    needle = str(q or "").strip().lower()
+    if needle:
+        clauses.append(
+            """
+            (
+              lower(coalesce(l.item_name, '')) LIKE ?
+              OR lower(coalesce(l.category_name, '')) LIKE ?
+              OR lower(coalesce(l.unit, '')) LIKE ?
+              OR lower(coalesce(l.reason, '')) LIKE ?
+              OR lower(coalesce(l.remarks, '')) LIKE ?
+              OR lower(coalesce(a.label, '')) LIKE ?
+            )
+            """
+        )
+        like = f"%{needle}%"
+        params.extend([like, like, like, like, like, like])
+
+    rows = conn.execute(
+        f"""
+        SELECT l.id, l.item_name, l.unit, l.category_name, l.system_qty, l.actual_qty,
+               l.variance_qty, l.variance_value, l.reason, l.remarks, l.unit_cost,
+               l.verified_at, l.verified_by,
+               a.id AS audit_id, a.outlet, a.label AS audit_label, a.status AS audit_status,
+               u.full_name AS verified_by_name
+        FROM store_stock_audit_lines l
+        JOIN store_stock_audits a ON a.id = l.audit_id
+        LEFT JOIN users u ON u.id = l.verified_by
+        WHERE {' AND '.join(clauses)}
+        ORDER BY coalesce(l.verified_at, '') DESC, l.id DESC
+        """,
+        tuple(params),
+    ).fetchall()
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        try:
+            system_qty = float(item.get("system_qty") or 0)
+        except (TypeError, ValueError):
+            system_qty = 0.0
+        try:
+            actual_qty = float(item.get("actual_qty") or 0)
+        except (TypeError, ValueError):
+            actual_qty = 0.0
+        try:
+            variance_qty = float(item.get("variance_qty") or 0)
+        except (TypeError, ValueError):
+            variance_qty = round(actual_qty - system_qty, 3)
+        try:
+            variance_value = (
+                float(item["variance_value"])
+                if item.get("variance_value") is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            variance_value = None
+        reason_key = str(item.get("reason") or "").strip().lower()
+        out.append(
+            {
+                "id": item.get("id"),
+                "item_name": item.get("item_name") or "",
+                "unit": item.get("unit") or "",
+                "category_name": (item.get("category_name") or "").strip() or "Uncategorised",
+                "system_qty": round(system_qty, 3),
+                "actual_qty": round(actual_qty, 3),
+                "variance_qty": round(variance_qty, 3),
+                "variance_value": (
+                    round(variance_value, 2) if variance_value is not None else None
+                ),
+                "reason": reason_key,
+                "reason_label": _audit_reason_label(reason_key),
+                "remarks": (item.get("remarks") or "").strip(),
+                "unit_cost": item.get("unit_cost"),
+                "verified_at": item.get("verified_at") or "",
+                "verified_by_name": item.get("verified_by_name") or "",
+                "outlet": item.get("outlet") or "",
+                "outlet_label": _outlet_label(_normalize_outlet_key(item.get("outlet"))),
+                "audit_id": item.get("audit_id"),
+                "audit_label": item.get("audit_label") or "",
+                "audit_status": item.get("audit_status") or "",
+            }
+        )
+    return out
+
+
+def _stock_audit_adjustment_kpis(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    count = len(rows)
+    positive = 0
+    negative = 0
+    value_sum = 0.0
+    value_known = False
+    for row in rows:
+        try:
+            vq = float(row.get("variance_qty") or 0)
+        except (TypeError, ValueError):
+            vq = 0.0
+        if vq > STOCK_AUDIT_EPS:
+            positive += 1
+        elif vq < -STOCK_AUDIT_EPS:
+            negative += 1
+        vv = row.get("variance_value")
+        if vv is not None:
+            try:
+                value_sum += float(vv)
+                value_known = True
+            except (TypeError, ValueError):
+                pass
+    return {
+        "count": count,
+        "positive": positive,
+        "negative": negative,
+        "variance_value": round(value_sum, 2) if value_known else None,
+    }
+
+
+def _parse_stock_audit_report_filters() -> dict[str, Any]:
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    date_from = _parse_report_date(request.args.get("date_from"))
+    date_to = _parse_report_date(request.args.get("date_to"))
+    if date_from and date_to and date_from > date_to:
+        date_from, date_to = date_to, date_from
+    reason = str(request.args.get("reason") or "").strip().lower()
+    if reason == "all":
+        reason = ""
+    category = str(request.args.get("category") or "").strip()
+    if category.lower() == "all":
+        category = ""
+    q = str(request.args.get("q") or "").strip()
+    return {
+        "outlet": outlet,
+        "date_from": date_from,
+        "date_to": date_to,
+        "reason": reason,
+        "category": category,
+        "q": q,
+    }
+
+
+def _stock_audit_report_filter_args(filters: dict[str, Any]) -> dict[str, str]:
+    args: dict[str, str] = {"outlet": filters.get("outlet") or "both"}
+    if filters.get("date_from"):
+        args["date_from"] = filters["date_from"].isoformat()
+    if filters.get("date_to"):
+        args["date_to"] = filters["date_to"].isoformat()
+    if filters.get("reason"):
+        args["reason"] = filters["reason"]
+    if filters.get("category"):
+        args["category"] = filters["category"]
+    if filters.get("q"):
+        args["q"] = filters["q"]
+    return args
+
+
+def _build_stock_audit_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Stock Audit"
+    title_font = Font(bold=True, size=14)
+    header_font = Font(bold=True)
+    ws["A1"] = "Hotel Bell Elite — Stock Audit Report"
+    ws["A1"].font = title_font
+    ws["A2"] = f"Generated {_now()}"
+    headers = (
+        "Verified at",
+        "Outlet",
+        "Audit",
+        "Product",
+        "Category",
+        "Unit",
+        "System qty",
+        "Actual qty",
+        "Variance qty",
+        "Variance value",
+        "Reason",
+        "Remarks",
+        "Verified by",
+    )
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=4, column=col, value=title)
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center" if col >= 7 else "left")
+    for idx, row in enumerate(rows, start=5):
+        ws.cell(row=idx, column=1, value=row.get("verified_at") or "")
+        ws.cell(row=idx, column=2, value=row.get("outlet_label") or "")
+        ws.cell(row=idx, column=3, value=row.get("audit_label") or "")
+        ws.cell(row=idx, column=4, value=row.get("item_name") or "")
+        ws.cell(row=idx, column=5, value=row.get("category_name") or "")
+        ws.cell(row=idx, column=6, value=row.get("unit") or "")
+        ws.cell(row=idx, column=7, value=row.get("system_qty"))
+        ws.cell(row=idx, column=8, value=row.get("actual_qty"))
+        ws.cell(row=idx, column=9, value=row.get("variance_qty"))
+        vv = row.get("variance_value")
+        ws.cell(row=idx, column=10, value=vv if vv is not None else "")
+        ws.cell(row=idx, column=11, value=row.get("reason_label") or "")
+        ws.cell(row=idx, column=12, value=row.get("remarks") or "")
+        ws.cell(row=idx, column=13, value=row.get("verified_by_name") or "")
+    from openpyxl.utils import get_column_letter
+
+    widths = (18, 12, 18, 22, 16, 8, 12, 12, 12, 14, 22, 24, 18)
+    for idx, width in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = width
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+@stores_bp.route("/stores/stock-audit/report")
+def stores_stock_audit_report():
+    filters = _parse_stock_audit_report_filters()
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        rows = _load_stock_audit_adjustment_rows(
+            conn,
+            outlet=filters["outlet"],
+            date_from=filters["date_from"],
+            date_to=filters["date_to"],
+            reason=filters["reason"],
+            category=filters["category"],
+            q=filters["q"],
+        )
+        cat_rows = conn.execute(
+            """
+            SELECT DISTINCT trim(coalesce(l.category_name, '')) AS cat
+            FROM store_stock_audit_lines l
+            JOIN store_stock_audits a ON a.id = l.audit_id
+            WHERE lower(coalesce(l.status, '')) = 'verified'
+              AND abs(coalesce(l.variance_qty, 0)) > ?
+            ORDER BY 1
+            """,
+            (STOCK_AUDIT_EPS,),
+        ).fetchall()
+        categories = sorted(
+            {((row["cat"] or "").strip() or "Uncategorised") for row in cat_rows},
+            key=lambda name: name.lower(),
+        )
+    finally:
+        conn.close()
+    kpis = _stock_audit_adjustment_kpis(rows)
+    filter_args = _stock_audit_report_filter_args(filters)
+    return _page_render(
+        "stock_audit_report",
+        outlet=filters["outlet"],
+        audit_report_rows=rows,
+        audit_report_kpis=kpis,
+        audit_report_reasons=STOCK_AUDIT_REASONS,
+        audit_report_categories=categories,
+        audit_report_today_iso=date.today().isoformat(),
+        audit_report_filters={
+            "date_from": filters["date_from"].isoformat() if filters["date_from"] else "",
+            "date_to": filters["date_to"].isoformat() if filters["date_to"] else "",
+            "reason": filters["reason"] or "all",
+            "category": filters["category"] or "all",
+            "q": filters["q"] or "",
+        },
+        audit_report_export_url=url_for(
+            "stores_stock_audit_report_export", **filter_args
+        ),
+    )
+
+
+@stores_bp.route("/stores/stock-audit/report/export")
+def stores_stock_audit_report_export():
+    filters = _parse_stock_audit_report_filters()
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        rows = _load_stock_audit_adjustment_rows(
+            conn,
+            outlet=filters["outlet"],
+            date_from=filters["date_from"],
+            date_to=filters["date_to"],
+            reason=filters["reason"],
+            category=filters["category"],
+            q=filters["q"],
+        )
+    finally:
+        conn.close()
+    buf = _build_stock_audit_report_xlsx(rows)
+    stamp = datetime.now().strftime("%Y%m%d")
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"stock_audit_report_{stamp}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 

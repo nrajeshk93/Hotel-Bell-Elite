@@ -1,6 +1,9 @@
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% set form = form|default({}) %}
 {% set form_title = 'Edit Employee' if mode == 'edit' else 'Add Employee' %}
+{% set emp_list_url = employee_list_url|default(url_for('employees', embed=1)) %}
+{% set emp_return_from = employee_return_from|default('employees') %}
+{% set emp_return_from_hub = employee_return_from_hub|default('') %}
 <div class="md-master-embed md-master-embed--page-shell md-master-embed--employee md-master-embed--employee-form"
      data-md-modal-title="{{ form_title }}">
   <header class="se-sales-header su-header md-master-embed-header">
@@ -15,12 +18,12 @@
               <svg width="24" height="24" viewBox="0 0 24 24" style="width:24px;height:24px;display:block;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               {% endif %}
             </div>
-            <h1>{{ form_title }}{% if mode == 'edit' and form.get('id') %} <span class="md-emp-form-id">#{{ form['id'] }}</span>{% endif %}</h1>
+            <h1>{{ form_title }}{% if mode == 'edit' and form.get('name') %} <span class="md-emp-form-id">— {{ form['name'] }}</span>{% elif mode == 'edit' and form.get('id') %} <span class="md-emp-form-id">#{{ form['id'] }}</span>{% endif %}</h1>
           </div>
         </div>
       </div>
       <div class="su-header-tools md-master-embed-header-actions">
-        <a class="btn" href="{{ url_for('employees', embed=1) }}">Back to list</a>
+        <a class="btn" href="{{ emp_list_url }}">Back to list</a>
       </div>
     </div>
   </header>
@@ -39,6 +42,8 @@
             id="employee-form"
             action="{% if mode == 'edit' %}{{ url_for('edit_employee', emp_id=form['id']) }}{% else %}{{ url_for('add_employee') }}{% endif %}"
             data-md-full-nav="1">
+        <input type="hidden" name="from" value="{{ emp_return_from }}">
+        {% if emp_return_from_hub %}<input type="hidden" name="from_hub" value="{{ emp_return_from_hub }}">{% endif %}
         <input type="hidden" name="company" value="{{ form.get('company', 'Hotel Bell Elite') or 'Hotel Bell Elite' }}">
 
         <div class="form-sec-title">Basic Information</div>
@@ -198,7 +203,7 @@
 
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">{{ 'Update Employee' if mode == 'edit' else 'Add Employee' }}</button>
-          <a href="{{ url_for('employees', embed=1) }}" class="btn btn-secondary">Cancel</a>
+          <a href="{{ emp_list_url }}" class="btn btn-secondary">Cancel</a>
         </div>
       </form>
     </div>

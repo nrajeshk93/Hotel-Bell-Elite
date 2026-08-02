@@ -281,15 +281,15 @@ body.sb-off .se-hero-back svg {
   position: absolute;
   left: 0;
   right: 0;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   z-index: 50;
   margin: 0;
   padding: 6px;
   list-style: none;
   background: #fff;
-  border: 1px solid #E5E7EB;
-  border-radius: 14px;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.06);
+  border: 1px solid var(--ep-listbox-panel-border, #BFDBFE);
+  border-radius: var(--ep-listbox-panel-radius, 12px);
+  box-shadow: var(--ep-listbox-shadow, 0 10px 30px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04));
   max-height: min(280px, 50vh);
   overflow-x: hidden;
   overflow-y: auto;
@@ -301,10 +301,10 @@ body.sb-off .se-hero-back svg {
   margin: 0;
   padding: 10px 12px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--ep-listbox-option-radius, 8px);
   background: transparent;
   color: #111827;
-  font: 500 14px Inter, system-ui, sans-serif;
+  font: 500 13px Inter, system-ui, sans-serif;
   text-align: left;
   cursor: pointer;
   transition: background 0.12s ease, color 0.12s ease;
@@ -313,19 +313,19 @@ body.sb-off .se-hero-back svg {
 .se-filter-listbox-option:hover,
 .se-filter-listbox-option:focus {
   outline: none;
-  background: #F1F5F9;
-  color: #111827;
+  background: var(--ep-listbox-hover-bg, #F0F7FF);
+  color: var(--ep-listbox-selected-fg, #1877F2);
 }
 
 .se-filter-listbox-option.is-selected {
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563EB;
+  background: var(--ep-listbox-selected-bg, #EEF5FF);
+  color: var(--ep-listbox-selected-fg, #1877F2);
   font-weight: 600;
 }
 
 .se-filter-listbox-option.is-selected:hover,
 .se-filter-listbox-option.is-selected:focus {
-  background: rgba(37, 99, 235, 0.12);
+  background: var(--ep-listbox-selected-bg, #EEF5FF);
 }
 
 .se-filter-chip--listbox.is-open .se-filter-chip-control {
@@ -670,6 +670,7 @@ body.se-cash-mode #se-cash-date-range-host {
 .se-sales-header-filters .cp-search-chip.is-active .se-filter-chip-control,
 .se-sales-header-filters .st-product-search-chip.is-active .se-filter-chip-control,
 .se-sales-header-filters .st-stock-search-chip.is-active .se-filter-chip-control,
+.se-sales-header-filters .st-audit-search-chip.is-active .se-filter-chip-control,
 .se-sales-header-filters .se-filter-chip--date-range.is-filtered .se-filter-chip-control {
   border-color: #93C5FD !important;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
@@ -717,21 +718,21 @@ body.se-cash-mode #se-cash-date-range-host {
 
 .se-sales-header-filters .se-filter-chip--listbox .se-filter-listbox {
   padding: 6px;
-  border: 1px solid #E5E7EB;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+  border: 1px solid var(--ep-listbox-panel-border, #BFDBFE);
+  border-radius: var(--ep-listbox-panel-radius, 12px);
+  box-shadow: var(--ep-listbox-shadow, 0 10px 30px rgba(15, 23, 42, 0.12), 0 2px 6px rgba(15, 23, 42, 0.04));
 }
 
 .se-sales-header-filters .se-filter-listbox-option {
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--ep-listbox-option-radius, 8px);
   font-size: 13px;
   font-weight: 500;
 }
 
 .se-sales-header-filters .se-filter-listbox-option.is-selected {
-  background: rgba(37, 99, 235, 0.08);
-  color: #2563EB;
+  background: var(--ep-listbox-selected-bg, #EEF5FF);
+  color: var(--ep-listbox-selected-fg, #1877F2);
   font-weight: 600;
 }
 

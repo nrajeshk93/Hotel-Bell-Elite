@@ -1,10 +1,30 @@
-/* Employee payroll form listboxes — matches Purchase Ledger payment dropdown */
-body.ep-module .ep-form-listbox, body.su-module .ep-form-listbox, body.pos-module .ep-form-listbox,
-body.ep-module .ep-toolbar-listbox, body.su-module .ep-toolbar-listbox, body.pos-module .ep-toolbar-listbox{
+/*
+ * Canonical dropdown / listbox design for Hotel Bell Elite.
+ * Use ep_form_listbox.js + partials/ep_form_listbox_macros.html for all new dropdowns.
+ * Do not use native <select> for product UI.
+ */
+:root{
+  --ep-listbox-trigger-h:44px;
+  --ep-listbox-trigger-radius:8px;
+  --ep-listbox-panel-radius:12px;
+  --ep-listbox-option-radius:8px;
+  --ep-listbox-border:#E2E8F0;
+  --ep-listbox-panel-border:#BFDBFE;
+  --ep-listbox-focus:#93C5FD;
+  --ep-listbox-shadow:0 10px 30px rgba(15,23,42,.12),0 2px 6px rgba(15,23,42,.04);
+  --ep-listbox-selected-bg:#EEF5FF;
+  --ep-listbox-selected-fg:#1877F2;
+  --ep-listbox-hover-bg:#F0F7FF;
+  --ep-listbox-placeholder:#94A3B8;
+}
+
+/* Form + toolbar listboxes share one visual language across modules. */
+body.ep-module .ep-form-listbox, body.su-module .ep-form-listbox, body.pos-module .ep-form-listbox, body.hotel-rooms-module .ep-form-listbox, body.hotel-room-detail-module .ep-form-listbox,
+body.ep-module .ep-toolbar-listbox, body.su-module .ep-toolbar-listbox, body.pos-module .ep-toolbar-listbox, body.hotel-rooms-module .ep-toolbar-listbox, body.hotel-room-detail-module .ep-toolbar-listbox{
   width:100%;
   position:relative;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-label, body.su-module .ep-form-listbox .se-filter-chip-label, body.pos-module .ep-form-listbox .se-filter-chip-label{
+body.ep-module .ep-form-listbox .se-filter-chip-label, body.su-module .ep-form-listbox .se-filter-chip-label, body.pos-module .ep-form-listbox .se-filter-chip-label, body.hotel-rooms-module .ep-form-listbox .se-filter-chip-label, body.hotel-room-detail-module .ep-form-listbox .se-filter-chip-label{
   display:block;
   margin-bottom:5px;
   font-size:11px;
@@ -14,7 +34,7 @@ body.ep-module .ep-form-listbox .se-filter-chip-label, body.su-module .ep-form-l
   letter-spacing:.4px;
   line-height:1.2;
 }
-body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-toolbar-listbox .se-filter-chip-label, body.pos-module .ep-toolbar-listbox .se-filter-chip-label{
+body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-toolbar-listbox .se-filter-chip-label, body.pos-module .ep-toolbar-listbox .se-filter-chip-label, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-label, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-label{
   display:block;
   margin-bottom:8px;
   font-size:12px;
@@ -24,28 +44,28 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-too
   letter-spacing:0;
   line-height:1;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-icon, body.su-module .ep-form-listbox .se-filter-chip-icon, body.pos-module .ep-form-listbox .se-filter-chip-icon,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-icon, body.su-module .ep-toolbar-listbox .se-filter-chip-icon, body.pos-module .ep-toolbar-listbox .se-filter-chip-icon{
+body.ep-module .ep-form-listbox .se-filter-chip-icon, body.su-module .ep-form-listbox .se-filter-chip-icon, body.pos-module .ep-form-listbox .se-filter-chip-icon, body.hotel-rooms-module .ep-form-listbox .se-filter-chip-icon, body.hotel-room-detail-module .ep-form-listbox .se-filter-chip-icon,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-icon, body.su-module .ep-toolbar-listbox .se-filter-chip-icon, body.pos-module .ep-toolbar-listbox .se-filter-chip-icon, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-icon, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-icon{
   display:none;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-control, body.su-module .ep-form-listbox .se-filter-chip-control, body.pos-module .ep-form-listbox .se-filter-chip-control,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-control, body.su-module .ep-toolbar-listbox .se-filter-chip-control, body.pos-module .ep-toolbar-listbox .se-filter-chip-control{
+body.ep-module .ep-form-listbox .se-filter-chip-control, body.su-module .ep-form-listbox .se-filter-chip-control, body.pos-module .ep-form-listbox .se-filter-chip-control, body.hotel-rooms-module .ep-form-listbox .se-filter-chip-control, body.hotel-room-detail-module .ep-form-listbox .se-filter-chip-control,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-control, body.su-module .ep-toolbar-listbox .se-filter-chip-control, body.pos-module .ep-toolbar-listbox .se-filter-chip-control, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-control, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-control{
   width:100%;
-  min-height:44px;
+  min-height:var(--ep-listbox-trigger-h);
   background:#fff;
-  border:1px solid var(--border,#E2E8F0);
-  border-radius:8px;
+  border:1px solid var(--ep-listbox-border);
+  border-radius:var(--ep-listbox-trigger-radius);
   display:flex;
   align-items:center;
   overflow:hidden;
   transition:border-color .15s, box-shadow .15s;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-trigger, body.su-module .ep-form-listbox .se-filter-chip-trigger, body.pos-module .ep-form-listbox .se-filter-chip-trigger,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-trigger, body.su-module .ep-toolbar-listbox .se-filter-chip-trigger, body.pos-module .ep-toolbar-listbox .se-filter-chip-trigger{
+body.ep-module .ep-form-listbox .se-filter-chip-trigger, body.su-module .ep-form-listbox .se-filter-chip-trigger, body.pos-module .ep-form-listbox .se-filter-chip-trigger, body.hotel-rooms-module .ep-form-listbox .se-filter-chip-trigger, body.hotel-room-detail-module .ep-form-listbox .se-filter-chip-trigger,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-trigger, body.su-module .ep-toolbar-listbox .se-filter-chip-trigger, body.pos-module .ep-toolbar-listbox .se-filter-chip-trigger, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-trigger, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-trigger{
   flex:1 1 auto;
   min-width:0;
   width:100%;
-  min-height:44px;
+  min-height:var(--ep-listbox-trigger-h);
   border:0;
   background:transparent;
   color:var(--txt,#1A202C);
@@ -56,28 +76,30 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-trigger, body.su-module .ep-t
   padding:0 8px 0 12px;
   cursor:pointer;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-value, body.su-module .ep-form-listbox .se-filter-chip-value, body.pos-module .ep-form-listbox .se-filter-chip-value,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-value, body.su-module .ep-toolbar-listbox .se-filter-chip-value, body.pos-module .ep-toolbar-listbox .se-filter-chip-value{
+body.ep-module .ep-form-listbox .se-filter-chip-value, body.su-module .ep-form-listbox .se-filter-chip-value, body.pos-module .ep-form-listbox .se-filter-chip-value, body.hotel-rooms-module .ep-form-listbox .se-filter-chip-value, body.hotel-room-detail-module .ep-form-listbox .se-filter-chip-value,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-value, body.su-module .ep-toolbar-listbox .se-filter-chip-value, body.pos-module .ep-toolbar-listbox .se-filter-chip-value, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-value, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-value{
   display:block;
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.su-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.pos-module .ep-form-listbox .se-filter-chip-value.is-placeholder,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.su-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.pos-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder{
-  color:var(--txt3,#94A3B8);
+body.ep-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.su-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.pos-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.hotel-rooms-module .ep-form-listbox .se-filter-chip-value.is-placeholder, body.hotel-room-detail-module .ep-form-listbox .se-filter-chip-value.is-placeholder,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.su-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.pos-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-value.is-placeholder{
+  color:var(--ep-listbox-placeholder);
+  font-weight:500;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-chev, body.su-module .ep-form-listbox .se-filter-chip-chev, body.pos-module .ep-form-listbox .se-filter-chip-chev,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-chev, body.su-module .ep-toolbar-listbox .se-filter-chip-chev, body.pos-module .ep-toolbar-listbox .se-filter-chip-chev{
+body.ep-module .ep-form-listbox .se-filter-chip-chev, body.su-module .ep-form-listbox .se-filter-chip-chev, body.pos-module .ep-form-listbox .se-filter-chip-chev, body.hotel-rooms-module .ep-form-listbox .se-filter-chip-chev, body.hotel-room-detail-module .ep-form-listbox .se-filter-chip-chev,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-chev, body.su-module .ep-toolbar-listbox .se-filter-chip-chev, body.pos-module .ep-toolbar-listbox .se-filter-chip-chev, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-chev, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-chev{
   flex-shrink:0;
   display:flex;
   align-items:center;
   justify-content:center;
   width:34px;
   color:#94A3B8;
+  transition:transform .15s ease,color .15s ease;
 }
-body.ep-module .ep-form-listbox .se-filter-chip-chev svg, body.su-module .ep-form-listbox .se-filter-chip-chev svg, body.pos-module .ep-form-listbox .se-filter-chip-chev svg,
-body.ep-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.su-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.pos-module .ep-toolbar-listbox .se-filter-chip-chev svg{
+body.ep-module .ep-form-listbox .se-filter-chip-chev svg, body.su-module .ep-form-listbox .se-filter-chip-chev svg, body.pos-module .ep-form-listbox .se-filter-chip-chev svg, body.hotel-rooms-module .ep-form-listbox .se-filter-chip-chev svg, body.hotel-room-detail-module .ep-form-listbox .se-filter-chip-chev svg,
+body.ep-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.su-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.pos-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-chev svg{
   width:16px;
   height:16px;
   stroke:currentColor;
@@ -86,21 +108,22 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-chev svg, body.su-module .ep-
   stroke-linecap:round;
   stroke-linejoin:round;
 }
-body.ep-module .ep-form-listbox.is-open, body.su-module .ep-form-listbox.is-open, body.pos-module .ep-form-listbox.is-open,
-body.ep-module .ep-toolbar-listbox.is-open, body.su-module .ep-toolbar-listbox.is-open, body.pos-module .ep-toolbar-listbox.is-open{
+body.ep-module .ep-form-listbox.is-open, body.su-module .ep-form-listbox.is-open, body.pos-module .ep-form-listbox.is-open, body.hotel-rooms-module .ep-form-listbox.is-open, body.hotel-room-detail-module .ep-form-listbox.is-open,
+body.ep-module .ep-toolbar-listbox.is-open, body.su-module .ep-toolbar-listbox.is-open, body.pos-module .ep-toolbar-listbox.is-open, body.hotel-rooms-module .ep-toolbar-listbox.is-open, body.hotel-room-detail-module .ep-toolbar-listbox.is-open{
   z-index:80;
 }
-body.ep-module .ep-form-listbox.is-open .se-filter-chip-control, body.su-module .ep-form-listbox.is-open .se-filter-chip-control, body.pos-module .ep-form-listbox.is-open .se-filter-chip-control,
-body.ep-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.su-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.pos-module .ep-toolbar-listbox.is-open .se-filter-chip-control{
-  border-color:#93C5FD;
+body.ep-module .ep-form-listbox.is-open .se-filter-chip-control, body.su-module .ep-form-listbox.is-open .se-filter-chip-control, body.pos-module .ep-form-listbox.is-open .se-filter-chip-control, body.hotel-rooms-module .ep-form-listbox.is-open .se-filter-chip-control, body.hotel-room-detail-module .ep-form-listbox.is-open .se-filter-chip-control,
+body.ep-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.su-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.pos-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.hotel-rooms-module .ep-toolbar-listbox.is-open .se-filter-chip-control, body.hotel-room-detail-module .ep-toolbar-listbox.is-open .se-filter-chip-control{
+  border-color:var(--ep-listbox-focus);
   box-shadow:0 0 0 3px rgba(24,119,242,.08);
 }
-body.ep-module .ep-form-listbox.is-open .se-filter-chip-chev, body.su-module .ep-form-listbox.is-open .se-filter-chip-chev, body.pos-module .ep-form-listbox.is-open .se-filter-chip-chev,
-body.ep-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.su-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.pos-module .ep-toolbar-listbox.is-open .se-filter-chip-chev{
+body.ep-module .ep-form-listbox.is-open .se-filter-chip-chev, body.su-module .ep-form-listbox.is-open .se-filter-chip-chev, body.pos-module .ep-form-listbox.is-open .se-filter-chip-chev, body.hotel-rooms-module .ep-form-listbox.is-open .se-filter-chip-chev, body.hotel-room-detail-module .ep-form-listbox.is-open .se-filter-chip-chev,
+body.ep-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.su-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.pos-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.hotel-rooms-module .ep-toolbar-listbox.is-open .se-filter-chip-chev, body.hotel-room-detail-module .ep-toolbar-listbox.is-open .se-filter-chip-chev{
   transform:rotate(180deg);
+  color:var(--ep-listbox-selected-fg);
 }
-body.ep-module .ep-form-listbox .se-filter-listbox, body.su-module .ep-form-listbox .se-filter-listbox, body.pos-module .ep-form-listbox .se-filter-listbox,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox, body.su-module .ep-toolbar-listbox .se-filter-listbox, body.pos-module .ep-toolbar-listbox .se-filter-listbox{
+body.ep-module .ep-form-listbox .se-filter-listbox, body.su-module .ep-form-listbox .se-filter-listbox, body.pos-module .ep-form-listbox .se-filter-listbox, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox, body.su-module .ep-toolbar-listbox .se-filter-listbox, body.pos-module .ep-toolbar-listbox .se-filter-listbox, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox{
   position:absolute;
   left:0;
   right:0;
@@ -109,67 +132,95 @@ body.ep-module .ep-toolbar-listbox .se-filter-listbox, body.su-module .ep-toolba
   max-height:260px;
   overflow:auto;
   background:#fff;
-  border:1px solid #E5E7EB;
-  border-radius:12px;
-  box-shadow:0 10px 30px rgba(15,23,42,.12);
+  border:1px solid var(--ep-listbox-panel-border);
+  border-radius:var(--ep-listbox-panel-radius);
+  box-shadow:var(--ep-listbox-shadow);
   padding:6px;
+  opacity:0;
+  transform:translateY(4px);
+  pointer-events:none;
+  transition:opacity var(--de-motion, 240ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1)),
+    transform var(--de-motion, 240ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1));
 }
-body.ep-module .ep-form-listbox .ep-listbox-search-wrap, body.su-module .ep-form-listbox .ep-listbox-search-wrap, body.pos-module .ep-form-listbox .ep-listbox-search-wrap,
-body.ep-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.su-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.pos-module .ep-toolbar-listbox .ep-listbox-search-wrap{
+body.ep-module .ep-form-listbox.is-open .se-filter-listbox, body.su-module .ep-form-listbox.is-open .se-filter-listbox, body.pos-module .ep-form-listbox.is-open .se-filter-listbox, body.hotel-rooms-module .ep-form-listbox.is-open .se-filter-listbox, body.hotel-room-detail-module .ep-form-listbox.is-open .se-filter-listbox,
+body.ep-module .ep-toolbar-listbox.is-open .se-filter-listbox, body.su-module .ep-toolbar-listbox.is-open .se-filter-listbox, body.pos-module .ep-toolbar-listbox.is-open .se-filter-listbox, body.hotel-rooms-module .ep-toolbar-listbox.is-open .se-filter-listbox, body.hotel-room-detail-module .ep-toolbar-listbox.is-open .se-filter-listbox{
+  opacity:1;
+  transform:translateY(0);
+  pointer-events:auto;
+}
+body.ep-module .ep-form-listbox.is-closing .se-filter-listbox, body.su-module .ep-form-listbox.is-closing .se-filter-listbox, body.pos-module .ep-form-listbox.is-closing .se-filter-listbox, body.hotel-rooms-module .ep-form-listbox.is-closing .se-filter-listbox, body.hotel-room-detail-module .ep-form-listbox.is-closing .se-filter-listbox,
+body.ep-module .ep-toolbar-listbox.is-closing .se-filter-listbox, body.su-module .ep-toolbar-listbox.is-closing .se-filter-listbox, body.pos-module .ep-toolbar-listbox.is-closing .se-filter-listbox, body.hotel-rooms-module .ep-toolbar-listbox.is-closing .se-filter-listbox, body.hotel-room-detail-module .ep-toolbar-listbox.is-closing .se-filter-listbox{
+  opacity:0;
+  transform:translateY(4px);
+  pointer-events:none;
+}
+@media (prefers-reduced-motion: reduce){
+  body.ep-module .ep-form-listbox .se-filter-listbox, body.su-module .ep-form-listbox .se-filter-listbox, body.pos-module .ep-form-listbox .se-filter-listbox, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox,
+  body.ep-module .ep-toolbar-listbox .se-filter-listbox, body.su-module .ep-toolbar-listbox .se-filter-listbox, body.pos-module .ep-toolbar-listbox .se-filter-listbox, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox{
+    transition:none!important;
+    opacity:1;
+    transform:none;
+  }
+}
+body.ep-module .ep-form-listbox .ep-listbox-search-wrap, body.su-module .ep-form-listbox .ep-listbox-search-wrap, body.pos-module .ep-form-listbox .ep-listbox-search-wrap, body.hotel-rooms-module .ep-form-listbox .ep-listbox-search-wrap, body.hotel-room-detail-module .ep-form-listbox .ep-listbox-search-wrap,
+body.ep-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.su-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.pos-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.hotel-rooms-module .ep-toolbar-listbox .ep-listbox-search-wrap, body.hotel-room-detail-module .ep-toolbar-listbox .ep-listbox-search-wrap{
   padding:4px 4px 6px;
   position:sticky;
   top:0;
   background:#fff;
   z-index:1;
 }
-body.ep-module .ep-form-listbox .ep-listbox-search, body.su-module .ep-form-listbox .ep-listbox-search, body.pos-module .ep-form-listbox .ep-listbox-search,
-body.ep-module .ep-toolbar-listbox .ep-listbox-search, body.su-module .ep-toolbar-listbox .ep-listbox-search, body.pos-module .ep-toolbar-listbox .ep-listbox-search{
+body.ep-module .ep-form-listbox .ep-listbox-search, body.su-module .ep-form-listbox .ep-listbox-search, body.pos-module .ep-form-listbox .ep-listbox-search, body.hotel-rooms-module .ep-form-listbox .ep-listbox-search, body.hotel-room-detail-module .ep-form-listbox .ep-listbox-search,
+body.ep-module .ep-toolbar-listbox .ep-listbox-search, body.su-module .ep-toolbar-listbox .ep-listbox-search, body.pos-module .ep-toolbar-listbox .ep-listbox-search, body.hotel-rooms-module .ep-toolbar-listbox .ep-listbox-search, body.hotel-room-detail-module .ep-toolbar-listbox .ep-listbox-search{
   width:100%;
-  border:1px solid var(--border,#E2E8F0);
+  border:1px solid var(--ep-listbox-border);
   border-radius:8px;
   padding:8px 10px;
   font-size:12px;
   font-family:inherit;
   outline:none;
 }
-body.ep-module .ep-form-listbox .ep-listbox-search:focus, body.su-module .ep-form-listbox .ep-listbox-search:focus, body.pos-module .ep-form-listbox .ep-listbox-search:focus,
-body.ep-module .ep-toolbar-listbox .ep-listbox-search:focus, body.su-module .ep-toolbar-listbox .ep-listbox-search:focus, body.pos-module .ep-toolbar-listbox .ep-listbox-search:focus{
-  border-color:#93C5FD;
+body.ep-module .ep-form-listbox .ep-listbox-search:focus, body.su-module .ep-form-listbox .ep-listbox-search:focus, body.pos-module .ep-form-listbox .ep-listbox-search:focus, body.hotel-rooms-module .ep-form-listbox .ep-listbox-search:focus, body.hotel-room-detail-module .ep-form-listbox .ep-listbox-search:focus,
+body.ep-module .ep-toolbar-listbox .ep-listbox-search:focus, body.su-module .ep-toolbar-listbox .ep-listbox-search:focus, body.pos-module .ep-toolbar-listbox .ep-listbox-search:focus, body.hotel-rooms-module .ep-toolbar-listbox .ep-listbox-search:focus, body.hotel-room-detail-module .ep-toolbar-listbox .ep-listbox-search:focus{
+  border-color:var(--ep-listbox-focus);
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option, body.su-module .ep-form-listbox .se-filter-listbox-option, body.pos-module .ep-form-listbox .se-filter-listbox-option,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option, body.su-module .ep-toolbar-listbox .se-filter-listbox-option, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option{
+body.ep-module .ep-form-listbox .se-filter-listbox-option, body.su-module .ep-form-listbox .se-filter-listbox-option, body.pos-module .ep-form-listbox .se-filter-listbox-option, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox-option, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox-option,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option, body.su-module .ep-toolbar-listbox .se-filter-listbox-option, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox-option, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox-option{
   display:block;
   width:100%;
   border:0;
   background:transparent;
   text-align:left;
   padding:10px 12px;
-  border-radius:8px;
+  border-radius:var(--ep-listbox-option-radius);
   font-size:13px;
   font-weight:500;
   color:var(--txt,#1A202C);
   cursor:pointer;
+  transition:background .12s ease,color .12s ease;
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option:hover, body.su-module .ep-form-listbox .se-filter-listbox-option:hover, body.pos-module .ep-form-listbox .se-filter-listbox-option:hover,
-body.ep-module .ep-form-listbox .se-filter-listbox-option:focus, body.su-module .ep-form-listbox .se-filter-listbox-option:focus, body.pos-module .ep-form-listbox .se-filter-listbox-option:focus,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.su-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option:hover,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.su-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option:focus{
-  background:#F3F4F6;
+body.ep-module .ep-form-listbox .se-filter-listbox-option:hover, body.su-module .ep-form-listbox .se-filter-listbox-option:hover, body.pos-module .ep-form-listbox .se-filter-listbox-option:hover, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox-option:hover, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox-option:hover,
+body.ep-module .ep-form-listbox .se-filter-listbox-option:focus, body.su-module .ep-form-listbox .se-filter-listbox-option:focus, body.pos-module .ep-form-listbox .se-filter-listbox-option:focus, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox-option:focus, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox-option:focus,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.su-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox-option:hover, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox-option:hover,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.su-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox-option:focus, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox-option:focus{
+  background:var(--ep-listbox-hover-bg);
+  color:var(--ep-listbox-selected-fg);
   outline:none;
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-selected,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected{
-  background:#EEF5FF;
-  color:#1877F2;
+body.ep-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox-option.is-selected, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox-option.is-selected,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox-option.is-selected{
+  background:var(--ep-listbox-selected-bg);
+  color:var(--ep-listbox-selected-fg);
+  font-weight:600;
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.su-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out{
+body.ep-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.su-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox-option.is-filtered-out,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox-option.is-filtered-out{
   display:none!important;
 }
 /* Disabled options (e.g. an occupied table) stay visible with a status pill but
    cannot be selected — see ep_form_listbox.js isOptionDisabled(). */
-body.ep-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"], body.su-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"], body.pos-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"],
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"], body.su-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"], body.pos-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]{
+body.ep-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"], body.su-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"], body.pos-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"], body.hotel-rooms-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"], body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"],
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"], body.su-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"], body.pos-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"], body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"], body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]{
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -177,15 +228,16 @@ body.ep-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true
   cursor:not-allowed;
   color:#94A3B8;
 }
-body.ep-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.su-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.pos-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.su-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover{
+body.ep-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.su-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.pos-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox-option[aria-disabled="true"]:hover,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.su-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox-option[aria-disabled="true"]:hover{
   background:transparent;
+  color:#94A3B8;
 }
 /* Occupied options (e.g. a table with an open order) stay fully selectable —
    picking one resumes that order instead of starting a new bill. See
    posInvTableChanged() in pos_invoice.js. Only the status pill differs. */
-body.ep-module .ep-form-listbox .se-filter-listbox-option.is-occupied, body.su-module .ep-form-listbox .se-filter-listbox-option.is-occupied, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-occupied,
-body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied{
+body.ep-module .ep-form-listbox .se-filter-listbox-option.is-occupied, body.su-module .ep-form-listbox .se-filter-listbox-option.is-occupied, body.pos-module .ep-form-listbox .se-filter-listbox-option.is-occupied, body.hotel-rooms-module .ep-form-listbox .se-filter-listbox-option.is-occupied, body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox-option.is-occupied,
+body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.su-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.pos-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied{
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -193,13 +245,13 @@ body.ep-module .ep-toolbar-listbox .se-filter-listbox-option.is-occupied, body.s
 }
 /* Shown while async data (e.g. floor tables) hasn't loaded yet — keeps the
    listbox from ever appearing blank/unresponsive on first open. */
-body.ep-module .se-filter-listbox-status, body.su-module .se-filter-listbox-status, body.pos-module .se-filter-listbox-status{
+body.ep-module .se-filter-listbox-status, body.su-module .se-filter-listbox-status, body.pos-module .se-filter-listbox-status, body.hotel-rooms-module .se-filter-listbox-status, body.hotel-room-detail-module .se-filter-listbox-status{
   padding:10px 12px;
   font-size:12.5px;
   font-style:italic;
   color:#94A3B8;
 }
-body.ep-module .se-filter-listbox-option-status, body.su-module .se-filter-listbox-option-status, body.pos-module .se-filter-listbox-option-status{
+body.ep-module .se-filter-listbox-option-status, body.su-module .se-filter-listbox-option-status, body.pos-module .se-filter-listbox-option-status, body.hotel-rooms-module .se-filter-listbox-option-status, body.hotel-room-detail-module .se-filter-listbox-option-status{
   flex-shrink:0;
   font-size:10.5px;
   font-weight:700;
@@ -210,12 +262,12 @@ body.ep-module .se-filter-listbox-option-status, body.su-module .se-filter-listb
   border-radius:999px;
   padding:2px 8px;
 }
-body.ep-module .ep-toolbar-listbox, body.su-module .ep-toolbar-listbox, body.pos-module .ep-toolbar-listbox{
+body.ep-module .ep-toolbar-listbox, body.su-module .ep-toolbar-listbox, body.pos-module .ep-toolbar-listbox, body.hotel-rooms-module .ep-toolbar-listbox, body.hotel-room-detail-module .ep-toolbar-listbox{
   min-width:140px;
   flex:1 1 140px;
   max-width:220px;
 }
-body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-toolbar-listbox .se-filter-chip-label, body.pos-module .ep-toolbar-listbox .se-filter-chip-label{
+body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-toolbar-listbox .se-filter-chip-label, body.pos-module .ep-toolbar-listbox .se-filter-chip-label, body.hotel-rooms-module .ep-toolbar-listbox .se-filter-chip-label, body.hotel-room-detail-module .ep-toolbar-listbox .se-filter-chip-label{
   display:block;
   margin-bottom:5px;
   font-size:11px;
@@ -225,59 +277,59 @@ body.ep-module .ep-toolbar-listbox .se-filter-chip-label, body.su-module .ep-too
   letter-spacing:.4px;
   line-height:1.2;
 }
-body.ep-module .ep-inline-listbox .se-filter-chip-control, body.su-module .ep-inline-listbox .se-filter-chip-control, body.pos-module .ep-inline-listbox .se-filter-chip-control{
+body.ep-module .ep-inline-listbox .se-filter-chip-control, body.su-module .ep-inline-listbox .se-filter-chip-control, body.pos-module .ep-inline-listbox .se-filter-chip-control, body.hotel-rooms-module .ep-inline-listbox .se-filter-chip-control, body.hotel-room-detail-module .ep-inline-listbox .se-filter-chip-control{
   min-height:32px;
 }
-body.ep-module .ep-inline-listbox .se-filter-chip-trigger, body.su-module .ep-inline-listbox .se-filter-chip-trigger, body.pos-module .ep-inline-listbox .se-filter-chip-trigger{
+body.ep-module .ep-inline-listbox .se-filter-chip-trigger, body.su-module .ep-inline-listbox .se-filter-chip-trigger, body.pos-module .ep-inline-listbox .se-filter-chip-trigger, body.hotel-rooms-module .ep-inline-listbox .se-filter-chip-trigger, body.hotel-room-detail-module .ep-inline-listbox .se-filter-chip-trigger{
   font-size:12px;
   padding:6px 4px 6px 0;
 }
-body.ep-module .ep-inline-listbox .se-filter-chip-label, body.su-module .ep-inline-listbox .se-filter-chip-label, body.pos-module .ep-inline-listbox .se-filter-chip-label{
+body.ep-module .ep-inline-listbox .se-filter-chip-label, body.su-module .ep-inline-listbox .se-filter-chip-label, body.pos-module .ep-inline-listbox .se-filter-chip-label, body.hotel-rooms-module .ep-inline-listbox .se-filter-chip-label, body.hotel-room-detail-module .ep-inline-listbox .se-filter-chip-label{
   display:none;
 }
-body.ep-module .ep-table-listbox, body.su-module .ep-table-listbox, body.pos-module .ep-table-listbox{
+body.ep-module .ep-table-listbox, body.su-module .ep-table-listbox, body.pos-module .ep-table-listbox, body.hotel-rooms-module .ep-table-listbox, body.hotel-room-detail-module .ep-table-listbox{
   margin:0;
 }
-body.ep-module .filter-bar .ep-toolbar-listbox, body.su-module .filter-bar .ep-toolbar-listbox, body.pos-module .filter-bar .ep-toolbar-listbox{
+body.ep-module .filter-bar .ep-toolbar-listbox, body.su-module .filter-bar .ep-toolbar-listbox, body.pos-module .filter-bar .ep-toolbar-listbox, body.hotel-rooms-module .filter-bar .ep-toolbar-listbox, body.hotel-room-detail-module .filter-bar .ep-toolbar-listbox{
   min-width:130px;
   flex:0 1 auto;
   max-width:none;
 }
-body.ep-module .topbar-actions .ep-toolbar-listbox, body.su-module .topbar-actions .ep-toolbar-listbox, body.pos-module .topbar-actions .ep-toolbar-listbox{
+body.ep-module .topbar-actions .ep-toolbar-listbox, body.su-module .topbar-actions .ep-toolbar-listbox, body.pos-module .topbar-actions .ep-toolbar-listbox, body.hotel-rooms-module .topbar-actions .ep-toolbar-listbox, body.hotel-room-detail-module .topbar-actions .ep-toolbar-listbox{
   min-width:110px;
 }
-body.ep-module .topbar-actions form, body.su-module .topbar-actions form, body.pos-module .topbar-actions form,
-body.ep-module .ep-topbar-filter-form, body.su-module .ep-topbar-filter-form, body.pos-module .ep-topbar-filter-form{
+body.ep-module .topbar-actions form, body.su-module .topbar-actions form, body.pos-module .topbar-actions form, body.hotel-rooms-module .topbar-actions form, body.hotel-room-detail-module .topbar-actions form,
+body.ep-module .ep-topbar-filter-form, body.su-module .ep-topbar-filter-form, body.pos-module .ep-topbar-filter-form, body.hotel-rooms-module .ep-topbar-filter-form, body.hotel-room-detail-module .ep-topbar-filter-form{
   align-items:flex-end;
 }
 
 /* Combobox chip — type-to-search in field (Ingredients / indent product picker pattern) */
-body.ep-module .ep-combobox-listbox, body.su-module .ep-combobox-listbox, body.pos-module .ep-combobox-listbox{
+body.ep-module .ep-combobox-listbox, body.su-module .ep-combobox-listbox, body.pos-module .ep-combobox-listbox, body.hotel-rooms-module .ep-combobox-listbox, body.hotel-room-detail-module .ep-combobox-listbox{
   width:100%;
   position:relative;
 }
-body.ep-module .ep-combobox-listbox .se-filter-chip-icon, body.su-module .ep-combobox-listbox .se-filter-chip-icon, body.pos-module .ep-combobox-listbox .se-filter-chip-icon{
+body.ep-module .ep-combobox-listbox .se-filter-chip-icon, body.su-module .ep-combobox-listbox .se-filter-chip-icon, body.pos-module .ep-combobox-listbox .se-filter-chip-icon, body.hotel-rooms-module .ep-combobox-listbox .se-filter-chip-icon, body.hotel-room-detail-module .ep-combobox-listbox .se-filter-chip-icon{
   display:none;
 }
-body.ep-module .ep-combobox-listbox .se-filter-chip-control, body.su-module .ep-combobox-listbox .se-filter-chip-control, body.pos-module .ep-combobox-listbox .se-filter-chip-control{
+body.ep-module .ep-combobox-listbox .se-filter-chip-control, body.su-module .ep-combobox-listbox .se-filter-chip-control, body.pos-module .ep-combobox-listbox .se-filter-chip-control, body.hotel-rooms-module .ep-combobox-listbox .se-filter-chip-control, body.hotel-room-detail-module .ep-combobox-listbox .se-filter-chip-control{
   display:flex;
   align-items:center;
   gap:8px;
-  min-height:44px;
-  height:44px;
+  min-height:var(--ep-listbox-trigger-h);
+  height:var(--ep-listbox-trigger-h);
   padding:0 12px;
-  border:1px solid var(--border,#E2E8F0);
-  border-radius:8px;
+  border:1px solid var(--ep-listbox-border);
+  border-radius:var(--ep-listbox-trigger-radius);
   background:#F8FBFF;
   box-sizing:border-box;
 }
-body.ep-module .ep-combobox-listbox.is-open .se-filter-chip-control, body.su-module .ep-combobox-listbox.is-open .se-filter-chip-control, body.pos-module .ep-combobox-listbox.is-open .se-filter-chip-control,
-body.ep-module .ep-combobox-listbox .se-filter-chip-control:focus-within, body.su-module .ep-combobox-listbox .se-filter-chip-control:focus-within, body.pos-module .ep-combobox-listbox .se-filter-chip-control:focus-within{
+body.ep-module .ep-combobox-listbox.is-open .se-filter-chip-control, body.su-module .ep-combobox-listbox.is-open .se-filter-chip-control, body.pos-module .ep-combobox-listbox.is-open .se-filter-chip-control, body.hotel-rooms-module .ep-combobox-listbox.is-open .se-filter-chip-control, body.hotel-room-detail-module .ep-combobox-listbox.is-open .se-filter-chip-control,
+body.ep-module .ep-combobox-listbox .se-filter-chip-control:focus-within, body.su-module .ep-combobox-listbox .se-filter-chip-control:focus-within, body.pos-module .ep-combobox-listbox .se-filter-chip-control:focus-within, body.hotel-rooms-module .ep-combobox-listbox .se-filter-chip-control:focus-within, body.hotel-room-detail-module .ep-combobox-listbox .se-filter-chip-control:focus-within{
   border-color:#2563EB;
   background:#EFF6FF;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
 }
-body.ep-module .ep-combobox-listbox input.se-filter-chip-combobox, body.su-module .ep-combobox-listbox input.se-filter-chip-combobox, body.pos-module .ep-combobox-listbox input.se-filter-chip-combobox{
+body.ep-module .ep-combobox-listbox input.se-filter-chip-combobox, body.su-module .ep-combobox-listbox input.se-filter-chip-combobox, body.pos-module .ep-combobox-listbox input.se-filter-chip-combobox, body.hotel-rooms-module .ep-combobox-listbox input.se-filter-chip-combobox, body.hotel-room-detail-module .ep-combobox-listbox input.se-filter-chip-combobox{
   flex:1 1 auto;
   min-width:0;
   height:100%;
@@ -295,20 +347,20 @@ body.ep-module .ep-combobox-listbox input.se-filter-chip-combobox, body.su-modul
   -webkit-appearance:none;
   appearance:none;
 }
-body.ep-module .ep-combobox-listbox input.se-filter-chip-combobox::placeholder, body.su-module .ep-combobox-listbox input.se-filter-chip-combobox::placeholder, body.pos-module .ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
+body.ep-module .ep-combobox-listbox input.se-filter-chip-combobox::placeholder, body.su-module .ep-combobox-listbox input.se-filter-chip-combobox::placeholder, body.pos-module .ep-combobox-listbox input.se-filter-chip-combobox::placeholder, body.hotel-rooms-module .ep-combobox-listbox input.se-filter-chip-combobox::placeholder, body.hotel-room-detail-module .ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
   color:#93C5FD;
   font-weight:500;
 }
-body.ep-module .ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button, body.su-module .ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button, body.pos-module .ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button{
+body.ep-module .ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button, body.su-module .ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button, body.pos-module .ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button, body.hotel-rooms-module .ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button, body.hotel-room-detail-module .ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button{
   display:none;
 }
-body.ep-module .ep-combobox-listbox .se-filter-chip-chev, body.su-module .ep-combobox-listbox .se-filter-chip-chev, body.pos-module .ep-combobox-listbox .se-filter-chip-chev{
+body.ep-module .ep-combobox-listbox .se-filter-chip-chev, body.su-module .ep-combobox-listbox .se-filter-chip-chev, body.pos-module .ep-combobox-listbox .se-filter-chip-chev, body.hotel-rooms-module .ep-combobox-listbox .se-filter-chip-chev, body.hotel-room-detail-module .ep-combobox-listbox .se-filter-chip-chev{
   flex:0 0 auto;
   display:flex;
   align-items:center;
   color:#94A3B8;
 }
-body.ep-module .ep-combobox-listbox .se-filter-chip-chev svg, body.su-module .ep-combobox-listbox .se-filter-chip-chev svg, body.pos-module .ep-combobox-listbox .se-filter-chip-chev svg{
+body.ep-module .ep-combobox-listbox .se-filter-chip-chev svg, body.su-module .ep-combobox-listbox .se-filter-chip-chev svg, body.pos-module .ep-combobox-listbox .se-filter-chip-chev svg, body.hotel-rooms-module .ep-combobox-listbox .se-filter-chip-chev svg, body.hotel-room-detail-module .ep-combobox-listbox .se-filter-chip-chev svg{
   width:16px;
   height:16px;
   stroke:currentColor;
@@ -317,24 +369,24 @@ body.ep-module .ep-combobox-listbox .se-filter-chip-chev svg, body.su-module .ep
   stroke-linecap:round;
   stroke-linejoin:round;
 }
-body.ep-module .ep-combobox-listbox.is-open, body.su-module .ep-combobox-listbox.is-open, body.pos-module .ep-combobox-listbox.is-open{
+body.ep-module .ep-combobox-listbox.is-open, body.su-module .ep-combobox-listbox.is-open, body.pos-module .ep-combobox-listbox.is-open, body.hotel-rooms-module .ep-combobox-listbox.is-open, body.hotel-room-detail-module .ep-combobox-listbox.is-open{
   z-index:80;
 }
-body.ep-module .ep-combobox-listbox .se-filter-listbox, body.su-module .ep-combobox-listbox .se-filter-listbox, body.pos-module .ep-combobox-listbox .se-filter-listbox{
+body.ep-module .ep-combobox-listbox .se-filter-listbox, body.su-module .ep-combobox-listbox .se-filter-listbox, body.pos-module .ep-combobox-listbox .se-filter-listbox, body.hotel-rooms-module .ep-combobox-listbox .se-filter-listbox, body.hotel-room-detail-module .ep-combobox-listbox .se-filter-listbox{
   padding:6px;
-  border:1px solid #E5E7EB;
-  border-radius:10px;
-  box-shadow:0 8px 24px rgba(15,23,42,.1);
+  border:1px solid var(--ep-listbox-panel-border);
+  border-radius:var(--ep-listbox-panel-radius);
+  box-shadow:var(--ep-listbox-shadow);
   background:#fff;
 }
-body.ep-module .ep-combobox-listbox .se-filter-listbox-option, body.su-module .ep-combobox-listbox .se-filter-listbox-option, body.pos-module .ep-combobox-listbox .se-filter-listbox-option{
+body.ep-module .ep-combobox-listbox .se-filter-listbox-option, body.su-module .ep-combobox-listbox .se-filter-listbox-option, body.pos-module .ep-combobox-listbox .se-filter-listbox-option, body.hotel-rooms-module .ep-combobox-listbox .se-filter-listbox-option, body.hotel-room-detail-module .ep-combobox-listbox .se-filter-listbox-option{
   padding:10px 12px;
-  border-radius:8px;
+  border-radius:var(--ep-listbox-option-radius);
   font-size:13px;
   font-weight:500;
 }
-body.ep-module .ep-combobox-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-combobox-listbox .se-filter-listbox-option.is-selected, body.pos-module .ep-combobox-listbox .se-filter-listbox-option.is-selected{
-  background:rgba(37,99,235,.08);
-  color:#2563EB;
+body.ep-module .ep-combobox-listbox .se-filter-listbox-option.is-selected, body.su-module .ep-combobox-listbox .se-filter-listbox-option.is-selected, body.pos-module .ep-combobox-listbox .se-filter-listbox-option.is-selected, body.hotel-rooms-module .ep-combobox-listbox .se-filter-listbox-option.is-selected, body.hotel-room-detail-module .ep-combobox-listbox .se-filter-listbox-option.is-selected{
+  background:var(--ep-listbox-selected-bg);
+  color:var(--ep-listbox-selected-fg);
   font-weight:600;
 }

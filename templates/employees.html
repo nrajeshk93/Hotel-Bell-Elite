@@ -21,11 +21,11 @@
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=38">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=41">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
 {% if mode is defined and mode == 'credits' %}
@@ -74,10 +74,10 @@
 
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=8">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
 {% if mode is defined and mode == 'credits' %}
@@ -87,7 +87,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 {% endif %}
-<div class="main-wrapper">
+<div class="main-wrapper"{% if mode is defined and mode == 'attendance_list' %} id="attendance-list-page"{% endif %}>
 
 
 <!-- ── Top bar ── -->
@@ -97,15 +97,13 @@
   <div class="su-header-top">
     <div class="su-header-left">
       <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
           <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
             <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
       </div>
       <div class="su-title">
         <div class="su-title-row">
-          <div class="su-title-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          </div>
           <h1>Attendance</h1>
         </div>
       </div>
@@ -246,15 +244,13 @@
   <div class="su-header-top">
     <div class="su-header-left">
       <div class="su-header-nav">
+        {% include 'partials/su_page_back.html' with context %}
         <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
           <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
       </div>
       <div class="su-title">
         <div class="su-title-row">
-          <div class="su-title-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          </div>
           <h1>Attendance</h1>
         </div>
       </div>
@@ -337,6 +333,7 @@
   <div class="su-header-top">
     <div class="su-header-left">
       <div class="su-header-nav">
+        {% include 'partials/su_page_back.html' with context %}
         <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
           <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
@@ -434,10 +431,22 @@
   </div>
 
   {% elif mode is defined and mode == 'add' %}
+  {% set emp_list_url = employee_list_url|default(url_for('employees')) %}
+  {% set emp_list_label = employee_list_label|default('Employees') %}
+  {% set emp_return_from = employee_return_from|default('employees') %}
+  {% set emp_return_from_hub = employee_return_from_hub|default('') %}
+  {% set back_href = emp_list_url %}
+  {% set back_label = back_label|default('Back to ' ~ emp_list_label) %}
   <div class="su-header-top ep-att-header">
     <div class="su-header-left">
+      <div class="su-header-nav">
+        {% include 'partials/su_page_back.html' with context %}
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
       <div class="topbar-breadcrumb">
-        <a href="{{ url_for('employees') }}">Employees</a>
+        <a href="{{ emp_list_url }}">{{ emp_list_label }}</a>
         <span class="bc-sep">›</span>
         <span class="bc-cur">Add Employee</span>
       </div>
@@ -446,12 +455,24 @@
   </div>
 
   {% elif mode is defined and mode == 'edit' %}
+  {% set emp_list_url = employee_list_url|default(url_for('employees')) %}
+  {% set emp_list_label = employee_list_label|default('Employees') %}
+  {% set emp_return_from = employee_return_from|default('employees') %}
+  {% set emp_return_from_hub = employee_return_from_hub|default('') %}
+  {% set back_href = emp_list_url %}
+  {% set back_label = back_label|default('Back to ' ~ emp_list_label) %}
   <div class="su-header-top ep-att-header">
     <div class="su-header-left">
+      <div class="su-header-nav">
+        {% include 'partials/su_page_back.html' with context %}
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
       <div class="topbar-breadcrumb">
-        <a href="{{ url_for('employees') }}">Employees</a>
+        <a href="{{ emp_list_url }}">{{ emp_list_label }}</a>
         <span class="bc-sep">›</span>
-        <span class="bc-cur">Edit Employee{% if form.get('id') %} #{{ form['id'] }}{% endif %}</span>
+        <span class="bc-cur">{% if form.get('name') %}{{ form['name'] }}{% else %}Edit Employee{% if form.get('id') %} #{{ form['id'] }}{% endif %}{% endif %}</span>
       </div>
     </div>
     <div class="su-header-tools"></div>
@@ -474,15 +495,13 @@
   <div class="su-header-top">
     <div class="su-header-left">
       <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
           <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
             <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
       </div>
       <div class="su-title">
         <div class="su-title-row">
-          <div class="su-title-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-          </div>
           <h1>Credit Dashboard</h1>
         </div>
       </div>
@@ -505,17 +524,17 @@
   </div>
   <div class="se-sales-header-card">
     <div class="se-sales-header-filters">
-      <div class="ep-header-filters sr-topbar-filters" aria-label="Credit dashboard filters">
-        <div class="search-wrap">
-          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="search" id="cd-search" placeholder="Search employee…" autocomplete="off" aria-label="Search employees" oninput="filterCreditTable()">
+      <form method="GET" action="{{ url_for('credits_dashboard') }}" id="credits-dashboard-filter-form" class="sr-topbar-filters cd-filter-form" aria-label="Credit dashboard filters">
+        <div class="se-filter-chip se-filter-chip--search pl-search-chip cd-search-chip pl-header-field-listbox pl-header-field" id="cd-search-chip">
+          <label class="se-filter-chip-label" for="cd-search">Search</label>
+          <div class="se-filter-chip-control">
+            <input type="search" id="cd-search" class="pl-search-input cd-search-input" placeholder="Employee or ID…" autocomplete="off" aria-label="Search employees" oninput="filterCreditTable()">
+          </div>
         </div>
-        <form method="GET" action="{{ url_for('credits_dashboard') }}" id="credits-dashboard-form" class="ep-topbar-filter-form">
-          {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, '', 'All Departments', '', field_id='cd-location', change_handler='filterCreditTable') }}
-          {{ ep_toolbar_listbox('month', 'Month', cd_month_opts.options, sel_month|string, cd_month_names[sel_month], 'credits-dashboard-form') }}
-          {{ ep_toolbar_listbox('year', 'Year', cd_year_opts.options, sel_year|string, sel_year|string, 'credits-dashboard-form') }}
-        </form>
-      </div>
+        {{ ep_toolbar_listbox('location', 'Department', ep_location_opts.options, '', 'All Departments', '', field_id='cd-location', change_handler='filterCreditTable', searchable=true, extra_class='pl-header-field-listbox pl-header-field') }}
+        {{ ep_toolbar_listbox('month', 'Month', cd_month_opts.options, sel_month|string, cd_month_names[sel_month], 'credits-dashboard-filter-form', extra_class='pl-header-field-listbox pl-header-field') }}
+        {{ ep_toolbar_listbox('year', 'Year', cd_year_opts.options, sel_year|string, sel_year|string, 'credits-dashboard-filter-form', extra_class='pl-header-field-listbox pl-header-field') }}
+      </form>
     </div>
   </div>
 
@@ -523,15 +542,13 @@
   <div class="su-header-top">
     <div class="su-header-left">
       <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
           <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
             <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
       </div>
       <div class="su-title">
         <div class="su-title-row">
-          <div class="su-title-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          </div>
           <h1>Payroll Report</h1>
         </div>
       </div>
@@ -553,6 +570,7 @@
   <div class="su-header-top">
     <div class="su-header-left">
       <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
           <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
             <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
@@ -708,7 +726,7 @@
 </header>
 
 <!-- ── Content area ── -->
-<main class="content{% if mode is defined and mode in ('credits_dashboard', 'credits') %} se-content{% endif %}">
+<main class="content{% if mode is defined and mode in ('credits_dashboard', 'credits', 'attendance_list') %} se-content{% endif %}">
 {% if auth_notice %}
   <div class="card" style="margin-bottom:14px;background:#EFF6FF;border-color:rgba(24,119,242,.18);">
     <div class="card-body" style="padding:12px 18px;color:var(--acc);font-weight:700;">{{ auth_notice }}</div>
@@ -1563,7 +1581,7 @@
           Add New Employee
         {% else %}
           <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Edit Employee{% if form.get('id') %} <span style="color:var(--txt3);font-weight:400;">#{{ form['id'] }}</span>{% endif %}
+          Edit Employee{% if form.get('name') %} <span style="color:var(--txt3);font-weight:400;">— {{ form['name'] }}</span>{% elif form.get('id') %} <span style="color:var(--txt3);font-weight:400;">#{{ form['id'] }}</span>{% endif %}
         {% endif %}
       </div>
     </div>
@@ -1575,10 +1593,14 @@
       </div>
       {% endif %}
 
+      {% set emp_list_url = employee_list_url|default(url_for('employees')) %}
+      {% set emp_return_from = employee_return_from|default('employees') %}
+      {% set emp_return_from_hub = employee_return_from_hub|default('') %}
       <form method="POST" id="employee-form" action="{% if mode == 'edit' %}{{ url_for('edit_employee', emp_id=form['id']) }}{% else %}{{ url_for('add_employee') }}{% endif %}">
+        <input type="hidden" name="from" value="{{ emp_return_from }}">
+        {% if emp_return_from_hub %}<input type="hidden" name="from_hub" value="{{ emp_return_from_hub }}">{% endif %}
 
         <div class="form-sec-title">Basic Information</div>
-        <input type="hidden" name="company" value="{{ form.get('company', 'Hotel Bell Elite') or 'Hotel Bell Elite' }}">
         <input type="hidden" name="company" value="{{ form.get('company', 'Hotel Bell Elite') or 'Hotel Bell Elite' }}">
         <div class="form-grid three" style="margin-bottom:16px;">
           <div>
@@ -1610,12 +1632,6 @@
             {% set location_ns = namespace(options=[('', 'Select department...')]) %}
             {% for l in locations %}{% set location_ns.options = location_ns.options + [(l, l)] %}{% endfor %}
             {{ ep_listbox('location', 'Department', location_ns.options, form.get('location', ''), searchable=true) }}
-          </div>
-          <div>
-            <label for="total_off">Total Off</label>
-            <input type="number" id="total_off" name="total_off" value="{{ form.get('total_off', 0) }}" placeholder="e.g. 4" min="0" max="31" step="1"{% if payroll_fields_locked|default(false) %} disabled title="Locked payroll month — wage fields are read-only"{% endif %}>
-            {% if payroll_fields_locked|default(false) %}<input type="hidden" name="total_off" value="{{ form.get('total_off', 0) }}">{% endif %}
-            <div style="margin-top:5px;font-size:10.5px;color:var(--txt3);">{% if payroll_fields_locked|default(false) %}Locked payroll month — Total Off cannot be changed.{% else %}Paid weekday leave days per month. Extra leave is deducted at daily gross rate.{% endif %}</div>
           </div>
           <div>
             <label for="total_off">Total Off</label>
@@ -1744,7 +1760,7 @@
 
         <div class="form-actions">
           <button type="submit" class="btn btn-primary">{{ 'Update Employee' if mode == 'edit' else 'Add Employee' }}</button>
-          <a href="{{ url_for('employees') }}" class="btn btn-secondary">Cancel</a>
+          <a href="{{ emp_list_url }}" class="btn btn-secondary">Cancel</a>
         </div>
       </form>
     </div>
@@ -1848,6 +1864,7 @@
         </div>
         <div class="rtc-title">Bank Report</div>
         <div class="rtc-desc">ICICI fund-transfer Excel — EPF staff accounts &amp; net salary for the month</div>
+        <a href="{{ url_for('bank_report', year=sel_year, month=sel_month) }}" class="rtc-dl" style="background:#EEF2FF;color:#4338CA;border-color:rgba(67,56,202,.3);">Open ledger</a>
         <a href="{{ url_for('export_bank_report', year=sel_year, month=sel_month) }}" download class="rtc-dl" style="background:#EEF2FF;color:#4338CA;border-color:rgba(67,56,202,.3);">↓ {{ month_name }} {{ sel_year }}</a>
       </div>
 
@@ -2606,7 +2623,7 @@
 
 </main>
 </div><!-- /main-wrapper -->
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
 {% if mode is defined and mode == 'credits' %}
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=7"></script>
 <script>

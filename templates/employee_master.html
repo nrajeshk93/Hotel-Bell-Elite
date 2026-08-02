@@ -1,0 +1,196 @@
+{% set de_soft_body_class = 'de-open su-module ep-module' %}
+{% set de_soft_page_title = (page_title|default('Employee Master')) ~ ' | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ page_title|default('Employee Master') }} | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=41">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=25">
+<style>
+#employee-master-page{
+  display:flex;flex-direction:column;min-height:100vh;box-sizing:border-box;
+}
+#employee-master-page .md-master-embed--employee{
+  flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;
+}
+#employee-master-page .md-master-embed-header.se-sales-header{
+  flex:0 0 auto;
+  max-width:min(1600px,100%);margin-left:auto;margin-right:auto;width:100%;box-sizing:border-box;
+}
+#employee-master-page .md-master-embed-body.content.se-content{
+  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;
+  max-width:min(1600px,100%);margin-left:auto;margin-right:auto;
+  padding:24px 48px 24px;width:100%;box-sizing:border-box;
+}
+#employee-master-page .emp-list-panel.hbe-scroll-panel{
+  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;margin-bottom:0;width:100%;
+}
+#employee-master-page .emp-list-panel > .card-hdr{flex:0 0 auto}
+#employee-master-page .emp-list-panel > .card-body{
+  flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+}
+#employee-master-page .hbe-scroll-panel .emp-table-wrap,
+#employee-master-page .emp-list-panel--scroll .emp-table-wrap{
+  flex:1 1 auto;max-height:none;min-height:min(280px,40vh);height:100%;overflow:auto;
+}
+#employee-master-page #emp-main-table{
+  width:100%;min-width:0;table-layout:fixed;
+}
+#employee-master-page #emp-main-table th:nth-child(1),
+#employee-master-page #emp-main-table td:nth-child(1){width:7%}
+#employee-master-page #emp-main-table th:nth-child(2),
+#employee-master-page #emp-main-table td:nth-child(2){width:16%}
+#employee-master-page #emp-main-table th:nth-child(3),
+#employee-master-page #emp-main-table td:nth-child(3){width:10%}
+#employee-master-page #emp-main-table th:nth-child(4),
+#employee-master-page #emp-main-table td:nth-child(4){width:11%}
+#employee-master-page #emp-main-table th:nth-child(5),
+#employee-master-page #emp-main-table td:nth-child(5){width:34%}
+#employee-master-page #emp-main-table th:nth-child(6),
+#employee-master-page #emp-main-table td:nth-child(6){width:12%}
+#employee-master-page #emp-main-table th:nth-child(7),
+#employee-master-page #emp-main-table td:nth-child(7){width:10%}
+#employee-master-page #emp-main-table .pl-name{
+  max-width:none;white-space:normal;overflow:visible;text-overflow:unset;
+}
+#employee-master-page #emp-main-table .emp-master-address{
+  white-space:normal;max-width:none;margin-top:0;
+}
+@media(max-width:1100px){
+  #employee-master-page #emp-main-table{min-width:920px;table-layout:auto}
+}
+@media(max-width:760px){
+  #employee-master-page{min-height:0}
+  #employee-master-page .md-master-embed-body.content.se-content{
+    display:block;padding:16px 16px 32px;
+  }
+  #employee-master-page .emp-list-panel.hbe-scroll-panel{display:block}
+  #employee-master-page .emp-list-panel > .card-body{display:block}
+  #employee-master-page .hbe-scroll-panel .emp-table-wrap,
+  #employee-master-page .emp-list-panel--scroll .emp-table-wrap{
+    max-height:calc(44px + 10 * 52px);height:auto;min-height:0;
+  }
+  #employee-master-page #emp-main-table{min-width:860px;table-layout:auto}
+}
+</style>
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="{{ de_soft_body_class }}">
+{% endif %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=25">
+<style>
+#employee-master-page{
+  display:flex;flex-direction:column;min-height:100vh;box-sizing:border-box;
+}
+#employee-master-page .md-master-embed--employee{
+  flex:1 1 auto;display:flex;flex-direction:column;min-width:0;min-height:0;
+}
+#employee-master-page .md-master-embed-header.se-sales-header{
+  flex:0 0 auto;
+  max-width:min(1600px,100%);margin-left:auto;margin-right:auto;width:100%;box-sizing:border-box;
+}
+#employee-master-page .md-master-embed-body.content.se-content{
+  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;
+  max-width:min(1600px,100%);margin-left:auto;margin-right:auto;
+  padding:24px 48px 24px;width:100%;box-sizing:border-box;
+}
+#employee-master-page .emp-list-panel.hbe-scroll-panel{
+  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;margin-bottom:0;width:100%;
+}
+#employee-master-page .emp-list-panel > .card-hdr{flex:0 0 auto}
+#employee-master-page .emp-list-panel > .card-body{
+  flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+}
+#employee-master-page .hbe-scroll-panel .emp-table-wrap,
+#employee-master-page .emp-list-panel--scroll .emp-table-wrap{
+  flex:1 1 auto;max-height:none;min-height:min(280px,40vh);height:100%;overflow:auto;
+}
+#employee-master-page #emp-main-table{
+  width:100%;min-width:0;table-layout:fixed;
+}
+#employee-master-page #emp-main-table th:nth-child(1),
+#employee-master-page #emp-main-table td:nth-child(1){width:7%}
+#employee-master-page #emp-main-table th:nth-child(2),
+#employee-master-page #emp-main-table td:nth-child(2){width:16%}
+#employee-master-page #emp-main-table th:nth-child(3),
+#employee-master-page #emp-main-table td:nth-child(3){width:10%}
+#employee-master-page #emp-main-table th:nth-child(4),
+#employee-master-page #emp-main-table td:nth-child(4){width:11%}
+#employee-master-page #emp-main-table th:nth-child(5),
+#employee-master-page #emp-main-table td:nth-child(5){width:34%}
+#employee-master-page #emp-main-table th:nth-child(6),
+#employee-master-page #emp-main-table td:nth-child(6){width:12%}
+#employee-master-page #emp-main-table th:nth-child(7),
+#employee-master-page #emp-main-table td:nth-child(7){width:10%}
+#employee-master-page #emp-main-table .pl-name{
+  max-width:none;white-space:normal;overflow:visible;text-overflow:unset;
+}
+#employee-master-page #emp-main-table .emp-master-address{
+  white-space:normal;max-width:none;margin-top:0;
+}
+@media(max-width:1100px){
+  #employee-master-page #emp-main-table{min-width:920px;table-layout:auto}
+}
+@media(max-width:760px){
+  #employee-master-page{min-height:0}
+  #employee-master-page .md-master-embed-body.content.se-content{
+    display:block;padding:16px 16px 32px;
+  }
+  #employee-master-page .emp-list-panel.hbe-scroll-panel{display:block}
+  #employee-master-page .emp-list-panel > .card-body{display:block}
+  #employee-master-page .hbe-scroll-panel .emp-table-wrap,
+  #employee-master-page .emp-list-panel--scroll .emp-table-wrap{
+    max-height:calc(44px + 10 * 52px);height:auto;min-height:0;
+  }
+  #employee-master-page #emp-main-table{min-width:860px;table-layout:auto}
+}
+</style>
+{% endif %}
+
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper" id="employee-master-page">
+  {% include 'partials/master_embed/employees.html' %}
+</div>
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
+<script>
+(function(){
+  if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+  if (typeof window.initSuFilterListboxes === 'function') window.initSuFilterListboxes();
+})();
+</script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

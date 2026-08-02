@@ -1,3 +1,5 @@
+{# Canonical dropdown macros — styles in ep_form_listbox.css, behavior in ep_form_listbox.js.
+   Prefer these over native <select> for all product UI. #}
 {% macro ep_listbox_payment_icon() %}
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
 {% endmacro %}
@@ -15,6 +17,7 @@
 <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-header-field-listbox{% if use_combobox %} ep-combobox-listbox{% endif %}{% if inline %} ep-inline-listbox{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}" data-se-listbox{% if use_combobox %} data-se-listbox-searchable data-se-listbox-combobox{% endif %}{% if submit_form %} data-se-listbox-submit="{{ submit_form }}"{% endif %}{% if change_handler %} data-se-listbox-change="{{ change_handler }}"{% endif %}{% if data_emp %} data-emp-id="{{ data_emp }}"{% endif %}{% if data_date %} data-date="{{ data_date }}"{% endif %}{% if data_year %} data-year="{{ data_year }}"{% endif %}{% if data_month %} data-month="{{ data_month }}"{% endif %} id="{{ fid }}-listbox">
   <label class="se-filter-chip-label" id="{{ fid }}-label" for="{{ fid }}-trigger">{{ label }}</label>
   <div class="se-filter-chip-control">
+    <span class="se-filter-chip-icon" aria-hidden="true">{{ ep_listbox_payment_icon() }}</span>
     <input type="hidden" id="{{ fid }}" name="{{ name }}" value="{{ selected }}">
     {% if use_combobox %}
     <input type="search"
@@ -92,6 +95,46 @@
     <button type="button" class="se-filter-listbox-option{% if selected|string == value|string %} is-selected{% endif %}" role="option" data-value="{{ value }}" data-name="{{ opt_label|lower }}" data-label="{{ opt_label }}" aria-selected="{{ 'true' if selected|string == value|string else 'false' }}">{{ opt_label }}</button>
     {% endfor %}
     </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro ep_date_field(name, label, required=false, value='', field_id='', extra_class='', max='', min='') %}
+{% set fid = field_id or name %}
+<div class="se-filter-chip se-filter-chip--date ep-date-chip{% if extra_class %} {{ extra_class }}{% endif %}" id="{{ fid }}-chip">
+  <label class="se-filter-chip-label" id="{{ fid }}-label" for="{{ fid }}">{{ label }}{% if required %} *{% endif %}</label>
+  <div class="se-filter-chip-control">
+    <span class="se-filter-chip-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+    </span>
+    <input type="date"
+           id="{{ fid }}"
+           name="{{ name }}"
+           class="pl-date-input ep-date-input"
+           aria-labelledby="{{ fid }}-label"
+           {% if required %}required{% endif %}
+           {% if value %}value="{{ value }}"{% endif %}
+           {% if max %}max="{{ max }}"{% endif %}
+           {% if min %}min="{{ min }}"{% endif %}>
+  </div>
+</div>
+{% endmacro %}
+
+{% macro ep_time_field(name, label, required=false, value='', field_id='', extra_class='') %}
+{% set fid = field_id or name %}
+<div class="se-filter-chip se-filter-chip--date ep-date-chip ep-time-chip{% if extra_class %} {{ extra_class }}{% endif %}" id="{{ fid }}-chip">
+  <label class="se-filter-chip-label" id="{{ fid }}-label" for="{{ fid }}">{{ label }}{% if required %} *{% endif %}</label>
+  <div class="se-filter-chip-control">
+    <span class="se-filter-chip-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+    </span>
+    <input type="time"
+           id="{{ fid }}"
+           name="{{ name }}"
+           class="pl-date-input ep-date-input ep-time-input"
+           aria-labelledby="{{ fid }}-label"
+           {% if required %}required{% endif %}
+           {% if value %}value="{{ value }}"{% endif %}>
   </div>
 </div>
 {% endmacro %}

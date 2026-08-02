@@ -1,0 +1,115 @@
+<script>
+(function () {
+  function submitReportFilters() {
+    var form = document.getElementById('st-audit-report-filter-form');
+    if (!form) return;
+    var dateFrom = document.getElementById('st-audit-report-date-from');
+    var dateTo = document.getElementById('st-audit-report-date-to');
+    if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+    if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+    var reason = document.getElementById('st-audit-report-reason');
+    var category = document.getElementById('st-audit-report-category');
+    if (reason && String(reason.value || '').toLowerCase() === 'all') reason.removeAttribute('name');
+    if (category && String(category.value || '').toLowerCase() === 'all') category.removeAttribute('name');
+    form.submit();
+  }
+
+  window.stAuditReportFilterChanged = function () {
+    submitReportFilters();
+  };
+
+  function initStockAuditReportSearch() {
+    var searchInput = document.getElementById('st-audit-report-search');
+    if (!searchInput || searchInput.getAttribute('data-bound') === '1') return;
+    searchInput.setAttribute('data-bound', '1');
+    var searchChip = searchInput.closest('.pl-search-chip');
+    var countEl = document.getElementById('st-audit-report-count');
+
+    function applySearch() {
+      var needle = String(searchInput.value || '').trim().toLowerCase();
+      if (searchChip) searchChip.classList.toggle('is-active', !!needle);
+      var rows = Array.prototype.slice.call(
+        document.querySelectorAll('.st-audit-report-table tbody tr.st-audit-report-row')
+      );
+      var visible = 0;
+      rows.forEach(function (row) {
+        var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
+        var match = !needle || hay.indexOf(needle) !== -1;
+        row.hidden = !match;
+        if (match) visible += 1;
+      });
+      if (countEl) {
+        countEl.textContent = visible + ' entr' + (visible === 1 ? 'y' : 'ies');
+      }
+    }
+
+    searchInput.addEventListener('input', applySearch);
+    searchInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        searchInput.value = '';
+        applySearch();
+        searchInput.blur();
+      }
+      if (e.key === 'Enter') e.preventDefault();
+    });
+    applySearch();
+  }
+
+  function initStockAuditReportFilters() {
+    var form = document.getElementById('st-audit-report-filter-form');
+    if (!form) return;
+
+    var dateFrom = document.getElementById('st-audit-report-date-from');
+    var dateTo = document.getElementById('st-audit-report-date-to');
+    if (window.SalesDateRangePicker) {
+      SalesDateRangePicker.init({
+        wrapId: 'st-audit-report-date-range-wrap',
+        triggerId: 'st-audit-report-date-range-trigger',
+        backdropId: 'st-audit-report-date-range-backdrop',
+        panelId: 'st-audit-report-date-range-panel',
+        displayId: 'st-audit-report-date-range-display',
+        formId: 'st-audit-report-filter-form',
+        fromInputId: 'st-audit-report-date-from',
+        toInputId: 'st-audit-report-date-to',
+        applyId: 'st-audit-report-date-range-apply',
+        prevId: 'st-audit-report-cal-prev',
+        nextId: 'st-audit-report-cal-next',
+        title0Id: 'st-audit-report-cal-title0',
+        title1Id: 'st-audit-report-cal-title1',
+        grid0Id: 'st-audit-report-cal-grid0',
+        grid1Id: 'st-audit-report-cal-grid1',
+        emptyLabel: 'Select date…',
+        onOpen: function () {
+          if (typeof window.closeSuFilterListboxes === 'function') {
+            window.closeSuFilterListboxes('st-audit-report-filter-form');
+          }
+        },
+        onBeforeSubmit: function () {
+          if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+          if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+        }
+      });
+    }
+
+    var clearBtn = document.getElementById('st-audit-report-date-range-clear');
+    if (clearBtn && clearBtn.getAttribute('data-bound') !== '1') {
+      clearBtn.setAttribute('data-bound', '1');
+      clearBtn.addEventListener('click', function () {
+        if (dateFrom) dateFrom.value = '';
+        if (dateTo) dateTo.value = '';
+        submitReportFilters();
+      });
+    }
+
+    initStockAuditReportSearch();
+  }
+
+  window.initStockAuditReportPage = initStockAuditReportFilters;
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initStockAuditReportFilters);
+  } else {
+    initStockAuditReportFilters();
+  }
+})();
+</script>

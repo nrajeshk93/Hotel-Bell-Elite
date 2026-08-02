@@ -1,0 +1,78 @@
+/* Hotel Settings — list editors on top of pos_settings shell */
+.hotel-set-rooms-table-wrap{
+  overflow:auto;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+  background:#fff;
+}
+.hotel-set-rooms-table{
+  width:100%;
+  border-collapse:collapse;
+  font:500 13px/1.4 Inter,system-ui,sans-serif;
+  color:#0F172A;
+}
+.hotel-set-rooms-table th{
+  text-align:left;
+  padding:10px 12px;
+  font-size:11px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:#64748B;
+  background:#F8FAFC;
+  border-bottom:1px solid #E2E8F0;
+}
+.hotel-set-rooms-table td{
+  padding:8px 12px;
+  border-bottom:1px solid #F1F5F9;
+  vertical-align:middle;
+}
+.hotel-set-rooms-table tr:last-child td{border-bottom:0}
+.hotel-set-rooms-table input,
+.hotel-set-rooms-table select{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  border:1px solid #E2E8F0;
+  border-radius:8px;
+  padding:7px 10px;
+  font:inherit;
+  background:#fff;
+  color:#0F172A;
+}
+.hotel-set-rooms-table .hotel-set-room-del{
+  border:0;
+  background:transparent;
+  color:#E11D48;
+  font:600 12px/1 Inter,system-ui,sans-serif;
+  cursor:pointer;
+  padding:6px 8px;
+  border-radius:8px;
+}
+.hotel-set-rooms-table .hotel-set-room-del:hover{background:#FFF1F2}
+.hotel-set-rooms-table .hotel-set-room-del:disabled{
+  opacity:.35;
+  cursor:not-allowed;
+}
+.hotel-set-floor-card .pos-set-fields{
+  display:grid;
+  gap:10px;
+}
+.hotel-set-floor-card .hotel-set-floor-actions{
+  display:flex;
+  gap:8px;
+  justify-content:flex-end;
+  margin-top:8px;
+}
+.hotel-set-floor-card .hotel-set-floor-actions button{
+  border:0;
+  background:#F1F5F9;
+  color:#334155;
+  font:600 12px/1 Inter,system-ui,sans-serif;
+  padding:8px 10px;
+  border-radius:8px;
+  cursor:pointer;
+}
+.hotel-set-floor-card .hotel-set-floor-actions button.is-danger{
+  background:#FFF1F2;
+  color:#E11D48;
+}

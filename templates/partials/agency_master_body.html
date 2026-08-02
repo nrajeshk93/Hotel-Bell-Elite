@@ -1,0 +1,111 @@
+<section class="content se-content"{% if embed_page_shell|default(false) %} style="padding:0;margin:0;max-width:none;"{% endif %}>
+  {% if auth_notice %}
+  <div class="sm-flash sm-flash--ok">{{ auth_notice }}</div>
+  {% endif %}
+  {% if success_message %}
+  <div class="sm-flash sm-flash--ok">{{ success_message }}</div>
+  {% endif %}
+
+  <div class="sm-layout{% if show_form %} sm-layout--form-focus{% endif %}">
+    <article class="card pl-list-panel pl-list-panel--scroll sm-list-panel sm-list-panel--scroll hbe-scroll-panel{% if show_form %} hidden{% endif %}" id="sm-agency-list-panel" aria-label="Agency list">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+          <span>Agencies</span>
+        </div>
+        <span class="pl-count sm-count" id="sm-agency-count">{{ agencies|length }} total</span>
+      </div>
+      <div class="card-body pl-card-body--flush sm-card-body--flush" style="padding:0;">
+        {% if agencies %}
+        <div class="pl-table-wrap sm-table-wrap" id="sm-agency-table-wrap" tabindex="0" aria-label="Agency list, scroll for more">
+          <table class="pl-table sm-pl-table" id="sm-agency-table" aria-label="Agency list">
+            <thead>
+              <tr>
+                <th scope="col">Agency Name</th>
+                <th scope="col">GST</th>
+                <th scope="col">Address</th>
+                <th class="pl-col-actions" scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for agency in agencies %}
+              <tr data-sort-row data-search="{{ [agency.name or '', agency.gst or '', agency.address or '']|join(' ')|lower }}">
+                <td class="pl-name">{{ agency.name }}</td>
+                <td>{{ agency.gst or '—' }}</td>
+                <td>{{ agency.address or '—' }}</td>
+                <td class="pl-col-actions">
+                  <div class="act-grp">
+                    <a class="act-btn edit"
+                       href="{{ url_for('agency_master', agency_id=agency.id, embed=1) if embed_mode else url_for('agency_master', agency_id=agency.id) }}"
+                       data-tip="Edit"
+                       aria-label="Edit {{ agency.name }}">
+                      <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </a>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="pl-empty sm-empty" id="sm-agency-search-empty" hidden>
+          <strong>No agencies match</strong>
+          Try a different search term.
+        </div>
+        {% else %}
+        <div class="pl-empty sm-empty">No agencies yet. Add one here or save an agency from hotel check-in.</div>
+        {% endif %}
+      </div>
+    </article>
+
+    {% if show_form %}
+    <article class="card" aria-label="Agency form">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <span>{% if form.id %}Edit agency{% else %}Add agency{% endif %}</span>
+        </div>
+        {% if form_focus %}
+        <a class="btn" href="{{ url_for('agency_master', embed=1) if embed_mode else url_for('agency_master') }}">Back to list</a>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('save_agency') }}"{% if embed_mode %} data-md-full-nav="1"{% endif %}>
+          <input type="hidden" name="agency_id" value="{{ form.id or '' }}">
+          {% if errors %}
+          <div class="sm-errors">
+            {% for error in errors %}
+            <div class="sm-error-item">{{ error }}</div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          <div class="staff-grid sm-form-grid">
+            <div class="staff-field staff-field--inline">
+              <label for="agency-name">Agency name *</label>
+              <input id="agency-name" class="staff-input" name="name" type="text" value="{{ form.name or '' }}" placeholder="e.g. MakeMyTrip" required>
+            </div>
+            <div class="staff-field staff-field--inline">
+              <label for="agency-gst">GST</label>
+              <input id="agency-gst" class="staff-input" name="gst" type="text" value="{{ form.gst or '' }}" placeholder="GST number">
+            </div>
+            <div class="staff-field staff-field--full">
+              <label for="agency-address">Address</label>
+              <textarea id="agency-address" class="staff-input" name="address" rows="3" placeholder="Agency address">{{ form.address or '' }}</textarea>
+            </div>
+          </div>
+          <div class="sm-actions">
+            <button type="submit" class="btn btn-primary staff-primary">{% if form.id %}Update agency{% else %}Save agency{% endif %}</button>
+            <a class="btn staff-secondary" href="{{ url_for('agency_master', embed=1) if embed_mode else url_for('agency_master') }}">Cancel</a>
+          </div>
+        </form>
+        {% if form.id %}
+        <form method="post" action="{{ url_for('delete_agency') }}" class="sm-delete-form" onsubmit="return confirm('Delete this agency? This cannot be undone.');"{% if embed_mode %} data-md-full-nav="1"{% endif %}>
+          <input type="hidden" name="agency_id" value="{{ form.id }}">
+          <button type="submit" class="btn sm-btn-danger">Delete agency</button>
+        </form>
+        {% endif %}
+      </div>
+    </article>
+    {% endif %}
+  </div>
+</section>

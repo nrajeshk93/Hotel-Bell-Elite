@@ -35,9 +35,11 @@ class PosOfflinePwaTests(unittest.TestCase):
         self.assertEqual(resp.headers.get("Service-Worker-Allowed"), "/")
         body = resp.get_data(as_text=True)
         resp.close()
-        self.assertIn("hbe-pos-v2", body)
+        self.assertIn("hbe-pos-v4", body)
         self.assertIn("networkOnlyFloor", body)
+        self.assertIn("networkFirstHtml", body)
         self.assertIn("FLOOR_API_PATHS", body)
+        self.assertNotIn("client.navigate", body)
         self.assertNotIn(
             "'/point-of-sale/api/floor',\n  '/point-of-sale/api/menu/items'",
             body,

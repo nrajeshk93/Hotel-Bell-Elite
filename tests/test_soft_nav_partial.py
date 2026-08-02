@@ -1,4 +1,4 @@
-"""Soft-nav partial=main responses omit the workspace sidebar and full document chrome."""
+"""Soft-nav partial=main responses omit live chrome but keep a sidebar merge snapshot."""
 
 import re
 import unittest
@@ -25,10 +25,13 @@ class PartialMainHelpersTest(unittest.TestCase):
         ):
             self.assertTrue(is_partial_main_request())
 
-    def test_shell_partial_omits_sidebar(self):
-        from flask import render_template_string
+    def test_shell_partial_includes_hidden_sidebar_merge_source(self):
+        from flask import render_template_string, url_for
 
         from app import app
+
+        def _has_access(_key):
+            return True
 
         with app.test_request_context("/accounts?partial=main"):
             html = render_template_string(
@@ -36,10 +39,14 @@ class PartialMainHelpersTest(unittest.TestCase):
                 "CONTENT"
                 "{% include 'partials/de_workspace_shell_close.html' %}",
                 is_partial_main=True,
+                has_dashboard_access=_has_access,
+                url_for=url_for,
             )
         self.assertIn('data-de-partial="main"', html)
         self.assertIn("CONTENT", html)
-        self.assertNotIn("de-sidebar", html)
+        # Soft-nav partials include a hidden sidebar merge snapshot (new modules).
+        self.assertIn('data-de-soft-nav-merge-root', html)
+        self.assertIn("de-sidebar", html)
         self.assertNotIn("de_workspace_transitions.js", html)
 
         with app.test_request_context("/accounts"):
@@ -48,8 +55,11 @@ class PartialMainHelpersTest(unittest.TestCase):
                 "CONTENT"
                 "{% include 'partials/de_workspace_shell_close.html' %}",
                 is_partial_main=False,
+                has_dashboard_access=_has_access,
+                url_for=url_for,
             )
         self.assertIn("de-sidebar", html_full)
+        self.assertNotIn("data-de-soft-nav-merge-root", html_full)
         self.assertIn("de_workspace_transitions.js", html_full)
 
 
@@ -59,6 +69,8 @@ class SoftNavTruePartialRoutesTest(unittest.TestCase):
     PARTIAL_ROUTES = (
         "/home",
         "/master",
+        "/settings",
+        "/hotel/settings",
         "/point-of-sale",
         "/point-of-sale/invoice",
         "/point-of-sale/settings",
@@ -91,7 +103,8 @@ class SoftNavTruePartialRoutesTest(unittest.TestCase):
                 self.assertIsNone(re.search(r"(?i)<html[\s>]", html))
                 self.assertIsNone(re.search(r"(?i)<head[\s>]", html))
                 self.assertNotIn("fonts.googleapis.com", html)
-                self.assertNotIn('id="de-sidebar"', html)
+                self.assertIn('data-de-soft-nav-merge-root', html)
+                self.assertIn('id="de-sidebar"', html)
                 self.assertNotIn("de_workspace_transitions.js", html)
 
 

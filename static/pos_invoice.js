@@ -1,7 +1,7 @@
 /**
  * Point of Sale — Invoice billing (search-first UI).
  * Soft-nav safe: expose window.initPosInvoicePage and re-bind idempotently.
- * Menu catalog loads from /point-of-sale/api/menu/items (Settings → Menu).
+ * Menu catalog loads from /point-of-sale/api/menu/items (Restaurant → Menu).
  * Tables load from /point-of-sale/api/floor (same SQLite layout as Tables/Settings).
  */
 (function (global) {
@@ -66,6 +66,147 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var VAT_RATE = 0.1;
+  var taxRatesLoaded = false;
+  var taxRatesInflight = null;
+
+  function parseTaxPctField(values, namedKey, legacyIndex, defaultPct) {
+    var src = values && typeof values === 'object' ? values : {};
+    var field = src[namedKey];
+    if (field == null) field = src['f' + legacyIndex];
+    var raw = field && typeof field === 'object' ? field.value : field;
+    if (raw === '' || raw == null) return defaultPct;
+    var n = Number(raw);
+    if (!isFinite(n) || n < 0) n = defaultPct;
+    if (n > 100) n = 100;
+    return n;
+  }
+
+  function taxRatesFromApiPayload(data) {
+    if (data && data.taxRates && typeof data.taxRates === 'object') {
+      var tr = data.taxRates;
+      var cgst =
+        tr.cgst != null
+          ? Number(tr.cgst)
+          : tr.cgst_pct != null
+            ? Number(tr.cgst_pct) / 100
+            : NaN;
+      var ugst =
+        tr.ugst != null
+          ? Number(tr.ugst)
+          : tr.ugst_pct != null
+            ? Number(tr.ugst_pct) / 100
+            : NaN;
+      var vat =
+        tr.vat != null
+          ? Number(tr.vat)
+          : tr.vat_pct != null
+            ? Number(tr.vat_pct) / 100
+            : NaN;
+      if (isFinite(cgst) || isFinite(ugst) || isFinite(vat)) {
+        return {
+          cgst: isFinite(cgst) ? cgst : 0.025,
+          ugst: isFinite(ugst) ? ugst : 0.025,
+          vat: isFinite(vat) ? vat : 0.1,
+          cgst_pct: (isFinite(cgst) ? cgst : 0.025) * 100,
+          ugst_pct: (isFinite(ugst) ? ugst : 0.025) * 100,
+          vat_pct: (isFinite(vat) ? vat : 0.1) * 100
+        };
+      }
+    }
+    if (data && data.settings) return taxRatesFromSettings(data.settings);
+    return null;
+  }
+
+  function taxRatesFromSettings(settings) {
+    var panels = settings && settings.panels && typeof settings.panels === 'object' ? settings.panels : {};
+    var taxes = panels.taxes;
+    var values = {};
+    if (taxes && typeof taxes === 'object' && !Array.isArray(taxes)) {
+      values = taxes.values && typeof taxes.values === 'object' ? taxes.values : taxes;
+    } else if (Array.isArray(taxes)) {
+      var idx = 0;
+      taxes.forEach(function (field) {
+        if (!field || typeof field !== 'object' || field.kind === 'listbox') return;
+        values['f' + idx] = field;
+        idx += 1;
+      });
+    }
+    var cgstPct = parseTaxPctField(values, 'cgst_pct', 0, 2.5);
+    var ugstPct = parseTaxPctField(values, 'ugst_pct', 1, 2.5);
+    var vatPct = parseTaxPctField(values, 'vat_pct', 2, 10);
+    return {
+      cgst_pct: cgstPct,
+      ugst_pct: ugstPct,
+      vat_pct: vatPct,
+      cgst: cgstPct / 100,
+      ugst: ugstPct / 100,
+      vat: vatPct / 100
+    };
+  }
+
+  function applyTaxRates(rates) {
+    if (!rates) return;
+    if (rates.cgst != null && isFinite(Number(rates.cgst))) CGST_RATE = Number(rates.cgst);
+    if (rates.ugst != null && isFinite(Number(rates.ugst))) UGST_RATE = Number(rates.ugst);
+    if (rates.vat != null && isFinite(Number(rates.vat))) VAT_RATE = Number(rates.vat);
+    GST_RATE = CGST_RATE + UGST_RATE;
+    taxRatesLoaded = true;
+    try {
+      global.HBE_POS_TAX_RATES = {
+        cgst: CGST_RATE,
+        ugst: UGST_RATE,
+        vat: VAT_RATE,
+        cgst_pct: CGST_RATE * 100,
+        ugst_pct: UGST_RATE * 100,
+        vat_pct: VAT_RATE * 100
+      };
+    } catch (err) {}
+  }
+
+  function loadTaxRates(done) {
+    if (taxRatesInflight) {
+      taxRatesInflight.then(function () {
+        if (typeof done === 'function') done(true);
+      });
+      return taxRatesInflight;
+    }
+    var url = resolvePosApiBase() + '/api/settings';
+    taxRatesInflight = fetch(url, {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      cache: 'no-store'
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return {};
+        });
+      })
+      .then(function (data) {
+        var rates = taxRatesFromApiPayload(data);
+        if (rates) applyTaxRates(rates);
+        return taxRatesLoaded;
+      })
+      .catch(function () {
+        return taxRatesLoaded;
+      })
+      .then(function (ok) {
+        taxRatesInflight = null;
+        if (typeof done === 'function') done(!!ok);
+        return ok;
+      });
+    return taxRatesInflight;
+  }
+
+  function refreshTaxRatesAndSummary(page) {
+    loadTaxRates(function () {
+      if (page) {
+        renderSummary(page);
+        renderLines(page);
+      }
+    });
+  }
+
   var LIQUOR_CATEGORY_RE =
     /\b(liquou?r|alcohol|whisky|whiskey|beer|wine|vodka|gin|rum|brandy|spirit|spirits|imfl|cocktail|cocktails|shots?|scotch|tequila|champagne|cider|liqueur|aperitif)\b/i;
   var DEFAULT_SERVICE_PCT = 0;
@@ -119,6 +260,7 @@
     discountValue: 0,
     /* Empty = whole-bill discount; otherwise only these line uids contribute. */
     discountLineUids: [],
+    discountReason: '',
     /* null | 'discount' | 'coupon' — checkbox selection before existing modals. */
     discountSelectMode: null,
     discountSelectDraft: [],
@@ -203,6 +345,8 @@
   }
 
   function noteOutletOrderSeq(orderNo) {
+    /* Keep a high-water mark after the server confirms SPC|INV/{n}/{fy}.
+       Client drafts must never mint from this — they use provisional hex ids. */
     var text = String(orderNo || '').trim();
     var spc = /^SPC\/(\d+)\/(\d{4}-\d{2})$/i.exec(text);
     if (spc) {
@@ -227,35 +371,55 @@
     } catch (e2) {}
   }
 
+  function randomOrderSuffix() {
+    try {
+      if (global.crypto && typeof global.crypto.getRandomValues === 'function') {
+        var buf = new Uint8Array(3);
+        global.crypto.getRandomValues(buf);
+        var hex = '';
+        for (var i = 0; i < buf.length; i += 1) {
+          hex += ('0' + buf[i].toString(16)).slice(-2);
+        }
+        return hex.toUpperCase();
+      }
+    } catch (e) {}
+    return String(Date.now()).slice(-6).toUpperCase();
+  }
+
+  /** True when the server has assigned SPC|INV/{n}/{fy} (not a client draft). */
+  function isConfirmedOutletOrderNo(orderNo) {
+    var text = String(orderNo || '').trim();
+    return (
+      /^SPC\/\d+\/\d{4}-\d{2}$/i.test(text) || /^INV\/\d+\/\d{4}-\d{2}$/i.test(text)
+    );
+  }
+
+  function formatOrderNoDisplay(orderNo) {
+    var text = String(orderNo || '').trim();
+    if (!text || !isConfirmedOutletOrderNo(text)) return 'Draft';
+    return text;
+  }
+
+  function syncOrderNoMeta(page) {
+    var orderEl =
+      (page && $('#pos-inv-meta-order-no', page)) ||
+      document.getElementById('pos-inv-meta-order-no');
+    if (orderEl) orderEl.textContent = formatOrderNoDisplay(state.orderNo);
+  }
+
+  /** Client draft only — server replaces with the next sequential SPC|INV/{n}/{fy}
+   *  on first save. Never mint sequential numbers in the browser (refresh must
+   *  not burn or change the official series). */
   function makeOrderNo(d) {
     var outlet = resolvePosOutlet();
     var when = d instanceof Date ? d : new Date();
     var fy = indianFiscalYearLabel(when);
+    var suffix = randomOrderSuffix();
     if (outlet === 'restaurant') {
-      var spcKey = 'hbe_pos_spc_seq_' + fy;
-      var spcSeq = 0;
-      try {
-        spcSeq = parseInt(localStorage.getItem(spcKey) || '0', 10) || 0;
-      } catch (e) {}
-      spcSeq += 1;
-      try {
-        localStorage.setItem(spcKey, String(spcSeq));
-      } catch (e2) {}
-      /* Restaurant format: SPC/{invoice number}/{FY} e.g. SPC/12/2026-27 */
-      return 'SPC/' + spcSeq + '/' + fy;
+      return 'SPC/' + suffix + '/' + fy;
     }
     if (outlet === 'bar') {
-      var invKey = 'hbe_pos_inv_seq_' + fy;
-      var invSeq = 0;
-      try {
-        invSeq = parseInt(localStorage.getItem(invKey) || '0', 10) || 0;
-      } catch (e3) {}
-      invSeq += 1;
-      try {
-        localStorage.setItem(invKey, String(invSeq));
-      } catch (e4) {}
-      /* Bar format: INV/{invoice number}/{FY} e.g. INV/12/2026-27 */
-      return 'INV/' + invSeq + '/' + fy;
+      return 'INV/' + suffix + '/' + fy;
     }
     var api = offlineApi();
     if (api && typeof api.makeLocalOrderNo === 'function') {
@@ -264,8 +428,7 @@
     var yy = String(when.getFullYear()).slice(-2);
     var mm = String(when.getMonth() + 1);
     if (mm.length < 2) mm = '0' + mm;
-    var seqOrd = String(40 + (when.getMinutes() % 50));
-    return 'ORD-' + yy + mm + '-' + seqOrd.padStart(4, '0');
+    return 'ORD-L-' + yy + mm + '-' + suffix;
   }
 
   function isBrowserOnline() {
@@ -347,6 +510,8 @@
         if (localId && localId === state.localId && invoice) {
           state.invoiceId = invoice.id;
           state.orderNo = invoice.order_no || (payload && payload.orderNo) || state.orderNo;
+          noteOutletOrderSeq(state.orderNo);
+          syncOrderNoMeta(document.getElementById('pos-invoice-page'));
           state.tableForOrder =
             invoice.table_label || invoice.table || state.tableForOrder;
           if (
@@ -401,10 +566,27 @@
     global.addEventListener('online', function () {
       updateOfflineBanner();
       flushOfflineOutbox();
+      var page = document.getElementById('pos-invoice-page');
+      if (page) syncSelectedTableOrderFromServer(page);
     });
     global.addEventListener('offline', function () {
       updateOfflineBanner();
     });
+  }
+
+  var tableOrderSyncBound = false;
+  function bindTableOrderSyncListeners() {
+    if (tableOrderSyncBound) return;
+    tableOrderSyncBound = true;
+    function pullIfVisible() {
+      if (document.visibilityState && document.visibilityState === 'hidden') return;
+      var page = document.getElementById('pos-invoice-page');
+      if (!page) return;
+      syncSelectedTableOrderFromServer(page);
+    }
+    document.addEventListener('visibilitychange', pullIfVisible);
+    global.addEventListener('focus', pullIfVisible);
+    global.addEventListener('pageshow', pullIfVisible);
   }
 
   function queryParam(name) {
@@ -752,7 +934,15 @@
     }
     state.tableForOrder = table;
     state.resumeTableValue = table;
-    markFloorTableOccupiedLocal(table);
+    var billGenerated =
+      !!(payload && (payload.customerBill || payload.customer_bill)) ||
+      !!(invoice && (invoice.customer_bill_sent || invoice.customerBillSent)) ||
+      !!state.invoiceGenerated;
+    if (billGenerated) {
+      markFloorTableAvailableLocal(table);
+    } else {
+      markFloorTableOccupiedLocal(table);
+    }
     if (page && floorTablesCache) {
       applyFloorTablesToUi(page, floorTablesCache);
       setListboxValue(
@@ -1016,7 +1206,7 @@
       return 'Could not load menu. Refresh or try again later.';
     }
     if (menuCatalogStatus === 'empty' || !menuCatalog.length) {
-      return 'No menu items configured. Add items in Restaurant Settings → Menu.';
+      return 'No menu items configured. Add items under Restaurant → Menu.';
     }
     return 'No menu items match your search.';
   }
@@ -1162,24 +1352,27 @@
       o.discountLineUids != null ? o.discountLineUids : state.discountLineUids;
 
     var subtotal = 0;
-    var liquorSubtotal = 0;
+    var barAlcoholSubtotal = 0;
     state.lines.forEach(function (line) {
       var lineTotal = (Number(line.rate) || 0) * (Number(line.qty) || 0);
       subtotal += lineTotal;
-      if (isLiquorLine(line)) liquorSubtotal += lineTotal;
+      /* VAT applies only to Bar Alcohol — bar-outlet liquor lines. */
+      if (lineMenuOutlet(line) === 'bar' && isLiquorLine(line)) {
+        barAlcoholSubtotal += lineTotal;
+      }
     });
     var scopedUids = normalizeDiscountLineUids(discountLineUids);
     var discountBase = scopedUids.length ? discountBaseForLines(scopedUids) : subtotal;
     var discount = calcAdjAmount(discountBase, discountType, discountValue);
     if (discount > subtotal) discount = subtotal;
     var afterDiscount = Math.max(0, subtotal - discount);
-    var liquorShare = subtotal > 0 ? liquorSubtotal / subtotal : 0;
-    var liquorAfter = afterDiscount * liquorShare;
-    var nonLiquorAfter = Math.max(0, afterDiscount - liquorAfter);
-    var cgst = nonLiquorAfter * CGST_RATE;
-    var ugst = nonLiquorAfter * UGST_RATE;
+    var barShare = subtotal > 0 ? barAlcoholSubtotal / subtotal : 0;
+    var barAfter = afterDiscount * barShare;
+    var foodAfter = Math.max(0, afterDiscount - barAfter);
+    var cgst = foodAfter * CGST_RATE;
+    var ugst = foodAfter * UGST_RATE;
     var gst = cgst + ugst;
-    var vat = liquorAfter * VAT_RATE;
+    var vat = barAfter * VAT_RATE;
     var service = calcAdjAmount(afterDiscount, serviceType, serviceValue);
     var tip = Number(tipAmount) || 0;
     if (tip < 0) tip = 0;
@@ -1193,7 +1386,8 @@
       discountValue: Number(discountValue) || 0,
       discountLineUids: scopedUids,
       discountItemCount: scopedUids.length,
-      liquorSubtotal: liquorSubtotal,
+      liquorSubtotal: barAlcoholSubtotal,
+      barSubtotal: barAlcoholSubtotal,
       cgst: cgst,
       ugst: ugst,
       gst: gst,
@@ -1216,6 +1410,17 @@
     return base;
   }
 
+  function formatTaxRateLabel(rate) {
+    var pct = Number(rate) * 100;
+    if (!isFinite(pct) || pct < 0) pct = 0;
+    pct = Math.round(pct * 1000) / 1000;
+    var text = String(pct);
+    if (text.indexOf('.') !== -1) {
+      text = text.replace(/\.?0+$/, '');
+    }
+    return '(' + text + '%)';
+  }
+
   function renderSummary(page) {
     var t = calcTotals();
     var map = {
@@ -1233,6 +1438,12 @@
       var el = $('#' + id, page);
       if (el) el.textContent = money(map[id]);
     });
+    var cgstRateEl = $('#pos-inv-sum-cgst-rate', page);
+    if (cgstRateEl) cgstRateEl.textContent = formatTaxRateLabel(CGST_RATE);
+    var ugstRateEl = $('#pos-inv-sum-ugst-rate', page);
+    if (ugstRateEl) ugstRateEl.textContent = formatTaxRateLabel(UGST_RATE);
+    var vatRateEl = $('#pos-inv-sum-vat-rate', page);
+    if (vatRateEl) vatRateEl.textContent = formatTaxRateLabel(VAT_RATE);
     var discHint = $('#pos-inv-sum-discount-hint', page);
     if (discHint) {
       discHint.textContent = formatAdjHint(t.discountType, t.discountValue, t.discountItemCount);
@@ -1406,65 +1617,140 @@
     }
   }
 
+  function buildKotTicketHtml(page, pending, opts) {
+    opts = opts || {};
+    var now = new Date();
+    var table = fieldValue('pos-inv-table', page) || '—';
+    var orderTypeValue =
+      fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
+    var orderType = ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue;
+    var isBar = opts.menuOutlet === 'bar';
+    var heading = isBar ? 'BAR ORDER TOKEN' : 'KITCHEN ORDER TOKEN';
+    var foot = isBar ? '-- Confirmed for bar --' : '-- Confirmed for kitchen --';
+    var rows = pending
+      .map(function (entry) {
+        var line = entry.line;
+        var note = String(line.notes || '').trim();
+        return (
+          '<tr><td class="qty">' +
+          entry.qty +
+          '</td><td class="name">' +
+          escapeHtml(line.name) +
+          (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
+          (note ? '<div class="note">' + escapeHtml(note) + '</div>' : '') +
+          '</td></tr>'
+        );
+      })
+      .join('');
+    return (
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>KOT ' +
+      escapeHtml(state.orderNo || '') +
+      '</title><style>' +
+      'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:300px;margin:0 auto}' +
+      'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
+      '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
+      '.meta div{display:flex;justify-content:space-between;margin:2px 0}' +
+      'table{width:100%;border-collapse:collapse;font-size:13px}' +
+      'td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
+      'td.qty{width:34px;font-weight:700}' +
+      '.variant{font-size:11px;color:#555}' +
+      '.note{font-size:11px;color:#111;font-style:italic;margin-top:2px}' +
+      '.foot{margin-top:12px;text-align:center;font-size:11px;color:#555}' +
+      '</style></head><body>' +
+      '<h1>' +
+      heading +
+      '</h1>' +
+      '<div class="meta">' +
+      '<div><span>Order</span><span>' +
+      escapeHtml(state.orderNo || '—') +
+      '</span></div>' +
+      '<div><span>Table</span><span>' +
+      escapeHtml(table) +
+      '</span></div>' +
+      '<div><span>Type</span><span>' +
+      escapeHtml(orderType) +
+      '</span></div>' +
+      '<div><span>Time</span><span>' +
+      formatDate(now) +
+      ' ' +
+      formatTime(now) +
+      '</span></div>' +
+      '</div>' +
+      '<table><tbody>' +
+      rows +
+      '</tbody></table>' +
+      '<div class="foot">' +
+      foot +
+      '</div>' +
+      '</body></html>'
+    );
+  }
+
+  function printKotTicketBrowser(html) {
+    var win = global.open('', '_blank', 'width=380,height=600');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(function () {
+      try {
+        win.print();
+      } catch (err) {
+        /* Best-effort print; ignore if the browser blocks it. */
+      }
+    }, 250);
+  }
+
+  function lineMenuOutlet(line) {
+    if (!line) return 'restaurant';
+    var raw = String(line.outlet || '').trim().toLowerCase();
+    if (raw === 'bar') return 'bar';
+    if (raw === 'restaurant') return 'restaurant';
+    var menu = findMenuItem(line.menuId || line.menu_item_id);
+    if (menu && String(menu.outlet || '').toLowerCase() === 'bar') return 'bar';
+    return 'restaurant';
+  }
+
   function printKotTicket(page, pending) {
     try {
-      var win = global.open('', '_blank', 'width=380,height=600');
-      if (!win) return;
-      var now = new Date();
-      var table = fieldValue('pos-inv-table', page) || '—';
-      var orderTypeValue =
-        fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
-      var orderType = ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue;
-      var rows = pending
-        .map(function (entry) {
-          var line = entry.line;
-          var note = String(line.notes || '').trim();
-          return (
-            '<tr><td class="qty">' +
-            entry.qty +
-            '</td><td class="name">' +
-            escapeHtml(line.name) +
-            (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
-            (note ? '<div class="note">' + escapeHtml(note) + '</div>' : '') +
-            '</td></tr>'
-          );
-        })
-        .join('');
-      var html =
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>KOT ' +
-        escapeHtml(state.orderNo || '') +
-        '</title><style>' +
-        'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:300px;margin:0 auto}' +
-        'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
-        '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
-        '.meta div{display:flex;justify-content:space-between;margin:2px 0}' +
-        'table{width:100%;border-collapse:collapse;font-size:13px}' +
-        'td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
-        'td.qty{width:34px;font-weight:700}' +
-        '.variant{font-size:11px;color:#555}' +
-        '.note{font-size:11px;color:#111;font-style:italic;margin-top:2px}' +
-        '.foot{margin-top:12px;text-align:center;font-size:11px;color:#555}' +
-        '</style></head><body>' +
-        '<h1>KITCHEN ORDER TOKEN</h1>' +
-        '<div class="meta">' +
-        '<div><span>Order</span><span>' + escapeHtml(state.orderNo || '—') + '</span></div>' +
-        '<div><span>Table</span><span>' + escapeHtml(table) + '</span></div>' +
-        '<div><span>Type</span><span>' + escapeHtml(orderType) + '</span></div>' +
-        '<div><span>Time</span><span>' + formatDate(now) + ' ' + formatTime(now) + '</span></div>' +
-        '</div>' +
-        '<table><tbody>' + rows + '</tbody></table>' +
-        '<div class="foot">-- Confirmed for kitchen --</div>' +
-        '</body></html>';
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(function () {
-        try {
-          win.print();
-        } catch (err) {
-          /* Best-effort print; ignore if the browser blocks it. */
+      if (!pending || !pending.length) return;
+      var restaurantPending = [];
+      var barPending = [];
+      pending.forEach(function (entry) {
+        if (lineMenuOutlet(entry.line) === 'bar') barPending.push(entry);
+        else restaurantPending.push(entry);
+      });
+
+      var groups = [];
+      if (restaurantPending.length) {
+        groups.push({ menuOutlet: 'restaurant', entries: restaurantPending });
+      }
+      if (barPending.length) {
+        groups.push({ menuOutlet: 'bar', entries: barPending });
+      }
+
+      var canAgent =
+        global.hbePosPrinterPrefs &&
+        typeof global.hbePosPrinterPrefs.printKotHtml === 'function';
+      var baseId = String(state.invoiceId || state.orderNo || Date.now());
+
+      groups.forEach(function (group, idx) {
+        var html = buildKotTicketHtml(page, group.entries, {
+          menuOutlet: group.menuOutlet
+        });
+        var jobId = 'kot-' + group.menuOutlet + '-' + baseId + '-' + Date.now() + '-' + idx;
+        if (canAgent) {
+          global.hbePosPrinterPrefs.printKotHtml(html, {
+            menuOutlet: group.menuOutlet,
+            jobId: jobId,
+            browserPrint: function () {
+              printKotTicketBrowser(html);
+            }
+          });
+        } else {
+          printKotTicketBrowser(html);
         }
-      }, 250);
+      });
     } catch (err) {
       /* Printing is best-effort only — order state below is unaffected. */
     }
@@ -1825,9 +2111,53 @@
     opts = opts || {};
     try {
       var html = buildCustomerBillHtml(page, invoice);
-      if (!openBillPrintPage(html, { autoPrint: opts.autoPrint !== false })) {
-        toast('Could not open the print page. Check your pop-up blocker.');
+      var outlet = (page && page.getAttribute('data-pos-outlet')) || undefined;
+      var wantAuto = opts.autoPrint !== false;
+      var jobId =
+        'inv-' +
+        String(
+          (invoice && (invoice.id || invoice.order_no)) ||
+            state.invoiceId ||
+            state.orderNo ||
+            Date.now()
+        ) +
+        '-' +
+        Date.now();
+      var prefs = global.hbePosPrinterPrefs;
+      var canAgent =
+        prefs && typeof prefs.printInvoiceHtml === 'function';
+
+      function browserPrint(autoPrint) {
+        if (!openBillPrintPage(html, { autoPrint: !!autoPrint })) {
+          toast('Could not open the print page. Check your pop-up blocker.');
+        }
       }
+
+      if (!wantAuto) {
+        /* Manual Print: open preview on the click gesture, also send to billing. */
+        browserPrint(false);
+        if (canAgent) {
+          prefs.printInvoiceHtml(html, {
+            outlet: outlet,
+            jobId: jobId,
+            browserPrint: function () {}
+          });
+        }
+        return;
+      }
+
+      /* Settle auto-print: Restaurant Invoice printer first, browser as fallback. */
+      if (canAgent) {
+        prefs.printInvoiceHtml(html, {
+          outlet: outlet,
+          jobId: jobId,
+          browserPrint: function () {
+            browserPrint(true);
+          }
+        });
+        return;
+      }
+      browserPrint(true);
     } catch (err) {
       toast('Could not open the print page.');
     }
@@ -1976,6 +2306,7 @@
           state.orderNo = invoice.order_no;
           noteOutletOrderSeq(invoice.order_no);
         }
+        syncOrderNoMeta(page);
       }
       clearDirtyAfterPersist(epochAtStart, page);
       if (!state.dirty) cancelAutosaveTimer();
@@ -2117,6 +2448,7 @@
           state.orderNo = invoice.order_no;
           noteOutletOrderSeq(invoice.order_no);
         }
+        syncOrderNoMeta(page);
       }
       clearDirtyAfterPersist(epochAtStart, page);
       if (!state.dirty) cancelAutosaveTimer();
@@ -2208,6 +2540,10 @@
     }
     if (existing) {
       existing.qty += qty || 1;
+      if (!existing.outlet) {
+        existing.outlet =
+          String(item.outlet || '').toLowerCase() === 'bar' ? 'bar' : 'restaurant';
+      }
     } else {
       state.lineSeq += 1;
       state.lines.push({
@@ -2220,6 +2556,7 @@
         qty: qty || 1,
         isLiquor: !!item.isLiquor || item.itemKind === 'liquor' || isLiquorCategory(item.category),
         itemKind: item.itemKind === 'liquor' || item.isLiquor ? 'liquor' : 'food',
+        outlet: String(item.outlet || '').toLowerCase() === 'bar' ? 'bar' : 'restaurant',
         emoji: item.emoji || '🍽️',
         /* KOT is not fired on add — sentQty tracks how much of this line has
            already been confirmed to the kitchen so only the delta re-KOTs. */
@@ -2482,19 +2819,19 @@
     var now = new Date();
     var dateEl = $('#pos-inv-meta-date', page);
     var timeEl = $('#pos-inv-meta-time', page);
-    var orderEl = $('#pos-inv-meta-order-no', page);
     if (dateEl) dateEl.textContent = formatDate(now);
     if (timeEl) timeEl.textContent = formatTime(now);
     if (!state.orderNo) state.orderNo = makeOrderNo(now);
-    if (orderEl) orderEl.textContent = state.orderNo;
+    syncOrderNoMeta(page);
     syncOrderTypeMeta(page);
   }
 
   /** Load this session's in-progress state from a persisted invoice — the core
    *  of "resume this table's order" (Tables tile tap, or picking an occupied
    *  table from this page's own picker). Overwrites lines/customer/totals. */
-  function hydrateFromInvoice(page, invoice) {
+  function hydrateFromInvoice(page, invoice, opts) {
     if (!invoice) return;
+    opts = opts || {};
     state.invoiceId = invoice.id;
     state.orderNo = invoice.order_no || state.orderNo;
     noteOutletOrderSeq(state.orderNo);
@@ -2504,6 +2841,9 @@
     state.discountLineUids = normalizeDiscountLineUids(
       invoice.discount_line_uids || invoice.discountLineUids || []
     );
+    state.discountReason = String(
+      invoice.discount_reason || invoice.discountReason || ''
+    ).trim();
     state.discountSelectMode = null;
     state.discountSelectDraft = [];
     state.serviceType = invoice.service_type || 'pct';
@@ -2528,6 +2868,12 @@
         line.itemKind === 'liquor' ||
         isLiquorCategory(category) ||
         isLiquorCategory(line.variant);
+      var lineOutlet = String(
+        line.outlet || (menu && menu.outlet) || ''
+      )
+        .trim()
+        .toLowerCase();
+      if (lineOutlet !== 'bar') lineOutlet = 'restaurant';
       return {
         uid: persistedUid,
         menuId: line.menu_item_id || line.menuId || null,
@@ -2538,6 +2884,7 @@
         qty: Number(line.qty) || 0,
         isLiquor: liquor,
         itemKind: liquor ? 'liquor' : 'food',
+        outlet: lineOutlet,
         emoji: '🍽️',
         sentQty: Number(line.sent_qty) || 0,
         notes: String(line.notes || '').trim()
@@ -2545,8 +2892,7 @@
     });
     pruneDiscountLineUids();
 
-    var orderEl = $('#pos-inv-meta-order-no', page);
-    if (orderEl) orderEl.textContent = state.orderNo;
+    syncOrderNoMeta(page);
 
     var nameEl = $('#pos-inv-customer-name', page);
     if (nameEl) nameEl.value = invoice.customer_name || DEFAULT_AUTOSAVE_CUSTOMER;
@@ -2563,10 +2909,16 @@
     var typeLabel = ORDER_TYPE_LABELS[orderType] || orderType;
     setListboxValue('pos-inv-order-type-header', orderType, typeLabel);
 
+    state.invoiceGenerated = !!(invoice.customer_bill_sent);
+
     if (state.tableForOrder) {
       setListboxValue('pos-inv-table', state.tableForOrder, state.tableForOrder);
       state.resumeTableValue = state.tableForOrder;
       state.resumeTableLabel = state.tableForOrder;
+      if (!state.invoiceGenerated) {
+        markFloorTableOccupiedLocal(state.tableForOrder);
+        if (page && floorTablesCache) applyFloorTablesToUi(page, floorTablesCache);
+      }
     }
 
     state.dirty = false;
@@ -2574,15 +2926,16 @@
       clearTimeout(autosaveTimer);
       autosaveTimer = null;
     }
-    state.invoiceGenerated = !!(invoice.customer_bill_sent);
     renderLines(page);
     syncInvoiceGeneratedUi(page);
     persistInvoiceResumeContext();
-    toast(
-      state.invoiceGenerated
-        ? 'Resumed invoice ' + state.orderNo + ' (locked — settle to continue).'
-        : 'Resumed order ' + state.orderNo + '.'
-    );
+    if (!opts.silent) {
+      toast(
+        state.invoiceGenerated
+          ? 'Resumed invoice ' + state.orderNo + ' (locked — settle to continue).'
+          : 'Resumed order ' + state.orderNo + '.'
+      );
+    }
   }
 
   /** Shared lookup: is there an open dine-in order for this table? Used by both
@@ -2590,9 +2943,15 @@
   function resumeOrderForTable(page, tableName, opts) {
     var name = String(tableName || '').trim();
     if (!name) return;
-    fetch(INVOICE_BY_TABLE_API + '?table=' + encodeURIComponent(name), {
+    opts = opts || {};
+    fetch(INVOICE_BY_TABLE_API + '?table=' + encodeURIComponent(name) + '&_ts=' + Date.now(), {
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' }
+      cache: 'no-store',
+      headers: {
+        Accept: 'application/json',
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache'
+      }
     })
       .then(function (res) {
         return res.json().catch(function () {
@@ -2601,14 +2960,37 @@
       })
       .then(function (data) {
         if (data && data.ok && data.invoice) {
-          hydrateFromInvoice(page, data.invoice);
+          hydrateFromInvoice(page, data.invoice, { silent: !!opts.silent });
           return;
         }
-        if (opts && typeof opts.notFound === 'function') opts.notFound();
+        if (typeof opts.notFound === 'function') opts.notFound();
       })
       .catch(function () {
-        if (opts && typeof opts.notFound === 'function') opts.notFound();
+        if (typeof opts.notFound === 'function') opts.notFound();
       });
+  }
+
+  /**
+   * Pull the open bill for the selected table from the server.
+   * Skips when local edits are pending so we do not clobber an in-progress cart.
+   * Repairs the common cross-terminal case: floor still says Available while
+   * another browser already autosaved lines onto this table.
+   */
+  function syncSelectedTableOrderFromServer(page, opts) {
+    opts = opts || {};
+    if (!page || state.invoiceGenerated) return;
+    if (state.dirty && state.lines.length) return;
+    var table = String(
+      state.tableForOrder ||
+        state.resumeTableValue ||
+        fieldValue('pos-inv-table', page) ||
+        ''
+    ).trim();
+    if (!table) return;
+    resumeOrderForTable(page, table, {
+      silent: opts.silent !== false,
+      notFound: opts.notFound
+    });
   }
 
   /** Resume any saved invoice by id — Tables Invoice hub "View". */
@@ -2690,6 +3072,9 @@
         // No confirm — staff expect the chip change to apply immediately.
         var assignFree = function () {
           resetOrderSession(page, { tableValue: value, tableLabel: label });
+          /* Another terminal may already have an open bill even if the floor
+             badge still says available — probe before staying on a blank draft. */
+          syncSelectedTableOrderFromServer(page, { silent: false });
         };
         flushLeavingTableOrder(page, { silent: true }).then(assignFree, assignFree);
         return;
@@ -2699,11 +3084,19 @@
       state.tableForOrder = value;
       persistInvoiceResumeContext();
       /* Table chosen after items were added — kick autosave so leave/resume works. */
-      if (state.lines.length) markOrderDirty(page);
+      if (state.lines.length) {
+        markOrderDirty(page);
+        return;
+      }
+      /* Floor lag / other browser: always ask by-table even when badge is free. */
+      syncSelectedTableOrderFromServer(page, { silent: false });
       return;
     }
     var switchingTable = String(value).toLowerCase() !== String(state.tableForOrder || '').toLowerCase();
     function startBlankOnTable() {
+      /* Stale Occupied with no open bill — free the local badge so autosave can run. */
+      markFloorTableAvailableLocal(value);
+      refreshFloorTables(page, { preserveTable: value });
       resetOrderSession(page, { tableValue: value, tableLabel: label });
     }
     function resumeOccupied() {
@@ -2802,6 +3195,19 @@
     state.dirty = false;
     syncInvoiceGeneratedUi(page);
     persistInvoiceResumeContext();
+    /* Floor tile frees on Generate Invoice — do not wait for Settle. */
+    var table = String(
+      (invoice && (invoice.table_label || invoice.table)) ||
+        state.tableForOrder ||
+        state.resumeTableValue ||
+        (page && fieldValue('pos-inv-table', page)) ||
+        ''
+    ).trim();
+    if (table) {
+      markFloorTableAvailableLocal(table);
+      if (page && floorTablesCache) applyFloorTablesToUi(page, floorTablesCache);
+      refreshFloorTables(page, { preserveTable: table });
+    }
   }
 
   /** Reset the on-screen session to a fresh, blank order — used after Settle
@@ -2814,6 +3220,7 @@
     state.discountType = 'pct';
     state.discountValue = 0;
     state.discountLineUids = [];
+    state.discountReason = '';
     state.discountSelectMode = null;
     state.discountSelectDraft = [];
     state.tipAmount = 0;
@@ -2873,554 +3280,14 @@
     });
   }
 
-  var POS_PAYMENT_METHODS = [
-    ['cash', 'Cash'],
-    ['upi', 'UPI'],
-    ['card', 'Card'],
-    ['room_transfer', 'Room Transfer'],
-    ['bank_transfer', 'Bank Transfer']
-  ];
-  var POS_METHODS_REQUIRING_TXN = { bank_transfer: true };
-  try {
-    var methodsEl = document.getElementById('pos-inv-payment-methods-data');
-    if (methodsEl) {
-      var parsedMethods = JSON.parse(methodsEl.textContent || '[]');
-      if (parsedMethods && parsedMethods.length) POS_PAYMENT_METHODS = parsedMethods;
-    }
-  } catch (err) {}
-
-  function settleMoneyLabel(value) {
-    var n = Math.round((Number(value) || 0) * 100) / 100;
-    return money(n);
-  }
-
   function settleBillTotal() {
     return Math.round((Number(calcTotals().total) || 0) * 100) / 100;
   }
 
-  function setSettleError(message) {
-    var el = document.getElementById('pos-inv-settle-error');
-    if (!el) return;
-    if (message) {
-      el.textContent = message;
-      el.classList.add('is-visible');
-    } else {
-      el.textContent = '';
-      el.classList.remove('is-visible');
-    }
-  }
-
   function closeSettleModal() {
-    var modal = document.getElementById('pos-inv-settle-modal');
-    if (!modal || modal.hidden) return;
-    closeAllSettleSplitListboxes();
-    modal.hidden = true;
-    modal.setAttribute('hidden', '');
-    setSettleError('');
-  }
-
-  function settleSplitRows() {
-    var root = document.getElementById('pos-inv-settle-splits');
-    if (!root) return [];
-    return Array.prototype.slice.call(
-      root.querySelectorAll('.rt-split-row, .pos-inv-settle-split-row')
-    );
-  }
-
-  function settleMethodLabel(method) {
-    var key = String(method || '');
-    for (var i = 0; i < POS_PAYMENT_METHODS.length; i++) {
-      if (POS_PAYMENT_METHODS[i][0] === key) return POS_PAYMENT_METHODS[i][1];
+    if (typeof global.closePosSettleModal === 'function') {
+      global.closePosSettleModal();
     }
-    return key ? key : 'Select mode…';
-  }
-
-  function settleRowMethodValue(row) {
-    if (!row) return '';
-    var hidden = row.querySelector('.pos-inv-settle-method-input');
-    return hidden ? String(hidden.value || '') : '';
-  }
-
-  function settleUsedMethods(exceptRow) {
-    var used = {};
-    settleSplitRows().forEach(function (row) {
-      if (row === exceptRow) return;
-      var method = settleRowMethodValue(row);
-      if (method) used[method] = true;
-    });
-    return used;
-  }
-
-  function settleMethodOptionsHtml(selected, exceptRow) {
-    var used = settleUsedMethods(exceptRow);
-    return POS_PAYMENT_METHODS.map(function (pair) {
-      var value = pair[0];
-      var label = pair[1];
-      if (used[value] && value !== selected) return '';
-      var on = value === selected;
-      return (
-        '<button type="button" class="se-filter-listbox-option' +
-        (on ? ' is-selected' : '') +
-        '" role="option" data-value="' +
-        escapeHtml(value) +
-        '" aria-selected="' +
-        (on ? 'true' : 'false') +
-        '">' +
-        escapeHtml(label) +
-        '</button>'
-      );
-    }).join('');
-  }
-
-  function closeSettleSplitListbox(root) {
-    if (!root) return;
-    var trigger = root.querySelector('.se-filter-chip-trigger');
-    var list = root.querySelector('.se-filter-listbox');
-    root.classList.remove('is-open');
-    if (trigger) trigger.setAttribute('aria-expanded', 'false');
-    if (list) {
-      list.hidden = true;
-      list.scrollTop = 0;
-    }
-  }
-
-  function closeAllSettleSplitListboxes(except) {
-    var root = document.getElementById('pos-inv-settle-splits');
-    if (!root) return;
-    root.querySelectorAll('[data-se-listbox].is-open').forEach(function (box) {
-      if (box !== except) closeSettleSplitListbox(box);
-    });
-  }
-
-  function openSettleSplitListbox(root) {
-    if (!root || root.classList.contains('is-disabled')) return;
-    closeAllSettleSplitListboxes(root);
-    var trigger = root.querySelector('.se-filter-chip-trigger');
-    var list = root.querySelector('.se-filter-listbox');
-    root.classList.add('is-open');
-    if (trigger) trigger.setAttribute('aria-expanded', 'true');
-    if (list) {
-      list.hidden = false;
-      var selected =
-        list.querySelector('[aria-selected="true"]') ||
-        list.querySelector('.se-filter-listbox-option');
-      if (selected && selected.focus) {
-        try {
-          selected.focus({ preventScroll: true });
-        } catch (err) {
-          selected.focus();
-        }
-      }
-    }
-  }
-
-  function refreshSettleOptionAvailability() {
-    settleSplitRows().forEach(function (row) {
-      var listbox = row.querySelector('[data-se-listbox]');
-      var list = row.querySelector('.se-filter-listbox');
-      var selected = settleRowMethodValue(row);
-      if (list) list.innerHTML = settleMethodOptionsHtml(selected, row);
-      if (listbox && listbox.classList.contains('is-open')) {
-        var selectedOpt =
-          list &&
-          (list.querySelector('[aria-selected="true"]') ||
-            list.querySelector('.se-filter-listbox-option'));
-        if (selectedOpt && selectedOpt.focus) {
-          try {
-            selectedOpt.focus({ preventScroll: true });
-          } catch (err) {
-            selectedOpt.focus();
-          }
-        }
-      }
-      syncSettleRowState(row);
-    });
-    var addBtn = document.getElementById('pos-inv-settle-add-split');
-    if (addBtn) addBtn.disabled = settleSplitRows().length >= POS_PAYMENT_METHODS.length;
-  }
-
-  function bindSettleSplitListbox(row) {
-    var root = row && row.querySelector('[data-se-listbox]');
-    if (!root || root.getAttribute('data-bound') === '1') return;
-    root.setAttribute('data-bound', '1');
-    var trigger = root.querySelector('.se-filter-chip-trigger');
-    var list = root.querySelector('.se-filter-listbox');
-    var hidden = root.querySelector('.pos-inv-settle-method-input');
-    var valueEl = root.querySelector('.se-filter-chip-value');
-    if (!trigger || !list || !hidden) return;
-
-    trigger.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      if (root.classList.contains('is-open')) closeSettleSplitListbox(root);
-      else openSettleSplitListbox(root);
-    });
-    trigger.addEventListener('keydown', function (e) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        openSettleSplitListbox(root);
-      } else if (e.key === 'Escape') {
-        closeSettleSplitListbox(root);
-      }
-    });
-    list.addEventListener('click', function (e) {
-      var option = e.target.closest('.se-filter-listbox-option');
-      if (!option || !list.contains(option)) return;
-      e.preventDefault();
-      var value = option.getAttribute('data-value') || '';
-      var label = (option.textContent || '').trim();
-      hidden.value = value;
-      if (valueEl) {
-        valueEl.textContent = label || 'Select mode…';
-        valueEl.classList.toggle('staff-supplier-placeholder', !value);
-      }
-      list.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
-        var on = opt === option;
-        opt.classList.toggle('is-selected', on);
-        opt.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-      closeSettleSplitListbox(root);
-      syncSettleRowState(row);
-      refreshSettleOptionAvailability();
-      refreshSettleBalance();
-    });
-  }
-
-  function syncSettleRowState(row) {
-    if (!row) return;
-    var txn = row.querySelector('.pos-inv-settle-txn');
-    var method = settleRowMethodValue(row);
-    var needsTxn = !!POS_METHODS_REQUIRING_TXN[method];
-    row.classList.toggle('is-bank', needsTxn);
-    if (txn) {
-      txn.hidden = !needsTxn;
-      if (!needsTxn) txn.value = '';
-    }
-  }
-
-  function updateSettleRemoveButtons() {
-    var rows = settleSplitRows();
-    var multi = rows.length > 1;
-    rows.forEach(function (row) {
-      var removeBtn = row.querySelector('.pos-inv-settle-remove');
-      var amountInput = row.querySelector('.pos-inv-settle-amount');
-      if (removeBtn) removeBtn.hidden = !multi;
-      if (amountInput) {
-        amountInput.hidden = !multi;
-        amountInput.required = multi;
-      }
-      row.classList.toggle('is-multi', multi);
-      syncSettleRowState(row);
-    });
-  }
-
-  function roundSettleMoney(value) {
-    return Math.round((Number(value) || 0) * 100) / 100;
-  }
-
-  function syncRemainingSettleAmount(changedRow) {
-    var rows = settleSplitRows();
-    if (rows.length < 2) return;
-    var target = settleBillTotal();
-    if (!(target > 0)) return;
-
-    function amountRaw(row) {
-      var input = row.querySelector('.pos-inv-settle-amount');
-      return input ? String(input.value || '').trim() : '';
-    }
-    function setAmount(row, value) {
-      var input = row.querySelector('.pos-inv-settle-amount');
-      if (!input) return;
-      input.value = value > 0 ? String(value) : '';
-    }
-
-    if (rows.length === 2) {
-      var first = rows[0];
-      var second = rows[1];
-      if (!changedRow) {
-        var firstRaw = amountRaw(first);
-        var secondRaw = amountRaw(second);
-        var firstAmt = Number(firstRaw);
-        var secondAmt = Number(secondRaw);
-        if (firstRaw && isFinite(firstAmt) && firstAmt > 0 && !secondRaw) {
-          setAmount(second, roundSettleMoney(target - firstAmt));
-        } else if (secondRaw && isFinite(secondAmt) && secondAmt > 0 && !firstRaw) {
-          setAmount(first, roundSettleMoney(target - secondAmt));
-        }
-        return;
-      }
-      var otherRow = changedRow === first ? second : first;
-      var raw = amountRaw(changedRow);
-      var amount = Number(raw);
-      if (!raw || !isFinite(amount) || amount <= 0) {
-        setAmount(otherRow, 0);
-        return;
-      }
-      setAmount(otherRow, roundSettleMoney(target - amount));
-      return;
-    }
-
-    var lastRow = rows[rows.length - 1];
-    if (changedRow && changedRow === lastRow) return;
-    var others = 0;
-    var hasEarlierAmount = false;
-    for (var i = 0; i < rows.length - 1; i++) {
-      var rawEarlier = amountRaw(rows[i]);
-      var amountEarlier = Number(rawEarlier);
-      if (rawEarlier && isFinite(amountEarlier) && amountEarlier > 0) {
-        hasEarlierAmount = true;
-        others += amountEarlier;
-      }
-    }
-    if (!hasEarlierAmount) {
-      setAmount(lastRow, 0);
-      return;
-    }
-    setAmount(lastRow, roundSettleMoney(target - others));
-  }
-
-  function allSettleModesSelected() {
-    var rows = settleSplitRows();
-    if (!rows.length) return false;
-    for (var i = 0; i < rows.length; i++) {
-      if (!settleRowMethodValue(rows[i])) return false;
-    }
-    return true;
-  }
-
-  function settleSplitsMatchTotal() {
-    var rows = settleSplitRows();
-    var target = settleBillTotal();
-    if (!rows.length) return false;
-    if (target <= 0) return allSettleModesSelected();
-    if (!allSettleModesSelected()) return false;
-    if (rows.length === 1) return true;
-    var total = 0;
-    var complete = true;
-    rows.forEach(function (row) {
-      var amountInput = row.querySelector('.pos-inv-settle-amount');
-      var raw = amountInput ? String(amountInput.value || '').trim() : '';
-      var amount = Number(raw);
-      if (!raw || !isFinite(amount) || amount <= 0) complete = false;
-      total += isFinite(amount) ? amount : 0;
-    });
-    return complete && Math.abs(total - target) <= 0.001;
-  }
-
-  function syncSettleSubmitEnabled() {
-    var submitBtn = document.getElementById('pos-inv-settle-submit');
-    if (!submitBtn) return;
-    var rows = settleSplitRows();
-    var target = settleBillTotal();
-    var ok = target <= 0 ? allSettleModesSelected() : settleSplitsMatchTotal();
-    if (ok) {
-      rows.forEach(function (row) {
-        var method = settleRowMethodValue(row);
-        var txnInput = row.querySelector('.pos-inv-settle-txn');
-        if (POS_METHODS_REQUIRING_TXN[method] && !(txnInput && txnInput.value.trim())) {
-          ok = false;
-        }
-      });
-    }
-    rows.forEach(function (row) {
-      var listbox = row.querySelector('.pos-inv-settle-method-listbox');
-      if (listbox) {
-        listbox.classList.toggle('is-incomplete', !settleRowMethodValue(row));
-      }
-    });
-    submitBtn.disabled = !ok;
-  }
-
-  function refreshSettleBalance() {
-    var rows = settleSplitRows();
-    var multi = rows.length > 1;
-    var balanceEl = document.getElementById('pos-inv-settle-balance');
-    var splitTotalEl = document.getElementById('pos-inv-settle-split-total');
-    var splitTargetEl = document.getElementById('pos-inv-settle-split-target');
-    if (balanceEl) balanceEl.hidden = !multi;
-    var total = 0;
-    var allFilled = true;
-    var modesSelected = true;
-    rows.forEach(function (row) {
-      if (!settleRowMethodValue(row)) modesSelected = false;
-      var amountInput = row.querySelector('.pos-inv-settle-amount');
-      var raw = amountInput ? String(amountInput.value || '').trim() : '';
-      var amount = Number(raw);
-      if (multi && (!raw || !isFinite(amount) || amount <= 0)) allFilled = false;
-      total += isFinite(amount) ? amount : 0;
-    });
-    var target = settleBillTotal();
-    if (splitTotalEl) {
-      splitTotalEl.setAttribute('data-amount', String(total));
-      splitTotalEl.textContent = settleMoneyLabel(total);
-    }
-    if (splitTargetEl) {
-      splitTargetEl.setAttribute('data-amount', String(target));
-      splitTargetEl.textContent = settleMoneyLabel(target);
-    }
-    if (balanceEl) {
-      var mismatch =
-        multi && (!allFilled || !modesSelected || Math.abs(total - target) > 0.001);
-      balanceEl.classList.toggle('is-mismatch', mismatch);
-    }
-    syncSettleSubmitEnabled();
-  }
-
-  function syncSingleSettleAmount() {
-    var rows = settleSplitRows();
-    if (rows.length !== 1) {
-      syncRemainingSettleAmount(null);
-      refreshSettleBalance();
-      return;
-    }
-    var amountInput = rows[0].querySelector('.pos-inv-settle-amount');
-    if (amountInput) amountInput.value = String(settleBillTotal() || '');
-    refreshSettleBalance();
-  }
-
-  function addSettleSplitRow(preferredMethod, amount) {
-    var root = document.getElementById('pos-inv-settle-splits');
-    if (!root) return;
-    if (settleSplitRows().length >= POS_PAYMENT_METHODS.length) return;
-    var method = preferredMethod == null ? '' : String(preferredMethod || '');
-    if (method && settleUsedMethods(null)[method]) method = '';
-    var label = settleMethodLabel(method);
-    var uid = 'pos-settle-split-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
-    var row = document.createElement('div');
-    row.className = 'rt-split-row pos-inv-settle-split-row';
-    row.innerHTML =
-      '<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-inv-settle-method-listbox" data-se-listbox>' +
-      '<div class="se-filter-chip-control">' +
-      '<span class="se-filter-chip-icon" aria-hidden="true">' +
-      '<svg viewBox="0 0 24 24" width="18" height="18"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>' +
-      '</span>' +
-      '<input type="hidden" class="pos-inv-settle-method-input" value="' +
-      escapeHtml(method) +
-      '">' +
-      '<button type="button" class="se-filter-chip-trigger" id="' +
-      uid +
-      '-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="' +
-      uid +
-      '-list" aria-label="Payment mode">' +
-      '<span class="se-filter-chip-value' +
-      (method ? '' : ' staff-supplier-placeholder') +
-      '">' +
-      escapeHtml(label) +
-      '</span>' +
-      '</button>' +
-      '<span class="se-filter-chip-chev" aria-hidden="true">' +
-      '<svg viewBox="0 0 24 24" width="16" height="16"><polyline points="6 9 12 15 18 9"/></svg>' +
-      '</span>' +
-      '</div>' +
-      '<div class="se-filter-listbox" id="' +
-      uid +
-      '-list" role="listbox" aria-label="Payment mode" hidden>' +
-      settleMethodOptionsHtml(method, null) +
-      '</div>' +
-      '</div>' +
-      '<input class="staff-input pos-inv-settle-amount rt-split-amount" type="number" min="0.01" step="0.01" placeholder="Amount" aria-label="Mode amount" value="' +
-      escapeHtml(amount == null ? '' : amount) +
-      '">' +
-      '<input class="staff-input pos-inv-settle-txn rt-split-txn" type="text" placeholder="Txn / UTR ID" aria-label="Transaction ID" hidden autocomplete="off">' +
-      '<button type="button" class="pos-inv-settle-remove rt-split-remove" aria-label="Remove payment mode" hidden>&times;</button>';
-    root.appendChild(row);
-
-    var amountInput = row.querySelector('.pos-inv-settle-amount');
-    var txnInput = row.querySelector('.pos-inv-settle-txn');
-    var removeBtn = row.querySelector('.pos-inv-settle-remove');
-    bindSettleSplitListbox(row);
-    if (amountInput) {
-      amountInput.addEventListener('input', function () {
-        syncRemainingSettleAmount(row);
-        refreshSettleBalance();
-      });
-    }
-    if (txnInput) txnInput.addEventListener('input', syncSettleSubmitEnabled);
-    if (removeBtn) {
-      removeBtn.addEventListener('click', function () {
-        if (settleSplitRows().length <= 1) return;
-        closeAllSettleSplitListboxes();
-        row.remove();
-        updateSettleRemoveButtons();
-        refreshSettleOptionAvailability();
-        syncSingleSettleAmount();
-      });
-    }
-    syncSettleRowState(row);
-    updateSettleRemoveButtons();
-    refreshSettleOptionAvailability();
-    refreshSettleBalance();
-  }
-
-  function resetSettleSplits() {
-    closeAllSettleSplitListboxes();
-    var root = document.getElementById('pos-inv-settle-splits');
-    if (root) root.innerHTML = '';
-    addSettleSplitRow('', '');
-    syncSingleSettleAmount();
-  }
-
-  function collectSettleSplits() {
-    var splits = [];
-    var invalid = '';
-    var rows = settleSplitRows();
-    var target = settleBillTotal();
-    rows.forEach(function (row) {
-      if (invalid) return;
-      var amountInput = row.querySelector('.pos-inv-settle-amount');
-      var txnInput = row.querySelector('.pos-inv-settle-txn');
-      var method = settleRowMethodValue(row);
-      var amount = rows.length === 1 ? target : Number(amountInput && amountInput.value);
-      var transactionId = txnInput ? txnInput.value.trim() : '';
-      if (!method) {
-        invalid = 'Select a payment mode for each row.';
-        return;
-      }
-      if (target > 0 && (!amount || amount <= 0)) {
-        invalid = 'Enter a valid amount for each payment mode.';
-        return;
-      }
-      if (POS_METHODS_REQUIRING_TXN[method] && !transactionId) {
-        invalid = 'Transaction ID is required for bank transfer.';
-        return;
-      }
-      splits.push({
-        payment_method: method,
-        amount: amount || 0,
-        transaction_id: transactionId
-      });
-    });
-    if (invalid) return { splits: [], error: invalid };
-    var splitSum = splits.reduce(function (sum, item) {
-      return sum + Number(item.amount || 0);
-    }, 0);
-    if (Math.abs(splitSum - target) > 0.001) {
-      return {
-        splits: [],
-        error: 'Modes total must equal the bill total before settling.'
-      };
-    }
-    return { splits: splits, error: '' };
-  }
-
-  function todayIsoLocal() {
-    var d = new Date();
-    var y = d.getFullYear();
-    var m = d.getMonth() + 1;
-    var day = d.getDate();
-    return (
-      y +
-      '-' +
-      (m < 10 ? '0' : '') +
-      m +
-      '-' +
-      (day < 10 ? '0' : '') +
-      day
-    );
-  }
-
-  function settleClearanceDate() {
-    return todayIsoLocal();
   }
 
   function openSettleBillModal(page) {
@@ -3444,102 +3311,18 @@
       toast('Add at least one item before settling.');
       return;
     }
-    var modal = document.getElementById('pos-inv-settle-modal');
-    if (!modal) return;
-    setSettleError('');
-    var total = settleBillTotal();
-    var orderNo = state.orderNo || '—';
-    var table = fieldValue('pos-inv-table', page) || '';
-    var totalEl = document.getElementById('pos-inv-settle-total');
-    if (totalEl) {
-      totalEl.setAttribute('data-amount', String(total));
-      totalEl.textContent = settleMoneyLabel(total);
-    }
-    var metaEl = document.getElementById('pos-inv-settle-alloc-meta');
-    if (metaEl) metaEl.textContent = orderNo;
-    var allocBody = document.getElementById('pos-inv-settle-alloc-body');
-    if (allocBody) {
-      allocBody.innerHTML =
-        '<tr>' +
-        '<td><div class="cp-alloc-order"><span class="cp-alloc-code">' +
-        escapeHtml(orderNo) +
-        '</span>' +
-        (table
-          ? '<span class="cp-alloc-supplier">' + escapeHtml(table) + '</span>'
-          : '') +
-        '</div></td>' +
-        '<td class="pl-col-amount"><span class="cp-alloc-total-value">' +
-        escapeHtml(settleMoneyLabel(total)) +
-        '</span></td>' +
-        '<td class="pl-col-amount"><input class="cp-alloc-input" type="number" value="' +
-        escapeHtml(total) +
-        '" disabled aria-label="Pay now amount"></td>' +
-        '</tr>';
-    }
-    var notesEl = document.getElementById('pos-inv-settle-notes');
-    if (notesEl) notesEl.value = '';
-    resetSettleSplits();
-    modal.hidden = false;
-    modal.removeAttribute('hidden');
-    var firstTrigger = modal.querySelector('.pos-inv-settle-method-listbox .se-filter-chip-trigger');
-    if (firstTrigger) firstTrigger.focus();
-  }
-
-  function submitSettleBill(page) {
-    if (!isBrowserOnline()) {
-      setSettleError('Settle Bill requires an internet connection.');
-      syncSettleSubmitEnabled();
+    if (typeof global.openPosSettleModal !== 'function') {
+      toast('Settle dialog is not available.');
       return;
     }
-    if (!state.invoiceId) return;
-    var collected = collectSettleSplits();
-    if (collected.error) {
-      setSettleError(collected.error);
-      syncSettleSubmitEnabled();
-      return;
-    }
-    var notesEl = document.getElementById('pos-inv-settle-notes');
-    var submitBtn = document.getElementById('pos-inv-settle-submit');
     var headerBtn = $('#pos-inv-settle-bill', page) || $('#pos-inv-close-table', page);
-    if (submitBtn) submitBtn.disabled = true;
-    if (headerBtn) headerBtn.disabled = true;
-    setSettleError('');
-
-    /* Stamp the clearance day server-side — no date picker in the UI. */
-    var payload = {
-      payment_date: settleClearanceDate(),
-      notes: notesEl ? notesEl.value.trim() : '',
-      payment_splits: collected.splits
-    };
-
-    fetch(INVOICE_API + '/' + encodeURIComponent(state.invoiceId) + '/settle', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(payload)
-    })
-      .then(function (res) {
-        return res
-          .json()
-          .catch(function () {
-            return {};
-          })
-          .then(function (data) {
-            return { ok: res.ok, data: data };
-          });
-      })
-      .then(function (result) {
-        if (!result.ok || !result.data.ok) {
-          setSettleError(
-            (result.data && result.data.error) || 'Could not settle the bill.'
-          );
-          return;
-        }
-        closeSettleModal();
-        var settledInvoice = result.data && result.data.invoice ? result.data.invoice : null;
+    global.openPosSettleModal({
+      invoiceId: state.invoiceId,
+      orderNo: state.orderNo || '—',
+      tableLabel: fieldValue('pos-inv-table', page) || '',
+      grandTotal: settleBillTotal(),
+      apiBase: (INVOICE_API || '').replace(/\/api\/invoices\/?$/, '') || undefined,
+      onSettled: function (settledInvoice, meta) {
         var outlet = (page && page.getAttribute('data-pos-outlet')) || undefined;
         if (
           global.hbePosPrinterPrefs &&
@@ -3547,7 +3330,7 @@
         ) {
           printCustomerBill(page, settledInvoice, { autoPrint: true });
         }
-        var table = fieldValue('pos-inv-table', page);
+        var table = (meta && meta.tableLabel) || fieldValue('pos-inv-table', page);
         if (table && markFloorTableAvailableLocal(table)) {
           applyFloorTablesToUi(page, floorTablesCache);
         }
@@ -3558,58 +3341,15 @@
             : 'Bill settled successfully.'
         );
         resetOrderSession(page);
-      })
-      .catch(function () {
-        setSettleError('Could not settle the bill. Check your connection and try again.');
-      })
-      .then(function () {
-        if (submitBtn) syncSettleSubmitEnabled();
         if (headerBtn) headerBtn.disabled = false;
         updateSettleBillButton(page);
-      });
+      }
+    });
   }
 
   function bindSettleBillModal(page) {
-    var modal = document.getElementById('pos-inv-settle-modal');
-    if (!modal || modal.getAttribute('data-bound') === '1') return;
-    modal.setAttribute('data-bound', '1');
-
-    modal.addEventListener('click', function (event) {
-      if (event.target.closest('[data-settle-close]')) {
-        closeSettleModal();
-        return;
-      }
-      if (!event.target.closest('[data-se-listbox]')) {
-        closeAllSettleSplitListboxes();
-      }
-      if (event.target.closest('#pos-inv-settle-add-split')) {
-        event.preventDefault();
-        if (settleSplitRows().length >= POS_PAYMENT_METHODS.length) return;
-        addSettleSplitRow('', '');
-        syncRemainingSettleAmount(null);
-        updateSettleRemoveButtons();
-        refreshSettleBalance();
-        return;
-      }
-      if (event.target.closest('#pos-inv-settle-submit')) {
-        event.preventDefault();
-        submitSettleBill(page || document.getElementById('pos-invoice-page'));
-      }
-    });
-
-    if (!document.__posSettleEscBound) {
-      document.__posSettleEscBound = true;
-      document.addEventListener('keydown', function (event) {
-        if (event.key !== 'Escape') return;
-        var open = document.getElementById('pos-inv-settle-modal');
-        if (!open || open.hidden) return;
-        var openList = open.querySelector('[data-se-listbox].is-open');
-        if (openList) {
-          closeSettleSplitListbox(openList);
-          return;
-        }
-        closeSettleModal();
-      });
+    if (typeof global.bindPosSettleModal === 'function') {
+      global.bindPosSettleModal();
     }
   }
   function clearMoreMenuPosition(menu) {
@@ -3780,6 +3520,83 @@
       label.textContent = state.adjDraft[kind] === 'inr' ? 'Amount (₹)' : 'Amount (%)';
     }
     updateAdjPreview(page, kind);
+    if (kind === 'discount') syncDiscountReasonUi(page);
+  }
+
+  var DISCOUNT_REASON_PCT = 15;
+
+  function effectiveDiscountPercent(type, value) {
+    var n = Number(value);
+    if (isNaN(n) || n <= 0) return 0;
+    if (type === 'pct') return Math.min(100, n);
+    var scoped = normalizeDiscountLineUids(state.discountLineUids);
+    var base = scoped.length ? discountBaseForLines(scoped) : 0;
+    if (!(base > 0)) {
+      var sub = calcTotals({ discountType: 'pct', discountValue: 0 }).subtotal;
+      base = Number(sub) || 0;
+    }
+    if (!(base > 0)) return 0;
+    var amount = calcAdjAmount(base, 'inr', n);
+    if (amount > base) amount = base;
+    return Math.round((amount / base) * 10000) / 100;
+  }
+
+  function ensureDiscountReasonField() {
+    var field = document.getElementById('pos-inv-discount-reason-field');
+    if (field) return field;
+    var preview = document.getElementById('pos-inv-discount-preview');
+    var actions = document.querySelector('#pos-inv-discount-modal .pos-inv-modal-actions');
+    if (!preview || !actions) return null;
+    field = document.createElement('label');
+    field.className = 'pos-inv-field';
+    field.id = 'pos-inv-discount-reason-field';
+    field.setAttribute('hidden', '');
+    field.innerHTML =
+      '<span>Reason <span class="pos-inv-summary-muted" id="pos-inv-discount-reason-hint">(required over 15%)</span></span>' +
+      '<input type="text" id="pos-inv-discount-reason" maxlength="200" placeholder="Why is this discount over 15%?" autocomplete="off" disabled>';
+    preview.insertAdjacentElement('afterend', field);
+    return field;
+  }
+
+  function discountNeedsReason(type, value) {
+    var n = Number(value);
+    if (isNaN(n) || n <= 0) return false;
+    if ((type || 'pct') === 'pct') return n > DISCOUNT_REASON_PCT;
+    return effectiveDiscountPercent('inr', n) > DISCOUNT_REASON_PCT;
+  }
+
+  function syncDiscountReasonUi(page) {
+    var field = ensureDiscountReasonField();
+    var reasonEl = document.getElementById('pos-inv-discount-reason');
+    var amountEl =
+      (page && page.querySelector ? page.querySelector('#pos-inv-discount-amount') : null) ||
+      document.getElementById('pos-inv-discount-amount');
+    if (!field || !reasonEl) return;
+    var type = (state.adjDraft && state.adjDraft.discount) || 'pct';
+    var raw = amountEl ? String(amountEl.value || '').trim() : '';
+    var value = raw === '' ? 0 : Number(raw);
+    if (isNaN(value) || value < 0) value = 0;
+    var needs = discountNeedsReason(type, value);
+    reasonEl.disabled = !needs;
+    reasonEl.required = needs;
+    field.classList.toggle('is-shown', needs);
+    field.classList.toggle('is-required', needs);
+    field.classList.toggle('is-enabled', needs);
+    /* Inline !important beats cached CSS that only has display:none. */
+    if (needs) {
+      field.removeAttribute('hidden');
+      field.style.setProperty('display', 'flex', 'important');
+      field.style.setProperty('flex-direction', 'column', 'important');
+      field.style.setProperty('gap', '6px', 'important');
+      field.style.setProperty('margin-bottom', '14px', 'important');
+    } else {
+      field.setAttribute('hidden', '');
+      field.style.setProperty('display', 'none', 'important');
+      reasonEl.value = '';
+    }
+    if (needs && !String(reasonEl.value || '').trim() && state.discountReason) {
+      reasonEl.value = state.discountReason;
+    }
   }
 
   function updateAdjPreview(page, kind) {
@@ -3804,6 +3621,7 @@
           ? ' on ' + t.discountItemCount + (t.discountItemCount === 1 ? ' item' : ' items')
           : '';
       preview.textContent = 'Discount: ' + money(t.discount) + scopeHint;
+      syncDiscountReasonUi(page);
     } else if (kind === 'service') {
       preview.textContent = 'Service charge: ' + money(t.service);
     }
@@ -3920,13 +3738,16 @@
   function openDiscountModal(page) {
     openInvModal(page, 'discount');
     var amount = $('#pos-inv-discount-amount', page);
-    syncAdjTypeUi(page, 'discount', state.discountType);
+    var reasonEl = $('#pos-inv-discount-reason', page);
+    syncAdjTypeUi(page, 'discount', state.discountType || 'pct');
     if (amount) {
-      amount.value = String(state.discountValue || 0);
+      /* Always start blank — staff must enter the discount each time. */
+      amount.value = '';
       amount.focus();
-      amount.select();
     }
+    if (reasonEl) reasonEl.value = '';
     updateAdjPreview(page, 'discount');
+    syncDiscountReasonUi(page);
   }
 
   function openServiceModal(page) {
@@ -4154,14 +3975,33 @@
 
   function applyDiscountModal(page) {
     var amountEl = $('#pos-inv-discount-amount', page);
+    var reasonEl = $('#pos-inv-discount-reason', page);
     var n = amountEl ? Number(amountEl.value) : 0;
     if (isNaN(n) || n < 0) n = 0;
     var type = state.adjDraft.discount || 'pct';
     if (type === 'pct' && n > 100) n = 100;
+    var reason = reasonEl ? String(reasonEl.value || '').trim() : '';
+    if (discountNeedsReason(type, n)) {
+      if (!reason) {
+        toast('Enter a reason for discounts over ' + DISCOUNT_REASON_PCT + '%.');
+        syncDiscountReasonUi(page);
+        if (reasonEl && !reasonEl.disabled) {
+          reasonEl.focus();
+        }
+        return;
+      }
+    } else {
+      reason = '';
+    }
     state.discountType = type;
     state.discountValue = n;
-    if (!n) state.discountLineUids = [];
-    else pruneDiscountLineUids();
+    state.discountReason = reason;
+    if (!n) {
+      state.discountLineUids = [];
+      state.discountReason = '';
+    } else {
+      pruneDiscountLineUids();
+    }
     closeInvModal(page, 'discount');
     renderSummary(page);
     markOrderDirty(page);
@@ -4229,6 +4069,7 @@
           rate: Number(line.rate) || 0,
           qty: Number(line.qty) || 0,
           isLiquor: !!line.isLiquor || isLiquorLine(line),
+          outlet: lineMenuOutlet(line),
           emoji: line.emoji || '',
           kotSentQty: Number(line.sentQty) || 0,
           notes: String(line.notes || '').trim()
@@ -4237,6 +4078,7 @@
       discountType: state.discountType,
       discountValue: state.discountValue,
       discountLineUids: state.discountLineUids.slice(),
+      discountReason: state.discountReason || '',
       serviceType: state.serviceType,
       serviceValue: state.serviceValue,
       tipAmount: state.tipAmount,
@@ -4257,17 +4099,20 @@
     return '';
   }
 
-  /** Autosave / leave-flush only for dine-in carts with a table and at least one
-   *  line. Empty carts are never POSTed (avoids wiping a server order). */
+  /** Autosave open carts so line edits/deletes survive refresh.
+   *  Dine-in needs a table; takeaway/delivery only after a server invoice exists.
+   *  Empty carts use softDeleteSavedInvoice instead of POSTing zero lines. */
   function shouldAutosave(page) {
     if (state.invoiceGenerated) return false;
     if (!page || !state.lines.length) return false;
     var orderType =
       fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
-    if (orderType !== 'dine_in') return false;
-    if (!fieldValue('pos-inv-table', page)) return false;
-    if (!state.invoiceId && tableBlocksNewBill(selectedTableStatus(page))) return false;
-    return true;
+    if (orderType === 'dine_in') {
+      if (!fieldValue('pos-inv-table', page)) return false;
+      if (!state.invoiceId && tableBlocksNewBill(selectedTableStatus(page))) return false;
+      return true;
+    }
+    return !!state.invoiceId;
   }
 
   function cancelAutosaveTimer() {
@@ -4275,6 +4120,85 @@
       clearTimeout(autosaveTimer);
       autosaveTimer = null;
     }
+  }
+
+  /** Drop local binding to a removed server invoice; keep table selected for a fresh bill. */
+  function abandonSavedInvoiceLocally(page) {
+    var table = String(
+      state.tableForOrder ||
+        state.resumeTableValue ||
+        (page && fieldValue('pos-inv-table', page)) ||
+        ''
+    ).trim();
+    state.invoiceId = null;
+    state.orderNo = '';
+    state.localId = '';
+    state.lineSeq = 0;
+    state.dirty = false;
+    cancelAutosaveTimer();
+    if (page) initMeta(page);
+    if (table) {
+      markFloorTableAvailableLocal(table);
+      state.tableForOrder = table;
+      state.resumeTableValue = table;
+      persistInvoiceResumeContext();
+      if (page && floorTablesCache) {
+        applyFloorTablesToUi(page, floorTablesCache);
+      }
+      if (page) refreshFloorTables(page, { preserveTable: table });
+    } else {
+      clearInvoiceResumeContext();
+    }
+  }
+
+  /** When the cart is emptied, soft-delete the saved invoice so refresh does not restore it. */
+  function softDeleteSavedInvoice(page) {
+    var id = state.invoiceId;
+    if (!id) {
+      abandonSavedInvoiceLocally(page);
+      return Promise.resolve({ ok: true, skipped: true });
+    }
+    cancelAutosaveTimer();
+    if (!isBrowserOnline()) {
+      toast('Reconnect to remove this order from the server. It may reappear until then.');
+      abandonSavedInvoiceLocally(page);
+      return Promise.resolve({ ok: false, offline: true });
+    }
+    return fetch(INVOICE_API + '/' + encodeURIComponent(id) + '/delete', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    })
+      .then(function (res) {
+        return res
+          .json()
+          .then(function (data) {
+            return { ok: res.ok && !!(data && data.ok), data: data || {} };
+          })
+          .catch(function () {
+            return { ok: false, data: {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          toast((result.data && result.data.error) || 'Could not remove order.');
+          return result;
+        }
+        abandonSavedInvoiceLocally(page);
+        return { ok: true };
+      })
+      .catch(function () {
+        toast('Could not remove order.');
+        return { ok: false };
+      });
+  }
+
+  /** Persist remaining lines, or soft-delete when the cart is empty. */
+  function persistAfterLineChange(page) {
+    pruneDiscountLineUids();
+    renderLines(page);
+    if (state.lines.length) markOrderDirty(page);
+    else softDeleteSavedInvoice(page);
   }
 
   function markOrderDirty(page) {
@@ -4459,10 +4383,10 @@
           return res
             .json()
             .then(function (data) {
-              return { ok: res.ok && !!(data && data.ok), data: data || {} };
+              return { ok: res.ok && !!(data && data.ok), data: data || {}, status: res.status };
             })
             .catch(function () {
-              return { ok: false, data: {} };
+              return { ok: false, data: {}, status: res.status };
             });
         });
     }
@@ -4484,6 +4408,10 @@
           }
           if (!silent) {
             toast((result.data && result.data.error) || 'Could not save invoice.');
+          } else if (result.status && result.status >= 400 && result.status < 500) {
+            /* Surface validation errors during autosave (e.g. kitchen-line protection)
+               so a deleted line that failed to persist is not silently restored on refresh. */
+            toast((result.data && result.data.error) || 'Could not save invoice.');
           }
           return { ok: false, error: (result.data && result.data.error) || 'save failed' };
         }
@@ -4496,6 +4424,7 @@
             state.orderNo = invoice.order_no;
             noteOutletOrderSeq(invoice.order_no);
           }
+          syncOrderNoMeta(page);
           persistInvoiceResumeContext();
         }
         clearDirtyAfterPersist(epochAtStart, page);
@@ -4616,14 +4545,11 @@
       }
       state.lines = kept;
       if (state.lines.length) {
-        markOrderDirty(page);
         toast('Unsent items cleared. Kitchen-sent items were kept.');
       } else {
-        state.dirty = false;
-        cancelAutosaveTimer();
         toast('All items cleared.');
       }
-      renderLines(page);
+      persistAfterLineChange(page);
       return;
     }
     if (action === 'duplicate') {
@@ -4998,13 +4924,7 @@
         state.lines = state.lines.filter(function (l) {
           return l.uid !== id;
         });
-        pruneDiscountLineUids();
-        renderLines(page);
-        if (state.lines.length) markOrderDirty(page);
-        else {
-          state.dirty = false;
-          cancelAutosaveTimer();
-        }
+        persistAfterLineChange(page);
         return;
       }
       var qtyBtn = e.target.closest('[data-qty]');
@@ -5136,9 +5056,25 @@
     page.addEventListener('input', function (e) {
       var t = e.target;
       if (!t || !page.contains(t)) return;
-      if (t.id === 'pos-inv-discount-amount') updateAdjPreview(page, 'discount');
+      if (t.id === 'pos-inv-discount-amount') {
+        updateAdjPreview(page, 'discount');
+        syncDiscountReasonUi(page);
+      }
       if (t.id === 'pos-inv-service-amount') updateAdjPreview(page, 'service');
       if (t.id === 'pos-inv-line-note-text') updateLineNoteCount(page);
+    });
+    page.addEventListener('change', function (e) {
+      var t = e.target;
+      if (!t || !page.contains(t)) return;
+      if (t.id === 'pos-inv-discount-amount') {
+        updateAdjPreview(page, 'discount');
+        syncDiscountReasonUi(page);
+      }
+    });
+    page.addEventListener('keyup', function (e) {
+      var t = e.target;
+      if (!t || !page.contains(t)) return;
+      if (t.id === 'pos-inv-discount-amount') syncDiscountReasonUi(page);
     });
 
     page.addEventListener('keydown', function (e) {
@@ -5265,6 +5201,7 @@
       state.discountType = 'pct';
       state.discountValue = 0;
       state.discountLineUids = [];
+      state.discountReason = '';
       state.discountSelectMode = null;
       state.discountSelectDraft = [];
       state.tipAmount = 0;
@@ -5288,6 +5225,7 @@
 
     ensureLocalId();
     bindOfflineSyncListeners();
+    bindTableOrderSyncListeners();
     updateOfflineBanner();
     flushOfflineOutbox();
     registerInvoiceLeaveHooks();
@@ -5329,11 +5267,21 @@
       if (typeof global.initEpListboxes === 'function') {
         global.initEpListboxes();
       }
+      /* Floor arrived after first paint — re-check open bill for the selected table. */
+      if (keep && !state.invoiceId && !state.lines.length) {
+        syncSelectedTableOrderFromServer(page);
+      }
     });
 
-    /* Arriving with ?invoice=... / ?table=... (or stored resume) reloads the open bill. */
-    if (freshMount && (resumePrefs.invoiceId || resumePrefs.table)) {
-      restoreResumeOrder(page, resumePrefs);
+    /* Arriving with ?invoice=... / ?table=... (or stored resume) reloads the open bill.
+       Also re-check when soft-nav remounts with an empty cart so another terminal's
+       autosave is visible without a full reload. */
+    if (resumePrefs.invoiceId || resumePrefs.table) {
+      if (freshMount || (!state.invoiceId && !state.lines.length)) {
+        restoreResumeOrder(page, resumePrefs);
+      }
+    } else if (!state.invoiceId && !state.lines.length) {
+      syncSelectedTableOrderFromServer(page);
     }
 
     loadMenuCatalog(function () {
@@ -5345,6 +5293,30 @@
         renderSuggest(page, searchMenu(q), q);
       }
     });
+
+    loadTaxRates(function () {
+      renderSummary(page);
+    });
+
+    if (page.getAttribute('data-pos-tax-rates-bound') !== '1') {
+      page.setAttribute('data-pos-tax-rates-bound', '1');
+      global.addEventListener('hbe-pos-tax-rates-changed', function (ev) {
+        var detail = ev && ev.detail;
+        if (detail && detail.taxRates) {
+          applyTaxRates(detail.taxRates);
+          renderSummary(page);
+          renderLines(page);
+          return;
+        }
+        if (detail && detail.settings) {
+          applyTaxRates(taxRatesFromSettings(detail.settings));
+          renderSummary(page);
+          renderLines(page);
+          return;
+        }
+        refreshTaxRatesAndSummary(page);
+      });
+    }
 
     var search = $('#pos-inv-search', page);
     if (search && !(resumePrefs.invoiceId || resumePrefs.table)) {

@@ -690,23 +690,29 @@
     var sidebarExpanded = isDeSidebarExpandedState(sidebar);
     var opening = !group.classList.contains('is-open');
 
-    // Keep other sections open so the left nav stays a stable map of the app
-    // (Sales Analytics → Credit remains visible while Payroll is also open).
+    // Accordion: only one module expanded at a time.
+    // Close siblings on the next frame so open/close max-height transitions both paint.
     if(opening){
-      sidebar.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(other){
-        if(other === group) return;
-        other.classList.remove('is-flyout-active');
+      group.classList.add('is-open');
+      group.classList.toggle('is-flyout-active', !sidebarExpanded);
+      var openSub = group.querySelector('.de-nav-sub');
+      if(openSub) settleOpenNavSub(group);
+      window.requestAnimationFrame(function(){
+        sidebar.querySelectorAll('.de-nav-group.is-open, .de-nav-group.is-flyout-active').forEach(function(other){
+          if(other === group) return;
+          other.classList.remove('is-open', 'is-flyout-active');
+          var otherSub = other.querySelector('.de-nav-sub');
+          if(otherSub) markNavSubSettled(otherSub, false);
+          var otherToggle = other.querySelector('.de-nav-group-toggle');
+          if(otherToggle) otherToggle.setAttribute('aria-expanded', 'false');
+        });
       });
+    } else {
+      group.classList.remove('is-open', 'is-flyout-active');
+      var subEl = group.querySelector('.de-nav-sub');
+      if(subEl) markNavSubSettled(subEl, false);
     }
 
-    group.classList.toggle('is-open', opening);
-    group.classList.toggle('is-flyout-active', opening && !sidebarExpanded);
-    var subEl = group.querySelector('.de-nav-sub');
-    if(opening){
-      settleOpenNavSub(group);
-    } else if(subEl){
-      markNavSubSettled(subEl, false);
-    }
     var toggle = group.querySelector('.de-nav-group-toggle');
     if(toggle){
       toggle.setAttribute('aria-expanded', opening ? 'true' : 'false');

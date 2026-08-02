@@ -1,0 +1,139 @@
+{# Smooth hotel date pill + custom calendar (Rooms / check-in). #}
+{% macro hotel_date_field(name, label, required=false, value='', field_id='', extra_class='', panel_title='Select date', empty_label='dd/mm/yyyy', hint='Pick a day. Use arrows to change month.', show_today=true, show_cal_icon=true) %}
+{% set fid = field_id or name %}
+<div class="hotel-date hotel-filter-date{% if extra_class %} {{ extra_class }}{% endif %}{% if not show_cal_icon %} hotel-date--no-cal{% endif %}" id="{{ fid }}-chip" data-hotel-date>
+  <span class="hotel-date-label" id="{{ fid }}-label">{{ label }}{% if required %} *{% endif %}</span>
+  <div class="hotel-date-control">
+    <button
+      type="button"
+      class="hotel-date-trigger"
+      id="{{ fid }}-trigger"
+      aria-haspopup="dialog"
+      aria-expanded="false"
+      aria-controls="{{ fid }}-panel"
+      aria-labelledby="{{ fid }}-label {{ fid }}-value"
+    >
+      <span class="hotel-date-caret" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+      <span class="hotel-date-value" id="{{ fid }}-value">{{ empty_label }}</span>
+      {% if show_cal_icon %}
+      <span class="hotel-date-cal-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>
+      </span>
+      {% endif %}
+    </button>
+    <input
+      type="hidden"
+      id="{{ fid }}"
+      name="{{ name }}"
+      class="hotel-date-input"
+      value="{{ value }}"
+      data-empty-label="{{ empty_label }}"
+      {% if required %}required{% endif %}
+    >
+  </div>
+  <div class="hotel-date-backdrop" id="{{ fid }}-backdrop" hidden></div>
+  <div
+    class="hotel-date-panel"
+    id="{{ fid }}-panel"
+    role="dialog"
+    aria-labelledby="{{ fid }}-panel-title"
+    hidden
+  >
+    <div class="hotel-date-panel-inner">
+      <div class="hotel-date-panel-h" id="{{ fid }}-panel-title">{{ panel_title }}</div>
+      {% if hint %}<p class="hotel-date-hint">{{ hint }}</p>{% endif %}
+      <div class="hotel-date-cal">
+        <div class="hotel-date-cal-hdr">
+          <button type="button" class="hotel-date-nav" data-hotel-date-prev aria-label="Previous">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <button type="button" class="hotel-date-month" data-hotel-date-title title="Select year">—</button>
+          <button type="button" class="hotel-date-nav" data-hotel-date-next aria-label="Next">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <div class="hotel-date-dow" data-hotel-date-dow aria-hidden="true">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        <div class="hotel-date-grid" data-hotel-date-grid></div>
+      </div>
+    </div>
+    <div class="hotel-date-actions">
+      <button type="button" class="hotel-date-action" data-hotel-date-clear>Clear</button>
+      {% if show_today %}
+      <button type="button" class="hotel-date-action hotel-date-action--primary" data-hotel-date-today>Today</button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{# Smooth hotel time pill + custom clock panel (check-in). Stores HH:MM 24h. #}
+{% macro hotel_time_field(name, label, required=false, value='', field_id='', extra_class='', panel_title='Select time', empty_label='--:-- --', show_clock_icon=true) %}
+{% set fid = field_id or name %}
+<div class="hotel-time hotel-date hotel-filter-date{% if extra_class %} {{ extra_class }}{% endif %}{% if not show_clock_icon %} hotel-time--no-clock{% endif %}" id="{{ fid }}-chip" data-hotel-time>
+  <span class="hotel-date-label" id="{{ fid }}-label">{{ label }}{% if required %} *{% endif %}</span>
+  <div class="hotel-date-control">
+    <button
+      type="button"
+      class="hotel-date-trigger"
+      id="{{ fid }}-trigger"
+      aria-haspopup="dialog"
+      aria-expanded="false"
+      aria-controls="{{ fid }}-panel"
+      aria-labelledby="{{ fid }}-label {{ fid }}-value"
+    >
+      <span class="hotel-date-caret" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+      <span class="hotel-date-value is-placeholder" id="{{ fid }}-value">{{ empty_label }}</span>
+      {% if show_clock_icon %}
+      <span class="hotel-date-cal-icon hotel-time-clock-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+      </span>
+      {% endif %}
+    </button>
+    <input
+      type="hidden"
+      id="{{ fid }}"
+      name="{{ name }}"
+      class="hotel-time-input"
+      value="{{ value }}"
+      data-empty-label="{{ empty_label }}"
+      {% if required %}required{% endif %}
+    >
+  </div>
+  <div class="hotel-date-backdrop hotel-time-backdrop" id="{{ fid }}-backdrop" hidden></div>
+  <div
+    class="hotel-date-panel hotel-time-panel"
+    id="{{ fid }}-panel"
+    role="dialog"
+    aria-labelledby="{{ fid }}-panel-title"
+    hidden
+  >
+    <div class="hotel-date-panel-inner hotel-time-panel-inner">
+      <div class="hotel-date-panel-h" id="{{ fid }}-panel-title">{{ panel_title }}</div>
+      <div class="hotel-time-wheels" data-hotel-time-wheels>
+        <div class="hotel-time-col" data-hotel-time-col="hour" aria-label="Hour">
+          <div class="hotel-time-col-label">Hour</div>
+          <div class="hotel-time-col-scroll" data-hotel-time-hour></div>
+        </div>
+        <div class="hotel-time-col" data-hotel-time-col="minute" aria-label="Minute">
+          <div class="hotel-time-col-label">Min</div>
+          <div class="hotel-time-col-scroll" data-hotel-time-minute></div>
+        </div>
+        <div class="hotel-time-col hotel-time-col--period" data-hotel-time-col="period" aria-label="AM or PM">
+          <div class="hotel-time-col-label">Period</div>
+          <div class="hotel-time-col-scroll" data-hotel-time-period></div>
+        </div>
+      </div>
+    </div>
+    <div class="hotel-date-actions">
+      <button type="button" class="hotel-date-action" data-hotel-time-clear>Clear</button>
+      <button type="button" class="hotel-date-action hotel-date-action--primary" data-hotel-time-now>Now</button>
+    </div>
+  </div>
+</div>
+{% endmacro %}

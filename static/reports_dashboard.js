@@ -1,7 +1,32 @@
 (function (global) {
   'use strict';
 
+  var rdInitAbort = null;
+  var CATEGORY_STORAGE_KEY = 'rd-active-category';
+
+  function readStoredCategory(validKeys) {
+    try {
+      var stored = String(global.sessionStorage.getItem(CATEGORY_STORAGE_KEY) || '').trim();
+      if (stored && validKeys.indexOf(stored) !== -1) return stored;
+    } catch (err) {
+      /* ignore */
+    }
+    return 'all';
+  }
+
+  function writeStoredCategory(category) {
+    try {
+      global.sessionStorage.setItem(CATEGORY_STORAGE_KEY, category || 'all');
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
   function initReportsDashboard() {
+    if (rdInitAbort) rdInitAbort.abort();
+    rdInitAbort = new AbortController();
+    var signal = rdInitAbort.signal;
+
     var searchInput = document.getElementById('rd-search-input');
     var filterBtn = document.getElementById('rd-search-filter');
     var pillsHost = document.getElementById('rd-category-pills');
@@ -12,7 +37,14 @@
     var sections = Array.prototype.slice.call(
       sectionsHost.querySelectorAll('.rd-category-section')
     );
-    var activeCategory = 'all';
+    var validCategories = ['all'];
+    if (pillsHost) {
+      pillsHost.querySelectorAll('.md-category-pill[data-rd-category]').forEach(function (pill) {
+        var key = pill.getAttribute('data-rd-category') || '';
+        if (key && validCategories.indexOf(key) === -1) validCategories.push(key);
+      });
+    }
+    var activeCategory = readStoredCategory(validCategories);
     var searchTerm = '';
 
     function setActivePill(category) {
@@ -70,7 +102,7 @@
       searchInput.addEventListener('input', function () {
         searchTerm = String(searchInput.value || '').trim().toLowerCase();
         applyFilters();
-      });
+      }, { signal: signal });
     }
 
     if (filterBtn) {
@@ -78,19 +110,21 @@
         activeCategory = 'all';
         searchTerm = '';
         if (searchInput) searchInput.value = '';
+        writeStoredCategory(activeCategory);
         setActivePill('all');
         applyFilters();
-      });
+      }, { signal: signal });
     }
 
     if (pillsHost) {
       pillsHost.addEventListener('click', function (e) {
         var pill = e.target.closest('.md-category-pill');
-        if (!pill) return;
+        if (!pill || !pillsHost.contains(pill)) return;
         activeCategory = pill.getAttribute('data-rd-category') || 'all';
+        writeStoredCategory(activeCategory);
         setActivePill(activeCategory);
         applyFilters();
-      });
+      }, { signal: signal });
     }
 
     setActivePill(activeCategory);

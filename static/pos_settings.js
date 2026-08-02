@@ -273,6 +273,7 @@
 
   function ensureFieldKeys(panel) {
     if (!panel) return;
+    markHoursTimeFields(panel);
     panelSettingsFields(panel).forEach(function (el, i) {
       if (!el.getAttribute('data-pos-set-key')) {
         el.setAttribute('data-pos-set-key', 'f' + i);
@@ -280,11 +281,47 @@
     });
   }
 
+  function normalizeTimeValue(raw) {
+    var text = String(raw || '').trim();
+    var m = text.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (!m) return '';
+    var h = Number(m[1]);
+    var min = Number(m[2]);
+    if (!isFinite(h) || !isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) return '';
+    return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+  }
+
+  function markHoursTimeFields(scope) {
+    $all('.pos-set-hours-row .hotel-time-input', scope || document).forEach(function (el) {
+      el.setAttribute('data-pos-set-field', '');
+    });
+  }
+
+  function syncHoursTimeDisplay(input) {
+    if (!input) return;
+    if (typeof global.setHotelTimeValue === 'function') {
+      global.setHotelTimeValue(input, input.value || '');
+      return;
+    }
+    var chip = input.closest('[data-hotel-time]');
+    var valueEl = chip && chip.querySelector('.hotel-date-value');
+    if (!valueEl) return;
+    valueEl.textContent = input.value || '--:-- --';
+    valueEl.classList.toggle('is-placeholder', !input.value);
+  }
+
   function syncHoursRow(row) {
     if (!row) return;
     var toggle = row.querySelector('.pos-set-toggle input[type="checkbox"]');
     if (!toggle) return;
     var on = !!toggle.checked;
+    $all('.hotel-time', row).forEach(function (chip) {
+      chip.classList.toggle('is-disabled', !on);
+      var trigger = chip.querySelector('.hotel-date-trigger');
+      if (trigger) trigger.disabled = !on;
+      var input = chip.querySelector('.hotel-time-input');
+      if (input) input.disabled = !on;
+    });
     $all('input[type="time"]', row).forEach(function (input) {
       input.disabled = !on;
     });
@@ -385,7 +422,16 @@
         var el = settingsEls[i];
         if (!el) return;
         if (field.kind === 'checkbox' || el.type === 'checkbox') el.checked = !!field.checked;
-        else el.value = field.value != null ? field.value : '';
+        else {
+          var legacyVal =
+            field.value != null ? normalizeTimeValue(field.value) || String(field.value) : '';
+          if (el.classList.contains('hotel-time-input')) {
+            el.value = normalizeTimeValue(field.value) || '';
+            syncHoursTimeDisplay(el);
+          } else {
+            el.value = legacyVal;
+          }
+        }
       });
       fields.forEach(function (field) {
         if (field && field.kind === 'listbox' && field.id) {
@@ -399,12 +445,25 @@
     if (typeof fields !== 'object') return;
     var values = fields.values && typeof fields.values === 'object' ? fields.values : fields;
     var listboxes = fields.listboxes && typeof fields.listboxes === 'object' ? fields.listboxes : {};
+    /* Taxes: map legacy f0–f4 onto named keys so POS can read rates by name. */
+    if (panel.getAttribute('data-panel') === 'taxes' && values && typeof values === 'object') {
+      if (!values.cgst_pct && values.f0) values.cgst_pct = values.f0;
+      if (!values.ugst_pct && values.f1) values.ugst_pct = values.f1;
+      if (!values.vat_pct && values.f2) values.vat_pct = values.f2;
+      if (!values.prices_include_tax && values.f3) values.prices_include_tax = values.f3;
+      if (!values.show_tax_breakdown && values.f4) values.show_tax_breakdown = values.f4;
+    }
     settingsEls.forEach(function (el) {
       var key = el.getAttribute('data-pos-set-key');
       var field = key && values[key];
       if (!field || typeof field !== 'object') return;
       if (field.kind === 'checkbox' || el.type === 'checkbox') el.checked = !!field.checked;
-      else el.value = field.value != null ? field.value : '';
+      else if (el.classList.contains('hotel-time-input')) {
+        el.value = normalizeTimeValue(field.value) || '';
+        syncHoursTimeDisplay(el);
+      } else {
+        el.value = field.value != null ? field.value : '';
+      }
     });
     Object.keys(listboxes).forEach(function (id) {
       applyListboxValue(document.getElementById(id), listboxes[id]);
@@ -461,6 +520,27 @@
         restaurantSettings = (result.data && result.data.settings) || next;
         delete settingsDirty[section];
         setSaveStatus('Saved', true, false);
+        if (section === 'taxes') {
+          try {
+            var rates =
+              result.data && result.data.taxRates
+                ? {
+                    cgst: Number(result.data.taxRates.cgst),
+                    ugst: Number(result.data.taxRates.ugst),
+                    vat: Number(result.data.taxRates.vat)
+                  }
+                : null;
+            global.dispatchEvent(
+              new CustomEvent('hbe-pos-tax-rates-changed', {
+                detail: {
+                  outlet: resolvePosOutlet(),
+                  settings: restaurantSettings,
+                  taxRates: rates || (result.data && result.data.taxRates) || null
+                }
+              })
+            );
+          } catch (err) {}
+        }
         if (opts.toast) showToast(opts.toast);
         window.setTimeout(function () {
           setSaveStatus('Saved', false, false);
@@ -1039,13 +1119,10 @@
     'floor',
     'tables',
     'areas',
-    'kitchen',
     'taxes',
     'invoice',
     'payment',
-    'menu',
-    'printers',
-    'integrations'
+    'printers'
   ];
 
   function normalizeSectionKey(key) {
@@ -1718,6 +1795,9 @@
     try {
       if (typeof global.initEpListboxes === 'function') {
         global.initEpListboxes();
+      }
+      if (typeof global.initHotelTimePickers === 'function') {
+        global.initHotelTimePickers(page);
       }
       if (typeof global.initPosMenuSettings === 'function') {
         global.initPosMenuSettings();

@@ -1004,6 +1004,12 @@ body.pos-module .de-main-inner.pos-tables-page{
 .pos-kpi-icon--purple{background:var(--pos-purple-soft);color:var(--pos-purple)}
 .pos-kpi-icon--rose{background:var(--pos-rose-soft);color:var(--pos-rose)}
 .pos-kpi-icon--gray{background:var(--pos-gray-soft);color:var(--pos-gray)}
+.pos-kpi-icon--rupee{
+  font-size:18px;
+  font-weight:750;
+  line-height:1;
+  letter-spacing:-.02em;
+}
 .pos-kpi-label{
   font-size:12px;
   font-weight:600;
@@ -1017,6 +1023,28 @@ body.pos-module .de-main-inner.pos-tables-page{
   letter-spacing:-.03em;
   color:var(--pos-text);
   line-height:1.1;
+}
+.pos-kpi-meta{
+  margin-top:4px;
+  font-size:11px;
+  font-weight:600;
+  color:var(--pos-muted);
+  letter-spacing:.01em;
+}
+.pos-kpi[data-kpi="sales"] .pos-kpi-value,
+.pos-kpi[data-kpi="unsettled"] .pos-kpi-value{
+  font-size:20px;
+}
+.pos-kpi[data-kpi="unsettled"][hidden]{display:none !important}
+.pos-kpi[data-kpi="unsettled"].is-clickable{
+  cursor:pointer;
+}
+.pos-kpi[data-kpi="unsettled"].is-clickable:focus-visible{
+  outline:2px solid var(--pos-primary);
+  outline-offset:2px;
+}
+.pos-tables-kpis.has-unsettled-kpi{
+  grid-template-columns:repeat(5,minmax(0,1fr));
 }
 
 /* Toolbar */
@@ -1777,7 +1805,8 @@ body.pos-module .de-main-inner.pos-tables-page{
 }
 
 @media (max-width:1180px){
-  .pos-tables-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .pos-tables-kpis,
+  .pos-tables-kpis.has-unsettled-kpi{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pos-quick-actions-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media (max-width:760px){
@@ -1786,7 +1815,8 @@ body.pos-module .de-main-inner.pos-tables-page{
   .pos-tables-header-actions{justify-content:stretch}
   .pos-tables-btn-primary,
   .pos-tables-btn-ghost{width:100%;justify-content:center}
-  .pos-tables-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pos-tables-kpis,
+  .pos-tables-kpis.has-unsettled-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pos-quick-actions-grid{grid-template-columns:1fr}
   .pos-tables-search{min-width:0;width:100%}
   .pos-toolbar-right{width:100%}

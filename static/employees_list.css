@@ -71,20 +71,23 @@ body.ep-module #credit-emp-table.emp-pl-table,
 body.ep-module #credit-recent-table.emp-pl-table{
   min-width:780px;
 }
-body.ep-module #emp-salary-breakdown-table.emp-pl-table{
+body.ep-module #emp-salary-breakdown-table.emp-pl-table,
+body.ep-module #mpr-salary-breakdown-table.emp-pl-table{
   min-width:920px;
 }
 body.ep-module #emp-attendance-overview-table.emp-pl-table{
   min-width:860px;
 }
-body.ep-module #emp-salary-breakdown-table.emp-pl-table tfoot td{
+body.ep-module #emp-salary-breakdown-table.emp-pl-table tfoot td,
+body.ep-module #mpr-salary-breakdown-table.emp-pl-table tfoot td{
   background:#F8FAFD;
   border-bottom:0;
   font-weight:800;
   padding-top:14px;
   padding-bottom:14px;
 }
-body.ep-module #emp-salary-breakdown-table .ec-ledger-label{
+body.ep-module #emp-salary-breakdown-table .ec-ledger-label,
+body.ep-module #mpr-salary-breakdown-table .ec-ledger-label{
   text-align:right;
   color:var(--txt2,#4A5568);
   font-weight:700;

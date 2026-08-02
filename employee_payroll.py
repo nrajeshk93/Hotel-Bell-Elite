@@ -61,6 +61,34 @@ def _bind_app_helpers(pop_auth_notice, permission_denied_response, get_user, que
     get_current_user = get_user
 
 
+def _employee_return_target(embed=False):
+    """Resolve list URL after add/edit (Employee Master vs payroll Employees)."""
+    source = (request.values.get("from") or "").strip().lower()
+    from_hub = (request.values.get("from_hub") or "").strip().lower()
+    if source == "employee_master":
+        endpoint = "employee_master"
+        label = "Employee Master"
+        kwargs = {}
+        if from_hub in ("reports", "master"):
+            kwargs["from_hub"] = from_hub
+    else:
+        endpoint = "employees"
+        label = "Employees"
+        kwargs = {}
+        if from_hub:
+            kwargs["from_hub"] = from_hub
+    if embed:
+        kwargs["embed"] = 1
+    return {
+        "endpoint": endpoint,
+        "kwargs": kwargs,
+        "list_url": url_for(endpoint, **kwargs),
+        "list_label": label,
+        "from": "employee_master" if endpoint == "employee_master" else "employees",
+        "from_hub": kwargs.get("from_hub", ""),
+    }
+
+
 def _notify(message):
     if _queue_auth_notice and message:
         _queue_auth_notice(message)
@@ -1322,103 +1350,162 @@ def _get_month_attendance(conn, emp_id, year, month):
         'display_badge_num': badge_num,
         'badge_den': badge_den,
     }
-@payroll_bp.route('/employees')
-def employees():
-    q        = request.args.get('q', '').strip()
-    status   = request.args.get('status', 'active').strip()
+def _load_employees_list_context():
+    """Shared employee list payload for Employees + Employee Master UIs."""
+    q = request.args.get('q', '').strip()
+    status = request.args.get('status', 'active').strip()
     location = request.args.get('location', '').strip()
-    sort_by  = request.args.get('sort', 'id').strip().lower()
+    sort_by = request.args.get('sort', 'id').strip().lower()
     if sort_by not in _EMPLOYEE_SORT_ORDERS:
         sort_by = 'id'
     order_by = _EMPLOYEE_SORT_ORDERS[sort_by]
     year, month = _period_from_source(request.args)
+    conn = get_db()
+    try:
+        conditions, params = [], []
+        if status in ('active', 'inactive'):
+            conditions.append("status = ?")
+            params.append(status)
+        if q:
+            conditions.append(
+                "(name LIKE ? OR emp_code LIKE ? OR location LIKE ? OR mobile LIKE ? OR address LIKE ?)"
+            )
+            params.extend([f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%'])
+        if location:
+            conditions.append("location = ?")
+            params.append(location)
+        where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+        rows = conn.execute(
+            f"SELECT * FROM employees{where} ORDER BY {order_by}",
+            tuple(params)
+        ).fetchall()
+        payroll_state = _get_payroll_month_state(conn, year, month)
+
+        emps = []
+        kpi_net = 0.0
+        kpi_att_tracked = 0
+        for r in rows:
+            e = _attach_employee_month_context(conn, r, year, month, payroll_state=payroll_state)
+            if e['att']['tracked']:
+                kpi_att_tracked += 1
+            kpi_net += e['net']
+            emps.append(e)
+
+        total_employees = conn.execute("SELECT COUNT(*) FROM employees WHERE status='active'").fetchone()[0]
+        kpi_credits = float(conn.execute("SELECT COALESCE(SUM(amount),0) FROM credits").fetchone()[0])
+        kpi_att_pct = round(kpi_att_tracked / total_employees * 100) if total_employees else 0
+        ac_rows = conn.execute(
+            "SELECT name, emp_code, location FROM employees WHERE status='active' ORDER BY name"
+        ).fetchall()
+        autocomplete_emps = [
+            {
+                'name': r['name'],
+                'emp_code': r['emp_code'] or '',
+                'location': r['location'] or '',
+            }
+            for r in ac_rows
+        ]
+    finally:
+        conn.close()
+
+    return {
+        'employees': emps,
+        'search': q,
+        'sel_year': year,
+        'sel_month': month,
+        'month_name': calendar.month_name[month],
+        'payroll_state': payroll_state,
+        'sel_status': status,
+        'sel_location': location,
+        'sel_sort': sort_by,
+        'total_employees': total_employees,
+        'kpi_att_tracked': kpi_att_tracked,
+        'kpi_att_pct': kpi_att_pct,
+        'kpi_net': round(kpi_net, 2),
+        'kpi_credits': round(kpi_credits, 2),
+        'autocomplete_emps': autocomplete_emps,
+    }
+
+
+@payroll_bp.route('/employees')
+def employees():
+    year, month = _period_from_source(request.args)
     payroll_redirect = _payroll_landing_redirect(get_current_user(), year, month)
     if payroll_redirect is not None:
         return payroll_redirect
-    conn     = get_db()
+    ctx = _load_employees_list_context()
+    if is_embed_request():
+        return _emp_render("partials/master_embed/employees.html", **ctx)
+    return _emp_render('employees.html', **ctx)
 
-    # Build query with all active filters
-    conditions, params = [], []
-    if status in ('active', 'inactive'):
-        conditions.append("status = ?")
-        params.append(status)
-    if q:
-        conditions.append("(name LIKE ? OR emp_code LIKE ? OR location LIKE ? OR mobile LIKE ?)")
-        params.extend([f'%{q}%', f'%{q}%', f'%{q}%', f'%{q}%'])
-    if location:
-        conditions.append("location = ?")
-        params.append(location)
-    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
-    rows = conn.execute(
-        f"SELECT * FROM employees{where} ORDER BY {order_by}",
-        tuple(params)
-    ).fetchall()
-    payroll_state = _get_payroll_month_state(conn, year, month)
 
-    emps = []
-    kpi_net = 0.0
-    kpi_att_tracked = 0
-    for r in rows:
-        e = _attach_employee_month_context(conn, r, year, month, payroll_state=payroll_state)
-        if e['att']['tracked']:
-            kpi_att_tracked += 1
-        kpi_net += e['net']
-        emps.append(e)
+@payroll_bp.route('/employee_master')
+def employee_master():
+    """Employee Master ledger (Reports hub + Masters modal embed)."""
+    ctx = _load_employees_list_context()
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    if from_hub == "reports":
+        back_href = url_for("reports")
+        back_label = "Back to Reports"
+        de_nav_section = "report"
+        de_nav_payroll_view = ""
+        de_nav_report_view = "home"
+        de_nav_master_view = ""
+        de_nav_host = "report"
+    elif from_hub == "master":
+        back_href = url_for("master")
+        back_label = "Back to Master"
+        de_nav_section = "master"
+        de_nav_payroll_view = ""
+        de_nav_report_view = ""
+        de_nav_master_view = "employee_master"
+        de_nav_host = "master"
+        from_hub = "master"
+    else:
+        from_hub = ""
+        back_href = url_for("master")
+        back_label = "Back to Master"
+        de_nav_section = "master"
+        de_nav_payroll_view = ""
+        de_nav_report_view = ""
+        de_nav_master_view = "employee_master"
+        de_nav_host = "master"
 
-    total_employees = conn.execute("SELECT COUNT(*) FROM employees WHERE status='active'").fetchone()[0]
-    kpi_credits = float(conn.execute("SELECT COALESCE(SUM(amount),0) FROM credits").fetchone()[0])
-    kpi_att_pct = round(kpi_att_tracked / total_employees * 100) if total_employees else 0
-    # All active employees for search autocomplete
-    ac_rows = conn.execute(
-        "SELECT name, emp_code, location FROM employees WHERE status='active' ORDER BY name"
-    ).fetchall()
-    autocomplete_emps = [{'name': r['name'], 'emp_code': r['emp_code'] or '',
-                           'location': r['location'] or ''}
-                         for r in ac_rows]
-    conn.close()
     if is_embed_request():
         return _emp_render(
             "partials/master_embed/employees.html",
-            employees=emps,
-            search=q,
-            sel_year=year,
-            sel_month=month,
-            month_name=calendar.month_name[month],
-            payroll_state=payroll_state,
-            sel_status=status,
-            sel_location=location,
-            sel_sort=sort_by,
-            total_employees=total_employees,
-            kpi_att_tracked=kpi_att_tracked,
-            kpi_att_pct=kpi_att_pct,
-            kpi_net=round(kpi_net, 2),
-            kpi_credits=round(kpi_credits, 2),
-            autocomplete_emps=autocomplete_emps,
+            filter_form_action=url_for("employee_master"),
+            employee_list_endpoint="employee_master",
+            **ctx,
         )
-    return _emp_render('employees.html', employees=emps, search=q,
-                       sel_year=year, sel_month=month,
-                       month_name=calendar.month_name[month],
-                       payroll_state=payroll_state,
-                       sel_status=status, sel_location=location,
-                       sel_sort=sort_by,
-                       total_employees=total_employees,
-                       kpi_att_tracked=kpi_att_tracked,
-                       kpi_att_pct=kpi_att_pct,
-                       kpi_net=round(kpi_net, 2),
-                       kpi_credits=round(kpi_credits, 2),
-                       autocomplete_emps=autocomplete_emps)
+
+    return _emp_render(
+        "employee_master.html",
+        page_title="Employee Master",
+        filter_form_action=url_for("employee_master"),
+        employee_list_endpoint="employee_master",
+        employee_master_report_url=url_for("export_employee_master"),
+        back_href=back_href,
+        back_label=back_label,
+        from_hub=from_hub,
+        de_nav_section=de_nav_section,
+        de_nav_payroll_view=de_nav_payroll_view,
+        de_nav_report_view=de_nav_report_view,
+        de_nav_master_view=de_nav_master_view,
+        de_nav_host=de_nav_host,
+        **ctx,
+    )
 
 
-@payroll_bp.route('/report')
-def report():
-    year, month = _period_from_source(request.args)
-    conn  = get_db()
+def _load_monthly_payroll_report(conn, year, month):
+    """Build monthly payroll aggregates + per-employee rows for report UIs."""
     payroll_state = _get_payroll_month_state(conn, year, month)
-
     active_rows = conn.execute(
         f"SELECT * FROM employees WHERE status='active' ORDER BY {_EMPLOYEE_DISPLAY_ORDER}"
     ).fetchall()
-    inactive_count = conn.execute("SELECT COUNT(*) FROM employees WHERE status='inactive'").fetchone()[0]
+    inactive_count = conn.execute(
+        "SELECT COUNT(*) FROM employees WHERE status='inactive'"
+    ).fetchone()[0]
 
     total_gross = total_net = total_epf = total_esic = total_incentive = 0.0
     total_present = total_absent = total_half = tracked_count = 0
@@ -1426,26 +1513,25 @@ def report():
 
     for r in active_rows:
         e = _attach_employee_month_context(conn, r, year, month, payroll_state=payroll_state)
-        if e['att']['tracked']:
+        if e["att"]["tracked"]:
             tracked_count += 1
-            total_present += e['att']['present']
-            total_absent  += float(e['att'].get('absent', 0) or 0)
-            total_half    += e['att'].get('half_day_marked', e['att'].get('half_day', 0))
-        total_gross += e['gross_salary']
-        total_net   += e['net']
-        total_epf   += e['epf']
-        total_esic  += e['esic']
-        total_incentive += float(e.get('tip_incentive') or 0)
+            total_present += e["att"]["present"]
+            total_absent += float(e["att"].get("absent", 0) or 0)
+            total_half += e["att"].get("half_day_marked", e["att"].get("half_day", 0))
+        total_gross += e["gross_salary"]
+        total_net += e["net"]
+        total_epf += e["epf"]
+        total_esic += e["esic"]
+        total_incentive += float(e.get("tip_incentive") or 0)
         emp_list.append(e)
 
     active_count = len(active_rows)
     avg_gross = round(total_gross / active_count, 2) if active_count else 0
-    avg_net   = round(total_net   / active_count, 2) if active_count else 0
+    avg_net = round(total_net / active_count, 2) if active_count else 0
 
     cr_row = conn.execute("SELECT COALESCE(SUM(amount),0), COUNT(*) FROM credits").fetchone()
     total_credits = float(cr_row[0])
-    credit_count  = int(cr_row[1])
-    conn.close()
+    credit_count = int(cr_row[1])
 
     report_data = dict(
         total_count=active_count + inactive_count,
@@ -1466,11 +1552,67 @@ def report():
         tracked_count=tracked_count,
         employees=emp_list,
     )
+    return report_data, payroll_state
+
+
+@payroll_bp.route('/report')
+def report():
+    year, month = _period_from_source(request.args)
+    conn = get_db()
+    try:
+        report_data, payroll_state = _load_monthly_payroll_report(conn, year, month)
+    finally:
+        conn.close()
     return _emp_render('employees.html', mode='report',
                        sel_year=year, sel_month=month,
                        month_name=calendar.month_name[month],
                        payroll_state=payroll_state,
                        report=report_data)
+
+
+@payroll_bp.route('/monthly_payroll')
+def monthly_payroll_report():
+    """Focused monthly payroll ledger (Reports hub + optional Payroll entry)."""
+    year, month = _period_from_source(request.args)
+    conn = get_db()
+    try:
+        report_data, payroll_state = _load_monthly_payroll_report(conn, year, month)
+    finally:
+        conn.close()
+
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    if from_hub == "reports":
+        back_href = url_for("reports")
+        back_label = "Back to Reports"
+        de_nav_section = "report"
+        de_nav_payroll_view = ""
+        de_nav_report_view = "home"
+    else:
+        from_hub = ""
+        back_href = url_for("employees")
+        back_label = "Back to Employee Payroll"
+        de_nav_section = "payroll"
+        de_nav_payroll_view = "report"
+        de_nav_report_view = ""
+
+    return _emp_render(
+        "monthly_payroll_report.html",
+        page_title="Monthly Payroll Report",
+        sel_year=year,
+        sel_month=month,
+        month_name=calendar.month_name[month],
+        payroll_state=payroll_state,
+        report=report_data,
+        payroll_report_url=url_for("export_employees", year=year, month=month),
+        filter_form_action=url_for("monthly_payroll_report"),
+        back_href=back_href,
+        back_label=back_label,
+        from_hub=from_hub,
+        de_nav_section=de_nav_section,
+        de_nav_payroll_view=de_nav_payroll_view,
+        de_nav_report_view=de_nav_report_view,
+        de_nav_host="payroll" if de_nav_section == "payroll" else "report",
+    )
 
 
 @payroll_bp.route('/add_employee', methods=['GET', 'POST'])
@@ -1562,12 +1704,39 @@ def add_employee():
         if _emp_code_taken(conn, emp_code):
             errors.append('Could not assign a unique Employee ID. Please try again.')
 
+        ret = _employee_return_target()
         if errors:
             form_data = dict(request.form)
             form_data['emp_code'] = emp_code
             conn.close()
-            return _emp_render('employees.html', errors=errors, form=form_data,
-                                   mode='add', employees=[], search='')
+            if is_embed_request():
+                return _emp_render(
+                    "partials/master_embed/employees.html",
+                    errors=errors,
+                    form=form_data,
+                    mode='add',
+                    employees=[],
+                    search='',
+                    employee_list_endpoint=ret["endpoint"],
+                    employee_list_url=_employee_return_target(embed=True)["list_url"],
+                    employee_return_from=ret["from"],
+                    employee_return_from_hub=ret["from_hub"],
+                )
+            return _emp_render(
+                'employees.html',
+                errors=errors,
+                form=form_data,
+                mode='add',
+                employees=[],
+                search='',
+                back_href=ret["list_url"],
+                back_label=f'Back to {ret["list_label"]}',
+                employee_list_endpoint=ret["endpoint"],
+                employee_list_url=ret["list_url"],
+                employee_list_label=ret["list_label"],
+                employee_return_from=ret["from"],
+                employee_return_from_hub=ret["from_hub"],
+            )
 
         conn.execute(
             "INSERT INTO employees (emp_code, name, company, location, mobile, guardian_mobile, sex, address, aadhar, pan, epf_number, esic_number, gross_salary, basic_salary, epf_amount, esic_amount, credit_repayment, epf_exempt, esic_exempt, weekday_shift, sunday_shift, bank_name, account_holder_name, account_number, ifsc_code, total_off, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -1575,8 +1744,9 @@ def add_employee():
         )
         conn.commit()
         conn.close()
-        return redirect(url_for('employees'))
+        return redirect(ret["list_url"])
 
+    ret = _employee_return_target()
     conn = get_db()
     next_code = _next_emp_code(conn)
     conn.close()
@@ -1587,9 +1757,25 @@ def add_employee():
             employees=[],
             search='',
             form={'emp_code': next_code},
+            employee_list_endpoint=ret["endpoint"],
+            employee_list_url=_employee_return_target(embed=True)["list_url"],
+            employee_return_from=ret["from"],
+            employee_return_from_hub=ret["from_hub"],
         )
-    return _emp_render('employees.html', mode='add', employees=[], search='',
-                       form={'emp_code': next_code})
+    return _emp_render(
+        'employees.html',
+        mode='add',
+        employees=[],
+        search='',
+        form={'emp_code': next_code},
+        back_href=ret["list_url"],
+        back_label=f'Back to {ret["list_label"]}',
+        employee_list_endpoint=ret["endpoint"],
+        employee_list_url=ret["list_url"],
+        employee_list_label=ret["list_label"],
+        employee_return_from=ret["from"],
+        employee_return_from_hub=ret["from_hub"],
+    )
 
 
 @payroll_bp.route('/edit_employee/<int:emp_id>', methods=['GET', 'POST'])
@@ -1708,14 +1894,42 @@ def edit_employee(emp_id):
                 'Salary, statutory, and Total Off fields cannot be changed.'
             )
 
+        ret = _employee_return_target()
         if errors:
             form_data = dict(request.form)
             form_data['id'] = emp_id
             form_data['emp_code'] = emp_code
             conn.close()
-            return _emp_render('employees.html', errors=errors, form=form_data,
-                                   mode='edit', employees=[], search='',
-                                   payroll_fields_locked=payroll_fields_locked)
+            if is_embed_request():
+                return _emp_render(
+                    "partials/master_embed/employees.html",
+                    errors=errors,
+                    form=form_data,
+                    mode='edit',
+                    employees=[],
+                    search='',
+                    payroll_fields_locked=payroll_fields_locked,
+                    employee_list_endpoint=ret["endpoint"],
+                    employee_list_url=_employee_return_target(embed=True)["list_url"],
+                    employee_return_from=ret["from"],
+                    employee_return_from_hub=ret["from_hub"],
+                )
+            return _emp_render(
+                'employees.html',
+                errors=errors,
+                form=form_data,
+                mode='edit',
+                employees=[],
+                search='',
+                payroll_fields_locked=payroll_fields_locked,
+                back_href=ret["list_url"],
+                back_label=f'Back to {ret["list_label"]}',
+                employee_list_endpoint=ret["endpoint"],
+                employee_list_url=ret["list_url"],
+                employee_list_label=ret["list_label"],
+                employee_return_from=ret["from"],
+                employee_return_from_hub=ret["from_hub"],
+            )
 
         conn.execute(
             f"UPDATE employees SET emp_code=?, name=?, company=?, location=?, mobile=?, guardian_mobile=?, sex=?, address=?, aadhar=?, pan=?, epf_number=?, esic_number=?, gross_salary=?, basic_salary=?, epf_amount=?, esic_amount=?, credit_repayment=?, epf_exempt=?, esic_exempt=?, weekday_shift=?, sunday_shift=?, bank_name=?, account_holder_name=?, account_number=?, ifsc_code=?, total_off=?, status=?, updated_at={SQL_NOW} WHERE id=?",
@@ -1723,8 +1937,9 @@ def edit_employee(emp_id):
         )
         conn.commit()
         conn.close()
-        return redirect(url_for('employees'))
+        return redirect(ret["list_url"])
 
+    ret = _employee_return_target()
     payroll_fields_locked = _employee_has_locked_month_data(conn, emp_id)
     conn.close()
     if is_embed_request():
@@ -1735,9 +1950,26 @@ def edit_employee(emp_id):
             employees=[],
             search='',
             payroll_fields_locked=payroll_fields_locked,
+            employee_list_endpoint=ret["endpoint"],
+            employee_list_url=_employee_return_target(embed=True)["list_url"],
+            employee_return_from=ret["from"],
+            employee_return_from_hub=ret["from_hub"],
         )
-    return _emp_render('employees.html', mode='edit', form=dict(existing), employees=[], search='',
-                       payroll_fields_locked=payroll_fields_locked)
+    return _emp_render(
+        'employees.html',
+        mode='edit',
+        form=dict(existing),
+        employees=[],
+        search='',
+        payroll_fields_locked=payroll_fields_locked,
+        back_href=ret["list_url"],
+        back_label=f'Back to {ret["list_label"]}',
+        employee_list_endpoint=ret["endpoint"],
+        employee_list_url=ret["list_url"],
+        employee_list_label=ret["list_label"],
+        employee_return_from=ret["from"],
+        employee_return_from_hub=ret["from_hub"],
+    )
 
 
 @payroll_bp.route('/delete_employee/<int:emp_id>')
@@ -3082,7 +3314,7 @@ def export_employee_master():
     from openpyxl import Workbook
     conn = get_db()
     rows = conn.execute(
-        f"SELECT * FROM employees ORDER BY {_EMPLOYEE_DISPLAY_ORDER}"
+        f"SELECT * FROM employees ORDER BY {_EMPLOYEE_SORT_ORDERS['id']}"
     ).fetchall()
     conn.close()
 
@@ -3832,26 +4064,41 @@ _BANK_REPORT_TEMPLATE = os.path.join(
 )
 _BANK_DEBIT_ACC_NO = '387905000829'
 _BANK_EMAIL_ID = 'mithra.varma@gmail.com'
+# ICICI CIB PAB_VENDOR upload headers (A–S) when the local .xlsx template is absent.
+_BANK_REPORT_HEADERS = (
+    'PYMT_PROD_TYPE_CODE',
+    'PYMT_MODE',
+    'DEBIT_ACC_NO',
+    'BNF_NAME',
+    'BENE_ACC_NO',
+    'BENE_IFSC',
+    'AMOUNT',
+    'CREDIT_NARR',
+    'PYMT_REF_NO',
+    'MOBILE_NUM',
+    'EMAIL_ID',
+    'REMARK',
+    'PYMT_DATE',
+    'REF1',
+    'REF2',
+    'REF3',
+    'REF4',
+    'REF5',
+    'REF6',
+)
 
 
-@payroll_bp.route('/export/bank_report')
-def export_bank_report():
-    """ICICI fund-transfer Excel for active EPF employees (selected payroll month)."""
-    from openpyxl import load_workbook
-
-    year, month = _period_from_source(request.args)
-    if not os.path.isfile(_BANK_REPORT_TEMPLATE):
-        return ('Bank report template is missing.', 500)
-
-    conn = get_db()
+def _load_bank_report(conn, year, month):
+    """Build ICICI fund-transfer rows for active EPF employees in the payroll month."""
     rows = conn.execute(
         f"""SELECT * FROM employees
             WHERE status='active' AND COALESCE(epf_exempt, 0)=0
-            ORDER BY {_EMPLOYEE_DISPLAY_ORDER}"""
+            ORDER BY {_EMPLOYEE_SORT_ORDERS['id']}"""
     ).fetchall()
 
-    payment_date = date.today()
     bank_rows = []
+    total_amount = 0
+    ft_count = neft_count = 0
     for row in rows:
         view = _attach_employee_month_context(conn, row, year, month)
         amount = _round_rupee(view.get('net', 0) or 0)
@@ -3859,25 +4106,108 @@ def export_bank_report():
             continue
         ifsc = (view.get('ifsc_code') or '').strip().upper()
         holder = (view.get('account_holder_name') or '').strip() or (view.get('name') or '')
+        mode = 'FT' if ifsc.startswith('ICIC') else 'NEFT'
+        if mode == 'FT':
+            ft_count += 1
+        else:
+            neft_count += 1
+        total_amount += amount
         bank_rows.append({
+            'emp_code': (view.get('emp_code') or '').strip(),
+            'employee_name': (view.get('name') or '').strip(),
+            'department': (view.get('location') or '').strip(),
             'name': holder,
             'account': (view.get('account_number') or '').strip(),
             'ifsc': ifsc,
             'amount': amount,
             'mobile': (view.get('mobile') or '').strip(),
-            'mode': 'FT' if ifsc.startswith('ICIC') else 'NEFT',
+            'mode': mode,
         })
-    conn.close()
 
-    wb = load_workbook(_BANK_REPORT_TEMPLATE)
-    ws = wb.active
+    return {
+        'rows': bank_rows,
+        'count': len(bank_rows),
+        'total_amount': total_amount,
+        'ft_count': ft_count,
+        'neft_count': neft_count,
+        'payment_date': date.today(),
+    }
 
-    # Keep header row; clear sample data rows.
-    if ws.max_row > 1:
-        ws.delete_rows(2, ws.max_row - 1)
 
-    # Clone formatting from the original first sample row if available via template styles;
-    # after delete, append values with shared constants.
+@payroll_bp.route('/bank_report')
+def bank_report():
+    """Bank Report ledger — ICICI payout preview (Reports hub)."""
+    year, month = _period_from_source(request.args)
+    conn = get_db()
+    try:
+        report = _load_bank_report(conn, year, month)
+    finally:
+        conn.close()
+
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    if from_hub == "reports":
+        back_href = url_for("reports")
+        back_label = "Back to Reports"
+        de_nav_section = "report"
+        de_nav_payroll_view = ""
+        de_nav_report_view = "home"
+    else:
+        from_hub = ""
+        back_href = url_for("report", year=year, month=month)
+        back_label = "Back to Payroll Report"
+        de_nav_section = "payroll"
+        de_nav_payroll_view = "report"
+        de_nav_report_view = ""
+
+    return _emp_render(
+        "bank_report.html",
+        page_title="Bank Report",
+        sel_year=year,
+        sel_month=month,
+        month_name=calendar.month_name[month],
+        report=report,
+        bank_report_url=url_for("export_bank_report", year=year, month=month),
+        filter_form_action=url_for("bank_report"),
+        back_href=back_href,
+        back_label=back_label,
+        from_hub=from_hub,
+        de_nav_section=de_nav_section,
+        de_nav_payroll_view=de_nav_payroll_view,
+        de_nav_report_view=de_nav_report_view,
+        de_nav_host="payroll" if de_nav_section == "payroll" else "report",
+    )
+
+
+@payroll_bp.route('/export/bank_report')
+def export_bank_report():
+    """ICICI fund-transfer Excel for active EPF employees (selected payroll month)."""
+    from openpyxl import Workbook, load_workbook
+    from openpyxl.styles import Font
+
+    year, month = _period_from_source(request.args)
+
+    conn = get_db()
+    try:
+        report = _load_bank_report(conn, year, month)
+    finally:
+        conn.close()
+
+    payment_date = report['payment_date']
+    bank_rows = report['rows']
+
+    if os.path.isfile(_BANK_REPORT_TEMPLATE):
+        wb = load_workbook(_BANK_REPORT_TEMPLATE)
+        ws = wb.active
+        if ws.max_row > 1:
+            ws.delete_rows(2, ws.max_row - 1)
+    else:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = 'Bank Report'
+        for col, title in enumerate(_BANK_REPORT_HEADERS, start=1):
+            cell = ws.cell(row=1, column=col, value=title)
+            cell.font = Font(bold=True)
+
     for item in bank_rows:
         ws.append([
             'PAB_VENDOR',                 # A

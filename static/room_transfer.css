@@ -44,127 +44,205 @@ body.su-module .rt-table .pl-col-code{
   font-weight:600;
   color:var(--txt);
 }
-/* Credit / Room Transfer filters — one right-aligned row like Purchase Ledger */
+/* Credit / Room Transfer filters — Expense Ledger field style */
 body.su-module .se-sales-header-filters:has(#room-transfer-filter-form){
   display:flex;
-  justify-content:flex-end;
+  justify-content:stretch;
   align-items:flex-end;
 }
 body.su-module #room-transfer-filter-form.rt-filter-form{
   display:flex;
   flex-wrap:nowrap;
   align-items:flex-end;
-  justify-content:flex-end;
+  justify-content:flex-start;
   gap:12px;
-  width:auto;
+  width:100%;
   max-width:100%;
   min-width:0;
-  margin-left:auto;
-  flex:0 0 auto;
+  margin-left:0;
+  flex:1 1 auto;
 }
-body.su-module #room-transfer-filter-form .se-filter-chip-label{
-  text-align:center;
+body.su-module #room-transfer-filter-form .pl-header-field .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2,#4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  text-align:left;
 }
-body.su-module #room-transfer-filter-form .rt-status-tabs{
-  display:flex;
-  flex-direction:column;
-  align-items:stretch;
-  flex:0 0 auto;
-  min-width:0;
+body.su-module #room-transfer-filter-form .pl-header-field-listbox{
+  position:relative;
+  width:100%;
 }
-body.su-module #room-transfer-filter-form .rt-status-tabs .se-filter-chip-label{
-  visibility:hidden;
-  user-select:none;
-}
-body.su-module #room-transfer-filter-form .cp-view-tabs{
-  display:inline-flex;
-  align-items:center;
-  gap:4px;
-  height:48px;
-  margin:0;
-  padding:4px;
-  box-sizing:border-box;
-  flex-shrink:0;
-}
-body.su-module #room-transfer-filter-form .cp-view-tab{
-  height:40px;
-}
-body.su-module .rt-location-chip{
-  flex:0 0 auto;
-  width:140px;
-  min-width:120px;
-  max-width:160px;
-}
-body.su-module .rt-location-chip .se-filter-chip-trigger{
-  padding-right:28px;
-}
-body.su-module .rt-search-chip{
-  flex:0 0 auto;
-  width:220px;
-  min-width:180px;
-  max-width:240px;
-}
-body.su-module .rt-search-chip .se-filter-chip-label{color:#64748B}
-body.su-module .rt-search-chip .se-filter-chip-control{
+body.su-module #room-transfer-filter-form .pl-header-field-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:44px;
   background:#fff !important;
-  border-color:#E5E7EB !important;
+  border:1px solid var(--border,#E2E8F0) !important;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
 }
-body.su-module .rt-search-chip .se-filter-chip-icon{color:#64748B}
-body.su-module .rt-search-input{
+body.su-module #room-transfer-filter-form .pl-header-field-listbox .se-filter-chip-trigger{
   flex:1 1 auto;
   min-width:0;
   width:100%;
-  height:48px;
-  border:none;
-  background:transparent;
-  font:500 14px Inter,system-ui,sans-serif;
-  color:#111827;
-  padding:0 12px 0 4px;
-  outline:none;
-}
-body.su-module .rt-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
-body.su-module .rt-search-input::placeholder{color:#94A3B8;font-weight:500}
-body.su-module .rt-search-chip.is-active .se-filter-chip-control{
-  border-color:#93C5FD !important;
-  background:#EFF6FF !important;
-}
-body.su-module .rt-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
-body.su-module .rt-date-range-host{
+  min-height:44px;
   display:flex;
-  flex-direction:column;
+  align-items:center;
+  padding:0 8px 0 12px;
+  border:0;
+  background:transparent;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  text-align:left;
+  cursor:pointer;
+}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  align-self:stretch;
+  color:#94A3B8;
+}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox.is-open{
+  z-index:80;
+}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox.is-open .se-filter-chip-control,
+body.su-module #room-transfer-filter-form .pl-header-field-listbox .se-filter-chip-control:focus-within,
+body.su-module #room-transfer-filter-form .rt-search-chip.is-active .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
+}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox.is-open .se-filter-chip-chev{
+  color:#2563EB;
+  transform:rotate(180deg);
+}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox .se-filter-listbox{
+  padding:6px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  box-shadow:0 8px 24px rgba(15,23,42,.1);
+}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox .se-filter-listbox-option{
+  padding:10px 12px;
+  border-radius:8px;
+  font-size:13px;
+  font-weight:500;
+}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox .se-filter-listbox-option.is-selected{
+  background:rgba(37,99,235,.08);
+  color:#2563EB;
+  font-weight:600;
+}
+body.su-module #room-transfer-filter-form .rt-search-chip{
+  position:relative;
+  flex:1 1 auto;
+  width:auto;
+  min-width:96px;
+  max-width:100%;
+  z-index:20;
+}
+body.su-module #room-transfer-filter-form .rt-search-chip .rt-search-input,
+body.su-module #room-transfer-filter-form .rt-search-chip .pl-search-input{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:100%;
+  min-height:44px;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  outline:none;
+  padding:0 12px;
+  font:inherit;
+  font-size:13px;
+  font-weight:500;
+  color:#111827;
+  appearance:none;
+  -webkit-appearance:none;
+}
+body.su-module #room-transfer-filter-form .rt-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+body.su-module #room-transfer-filter-form .rt-search-input::placeholder{color:#94A3B8;font-weight:500}
+body.su-module #room-transfer-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.rt-search-chip){
+  flex:0 1 auto;
+  width:clamp(120px,12vw,180px);
+  min-width:112px;
+  max-width:200px;
+}
+body.su-module #room-transfer-filter-form .rt-location-chip{
+  width:clamp(120px,12vw,180px);
+  min-width:112px;
+  max-width:200px;
+}
+body.su-module .rt-date-range-host.pl-header-field{
   flex:0 0 auto;
   min-width:0;
   z-index:30;
   margin-left:0;
+  overflow:visible;
 }
-body.su-module .rt-date-range-host .se-filter-chip--date-range{
+body.su-module .rt-date-range-host.pl-header-field .se-filter-chip--date-range{
   flex:none;
   min-width:0;
   width:auto;
   max-width:none;
 }
-body.su-module .rt-date-range-host .an-range-trigger{
+body.su-module .rt-date-range-host.pl-header-field .se-filter-chip--date-range .se-filter-chip-control{
+  overflow:visible;
+}
+body.su-module .rt-date-range-host.pl-header-field .an-range-trigger{
   min-width:140px;
   width:auto;
-  max-width:min(240px,40vw);
+  max-width:min(280px,40vw);
+  min-height:44px;
+  padding:0 12px;
+  font-size:13px;
+  font-weight:600;
 }
-body.su-module .rt-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
-  border-color:#93C5FD;
-  background:#EFF6FF;
+body.su-module .rt-date-range-host.pl-header-field .se-filter-chip.is-filtered .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
 }
 body.su-module .rt-date-range-host .an-range-actions{
   display:flex;
   justify-content:flex-end;
   gap:8px;
+  flex-wrap:wrap;
 }
-@media (max-width:960px){
+@media (max-width:900px){
   body.su-module #room-transfer-filter-form.rt-filter-form{
     flex-wrap:wrap;
+    justify-content:stretch;
   }
-  body.su-module .rt-search-chip{
-    flex:1 1 180px;
-    width:auto;
+  body.su-module #room-transfer-filter-form .rt-search-chip{
+    flex:1 1 100%;
     max-width:none;
+  }
+  body.su-module #room-transfer-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.rt-search-chip){
+    flex:1 1 calc(50% - 6px);
+    max-width:none;
+  }
+  body.su-module .rt-date-range-host.pl-header-field{
+    flex:1 1 100%;
+  }
+  body.su-module .rt-date-range-host.pl-header-field .an-range-trigger{
+    max-width:none;
+    width:100%;
   }
 }
 body.su-module #room-transfer-save-status:empty{display:none}

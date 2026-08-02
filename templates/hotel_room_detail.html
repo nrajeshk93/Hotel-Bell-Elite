@@ -1,0 +1,974 @@
+{% set de_soft_body_class = 'de-open hotel-rooms-module hotel-room-detail-module' %}
+{% set de_soft_page_title = 'Room ' ~ (room.number|default('')) ~ ' | Hotel | Hotel Bell Elite' %}
+{% set room_status = (room.status|default('vacant')|string|lower) %}
+{% set status_label = room.statusLabel|default(room_status|replace('_', ' ')|title) %}
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
+{% from 'partials/hotel_date_macros.html' import hotel_date_field, hotel_time_field %}
+{% if not is_partial_main %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Room {{ room.number }} | Hotel | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=70">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=1">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open hotel-rooms-module hotel-room-detail-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=70">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=1">
+{% endif %}
+
+<div
+  class="de-main-inner hotel-room-detail-page"
+  id="hotel-room-detail-page"
+  data-hotel-room-detail
+  data-room-id="{{ room.id }}"
+  data-room-number="{{ room.number }}"
+  data-room-type="{{ room.roomType|default('') }}"
+  data-room-type-label="{{ room.roomTypeLabel|default(room.roomType)|default('') }}"
+  data-room-status="{{ room_status }}"
+  data-room-api="{{ url_for('hotel_room_detail_api', room_id=room.id) }}"
+  data-rooms-api="{{ url_for('hotel_rooms_api') }}"
+  data-guest-lookup-api="{{ url_for('hotel_guest_lookup_api') }}"
+  data-id-document-upload-api="{{ url_for('hotel_id_document_upload') }}"
+  data-agency-master-url="{{ agency_master_url|default(url_for('agency_master')) }}"
+  data-agency-create-url="{{ agency_create_url|default(url_for('create_agency')) }}"
+  data-agencies-api="{{ agencies_api_url|default(url_for('list_agencies_api')) }}"
+  data-agencies="{{ agencies|default([])|tojson|e }}"
+>
+  <header class="hrd-header">
+    <div class="hrd-header-main">
+      <a class="hrd-back" href="{{ url_for('hotel_rooms') }}" data-hrd-back aria-label="Back to Rooms">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+      </a>
+      <div class="hrd-header-copy">
+        <div class="hrd-title-row">
+          <h1>Room {{ room.number }}</h1>
+          <span class="hrd-status-badge hrd-status-badge--{{ room_status }}" data-room-status-badge>{{ status_label }}</span>
+        </div>
+        <p class="hrd-subtitle">
+          {{ room.roomTypeLabel|default(room.roomType) }}
+          <span aria-hidden="true">•</span>
+          {{ room.floorName|default('Floor') }}
+        </p>
+        <div class="hrd-merge-banner" id="hrd-merge-banner" hidden></div>
+      </div>
+    </div>
+    <div class="hrd-header-actions">
+      <div class="hrd-more-wrap">
+        <button type="button" class="hrd-btn hrd-btn--ghost hrd-more-btn" id="hrd-more-btn" aria-label="Room actions" aria-haspopup="menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
+        </button>
+        <div class="hrd-more-menu" id="hrd-more-menu" role="menu" hidden>
+          <button type="button" class="hrd-more-item" role="menuitem" data-action="transfer">Room Transfer</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-action="merge" id="hrd-menu-merge" hidden>Merge Rooms</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-action="unmerge" id="hrd-menu-unmerge" hidden>Unmerge Room</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-action="unmerge-group" id="hrd-menu-unmerge-group" hidden>Unmerge All</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-action="set-primary" id="hrd-menu-set-primary" hidden>Make Primary</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-stub="Print folio coming soon">Print Folio</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-set-status="vacant" id="hrd-menu-status-vacant">Vacant</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-set-status="occupied" id="hrd-menu-status-occupied">Occupied</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-set-status="reserved" id="hrd-menu-status-reserved">Reserved</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-set-status="dirty" id="hrd-menu-status-dirty">Dirty</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-set-status="out_of_order" id="hrd-menu-status-out_of_order">Out of order</button>
+        </div>
+      </div>
+      {{ hotel_date_field('headerDate', 'Date', value=today_iso|default(''), field_id='hrd-header-date', extra_class='hrd-header-date', panel_title='Select date', empty_label='Select date', hint='', show_cal_icon=false) }}
+      {% if room_status != 'occupied' %}
+      <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-reserve" data-action="reserve">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
+        {% if room_status == 'reserved' %}Edit Reservation{% else %}Reserve{% endif %}
+      </button>
+      {% else %}
+      <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-reserve" data-action="reserve" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
+        Reserve
+      </button>
+      {% endif %}
+      {% if room_status == 'occupied' %}
+      <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-new-checkin" data-action="checkout">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        Check Out
+      </button>
+      {% else %}
+      <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-new-checkin" data-action="checkin">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New Check-in
+      </button>
+      {% endif %}
+    </div>
+  </header>
+
+  <aside id="hrd-checkout-due" class="hrd-checkout-due" hidden aria-live="polite">
+    <div class="hrd-checkout-due-main">
+      <span class="hrd-checkout-due-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      </span>
+      <div class="hrd-checkout-due-copy">
+        <strong class="hrd-checkout-due-title">Check-out Due Today</strong>
+        <p class="hrd-checkout-due-sub" id="hrd-checkout-due-sub">Guest is expected to check out today</p>
+      </div>
+    </div>
+    <div class="hrd-checkout-due-actions">
+      <button type="button" class="hrd-checkout-due-btn" id="hrd-checkout-due-extend" data-hrd-checkout-due="extend">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
+        Extend Stay
+      </button>
+      <button type="button" class="hrd-checkout-due-btn hrd-checkout-due-btn--accent" id="hrd-checkout-due-now" data-hrd-checkout-due="checkout">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        Check Out Now
+      </button>
+    </div>
+    <button type="button" class="hrd-checkout-due-dismiss" id="hrd-checkout-due-dismiss" data-hrd-checkout-due="dismiss" aria-label="Dismiss check-out reminder">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </aside>
+
+  <section class="hrd-kpis" aria-label="Room summary">
+    <article class="hrd-kpi">
+      <div class="hrd-kpi-icon hrd-kpi-icon--green" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M3 12h18v7H3z"/><path d="M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/></svg>
+      </div>
+      <div>
+        <div class="hrd-kpi-label">Room Status</div>
+        <div class="hrd-kpi-value" data-kpi-status>{{ status_label }}</div>
+      </div>
+    </article>
+    <article class="hrd-kpi hrd-kpi--hk">
+      <div class="hrd-hk-corner">
+        <button
+          type="button"
+          class="hrd-hk-icon-btn hrd-hk-icon-btn--clean"
+          id="hrd-mark-clean"
+          title="Mark Clean"
+          aria-label="Mark room clean"
+          {% if not housekeeping_dirty %}hidden{% endif %}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13.5 9.5 18 19 7"/><path d="M12 3l1.2 2.6L16 7l-2.8 1.4L12 11l-1.2-2.6L8 7l2.8-1.4L12 3z"/></svg>
+        </button>
+        <button
+          type="button"
+          class="hrd-hk-icon-btn hrd-hk-icon-btn--dirty"
+          id="hrd-mark-dirty"
+          title="Mark Dirty"
+          aria-label="Mark room dirty"
+          {% if housekeeping_dirty %}hidden{% endif %}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3"/><path d="M7 9c1.5 2 3 3 5 3s3.5-1 5-3"/><path d="M6 21h12"/><path d="M8 21c0-3 1.5-6 4-8 2.5 2 4 5 4 8"/><circle cx="9" cy="13.5" r=".8"/><circle cx="15" cy="15" r=".8"/></svg>
+        </button>
+      </div>
+      <div class="hrd-kpi-icon hrd-kpi-icon--{{ 'rose' if housekeeping_dirty else 'blue' }}" aria-hidden="true" data-hk-icon>
+        <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20V10l6-4 6 4v10"/><path d="M10 14h4v6h-4z"/></svg>
+      </div>
+      <div class="hrd-kpi-hk">
+        <div class="hrd-kpi-hk-copy">
+          <div class="hrd-kpi-label">Housekeeping</div>
+          <div class="hrd-kpi-value" data-kpi-hk>{{ housekeeping_status }}</div>
+        </div>
+      </div>
+    </article>
+    <article class="hrd-kpi">
+      <div class="hrd-kpi-icon hrd-kpi-icon--purple" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+      </div>
+      <div>
+        <div class="hrd-kpi-label">Guest Count</div>
+        <div class="hrd-kpi-value" data-kpi-guests>{% if room_status == 'occupied' and room.stay %}{{ (room.stay.adults|default(1)|int) + (room.stay.children|default(0)|int) }}{% else %}0{% endif %}</div>
+        <div class="hrd-kpi-sub" data-kpi-guests-sub>{% if room_status == 'occupied' and room.stay %}Adults {{ room.stay.adults|default(1) }} · Children {{ room.stay.children|default(0) }}{% else %}No guests in-house{% endif %}</div>
+      </div>
+    </article>
+    <article class="hrd-kpi">
+      <div class="hrd-kpi-icon hrd-kpi-icon--orange" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+      </div>
+      <div>
+        <div class="hrd-kpi-label">Check Out Room Count</div>
+        <div class="hrd-kpi-value" data-kpi-checkout>0</div>
+        <div class="hrd-kpi-sub" data-kpi-checkout-sub>No checkout due</div>
+      </div>
+    </article>
+  </section>
+
+  <div class="hrd-grid">
+    <div class="hrd-col">
+      <section class="hrd-card hrd-card--guest" id="hrd-guest-card"{% if room_status != 'occupied' %} data-action="checkin" tabindex="0" role="button" aria-label="Start check-in"{% endif %}>
+        <header class="hrd-card-head">
+          <span class="hrd-card-icon hrd-card-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+          </span>
+          <h2>Guest Information</h2>
+          <button
+            type="button"
+            class="hrd-icon-btn"
+            id="hrd-edit-guest"
+            data-action="edit-guest"
+            aria-label="Edit guest information"
+            title="Edit guest"
+            {% if room_status != 'occupied' %}hidden{% endif %}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+        </header>
+        <div class="hrd-empty" id="hrd-guest-empty"{% if room_status == 'occupied' %} hidden{% endif %}>
+          <div class="hrd-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+          </div>
+          <p class="hrd-empty-title">No guest checked-in</p>
+          <p class="hrd-empty-sub">Click “New Check-in” to add guest details</p>
+          <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-start-checkin" data-action="checkin">Start Check-In</button>
+        </div>
+        <div class="hrd-guest-filled" id="hrd-guest-filled"{% if room_status != 'occupied' %} hidden{% endif %}>
+          <div class="hrd-guest-row">
+            <div class="hrd-guest-avatar" id="hrd-guest-avatar" aria-hidden="true">G</div>
+            <div>
+              <div class="hrd-guest-name" id="hrd-guest-name">—</div>
+              <div class="hrd-guest-meta" id="hrd-guest-meta">In-house · Room {{ room.number }}</div>
+            </div>
+          </div>
+          <dl class="hrd-dl">
+            <div><dt>Booking</dt><dd id="hrd-guest-booking">—</dd></div>
+            <div><dt>Status</dt><dd><span class="hrd-guest-status-pill" id="hrd-guest-status">Checked in</span></dd></div>
+            <div><dt>Mobile</dt><dd id="hrd-guest-mobile">—</dd></div>
+            <div><dt>Email</dt><dd id="hrd-guest-email">—</dd></div>
+            <div><dt>Check in</dt><dd id="hrd-guest-checkin">—</dd></div>
+            <div><dt>Expected Check Out</dt><dd id="hrd-guest-checkout">—</dd></div>
+          </dl>
+          <button type="button" class="hrd-btn hrd-btn--checkout" id="hrd-start-checkout" data-action="checkout">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+            Check Out Guest
+          </button>
+        </div>
+      </section>
+
+      <section class="hrd-card" id="hrd-id-card">
+        <header class="hrd-card-head">
+          <span class="hrd-card-icon hrd-card-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h6"/></svg>
+          </span>
+          <h2>Guest ID Details</h2>
+          <button type="button" class="hrd-link-btn" id="hrd-add-guest-id" data-action="checkin">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            Add Guest ID
+          </button>
+        </header>
+        <div class="hrd-empty hrd-empty--compact" id="hrd-id-empty">
+          <div class="hrd-empty-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h6"/></svg>
+          </div>
+          <p class="hrd-empty-title">No Guest ID Added</p>
+          <p class="hrd-empty-sub">Add guest ID details during check-in</p>
+        </div>
+        <dl class="hrd-dl" id="hrd-id-filled" hidden>
+          <div><dt>ID Type</dt><dd id="hrd-id-type">—</dd></div>
+          <div><dt>Customer Name</dt><dd id="hrd-id-number">—</dd></div>
+        </dl>
+      </section>
+    </div>
+
+    <div class="hrd-col">
+      <section class="hrd-card" id="hrd-agency-card"{% if room_status != 'occupied' or not room.stay or not (room.stay.agencyName or room.stay.agencyGst or room.stay.agencyAddress) %} hidden{% endif %}>
+        <header class="hrd-card-head">
+          <span class="hrd-card-icon hrd-card-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+          </span>
+          <h2>Agency Details</h2>
+          <a class="hrd-link-btn" href="{{ agency_master_url|default(url_for('agency_master')) }}?focus=form">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            Add Agency
+          </a>
+        </header>
+        <dl class="hrd-dl" id="hrd-agency-dl">
+          <div><dt>Agency Name</dt><dd data-agency-name>—</dd></div>
+          <div><dt>GST</dt><dd data-agency-gst>—</dd></div>
+          <div><dt>Address</dt><dd data-agency-address>—</dd></div>
+          <div><dt>Billing</dt><dd data-agency-billing>—</dd></div>
+        </dl>
+      </section>
+
+      <section class="hrd-card" id="hrd-charges-card">
+        <header class="hrd-card-head">
+          <span class="hrd-card-icon hrd-card-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+          </span>
+          <div class="hrd-card-head-copy">
+            <h2>Estimated Charges</h2>
+            <p class="hrd-charges-invoice-no" id="hrd-charges-invoice-no" hidden></p>
+          </div>
+        </header>
+        <div class="hrd-charges-empty" id="hrd-charges-empty">
+          <p class="hrd-charges-banner">No charges yet. Charges appear after check-in.</p>
+        </div>
+        <div class="hrd-charges-body" id="hrd-charges-body" hidden>
+          <ul class="hrd-charges-list" id="hrd-charges-list"></ul>
+          <dl class="hrd-charges-totals" id="hrd-charges-totals">
+            <div data-charges-discount-row hidden>
+              <dt>Discount <span class="hrd-charges-muted" data-charges-discount-hint></span></dt>
+              <dd data-charges-discount>—</dd>
+            </div>
+            <div><dt>CGST <span class="hrd-charges-muted">(2.5%)</span></dt><dd data-charges-cgst>—</dd></div>
+            <div><dt>UGST <span class="hrd-charges-muted">(2.5%)</span></dt><dd data-charges-ugst>—</dd></div>
+            <div><dt>Estimated Total</dt><dd data-charges-total>—</dd></div>
+            <div><dt>Advance Paid</dt><dd data-charges-advance>—</dd></div>
+            <div class="hrd-charges-balance"><dt>Balance Due</dt><dd data-charges-balance>—</dd></div>
+          </dl>
+          <div class="hrd-charges-actions" id="hrd-charges-actions" hidden>
+            <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-generate-invoice" hidden>Generate Invoice</button>
+            <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-record-payment" hidden>Record Payment</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <div class="hotel-rooms-toast" id="hrd-toast" role="status" aria-live="polite" hidden></div>
+
+{# New Check-In modal #}
+<div class="hrd-modal-overlay" id="hrd-checkin-modal" hidden aria-hidden="true">
+  <div class="hrd-modal" role="dialog" aria-modal="true" aria-labelledby="hrd-checkin-title">
+    <header class="hrd-modal-head">
+      <div class="hrd-modal-head-main">
+        <button type="button" class="hrd-back hrd-modal-back" aria-label="Back to room" data-hrd-checkin-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+        </button>
+        <span class="hrd-modal-avatar" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+        </span>
+        <div>
+          <h2 id="hrd-checkin-title">New Check-In</h2>
+        </div>
+      </div>
+      <div class="hrd-modal-head-actions">
+        <button type="button" class="hrd-modal-close" id="hrd-checkin-close" aria-label="Close" data-hrd-checkin-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <form class="hrd-modal-form" id="hrd-checkin-form" novalidate data-de-hard-nav>
+      <div class="hrd-modal-body">
+      <div class="hrd-modal-cols">
+        <div class="hrd-modal-col">
+          <section class="hrd-form-section">
+            <header class="hrd-form-section-head">
+              <span class="hrd-form-section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+              </span>
+              <h3>Personal Information</h3>
+            </header>
+            <div class="hrd-form-grid hrd-form-grid--2">
+              <div class="hrd-field">
+                <span>Mobile Number <em>*</em></span>
+                <span class="hrd-input-split">
+                  {{ ep_listbox('mobileCountry', 'Code', [('+91', '+91'), ('+1', '+1'), ('+44', '+44'), ('+971', '+971')], '+91', placeholder='+91', field_id='hrd-ci-mobile-country', extra_class='hrd-form-listbox hrd-form-listbox--code') }}
+                  <input type="tel" name="mobile" id="hrd-ci-mobile" required autocomplete="tel" placeholder="Mobile number" inputmode="numeric">
+                </span>
+              </div>
+              <label class="hrd-field">
+                <span>Email Address</span>
+                <input type="email" name="email" id="hrd-ci-email" autocomplete="email" placeholder="name@example.com">
+              </label>
+            </div>
+            <div class="hrd-form-grid hrd-form-grid--3">
+              {{ ep_listbox('title', 'Title', [('', 'Select'), ('Mr', 'Mr'), ('Mrs', 'Mrs'), ('Ms', 'Ms'), ('Dr', 'Dr')], '', placeholder='Select', field_id='hrd-ci-title', extra_class='hrd-form-listbox') }}
+              <label class="hrd-field">
+                <span>First Name <em>*</em></span>
+                <input type="text" name="firstName" required autocomplete="given-name" placeholder="First name">
+              </label>
+              <label class="hrd-field">
+                <span>Last Name <em>*</em></span>
+                <input type="text" name="lastName" required autocomplete="family-name" placeholder="Last name">
+              </label>
+            </div>
+            <div class="hrd-form-grid hrd-form-grid--3">
+              {{ ep_listbox('gender', 'Gender', [('', 'Select'), ('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')], '', placeholder='Select', field_id='hrd-ci-gender', extra_class='hrd-form-listbox') }}
+              {{ hotel_date_field('dateOfBirth', 'Date of Birth', field_id='hrd-ci-dob', extra_class='hrd-date-chip', panel_title='Date of birth', show_today=false, hint='', show_cal_icon=false) }}
+              {{ ep_listbox('nationality', 'Nationality', [('Indian', 'Indian'), ('Other', 'Other')], 'Indian', placeholder='Select', field_id='hrd-ci-nationality', extra_class='hrd-form-listbox') }}
+            </div>
+            <div class="hrd-form-grid hrd-form-grid--1">
+              <label class="hrd-field">
+                <span>Address</span>
+                <textarea name="address" rows="2" placeholder="Street address"></textarea>
+              </label>
+            </div>
+            <div class="hrd-form-grid hrd-form-grid--2">
+              <label class="hrd-field">
+                <span>City</span>
+                <input type="text" name="city" placeholder="City">
+              </label>
+              <label class="hrd-field">
+                <span>State</span>
+                <input type="text" name="state" placeholder="State">
+              </label>
+              {{ ep_listbox('country', 'Country', [('India', 'India'), ('Other', 'Other')], 'India', placeholder='Select', field_id='hrd-ci-country', extra_class='hrd-form-listbox') }}
+              <label class="hrd-field">
+                <span>PIN / Postal Code</span>
+                <input type="text" name="pin" placeholder="PIN">
+              </label>
+            </div>
+            <div class="hrd-form-grid hrd-form-grid--3">
+              {{ ep_listbox('purposeOfVisit', 'Purpose of Visit', [('', 'Select'), ('Leisure', 'Leisure'), ('Business', 'Business'), ('Medical', 'Medical'), ('Other', 'Other')], '', placeholder='Select', field_id='hrd-ci-purpose', extra_class='hrd-form-listbox') }}
+              {{ ep_listbox('vipStatus', 'VIP Status', [('Regular', 'Regular'), ('VIP', 'VIP'), ('VVIP', 'VVIP')], 'Regular', placeholder='Select', field_id='hrd-ci-vip', extra_class='hrd-form-listbox') }}
+              {{ ep_listbox('returningGuest', 'Returning Guest', [('No', 'No'), ('Yes', 'Yes')], 'No', placeholder='Select', field_id='hrd-ci-returning', extra_class='hrd-form-listbox') }}
+            </div>
+          </section>
+
+          <section class="hrd-form-section">
+            <header class="hrd-form-section-head">
+              <span class="hrd-form-section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9h4M7 13h6"/></svg>
+              </span>
+              <h3>ID Proof Details</h3>
+            </header>
+            <div class="hrd-id-proof-block">
+              <div class="hrd-form-grid hrd-form-grid--2 hrd-guest-line hrd-guest-line--primary">
+                <div class="hrd-field hrd-field--customer-name">
+                  <span>Customer Name</span>
+                  <input type="text" name="idNumber" id="hrd-ci-customer-name" placeholder="Customer name" autocomplete="name" readonly>
+                </div>
+                <div class="hrd-field hrd-field--id-type-actions">
+                  <div class="hrd-id-type-row">
+                    <div class="hrd-id-type-listbox">
+                      {{ ep_listbox('idType', 'ID Type', [('', 'Select'), ('Aadhaar', 'Aadhaar'), ('Passport', 'Passport'), ('Driving License', 'Driving License'), ('Voter ID', 'Voter ID'), ('Other', 'Other')], '', placeholder='Select', field_id='hrd-ci-id-type', extra_class='hrd-form-listbox') }}
+                    </div>
+                    <div class="hrd-id-type-actions">
+                      <input
+                        type="file"
+                        name="idDocument"
+                        id="hrd-ci-id-document"
+                        class="hrd-id-upload-input"
+                        accept=".jpg,.jpeg,.png,.heic,.heif,.pdf,image/jpeg,image/png,image/heic,image/heif,application/pdf"
+                        hidden
+                      >
+                      <input type="hidden" name="idDocumentPath" id="hrd-ci-id-document-path" value="">
+                      <input type="hidden" name="idDocumentMime" id="hrd-ci-id-document-mime" value="">
+                      <input type="hidden" name="idDocumentStoredName" id="hrd-ci-id-document-stored" value="">
+                      <button
+                        type="button"
+                        class="hrd-id-upload-btn"
+                        data-hrd-upload
+                        id="hrd-ci-id-upload-btn"
+                        title="Upload ID document (JPG, PNG, HEIC, PDF)"
+                        aria-label="Upload ID document"
+                        aria-controls="hrd-ci-id-document"
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V6"/><path d="m8 10 4-4 4 4"/><path d="M4 18h16"/></svg>
+                      </button>
+                      <button
+                        type="button"
+                        class="hrd-id-view-btn"
+                        id="hrd-ci-id-view-btn"
+                        data-hrd-id-view
+                        title="View uploaded ID document"
+                        aria-label="View uploaded ID document"
+                        disabled
+                        hidden
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <span class="hrd-id-upload-name hrd-upload-text" id="hrd-ci-id-upload-name" hidden></span>
+                </div>
+              </div>
+              <div class="hrd-extra-guests" id="hrd-ci-extra-guests" aria-live="polite"></div>
+              <button type="button" class="hrd-add-guest-btn" id="hrd-ci-add-guest" data-hrd-add-guest>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Add Guest
+              </button>
+            </div>
+          </section>
+
+          <section class="hrd-form-section">
+            <header class="hrd-form-section-head">
+              <span class="hrd-form-section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+              </span>
+              <h3>Agency</h3>
+              <button type="button" class="hrd-section-master-btn" id="hrd-ci-agency-master-btn" data-hrd-agency-master title="Save to Agency Master or open master list">
+                Agency
+              </button>
+            </header>
+            <div class="hrd-form-grid hrd-form-grid--2">
+              <label class="hrd-field">
+                <span>Agency Name</span>
+                <input type="text" name="agencyName" id="hrd-ci-agency-name" list="hrd-ci-agency-datalist" placeholder="Agency name" autocomplete="organization">
+                <datalist id="hrd-ci-agency-datalist">
+                  {% for agency in agencies|default([]) %}
+                  <option value="{{ agency.name }}" data-gst="{{ agency.gst or '' }}" data-address="{{ agency.address or '' }}"></option>
+                  {% endfor %}
+                </datalist>
+              </label>
+              <label class="hrd-field">
+                <span>GST</span>
+                <input type="text" name="agencyGst" id="hrd-ci-agency-gst" placeholder="GST number" autocomplete="off">
+              </label>
+              <label class="hrd-field hrd-field--span2">
+                <span>Address</span>
+                <textarea name="agencyAddress" id="hrd-ci-agency-address" rows="2" placeholder="Agency address"></textarea>
+              </label>
+              <div class="hrd-field hrd-field--span2 hrd-agency-billing-wrap">
+                <label class="hrd-check">
+                  <input type="checkbox" name="agencyBilling" id="hrd-ci-agency-billing" value="1">
+                  Agency Billing
+                </label>
+                <p class="hrd-agency-billing-hint" id="hrd-ci-agency-billing-hint" hidden>
+                  Invoice will be billed to <strong id="hrd-ci-agency-billing-name">Agency Name</strong>
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="hrd-modal-col hrd-modal-col--side">
+          <section class="hrd-form-section">
+            <header class="hrd-form-section-head">
+              <span class="hrd-form-section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>
+              </span>
+              <h3>Booking Information</h3>
+            </header>
+            <div class="hrd-form-grid hrd-form-grid--2">
+              <label class="hrd-field">
+                <span>Booking Number</span>
+                <input type="text" name="bookingNumber" value="Auto generated" readonly>
+              </label>
+              {{ hotel_date_field('bookingDate', 'Booking Date', field_id='hrd-ci-booking-date', extra_class='hrd-date-chip', panel_title='Booking date', show_cal_icon=false) }}
+              {{ hotel_date_field('checkInDate', 'Check-In Date', required=true, field_id='hrd-ci-checkin-date', extra_class='hrd-date-chip', panel_title='Check-in date', show_cal_icon=false) }}
+              {{ hotel_time_field('checkInTime', 'Check-In Time', field_id='hrd-ci-checkin-time', extra_class='hrd-date-chip', panel_title='Check-in time', show_clock_icon=false) }}
+              {{ hotel_date_field('checkOutDate', 'Expected Check-Out', field_id='hrd-ci-checkout-date', extra_class='hrd-date-chip', panel_title='Check-out date', show_cal_icon=false) }}
+              <label class="hrd-field">
+                <span>Number of Nights</span>
+                <input type="number" name="nights" min="1" value="1">
+              </label>
+              {{ ep_listbox('adults', 'Adults', [('1', '1'), ('2', '2'), ('3', '3'), ('4', '4')], '1', placeholder='1', field_id='hrd-ci-adults', extra_class='hrd-form-listbox') }}
+              {{ ep_listbox('children', 'Children', [('0', '0'), ('1', '1'), ('2', '2'), ('3', '3')], '0', placeholder='0', field_id='hrd-ci-children', extra_class='hrd-form-listbox') }}
+            </div>
+          </section>
+
+          <section class="hrd-form-section">
+            <header class="hrd-form-section-head">
+              <span class="hrd-form-section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M3 12h18v7H3z"/><path d="M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/></svg>
+              </span>
+              <h3>Room &amp; Rate Information</h3>
+            </header>
+            <div class="hrd-form-grid hrd-form-grid--1">
+              <label class="hrd-field">
+                <span>Room Number</span>
+                <input type="text" name="roomLabel" id="hrd-ci-room-label" readonly>
+              </label>
+            </div>
+            <div class="hrd-form-grid hrd-form-grid--2">
+              {{ ep_listbox('ratePlan', 'Rate Plan', [('EP', 'EP — Room Only'), ('CP', 'CP — Breakfast'), ('MAP', 'MAP — Breakfast + Dinner'), ('AP', 'AP — All Meals')], 'EP', placeholder='Select', field_id='hrd-ci-rate-plan', extra_class='hrd-form-listbox') }}
+              <label class="hrd-field">
+                <span>Room Rate (per night)</span>
+                <span class="hrd-input-affix"><span>₹</span><input type="number" name="roomRate" min="0" step="0.01" value="0"></span>
+              </label>
+              <label class="hrd-field hrd-field--span2">
+                <span>Total Rate</span>
+                <span class="hrd-input-affix"><span>₹</span><input type="number" name="totalRate" min="0" step="0.01" value="0" readonly></span>
+              </label>
+            </div>
+          </section>
+
+          <section class="hrd-form-section">
+            <header class="hrd-form-section-head">
+              <span class="hrd-form-section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+              </span>
+              <h3>Payment Information</h3>
+            </header>
+            <div class="hrd-form-grid hrd-form-grid--2">
+              {{ ep_listbox('paymentMethod', 'Payment Method', [('', 'Select'), ('Cash', 'Cash'), ('UPI', 'UPI'), ('Card', 'Card'), ('Credit', 'Credit'), ('Bank Transfer', 'Bank Transfer'), ('Complimentary', 'Complimentary')], '', placeholder='Select', field_id='hrd-ci-payment', extra_class='hrd-form-listbox') }}
+              <label class="hrd-field">
+                <span>Advance Paid</span>
+                <span class="hrd-input-affix"><span>₹</span><input type="number" name="advancePaid" min="0" step="0.01" value="0"></span>
+              </label>
+              <label class="hrd-field">
+                <span>Payment Reference</span>
+                <input type="text" name="paymentReference" placeholder="Txn / receipt ref">
+              </label>
+              <label class="hrd-field">
+                <span>Balance Amount</span>
+                <span class="hrd-input-affix"><span>₹</span><input type="number" name="balanceAmount" min="0" step="0.01" value="0" readonly></span>
+              </label>
+            </div>
+          </section>
+
+          <section class="hrd-form-section">
+            <header class="hrd-form-section-head">
+              <span class="hrd-form-section-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="m12 3 2.4 4.9 5.4.8-3.9 3.8.9 5.4L12 15.9 7.2 18l.9-5.4L4.2 8.7l5.4-.8z"/></svg>
+              </span>
+              <h3>Special Requests</h3>
+            </header>
+            <div class="hrd-check-grid">
+              <div class="hrd-check-charge" data-hrd-charge-wrap="earlyCheckin">
+                <label class="hrd-check">
+                  <input type="checkbox" name="specialRequests" value="Early Check-in" id="hrd-ci-early-checkin" data-hrd-special-charge="earlyCheckin">
+                  Early Check-in
+                </label>
+                <button type="button" class="hrd-charge-edit" id="hrd-ci-early-checkin-edit" hidden data-hrd-special-charge-edit="earlyCheckin">
+                  Edit charge
+                </button>
+                <p class="hrd-charge-summary" id="hrd-ci-early-checkin-summary" hidden></p>
+              </div>
+              <div class="hrd-check-charge" data-hrd-charge-wrap="lateCheckout">
+                <label class="hrd-check">
+                  <input type="checkbox" name="specialRequests" value="Late Check-out" id="hrd-ci-late-checkout" data-hrd-special-charge="lateCheckout">
+                  Late Check-out
+                </label>
+                <button type="button" class="hrd-charge-edit" id="hrd-ci-late-checkout-edit" hidden data-hrd-special-charge-edit="lateCheckout">
+                  Edit charge
+                </button>
+                <p class="hrd-charge-summary" id="hrd-ci-late-checkout-summary" hidden></p>
+              </div>
+              <div class="hrd-check-charge hrd-check-extra-bed" data-hrd-charge-wrap="extraBed">
+                <label class="hrd-check">
+                  <input type="checkbox" name="specialRequests" value="Extra Bed" id="hrd-ci-extra-bed" data-hrd-special-charge="extraBed" data-hrd-extra-bed>
+                  Extra Bed
+                </label>
+                <button type="button" class="hrd-charge-edit hrd-extra-bed-edit" id="hrd-ci-extra-bed-edit" hidden data-hrd-special-charge-edit="extraBed" data-hrd-extra-bed-edit>
+                  Edit charge
+                </button>
+                <p class="hrd-charge-summary hrd-extra-bed-summary" id="hrd-ci-extra-bed-summary" hidden></p>
+              </div>
+              <label class="hrd-check"><input type="checkbox" name="specialRequests" value="Airport Pickup"> Airport Pickup</label>
+              <label class="hrd-check"><input type="checkbox" name="specialRequests" value="Other"> Other</label>
+            </div>
+            <input type="hidden" name="earlyCheckinQty" id="hrd-ci-early-checkin-qty" value="">
+            <input type="hidden" name="earlyCheckinRate" id="hrd-ci-early-checkin-rate" value="">
+            <input type="hidden" name="earlyCheckinNights" id="hrd-ci-early-checkin-nights" value="">
+            <input type="hidden" name="earlyCheckinAmount" id="hrd-ci-early-checkin-amount" value="0">
+            <input type="hidden" name="earlyCheckinNote" id="hrd-ci-early-checkin-note" value="">
+            <input type="hidden" name="lateCheckoutQty" id="hrd-ci-late-checkout-qty" value="">
+            <input type="hidden" name="lateCheckoutRate" id="hrd-ci-late-checkout-rate" value="">
+            <input type="hidden" name="lateCheckoutNights" id="hrd-ci-late-checkout-nights" value="">
+            <input type="hidden" name="lateCheckoutAmount" id="hrd-ci-late-checkout-amount" value="0">
+            <input type="hidden" name="lateCheckoutNote" id="hrd-ci-late-checkout-note" value="">
+            <input type="hidden" name="extraBedQty" id="hrd-ci-extra-bed-qty" value="">
+            <input type="hidden" name="extraBedRate" id="hrd-ci-extra-bed-rate" value="">
+            <input type="hidden" name="extraBedNights" id="hrd-ci-extra-bed-nights" value="">
+            <input type="hidden" name="extraBedAmount" id="hrd-ci-extra-bed-amount" value="0">
+            <input type="hidden" name="extraBedNote" id="hrd-ci-extra-bed-note" value="">
+            <label class="hrd-field" style="margin-top:12px">
+              <span>Additional Requests</span>
+              <textarea name="additionalRequests" rows="2" placeholder="Any other requests"></textarea>
+            </label>
+          </section>
+        </div>
+      </div>
+      </div>
+
+    <footer class="hrd-modal-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-checkin-cancel" data-hrd-checkin-close>Cancel</button>
+      <button type="submit" class="hrd-btn hrd-btn--primary" id="hrd-checkin-save">Check-In</button>
+    </footer>
+    </form>
+  </div>
+</div>
+
+{# Special request charges dialog (Extra Bed / Early Check-in / Late Check-out) #}
+<div class="hrd-dialog-overlay hrd-dialog-overlay--nested" id="hrd-special-charge-modal" hidden aria-hidden="true">
+  <div class="hrd-dialog" role="dialog" aria-modal="true" aria-labelledby="hrd-special-charge-title">
+    <header class="hrd-dialog-head">
+      <div class="hrd-dialog-head-main">
+        <span class="hrd-dialog-icon hrd-dialog-icon--rupee" aria-hidden="true">₹</span>
+        <div>
+          <h2 id="hrd-special-charge-title">Additional Charges</h2>
+          <p id="hrd-special-charge-sub">Record additional charges</p>
+        </div>
+      </div>
+      <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-special-charge-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form class="hrd-dialog-body" id="hrd-special-charge-form" novalidate>
+      <input type="hidden" name="chargeKind" id="hrd-special-charge-kind" value="">
+      <div class="hrd-form-grid hrd-form-grid--2">
+        <label class="hrd-field" data-hrd-charge-qty-field>
+          <span>Quantity <em>*</em></span>
+          <input type="number" name="qty" id="hrd-special-charge-qty" min="1" step="1" value="1" required>
+        </label>
+        <label class="hrd-field">
+          <span id="hrd-special-charge-rate-label">Rate <em>*</em></span>
+          <span class="hrd-input-affix"><span>₹</span><input type="number" name="rate" id="hrd-special-charge-rate" min="0" step="0.01" value="0" required></span>
+        </label>
+        <label class="hrd-field" data-hrd-charge-nights-field>
+          <span>Nights <em>*</em></span>
+          <input type="number" name="nights" id="hrd-special-charge-nights" min="1" step="1" value="1" required>
+        </label>
+        <label class="hrd-field">
+          <span>Amount</span>
+          <span class="hrd-input-affix"><span>₹</span><input type="number" name="amount" id="hrd-special-charge-amount" min="0" step="0.01" value="0" readonly></span>
+        </label>
+        <label class="hrd-field hrd-field--span2">
+          <span>Note</span>
+          <textarea name="note" id="hrd-special-charge-note" rows="2" placeholder="Optional note"></textarea>
+        </label>
+      </div>
+    </form>
+    <footer class="hrd-dialog-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-special-charge-close>Cancel</button>
+      <button type="submit" form="hrd-special-charge-form" class="hrd-btn hrd-btn--primary" id="hrd-special-charge-save">Save Charge</button>
+    </footer>
+  </div>
+</div>
+
+{# Reserve dates modal #}
+<div class="hrd-dialog-overlay" id="hrd-reserve-modal" hidden aria-hidden="true">
+  <div class="hrd-dialog hrd-dialog--reserve" role="dialog" aria-modal="true" aria-labelledby="hrd-reserve-title">
+    <header class="hrd-dialog-head">
+      <div class="hrd-dialog-head-main">
+        <span class="hrd-dialog-icon hrd-dialog-icon--purple" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
+        </span>
+        <div>
+          <h2 id="hrd-reserve-title">Reserve Room</h2>
+          <p>Dates, guest, and agency</p>
+        </div>
+      </div>
+      <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-reserve-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form class="hrd-dialog-body" id="hrd-reserve-form" novalidate data-de-hard-nav>
+      <div class="hrd-field hrd-reserve-dates">
+        {{ hotel_date_field('reserveFrom', 'From', required=true, field_id='hrd-reserve-from', extra_class='hrd-date-chip', panel_title='From date', show_cal_icon=false) }}
+        {{ hotel_date_field('reserveTo', 'To', required=true, field_id='hrd-reserve-to', extra_class='hrd-date-chip', panel_title='To date', show_cal_icon=false) }}
+      </div>
+
+      <div class="hrd-reserve-party-toggle" id="hrd-reserve-party-toggle" role="tablist" aria-label="Guest or agency details">
+        <button type="button" class="hrd-reserve-party-btn is-active" role="tab" aria-selected="true" data-reserve-party="guest" id="hrd-reserve-tab-guest" aria-controls="hrd-reserve-panel-guest">
+          Guest
+        </button>
+        <button type="button" class="hrd-reserve-party-btn" role="tab" aria-selected="false" data-reserve-party="agency" id="hrd-reserve-tab-agency" aria-controls="hrd-reserve-panel-agency">
+          Agency
+        </button>
+      </div>
+
+      <section class="hrd-form-section hrd-reserve-section" id="hrd-reserve-panel-guest" data-reserve-panel="guest" role="tabpanel" aria-labelledby="hrd-reserve-tab-guest">
+        <div class="hrd-form-grid hrd-form-grid--2">
+          <label class="hrd-field hrd-field--span2">
+            <span>Guest Name *</span>
+            <input type="text" name="guestName" id="hrd-reserve-guest-name" required autocomplete="name" placeholder="Guest full name">
+          </label>
+          <label class="hrd-field">
+            <span>Mobile Number *</span>
+            <input type="tel" name="mobile" id="hrd-reserve-mobile" required autocomplete="tel" placeholder="Mobile number" inputmode="numeric">
+          </label>
+          <label class="hrd-field">
+            <span>Email</span>
+            <input type="email" name="email" id="hrd-reserve-email" autocomplete="email" placeholder="name@example.com">
+          </label>
+        </div>
+      </section>
+
+      <section class="hrd-form-section hrd-reserve-section" id="hrd-reserve-panel-agency" data-reserve-panel="agency" role="tabpanel" aria-labelledby="hrd-reserve-tab-agency" hidden>
+        <div class="hrd-form-grid hrd-form-grid--2">
+          <label class="hrd-field">
+            <span>Agency Name</span>
+            <input type="text" name="agencyName" id="hrd-reserve-agency-name" list="hrd-reserve-agency-datalist" placeholder="Agency name" autocomplete="organization">
+            <datalist id="hrd-reserve-agency-datalist">
+              {% for agency in agencies|default([]) %}
+              <option value="{{ agency.name }}" data-gst="{{ agency.gst or '' }}" data-address="{{ agency.address or '' }}"></option>
+              {% endfor %}
+            </datalist>
+          </label>
+          <label class="hrd-field">
+            <span>GST</span>
+            <input type="text" name="agencyGst" id="hrd-reserve-agency-gst" placeholder="GST number" autocomplete="off">
+          </label>
+          <label class="hrd-field hrd-field--span2">
+            <span>Address</span>
+            <textarea name="agencyAddress" id="hrd-reserve-agency-address" rows="2" placeholder="Agency address"></textarea>
+          </label>
+          <div class="hrd-field hrd-field--span2 hrd-agency-billing-wrap">
+            <label class="hrd-check">
+              <input type="checkbox" name="agencyBilling" id="hrd-reserve-agency-billing" value="1">
+              Agency Billing
+            </label>
+            <p class="hrd-agency-billing-hint" id="hrd-reserve-agency-billing-hint" hidden>
+              Invoice will be billed to <strong id="hrd-reserve-agency-billing-name">Agency Name</strong>
+            </p>
+          </div>
+        </div>
+      </section>
+    </form>
+    <footer class="hrd-dialog-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-reserve-close>Cancel</button>
+      <button type="submit" form="hrd-reserve-form" class="hrd-btn hrd-btn--primary" id="hrd-reserve-save">Save Reservation</button>
+    </footer>
+  </div>
+</div>
+
+{# Generate Invoice / Record Payment modal #}
+<div class="hrd-dialog-overlay" id="hrd-invoice-modal" hidden aria-hidden="true">
+  <div class="hrd-dialog hrd-invoice-dialog" role="dialog" aria-modal="true" aria-labelledby="hrd-invoice-title">
+    <header class="hrd-dialog-head">
+      <div class="hrd-dialog-head-main">
+        <span class="hrd-dialog-icon hrd-dialog-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/><path d="M14 17h6"/></svg>
+        </span>
+        <div>
+          <h2 id="hrd-invoice-title">Generate Invoice</h2>
+          <p id="hrd-invoice-subtitle">Lock charges and record payment</p>
+        </div>
+      </div>
+      <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-invoice-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form class="hrd-dialog-body" id="hrd-invoice-form" novalidate>
+      <input type="hidden" id="hrd-invoice-mode" value="generate">
+      <div class="hrd-invoice-summary" id="hrd-invoice-summary" aria-label="Charge summary">
+        <ul class="hrd-charges-list" id="hrd-invoice-lines"></ul>
+        <dl class="hrd-charges-totals">
+          <div id="hrd-invoice-discount-row" hidden>
+            <dt>Discount <span class="hrd-charges-muted" id="hrd-invoice-discount-hint"></span></dt>
+            <dd id="hrd-invoice-discount">—</dd>
+          </div>
+          <div><dt>CGST <span class="hrd-charges-muted">(2.5%)</span></dt><dd id="hrd-invoice-cgst">—</dd></div>
+          <div><dt>UGST <span class="hrd-charges-muted">(2.5%)</span></dt><dd id="hrd-invoice-ugst">—</dd></div>
+          <div><dt>Estimated Total</dt><dd id="hrd-invoice-total">—</dd></div>
+          <div><dt>Advance Paid</dt><dd id="hrd-invoice-advance">—</dd></div>
+          <div class="hrd-charges-balance"><dt>Balance Due</dt><dd id="hrd-invoice-balance">—</dd></div>
+        </dl>
+      </div>
+      <div class="hrd-invoice-pay-field">
+        <div class="hrd-invoice-split-head">
+          <label>Payment mode</label>
+          <button type="button" class="hrd-invoice-split-add" id="hrd-invoice-add-split">Split Payment</button>
+        </div>
+        <div id="hrd-invoice-splits" class="hrd-invoice-splits" aria-label="Payment mode splits"></div>
+        <div class="hrd-invoice-split-balance" id="hrd-invoice-split-balance" hidden>
+          <span>Modes total</span>
+          <strong id="hrd-invoice-split-total" data-amount="0">₹0</strong>
+          <span class="hrd-invoice-split-vs">of</span>
+          <strong id="hrd-invoice-split-target" data-amount="0">₹0</strong>
+        </div>
+      </div>
+      <label class="hrd-field">
+        <span>Note</span>
+        <input type="text" name="note" id="hrd-invoice-note" placeholder="Optional remark" autocomplete="off">
+      </label>
+      <p class="hrd-invoice-hint" id="hrd-invoice-hint">Split across modes or pay any amount up to the balance. Guest stays checked in.</p>
+    </form>
+    <footer class="hrd-dialog-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-invoice-close>Cancel</button>
+      <button type="submit" form="hrd-invoice-form" class="hrd-btn hrd-btn--primary" id="hrd-invoice-save">Confirm</button>
+    </footer>
+  </div>
+</div>
+
+{# Room Transfer modal #}
+<div class="hrd-dialog-overlay" id="hrd-transfer-modal" hidden aria-hidden="true">
+  <div class="hrd-dialog" role="dialog" aria-modal="true" aria-labelledby="hrd-transfer-title">
+    <header class="hrd-dialog-head">
+      <div class="hrd-dialog-head-main">
+        <span class="hrd-dialog-icon hrd-dialog-icon--orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg>
+        </span>
+        <div>
+          <h2 id="hrd-transfer-title">Room Transfer</h2>
+          <p>Move guest to another vacant room</p>
+        </div>
+      </div>
+      <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-transfer-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form class="hrd-dialog-body" id="hrd-transfer-form" novalidate>
+      <label class="hrd-field">
+        <span>From Room</span>
+        <input type="text" id="hrd-transfer-from" readonly>
+      </label>
+      <label class="hrd-field">
+        <span>Guest</span>
+        <input type="text" id="hrd-transfer-guest" readonly>
+      </label>
+      <div class="hrd-field">
+        {{ ep_listbox('toRoomId', 'Transfer To (Vacant only) *', [('', 'Loading vacant rooms…')], '', placeholder='Select vacant room', field_id='hrd-transfer-to', extra_class='hrd-form-listbox') }}
+      </div>
+      <p class="hrd-transfer-hint" id="hrd-transfer-hint">Only vacant rooms are listed.</p>
+      <label class="hrd-field">
+        <span>Reason / Note</span>
+        <textarea name="note" id="hrd-transfer-note" rows="2" placeholder="Optional note"></textarea>
+      </label>
+    </form>
+    <footer class="hrd-dialog-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-transfer-close>Cancel</button>
+      <button type="submit" form="hrd-transfer-form" class="hrd-btn hrd-btn--primary" id="hrd-transfer-save">Transfer Guest</button>
+    </footer>
+  </div>
+</div>
+
+{# Merge Rooms modal #}
+<div class="hrd-dialog-overlay" id="hrd-merge-modal" hidden aria-hidden="true">
+  <div class="hrd-dialog" role="dialog" aria-modal="true" aria-labelledby="hrd-merge-title">
+    <header class="hrd-dialog-head">
+      <div class="hrd-dialog-head-main">
+        <span class="hrd-dialog-icon hrd-dialog-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+        </span>
+        <div>
+          <h2 id="hrd-merge-title">Merge Rooms</h2>
+          <p>Combine billing onto one primary room</p>
+        </div>
+      </div>
+      <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-merge-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form class="hrd-dialog-body" id="hrd-merge-form" novalidate>
+      <label class="hrd-field">
+        <span>This room (will join as member)</span>
+        <input type="text" id="hrd-merge-from" readonly>
+      </label>
+      <div class="hrd-field">
+        {{ ep_listbox('toRoomId', 'Merge into (Primary bill) *', [('', 'Loading occupied rooms…')], '', placeholder='Select primary room', field_id='hrd-merge-to', extra_class='hrd-form-listbox') }}
+      </div>
+      <p class="hrd-transfer-hint" id="hrd-merge-hint">Any rooms can be merged onto one primary bill. Unmerge does not split the bill back.</p>
+      <label class="hrd-field">
+        <span>Note</span>
+        <textarea name="note" id="hrd-merge-note" rows="2" placeholder="Optional note"></textarea>
+      </label>
+    </form>
+    <footer class="hrd-dialog-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-merge-close>Cancel</button>
+      <button type="submit" form="hrd-merge-form" class="hrd-btn hrd-btn--primary" id="hrd-merge-save">Merge for Billing</button>
+    </footer>
+  </div>
+</div>
+</div>
+
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
+<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=76"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

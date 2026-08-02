@@ -1,0 +1,346 @@
+{% set de_soft_body_class = 'de-open hotel-rooms-module hotel-room-invoice-module pos-invoice-module' %}
+{% set de_soft_page_title = 'Invoice | Room ' ~ (room.number|default('')) ~ ' | Hotel | Hotel Bell Elite' %}
+{% set room_status = room_status|default((room.status|default('vacant')|string|lower)) %}
+{% set status_label = room.statusLabel|default(room_status|replace('_', ' ')|title) %}
+{% set stay = room.stay if room.stay is mapping else none %}
+{% if not is_partial_main %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice | Room {{ room.number }} | Hotel | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=51">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=9">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open hotel-rooms-module hotel-room-invoice-module pos-invoice-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=51">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=9">
+{% endif %}
+
+<div
+  class="de-main-inner pos-invoice-page hotel-room-invoice-page"
+  id="hotel-room-invoice-page"
+  data-hotel-room-invoice-page
+  data-room-id="{{ room.id }}"
+  data-room-number="{{ room.number }}"
+  data-room-status="{{ room_status }}"
+  data-room-api="{{ url_for('hotel_room_detail_api', room_id=room.id) }}"
+  data-room-detail-url="{{ url_for('hotel_room_detail', room_id=room.id) }}"
+  data-open-settle="{{ '1' if open_settle else '0' }}"
+  data-room-bootstrap="{{ room|tojson|e }}"
+>
+  <header class="pos-inv-header">
+    <div class="pos-inv-header-title-row">
+      <a class="pos-inv-btn pos-inv-btn--ghost hri-pos-back" href="{{ url_for('hotel_room_detail', room_id=room.id) }}" data-hri-back aria-label="Back to room">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+      </a>
+      <span class="pos-inv-header-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h18v7H3z"/><path d="M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/><path d="M8 15h.01M16 15h.01"/></svg>
+      </span>
+      <h1>Create Invoice</h1>
+    </div>
+    <div class="pos-inv-header-actions"></div>
+    <div class="pos-inv-header-toolbar">
+      <div class="pos-inv-header-pills">
+        <div class="hri-pos-room-pill" title="Room">
+          <span class="hri-pos-room-pill-label">Room</span>
+          <strong data-hri-room-number>{{ room.number }}</strong>
+          <span class="hri-status-chip hri-status-chip--{{ room_status }}" data-hri-status>{{ status_label }}</span>
+        </div>
+      </div>
+      <div class="pos-inv-header-buttons">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" id="hri-settle-bill" data-hri-action="settle-bill" title="Collect payment" hidden>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m8 12 3 3 5-6"/><circle cx="12" cy="12" r="9"/></svg>
+          <span>Settle Bill</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="pos-inv-layout">
+    <div class="pos-inv-main">
+      <section class="pos-inv-card pos-inv-search-card hri-pos-meta-card" aria-label="Stay details">
+        <div class="pos-inv-meta" aria-label="Invoice details">
+          <div class="pos-inv-meta-item pos-inv-meta-item--stat pos-inv-meta-item--order">
+            <span class="pos-inv-meta-stat-label">Invoice No.</span>
+            <div class="pos-inv-meta-stat-body">
+              <span class="pos-inv-meta-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M4 9h16M4 15h16M10 3 8 21M16 3l-2 18"/></svg>
+              </span>
+              <span class="pos-inv-meta-stat-value pos-inv-meta-stat-value--order">
+                <span id="hri-meta-invoice-no" data-hri-invoice-number>—</span>
+              </span>
+            </div>
+          </div>
+          <div class="pos-inv-meta-item pos-inv-meta-item--stat pos-inv-meta-item--date">
+            <span class="pos-inv-meta-stat-label">Stay</span>
+            <div class="pos-inv-meta-stat-body">
+              <span class="pos-inv-meta-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              </span>
+              <span class="pos-inv-meta-stat-value" id="hri-meta-dates" data-hri-dates>—</span>
+            </div>
+          </div>
+          <div class="pos-inv-meta-item pos-inv-meta-item--stat">
+            <span class="pos-inv-meta-stat-label">Guest</span>
+            <div class="pos-inv-meta-stat-body">
+              <span class="pos-inv-meta-stat-value" data-hri-guest>{{ guest_name|default('Guest') }}</span>
+            </div>
+          </div>
+          <div class="pos-inv-meta-item pos-inv-meta-item--stat">
+            <span class="pos-inv-meta-stat-label">Room Type</span>
+            <div class="pos-inv-meta-stat-body">
+              <span class="pos-inv-meta-stat-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h18v7H3z"/><path d="M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/><path d="M8 15h.01M16 15h.01"/></svg>
+              </span>
+              <span class="pos-inv-meta-stat-value" data-hri-room-type>{{ room.roomTypeLabel|default(room.roomType)|default('—') }}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="pos-inv-card pos-inv-lines-card" aria-label="Folio charges">
+        <div class="pos-inv-table-wrap">
+          <table class="pos-inv-table" id="hri-table-lines">
+            <thead>
+              <tr>
+                <th scope="col">Item</th>
+                <th scope="col" class="pos-inv-col-qty">Qty</th>
+                <th scope="col" class="pos-inv-col-rate">Rate (₹)</th>
+                <th scope="col" class="pos-inv-col-amt">Amount (₹)</th>
+                <th scope="col" class="pos-inv-col-act"><span class="pos-sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="hri-lines-body"></tbody>
+          </table>
+          <div class="pos-inv-empty" id="hri-empty" hidden>
+            <p class="pos-inv-empty-title">No charges on this folio</p>
+            <p class="pos-inv-empty-copy">Room stay charges will appear here when the guest is checked in.</p>
+          </div>
+        </div>
+        <div class="pos-inv-lines-footer">
+          <button type="button" class="pos-inv-btn pos-inv-btn--outline" id="hri-add-custom" data-hri-action="add-custom" title="Add a custom folio charge">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            Custom Charges
+          </button>
+        </div>
+      </section>
+
+      <section class="pos-inv-card pos-inv-notes-card" aria-label="Invoice notes">
+        <div class="pos-inv-notes-head">
+          <label class="pos-inv-notes-label" for="hri-notes">Invoice Notes (Optional)</label>
+          <span class="pos-inv-notes-count" id="hri-notes-count" aria-live="polite">0 / 200</span>
+        </div>
+        <div class="pos-inv-notes-wrap">
+          <textarea id="hri-notes" rows="1" maxlength="200" placeholder="Optional remark on this invoice…"></textarea>
+        </div>
+      </section>
+    </div>
+
+    <aside class="pos-inv-aside" aria-label="Customer and bill">
+      <section class="pos-inv-card pos-inv-customer-card" aria-label="Customer details">
+        <h2>Customer Details</h2>
+        <label class="pos-inv-field" for="hri-customer-mobile">
+          <span>Mobile</span>
+          <span class="pos-inv-mobile">
+            <span class="pos-inv-mobile-prefix" aria-hidden="true">+91</span>
+            <input type="tel" id="hri-customer-mobile" readonly tabindex="-1" placeholder="—">
+          </span>
+        </label>
+        <label class="pos-inv-field" for="hri-customer-name">
+          <span>Guest name</span>
+          <input type="text" id="hri-customer-name" readonly tabindex="-1" placeholder="—">
+        </label>
+      </section>
+
+      <section class="pos-inv-card pos-inv-summary" aria-label="Bill summary">
+        <h2>Bill Summary</h2>
+        <dl class="pos-inv-summary-list">
+          <div class="pos-inv-summary-row">
+            <dt>Subtotal</dt>
+            <dd id="hri-sum-subtotal">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row" id="hri-sum-discount-row" hidden>
+            <dt>Discount <span class="pos-inv-summary-muted" id="hri-sum-discount-hint"></span></dt>
+            <dd id="hri-sum-discount">−₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>CGST <span class="pos-inv-summary-muted">(2.5%)</span></dt>
+            <dd id="hri-sum-cgst">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>UGST <span class="pos-inv-summary-muted">(2.5%)</span></dt>
+            <dd id="hri-sum-ugst">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>Advance Paid</dt>
+            <dd id="hri-sum-advance">₹0.00</dd>
+          </div>
+          <div class="pos-inv-summary-row">
+            <dt>Balance Due</dt>
+            <dd id="hri-sum-balance">₹0.00</dd>
+          </div>
+        </dl>
+        <div class="pos-inv-summary-total">
+          <span>Total</span>
+          <strong id="hri-sum-total">₹0.00</strong>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <div class="pos-inv-toolbar" role="toolbar" aria-label="Invoice actions">
+    <div class="pos-inv-toolbar-tools">
+      <button type="button" class="pos-inv-tool" id="hri-tool-discount" data-hri-action="discount" title="Add discount">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="2"/><circle cx="15" cy="15" r="2"/><path d="m7.5 16.5 9-9"/><rect x="3" y="3" width="18" height="18" rx="3"/></svg>
+        <span>Add Discount</span>
+      </button>
+      <button type="button" class="pos-inv-tool" id="hri-tool-print" data-hri-action="print" title="Print">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>
+        <span>Print</span>
+      </button>
+      <button type="button" class="pos-inv-tool" id="hri-tool-pdf" data-hri-action="pdf" title="PDF preview">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-6Z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+        <span>PDF</span>
+      </button>
+    </div>
+    <button type="button" class="pos-inv-btn pos-inv-btn--primary pos-inv-toolbar-primary" id="hri-generate" data-hri-action="generate" title="Generate hotel room invoice">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg>
+      Generate Invoice
+    </button>
+  </div>
+
+  <div class="pos-inv-toast" id="hri-toast" role="status" aria-live="polite" hidden></div>
+
+  <div class="pos-inv-modal" id="hri-discount-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-hri-discount-close tabindex="-1" aria-hidden="true"></div>
+    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="hri-discount-title">
+      <h3 id="hri-discount-title">Add Discount</h3>
+      <div class="pos-inv-field">
+        <span>Discount type</span>
+        <div class="pos-inv-seg" role="group" aria-label="Discount type">
+          <button type="button" class="pos-inv-seg-btn is-active" data-hri-adj-type="pct">%</button>
+          <button type="button" class="pos-inv-seg-btn" data-hri-adj-type="inr">₹</button>
+        </div>
+      </div>
+      <label class="pos-inv-field">
+        <span id="hri-discount-amount-label">Amount (%)</span>
+        <input type="number" id="hri-discount-amount" min="0" step="0.01" value="" placeholder="Enter discount" inputmode="decimal">
+      </label>
+      <p class="pos-inv-modal-preview" id="hri-discount-preview">Discount: ₹0.00</p>
+      <label class="pos-inv-field" id="hri-discount-reason-field" hidden>
+        <span>Reason <span class="pos-inv-summary-muted">(required over 15%)</span></span>
+        <input type="text" id="hri-discount-reason" maxlength="200" placeholder="Why is this discount over 15%?" autocomplete="off" disabled>
+      </label>
+      <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-hri-discount-close>Cancel</button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="hri-discount-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pos-inv-modal" id="hri-custom-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-hri-custom-close tabindex="-1" aria-hidden="true"></div>
+    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="hri-custom-title">
+      <h3 id="hri-custom-title">Custom Charges</h3>
+      <input type="hidden" id="hri-custom-key" value="">
+      <label class="pos-inv-field">
+        <span id="hri-custom-name-label">Charge name</span>
+        <input type="text" id="hri-custom-name" maxlength="120" placeholder="e.g. Mini bar, Laundry, Damage" autocomplete="off">
+      </label>
+      <label class="pos-inv-field">
+        <span id="hri-custom-rate-label">Rate (₹)</span>
+        <input type="number" id="hri-custom-rate" min="0" step="0.01" value="" placeholder="0.00" inputmode="decimal">
+      </label>
+      <div class="pos-inv-modal-actions">
+        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-hri-custom-close>Cancel</button>
+        <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="hri-custom-save">Add Charge</button>
+      </div>
+    </div>
+  </div>
+
+  {# Payment Details — POS settle chrome (hotel submit handler, not pos_settle.js) #}
+  <div class="pos-inv-modal" id="pos-inv-settle-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-hri-settle-close tabindex="-1" aria-hidden="true"></div>
+    <div class="staff-credit-box cp-modal-box pos-inv-settle-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-settle-title">
+      <div class="staff-credit-head">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+        <span id="pos-inv-settle-title">Payment Details</span>
+      </div>
+      <div id="pos-inv-settle-error" class="staff-credit-error"></div>
+      <div class="staff-field">
+        <div class="rt-split-head">
+          <label>Payment mode *</label>
+          <button type="button" class="rt-link-btn" id="pos-inv-settle-add-split">Split Payment</button>
+        </div>
+        <div id="pos-inv-settle-splits" class="rt-payment-splits" aria-label="Payment mode splits"></div>
+        <div class="rt-split-balance" id="pos-inv-settle-balance" hidden>
+          <span>Modes total</span>
+          <strong id="pos-inv-settle-split-total" data-amount="0">₹0.00</strong>
+          <span class="rt-split-vs">of</span>
+          <strong id="pos-inv-settle-split-target" data-amount="0">₹0.00</strong>
+        </div>
+      </div>
+      <div class="staff-field">
+        <label for="pos-inv-settle-notes">Notes</label>
+        <input id="pos-inv-settle-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
+      </div>
+      <div class="cp-alloc-wrap">
+        <div class="cp-alloc-head">
+          <span>Bill</span>
+          <span id="pos-inv-settle-alloc-meta"></span>
+        </div>
+        <div class="cp-alloc-table-wrap">
+          <table class="cp-alloc-table" aria-label="Bill payment">
+            <thead>
+              <tr>
+                <th scope="col">Room</th>
+                <th class="pl-col-amount" scope="col">Balance</th>
+                <th class="pl-col-amount" scope="col">Pay now</th>
+              </tr>
+            </thead>
+            <tbody id="pos-inv-settle-alloc-body"></tbody>
+          </table>
+        </div>
+        <div class="cp-alloc-total">
+          <span>Payment total</span>
+          <strong id="pos-inv-settle-total" data-amount="0">₹0.00</strong>
+        </div>
+      </div>
+      <div class="staff-credit-actions">
+        <button type="button" class="btn" data-hri-settle-close>Back</button>
+        <button type="button" class="btn btn-primary" id="pos-inv-settle-submit">Record Payment</button>
+      </div>
+    </div>
+  </div>
+  <script type="application/json" id="hri-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["bank_transfer","Bank Transfer"],["credit","Credit"]]</script>
+</div>
+
+<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice_page.js') }}?v=16"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

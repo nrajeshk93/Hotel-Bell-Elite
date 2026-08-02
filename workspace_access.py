@@ -43,6 +43,7 @@ _STORES_SUBMODULES = (
     {"key": "approvals", "label": "Approvals"},
     {"key": "purchase_requests", "label": "Stock Inward"},
     {"key": "stock", "label": "Stock"},
+    {"key": "stock_audit", "label": "Stock Audit"},
 )
 
 
@@ -106,6 +107,14 @@ _WORKSPACE_MODULE_REGISTRY = (
         "permission_children": (),
     },
     {
+        "key": "hotel_rooms",
+        "label": "Hotel",
+        # Front-office room board (Rooms); separate from Sales Update - Hotel.
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
+    },
+    {
         "key": "stores",
         "label": "Procurement & Inventory",
         "permission_scope": "stores",
@@ -123,6 +132,14 @@ _WORKSPACE_MODULE_REGISTRY = (
     {
         "key": "reports",
         "label": "Report",
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
+    },
+    {
+        "key": "settings",
+        "label": "Settings",
+        # Workspace settings shell; access is module-level until sub-pages are added.
         "permission_scope": None,
         "permission_field": None,
         "permission_children": (),
@@ -190,6 +207,10 @@ _ACCESS_MODULE_UI_META = {
             "After a KOT is sent, only Administrators can reduce qty or delete those lines."
         ),
     },
+    "hotel_rooms": {
+        "icon": "bed",
+        "description": "Front-office room board — occupancy status by floor and room type.",
+    },
     "stores": {
         "icon": "store",
         "description": "Simple indent-to-stock flow for Bar and Kitchen stores.",
@@ -201,6 +222,10 @@ _ACCESS_MODULE_UI_META = {
     "reports": {
         "icon": "file-text",
         "description": "View and download reports across all modules.",
+    },
+    "settings": {
+        "icon": "settings",
+        "description": "Workspace and property settings for Hotel Bell Elite.",
     },
 }
 
@@ -223,6 +248,8 @@ _POINT_OF_SALE_ENDPOINTS = {
     "point_of_sale_api_invoice_detail",
     "point_of_sale_api_invoice_delete",
     "point_of_sale_api_customers",
+    "point_of_sale_api_invoice_settle",
+    "point_of_sale_api_hotel_rooms_occupied",
 }
 
 _POINT_OF_SALE_BAR_ENDPOINTS = {
@@ -243,6 +270,24 @@ _POINT_OF_SALE_BAR_ENDPOINTS = {
     "bar_point_of_sale_api_invoice_detail",
     "bar_point_of_sale_api_invoice_delete",
     "bar_point_of_sale_api_customers",
+    "bar_point_of_sale_api_invoice_settle",
+    "bar_point_of_sale_api_hotel_rooms_occupied",
+}
+
+_HOTEL_ROOMS_ENDPOINTS = {
+    "hotel_rooms",
+    "hotel_rooms_api",
+    "hotel_room_detail",
+    "hotel_room_detail_api",
+    "hotel_room_invoice_page",
+    "hotel_guest_lookup_api",
+    "hotel_id_document_upload",
+    "hotel_id_document_file",
+    "hotel_invoice_ledger",
+    "hotel_invoice_ledger_export",
+    "hotel_invoice_ledger_api",
+    "hotel_settings",
+    "hotel_settings_api",
 }
 
 _STORES_ENDPOINT_GROUPS = {
@@ -271,6 +316,15 @@ _STORES_ENDPOINT_GROUPS = {
     "stock": {
         "stores_stock",
     },
+    "stock_audit": {
+        "stores_stock_audit",
+        "stores_stock_audit_verify",
+        "stores_stock_audit_skip",
+        "stores_stock_audit_history",
+        "stores_stock_audit_new",
+        "stores_stock_audit_report",
+        "stores_stock_audit_report_export",
+    },
 }
 _STORES_PARENT_ENDPOINTS = set().union(*_STORES_ENDPOINT_GROUPS.values()) | {"stores"}
 _STORES_ENDPOINTS = _STORES_PARENT_ENDPOINTS
@@ -281,10 +335,20 @@ _MASTER_ENDPOINTS = {
     "save_customer",
     "delete_customer",
     "export_customer_report",
+    "agency_master",
+    "save_agency",
+    "delete_agency",
+    "export_agency_report",
+    "create_agency",
+    "list_agencies_api",
 }
 
 _REPORTS_ENDPOINTS = {
     "reports",
+}
+
+_SETTINGS_ENDPOINTS = {
+    "settings",
 }
 
 _PUBLIC_ENDPOINTS = {
@@ -412,6 +476,7 @@ _ACCOUNTS_ENDPOINTS = _ACCOUNTS_PARENT_ENDPOINTS
 _PAYROLL_ENDPOINT_GROUPS = {
     "employee": {
         "employees",
+        "employee_master",
         "add_employee",
         "edit_employee",
         "delete_employee",
@@ -420,7 +485,14 @@ _PAYROLL_ENDPOINT_GROUPS = {
         "export_employees",
         "export_employee_master",
     },
-    "report": {"report", "export_wage_register", "export_bank_report"},
+    "report": {
+        "report",
+        "monthly_payroll_report",
+        "bank_report",
+        "export_employees",
+        "export_wage_register",
+        "export_bank_report",
+    },
     "attendance": {
         "attendance_overview",
         "attendance_date",
@@ -722,6 +794,19 @@ def user_can_access_customer_master(user):
     return False
 
 
+def user_can_access_agency_master(user):
+    """Agency Master is available to Master hub and Hotel Rooms users."""
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    if user_can_access_dashboard(user, "master"):
+        return True
+    if user_can_access_dashboard(user, "hotel_rooms"):
+        return True
+    return False
+
+
 def dashboard_access_list(user):
     if not user:
         return []
@@ -795,6 +880,7 @@ def user_access_submodule_list(user):
 
 
 def get_endpoint_dashboard_module(endpoint):
+    bare = endpoint.split(".", 1)[1] if endpoint.startswith("stores.") else endpoint
     if endpoint in _SALES_ANALYTICS_PARENT_ENDPOINTS:
         return "sales_analytics"
     if endpoint in _ACCESS_MANAGEMENT_ENDPOINTS:
@@ -807,12 +893,16 @@ def get_endpoint_dashboard_module(endpoint):
         return "point_of_sale"
     if endpoint in _POINT_OF_SALE_BAR_ENDPOINTS:
         return "point_of_sale_bar"
-    if endpoint in _STORES_ENDPOINTS:
+    if endpoint in _HOTEL_ROOMS_ENDPOINTS:
+        return "hotel_rooms"
+    if endpoint in _STORES_ENDPOINTS or bare in _STORES_ENDPOINTS:
         return "stores"
     if endpoint in _MASTER_ENDPOINTS:
         return "master"
     if endpoint in _REPORTS_ENDPOINTS:
         return "reports"
+    if endpoint in _SETTINGS_ENDPOINTS:
+        return "settings"
     return None
 
 
@@ -831,8 +921,9 @@ def get_endpoint_accounts_submodule(endpoint):
 
 
 def get_endpoint_stores_submodule(endpoint):
+    bare = endpoint.split(".", 1)[1] if endpoint and endpoint.startswith("stores.") else endpoint
     for key, endpoints in _STORES_ENDPOINT_GROUPS.items():
-        if endpoint in endpoints:
+        if endpoint in endpoints or bare in endpoints:
             return key
     return None
 

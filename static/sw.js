@@ -1,18 +1,19 @@
-/* Hotel Bell Elite — POS offline service worker (v2).
- * Floor APIs are never cached — occupancy must update immediately after save. */
-var CACHE_VERSION = 'hbe-pos-v2';
+/* Hotel Bell Elite — POS offline service worker (v4).
+ * Floor APIs are never cached — occupancy must update immediately after save.
+ * Invoice HTML is network-first so workspace chrome (sidebar modules) is not stuck. */
+var CACHE_VERSION = 'hbe-pos-v4';
 var PRECACHE = [
   '/point-of-sale/invoice',
   '/static/manifest.webmanifest',
-  '/static/de_workspace_shell.css?v=34',
-  '/static/ep_form_listbox.css?v=17',
-  '/static/pos_invoice.css?v=44',
-  '/static/pos_invoice.js?v=82',
-  '/static/pos_offline.js?v=2',
-  '/static/ep_form_listbox.js?v=40',
-  '/static/de_workspace_nav.js?v=20',
-  '/static/de_workspace_transitions.js?v=79',
-  '/static/de_pwa.js?v=2',
+  '/static/de_workspace_shell.css?v=40',
+  '/static/ep_form_listbox.css?v=21',
+  '/static/pos_invoice.css?v=51',
+  '/static/pos_invoice.js?v=105',
+  '/static/pos_offline.js?v=4',
+  '/static/ep_form_listbox.js?v=45',
+  '/static/de_workspace_nav.js?v=30',
+  '/static/de_workspace_transitions.js?v=99',
+  '/static/de_pwa.js?v=4',
   '/static/pwa-icon-192.png',
   '/static/pwa-icon-512.png',
   '/static/favicon-32.png'
@@ -62,6 +63,12 @@ self.addEventListener('activate', function (event) {
   );
 });
 
+self.addEventListener('message', function (event) {
+  if (event && event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 function isApiGet(url) {
   if (url.origin !== self.location.origin) return false;
   return API_CACHE_PATHS.some(function (path) {
@@ -76,12 +83,11 @@ function isFloorApi(url) {
   });
 }
 
-function isNavigablePos(url) {
+function isPosInvoiceHtml(url) {
   if (url.origin !== self.location.origin) return false;
   return (
     url.pathname === '/point-of-sale/invoice' ||
-    url.pathname === '/bar-point-of-sale/invoice' ||
-    url.pathname.indexOf('/static/') === 0
+    url.pathname === '/bar-point-of-sale/invoice'
   );
 }
 
@@ -107,7 +113,13 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  if (isNavigablePos(url) || url.pathname.indexOf('/static/') === 0) {
+  /* Invoice shell/sidebar must not stick on an old HTML snapshot. */
+  if (isPosInvoiceHtml(url)) {
+    event.respondWith(networkFirstHtml(req));
+    return;
+  }
+
+  if (url.pathname.indexOf('/static/') === 0) {
     event.respondWith(cacheFirst(req));
   }
 });
@@ -139,6 +151,35 @@ function networkFirst(req) {
     .catch(function () {
       return caches.match(req).then(function (cached) {
         return cached || Response.json({ ok: false, error: 'offline', offline: true }, { status: 503 });
+      });
+    });
+}
+
+function networkFirstHtml(req) {
+  return fetch(req, { cache: 'no-store' })
+    .then(function (res) {
+      if (res && res.ok) {
+        var copyReq = res.clone();
+        var copyPath = res.clone();
+        caches.open(CACHE_VERSION).then(function (cache) {
+          cache.put(req, copyReq);
+          /* Keep a bare offline fallback for navigate without query. */
+          try {
+            var u = new URL(req.url);
+            if (u.pathname === '/point-of-sale/invoice' || u.pathname === '/bar-point-of-sale/invoice') {
+              cache.put(u.pathname, copyPath);
+            }
+          } catch (e) {}
+        });
+      }
+      return res;
+    })
+    .catch(function () {
+      return caches.match(req).then(function (cached) {
+        if (cached) return cached;
+        return caches.match('/point-of-sale/invoice').then(function (fallback) {
+          return fallback || Response.error();
+        });
       });
     });
 }

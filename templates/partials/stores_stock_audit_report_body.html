@@ -1,0 +1,125 @@
+{% set rows = audit_report_rows|default([]) %}
+{% set kpis = audit_report_kpis|default({}) %}
+
+<div class="st-audit-report-page" id="st-audit-report-page">
+  <div class="pl-summary-row st-audit-report-kpi-row" aria-label="Adjustment summary">
+    <article class="card pl-summary-card hbe-kpi-card" aria-label="Adjustments">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Adjustments</div>
+          <div class="pl-summary-value">{{ kpis.count|default(0) }}</div>
+          <div class="pl-summary-meta">Variance ≠ 0</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" aria-label="Positive adjustments">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Positive</div>
+          <div class="pl-summary-value">{{ kpis.positive|default(0) }}</div>
+          <div class="pl-summary-meta">Stock gained</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" aria-label="Negative adjustments">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Negative</div>
+          <div class="pl-summary-value">{{ kpis.negative|default(0) }}</div>
+          <div class="pl-summary-meta">Stock reduced</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" aria-label="Variance value">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--purple st-audit-report-kpi-rupee" aria-hidden="true">₹</div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Variance value</div>
+          <div class="pl-summary-value pl-amount"{% if kpis.variance_value is not none %} data-amount="{{ kpis.variance_value }}"{% endif %}>
+            {% if kpis.variance_value is not none %}
+            ₹{{ '%.2f'|format(kpis.variance_value|float) }}
+            {% else %}
+            —
+            {% endif %}
+          </div>
+          <div class="pl-summary-meta">Net adjustment</div>
+        </div>
+      </div>
+    </article>
+  </div>
+
+  <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel st-panel st-audit-report-card" aria-label="Stock adjustments">
+    <div class="card-hdr">
+      <div class="card-title">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+        <span>Stock adjustments</span>
+      </div>
+      <span class="pl-count" id="st-audit-report-count">{{ rows|length }} entr{{ 'y' if rows|length == 1 else 'ies' }}</span>
+    </div>
+    <div class="card-body pl-card-body--flush">
+      {% if rows %}
+      <div class="pl-table-wrap" tabindex="0" aria-label="Stock adjustments, scroll for more">
+        <table class="pl-table st-audit-report-table" aria-label="Stock adjustments">
+          <thead>
+            <tr>
+              <th scope="col">Verified</th>
+              <th scope="col">Outlet</th>
+              <th scope="col">Product</th>
+              <th scope="col">Category</th>
+              <th scope="col">Unit</th>
+              <th class="pl-col-amount" scope="col">System</th>
+              <th class="pl-col-amount" scope="col">Actual</th>
+              <th class="pl-col-amount" scope="col">Variance</th>
+              <th class="pl-col-amount" scope="col">Value</th>
+              <th scope="col">Reason</th>
+              <th scope="col">Remarks</th>
+              <th scope="col">By</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr class="st-audit-report-row"
+                data-search="{{ [row.item_name or '', row.category_name or '', row.outlet_label or '', row.reason_label or '', row.remarks or '', row.verified_by_name or '', row.audit_label or '', row.unit or '']|join(' ')|lower }}">
+              <td class="pl-col-date">{{ stores_dt(row.verified_at) if row.verified_at else '—' }}</td>
+              <td>{{ row.outlet_label }}</td>
+              <td>
+                <div class="pl-name">{{ row.item_name }}</div>
+                {% if row.audit_label %}<div class="pl-meta">{{ row.audit_label }}</div>{% endif %}
+              </td>
+              <td>{{ row.category_name }}</td>
+              <td>{{ row.unit }}</td>
+              <td class="pl-col-amount pl-amount">{{ '%.2f'|format(row.system_qty|float) }}</td>
+              <td class="pl-col-amount pl-amount">{{ '%.2f'|format(row.actual_qty|float) }}</td>
+              <td class="pl-col-amount pl-amount {% if row.variance_qty|float > 0 %}is-positive{% elif row.variance_qty|float < 0 %}is-negative{% endif %}">
+                {% if row.variance_qty|float > 0 %}+{% endif %}{{ '%.2f'|format(row.variance_qty|float) }}
+              </td>
+              <td class="pl-col-amount pl-amount">
+                {% if row.variance_value is not none %}
+                ₹{{ '%.2f'|format(row.variance_value|float) }}
+                {% else %}
+                —
+                {% endif %}
+              </td>
+              <td>{{ row.reason_label or '—' }}</td>
+              <td>{{ row.remarks or '—' }}</td>
+              <td>{{ row.verified_by_name or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="pl-empty">No stock adjustments match these filters.</div>
+      {% endif %}
+    </div>
+  </article>
+</div>

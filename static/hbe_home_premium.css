@@ -188,7 +188,7 @@ body.home-module .de-main-inner.db-main-inner--home{
     border-radius:12px;
     text-decoration:none;
     color:inherit;
-    transition:background .15s ease;
+    transition:background var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
   }
   .db-home .db-notification-item--link:hover{
     background:#F8FAFC;
@@ -284,7 +284,7 @@ body.home-module .de-main-inner.db-main-inner--home{
     padding:0 18px 0 44px;
     font:500 14px 'Inter','Segoe UI',system-ui,sans-serif;
     color:#111827;
-    transition:border-color .2s ease,box-shadow .2s ease;
+    transition:border-color var(--de-motion, 240ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1)),box-shadow var(--de-motion, 240ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1));
   }
   .db-home .db-home-search input::placeholder{color:#9CA3AF}
   .db-home .db-home-search input:focus{
@@ -317,7 +317,7 @@ body.home-module .de-main-inner.db-main-inner--home{
     justify-content:center;
     border-radius:999px;
     cursor:pointer;
-    transition:background .2s ease,color .2s ease,border-color .2s ease;
+    transition:background var(--de-motion, 240ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1)),color var(--de-motion, 240ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1)),border-color var(--de-motion, 240ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1));
   }
   .db-home .db-home-bell:hover{background:#F8FAFC;color:#111827}
   .db-home .db-home-bell:focus-visible{
@@ -394,7 +394,7 @@ body.home-module .de-main-inner.db-main-inner--home{
     position:relative;
     opacity:0;
     animation:db-home-fade-up .4s ease-out forwards;
-    transition:transform .3s ease-out,box-shadow .3s ease-out,border-color .3s ease-out;
+    transition:transform var(--de-motion-slow, 360ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1)),box-shadow var(--de-motion-slow, 360ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1)),border-color var(--de-motion-slow, 360ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1));
   }
   /* Soft-nav: never paint Home cards at opacity:0 (reads as a plain gray box). */
   html.de-soft-nav-session .db-home .db-home-card,

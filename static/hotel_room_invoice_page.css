@@ -1,0 +1,141 @@
+/* Hotel room invoice — overrides on POS Create Invoice chrome */
+
+.hotel-room-invoice-page .hri-pos-back{
+  width:40px;
+  min-width:40px;
+  height:40px;
+  padding:0;
+  margin-right:4px;
+}
+.hotel-room-invoice-page .hri-pos-back svg{
+  width:18px;
+  height:18px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.hotel-room-invoice-page .hri-pos-room-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:40px;
+  padding:0 12px 0 14px;
+  border:1px solid var(--pos-border, #E2E8F0);
+  border-radius:10px;
+  background:#fff;
+  font-size:13px;
+  color:var(--pos-muted, #64748B);
+}
+.hotel-room-invoice-page .hri-pos-room-pill-label{
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:#94A3B8;
+}
+.hotel-room-invoice-page .hri-pos-room-pill strong{
+  font-size:15px;
+  font-weight:800;
+  color:var(--pos-text, #0F172A);
+}
+
+.hotel-room-invoice-page .hri-status-chip{
+  display:inline-flex;
+  align-items:center;
+  min-height:22px;
+  padding:0 8px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  background:#EEF2FF;
+  color:#3730A3;
+}
+.hotel-room-invoice-page .hri-status-chip--occupied{background:#FFEDD5;color:#C2410C}
+.hotel-room-invoice-page .hri-status-chip--vacant{background:#DCFCE7;color:#166534}
+.hotel-room-invoice-page .hri-status-chip--dirty{background:#FFE4E6;color:#BE123C}
+.hotel-room-invoice-page .hri-status-chip--reserved{background:#EDE9FE;color:#6D28D9}
+.hotel-room-invoice-page .hri-status-chip--out_of_order{background:#E2E8F0;color:#475569}
+
+.hotel-room-invoice-page .hri-pos-meta-card .pos-inv-meta{
+  margin-top:0;
+}
+
+.hotel-room-invoice-page .pos-inv-customer-card input[readonly]{
+  background:#F8FAFC;
+  color:#0F172A;
+  cursor:default;
+}
+
+/* Settle payment mode uses expense-ledger listbox chrome (pos_settle.css). */
+#pos-inv-settle-modal .staff-credit-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:18px;
+}
+#pos-inv-settle-modal .staff-credit-actions .btn{
+  min-height:42px;
+  padding:0 16px;
+  border-radius:10px;
+  border:1px solid #E5E7EB;
+  background:#fff;
+  color:#0F172A;
+  font:700 13px Inter,system-ui,sans-serif;
+  cursor:pointer;
+}
+#pos-inv-settle-modal .staff-credit-actions .btn-primary{
+  background:#2563EB;
+  border-color:#2563EB;
+  color:#fff;
+}
+#pos-inv-settle-modal .staff-credit-actions .btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+#pos-inv-settle-modal .staff-field{margin-bottom:14px}
+
+.hotel-room-invoice-page .pos-inv-toast.is-error{
+  background:#B91C1C;
+}
+
+#hri-discount-reason-field{
+  display:none !important;
+}
+#hri-discount-reason-field.is-shown{
+  display:grid !important;
+}
+.hotel-room-invoice-page #hri-tool-discount.is-active{
+  color:var(--pos-primary, #2563EB);
+  background:var(--pos-primary-soft, #E8F1FE);
+}
+.hotel-room-invoice-page #hri-custom-name[readonly]{
+  background:#F8FAFC;
+  color:#0F172A;
+  cursor:default;
+}
+
+/* POS lock CSS only allows data-inv-action=print; hotel uses data-hri-action. */
+.hotel-room-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="print"],
+.hotel-room-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="pdf"]{
+  pointer-events:auto;
+  cursor:pointer;
+}
+
+/* Keep toolbar tool icon + label optically centered. */
+.hotel-room-invoice-page .pos-inv-tool{
+  line-height:1;
+  justify-content:center;
+}
+.hotel-room-invoice-page .pos-inv-tool svg{
+  display:block;
+  flex-shrink:0;
+}
+.hotel-room-invoice-page .pos-inv-tool span{
+  display:block;
+  line-height:1;
+}

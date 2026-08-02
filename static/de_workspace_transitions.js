@@ -2,6 +2,7 @@
   var TRANSITION_MS = 20;
   var OVERLAY_OPACITY = '1';
   var HIDE_MS = 70;
+  var MAIN_ENTER_MS = 280;
   var NAV_FLAG = 'de-nav-transition';
   var FS_KEY = 'de-fullscreen-active';
   var PREFETCH_TTL_MS = 90000;
@@ -12,7 +13,9 @@
     '/stores/indent',
     '/point-of-sale',
     '/point-of-sale/invoice',
-    '/accounts/purchase-ledger'
+    '/accounts/purchase-ledger',
+    '/hotel/rooms',
+    '/hotel/invoice-ledger'
   ];
   var SKIP_SCRIPT_PARTS = [
     'de_fullscreen.js',
@@ -285,7 +288,9 @@
     if(form.hasAttribute('data-md-full-nav') || form.closest('[data-md-full-nav]')) return false;
     if(form.closest('#md-master-modal, .md-master-modal, #md-master-modal-inject, .md-master-embed')) return false;
     // Modal / dialog forms are handled by page JS (JSON APIs); soft-nav must not steal submit.
-    if(form.closest('.modal-overlay, .modal-backdrop, [role="dialog"][aria-modal="true"]')) return false;
+    if(form.closest(
+      '.modal-overlay, .modal-backdrop, .hrd-modal-overlay, .hrd-dialog-overlay, [role="dialog"][aria-modal="true"]'
+    )) return false;
     if(form.hasAttribute('data-st-decide-form') || form.id === 'st-reject-form') return false;
     var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
     if(method && method !== 'get' && method !== 'post') return false;
@@ -661,7 +666,7 @@
   function posSettingsSectionFromStorage(){
     try{
       var key = String(sessionStorage.getItem('hbe_pos_settings_section') || '').trim().toLowerCase();
-      var valid = ['general','floor','tables','areas','kitchen','taxes','invoice','payment','menu','printers','integrations'];
+      var valid = ['general','floor','tables','areas','taxes','invoice','payment','printers'];
       return valid.indexOf(key) >= 0 ? key : '';
     } catch(e){
       return '';
@@ -724,11 +729,26 @@
         return !!main.querySelector('#pos-tables-page, [data-pos-tables]');
       }
 
+      /* Hotel rooms */
+      if(path === '/hotel/rooms'){
+        return !!main.querySelector('#hotel-rooms-page, [data-hotel-rooms]');
+      }
+      if(path === '/hotel/settings'){
+        return !!main.querySelector('#hotel-settings-page, [data-hotel-settings]');
+      }
+      if(path === '/hotel/invoice-ledger'){
+        return !!main.querySelector('#hotel-invoice-ledger-page, [data-hotel-invoice-ledger]');
+      }
+      if(path.indexOf('/hotel/rooms/') === 0){
+        return !!main.querySelector('#hotel-room-detail-page, [data-hotel-room-detail]');
+      }
+
       /* Home / masters / reports / access */
       if(path === '/home') return !!main.querySelector('#dashboard-home-panel, .db-home');
       if(path === '/dashboard') return !!main.querySelector('#dashboard-coming-soon-title');
       if(path === '/master') return !!main.querySelector('#md-master-grid, #md-search-input');
       if(path === '/reports') return !!main.querySelector('#rd-report-sections, #rd-search-input');
+      if(path === '/settings') return !!main.querySelector('#settings-page, [data-settings], #sd-settings-sections');
       if(path === '/access-management') return !!main.querySelector('#am-users-filter-form, #am-users-search');
 
       /* Accounts */
@@ -743,6 +763,8 @@
         return !!main.querySelector('#credit-payment-page') && /purchase verification/i.test(h1);
       }
       if(path === '/suppliers') return !!main.querySelector('#sm-supplier-table, #sm-supplier-list-panel');
+      if(path === '/agencies') return !!main.querySelector('#sm-agency-table, #sm-agency-list-panel');
+      if(path === '/customers') return !!main.querySelector('#sm-customer-table, #sm-customer-list-panel');
 
       /* Sales analytics */
       if(path === '/sales_update/hotel') return softNavSalesLocation(main) === 'hotel';
@@ -766,7 +788,7 @@
         return !!main.querySelector('#attendance-search-chip, #emp-attendance-overview-table, .ep-att-header');
       }
       if(path === '/credits' || path.indexOf('/credits/') === 0){
-        return !!main.querySelector('#credits-dashboard-form, #cd-search, #emp-credit-history-table');
+        return !!main.querySelector('#credits-dashboard-filter-form, #credits-dashboard-form, #cd-search, #emp-credit-history-table');
       }
       if(path === '/report'){
         return !!main.querySelector('#report-month-form, #emp-salary-breakdown-table');
@@ -776,6 +798,8 @@
       if(path === '/stores/indent') return !!main.querySelector('#st-indent-search, #st-indent-list-count');
       if(path === '/stores/purchase-requests') return !!main.querySelector('#st-inward-indent, #st-inward-indent-listbox');
       if(path === '/stores/stock') return !!main.querySelector('#st-stock-search, #st-stock-out-filter');
+      if(path === '/stores/stock-audit') return !!main.querySelector('#st-audit-page, #st-audit-queue, #st-audit-search');
+      if(path === '/stores/stock-audit/report') return !!main.querySelector('#st-audit-report-page, #st-audit-report-filter-form');
     } catch(e){}
     return true;
   }
@@ -1152,15 +1176,23 @@
     } catch(e){
       ids = [];
     }
-    if(!Array.isArray(ids)) return;
-    var idSet = {};
-    ids.forEach(function(id){
-      if(id) idSet[id] = true;
-    });
+    if(!Array.isArray(ids)) ids = [];
+    var activeGroup = sidebar.querySelector('.de-nav-group.is-child-active');
+    var preferredId = activeGroup && activeGroup.id ? activeGroup.id : '';
+    if(!preferredId){
+      // Accordion: restore at most one persisted group (most recent).
+      for(var i = ids.length - 1; i >= 0; i--){
+        if(!ids[i]) continue;
+        var persisted = document.getElementById(ids[i]);
+        if(persisted && sidebar.contains(persisted)){
+          preferredId = ids[i];
+          break;
+        }
+      }
+    }
     sidebar.querySelectorAll('.de-nav-group').forEach(function(group){
       if(!group.id) return;
-      // Keep the current-page section open; otherwise match persisted ids exactly.
-      var shouldOpen = !!idSet[group.id] || group.classList.contains('is-child-active');
+      var shouldOpen = preferredId ? group.id === preferredId : group.classList.contains('is-child-active');
       group.classList.toggle('is-open', shouldOpen);
       if(!shouldOpen) group.classList.remove('is-flyout-active');
       var toggle = group.querySelector('.de-nav-group-toggle');
@@ -1174,6 +1206,26 @@
    * Needed when modules are added mid-session (e.g. Tips) while soft-nav
    * keeps the previous sidebar DOM.
    */
+  function sidebarElById(sidebar, id){
+    if(!sidebar || !id) return null;
+    var el = document.getElementById(id);
+    return (el && sidebar.contains(el)) ? el : null;
+  }
+
+  function pruneRemovedSidebarLinks(sidebar){
+    sidebar = sidebar || document.querySelector('#de-sidebar, .de-sidebar');
+    if(!sidebar) return;
+    /* Outlet Settings live under the main Settings hub only — drop legacy module links. */
+    [
+      'de-nav-pos-settings',
+      'de-nav-bar-pos-settings',
+      'de-nav-hotel-settings'
+    ].forEach(function(id){
+      var el = document.getElementById(id);
+      if(el && sidebar.contains(el) && el.parentNode) el.parentNode.removeChild(el);
+    });
+  }
+
   function mergeMissingSidebarLinks(curSidebar, nextSidebar){
     if(!curSidebar || !nextSidebar) return false;
     var addedAny = false;
@@ -1182,7 +1234,8 @@
     if(curNav && nextNav){
       Array.from(nextNav.children).forEach(function(nextNode){
         if(!nextNode.id) return;
-        if(document.getElementById(nextNode.id)) return;
+        /* Scope to the live sidebar — ignore hidden soft-nav merge snapshots. */
+        if(sidebarElById(curSidebar, nextNode.id)) return;
         var imported = document.importNode(nextNode, true);
         imported.querySelectorAll('a.is-active, a[aria-current="page"]').forEach(function(a){
           a.classList.remove('is-active');
@@ -1196,7 +1249,7 @@
         var placed = false;
         var prev = nextNode.previousElementSibling;
         while(prev){
-          var curPrev = prev.id ? document.getElementById(prev.id) : null;
+          var curPrev = prev.id ? sidebarElById(curSidebar, prev.id) : null;
           if(curPrev && curNav.contains(curPrev)){
             curPrev.insertAdjacentElement('afterend', imported);
             placed = true;
@@ -1207,7 +1260,7 @@
         if(!placed){
           var next = nextNode.nextElementSibling;
           while(next){
-            var curNext = next.id ? document.getElementById(next.id) : null;
+            var curNext = next.id ? sidebarElById(curSidebar, next.id) : null;
             if(curNext && curNav.contains(curNext)){
               curNext.insertAdjacentElement('beforebegin', imported);
               placed = true;
@@ -1352,7 +1405,9 @@
 
   function syncSidebarFromDoc(doc, url){
     var curSidebar = document.querySelector('#de-sidebar, .de-sidebar');
-    var nextSidebar = doc.querySelector('#de-sidebar, .de-sidebar');
+    var nextSidebar =
+      doc.querySelector('#de-sidebar, .de-sidebar') ||
+      (doc.querySelector('[data-de-soft-nav-merge-root] #de-sidebar') || null);
     if(!curSidebar) return;
     if(!nextSidebar){
       syncSidebarActiveFromUrl(url || window.location.href);
@@ -1361,6 +1416,7 @@
 
     persistOpenNavGroups(curSidebar);
     mergeMissingSidebarLinks(curSidebar, nextSidebar);
+    pruneRemovedSidebarLinks(curSidebar);
     dedupeSidebarSubitems(curSidebar);
 
     curSidebar.querySelectorAll('a.is-active, a[aria-current="page"], .de-nav-item.is-active').forEach(function(el){
@@ -1576,6 +1632,35 @@
     }, 600);
   }
 
+  function prefersReducedMotion(){
+    try{
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch(e){
+      return false;
+    }
+  }
+
+  function playMainEnterReveal(main){
+    if(!main || prefersReducedMotion()) return;
+    main.classList.remove('de-main-enter');
+    /* Force reflow so re-adding the class retriggers the animation. */
+    void main.offsetWidth;
+    main.classList.add('de-main-enter');
+    var done = false;
+    function clear(){
+      if(done) return;
+      done = true;
+      main.classList.remove('de-main-enter');
+      main.removeEventListener('animationend', onEnd);
+    }
+    function onEnd(ev){
+      if(ev && ev.target !== main) return;
+      clear();
+    }
+    main.addEventListener('animationend', onEnd);
+    window.setTimeout(clear, MAIN_ENTER_MS + 80);
+  }
+
   function applySoftSwap(doc, url, done, sidebarScroll, navToken){
     if(!isCurrentSoftNav(navToken)) return;
     if(typeof window.closeMasterModal === 'function'){
@@ -1646,6 +1731,7 @@
             markMainLoading(false);
             finishSoftNavUi(done, navToken);
             endSoftNavigatingClass();
+            playMainEnterReveal(curMain);
           });
         });
       };
@@ -1684,9 +1770,15 @@
 
   function isMasterModalLink(link){
     if(!link || !link.closest) return false;
-    return !!link.closest(
-      '#md-master-modal, .md-master-modal, #md-master-modal-inject, .md-master-embed'
-    );
+    // Full-page master shells (e.g. Employee Master) use .md-master-embed but
+    // must soft-nav normally — only the Masters modal stays fragment-bound.
+    if(link.closest('#md-master-modal, .md-master-modal, #md-master-modal-inject')){
+      return true;
+    }
+    if(link.closest('.md-master-embed--page-shell') && !link.closest('#md-master-modal')){
+      return false;
+    }
+    return !!link.closest('.md-master-embed');
   }
 
   /** Pages may register leave flushes (e.g. POS invoice autosave) so dirty state
@@ -2062,6 +2154,21 @@
     if(typeof window.initPosTablesPage === 'function'){
       window.initPosTablesPage();
     }
+    if(typeof window.initHotelRoomsPage === 'function'){
+      window.initHotelRoomsPage();
+    }
+    if(typeof window.initHotelRoomDetailPage === 'function'){
+      window.initHotelRoomDetailPage();
+    }
+    if(typeof window.initHotelSettingsPage === 'function'){
+      window.initHotelSettingsPage();
+    }
+    if(typeof window.initHotelRoomInvoicePage === 'function'){
+      window.initHotelRoomInvoicePage();
+    }
+    if(typeof window.initHotelInvoiceLedgerPage === 'function'){
+      window.initHotelInvoiceLedgerPage();
+    }
     if(typeof window.initPosSettingsPage === 'function'){
       window.initPosSettingsPage();
     }
@@ -2076,6 +2183,12 @@
     }
     if(typeof window.initMastersDashboard === 'function'){
       window.initMastersDashboard();
+    }
+    if(typeof window.initReportsDashboard === 'function'){
+      window.initReportsDashboard();
+    }
+    if(typeof window.initStockAuditReportPage === 'function'){
+      window.initStockAuditReportPage();
     }
     if(window.SalesDateRangePicker && typeof window.SalesDateRangePicker.syncChipDisplays === 'function'){
       window.SalesDateRangePicker.syncChipDisplays();
@@ -2119,8 +2232,8 @@
         '/static/sales_entry_dashboard.css?v=32',
         '/static/sales_update_header.css?v=5',
         '/static/sales_update_premium.css?v=19',
-        '/static/stores.css?v=64',
-        '/static/ep_form_listbox.css?v=13',
+        '/static/stores.css?v=75',
+        '/static/ep_form_listbox.css?v=19',
         '/static/pos_tables.css?v=35',
         '/static/pos_invoice.css?v=39'
       ].forEach(function(href){
@@ -2139,6 +2252,45 @@
     }, { timeout: 1800 });
   }
 
+  /**
+   * Soft-nav sessions keep a sticky sidebar. When a new module ships (Settings),
+   * pull one partial of the current page and merge missing nav groups in.
+   */
+  function syncMissingSidebarModules(){
+    var curSidebar = document.querySelector('#de-sidebar, .de-sidebar');
+    if(!curSidebar) return;
+    if(sidebarElById(curSidebar, 'de-nav-settings-group')) return;
+    if(!shouldSoftNavigate()) return;
+    var url = withPartialMain(window.location.href);
+    fetch(url, {
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'text/html',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-De-Partial': 'main'
+      },
+      cache: 'no-store'
+    })
+      .then(function(resp){
+        if(!resp || !resp.ok) return null;
+        return resp.text();
+      })
+      .then(function(html){
+        if(!html) return;
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var nextSidebar =
+          doc.querySelector('#de-sidebar, .de-sidebar') ||
+          doc.querySelector('[data-de-soft-nav-merge-root] #de-sidebar');
+        if(!nextSidebar) return;
+        persistOpenNavGroups(curSidebar);
+        mergeMissingSidebarLinks(curSidebar, nextSidebar);
+        pruneRemovedSidebarLinks(curSidebar);
+        dedupeSidebarSubitems(curSidebar);
+        restoreOpenNavGroups(curSidebar);
+      })
+      .catch(function(){});
+  }
+
   function init(){
     installFormSubmitGuards();
     initDeSidebarPageTransitions();
@@ -2146,6 +2298,8 @@
     bootRestoreSidebarScroll();
     /* Soft-nav session paint rules from first interaction-capable paint. */
     document.documentElement.classList.add('de-soft-nav-session');
+    pruneRemovedSidebarLinks();
+    syncMissingSidebarModules();
     idlePrefetchSidebarDestinations();
   }
 

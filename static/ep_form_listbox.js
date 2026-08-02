@@ -1,4 +1,4 @@
-(function(){
+(function (global) {
   'use strict';
 
   function optionsWrapFor(root){
@@ -77,6 +77,16 @@
     return root.querySelector('input.se-filter-chip-trigger, input.se-filter-chip-combobox');
   }
 
+  var LISTBOX_CLOSE_MS = 200;
+
+  function prefersReducedMotion(){
+    try{
+      return !!(global.matchMedia && global.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (err) {
+      return false;
+    }
+  }
+
   function closeListbox(root){
     if (!root) return;
     var trigger = root.querySelector('.se-filter-chip-trigger');
@@ -85,9 +95,19 @@
     var wasOpen = root.classList.contains('is-open');
     root.classList.remove('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
-    if (list) {
-      list.hidden = true;
-      clearFixedListbox(list);
+    function finishHide(){
+      root.classList.remove('is-closing');
+      if (list) {
+        list.hidden = true;
+        clearFixedListbox(list);
+      }
+    }
+    if (list && wasOpen && !prefersReducedMotion()) {
+      root.classList.add('is-closing');
+      global.clearTimeout(root._epCloseTimer);
+      root._epCloseTimer = global.setTimeout(finishHide, LISTBOX_CLOSE_MS);
+    } else {
+      finishHide();
     }
     if (search) search.value = '';
     if (root.hasAttribute('data-se-listbox-searchable')) {
@@ -133,9 +153,10 @@
   }
 
   function listboxRoots(selector){
-    return document.querySelectorAll(
-      'body.ep-module ' + selector + ', body.su-module ' + selector + ', body.pos-module ' + selector
-    );
+    /* Match by attribute globally — do not require body.*-module classes.
+       Soft-nav can keep a stale body class or script closure; scoping to
+       ep/su/pos/hotel modules previously left Hotel check-in listboxes unbound. */
+    return document.querySelectorAll(selector);
   }
 
   function closeAllListboxes(except){
@@ -189,6 +210,13 @@
     if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal, #st-stores-ledger-modal, #st-ledger-pending-modal, #st-product-modal, #st-category-modal, #st-unit-modal')) {
       return true;
     }
+    /* Hotel New Check-In / Room Transfer — modal body scrolls and clips absolute menus. */
+    if (
+      root.classList.contains('ep-form-listbox') &&
+      root.closest('#hrd-checkin-modal, #hrd-transfer-modal, .hrd-modal, .hrd-dialog')
+    ) {
+      return true;
+    }
     return false;
   }
 
@@ -208,7 +236,7 @@
     list.style.width = width + 'px';
     list.style.minWidth = width + 'px';
     list.style.maxHeight = maxHeight + 'px';
-    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #sales-expense-modal') ? '10100' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '10090');
+    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #sales-expense-modal, #hrd-checkin-modal, #hrd-transfer-modal') ? '11250' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '10090');
     if (openUp) {
       list.style.top = 'auto';
       list.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
@@ -295,8 +323,8 @@
     var list = root.querySelector('.se-filter-listbox');
     var search = root.querySelector('.ep-listbox-search');
     var combo = comboboxInput(root);
-    root.classList.add('is-open');
-    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    global.clearTimeout(root._epCloseTimer);
+    root.classList.remove('is-closing');
     if (list) {
       list.hidden = false;
       if (shouldUseFixedListbox(root)) {
@@ -304,6 +332,13 @@
       } else {
         clearFixedListbox(list);
       }
+    }
+    /* Next frame so opacity/transform transition runs from closed state. */
+    global.requestAnimationFrame(function () {
+      root.classList.add('is-open');
+    });
+    if (trigger) trigger.setAttribute('aria-expanded', 'true');
+    if (list) {
       if (root.hasAttribute('data-se-listbox-searchable')) {
         var query = '';
         if (isCombobox(root) && combo && opts.keepQuery) {
@@ -322,9 +357,13 @@
           search.focus();
         }
       } else {
-        var selected = list.querySelector('[aria-selected="true"]') || list.querySelector('.se-filter-listbox-option');
+        var selected =
+          list.querySelector('.se-filter-listbox-option[aria-selected="true"]:not([hidden])') ||
+          list.querySelector('.se-filter-listbox-option:not([hidden])');
         scrollSelectedToTop(list);
-        if (selected) selected.focus({ preventScroll: true });
+        if (selected) {
+          try { selected.focus({ preventScroll: true }); } catch (err) {}
+        }
       }
     }
   }
@@ -359,7 +398,13 @@
   }
 
   function selectOption(root, option){
-    if (!root || !option || option.classList.contains('is-filtered-out') || isOptionDisabled(option)) return;
+    if (
+      !root ||
+      !option ||
+      option.hidden ||
+      option.classList.contains('is-filtered-out') ||
+      isOptionDisabled(option)
+    ) return;
     var list = root.querySelector('.se-filter-listbox');
     var value = option.getAttribute('data-value') || '';
     var label = (option.getAttribute('data-label') || option.textContent || '').trim();
@@ -403,7 +448,6 @@
     if (root.id === 'credit-payment-supplier-listbox') return;
     // Expense / tips modals own their searchable listboxes (custom GST / employee search).
     if (root.closest('#sales-expense-modal, #sales-tips-modal')) return;
-    root.__epListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');
     var list = root.querySelector('.se-filter-listbox');
@@ -411,21 +455,32 @@
     var combo = isCombobox(root) ? comboboxInput(root) : null;
     if (!trigger || !list) return;
 
+    /* AbortController lets rebindEpListbox drop prior handlers instead of stacking
+       toggles (open → immediate close) when modals re-init on each open. */
+    if (root.__epListboxAbort) {
+      try { root.__epListboxAbort.abort(); } catch (err) {}
+    }
+    var ac = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var signal = ac ? ac.signal : undefined;
+    var listenOpts = signal ? { signal: signal } : undefined;
+    root.__epListboxAbort = ac;
+    root.__epListboxBound = true;
+
     if (combo) {
       combo.addEventListener('mousedown', function(e){
         e.stopPropagation();
         if (!root.classList.contains('is-open')) {
           openListbox(root, { selectAll: true });
         }
-      });
+      }, listenOpts);
       combo.addEventListener('focus', function(){
         if (!root.classList.contains('is-open')) {
           openListbox(root, { selectAll: true });
         }
-      });
+      }, listenOpts);
       combo.addEventListener('click', function(e){
         e.stopPropagation();
-      });
+      }, listenOpts);
       combo.addEventListener('input', function(){
         if (!root.classList.contains('is-open')) {
           openListbox(root, { keepQuery: true });
@@ -433,7 +488,7 @@
           filterSearchableOptions(root, combo.value);
           if (shouldUseFixedListbox(root)) positionFixedListbox(root, list);
         }
-      });
+      }, listenOpts);
       combo.addEventListener('keydown', function(e){
         var options = visibleOptions(root);
         if (e.key === 'Escape') {
@@ -466,25 +521,25 @@
           var firstMatch = visibleOptions(root)[0];
           if (firstMatch) selectOption(root, firstMatch);
         }
-      });
+      }, listenOpts);
       // Keep focus in the field when choosing an option with the mouse.
       list.addEventListener('mousedown', function(e){
         if (e.target.closest('.se-filter-listbox-option')) e.preventDefault();
-      });
+      }, listenOpts);
     } else {
       function onTriggerClick(e){
         e.preventDefault();
         e.stopPropagation();
         toggleListbox(root);
       }
-      trigger.addEventListener('click', onTriggerClick);
+      trigger.addEventListener('click', onTriggerClick, listenOpts);
       // Chevron / icon sit outside the button — still toggle the menu.
       if (control) {
         control.addEventListener('click', function(e){
           if (e.target.closest('.se-filter-chip-trigger')) return;
           if (e.target.closest('.se-filter-listbox')) return;
           onTriggerClick(e);
-        });
+        }, listenOpts);
       }
       trigger.addEventListener('keydown', function(e){
         if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
@@ -493,7 +548,7 @@
         } else if (e.key === 'Escape') {
           closeListbox(root);
         }
-      });
+      }, listenOpts);
     }
 
     if (control && combo) {
@@ -504,14 +559,14 @@
         e.stopPropagation();
         combo.focus();
         if (!root.classList.contains('is-open')) openListbox(root, { selectAll: true });
-      });
+      }, listenOpts);
     }
 
     if (search && !combo) {
       search.addEventListener('input', function(){
         filterSearchableOptions(root, search.value);
-      });
-      search.addEventListener('click', function(e){ e.stopPropagation(); });
+      }, listenOpts);
+      search.addEventListener('click', function(e){ e.stopPropagation(); }, listenOpts);
       search.addEventListener('keydown', function(e){
         e.stopPropagation();
         if (e.key === 'Escape') {
@@ -527,7 +582,7 @@
           var first = visibleOptions(root)[0];
           if (first) first.focus();
         }
-      });
+      }, listenOpts);
     }
 
     /* Always bind to the listbox panel itself. Dynamic populators (e.g. POS
@@ -539,7 +594,7 @@
       if (!option || !clickTarget.contains(option) || option.classList.contains('is-filtered-out') || isOptionDisabled(option)) return;
       e.preventDefault();
       selectOption(root, option);
-    });
+    }, listenOpts);
 
     clickTarget.addEventListener('keydown', function(e){
       var options = root.hasAttribute('data-se-listbox-searchable')
@@ -565,7 +620,7 @@
         closeListbox(root);
         trigger.focus();
       }
-    });
+    }, listenOpts);
   }
 
   function initEpListboxes(){
@@ -573,11 +628,17 @@
   }
 
   function rebindEpListbox(root){
-    if (!root) return;
-    root.__epListboxBound = false;
-    root.__suFilterListboxBound = false;
-    root.__plFilterListboxBound = false;
-    bindListbox(root);
+    if (!root || !root.parentNode) return root || null;
+    /* Clone-replace strips every prior listener (soft-nav can load multiple
+       ep_form_listbox.js versions; AbortController only covers the latest bind). */
+    var clone = root.cloneNode(true);
+    root.parentNode.replaceChild(clone, root);
+    clone.__epListboxBound = false;
+    clone.__suFilterListboxBound = false;
+    clone.__plFilterListboxBound = false;
+    clone.__epListboxAbort = null;
+    bindListbox(clone);
+    return clone;
   }
 
   document.addEventListener('click', function(e){
@@ -639,4 +700,4 @@
       });
     }
   };
-})();
+})(window);

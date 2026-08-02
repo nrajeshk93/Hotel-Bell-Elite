@@ -525,10 +525,17 @@
           currentFloor = payload;
           writeFloorSessionSnapshot(payload);
           paintKotPendingBanner(data.kot_pending);
+          paintInvoiceKpis(document.getElementById('pos-tables-page'), data);
         } else {
           payload = emptyFloor();
           currentFloor = payload;
           paintKotPendingBanner(emptyKotPending());
+          paintInvoiceKpis(document.getElementById('pos-tables-page'), {
+            sales_count: 0,
+            sales_total: 0,
+            unsettled_count: 0,
+            unsettled_total: 0
+          });
         }
         if (typeof done === 'function') done(payload);
       })
@@ -1333,9 +1340,134 @@
     $all('.pos-kpi', root).forEach(function (card) {
       var key = card.getAttribute('data-kpi');
       var el = card.querySelector('[data-kpi-value]');
-      if (!el || !key) return;
+      if (!el || !key || key === 'sales' || key === 'unsettled') return;
       el.textContent = String(counts[key] != null ? counts[key] : 0);
     });
+  }
+
+  function summarizeSalesFromInvoices(invoices) {
+    var total = 0;
+    var count = 0;
+    (invoices || []).forEach(function (inv) {
+      count += 1;
+      total += Number((inv && inv.grand_total) || 0) || 0;
+    });
+    return {
+      sales_count: count,
+      sales_total: Math.round(total * 100) / 100
+    };
+  }
+
+  function summarizeUnsettledFromInvoices(invoices) {
+    var total = 0;
+    var count = 0;
+    (invoices || []).forEach(function (inv) {
+      var statusKey = String((inv && inv.status) || 'open').toLowerCase();
+      if (statusKey === 'closed') return;
+      count += 1;
+      total += Number((inv && inv.grand_total) || 0) || 0;
+    });
+    return {
+      unsettled_count: count,
+      unsettled_total: Math.round(total * 100) / 100
+    };
+  }
+
+  function paintMoneyKpiCard(card, total, count, label) {
+    if (!card) return;
+    var valueEl = card.querySelector('[data-kpi-value]');
+    var metaEl = card.querySelector('[data-kpi-meta]');
+    if (valueEl) {
+      valueEl.setAttribute('data-amount', String(total));
+      valueEl.textContent = formatInvoiceMoney(total);
+    }
+    if (metaEl) {
+      metaEl.textContent =
+        count === 1 ? '1 invoice' : count + ' invoices';
+    }
+    card.setAttribute(
+      'aria-label',
+      label +
+        ' ' +
+        formatInvoiceMoney(total) +
+        ', ' +
+        (count === 1 ? '1 invoice' : count + ' invoices')
+    );
+  }
+
+  function paintUnsettledKpi(root, payload) {
+    root = root || document.getElementById('pos-tables-page');
+    if (!root) return;
+    var card = root.querySelector('.pos-kpi[data-kpi="unsettled"]');
+    var section = root.querySelector('.pos-tables-kpis');
+    if (!card) return;
+    var count =
+      payload && payload.unsettled_count != null
+        ? Number(payload.unsettled_count) || 0
+        : 0;
+    var total =
+      payload && payload.unsettled_total != null
+        ? Number(payload.unsettled_total) || 0
+        : 0;
+    if (
+      payload &&
+      Array.isArray(payload.invoices) &&
+      payload.unsettled_count == null
+    ) {
+      var summed = summarizeUnsettledFromInvoices(payload.invoices);
+      count = summed.unsettled_count;
+      total = summed.unsettled_total;
+    }
+    var show = count > 0;
+    card.hidden = !show;
+    if (show) {
+      card.removeAttribute('hidden');
+    } else {
+      card.setAttribute('hidden', '');
+    }
+    if (section) section.classList.toggle('has-unsettled-kpi', show);
+    if (show) paintMoneyKpiCard(card, total, count, 'Unsettled');
+    card.classList.toggle('is-clickable', show);
+    if (show) {
+      card.setAttribute(
+        'title',
+        'View unsettled invoices'
+      );
+    } else {
+      card.removeAttribute('title');
+    }
+  }
+
+  function paintSalesKpi(root, payload) {
+    root = root || document.getElementById('pos-tables-page');
+    if (!root) return;
+    var card = root.querySelector('.pos-kpi[data-kpi="sales"]');
+    if (!card) return;
+    var count =
+      payload && payload.sales_count != null
+        ? Number(payload.sales_count) || 0
+        : payload && payload.invoice_count != null
+          ? Number(payload.invoice_count) || 0
+          : 0;
+    var total =
+      payload && payload.sales_total != null
+        ? Number(payload.sales_total) || 0
+        : 0;
+    if (
+      payload &&
+      Array.isArray(payload.invoices) &&
+      payload.sales_total == null
+    ) {
+      var summed = summarizeSalesFromInvoices(payload.invoices);
+      count = summed.sales_count;
+      total = summed.sales_total;
+    }
+    paintMoneyKpiCard(card, total, count, 'Total sales');
+  }
+
+  function paintInvoiceKpis(root, payload) {
+    paintUnsettledKpi(root, payload);
+    paintSalesKpi(root, payload);
   }
 
   function applyFilters(root) {
@@ -1806,10 +1938,14 @@
   }
 
   /**
-   * Visible print page inside #de-fs-app — required when Element Fullscreen
+   * Visible print/view page inside #de-fs-app — required when Element Fullscreen
    * (or an embedded preview) blocks / hides window.open tabs.
+   * opts.autoPrint (default true) — set false for eye/view without print dialog.
    */
-  function openInAppPrintPage(html) {
+  function openInAppPrintPage(html, opts) {
+    opts = opts || {};
+    var autoPrint = opts.autoPrint !== false;
+    var title = opts.title || (autoPrint ? 'Print preview' : 'Invoice');
     closeInAppPrintPage();
     var host = document.getElementById('de-fs-app') || document.body;
     var overlay = document.createElement('div');
@@ -1817,15 +1953,19 @@
     overlay.className = 'pos-inapp-print-page';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
-    overlay.setAttribute('aria-label', 'Print preview');
+    overlay.setAttribute('aria-label', title);
     overlay.innerHTML =
       '<div class="pos-inapp-print-toolbar">' +
-      '<span class="pos-inapp-print-title">Print preview</span>' +
+      '<span class="pos-inapp-print-title">' +
+      escapeHtml(title) +
+      '</span>' +
       '<div class="pos-inapp-print-actions">' +
       '<button type="button" class="pos-inapp-print-btn" data-pos-inapp-print>Print</button>' +
       '<button type="button" class="pos-inapp-print-btn pos-inapp-print-btn--ghost" data-pos-inapp-close>Close</button>' +
       '</div></div>' +
-      '<iframe class="pos-inapp-print-frame" title="Print preview"></iframe>';
+      '<iframe class="pos-inapp-print-frame" title="' +
+      escapeHtml(title) +
+      '"></iframe>';
     host.appendChild(overlay);
 
     var frame = overlay.querySelector('iframe');
@@ -1856,7 +1996,7 @@
         doPrint();
       }
     });
-    setTimeout(doPrint, 300);
+    if (autoPrint) setTimeout(doPrint, 300);
     return true;
   }
 
@@ -1905,6 +2045,88 @@
     return openInAppPrintPage(html);
   }
 
+  function lineMenuOutlet(line) {
+    var raw = String((line && line.outlet) || '')
+      .trim()
+      .toLowerCase();
+    return raw === 'bar' ? 'bar' : 'restaurant';
+  }
+
+  function buildKotTokenHtml(token, lines, allLines, opts) {
+    opts = opts || {};
+    var now = new Date();
+    var orderNo = (token && (token.kot_no || token.order_no)) || '—';
+    var table = (token && token.name) || '—';
+    var totalCount = (allLines || lines || []).length;
+    var selectedCount = (lines || []).length;
+    var subsetNote =
+      selectedCount < totalCount
+        ? selectedCount + ' of ' + totalCount + ' items'
+        : selectedCount + (selectedCount === 1 ? ' item' : ' items');
+    var isBar = opts.menuOutlet === 'bar';
+    var heading = isBar ? 'BAR ORDER TOKEN' : 'KITCHEN ORDER TOKEN';
+    var foot = isBar ? '-- Resent for bar --' : '-- Resent for kitchen --';
+    var rows = (lines || [])
+      .map(function (line) {
+        var qty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
+        var note = String(line.notes || '').trim();
+        return (
+          '<tr><td class="qty">' +
+          qty +
+          '</td><td class="name">' +
+          escapeHtml(line.name || '') +
+          (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
+          (note ? '<div class="note">' + escapeHtml(note) + '</div>' : '') +
+          '</td></tr>'
+        );
+      })
+      .join('');
+    return (
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>KOT ' +
+      escapeHtml(orderNo) +
+      '</title><style>' +
+      'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:300px;margin:0 auto}' +
+      'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
+      '.banner{text-align:center;font-size:11px;font-weight:700;margin:0 0 8px;padding:4px;border:1px solid #333}' +
+      '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
+      '.meta div{display:flex;justify-content:space-between;margin:2px 0}' +
+      'table{width:100%;border-collapse:collapse;font-size:13px}' +
+      'td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
+      'td.qty{width:34px;font-weight:700}' +
+      '.variant{font-size:11px;color:#555}' +
+      '.note{font-size:11px;color:#333;font-style:italic;margin-top:2px}' +
+      '.foot{margin-top:12px;text-align:center;font-size:11px;color:#555}' +
+      '@media print{body{width:auto;margin:0}}' +
+      '</style></head><body>' +
+      '<h1>' +
+      heading +
+      '</h1>' +
+      '<div class="banner">REPRINT / RESEND</div>' +
+      '<div class="meta">' +
+      '<div><span>Order</span><span>' +
+      escapeHtml(orderNo) +
+      '</span></div>' +
+      '<div><span>Table</span><span>' +
+      escapeHtml(table) +
+      '</span></div>' +
+      '<div><span>Type</span><span>Dine In</span></div>' +
+      '<div><span>Items</span><span>' +
+      escapeHtml(subsetNote) +
+      '</span></div>' +
+      '<div><span>Time</span><span>' +
+      escapeHtml(now.toLocaleString()) +
+      '</span></div>' +
+      '</div>' +
+      '<table><tbody>' +
+      rows +
+      '</tbody></table>' +
+      '<div class="foot">' +
+      foot +
+      '</div>' +
+      '</body></html>'
+    );
+  }
+
   function printKotTokenTicket(token, selectedLines, preOpenedWin) {
     var earlyWin = preOpenedWin || null;
     try {
@@ -1924,77 +2146,84 @@
       if (!earlyWin) {
         earlyWin = openBlankPrintWindow(380, 600);
       }
-      var now = new Date();
-      var orderNo = (token && (token.kot_no || token.order_no)) || '—';
-      var table = (token && token.name) || '—';
-      var totalCount = allLines.length;
-      var selectedCount = lines.length;
-      var subsetNote =
-        selectedCount < totalCount
-          ? selectedCount + ' of ' + totalCount + ' items'
-          : selectedCount + (selectedCount === 1 ? ' item' : ' items');
-      var rows = lines
-        .map(function (line) {
-          var qty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
-          var note = String(line.notes || '').trim();
-          return (
-            '<tr><td class="qty">' +
-            qty +
-            '</td><td class="name">' +
-            escapeHtml(line.name || '') +
-            (line.variant ? '<div class="variant">' + escapeHtml(line.variant) + '</div>' : '') +
-            (note ? '<div class="note">' + escapeHtml(note) + '</div>' : '') +
-            '</td></tr>'
-          );
-        })
-        .join('');
-      var html =
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>KOT ' +
-        escapeHtml(orderNo) +
-        '</title><style>' +
-        'body{font-family:"Courier New",monospace;padding:16px;color:#111;width:300px;margin:0 auto}' +
-        'h1{font-size:16px;margin:0 0 4px;text-align:center;letter-spacing:.04em}' +
-        '.banner{text-align:center;font-size:11px;font-weight:700;margin:0 0 8px;padding:4px;border:1px solid #333}' +
-        '.meta{font-size:12px;margin-bottom:10px;border-bottom:1px dashed #333;padding-bottom:8px}' +
-        '.meta div{display:flex;justify-content:space-between;margin:2px 0}' +
-        'table{width:100%;border-collapse:collapse;font-size:13px}' +
-        'td{padding:4px 0;border-bottom:1px dashed #ddd;vertical-align:top}' +
-        'td.qty{width:34px;font-weight:700}' +
-        '.variant{font-size:11px;color:#555}' +
-        '.note{font-size:11px;color:#333;font-style:italic;margin-top:2px}' +
-        '.foot{margin-top:12px;text-align:center;font-size:11px;color:#555}' +
-        '@media print{body{width:auto;margin:0}}' +
-        '</style></head><body>' +
-        '<h1>KITCHEN ORDER TOKEN</h1>' +
-        '<div class="banner">REPRINT / RESEND</div>' +
-        '<div class="meta">' +
-        '<div><span>Order</span><span>' +
-        escapeHtml(orderNo) +
-        '</span></div>' +
-        '<div><span>Table</span><span>' +
-        escapeHtml(table) +
-        '</span></div>' +
-        '<div><span>Type</span><span>Dine In</span></div>' +
-        '<div><span>Items</span><span>' +
-        escapeHtml(subsetNote) +
-        '</span></div>' +
-        '<div><span>Time</span><span>' +
-        escapeHtml(now.toLocaleString()) +
-        '</span></div>' +
-        '</div>' +
-        '<table><tbody>' +
-        rows +
-        '</tbody></table>' +
-        '<div class="foot">-- Resent for kitchen --</div>' +
-        '</body></html>';
-      if (
-        !openHtmlPrintWindow(html, {
-          width: 380,
-          height: 600,
-          preOpened: earlyWin
-        })
-      ) {
-        toast('Could not open the KOT window. Check your pop-up blocker.');
+
+      var restaurantLines = [];
+      var barLines = [];
+      lines.forEach(function (line) {
+        if (lineMenuOutlet(line) === 'bar') barLines.push(line);
+        else restaurantLines.push(line);
+      });
+      var groups = [];
+      if (restaurantLines.length) {
+        groups.push({ menuOutlet: 'restaurant', lines: restaurantLines });
+      }
+      if (barLines.length) {
+        groups.push({ menuOutlet: 'bar', lines: barLines });
+      }
+
+      var canAgent =
+        global.hbePosPrinterPrefs &&
+        typeof global.hbePosPrinterPrefs.printKotHtml === 'function';
+      var baseId = String(
+        (token && (token.invoice_id || token.kot_no)) || Date.now()
+      );
+      var fallbackUsed = false;
+
+      groups.forEach(function (group, idx) {
+        var html = buildKotTokenHtml(token, group.lines, allLines, {
+          menuOutlet: group.menuOutlet
+        });
+        var jobId =
+          'kot-resend-' + group.menuOutlet + '-' + baseId + '-' + Date.now() + '-' + idx;
+
+        function browserPrint() {
+          var win = null;
+          if (!fallbackUsed && earlyWin) {
+            win = earlyWin;
+            earlyWin = null;
+            fallbackUsed = true;
+          }
+          if (
+            !openHtmlPrintWindow(html, {
+              width: 380,
+              height: 600,
+              preOpened: win
+            })
+          ) {
+            toast('Could not open the KOT window. Check your pop-up blocker.');
+          }
+        }
+
+        if (canAgent) {
+          global.hbePosPrinterPrefs
+            .printKotHtml(html, {
+              menuOutlet: group.menuOutlet,
+              jobId: jobId,
+              browserPrint: browserPrint
+            })
+            .then(function (result) {
+              if (result && result.via === 'agent' && earlyWin && idx === groups.length - 1) {
+                try {
+                  earlyWin.close();
+                } catch (closeErr) {}
+                earlyWin = null;
+              }
+            });
+        } else {
+          browserPrint();
+        }
+      });
+
+      if (canAgent && earlyWin) {
+        /* Close spare popup if agent will handle every group. */
+        setTimeout(function () {
+          if (earlyWin) {
+            try {
+              earlyWin.close();
+            } catch (closeErr) {}
+            earlyWin = null;
+          }
+        }, 1200);
       }
     } catch (err) {
       if (earlyWin) {
@@ -2511,6 +2740,8 @@
       document.__posKotTokensEscBound = true;
       document.addEventListener('keydown', function (event) {
         if (event.key !== 'Escape') return;
+        var settleOpen = document.getElementById('pos-inv-settle-modal');
+        if (settleOpen && !settleOpen.hidden) return;
         var invoicesOpen = document.getElementById('pos-today-invoices-modal');
         if (invoicesOpen && !invoicesOpen.hidden) {
           closeTodayInvoicesModal();
@@ -2523,6 +2754,7 @@
   }
 
   var currentTodayInvoices = [];
+  var todayInvoicesFilter = 'all';
   var ORDER_TYPE_LABELS = {
     dine_in: 'Dine In',
     takeaway: 'Takeaway',
@@ -2551,18 +2783,53 @@
     return '(' + n + '%)';
   }
 
-  function invoiceWorkspaceUrl(invoiceId) {
-    return INVOICE_PAGE_BASE + '?invoice=' + encodeURIComponent(invoiceId);
+  function viewCustomerBillFromInvoice(invoice) {
+    try {
+      if (!invoice) {
+        toast('Invoice not found.');
+        return;
+      }
+      if (typeof global.buildPosCustomerBillHtml !== 'function') {
+        toast('Could not open invoice. Try again.');
+        return;
+      }
+      var html = global.buildPosCustomerBillHtml(invoice, {});
+      var orderNo = invoice.order_no || 'Invoice';
+      openInAppPrintPage(html, {
+        autoPrint: false,
+        title: 'Invoice ' + orderNo
+      });
+    } catch (err) {
+      toast('Could not open invoice. Try again.');
+    }
   }
 
-  function navigateToInvoiceById(invoiceId) {
+  function viewTodayInvoice(invoiceId, btn) {
     if (!invoiceId) return;
-    var url = invoiceWorkspaceUrl(invoiceId);
-    if (typeof global.deNavigateWithTransition === 'function') {
-      global.deNavigateWithTransition(url);
-      return;
-    }
-    global.location.href = url;
+    if (btn) btn.disabled = true;
+    fetch(resolvePosApiBase() + '/api/invoices/' + encodeURIComponent(invoiceId), {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: apiHeaders()
+    })
+      .then(function (res) {
+        return res.json().catch(function () {
+          return {};
+        });
+      })
+      .then(function (data) {
+        if (!data || !data.ok || !data.invoice) {
+          toast((data && data.error) || 'Could not load invoice.');
+          return;
+        }
+        viewCustomerBillFromInvoice(data.invoice);
+      })
+      .catch(function () {
+        toast('Could not load invoice. Check your connection.');
+      })
+      .then(function () {
+        if (btn) btn.disabled = false;
+      });
   }
 
   function printCustomerBillFromInvoice(invoice) {
@@ -2575,22 +2842,45 @@
         toast('Could not print bill. Try again.');
         return;
       }
-      var win = global.open('', '_blank', 'width=420,height=680');
-      if (!win) {
-        toast('Could not open the bill window. Check your pop-up blocker.');
+      var html = global.buildPosCustomerBillHtml(invoice, {});
+      var page = document.getElementById('pos-tables-page');
+      var outlet = (page && page.getAttribute('data-pos-outlet')) || undefined;
+      var jobId =
+        'inv-' +
+        String(invoice.id || invoice.order_no || Date.now()) +
+        '-' +
+        Date.now();
+
+      function browserPrint() {
+        var win = global.open('', '_blank', 'width=420,height=680');
+        if (!win) {
+          toast('Could not open the bill window. Check your pop-up blocker.');
+          return;
+        }
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        setTimeout(function () {
+          try {
+            win.print();
+          } catch (err) {
+            /* Best-effort print. */
+          }
+        }, 250);
+      }
+
+      if (
+        global.hbePosPrinterPrefs &&
+        typeof global.hbePosPrinterPrefs.printInvoiceHtml === 'function'
+      ) {
+        global.hbePosPrinterPrefs.printInvoiceHtml(html, {
+          outlet: outlet,
+          jobId: jobId,
+          browserPrint: browserPrint
+        });
         return;
       }
-      var html = global.buildPosCustomerBillHtml(invoice, {});
-      win.document.write(html);
-      win.document.close();
-      win.focus();
-      setTimeout(function () {
-        try {
-          win.print();
-        } catch (err) {
-          /* Best-effort print. */
-        }
-      }, 250);
+      browserPrint();
     } catch (err) {
       toast('Could not print bill. Try again.');
     }
@@ -2625,37 +2915,86 @@
       });
   }
 
+  function isTodayInvoiceUnsettled(inv) {
+    return String((inv && inv.status) || 'open').toLowerCase() !== 'closed';
+  }
+
   function paintTodayInvoicesModal(payload) {
     var rowsEl = document.getElementById('pos-today-invoices-rows');
     var emptyEl = document.getElementById('pos-today-invoices-empty');
     var wrap = document.getElementById('pos-today-invoices-table-wrap');
     var subEl = document.getElementById('pos-today-invoices-sub');
     var metaEl = document.getElementById('pos-today-invoices-meta');
-    var invoices =
-      (payload && Array.isArray(payload.invoices) ? payload.invoices : []) || [];
+    var titleEl = document.getElementById('pos-today-invoices-title');
+    var modal = document.getElementById('pos-today-invoices-modal');
+    if (payload && Array.isArray(payload.invoices)) {
+      currentTodayInvoices = payload.invoices;
+    }
+    var allInvoices = currentTodayInvoices || [];
+    var unsettledOnly = todayInvoicesFilter === 'unsettled';
+    var invoices = unsettledOnly
+      ? allInvoices.filter(isTodayInvoiceUnsettled)
+      : allInvoices.slice();
     var count = invoices.length;
+    var totalCount = allInvoices.length;
 
+    if (titleEl) {
+      titleEl.textContent = unsettledOnly ? 'Unsettled Invoices' : 'Today’s Invoices';
+    }
+    if (modal) {
+      modal.classList.toggle('is-unsettled-only', unsettledOnly);
+    }
     if (subEl) {
-      subEl.textContent =
-        count === 0
-          ? 'No invoices created today yet.'
-          : count === 1
-            ? '1 invoice created today — view or reprint the bill.'
-            : count + ' invoices created today — view or reprint a bill.';
+      if (unsettledOnly) {
+        subEl.textContent =
+          count === 0
+            ? 'No unsettled invoices right now.'
+            : count === 1
+              ? '1 unsettled invoice — settle, view, or reprint.'
+              : count + ' unsettled invoices — settle, view, or reprint a bill.';
+      } else {
+        subEl.textContent =
+          count === 0
+            ? 'No invoices created today yet.'
+            : count === 1
+              ? '1 invoice created today — view or reprint the bill.'
+              : count + ' invoices created today — view or reprint a bill.';
+      }
     }
     if (metaEl) {
-      metaEl.textContent =
-        count === 0
-          ? 'Showing 0 invoices'
-          : 'Showing ' + count + ' of ' + count + ' invoice' + (count === 1 ? '' : 's');
+      if (unsettledOnly) {
+        metaEl.textContent =
+          count === 0
+            ? 'Showing 0 unsettled'
+            : 'Showing ' +
+              count +
+              ' unsettled of ' +
+              totalCount +
+              ' invoice' +
+              (totalCount === 1 ? '' : 's');
+      } else {
+        metaEl.textContent =
+          count === 0
+            ? 'Showing 0 invoices'
+            : 'Showing ' +
+              count +
+              ' of ' +
+              count +
+              ' invoice' +
+              (count === 1 ? '' : 's');
+      }
     }
     if (!rowsEl) return;
 
     if (!count) {
       rowsEl.innerHTML = '';
       if (wrap) wrap.hidden = true;
-      if (emptyEl) emptyEl.hidden = false;
-      currentTodayInvoices = [];
+      if (emptyEl) {
+        emptyEl.hidden = false;
+        emptyEl.textContent = unsettledOnly
+          ? 'No unsettled invoices right now.'
+          : 'No invoices created today yet. Use New Order or Create Invoice to start a bill.';
+      }
       return;
     }
     if (wrap) wrap.hidden = false;
@@ -2690,7 +3029,7 @@
           escapeHtml(id) +
           '"' +
           (unsettled
-            ? ' tabindex="0" role="button" aria-label="Open unsettled invoice ' +
+            ? ' tabindex="0" role="button" aria-label="Settle invoice ' +
               escapeHtml(orderNo) +
               '"'
             : '') +
@@ -2738,25 +3077,19 @@
         );
       })
       .join('');
-
-    currentTodayInvoices = invoices;
   }
 
-  function closeTodayInvoicesModal() {
-    var modal = document.getElementById('pos-today-invoices-modal');
-    if (!modal || modal.hidden) return;
-    modal.hidden = true;
-    modal.setAttribute('hidden', '');
-    modal.setAttribute('aria-hidden', 'true');
+  function findTodayInvoiceById(invoiceId) {
+    var id = String(invoiceId || '');
+    if (!id) return null;
+    var list = currentTodayInvoices || [];
+    for (var i = 0; i < list.length; i++) {
+      if (String(list[i].id) === id) return list[i];
+    }
+    return null;
   }
 
-  function openTodayInvoicesModal() {
-    var modal = document.getElementById('pos-today-invoices-modal');
-    if (!modal) return;
-    modal.hidden = false;
-    modal.removeAttribute('hidden');
-    modal.setAttribute('aria-hidden', 'false');
-    paintTodayInvoicesModal({ invoices: currentTodayInvoices || [] });
+  function refreshTodayInvoicesList(done) {
     fetch(resolvePosApiBase() + '/api/today-invoices', {
       method: 'GET',
       credentials: 'same-origin',
@@ -2769,15 +3102,79 @@
       })
       .then(function (data) {
         if (!data || !data.ok) {
-          toast((data && data.error) || 'Could not load today’s invoices.');
+          if (typeof done === 'function') done(null);
           return;
         }
         currentTodayInvoices = data.invoices || [];
         paintTodayInvoicesModal(data);
+        paintInvoiceKpis(document.getElementById('pos-tables-page'), data);
+        if (typeof done === 'function') done(data);
       })
       .catch(function () {
-        toast('Could not load today’s invoices. Check your connection.');
+        if (typeof done === 'function') done(null);
       });
+  }
+
+  function openSettleFromTodayInvoice(invoiceId) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      toast('Settle Bill requires an internet connection.');
+      return;
+    }
+    var inv = findTodayInvoiceById(invoiceId);
+    if (!inv) {
+      toast('Invoice not found.');
+      return;
+    }
+    var statusKey = String(inv.status || 'open').toLowerCase();
+    if (statusKey === 'closed') {
+      toast('This invoice is already settled.');
+      return;
+    }
+    if (typeof global.openPosSettleModal !== 'function') {
+      toast('Settle dialog is not available.');
+      return;
+    }
+    global.openPosSettleModal({
+      invoiceId: inv.id,
+      orderNo: inv.order_no || '—',
+      tableLabel: inv.table_label || inv.table || '',
+      grandTotal: inv.grand_total,
+      apiBase: resolvePosApiBase(),
+      onSettled: function (settledInvoice, meta) {
+        var table = (meta && meta.tableLabel) || inv.table_label || inv.table || '';
+        toast(
+          table
+            ? 'Bill settled. ' + table + ' is now available.'
+            : 'Bill settled successfully.'
+        );
+        refreshFloorAfterMutation();
+        refreshTodayInvoicesList();
+      }
+    });
+  }
+
+  function closeTodayInvoicesModal() {
+    var modal = document.getElementById('pos-today-invoices-modal');
+    if (!modal || modal.hidden) return;
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    todayInvoicesFilter = 'all';
+    modal.classList.remove('is-unsettled-only');
+  }
+
+  function openTodayInvoicesModal(opts) {
+    opts = opts || {};
+    todayInvoicesFilter = opts.filter === 'unsettled' ? 'unsettled' : 'all';
+    var modal = document.getElementById('pos-today-invoices-modal');
+    if (!modal) return;
+    modal.hidden = false;
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    paintTodayInvoicesModal({ invoices: currentTodayInvoices || [] });
+    refreshTodayInvoicesList(function (data) {
+      if (!data) toast('Could not load today’s invoices. Check your connection.');
+    });
     var closeBtn = modal.querySelector('.pos-kot-modal-close');
     if (closeBtn) closeBtn.focus();
   }
@@ -2787,7 +3184,30 @@
     if (openBtn && openBtn.getAttribute('data-bound') !== '1') {
       openBtn.setAttribute('data-bound', '1');
       openBtn.addEventListener('click', function () {
-        openTodayInvoicesModal();
+        openTodayInvoicesModal({ filter: 'all' });
+      });
+    }
+
+    var root = document.getElementById('pos-tables-page');
+    var unsettledKpi = root && root.querySelector('.pos-kpi[data-kpi="unsettled"]');
+    if (unsettledKpi && unsettledKpi.getAttribute('data-bound') !== '1') {
+      unsettledKpi.setAttribute('data-bound', '1');
+      unsettledKpi.setAttribute('role', 'button');
+      unsettledKpi.setAttribute('tabindex', '0');
+      unsettledKpi.setAttribute(
+        'aria-haspopup',
+        'dialog'
+      );
+      unsettledKpi.setAttribute('aria-controls', 'pos-today-invoices-modal');
+      function openUnsettledFromKpi() {
+        if (unsettledKpi.hidden) return;
+        openTodayInvoicesModal({ filter: 'unsettled' });
+      }
+      unsettledKpi.addEventListener('click', openUnsettledFromKpi);
+      unsettledKpi.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openUnsettledFromKpi();
       });
     }
 
@@ -2804,8 +3224,8 @@
       var viewBtn = event.target.closest('[data-today-invoice-view]');
       if (viewBtn && modal.contains(viewBtn)) {
         event.preventDefault();
-        closeTodayInvoicesModal();
-        navigateToInvoiceById(viewBtn.getAttribute('data-today-invoice-view'));
+        if (viewBtn.disabled) return;
+        viewTodayInvoice(viewBtn.getAttribute('data-today-invoice-view'), viewBtn);
         return;
       }
 
@@ -2824,8 +3244,7 @@
         !event.target.closest('.pos-today-invoice-actions-cell, .act-grp, .act-btn')
       ) {
         event.preventDefault();
-        closeTodayInvoicesModal();
-        navigateToInvoiceById(unsettledRow.getAttribute('data-today-invoice-id'));
+        openSettleFromTodayInvoice(unsettledRow.getAttribute('data-today-invoice-id'));
       }
     });
 
@@ -2836,8 +3255,7 @@
         : null;
       if (!row || event.target !== row) return;
       event.preventDefault();
-      closeTodayInvoicesModal();
-      navigateToInvoiceById(row.getAttribute('data-today-invoice-id'));
+      openSettleFromTodayInvoice(row.getAttribute('data-today-invoice-id'));
     });
   }
 
@@ -2862,6 +3280,9 @@
     bindKotPendingBanner();
     bindKotTokensModal();
     bindTodayInvoicesModal();
+    if (typeof global.bindPosSettleModal === 'function') {
+      global.bindPosSettleModal();
+    }
     loadFloorFromApi(function (data) {
       paintTablesPage(root, data || loadFloorDataCached());
     });

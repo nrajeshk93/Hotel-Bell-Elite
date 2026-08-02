@@ -9,9 +9,10 @@
 <title>Tables | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=38">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=35">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=41">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 <script>
 (function(){
   try{
@@ -25,8 +26,9 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=17">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=35">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=41">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 {% endif %}
 
 {# Optional context from backend when table data exists — defaults keep the stub honest. #}
@@ -110,13 +112,22 @@
         <div class="pos-kpi-value" data-kpi-value>0</div>
       </div>
     </article>
-    <article class="pos-kpi" data-kpi="reserved">
-      <div class="pos-kpi-icon pos-kpi-icon--purple" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>
+    <article class="pos-kpi" data-kpi="unsettled" hidden>
+      <div class="pos-kpi-icon pos-kpi-icon--rose" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg>
       </div>
       <div>
-        <div class="pos-kpi-label">Reserved</div>
-        <div class="pos-kpi-value" data-kpi-value>0</div>
+        <div class="pos-kpi-label">Unsettled</div>
+        <div class="pos-kpi-value" data-kpi-value>₹0.00</div>
+        <div class="pos-kpi-meta" data-kpi-meta>0 invoices</div>
+      </div>
+    </article>
+    <article class="pos-kpi" data-kpi="sales">
+      <div class="pos-kpi-icon pos-kpi-icon--purple pos-kpi-icon--rupee" aria-hidden="true">₹</div>
+      <div>
+        <div class="pos-kpi-label">Total sales</div>
+        <div class="pos-kpi-value" data-kpi-value>₹0.00</div>
+        <div class="pos-kpi-meta" data-kpi-meta>0 invoices</div>
       </div>
     </article>
   </section>
@@ -584,16 +595,19 @@
     </div>
   </div>
 
+  {% include 'partials/pos_settle_modal.html' %}
+
   <div class="pos-tables-toast" id="pos-tables-toast" role="status" aria-live="polite" hidden></div>
 </div>
 
 {% if pos_receipt_config %}
 <script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
 {% endif %}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=30"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='pos_printers.js') }}?v=1"></script>
-<script src="{{ url_for('static', filename='pos_tables.js') }}?v=51"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='pos_settle.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='pos_tables.js') }}?v=60"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

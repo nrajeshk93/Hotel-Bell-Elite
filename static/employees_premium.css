@@ -350,6 +350,139 @@ body.ep-module.cd-ledger-page .su-title-crumb-sep{
   margin:0 6px;
   color:#9CA3AF;
 }
+
+/* Credit Dashboard filters — Expense Ledger chip row */
+body.ep-module.cd-ledger-page .se-sales-header-filters:has(#credits-dashboard-filter-form){
+  justify-content:stretch;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form.sr-topbar-filters{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:flex-end;
+  justify-content:flex-end;
+  gap:12px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin:0;
+  flex:1 1 auto;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2,#4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  text-align:left;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:44px;
+  background:#fff !important;
+  border:1px solid var(--border,#E2E8F0) !important;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  padding:0 8px 0 12px;
+  border:0;
+  background:transparent;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  text-align:left;
+  cursor:pointer;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  align-self:stretch;
+  color:#94A3B8;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field-listbox.is-open .se-filter-chip-control,
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field-listbox .se-filter-chip-control:focus-within,
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip.is-active .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip{
+  position:relative;
+  flex:1 1 auto;
+  width:auto;
+  min-width:96px;
+  max-width:100%;
+  z-index:20;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip .cd-search-input,
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip .pl-search-input{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:100%;
+  min-height:44px;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  outline:none;
+  padding:0 12px;
+  font:inherit;
+  font-size:13px;
+  font-weight:500;
+  color:#111827;
+  appearance:none;
+  -webkit-appearance:none;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-input::placeholder{color:#94A3B8;font-weight:500}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox.pl-header-field-listbox{
+  flex:0 1 auto;
+  width:clamp(120px,12vw,180px);
+  min-width:112px;
+  max-width:200px;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox[id*="location"]{
+  width:clamp(140px,14vw,220px);
+  min-width:132px;
+  max-width:240px;
+}
+@media(max-width:900px){
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form.sr-topbar-filters{flex-wrap:wrap}
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip{
+    flex:1 1 100%;width:100%;min-width:0;max-width:none;
+  }
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox.pl-header-field-listbox{
+    flex:1 1 calc(33.33% - 8px);width:auto;min-width:0;max-width:none;
+  }
+}
+@media(max-width:640px){
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox.pl-header-field-listbox{
+    flex:1 1 calc(50% - 6px);
+  }
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox[id*="location"]{
+    flex:1 1 100%;
+  }
+}
+
 body.ep-module .kpi-card,
 body.ep-module .card{
   border:1px solid #EEF2F7;border-radius:20px;background:#fff;

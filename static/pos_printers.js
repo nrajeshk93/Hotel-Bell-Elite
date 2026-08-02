@@ -11,6 +11,8 @@
     stationName: '',
     receiptPrinterLabel: '',
     kitchenPrinterLabel: '',
+    barKotPrinterLabel: '',
+    restaurantKotPrinterLabel: '',
     autoPrintKot: true,
     autoPrintReceiptOnSettle: false
   };
@@ -49,6 +51,14 @@
       kitchenPrinterLabel: String(
         src.kitchenPrinterLabel != null ? src.kitchenPrinterLabel : DEFAULTS.kitchenPrinterLabel
       ),
+      barKotPrinterLabel: String(
+        src.barKotPrinterLabel != null ? src.barKotPrinterLabel : DEFAULTS.barKotPrinterLabel
+      ),
+      restaurantKotPrinterLabel: String(
+        src.restaurantKotPrinterLabel != null
+          ? src.restaurantKotPrinterLabel
+          : DEFAULTS.restaurantKotPrinterLabel
+      ),
       autoPrintKot:
         src.autoPrintKot != null ? !!src.autoPrintKot : DEFAULTS.autoPrintKot,
       autoPrintReceiptOnSettle:
@@ -84,6 +94,96 @@
 
   function shouldAutoPrintReceiptOnSettle(outlet) {
     return !!get(outlet).autoPrintReceiptOnSettle;
+  }
+
+  /** Print Agent role for KOT slips — Restaurant KOT (kitchen1) or Bar KOT (bar). */
+  function kotPrinterRole(outlet) {
+    return resolveOutlet(outlet) === 'bar' ? 'bar' : 'kitchen1';
+  }
+
+  /**
+   * Send a KOT HTML slip to the Restaurant or Bar KOT printer via Hotel Print
+   * Agent. opts.menuOutlet / opts.printerRole selects the destination.
+   * Falls back to opts.browserPrint when the agent is offline.
+   */
+  function printKotHtml(html, opts) {
+    opts = opts || {};
+    var role =
+      opts.printerRole ||
+      kotPrinterRole(opts.menuOutlet != null ? opts.menuOutlet : opts.outlet);
+    var browserPrint =
+      typeof opts.browserPrint === 'function' ? opts.browserPrint : function () {};
+
+    if (
+      !html ||
+      typeof global.HotelPrintAgent !== 'object' ||
+      typeof global.HotelPrintAgent.print !== 'function'
+    ) {
+      browserPrint();
+      return Promise.resolve({ via: 'browser' });
+    }
+
+    return global.HotelPrintAgent.print({
+      printerRole: role,
+      documentType: 'kot',
+      contentType: 'html',
+      contentEncoding: 'utf8',
+      content: html,
+      copies: opts.copies || 1,
+      jobId: opts.jobId || undefined,
+      idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
+    })
+      .then(function (data) {
+        return { via: 'agent', data: data };
+      })
+      .catch(function () {
+        browserPrint();
+        return { via: 'browser' };
+      });
+  }
+
+  /** Print Agent role for guest invoices — Restaurant / Bar Invoice (billing). */
+  function invoicePrinterRole(/* outlet */) {
+    return 'billing';
+  }
+
+  /**
+   * Send a guest invoice HTML slip to the station’s Restaurant/Bar Invoice
+   * (billing) printer via Hotel Print Agent. Falls back to opts.browserPrint
+   * when the agent is offline.
+   */
+  function printInvoiceHtml(html, opts) {
+    opts = opts || {};
+    var role = invoicePrinterRole(opts.outlet);
+    var browserPrint =
+      typeof opts.browserPrint === 'function' ? opts.browserPrint : function () {};
+
+    if (
+      !html ||
+      typeof global.HotelPrintAgent !== 'object' ||
+      typeof global.HotelPrintAgent.print !== 'function'
+    ) {
+      browserPrint();
+      return Promise.resolve({ via: 'browser' });
+    }
+
+    return global.HotelPrintAgent.print({
+      printerRole: role,
+      documentType: opts.documentType || 'receipt',
+      contentType: 'html',
+      contentEncoding: 'utf8',
+      content: html,
+      copies: opts.copies || 1,
+      jobId: opts.jobId || undefined,
+      idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
+    })
+      .then(function (data) {
+        return { via: 'agent', data: data };
+      })
+      .catch(function () {
+        browserPrint();
+        return { via: 'browser' };
+      });
   }
 
   /** Apply stored prefs onto Printers panel fields marked data-pos-pc-printer. */
@@ -150,6 +250,10 @@
     resolveOutlet: resolveOutlet,
     shouldAutoPrintKot: shouldAutoPrintKot,
     shouldAutoPrintReceiptOnSettle: shouldAutoPrintReceiptOnSettle,
+    kotPrinterRole: kotPrinterRole,
+    printKotHtml: printKotHtml,
+    invoicePrinterRole: invoicePrinterRole,
+    printInvoiceHtml: printInvoiceHtml,
     applyToPanel: applyToPanel,
     saveFromPanel: saveFromPanel,
     bindPanel: bindPanel,

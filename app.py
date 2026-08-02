@@ -17,6 +17,7 @@ except ImportError:
 from flask import (
     Flask,
     Response,
+    abort,
     g,
     jsonify,
     redirect,
@@ -41,19 +42,51 @@ from db import (
     clear_all_pos_tables,
     close_pos_invoice_and_free_table,
     delete_customer_record,
+    delete_agency_record,
     ensure_cash_ledger_schema,
     ensure_customers_schema,
+    ensure_agencies_schema,
+    ensure_hotel_rooms_schema,
     ensure_pos_schema,
     ensure_stores_schema,
     enrich_pos_floor_tables_for_display,
     get_customer,
+    get_agency,
     get_db,
+    get_hotel_rooms_layout,
+    get_hotel_room,
+    get_hotel_room_invoice,
+    get_hotel_settings,
+    get_hotel_tax_rates,
+    get_hotel_tariff_rates,
+    hotel_room_invoice_kpis,
+    list_hotel_room_invoices,
+    save_hotel_room_checkin,
+    save_hotel_room_reservation,
+    generate_hotel_room_invoice,
+    record_hotel_room_payment,
+    set_hotel_room_discount,
+    append_hotel_room_folio_charge,
+    update_hotel_room_charge,
+    delete_hotel_room_charge,
+    find_hotel_guest_by_mobile,
+    clear_hotel_room_stay,
+    transfer_hotel_room_stay,
+    merge_hotel_room_billing,
+    unmerge_hotel_rooms,
+    set_hotel_merge_primary,
+    enrich_hotel_room_merge_fields,
+    upsert_customer,
+    upsert_agency_by_name,
     get_open_pos_invoice_for_table,
     get_pos_floor_layout,
+    hotel_rooms_status_counts,
     get_pos_invoice,
     get_pos_restaurant_settings,
+    get_pos_tax_rates,
     init_db,
     list_customers,
+    list_agencies,
     list_pos_invoices,
     list_pos_kot_pending_summary,
     list_pos_kot_tokens,
@@ -64,8 +97,13 @@ from db import (
     list_store_products_lite,
     normalize_pos_outlet,
     pos_invoice_kpis,
+    pos_today_sales_summary,
     save_customer_record,
+    save_agency_record,
+    save_hotel_rooms_layout,
+    save_hotel_settings,
     save_pos_floor_layout,
+    update_hotel_room_status,
     save_pos_invoice,
     save_pos_menu_category,
     save_pos_menu_item,
@@ -120,11 +158,13 @@ from workspace_access import (
     user_can_access_stores_submodule,
     user_can_access_supplier_master,
     user_can_access_customer_master,
+    user_can_access_agency_master,
     user_can_access_user_access_submodule,
     validate_access_user_form,
 )
 from employee_payroll import register_employee_payroll
 from embed_helpers import is_embed_request, is_partial_main_request
+from hotel_id_documents import process_uploaded_id_document, resolve_stored_id_document
 from masters import build_masters_dashboard
 from reports import build_reports_dashboard
 from stores import register_stores
@@ -474,8 +514,33 @@ def enforce_access():
 
     required_dashboard = get_endpoint_dashboard_module(endpoint)
     if required_dashboard and not user_can_access_dashboard(user, required_dashboard):
-        label = _DASHBOARD_MODULE_LABELS.get(required_dashboard, "requested")
-        return _permission_denied_response(f"You do not have access to {label}.")
+        agency_ok = (
+            required_dashboard == "master"
+            and endpoint
+            in {
+                "agency_master",
+                "save_agency",
+                "delete_agency",
+                "export_agency_report",
+                "create_agency",
+                "list_agencies_api",
+            }
+            and user_can_access_agency_master(user)
+        )
+        customer_ok = (
+            required_dashboard == "master"
+            and endpoint
+            in {
+                "customer_master",
+                "save_customer",
+                "delete_customer",
+                "export_customer_report",
+            }
+            and user_can_access_customer_master(user)
+        )
+        if not agency_ok and not customer_ok:
+            label = _DASHBOARD_MODULE_LABELS.get(required_dashboard, "requested")
+            return _permission_denied_response(f"You do not have access to {label}.")
 
     if not user_can_access_endpoint_sales_analytics(user, endpoint):
         return _permission_denied_response("You do not have access to this Sales Analytics section.")
@@ -508,6 +573,22 @@ def enforce_access():
 
 
 @app.context_processor
+def inject_su_page_back():
+    """When opened from Reports hub (?from_hub=reports), expose Back to Reports."""
+    try:
+        from_hub = (request.args.get("from_hub") or "").strip().lower()
+    except RuntimeError:
+        return {}
+    if from_hub != "reports":
+        return {"from_hub": from_hub} if from_hub else {}
+    return {
+        "from_hub": "reports",
+        "back_href": url_for("reports"),
+        "back_label": "Back to Reports",
+    }
+
+
+@app.context_processor
 def inject_auth_context():
     user = get_current_user()
     return {
@@ -532,6 +613,7 @@ def inject_auth_context():
         "has_stores_access": lambda key: user_can_access_stores_submodule(user, key),
         "has_supplier_master_access": lambda: user_can_access_supplier_master(user),
         "has_customer_master_access": lambda: user_can_access_customer_master(user),
+        "has_agency_master_access": lambda: user_can_access_agency_master(user),
         "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
         "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
         "sales_analytics_submodule_labels": _SALES_ANALYTICS_SUBMODULE_LABELS,
@@ -3275,6 +3357,46 @@ def reports():
     )
 
 
+@app.route("/settings")
+def settings():
+    """Workspace settings hub."""
+    user = get_current_user()
+    settings_cards = []
+    if user_can_access_dashboard(user, "point_of_sale"):
+        settings_cards.append(
+            {
+                "name": "Restaurant Settings",
+                "href": url_for("point_of_sale_settings"),
+                "icon": "restaurant",
+                "icon_tone": "indigo",
+            }
+        )
+    if user_can_access_dashboard(user, "point_of_sale_bar"):
+        settings_cards.append(
+            {
+                "name": "Bar Settings",
+                "href": url_for("bar_point_of_sale_settings"),
+                "icon": "bar",
+                "icon_tone": "rose",
+            }
+        )
+    if user_can_access_dashboard(user, "hotel_rooms"):
+        settings_cards.append(
+            {
+                "name": "Hotel Settings",
+                "href": url_for("hotel_settings"),
+                "icon": "hotel",
+                "icon_tone": "teal",
+            }
+        )
+    return render_template(
+        "settings.html",
+        de_nav_section="settings",
+        de_nav_settings_view="home",
+        settings_cards=settings_cards,
+    )
+
+
 def _pos_outlet_from_request():
     """Resolve restaurant|bar from path or endpoint (Bar twin routes)."""
     path = request.path or ""
@@ -3348,7 +3470,8 @@ def _pos_endpoint(name, outlet):
 POS_RESTAURANT_RECEIPT_CONFIG = {
     "business_name": "SPICE MULTICUISINE",
     "address": "Gurudwara Lane, Aberdeen bazar, Sri Vijaya Puram, Andaman & Nicobar 744101",
-    "gst": "35AAANFH8592H1ZS",
+    "gst": "35AANFH8592H1ZS",
+    "fssai": "12922101000132",
     "logo_url": "/static/pos/spice-receipt-logo.jpg",
     "user_label": "RESTAURANT",
 }
@@ -3356,7 +3479,8 @@ POS_RESTAURANT_RECEIPT_CONFIG = {
 POS_BAR_RECEIPT_CONFIG = {
     "business_name": "IRISH BARREL HOUSE BAR",
     "address": "Gurudwara Lane, Aberdeen bazar, Sri Vijaya Puram, Andaman & Nicobar 744101",
-    "gst": "35AAANFH8592H1ZS",
+    "gst": "35AANFH8592H1ZS",
+    "fssai": "12922101000132",
     "logo_url": "/static/pos/irish-barrel-house-logo.png",
     "user_label": "BAR",
 }
@@ -3399,6 +3523,833 @@ def point_of_sale():
         "point_of_sale.html",
         **_pos_page_context(outlet, "tables"),
     )
+
+
+@app.route("/hotel/rooms", endpoint="hotel_rooms")
+def hotel_rooms():
+    """Hotel Rooms floor board — occupancy status by floor and type."""
+    return render_template(
+        "hotel_rooms.html",
+        de_nav_section="hotel",
+        de_nav_hotel_view="rooms",
+        today_iso=date.today().isoformat(),
+    )
+
+
+@app.route("/hotel/settings", endpoint="hotel_settings")
+def hotel_settings():
+    """Hotel Settings — floors, rooms, taxes, invoice, payment, printers."""
+    return render_template(
+        "hotel_settings.html",
+        de_nav_section="hotel",
+        de_nav_hotel_view="settings",
+        hotel_room_types=[
+            {"key": key, "label": label}
+            for key, label in (
+                ("premium_without_balcony", "Premium Room"),
+                ("premium_deluxe_balcony", "Deluxe with Balcony"),
+                ("premium_suite_tub", "Suite Room"),
+            )
+        ],
+    )
+
+
+@app.route("/hotel/api/settings", methods=["GET", "PUT", "POST"], endpoint="hotel_settings_api")
+def hotel_settings_api():
+    """Load or replace hotel settings JSON (independent from Restaurant/Bar POS)."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        if request.method == "GET":
+            settings = get_hotel_settings(conn)
+            rates = get_hotel_tax_rates(conn)
+            tariff = get_hotel_tariff_rates(conn)
+            conn.commit()
+            return jsonify(
+                {
+                    "ok": True,
+                    "settings": settings,
+                    "taxRates": rates,
+                    "tariffRates": tariff,
+                }
+            )
+
+        data = request.get_json(silent=True) or {}
+        if "settings" in data:
+            settings = data.get("settings")
+        else:
+            settings = data
+        if not isinstance(settings, dict):
+            return jsonify({"ok": False, "error": "settings object is required."}), 400
+        saved = save_hotel_settings(conn, settings)
+        conn.commit()
+        rates = get_hotel_tax_rates(conn)
+        tariff = get_hotel_tariff_rates(conn)
+        return jsonify(
+            {
+                "ok": True,
+                "settings": saved,
+                "taxRates": rates,
+                "tariffRates": tariff,
+            }
+        )
+    finally:
+        conn.close()
+
+
+def _hotel_invoice_ledger_filters(args):
+    """Parse hotel invoice ledger GET filters (shared by page + export)."""
+    today = date.today()
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        args, "date_from", "date_to"
+    )
+    selected_status = (args.get("status") or "all").strip().lower()
+    if selected_status not in ("all", "open", "settled"):
+        selected_status = "all"
+    status_filter = "" if selected_status == "all" else selected_status
+    q = (args.get("q") or "").strip()
+    return {
+        "today": today,
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_filter_active": date_filter_active,
+        "selected_status": selected_status,
+        "status_filter": status_filter,
+        "q": q,
+    }
+
+
+@app.route("/hotel/invoice-ledger", endpoint="hotel_invoice_ledger")
+def hotel_invoice_ledger():
+    """Hotel room invoice ledger — archived invoices with View / Print."""
+    filters = _hotel_invoice_ledger_filters(request.args)
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        rows = list_hotel_room_invoices(
+            conn,
+            q=filters["q"],
+            status=filters["status_filter"],
+            date_from=filters["date_from"].isoformat()
+            if filters["date_filter_active"] and filters["date_from"]
+            else None,
+            date_to=filters["date_to"].isoformat()
+            if filters["date_filter_active"] and filters["date_to"]
+            else None,
+        )
+        kpis = hotel_room_invoice_kpis(rows)
+        conn.commit()
+    finally:
+        conn.close()
+
+    status_labels = {
+        "all": "All statuses",
+        "open": "Open",
+        "settled": "Settled",
+    }
+    clear_kwargs = {}
+    if filters["selected_status"] != "all":
+        clear_kwargs["status"] = filters["selected_status"]
+    if filters["q"]:
+        clear_kwargs["q"] = filters["q"]
+
+    export_kwargs = dict(clear_kwargs)
+    if filters["date_filter_active"]:
+        if filters["date_from"]:
+            export_kwargs["date_from"] = filters["date_from"].isoformat()
+        if filters["date_to"]:
+            export_kwargs["date_to"] = filters["date_to"].isoformat()
+
+    return render_template(
+        "hotel_invoice_ledger.html",
+        de_nav_section="hotel",
+        de_nav_hotel_view="invoice_ledger",
+        page_title="Invoice Ledger",
+        invoices=rows,
+        kpis=kpis,
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else "",
+        date_to=filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else "",
+        active_date_filter=filters["date_filter_active"],
+        selected_status=filters["selected_status"],
+        selected_status_label=status_labels.get(
+            filters["selected_status"], "All statuses"
+        ),
+        search_q=filters["q"],
+        filter_form_action=url_for("hotel_invoice_ledger"),
+        invoice_ledger_clear_url=url_for("hotel_invoice_ledger", **clear_kwargs),
+        invoice_ledger_export_url=url_for("hotel_invoice_ledger_export", **export_kwargs),
+    )
+
+
+@app.route("/hotel/invoice-ledger/export", endpoint="hotel_invoice_ledger_export")
+def hotel_invoice_ledger_export():
+    """Excel download of hotel room invoices for the selected filters."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from io import BytesIO
+
+    filters = _hotel_invoice_ledger_filters(request.args)
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        rows = list_hotel_room_invoices(
+            conn,
+            q=filters["q"],
+            status=filters["status_filter"],
+            date_from=filters["date_from"].isoformat()
+            if filters["date_filter_active"] and filters["date_from"]
+            else None,
+            date_to=filters["date_to"].isoformat()
+            if filters["date_filter_active"] and filters["date_to"]
+            else None,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Hotel Invoices"
+    header_font = Font(bold=True)
+    ws["A1"] = "Hotel Bell Elite — Invoice Ledger"
+    ws["A1"].font = Font(bold=True, size=14)
+    headers = (
+        "Invoice No",
+        "Invoice Date",
+        "Room",
+        "Guest",
+        "Booking No",
+        "Check In",
+        "Check Out",
+        "Amount",
+        "Advance",
+        "Balance",
+        "Status",
+    )
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=3, column=col, value=title)
+        cell.font = header_font
+    for idx, row in enumerate(rows, start=4):
+        ws.cell(row=idx, column=1, value=row.get("invoice_number") or "")
+        ws.cell(row=idx, column=2, value=row.get("invoice_generated_at") or "")
+        ws.cell(row=idx, column=3, value=row.get("room_number") or "")
+        ws.cell(row=idx, column=4, value=row.get("guest_name") or "")
+        ws.cell(row=idx, column=5, value=row.get("booking_number") or "")
+        ws.cell(row=idx, column=6, value=row.get("check_in_date") or "")
+        ws.cell(row=idx, column=7, value=row.get("check_out_date") or "")
+        ws.cell(row=idx, column=8, value=row.get("estimated_total"))
+        ws.cell(row=idx, column=9, value=row.get("advance_paid"))
+        ws.cell(row=idx, column=10, value=row.get("balance_amount"))
+        ws.cell(row=idx, column=11, value=(row.get("status") or "").title())
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    stamp = date.today().isoformat()
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"hotel_invoice_ledger_{stamp}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route(
+    "/hotel/invoice-ledger/api/<path:invoice_number>",
+    endpoint="hotel_invoice_ledger_api",
+)
+def hotel_invoice_ledger_api(invoice_number):
+    """JSON room payload for View / Print of an archived invoice."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        item = get_hotel_room_invoice(conn, invoice_number)
+        conn.commit()
+    finally:
+        conn.close()
+    if not item:
+        return jsonify({"ok": False, "error": "Invoice not found."}), 404
+    return jsonify({"ok": True, "invoice": item, "room": item.get("room")})
+
+
+@app.route("/hotel/api/rooms", methods=["GET", "PUT"], endpoint="hotel_rooms_api")
+def hotel_rooms_api():
+    """Load or replace hotel rooms layout JSON (floors + rooms + KPI counts)."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        if request.method == "GET":
+            layout = get_hotel_rooms_layout(conn)
+            rooms = []
+            for room in layout.get("rooms") or []:
+                if not isinstance(room, dict):
+                    continue
+                item = dict(room)
+                enrich_hotel_room_merge_fields(item, layout.get("rooms"))
+                rooms.append(item)
+            counts = hotel_rooms_status_counts(layout)
+            conn.commit()
+            resp = jsonify(
+                {
+                    "ok": True,
+                    "floors": layout.get("floors") or [],
+                    "rooms": rooms,
+                    "counts": counts,
+                }
+            )
+            resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            resp.headers["Pragma"] = "no-cache"
+            return resp
+
+        data = request.get_json(silent=True) or {}
+        # Allow compact status-only updates: { roomId, status }
+        room_id = data.get("roomId") or data.get("room_id") or data.get("id")
+        if room_id and "status" in data and not isinstance(data.get("rooms"), list):
+            try:
+                saved = update_hotel_room_status(conn, room_id, data.get("status"), data)
+            except ValueError as exc:
+                conn.rollback()
+                return jsonify({"ok": False, "error": str(exc)}), 400
+            counts = hotel_rooms_status_counts(saved)
+            conn.commit()
+            return jsonify(
+                {
+                    "ok": True,
+                    "floors": saved.get("floors") or [],
+                    "rooms": saved.get("rooms") or [],
+                    "counts": counts,
+                }
+            )
+
+        floors = data.get("floors")
+        rooms = data.get("rooms")
+        if not isinstance(floors, list) or not isinstance(rooms, list):
+            return jsonify({"ok": False, "error": "floors and rooms arrays are required."}), 400
+        try:
+            saved = save_hotel_rooms_layout(conn, floors, rooms)
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        counts = hotel_rooms_status_counts(saved)
+        conn.commit()
+        return jsonify(
+            {
+                "ok": True,
+                "floors": saved.get("floors") or [],
+                "rooms": saved.get("rooms") or [],
+                "counts": counts,
+            }
+        )
+    finally:
+        conn.close()
+
+
+@app.route("/hotel/rooms/<room_id>", endpoint="hotel_room_detail")
+def hotel_room_detail(room_id):
+    """Room Onboarding detail shell for a single room."""
+    conn = get_db()
+    try:
+        room = get_hotel_room(conn, room_id)
+        ensure_agencies_schema(conn)
+        agencies = list_agencies(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    if not room:
+        abort(404)
+    status = (room.get("status") or "vacant").lower()
+    status_subtitles = {
+        "vacant": "Ready for check-in",
+        "occupied": "Occupied by Guest",
+        "reserved": "Reserved for Arrival",
+        "dirty": "Waiting for Cleaning",
+        "out_of_order": "Out of service",
+    }
+    hk_dirty = status == "dirty"
+    status_label = (
+        room.get("statusLabel")
+        or {
+            "vacant": "Vacant",
+            "occupied": "Occupied",
+            "reserved": "Reserved",
+            "dirty": "Dirty",
+            "out_of_order": "Out of order",
+        }.get(status, status.replace("_", " ").title())
+    )
+    if hk_dirty:
+        hk_status = "Dirty"
+        hk_subtitle = "After Checkout"
+    elif status == "vacant":
+        hk_status = "Vacant"
+        hk_subtitle = "Ready for guests"
+    else:
+        hk_status = status_label
+        hk_subtitle = status_subtitles.get(status, "")
+    return render_template(
+        "hotel_room_detail.html",
+        de_nav_section="hotel",
+        de_nav_hotel_view="rooms",
+        room=room,
+        status_subtitle=status_subtitles.get(status, ""),
+        housekeeping_status=hk_status,
+        housekeeping_subtitle=hk_subtitle,
+        housekeeping_dirty=hk_dirty,
+        agencies=agencies,
+        agency_master_url=url_for("agency_master"),
+        agency_create_url=url_for("create_agency"),
+        agencies_api_url=url_for("list_agencies_api"),
+        today_iso=date.today().isoformat(),
+    )
+
+
+@app.route("/hotel/rooms/<room_id>/invoice", endpoint="hotel_room_invoice_page")
+def hotel_room_invoice_page(room_id):
+    """POS-style finalize workspace for a room stay invoice."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        room = get_hotel_room(conn, room_id)
+        if room:
+            enrich_hotel_room_merge_fields(room)
+        conn.commit()
+    finally:
+        conn.close()
+    if not room:
+        abort(404)
+    status = (room.get("status") or "vacant").lower()
+    stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+    guest_name = ""
+    if stay:
+        guest_name = (
+            stay.get("guestName")
+            or stay.get("guest_name")
+            or " ".join(
+                p
+                for p in [
+                    stay.get("title") or "",
+                    stay.get("firstName") or stay.get("first_name") or "",
+                    stay.get("lastName") or stay.get("last_name") or "",
+                ]
+                if p
+            ).strip()
+        )
+    return render_template(
+        "hotel_room_invoice_page.html",
+        de_nav_section="hotel",
+        de_nav_hotel_view="rooms",
+        room=room,
+        room_status=status,
+        guest_name=guest_name or "Guest",
+        open_settle=str(request.args.get("settle") or "").strip() in ("1", "true", "yes"),
+        today_iso=date.today().isoformat(),
+    )
+
+
+@app.route("/hotel/api/guests/lookup", methods=["GET"], endpoint="hotel_guest_lookup_api")
+def hotel_guest_lookup_api():
+    """Lookup a returning hotel guest by mobile number."""
+    mobile = (request.args.get("mobile") or "").strip()
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        guest = find_hotel_guest_by_mobile(conn, mobile)
+        conn.commit()
+    finally:
+        conn.close()
+    if not guest:
+        return jsonify({"ok": True, "found": False, "guest": None})
+    return jsonify({"ok": True, "found": True, "guest": guest})
+
+
+@app.route("/hotel/api/id-documents", methods=["POST"], endpoint="hotel_id_document_upload")
+def hotel_id_document_upload():
+    """Upload and compress a guest ID proof (image → WebP, PDF → Ghostscript)."""
+    upload = request.files.get("file") or request.files.get("idDocument")
+    if not upload or not upload.filename:
+        return jsonify({"ok": False, "error": "Choose an ID document to upload."}), 400
+    try:
+        result = process_uploaded_id_document(upload, upload.filename)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    except Exception:
+        return jsonify({"ok": False, "error": "Could not compress the document."}), 500
+    return jsonify({"ok": True, "document": result})
+
+
+@app.route(
+    "/hotel/api/id-documents/<path:stored_name>",
+    methods=["GET"],
+    endpoint="hotel_id_document_file",
+)
+def hotel_id_document_file(stored_name):
+    """Serve a compressed ID document for authenticated hotel users."""
+    path = resolve_stored_id_document(stored_name)
+    if not path:
+        abort(404)
+    mime = "image/webp" if path.suffix.lower() == ".webp" else "application/pdf"
+    return send_file(path, mimetype=mime, as_attachment=False, download_name=path.name)
+
+
+@app.route("/hotel/api/rooms/<room_id>", methods=["GET", "PUT"], endpoint="hotel_room_detail_api")
+def hotel_room_detail_api(room_id):
+    """Load or update a single hotel room (status / check-in)."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        if request.method == "GET":
+            room = get_hotel_room(conn, room_id)
+            if not room:
+                return jsonify({"ok": False, "error": "Room not found."}), 404
+            conn.commit()
+            return jsonify({"ok": True, "room": room})
+
+        data = request.get_json(silent=True) or {}
+        action = (data.get("action") or "").strip().lower()
+        try:
+            if action == "reserve":
+                stay = data.get("stay") if isinstance(data.get("stay"), dict) else {}
+                check_in = (
+                    data.get("checkInDate")
+                    or data.get("check_in_date")
+                    or stay.get("checkInDate")
+                    or stay.get("check_in_date")
+                    or ""
+                )
+                check_out = (
+                    data.get("checkOutDate")
+                    or data.get("check_out_date")
+                    or stay.get("checkOutDate")
+                    or stay.get("check_out_date")
+                    or ""
+                )
+                guest_name = (
+                    stay.get("guestName")
+                    or stay.get("guest_name")
+                    or " ".join(
+                        p
+                        for p in (
+                            (stay.get("firstName") or stay.get("first_name") or "").strip(),
+                            (stay.get("lastName") or stay.get("last_name") or "").strip(),
+                        )
+                        if p
+                    )
+                ).strip()
+                mobile = (stay.get("mobile") or "").strip()
+                if not guest_name:
+                    return jsonify({"ok": False, "error": "Guest name is required."}), 400
+                if not mobile:
+                    return jsonify({"ok": False, "error": "Mobile number is required."}), 400
+                if not stay.get("guestName"):
+                    stay["guestName"] = guest_name
+                if not stay.get("mobileCountry"):
+                    stay["mobileCountry"] = "+91"
+                room = save_hotel_room_reservation(
+                    conn, room_id, check_in, check_out, stay_fields=stay
+                )
+                try:
+                    ensure_customers_schema(conn)
+                    upsert_customer(conn, guest_name, mobile)
+                except Exception:
+                    pass
+                try:
+                    agency_name = (stay.get("agencyName") or stay.get("agency_name") or "").strip()
+                    if agency_name:
+                        upsert_agency_by_name(
+                            conn,
+                            agency_name,
+                            stay.get("agencyGst") or stay.get("agency_gst") or "",
+                            stay.get("agencyAddress") or stay.get("agency_address") or "",
+                        )
+                except Exception:
+                    pass
+                conn.commit()
+                return jsonify({"ok": True, "room": room})
+
+            if action == "checkin" or (
+                action
+                not in (
+                    "reserve",
+                    "checkout",
+                    "transfer",
+                    "generate_invoice",
+                    "record_payment",
+                    "set_discount",
+                    "add_custom_charge",
+                    "update_charge",
+                    "delete_charge",
+                    "merge_rooms",
+                    "unmerge_rooms",
+                    "set_merge_primary",
+                )
+                and isinstance(data.get("stay"), dict)
+            ):
+                stay = data.get("stay") or {}
+                first = (stay.get("firstName") or stay.get("first_name") or "").strip()
+                last = (stay.get("lastName") or stay.get("last_name") or "").strip()
+                mobile = (stay.get("mobile") or "").strip()
+                if not first or not last:
+                    return jsonify({"ok": False, "error": "First name and last name are required."}), 400
+                if not mobile:
+                    return jsonify({"ok": False, "error": "Mobile number is required."}), 400
+                if not (stay.get("checkInDate") or stay.get("check_in_date")):
+                    return jsonify({"ok": False, "error": "Check-in date is required."}), 400
+                room = save_hotel_room_checkin(conn, room_id, stay, status="occupied")
+                try:
+                    ensure_customers_schema(conn)
+                    guest_name = " ".join(p for p in (first, last) if p).strip() or first
+                    upsert_customer(conn, guest_name, mobile)
+                except Exception:
+                    pass
+                try:
+                    agency_name = (stay.get("agencyName") or stay.get("agency_name") or "").strip()
+                    if agency_name:
+                        upsert_agency_by_name(
+                            conn,
+                            agency_name,
+                            stay.get("agencyGst") or stay.get("agency_gst") or "",
+                            stay.get("agencyAddress") or stay.get("agency_address") or "",
+                        )
+                except Exception:
+                    pass
+                conn.commit()
+                return jsonify({"ok": True, "room": room})
+
+            if action == "checkout":
+                clear_hotel_room_stay(conn, room_id, status="dirty")
+                room = get_hotel_room(conn, room_id)
+                conn.commit()
+                return jsonify({"ok": True, "room": room})
+
+            if action == "set_discount":
+                result = set_hotel_room_discount(
+                    conn,
+                    room_id,
+                    discount_type=data.get("discountType")
+                    or data.get("discount_type")
+                    or "pct",
+                    discount_value=data.get("discountValue")
+                    if data.get("discountValue") is not None
+                    else data.get("discount_value"),
+                    discount_reason=data.get("discountReason")
+                    or data.get("discount_reason")
+                    or "",
+                )
+                conn.commit()
+                return jsonify({"ok": True, "room": result["room"]})
+
+            if action == "add_custom_charge":
+                existing = get_hotel_room(conn, room_id)
+                stay = (
+                    existing.get("stay")
+                    if existing and isinstance(existing.get("stay"), dict)
+                    else None
+                )
+                if stay and stay.get("invoiceGenerated") and stay.get("invoiceNumber"):
+                    return (
+                        jsonify(
+                            {
+                                "ok": False,
+                                "error": "Custom charges cannot be added after the invoice is generated.",
+                            }
+                        ),
+                        400,
+                    )
+                label = (
+                    data.get("label")
+                    or data.get("name")
+                    or data.get("chargeName")
+                    or data.get("charge_name")
+                    or ""
+                )
+                amount = (
+                    data.get("amount")
+                    if data.get("amount") is not None
+                    else data.get("rate")
+                )
+                result = append_hotel_room_folio_charge(
+                    conn,
+                    room_id,
+                    amount=amount,
+                    kind="other",
+                    label=label,
+                    source="hotel_invoice",
+                    note=data.get("note") or data.get("notes") or "",
+                )
+                conn.commit()
+                return jsonify(
+                    {
+                        "ok": True,
+                        "room": result.get("room"),
+                        "charge": result.get("charge"),
+                    }
+                )
+
+            if action == "update_charge":
+                result = update_hotel_room_charge(
+                    conn,
+                    room_id,
+                    charge_key=data.get("chargeKey")
+                    or data.get("charge_key")
+                    or data.get("key")
+                    or "",
+                    label=data.get("label") or data.get("name") or "",
+                    amount=data.get("amount"),
+                    rate=data.get("rate"),
+                )
+                conn.commit()
+                return jsonify({"ok": True, "room": result.get("room")})
+
+            if action == "delete_charge":
+                result = delete_hotel_room_charge(
+                    conn,
+                    room_id,
+                    charge_key=data.get("chargeKey")
+                    or data.get("charge_key")
+                    or data.get("key")
+                    or "",
+                )
+                conn.commit()
+                return jsonify({"ok": True, "room": result.get("room")})
+
+            if action == "generate_invoice":
+                payment = data.get("payment") if isinstance(data.get("payment"), dict) else None
+                payment_splits = data.get("payment_splits") or data.get("paymentSplits")
+                note = data.get("note") or data.get("notes") or ""
+                # Allow amount/method at top level for simpler clients.
+                if payment is None and payment_splits is None and (
+                    data.get("amount") is not None
+                    or data.get("method")
+                    or data.get("paymentMethod")
+                ):
+                    payment = {
+                        "amount": data.get("amount"),
+                        "method": data.get("method") or data.get("paymentMethod"),
+                        "reference": data.get("reference")
+                        or data.get("paymentReference")
+                        or data.get("payment_reference"),
+                        "note": note,
+                    }
+                result = generate_hotel_room_invoice(
+                    conn,
+                    room_id,
+                    payment=payment,
+                    payment_splits=payment_splits if isinstance(payment_splits, list) else None,
+                    note=note,
+                )
+                conn.commit()
+                return jsonify(
+                    {
+                        "ok": True,
+                        "room": result["room"],
+                        "minted": result.get("minted"),
+                        "payment": result.get("payment"),
+                        "payments": result.get("payments") or [],
+                    }
+                )
+
+            if action == "record_payment":
+                payment = data.get("payment") if isinstance(data.get("payment"), dict) else None
+                payment_splits = data.get("payment_splits") or data.get("paymentSplits")
+                note = data.get("note") or data.get("notes") or ""
+                if payment is None and payment_splits is None:
+                    payment = {
+                        "amount": data.get("amount"),
+                        "method": data.get("method") or data.get("paymentMethod"),
+                        "reference": data.get("reference")
+                        or data.get("paymentReference")
+                        or data.get("payment_reference"),
+                        "note": note,
+                    }
+                result = record_hotel_room_payment(
+                    conn,
+                    room_id,
+                    payment=payment,
+                    payment_splits=payment_splits if isinstance(payment_splits, list) else None,
+                    note=note,
+                )
+                conn.commit()
+                return jsonify(
+                    {
+                        "ok": True,
+                        "room": result["room"],
+                        "payment": result.get("payment"),
+                        "payments": result.get("payments") or [],
+                    }
+                )
+
+            if action == "transfer":
+                to_room_id = (
+                    data.get("toRoomId")
+                    or data.get("to_room_id")
+                    or data.get("destinationRoomId")
+                    or ""
+                )
+                note = data.get("note") or data.get("reason") or ""
+                result = transfer_hotel_room_stay(conn, room_id, to_room_id, note=note)
+                conn.commit()
+                return jsonify(
+                    {
+                        "ok": True,
+                        "fromRoom": result["fromRoom"],
+                        "toRoom": result["toRoom"],
+                        "room": result["toRoom"],
+                    }
+                )
+
+            if action == "merge_rooms":
+                from_room_id = (
+                    data.get("fromRoomId")
+                    or data.get("from_room_id")
+                    or room_id
+                )
+                to_room_id = (
+                    data.get("toRoomId")
+                    or data.get("to_room_id")
+                    or data.get("primaryRoomId")
+                    or ""
+                )
+                note = data.get("note") or data.get("reason") or ""
+                result = merge_hotel_room_billing(
+                    conn, from_room_id, to_room_id, note=note
+                )
+                conn.commit()
+                return jsonify(
+                    {
+                        "ok": True,
+                        "room": result.get("room"),
+                        "primaryRoom": result.get("primaryRoom"),
+                        "memberRoom": result.get("memberRoom"),
+                    }
+                )
+
+            if action == "unmerge_rooms":
+                scope = data.get("scope") or "one"
+                result = unmerge_hotel_rooms(conn, room_id, scope=scope)
+                conn.commit()
+                return jsonify({"ok": True, "room": result.get("room")})
+
+            if action == "set_merge_primary":
+                result = set_hotel_merge_primary(conn, room_id)
+                conn.commit()
+                return jsonify({"ok": True, "room": result.get("room")})
+
+            if "status" not in data:
+                return jsonify({"ok": False, "error": "status is required."}), 400
+            update_hotel_room_status(conn, room_id, data.get("status"), data)
+            room = get_hotel_room(conn, room_id)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "room": room})
+    finally:
+        conn.close()
 
 
 @app.route("/point-of-sale/invoice", endpoint="point_of_sale_invoice")
@@ -3844,6 +4795,9 @@ def point_of_sale_api_invoice_settle(invoice_id):
                 payment_date=payload.get("payment_date"),
                 notes=payload.get("notes") or "",
                 user_id=user_id,
+                hotel_room_id=payload.get("hotel_room_id")
+                or payload.get("hotelRoomId")
+                or "",
             )
             conn.commit()
         except ValueError as exc:
@@ -3953,6 +4907,7 @@ def point_of_sale_api_invoice_delete(invoice_id):
             if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
                 return jsonify({"ok": False, "error": "Invoice not found."}), 404
             soft_delete_pos_invoice(conn, invoice_id)
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
             conn.commit()
         except ValueError as exc:
             conn.rollback()
@@ -3973,6 +4928,51 @@ def point_of_sale_api_customers():
         customers = search_customers(conn, query, limit=8)
         conn.commit()
         return jsonify({"ok": True, "customers": customers})
+    finally:
+        conn.close()
+
+
+@app.route(
+    "/point-of-sale/api/hotel-rooms/occupied",
+    methods=["GET"],
+    endpoint="point_of_sale_api_hotel_rooms_occupied",
+)
+@app.route(
+    "/bar-point-of-sale/api/hotel-rooms/occupied",
+    methods=["GET"],
+    endpoint="bar_point_of_sale_api_hotel_rooms_occupied",
+)
+def point_of_sale_api_hotel_rooms_occupied():
+    """Occupied hotel rooms for POS Room Transfer settle (folio post)."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        layout = get_hotel_rooms_layout(conn)
+        rooms = []
+        for room in layout.get("rooms") or []:
+            status = str(room.get("status") or "").strip().lower()
+            stay = room.get("stay")
+            if status != "occupied" or not isinstance(stay, dict) or not stay:
+                continue
+            guest = " ".join(
+                p
+                for p in (
+                    str(stay.get("firstName") or "").strip(),
+                    str(stay.get("lastName") or "").strip(),
+                )
+                if p
+            ).strip() or str(stay.get("guestName") or "").strip() or "Guest"
+            rooms.append(
+                {
+                    "id": room.get("id"),
+                    "number": room.get("number"),
+                    "guestName": guest,
+                    "roomType": room.get("roomType") or room.get("room_type") or "",
+                }
+            )
+        rooms.sort(key=lambda item: str(item.get("number") or ""))
+        conn.commit()
+        return jsonify({"ok": True, "rooms": rooms})
     finally:
         conn.close()
 
@@ -3999,8 +4999,17 @@ def point_of_sale_api_floor():
             sync_pos_floor_occupancy_from_open_orders(conn, outlet)
             payload = _pos_floor_api_payload(conn, outlet=outlet)
             kot_pending = list_pos_kot_pending_summary(conn, outlet)
+            sales = pos_today_sales_summary(conn, outlet=outlet)
             conn.commit()
-            resp = jsonify({"ok": True, **payload, "kot_pending": kot_pending})
+            resp = jsonify({
+                "ok": True,
+                **payload,
+                "kot_pending": kot_pending,
+                "sales_total": sales["sales_total"],
+                "sales_count": sales["sales_count"],
+                "unsettled_count": sales["unsettled_count"],
+                "unsettled_total": sales["unsettled_total"],
+            })
             resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             resp.headers["Pragma"] = "no-cache"
             return resp
@@ -4079,7 +5088,8 @@ def point_of_sale_api_settings():
         ensure_pos_schema(conn)
         if request.method == "GET":
             settings = get_pos_restaurant_settings(conn, outlet)
-            return jsonify({"ok": True, "settings": settings})
+            rates = get_pos_tax_rates(conn, outlet)
+            return jsonify({"ok": True, "settings": settings, "taxRates": rates})
 
         data = request.get_json(silent=True) or {}
         if "settings" in data:
@@ -4090,7 +5100,8 @@ def point_of_sale_api_settings():
             return jsonify({"ok": False, "error": "settings object is required."}), 400
         saved = save_pos_restaurant_settings(conn, settings, outlet)
         conn.commit()
-        return jsonify({"ok": True, "settings": saved})
+        rates = get_pos_tax_rates(conn, outlet)
+        return jsonify({"ok": True, "settings": saved, "taxRates": rates})
     finally:
         conn.close()
 
@@ -7201,6 +8212,22 @@ def sales_update_tips_page():
 
     payout_year, payout_month = today.year, today.month
 
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    if from_hub == "reports":
+        clear_query["from_hub"] = "reports"
+        de_nav_section = "report"
+        de_nav_payroll_view = ""
+        de_nav_report_view = "home"
+        tips_back_href = url_for("reports")
+        tips_back_label = "Back to Reports"
+    else:
+        from_hub = ""
+        de_nav_section = "payroll"
+        de_nav_payroll_view = "tips"
+        de_nav_report_view = ""
+        tips_back_href = url_for("employees")
+        tips_back_label = "Back to Employee Payroll"
+
     return render_template(
         "sales_update_tips.html",
         page_title="Tips",
@@ -7226,8 +8253,12 @@ def sales_update_tips_page():
         tips_edit_tip_url=url_for("sales_update_edit_tip"),
         payout_year=payout_year,
         payout_month=payout_month,
-        de_nav_section="payroll",
-        de_nav_payroll_view="tips",
+        back_href=tips_back_href,
+        back_label=tips_back_label,
+        from_hub=from_hub,
+        de_nav_section=de_nav_section,
+        de_nav_payroll_view=de_nav_payroll_view,
+        de_nav_report_view=de_nav_report_view,
     )
 
 
@@ -8071,6 +9102,236 @@ def delete_customer():
     return redirect(url_for("customer_master", saved="deleted"))
 
 
+def _agency_form_payload(source=None):
+    source = source or {}
+    return {
+        "name": " ".join(str(source.get("name") or "").split()).strip(),
+        "gst": " ".join(str(source.get("gst") or "").split()).strip().upper(),
+        "address": " ".join(str(source.get("address") or "").split()).strip(),
+    }
+
+
+def _agency_page_render(template, **kwargs):
+    kwargs.setdefault("auth_notice", _pop_auth_notice())
+    kwargs.setdefault("de_nav_section", "master")
+    kwargs.setdefault("de_nav_master_view", "agency_master")
+    return render_template(template, **kwargs)
+
+
+@app.route("/agencies")
+def agency_master():
+    user = get_current_user()
+    if not user_can_access_agency_master(user):
+        return _permission_denied_response("You do not have access to Agency Master.")
+
+    selected_agency_id = request.args.get("agency_id", "").strip()
+    saved_flag = request.args.get("saved", "").strip()
+    form_focus = request.args.get("focus", "").strip() == "form"
+
+    conn = get_db()
+    try:
+        ensure_agencies_schema(conn)
+        agencies = list_agencies(conn)
+        selected_agency = get_agency(conn, selected_agency_id) if selected_agency_id else None
+        conn.commit()
+    finally:
+        conn.close()
+
+    if selected_agency:
+        form = {
+            "id": selected_agency["id"],
+            "name": selected_agency.get("name") or "",
+            "gst": selected_agency.get("gst") or "",
+            "address": selected_agency.get("address") or "",
+        }
+    else:
+        form = {"id": "", **_agency_form_payload()}
+
+    success_message = ""
+    if saved_flag == "created":
+        success_message = "Agency created successfully."
+    elif saved_flag == "updated":
+        success_message = "Agency updated successfully."
+    elif saved_flag == "deleted":
+        success_message = "Agency deleted successfully."
+
+    return _agency_page_render(
+        "partials/master_embed/agency.html" if is_embed_request() else "agency_master.html",
+        agencies=agencies,
+        form=form,
+        selected_agency=selected_agency,
+        errors=[],
+        success_message=success_message,
+        form_focus=form_focus or bool(selected_agency),
+        show_form=form_focus or bool(selected_agency),
+        agency_report_url=url_for("export_agency_report"),
+        embed_mode=is_embed_request(),
+    )
+
+
+@app.route("/agencies/report")
+def export_agency_report():
+    """Excel download of all agencies from Agency Master."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    user = get_current_user()
+    if not user_can_access_agency_master(user):
+        return _permission_denied_response("You do not have access to Agency Master.")
+
+    conn = get_db()
+    try:
+        ensure_agencies_schema(conn)
+        agencies = list_agencies(conn)
+        conn.commit()
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Agencies"
+    header_font = Font(bold=True)
+    headers = ["Agency Name", "GST", "Address"]
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = header_font
+
+    for idx, agency in enumerate(agencies, start=2):
+        ws.cell(row=idx, column=1, value=agency.get("name") or "")
+        ws.cell(row=idx, column=2, value=agency.get("gst") or "")
+        ws.cell(row=idx, column=3, value=agency.get("address") or "")
+
+    for column_cells in ws.columns:
+        width = 12
+        for cell in column_cells:
+            value = "" if cell.value is None else str(cell.value)
+            width = max(width, min(len(value) + 2, 50))
+        ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    fname = f"agency_report_{date.today().isoformat()}.xlsx"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/agencies/save", methods=["POST"])
+def save_agency():
+    user = get_current_user()
+    if not user_can_access_agency_master(user):
+        return _permission_denied_response("You do not have access to Agency Master.")
+
+    agency_id_raw = request.form.get("agency_id", "").strip()
+    agency_id = int(agency_id_raw) if agency_id_raw else None
+    payload = _agency_form_payload(request.form)
+
+    conn = get_db()
+    try:
+        saved_id, errors = save_agency_record(
+            conn,
+            payload.get("name"),
+            payload.get("gst"),
+            payload.get("address"),
+            agency_id=agency_id,
+        )
+        if errors:
+            agencies = list_agencies(conn)
+            selected_agency = get_agency(conn, agency_id) if agency_id else None
+            form = dict(payload)
+            form["id"] = agency_id or ""
+            return _agency_page_render(
+                "partials/master_embed/agency.html" if is_embed_request() else "agency_master.html",
+                agencies=agencies,
+                form=form,
+                selected_agency=selected_agency,
+                errors=errors,
+                success_message="",
+                form_focus=True,
+                show_form=True,
+                agency_report_url=url_for("export_agency_report"),
+                embed_mode=is_embed_request(),
+            ), 400
+        conn.commit()
+    finally:
+        conn.close()
+
+    result_flag = "updated" if agency_id else "created"
+    redirect_kwargs = {"saved": result_flag}
+    if is_embed_request():
+        redirect_kwargs["embed"] = 1
+    return redirect(url_for("agency_master", **redirect_kwargs))
+
+
+@app.route("/agencies/delete", methods=["POST"])
+def delete_agency():
+    user = get_current_user()
+    if not user_can_access_agency_master(user):
+        return _permission_denied_response("You do not have access to Agency Master.")
+
+    agency_id = request.form.get("agency_id", "").strip()
+    if not agency_id:
+        _queue_auth_notice("Agency not found.")
+        return redirect(url_for("agency_master"))
+
+    conn = get_db()
+    try:
+        deleted = delete_agency_record(conn, agency_id)
+        if not deleted:
+            _queue_auth_notice("Agency not found.")
+            return redirect(url_for("agency_master"))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return redirect(url_for("agency_master", saved="deleted"))
+
+
+@app.route("/agencies/create", methods=["POST"], endpoint="create_agency")
+def create_agency():
+    """JSON create/update agency for check-in and other embeds."""
+    user = get_current_user()
+    if not user_can_access_agency_master(user):
+        return jsonify({"ok": False, "error": "You do not have access to Agency Master."}), 403
+
+    data = request.get_json(silent=True) or {}
+    payload = _agency_form_payload(data)
+    conn = get_db()
+    try:
+        agency = upsert_agency_by_name(
+            conn,
+            payload.get("name"),
+            payload.get("gst"),
+            payload.get("address"),
+        )
+        if not agency:
+            return jsonify({"ok": False, "error": "Agency name is required."}), 400
+        agencies = list_agencies(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "agency": agency, "agencies": agencies})
+
+
+@app.route("/agencies/api", methods=["GET"], endpoint="list_agencies_api")
+def list_agencies_api():
+    user = get_current_user()
+    if not user_can_access_agency_master(user):
+        return jsonify({"ok": False, "error": "You do not have access to Agency Master."}), 403
+    conn = get_db()
+    try:
+        ensure_agencies_schema(conn)
+        agencies = list_agencies(conn)
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "agencies": agencies})
+
+
 @app.route("/access-management")
 def access_management():
     user = get_current_user()
@@ -8285,6 +9546,99 @@ def delete_access_user(user_id):
         conn.close()
 
     return redirect(url_for("access_management"))
+
+
+# ── Print Agent (Windows silent printing bridge) ─────────────────────────────
+
+@app.route("/api/print-agent/register", methods=["POST"], endpoint="print_agent_register")
+def print_agent_register():
+    """First-launch registration from Hotel Print Agent desktop app."""
+    from print_agent_store import register_print_agent
+
+    payload = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        result = register_print_agent(conn, payload, request_host_url=request.host_url)
+        status = 200 if result.get("ok") else 400
+        return jsonify(result), status
+    finally:
+        conn.close()
+
+
+@app.route("/api/print-agent/heartbeat", methods=["POST"], endpoint="print_agent_heartbeat")
+def print_agent_heartbeat():
+    from print_agent_store import heartbeat_print_agent
+
+    payload = request.get_json(silent=True) or {}
+    auth = request.headers.get("Authorization") or ""
+    bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+    conn = get_db()
+    try:
+        result = heartbeat_print_agent(conn, payload, bearer)
+        status = 200 if result.get("ok") else 401
+        return jsonify(result), status
+    finally:
+        conn.close()
+
+
+@app.route("/api/print-agent/updates/latest", methods=["GET"], endpoint="print_agent_updates_latest")
+def print_agent_updates_latest():
+    from print_agent_store import print_agent_latest_update
+
+    current = (request.args.get("current") or "").strip()
+    return jsonify(print_agent_latest_update(current))
+
+
+@app.route("/api/print-agent/config", methods=["GET"], endpoint="print_agent_browser_config")
+def print_agent_browser_config():
+    """Browser-facing hint: local agent URL + cloud origins."""
+    from print_agent_store import default_print_agent_origins
+
+    return jsonify(
+        {
+            "ok": True,
+            "localBaseUrl": "http://127.0.0.1:4567",
+            "roles": [
+                "kitchen1",
+                "billing",
+                "bar",
+                "hotel_folio",
+                "hotel_invoice",
+                "kitchen2",
+                "label",
+            ],
+            "cloudOrigin": (os.environ.get("APP_BASE_URL") or "https://belleliteaccounts.com").rstrip(
+                "/"
+            ),
+            "allowedOrigins": default_print_agent_origins(request.host_url),
+        }
+    )
+
+
+@app.route("/api/print-agent/browser-pair", methods=["GET"], endpoint="print_agent_browser_pair")
+def print_agent_browser_pair():
+    """Logged-in cloud tab fetches API key to talk to the local agent on this PC."""
+    from print_agent_store import browser_pair_print_agent
+
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "Sign in required."}), 401
+
+    business_id = (
+        (request.args.get("businessId") or "").strip()
+        or str(user.get("business_id") or user.get("businessId") or "").strip()
+        or "default"
+    )
+    conn = get_db()
+    try:
+        result = browser_pair_print_agent(conn, business_id=business_id)
+        # Also try empty / any agent if business-specific miss (single-tenant installs)
+        if not result.get("ok") and business_id != "default":
+            result = browser_pair_print_agent(conn, business_id=None)
+        status = 200 if result.get("ok") else 404
+        return jsonify(result), status
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

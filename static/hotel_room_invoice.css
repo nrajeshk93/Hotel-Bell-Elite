@@ -1,0 +1,495 @@
+/* Hotel Bell Elite — branded room stay invoice (A4 print preview) */
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Manrope:wght@500;600;700&display=swap");
+
+:root {
+  --hri-navy: #0b1f3a;
+  --hri-gold: #c9a24a;
+  --hri-gold-soft: #e8d5a3;
+  --hri-muted: #5b6b7c;
+  --hri-line: #e5e7eb;
+  --hri-row: #f7f8fa;
+  --hri-ink: #111827;
+  --hri-title-font: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --hri-tag-font: Manrope, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #e8edf3;
+  color: var(--hri-ink);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+
+.hri-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid var(--hri-line);
+}
+
+.hri-toolbar button {
+  appearance: none;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: var(--hri-navy);
+  font: 600 13px/1 inherit;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.hri-toolbar button.hri-print {
+  background: var(--hri-navy);
+  border-color: var(--hri-navy);
+  color: #fff;
+}
+
+.hri-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 18px auto 32px;
+  padding: 18mm 16mm 16mm;
+  background: #fff;
+  box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+  color: var(--hri-ink);
+}
+
+.hri-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--hri-gold);
+}
+
+.hri-brand {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+}
+
+.hri-mark {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.hri-brand-copy {
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.hri-brand-name {
+  margin: 0;
+  font-family: var(--hri-title-font);
+  font-size: 28px;
+  letter-spacing: 0.06em;
+  color: var(--hri-navy);
+  font-weight: 600;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+
+.hri-brand-rule {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  height: 1px;
+  margin: 8px 0 7px;
+  background: var(--hri-gold);
+}
+
+.hri-brand-rule-ornament {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  background: #fff;
+  border: 1.5px solid var(--hri-gold);
+  transform: translate(-50%, -50%) rotate(45deg);
+  box-sizing: border-box;
+}
+
+.hri-brand-tag {
+  margin: 0;
+  font-family: var(--hri-tag-font);
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--hri-gold);
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.hri-contact {
+  flex: 0 1 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--hri-muted);
+  text-align: left;
+}
+
+.hri-contact strong {
+  color: var(--hri-navy);
+  font-weight: 700;
+}
+
+.hri-contact-row {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: start;
+  width: 100%;
+  margin: 0;
+  text-align: left;
+}
+
+.hri-contact-row span {
+  min-width: 0;
+  text-align: left;
+  word-break: break-word;
+}
+
+.hri-contact-ico {
+  width: 12px;
+  height: 12px;
+  min-width: 12px;
+  max-width: 12px;
+  margin-top: 2px;
+  justify-self: center;
+  color: var(--hri-gold);
+}
+
+.hri-meta-row {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 22px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.hri-title {
+  margin: 0 0 12px;
+  font-family: var(--hri-title-font);
+  font-size: 34px;
+  color: var(--hri-gold);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hri-meta-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12.5px;
+  line-height: 1.7;
+}
+
+.hri-meta-list li {
+  display: grid;
+  grid-template-columns: 108px 1fr;
+  gap: 8px;
+}
+
+.hri-meta-list .k {
+  color: var(--hri-muted);
+  font-weight: 600;
+}
+
+.hri-meta-list .v {
+  color: var(--hri-navy);
+  font-weight: 700;
+}
+
+.hri-billto {
+  border: 1px solid #d7dee8;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.hri-billto-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--hri-navy);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  border-radius: 0 0 10px 0;
+}
+
+.hri-billto-body {
+  padding: 12px 14px 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--hri-navy);
+}
+
+.hri-billto-body .name {
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+
+.hri-billto-body .muted {
+  color: var(--hri-muted);
+  font-weight: 500;
+}
+
+.hri-table-wrap {
+  margin-top: 20px;
+  border: 1px solid #d7dee8;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.hri-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.hri-table thead th {
+  background: var(--hri-navy);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  padding: 11px 10px;
+  text-align: left;
+}
+
+.hri-table th.num,
+.hri-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hri-table th.center,
+.hri-table td.center {
+  text-align: center;
+}
+
+.hri-table tbody td {
+  padding: 10px;
+  border-bottom: 1px solid #eef1f5;
+  color: var(--hri-navy);
+  vertical-align: top;
+}
+
+.hri-table tbody tr:nth-child(even) td {
+  background: var(--hri-row);
+}
+
+.hri-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.hri-bottom {
+  display: grid;
+  grid-template-columns: 1fr 0.95fr;
+  gap: 18px;
+  margin-top: 18px;
+  align-items: start;
+}
+
+.hri-notes,
+.hri-totals {
+  border: 1px solid #d7dee8;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.hri-notes-head,
+.hri-totals-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+}
+
+.hri-notes-head {
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  color: var(--hri-navy);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #eef1f5;
+}
+
+.hri-notes-body {
+  padding: 12px 14px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--hri-muted);
+}
+
+.hri-totals-row .k {
+  color: var(--hri-muted);
+  font-weight: 600;
+}
+
+.hri-totals-row .v {
+  color: var(--hri-navy);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.hri-totals-row.is-total {
+  background: var(--hri-gold);
+  color: var(--hri-navy);
+}
+
+.hri-totals-row.is-total .k,
+.hri-totals-row.is-total .v {
+  color: var(--hri-navy);
+  font-weight: 800;
+}
+
+.hri-words {
+  padding: 10px 14px 12px;
+  border-top: 1px solid #eef1f5;
+  font-size: 11.5px;
+  color: var(--hri-muted);
+}
+
+.hri-words strong {
+  color: var(--hri-navy);
+}
+
+.hri-thanks {
+  margin: 28px 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--hri-gold);
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-size: 22px;
+  justify-content: center;
+}
+
+.hri-thanks::before,
+.hri-thanks::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--hri-gold-soft), transparent);
+}
+
+.hri-values {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 8px 0 22px;
+  text-align: center;
+}
+
+.hri-value {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--hri-muted);
+  font-weight: 700;
+}
+
+.hri-value-ico {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 6px;
+  border: 1.5px solid var(--hri-gold);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--hri-gold);
+}
+
+.hri-value-ico svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.hri-sign {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.hri-sign-box {
+  width: 220px;
+  text-align: center;
+}
+
+.hri-sign-line {
+  height: 48px;
+  border-bottom: 1px solid #94a3b8;
+  margin-bottom: 8px;
+}
+
+.hri-sign-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--hri-navy);
+}
+
+.hri-sign-sub {
+  font-size: 11px;
+  color: var(--hri-muted);
+  margin-top: 2px;
+}
+
+@media print {
+  html, body {
+    background: #fff !important;
+  }
+  .hri-toolbar {
+    display: none !important;
+  }
+  .hri-sheet {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 10mm 12mm;
+    box-shadow: none;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+}

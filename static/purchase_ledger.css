@@ -1,3 +1,54 @@
+/* Expense Ledger: Purchases panel fills remaining viewport height */
+#purchase-ledger-page{
+  display:flex;
+  flex-direction:column;
+  min-height:100vh;
+  box-sizing:border-box;
+}
+#purchase-ledger-page > header.se-sales-header{flex:0 0 auto}
+#purchase-ledger-page .content.se-content{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  padding-bottom:24px;
+}
+#purchase-ledger-page .pl-summary-row{flex:0 0 auto}
+#purchase-ledger-page .pl-list-panel.hbe-scroll-panel{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  margin-bottom:0;
+}
+#purchase-ledger-page .pl-list-panel > .card-hdr{flex:0 0 auto}
+#purchase-ledger-page .pl-list-panel > .card-body{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+#purchase-ledger-page .hbe-scroll-panel .pl-table-wrap,
+#purchase-ledger-page .pl-list-panel--scroll .pl-table-wrap{
+  flex:1 1 auto;
+  max-height:none;
+  min-height:min(280px,40vh);
+  height:100%;
+  overflow:auto;
+}
+@media (max-width:760px){
+  #purchase-ledger-page{min-height:0}
+  #purchase-ledger-page .content.se-content{display:block}
+  #purchase-ledger-page .pl-list-panel.hbe-scroll-panel{display:block}
+  #purchase-ledger-page .pl-list-panel > .card-body{display:block}
+  #purchase-ledger-page .hbe-scroll-panel .pl-table-wrap,
+  #purchase-ledger-page .pl-list-panel--scroll .pl-table-wrap{
+    max-height:calc(44px + 10 * 52px);
+    height:auto;
+    min-height:0;
+  }
+}
+
 body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form){
   justify-content:stretch;
 }

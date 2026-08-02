@@ -1,0 +1,23 @@
+/* Settings hub cards */
+body.settings-module .su-title-icon svg {
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body.settings-module .sd-settings-grid {
+  margin-top: 4px;
+}
+
+body.settings-module .sd-settings-card {
+  text-decoration: none;
+  color: inherit;
+}
+
+body.settings-module .sd-settings-card .md-master-card-desc {
+  margin: 6px 0 0;
+  font: 500 12.5px/1.4 Inter, system-ui, sans-serif;
+  color: #64748B;
+}

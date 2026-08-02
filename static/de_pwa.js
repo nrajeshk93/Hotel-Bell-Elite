@@ -1,6 +1,7 @@
 /**
  * Register the POS offline service worker once per browser session.
- * Forces activation of a new SW (cache version bumps) so floor data is not stale.
+ * Cache version bumps activate via skipWaiting; do not force page reloads —
+ * that made Settings / soft-nav feel like a multi-second stall.
  */
 (function () {
   'use strict';
@@ -28,7 +29,9 @@
             if (!installing) return;
             installing.addEventListener('statechange', function () {
               if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-                /* New SW ready — claim happens via skipWaiting in sw.js install. */
+                try {
+                  installing.postMessage({ type: 'SKIP_WAITING' });
+                } catch (e) {}
               }
             });
           });

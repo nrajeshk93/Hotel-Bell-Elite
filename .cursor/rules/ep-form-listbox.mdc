@@ -1,0 +1,33 @@
+---
+description: Use shared ep_form_listbox for all dropdowns
+globs: templates/**/*.{html,jinja2},static/**/*.{js,css}
+alwaysApply: false
+---
+
+# Dropdown / listbox standard
+
+Use the shared Expense Ledger–style listbox for all product dropdowns.
+
+## Required stack
+
+- Markup: `templates/partials/ep_form_listbox_macros.html` (`ep_listbox` / `ep_toolbar_listbox`) or the same `data-se-listbox` chip structure
+- Behavior: `static/ep_form_listbox.js` (`initEpListboxes`, `resetEpListbox`)
+- Styles: `static/ep_form_listbox.css` (CSS variables `--ep-listbox-*`)
+
+## Do
+
+- Prefer listbox chips over native `<select>` in UI forms, filters, and panels
+- Keep a hidden `<input>` for the selected value; update display via `resetEpListbox(fieldId, value, label)`
+- Include `ep_form_listbox.css` + `ep_form_listbox.js` on any page that adds a new listbox
+- Reuse existing classes: `ep-form-listbox`, `ep-toolbar-listbox`, `ep-combobox-listbox`
+
+## Don't
+
+- Don't invent a new dropdown visual (custom menus, Bootstrap selects, one-off panels)
+- Don't restyle open menus in page CSS unless layout requires it (width, z-index, clipping)
+- Don't use native `<select>` for branded product UI
+
+## Visual tokens (source of truth)
+
+Open panel: light blue border (`--ep-listbox-panel-border`), soft shadow, 12px radius, 6px padding.
+Options: 8px radius; selected/hover blue tint (`--ep-listbox-selected-bg` / `--ep-listbox-selected-fg`).
