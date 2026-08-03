@@ -9,11 +9,13 @@
   var PREFETCH_MAX = 20;
   var IDLE_PREFETCH_PATHS = [
     '/home',
+    '/accounts',
+    '/accounts/purchase-ledger',
+    '/accounts/cash-ledger',
     '/master',
     '/stores/indent',
     '/point-of-sale',
     '/point-of-sale/invoice',
-    '/accounts/purchase-ledger',
     '/hotel/rooms',
     '/hotel/invoice-ledger',
     '/communication-hub'
@@ -626,21 +628,20 @@
     var entry = prefetchCache.get(key);
     if(!entry) return null;
     if(entry.html && (Date.now() - entry.ts) < PREFETCH_TTL_MS){
-      prefetchCache.delete(key);
-      /* Drop stale Tables HTML prefetched before Kitchen Orders Pending banner. */
+      /* Keep cache entry so Back / re-open stays instant within TTL. */
       try{
         var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
         if(path === '/point-of-sale' && (
           entry.html.indexOf('pos-kot-tokens-modal') === -1 ||
           entry.html.indexOf('pos-today-invoices-modal') === -1
         )){
+          prefetchCache.delete(key);
           return null;
         }
       } catch(e){}
       return Promise.resolve(entry.html);
     }
     if(entry.promise){
-      prefetchCache.delete(key);
       return entry.promise.then(function(html){
         if(!html) return null;
         try{
@@ -902,7 +903,7 @@
     /* Cold first-open can inject many CSS files. Prefer a short wait so AWS/CF
        RTT does not freeze the previous page for seconds; FOUC risk is low because
        shared shell CSS is already loaded and destination CSS streams in parallel. */
-    var limit = timeoutMs == null ? 700 : timeoutMs;
+    var limit = timeoutMs == null ? 180 : timeoutMs;
     // #region agent log
     var _cssT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
     var _cssHrefs = (links || []).map(function(l){ return l && l.getAttribute ? (l.getAttribute('href') || '') : ''; });
@@ -1742,48 +1743,49 @@
 
       var finishSwap = function(){
         if(!isCurrentSoftNav(navToken)) return;
-        /* Keep previous page visible while destination JS downloads (Restaurant Tables). */
-        preloadExternalScripts(content.scripts, function(){
-          if(!isCurrentSoftNav(navToken)) return;
-          document.documentElement.classList.add('de-soft-navigating');
-          if(nextTitle) document.title = nextTitle;
-          if(nextBodyClass) document.body.className = nextBodyClass;
-          if(typeof curMain.replaceChildren === 'function'){
-            curMain.replaceChildren(frag);
-          } else {
-            while(curMain.firstChild) curMain.removeChild(curMain.firstChild);
-            curMain.appendChild(frag);
-          }
-          scrollMainToTop();
+        /* Paint first — do not block the swap on destination JS download.
+           runScriptNodes below still loads/executes scripts after the DOM swap. */
+        preloadExternalScripts(content.scripts, function(){});
+        document.documentElement.classList.add('de-soft-navigating');
+        if(nextTitle) document.title = nextTitle;
+        if(nextBodyClass) document.body.className = nextBodyClass;
+        if(typeof curMain.replaceChildren === 'function'){
+          curMain.replaceChildren(frag);
+        } else {
+          while(curMain.firstChild) curMain.removeChild(curMain.firstChild);
+          curMain.appendChild(frag);
+        }
+        scrollMainToTop();
 
-          var syncUrl = urlWithPosSettingsSection(url);
-          try{
-            var current = new URL(window.location.href);
-            var next = new URL(syncUrl, window.location.href);
-            if(current.pathname !== next.pathname || current.search !== next.search || current.hash !== next.hash){
-              history.replaceState({ deSoftNav: true }, '', syncUrl);
-            }
-          } catch(e){
-            if(window.location.href !== syncUrl){
-              try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
-            }
+        var syncUrl = urlWithPosSettingsSection(url);
+        try{
+          var current = new URL(window.location.href);
+          var next = new URL(syncUrl, window.location.href);
+          if(current.pathname !== next.pathname || current.search !== next.search || current.hash !== next.hash){
+            history.replaceState({ deSoftNav: true }, '', syncUrl);
           }
-          runScriptNodes(content.scripts, function(){
-            if(!isCurrentSoftNav(navToken)) return;
-            // #region agent log
-            try{
-              var _dbg = window.__deSoftNavDebug || {};
-              var _totalMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - (_dbg.t0 || 0);
-              fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'D',location:'de_workspace_transitions.js:finishSwap',message:'soft-nav complete',data:{path:_dbg.path||url,totalMs:Math.round(_totalMs),prefetchHit:!!_dbg.prefetchHit,htmlMs:_dbg.htmlMs||0,newCss:(addedLinks&&addedLinks.length)||0},timestamp:Date.now()})}).catch(function(){});
-            } catch(e){}
-            // #endregion
-            finalizeSoftNav();
-            restoreSidebarScrollAfterLayout(sidebarScroll);
-            markMainLoading(false);
-            finishSoftNavUi(done, navToken);
-            endSoftNavigatingClass();
-            playMainEnterReveal(curMain);
-          });
+        } catch(e){
+          if(window.location.href !== syncUrl){
+            try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
+          }
+        }
+        runScriptNodes(content.scripts, function(){
+          if(!isCurrentSoftNav(navToken)) return;
+          // #region agent log
+          try{
+            var _dbg = window.__deSoftNavDebug || {};
+            var _totalMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - (_dbg.t0 || 0);
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'D',location:'de_workspace_transitions.js:finishSwap',message:'soft-nav complete',data:{path:_dbg.path||url,totalMs:Math.round(_totalMs),prefetchHit:!!_dbg.prefetchHit,htmlMs:_dbg.htmlMs||0,newCss:(addedLinks&&addedLinks.length)||0,paintFirst:true},timestamp:Date.now()})}).catch(function(){});
+          } catch(e){}
+          // #endregion
+          finalizeSoftNav();
+          restoreSidebarScrollAfterLayout(sidebarScroll);
+          markMainLoading(false);
+          finishSoftNavUi(done, navToken);
+          endSoftNavigatingClass();
+          playMainEnterReveal(curMain);
+          /* Re-warm common destinations after each open (prefetch is no longer one-shot). */
+          try{ idlePrefetchSidebarDestinations(); } catch(e2){}
         });
       };
 
@@ -2297,12 +2299,16 @@
     }
   }
 
+  var idlePrefetchScheduled = false;
   function idlePrefetchSidebarDestinations(){
     if(!shouldSoftNavigate()) return;
+    if(idlePrefetchScheduled) return;
+    idlePrefetchScheduled = true;
     var schedule = window.requestIdleCallback || function(cb){
       return setTimeout(function(){ cb({ didTimeout: false, timeRemaining: function(){ return 0; } }); }, 400);
     };
     schedule(function(){
+      idlePrefetchScheduled = false;
       IDLE_PREFETCH_PATHS.forEach(function(path){
         try{
           var abs = new URL(path, window.location.origin).toString();
@@ -2310,16 +2316,21 @@
         } catch(e){}
       });
       prefetchRestaurantGroup();
-      /* Warm CSS for Masters/Stores so first soft-nav does not inject 12 cold sheets. */
+      /* Warm CSS so first soft-nav does not inject cold sheets over AWS RTT. */
       [
         '/static/masters_dashboard.css?v=26',
-        '/static/sales_entry_dashboard.css?v=32',
-        '/static/sales_update_header.css?v=5',
-        '/static/sales_update_premium.css?v=19',
+        '/static/sales_entry_dashboard.css?v=33',
+        '/static/sales_update_header.css?v=9',
+        '/static/sales_update_premium.css?v=22',
+        '/static/de_workspace_shell.css?v=43',
         '/static/stores.css?v=75',
-        '/static/ep_form_listbox.css?v=19',
+        '/static/ep_form_listbox.css?v=21',
         '/static/pos_tables.css?v=35',
-        '/static/pos_invoice.css?v=39'
+        '/static/pos_invoice.css?v=39',
+        '/static/purchase_ledger.css?v=29',
+        '/static/communication_hub.css?v=4',
+        '/static/hotel_rooms.css?v=59',
+        '/static/hbe_home_premium.css?v=13'
       ].forEach(function(href){
         try{
           var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]')).some(function(el){
