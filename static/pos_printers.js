@@ -298,26 +298,36 @@
     function bold(on) {
       raw(ESC + 'E' + (on ? '\x01' : '\x00'));
     }
-    function doubleH(on) {
-      /* GS ! n — bit 0/4 double height/width */
-      raw(GS + '!' + (on ? '\x11' : '\x00'));
+    /**
+     * ESC/POS character scale via GS ! n (1–8). width/height are multipliers.
+     * Example: charSize(2,2) ≈ double-wide + double-tall.
+     */
+    function charSize(widthMul, heightMul) {
+      var w = Math.max(1, Math.min(8, Number(widthMul) || 1)) - 1;
+      var h = Math.max(1, Math.min(8, Number(heightMul) || 1)) - 1;
+      raw(GS + '!' + String.fromCharCode((w << 4) | h));
     }
 
     raw(ESC + '@'); /* initialize */
     center(true);
     bold(true);
+    charSize(1, 1);
     line(meta.brand);
+    /* Spice / outlet name: +4 visual size vs body → 2×2 scale, bold. */
+    bold(true);
+    charSize(2, 2);
     line(String(meta.business).toUpperCase());
+    charSize(1, 1);
     bold(false);
     center(false);
     line(rule);
     line('Order No. : ' + orderNo);
     line('Order Type : ' + orderType);
     line('Date : ' + kotFormatDate(when));
+    /* Table No: was 2×2; reduce ~2 steps → normal size, bold only. */
     bold(true);
-    doubleH(true);
+    charSize(1, 1);
     line('Table No. : ' + tableNo);
-    doubleH(false);
     bold(false);
     line('Kitchen : ' + meta.kitchenLabel);
     line('User : ' + meta.userLabel);
@@ -455,7 +465,7 @@
       var body = JSON.stringify(payload);
       fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
       fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-    })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'G',location:'pos_printers.js:printKotHtml.attempt',message:'calling HotelPrintAgent.print',data:{role:role,contentType:job.contentType,contentEncoding:job.contentEncoding,textLen:text?String(text).length:0,escposLen:escposB64?escposB64.length:0,textPreview:text?String(text).slice(0,100):''},timestamp:Date.now()});
+    })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'H',location:'pos_printers.js:printKotHtml.attempt',message:'calling HotelPrintAgent.print',data:{role:role,contentType:job.contentType,contentEncoding:job.contentEncoding,textLen:text?String(text).length:0,escposLen:escposB64?escposB64.length:0,fontTune:{spice:'2x2 bold',tableNo:'1x1 bold (was 2x2)'},textPreview:text?String(text).slice(0,100):''},timestamp:Date.now()});
     // #endregion
 
     return global.HotelPrintAgent.print(job)
