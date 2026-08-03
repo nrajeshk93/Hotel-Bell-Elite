@@ -16,6 +16,7 @@
 {% set pos_open = nav_section == 'pos' %}
 {% set bar_pos_open = nav_section == 'bar_pos' %}
 {% set hotel_open = nav_section == 'hotel' %}
+{% set communication_hub_open = nav_section == 'communication_hub' %}
 {% set master_open = nav_section == 'master' %}
 {% set report_open = nav_section == 'report' %}
 {% set settings_open = nav_section == 'settings' %}
@@ -166,6 +167,19 @@
       <div class="de-nav-sub" id="de-nav-hotel-sub">
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'rooms' %} is-active{% endif %}" id="de-nav-hotel-rooms" href="{{ url_for('hotel_rooms') }}"{% if hotel_open and hotel_view == 'rooms' %} aria-current="page"{% endif %}>Rooms</a>
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-hotel-invoice-ledger" href="{{ url_for('hotel_invoice_ledger') }}"{% if hotel_open and hotel_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if has_dashboard_access('communication_hub') %}
+    <div class="de-nav-group{% if communication_hub_open %} is-open is-child-active{% endif %}" id="de-nav-communication-hub-group">
+      <button type="button" class="de-nav-group-toggle" id="de-nav-communication-hub-toggle" aria-expanded="{{ 'true' if communication_hub_open else 'false' }}" aria-controls="de-nav-communication-hub-sub" onclick="toggleDeNavGroup(event, 'de-nav-communication-hub-group')">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span class="de-nav-label-multiline">Communication<br>Hub</span>
+        <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <div class="de-nav-sub" id="de-nav-communication-hub-sub">
+        <a class="de-nav-subitem{% if communication_hub_open %} is-active{% endif %}" id="de-nav-communication-hub-inbox" href="{{ url_for('communication_hub') }}"{% if communication_hub_open %} aria-current="page"{% endif %}>Inbox</a>
       </div>
     </div>
     {% endif %}

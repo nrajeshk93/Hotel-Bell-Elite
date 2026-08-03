@@ -407,7 +407,84 @@ def process_indent_button_replies(conn, payload: dict) -> list[str]:
     return results
 
 
-def handle_events_post(request, get_db, ensure_stores_schema):
+def process_hub_inbound_messages(conn, payload: dict) -> list[str]:
+    """Persist non-indent inbound WhatsApp traffic into Communication Hub."""
+    from communication_hub import ingest_inbound_whatsapp_message
+
+    results = []
+    expected_phone_id = wa.whatsapp_phone_number_id()
+    for phone_number_id, message, contacts in _iter_inbound_messages(payload):
+        if expected_phone_id and phone_number_id and phone_number_id != expected_phone_id:
+            continue
+
+        button_id, _title, is_button_click = _extract_button_reply(message)
+        if is_button_click:
+            decision, approval_token = parse_token_button_id(button_id)
+            if decision and approval_token:
+                # Indent Approve/Reject — already handled separately; skip Hub duplicate.
+                continue
+
+        sender = str(message.get("from") or "")
+        inbound_id = str(message.get("id") or "").strip()
+        msg_type = (message.get("type") or "").strip().lower() or "text"
+        profile_name = _profile_name_for_sender(contacts, sender)
+
+        body = ""
+        media_mime = ""
+        media_filename = ""
+        media_size = 0
+        hub_type = "text"
+
+        if msg_type == "text":
+            text = message.get("text") if isinstance(message.get("text"), dict) else {}
+            body = str(text.get("body") or "").strip()
+            hub_type = "text"
+        elif msg_type == "image":
+            image = message.get("image") if isinstance(message.get("image"), dict) else {}
+            body = str(image.get("caption") or "").strip() or "Photo"
+            media_mime = str(image.get("mime_type") or "image/jpeg")
+            hub_type = "image"
+        elif msg_type == "document":
+            document = message.get("document") if isinstance(message.get("document"), dict) else {}
+            media_filename = str(document.get("filename") or "").strip()
+            body = str(document.get("caption") or "").strip() or media_filename or "Document"
+            media_mime = str(document.get("mime_type") or "application/octet-stream")
+            hub_type = "document"
+        elif msg_type == "audio":
+            audio = message.get("audio") if isinstance(message.get("audio"), dict) else {}
+            body = "Audio"
+            media_mime = str(audio.get("mime_type") or "audio/ogg")
+            hub_type = "audio"
+        elif msg_type == "button" or msg_type == "interactive":
+            # Non-indent button click — store title/id as text for visibility.
+            body = (button_id or _title or "Button reply").strip()
+            hub_type = "other"
+        else:
+            body = f"[{msg_type or 'message'}]"
+            hub_type = "other"
+
+        if not sender:
+            continue
+
+        saved = ingest_inbound_whatsapp_message(
+            conn,
+            phone=sender,
+            body=body,
+            message_type=hub_type,
+            wa_message_id=inbound_id,
+            display_name=profile_name,
+            media_mime=media_mime,
+            media_filename=media_filename,
+            media_size=media_size,
+        )
+        if saved:
+            results.append(f"hub_in from={sender} type={hub_type} id={inbound_id[:40]}")
+        else:
+            results.append(f"hub_skip from={sender} type={hub_type}")
+    return results
+
+
+def handle_events_post(request, get_db, ensure_stores_schema, ensure_communication_hub_schema=None):
     payload = request.get_json(silent=True)
     if payload is None:
         try:
@@ -423,10 +500,14 @@ def handle_events_post(request, get_db, ensure_stores_schema):
     conn = get_db()
     try:
         ensure_stores_schema(conn)
+        if ensure_communication_hub_schema:
+            ensure_communication_hub_schema(conn)
         results = process_indent_button_replies(conn, payload)
-        if results:
+        hub_results = process_hub_inbound_messages(conn, payload)
+        if results or hub_results:
             conn.commit()
             summary_bits.extend(results)
+            summary_bits.extend(hub_results)
         else:
             for entry in payload.get("entry") or []:
                 for change in entry.get("changes") or []:

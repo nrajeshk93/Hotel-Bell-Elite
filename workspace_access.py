@@ -115,6 +115,14 @@ _WORKSPACE_MODULE_REGISTRY = (
         "permission_children": (),
     },
     {
+        "key": "communication_hub",
+        "label": "Communication Hub",
+        # WhatsApp inbox — module-level access.
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
+    },
+    {
         "key": "stores",
         "label": "Procurement & Inventory",
         "permission_scope": "stores",
@@ -211,6 +219,10 @@ _ACCESS_MODULE_UI_META = {
         "icon": "bed",
         "description": "Front-office room board — occupancy status by floor and room type.",
     },
+    "communication_hub": {
+        "icon": "message-circle",
+        "description": "WhatsApp conversations with customers and vendors — send, receive, and manage messages.",
+    },
     "stores": {
         "icon": "store",
         "description": "Simple indent-to-stock flow for Bar and Kitchen stores.",
@@ -290,6 +302,14 @@ _HOTEL_ROOMS_ENDPOINTS = {
     "hotel_invoice_ledger_settle_api",
     "hotel_settings",
     "hotel_settings_api",
+}
+
+_COMMUNICATION_HUB_ENDPOINTS = {
+    "communication_hub",
+    "communication_hub_api_conversations",
+    "communication_hub_api_conversation_create",
+    "communication_hub_api_messages",
+    "communication_hub_api_message_send",
 }
 
 _STORES_ENDPOINT_GROUPS = {
@@ -903,6 +923,8 @@ def get_endpoint_dashboard_module(endpoint):
         return "point_of_sale_bar"
     if endpoint in _HOTEL_ROOMS_ENDPOINTS:
         return "hotel_rooms"
+    if endpoint in _COMMUNICATION_HUB_ENDPOINTS:
+        return "communication_hub"
     if endpoint in _STORES_ENDPOINTS or bare in _STORES_ENDPOINTS:
         return "stores"
     if endpoint in _MASTER_ENDPOINTS:

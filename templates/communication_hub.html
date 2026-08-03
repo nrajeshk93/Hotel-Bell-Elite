@@ -1,0 +1,206 @@
+{% set de_soft_body_class = 'de-open su-module communication-hub-module' %}
+{% set de_soft_page_title = 'Communication Hub | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Communication Hub | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=43">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=4">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module communication-hub-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=4">
+{% endif %}
+
+<div class="main-wrapper" id="communication-hub-page"
+     data-communication-hub
+     data-conversations-url="{{ url_for('communication_hub_api_conversations') }}"
+     data-create-url="{{ url_for('communication_hub_api_conversation_create') }}"
+     data-messages-url-template="{{ url_for('communication_hub_api_messages', conversation_id=0) }}"
+     data-whatsapp-configured="{{ '1' if whatsapp_configured else '0' }}"
+     data-user-name="{{ current_user_name|e }}">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>Communication Hub</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools ch-header-tools">
+        <label class="ch-top-search" aria-label="Search conversations">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input type="search" id="ch-global-search" placeholder="Search conversations…" autocomplete="off">
+          <kbd>⌘K</kbd>
+        </label>
+        {% if not whatsapp_configured %}
+        <span class="ch-wa-badge ch-wa-badge--warn" title="Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID">WhatsApp not configured</span>
+        {% else %}
+        <span class="ch-wa-badge">WhatsApp connected</span>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <div class="content se-content ch-content">
+    <div class="ch-shell">
+      <aside class="ch-sidebar" aria-label="Conversations">
+        <div class="ch-sidebar-head">
+          <h2>Conversations</h2>
+          <button type="button" class="ch-icon-btn" id="ch-new-chat-btn" aria-label="Start new chat" title="New chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          </button>
+        </div>
+        <label class="ch-list-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input type="search" id="ch-list-search" placeholder="Search or start new chat" autocomplete="off">
+        </label>
+        <div class="ch-filter-row">
+          <button type="button" class="ch-filter-chip is-active" data-filter="all">
+            All <span class="ch-filter-count" id="ch-conv-count">{{ conversations|length }}</span>
+          </button>
+        </div>
+        <div class="ch-conv-list" id="ch-conv-list" role="list">
+          {% if conversations %}
+            {% for c in conversations %}
+            <button type="button"
+                    class="ch-conv-item"
+                    role="listitem"
+                    data-id="{{ c.id }}"
+                    data-phone="{{ c.phone|e }}"
+                    data-label="{{ c.label|e }}"
+                    data-preview="{{ c.last_preview|e }}"
+                    data-unread="{{ c.unread_count }}"
+                    data-at="{{ c.last_message_at|e }}">
+              <span class="ch-avatar" aria-hidden="true">{{ (c.label or '?')[:2]|upper }}</span>
+              <span class="ch-conv-main">
+                <span class="ch-conv-top">
+                  <span class="ch-conv-name">{{ c.label }}</span>
+                  <span class="ch-conv-time">{{ c.last_message_at[11:16] if c.last_message_at and c.last_message_at|length >= 16 else (c.last_message_at or '') }}</span>
+                </span>
+                <span class="ch-conv-bottom">
+                  <span class="ch-conv-preview">{{ c.last_preview or 'No messages yet' }}</span>
+                  {% if c.unread_count %}
+                  <span class="ch-unread">{{ c.unread_count }}</span>
+                  {% endif %}
+                </span>
+              </span>
+            </button>
+            {% endfor %}
+          {% else %}
+            <div class="ch-empty-list" id="ch-empty-list">No conversations yet. Start a chat with a phone number.</div>
+          {% endif %}
+        </div>
+      </aside>
+
+      <section class="ch-thread" aria-label="Chat">
+        <div class="ch-thread-empty" id="ch-thread-empty">
+          <div class="ch-thread-empty-card">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <h3>Select a conversation</h3>
+            <p>Choose a chat from the left, or start a new WhatsApp conversation by phone number.</p>
+            <button type="button" class="btn btn-primary" id="ch-empty-new-btn">New chat</button>
+          </div>
+        </div>
+
+        <div class="ch-thread-active" id="ch-thread-active" hidden>
+          <header class="ch-thread-head">
+            <div class="ch-thread-peer">
+              <span class="ch-avatar ch-avatar--lg" id="ch-peer-avatar" aria-hidden="true">?</span>
+              <div>
+                <div class="ch-peer-name-row">
+                  <strong id="ch-peer-name">—</strong>
+                  <span class="ch-wa-pill">WhatsApp</span>
+                </div>
+                <div class="ch-peer-sub" id="ch-peer-phone">—</div>
+              </div>
+            </div>
+          </header>
+          <div class="ch-messages" id="ch-messages" aria-live="polite"></div>
+          <form class="ch-composer" id="ch-composer" autocomplete="off">
+            <button type="button" class="ch-composer-icon" disabled aria-label="Emoji (coming soon)" title="Coming soon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
+            </button>
+            <button type="button" class="ch-composer-icon" disabled aria-label="Attach (coming soon)" title="Coming soon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <div class="ch-composer-input-wrap">
+              <input type="text" id="ch-composer-input" placeholder="Type a message…" maxlength="4096" autocomplete="off">
+            </div>
+            <button type="submit" class="ch-send-btn" id="ch-send-btn">
+              Send
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+            </button>
+          </form>
+          <div class="ch-send-error" id="ch-send-error" hidden></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="ch-new-modal" aria-hidden="true">
+  <div class="ch-modal" role="dialog" aria-modal="true" aria-labelledby="ch-new-title">
+    <div class="ch-modal-head">
+      <h2 id="ch-new-title">New WhatsApp chat</h2>
+      <button type="button" class="ch-icon-btn" id="ch-new-close" aria-label="Close">×</button>
+    </div>
+    <p class="ch-modal-copy">Enter a phone number with country code (e.g. 919876543210). Free-form WhatsApp replies work inside the customer care window.</p>
+    <label class="ch-field">
+      <span>Phone number</span>
+      <input type="tel" id="ch-new-phone" placeholder="919876543210" autocomplete="tel">
+    </label>
+    <label class="ch-field">
+      <span>Display name (optional)</span>
+      <input type="text" id="ch-new-name" placeholder="Contact name" autocomplete="name">
+    </label>
+    <div class="ch-modal-error" id="ch-new-error" hidden></div>
+    <div class="ch-modal-actions">
+      <button type="button" class="btn" id="ch-new-cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" id="ch-new-submit">Open chat</button>
+    </div>
+  </div>
+</div>
+
+<script type="application/json" id="ch-bootstrap">{{ conversations|tojson }}</script>
+<script src="{{ url_for('static', filename='communication_hub.js') }}?v=1"></script>
+<script>
+if (typeof window.initCommunicationHubPage === 'function') {
+  window.initCommunicationHubPage();
+}
+</script>
+
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

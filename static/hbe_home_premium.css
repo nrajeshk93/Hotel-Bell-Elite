@@ -267,6 +267,7 @@ body.home-module .de-main-inner.db-main-inner--home{
     display:grid;
     grid-template-columns:repeat(3,minmax(0,1fr));
     gap:32px;
+    align-items:stretch;
   }
   .db-home .db-home-search{
     position:relative;
@@ -380,7 +381,10 @@ body.home-module .de-main-inner.db-main-inner--home{
   .db-home .db-home-card{
     width:100%;
     min-width:0;
+    height:210px;
     min-height:210px;
+    max-height:210px;
+    box-sizing:border-box;
     display:flex;
     flex-direction:column;
     padding:28px 28px 24px;
@@ -393,6 +397,7 @@ body.home-module .de-main-inner.db-main-inner--home{
     cursor:pointer;
     position:relative;
     opacity:0;
+    overflow:hidden;
     animation:db-home-fade-up .4s ease-out forwards;
     transition:transform var(--de-motion-slow, 360ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1)),box-shadow var(--de-motion-slow, 360ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1)),border-color var(--de-motion-slow, 360ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1));
   }
@@ -468,11 +473,19 @@ body.home-module .de-main-inner.db-main-inner--home{
   .db-home .db-kpi-section{margin:0 0 28px;padding:0}
   .db-home .db-home-card h2{
     margin-top:20px;
+    margin-bottom:0;
+    flex:1 1 auto;
+    min-height:0;
     font-size:24px;
     line-height:1.25;
     font-weight:600;
     color:var(--home-title);
     letter-spacing:-.02em;
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:2;
+    line-clamp:2;
+    overflow:hidden;
   }
   .db-home .db-home-card-foot{
     display:flex;
@@ -481,6 +494,7 @@ body.home-module .de-main-inner.db-main-inner--home{
     gap:0;
     min-height:36px;
     margin-top:auto;
+    flex-shrink:0;
     position:relative;
     overflow:visible;
   }
@@ -593,6 +607,6 @@ body.home-module .de-main-inner.db-main-inner--home{
     
     .db-home .db-home-title h1{font-size:28px}
     .db-home .db-home-grid{grid-template-columns:1fr;gap:20px}
-    .db-home .db-home-card{min-height:190px}
+    .db-home .db-home-card{height:190px;min-height:190px;max-height:190px;padding:24px 22px 20px}
     .db-home .db-home-card h2{font-size:20px}
   }

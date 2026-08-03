@@ -602,6 +602,19 @@ def _notify_indent_pending_whatsapp_locked(
                     indent_id,
                     phone,
                 )
+            try:
+                from communication_hub import record_outbound_hub_message
+
+                record_outbound_hub_message(
+                    conn,
+                    phone,
+                    body_text,
+                    wa_message_id=button_wa_id or "",
+                    status="sent",
+                    message_type="other",
+                )
+            except Exception:
+                log.exception("Communication Hub mirror of indent WhatsApp send failed")
             conn.commit()
             log.info(
                 "Interactive Message Sent indent_id=%s token=%s approve_id=%s reject_id=%s "

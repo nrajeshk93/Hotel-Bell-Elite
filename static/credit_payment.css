@@ -197,6 +197,39 @@ body.su-module .cp-select-row.is-locked-out{opacity:.55}
 body.su-module .cp-balance{color:#B45309;font-weight:800}
 
 body.su-module .cp-col-actions{white-space:nowrap;width:140px}
+/* History: keep Total/Actions in view — long expense-code lists must wrap, not widen the table. */
+#credit-payment-page #cp-history-table .pl-col-count{
+  width:88px;
+  white-space:nowrap;
+  text-align:right;
+}
+#credit-payment-page #cp-history-table .cp-expense-codes{
+  white-space:normal;
+  max-width:min(320px, 36vw);
+  vertical-align:top;
+}
+#credit-payment-page #cp-history-table .cp-expense-code-list{
+  display:flex;
+  flex-wrap:wrap;
+  gap:4px;
+  align-items:center;
+}
+#credit-payment-page #cp-history-table .cp-expense-code-list .pl-expense-code{
+  margin:0;
+}
+#credit-payment-page #cp-history-table th.cp-col-actions,
+#credit-payment-page #cp-history-table td.cp-col-actions{
+  position:sticky;
+  right:0;
+  z-index:3;
+  background:#fff;
+  box-shadow:-8px 0 12px -12px rgba(15,23,42,.35);
+  text-align:right;
+}
+#credit-payment-page #cp-history-table thead th.cp-col-actions{
+  background:#F8FAFD;
+  z-index:4;
+}
 body.su-module .cp-link-btn{
   border:0;
   background:transparent;

@@ -5574,6 +5574,62 @@ _HOTEL_ROOMS_SEED_SPEC = (
 )
 
 
+def ensure_communication_hub_schema(conn):
+    """WhatsApp Communication Hub conversations and messages."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wa_conversations (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone_e164       TEXT    NOT NULL UNIQUE,
+            display_name     TEXT    NOT NULL DEFAULT '',
+            last_message_at  TEXT,
+            last_preview     TEXT    NOT NULL DEFAULT '',
+            unread_count     INTEGER NOT NULL DEFAULT 0,
+            created_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            updated_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wa_messages (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            conversation_id INTEGER NOT NULL,
+            direction       TEXT    NOT NULL,
+            message_type    TEXT    NOT NULL DEFAULT 'text',
+            body            TEXT    NOT NULL DEFAULT '',
+            media_mime      TEXT    NOT NULL DEFAULT '',
+            media_filename  TEXT    NOT NULL DEFAULT '',
+            media_size      INTEGER NOT NULL DEFAULT 0,
+            wa_message_id   TEXT,
+            status          TEXT    NOT NULL DEFAULT 'queued',
+            error           TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            created_by      INTEGER,
+            FOREIGN KEY (conversation_id) REFERENCES wa_conversations(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_wa_messages_wa_id
+        ON wa_messages(wa_message_id) WHERE wa_message_id IS NOT NULL AND wa_message_id <> ''
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_wa_messages_conversation
+        ON wa_messages(conversation_id, created_at, id)
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_wa_conversations_last
+        ON wa_conversations(last_message_at DESC, id DESC)
+        """
+    )
+
+
 def ensure_hotel_rooms_schema(conn):
     """Create singleton hotel_rooms_layout JSON table if missing."""
     conn.execute(
@@ -10555,6 +10611,7 @@ def init_db():
     ensure_hotel_rooms_schema(conn)
     get_hotel_rooms_layout(conn)
     ensure_agencies_schema(conn)
+    ensure_communication_hub_schema(conn)
 
     conn.commit()
     conn.close()

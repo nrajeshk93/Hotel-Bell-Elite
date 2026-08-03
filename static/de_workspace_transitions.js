@@ -15,7 +15,8 @@
     '/point-of-sale/invoice',
     '/accounts/purchase-ledger',
     '/hotel/rooms',
-    '/hotel/invoice-ledger'
+    '/hotel/invoice-ledger',
+    '/communication-hub'
   ];
   var SKIP_SCRIPT_PARTS = [
     'de_fullscreen.js',
@@ -588,6 +589,7 @@
     try{
       var path = new URL(url, window.location.href).pathname.toLowerCase();
       if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1) return;
+      if(path === '/accounts/credit-payment/report' || path === '/accounts/purchase-verification/report') return;
       /* Payroll HTML /report — not a file download. Do not treat /reports hub as export. */
       if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path)) return;
     } catch(e){}
@@ -741,6 +743,11 @@
       }
       if(path.indexOf('/hotel/rooms/') === 0){
         return !!main.querySelector('#hotel-room-detail-page, [data-hotel-room-detail]');
+      }
+
+      /* Communication Hub */
+      if(path === '/communication-hub'){
+        return !!main.querySelector('#communication-hub-page, [data-communication-hub]');
       }
 
       /* Home / masters / reports / access */
@@ -2033,6 +2040,8 @@
     } catch(e){}
     if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1 || path.indexOf('/purchase-order') !== -1) return true;
     if(path.indexOf('/export/') !== -1) return true;
+    /* Accounts Excel downloads (not HTML report pages). */
+    if(path === '/accounts/credit-payment/report' || path === '/accounts/purchase-verification/report') return true;
     if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path) || /\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(rawHref)){
       return true;
     }
@@ -2183,6 +2192,9 @@
     }
     if(typeof window.initHotelInvoiceLedgerPage === 'function'){
       window.initHotelInvoiceLedgerPage();
+    }
+    if(typeof window.initCommunicationHubPage === 'function'){
+      window.initCommunicationHubPage();
     }
     if(typeof window.initPosSettingsPage === 'function'){
       window.initPosSettingsPage();

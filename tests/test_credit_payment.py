@@ -616,8 +616,116 @@ class CreditPaymentAccessTests(unittest.TestCase):
             "create_purchase_verification",
             "delete_purchase_verification",
             "purchase_verification_detail",
+            "export_credit_payment_report",
+            "export_purchase_verification_report",
         ):
             self.assertEqual(get_endpoint_dashboard_module(endpoint), "accounts")
+
+
+class CreditPaymentReportExportTests(unittest.TestCase):
+    """Excel export must work even when vendor_payment_template.xlsx is absent."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        from unittest import mock
+
+        import db as db_mod
+
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+
+        self.app = app_module.app
+        self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
+
+        conn = db_mod.get_db()
+        try:
+            admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+            self.admin_id = admin["id"]
+            cur = conn.execute(
+                """INSERT INTO suppliers
+                   (name, gst, bank_account_number, ifsc_code)
+                   VALUES (?, ?, ?, ?)""",
+                ("ICICI Vendor", "29AAAAA0000A1Z5", "123456789012", "ICIC0001234"),
+            )
+            supplier_id = cur.lastrowid
+            cur = conn.execute(
+                """INSERT INTO sales_update_expenses
+                   (company, location, sales_date, description, amount, payment_type,
+                    expense_code, supplier_id, category)
+                   VALUES ('HBE', 'Hotel', '2026-07-10', 'Veg supplies', 2500, 'credit',
+                           'HBE-EX-RPT', ?, 'vegetables')""",
+                (supplier_id,),
+            )
+            expense_id = cur.lastrowid
+            cur = conn.execute(
+                """INSERT INTO purchase_verifications
+                   (company, supplier_id, verification_date, verification_method,
+                    verification_account, total_amount)
+                   VALUES ('HBE', ?, '2026-07-11', 'cash', 'administrator', 2500)""",
+                (supplier_id,),
+            )
+            verification_id = cur.lastrowid
+            conn.execute(
+                """INSERT INTO purchase_verification_allocations
+                   (purchase_verification_id, expense_id, amount)
+                   VALUES (?, ?, ?)""",
+                (verification_id, expense_id, 2500),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.user = {
+            "id": self.admin_id,
+            "username": "admin",
+            "full_name": "Administrator",
+            "is_admin": True,
+            "is_active": True,
+            "dashboard_access": set(),
+            "stores_access": set(),
+        }
+        self._get_user_patch = mock.patch.object(
+            app_module, "get_current_user", return_value=self.user
+        )
+        self._get_user_patch.start()
+        self._os = os
+        self._db_mod = db_mod
+
+    def tearDown(self):
+        self._get_user_patch.stop()
+        self._db_mod.DATABASE_PATH = self._orig_path
+        try:
+            self._os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def test_export_generates_xlsx_without_template(self):
+        self.assertFalse(self._os.path.isfile(app_module._VENDOR_PAYMENT_TEMPLATE))
+        resp = self.client.get("/accounts/credit-payment/report?supplier=all")
+        self.assertEqual(resp.status_code, 200, f"status={resp.status_code}")
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            resp.content_type or "",
+        )
+        self.assertEqual(resp.data[:2], b"PK")
+        cd = resp.headers.get("Content-Disposition") or ""
+        self.assertIn("credit_payment_report_", cd)
+
+        from openpyxl import load_workbook
+        import io
+
+        wb = load_workbook(io.BytesIO(resp.data))
+        ws = wb.active
+        self.assertEqual(ws.cell(1, 1).value, "PYMT_PROD_TYPE_CODE")
+        self.assertEqual(ws.cell(2, 1).value, "PAB_VENDOR")
+        self.assertEqual(ws.cell(2, 4).value, "ICICI Vendor")
+        self.assertEqual(float(ws.cell(2, 7).value), 2500.0)
 
 
 if __name__ == "__main__":

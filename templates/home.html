@@ -9,7 +9,7 @@
 <title>Home | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=13">
 <script>
 (function(){
   try{
@@ -23,7 +23,7 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=13">
 {% endif %}
 <div class="de-main-inner db-main-inner--home">
   <div id="dashboard-home-panel" class="db-home">
@@ -170,6 +170,19 @@
       </a>
       {% endif %}
 
+      {% if has_dashboard_access('communication_hub') %}
+      <a class="db-home-card db-home-card--emerald" role="listitem" href="{{ url_for('communication_hub') }}" data-search="communication hub whatsapp messages chat inbox customers vendors" aria-label="Open Communication Hub">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h2>Communication Hub</h2>
+        <div class="db-home-card-foot">
+          <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
+        </div>
+        <p class="db-home-card-desc">WhatsApp conversations — send, receive, and manage messages.</p>
+      </a>
+      {% endif %}
+
       {% if has_dashboard_access('stores') %}
       <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('stores') }}" data-search="procurement inventory purchase stores stock warehouse materials indent bar restaurant" aria-label="Open Procurement & Inventory">
         <div class="db-home-card-icon" aria-hidden="true">
@@ -222,7 +235,7 @@
       </a>
       {% endif %}
 
-      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('point_of_sale_bar') and not has_dashboard_access('hotel_rooms') and not has_dashboard_access('stores') and not has_dashboard_access('master') and not has_dashboard_access('reports') and not has_dashboard_access('settings') %}
+      {% if not has_dashboard_access('sales_analytics') and not has_dashboard_access('access_management') and not has_dashboard_access('accounts') and not has_dashboard_access('employee_payroll') and not has_dashboard_access('point_of_sale') and not has_dashboard_access('point_of_sale_bar') and not has_dashboard_access('hotel_rooms') and not has_dashboard_access('communication_hub') and not has_dashboard_access('stores') and not has_dashboard_access('master') and not has_dashboard_access('reports') and not has_dashboard_access('settings') %}
       <div class="db-home-empty" role="status">
         <h2>No modules assigned yet</h2>
         <p>This account is active, but no dashboard modules have been assigned. Ask an administrator to grant access so your modules appear here.</p>

@@ -46,6 +46,7 @@ from db import (
     ensure_cash_ledger_schema,
     ensure_customers_schema,
     ensure_agencies_schema,
+    ensure_communication_hub_schema,
     ensure_hotel_rooms_schema,
     ensure_pos_schema,
     ensure_stores_schema,
@@ -170,6 +171,7 @@ from hotel_id_documents import process_uploaded_id_document, resolve_stored_id_d
 from masters import build_masters_dashboard
 from reports import build_reports_dashboard
 from stores import register_stores
+from communication_hub import register_communication_hub
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "hotel-bell-elite-dev-key-change-in-production")
@@ -455,6 +457,11 @@ register_stores(
     pop_auth_notice=_pop_auth_notice,
     get_user=get_current_user,
 )
+register_communication_hub(
+    app,
+    pop_auth_notice=_pop_auth_notice,
+    get_user=get_current_user,
+)
 
 
 def _access_nav_view():
@@ -498,7 +505,7 @@ def whatsapp_webhook():
     if request.method == "GET":
         body, status, headers = handle_verification_get(request)
         return body, status, headers
-    return handle_events_post(request, get_db, ensure_stores_schema)
+    return handle_events_post(request, get_db, ensure_stores_schema, ensure_communication_hub_schema)
 
 
 @app.before_request
@@ -7098,6 +7105,28 @@ _VENDOR_PAYMENT_TEMPLATE = os.path.join(
 _VENDOR_DEBIT_ACC_NO = "387905000829"
 _VENDOR_MOBILE_NUM = 9933226086
 _VENDOR_EMAIL_ID = "mithra.varma@gmail.com"
+# ICICI CIB PAB_VENDOR upload headers (A–S) when the local .xlsx template is absent.
+_VENDOR_PAYMENT_HEADERS = (
+    "PYMT_PROD_TYPE_CODE",
+    "PYMT_MODE",
+    "DEBIT_ACC_NO",
+    "BNF_NAME",
+    "BENE_ACC_NO",
+    "BENE_IFSC",
+    "AMOUNT",
+    "CREDIT_NARR",
+    "PYMT_REF_NO",
+    "MOBILE_NUM",
+    "EMAIL_ID",
+    "REMARK",
+    "PYMT_DATE",
+    "REF1",
+    "REF2",
+    "REF3",
+    "REF4",
+    "REF5",
+    "REF6",
+)
 
 
 def _vendor_payment_category_narration(category):
@@ -7155,10 +7184,8 @@ def _credit_payment_report_rows(conn, date_from, date_to, supplier_id=None):
 @app.route("/accounts/credit-payment/report")
 def export_credit_payment_report():
     """ICICI vendor payment Excel for outstanding credit suppliers."""
-    from openpyxl import load_workbook
-
-    if not os.path.isfile(_VENDOR_PAYMENT_TEMPLATE):
-        return ("Credit payment report template is missing.", 500)
+    from openpyxl import Workbook, load_workbook
+    from openpyxl.styles import Font
 
     today = date.today()
     date_from, date_to, _date_filter_active = _resolve_optional_filter_date_range(
@@ -7174,10 +7201,18 @@ def export_credit_payment_report():
     finally:
         conn.close()
 
-    wb = load_workbook(_VENDOR_PAYMENT_TEMPLATE)
-    ws = wb.active
-    if ws.max_row > 1:
-        ws.delete_rows(2, ws.max_row - 1)
+    if os.path.isfile(_VENDOR_PAYMENT_TEMPLATE):
+        wb = load_workbook(_VENDOR_PAYMENT_TEMPLATE)
+        ws = wb.active
+        if ws.max_row > 1:
+            ws.delete_rows(2, ws.max_row - 1)
+    else:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Credit Payment"
+        for col, title in enumerate(_VENDOR_PAYMENT_HEADERS, start=1):
+            cell = ws.cell(row=1, column=col, value=title)
+            cell.font = Font(bold=True)
 
     payment_date = today
     for item in rows:

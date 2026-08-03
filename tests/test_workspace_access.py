@@ -56,6 +56,7 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Restaurant",
                 "Bar",
                 "Hotel",
+                "Communication Hub",
                 "Procurement & Inventory",
                 "Master",
                 "Report",
@@ -219,6 +220,9 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("supplier_master"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("save_supplier"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_supplier_report"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("hotel_rooms"), "hotel_rooms")
+        self.assertEqual(get_endpoint_dashboard_module("communication_hub"), "communication_hub")
+        self.assertEqual(get_endpoint_dashboard_module("communication_hub_api_conversations"), "communication_hub")
         self.assertEqual(get_endpoint_dashboard_module("stores"), "stores")
         self.assertEqual(get_endpoint_dashboard_module("stores_indent"), "stores")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale"), "point_of_sale")

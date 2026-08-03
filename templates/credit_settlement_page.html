@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=41">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=14">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -356,11 +356,11 @@
                 {% if settlement_labels.show_verification_account %}
                 <th class="pl-sortable" data-sort="account" scope="col" tabindex="0" aria-sort="none">Account</th>
                 {% endif %}
+                <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Total</th>
+                <th class="pl-sortable pl-col-count" data-sort="expenses" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Expenses</th>
                 {% if settlement_labels.show_history_expense_ids %}
                 <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">Expense ID</th>
                 {% endif %}
-                <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Total</th>
-                <th class="pl-sortable" data-sort="expenses" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Expenses</th>
                 <th class="cp-col-actions">Actions</th>
               </tr>
             </thead>
@@ -394,17 +394,23 @@
                 {% if settlement_labels.show_verification_account %}
                 <td data-sort-value="{{ entry.verification_account or '' }}">{{ entry.verification_account or '—' }}</td>
                 {% endif %}
+                <td class="pl-col-amount pl-amount" data-amount="{{ entry.total_amount }}" data-sort-value="{{ entry.total_amount }}">{{ entry.total_amount }}</td>
+                <td class="pl-col-count" data-sort-value="{{ entry.allocation_count }}">{{ entry.allocation_count }}</td>
                 {% if settlement_labels.show_history_expense_ids %}
-                <td class="pl-col-code" data-sort-value="{{ entry.expense_codes or '' }}">
+                <td class="pl-col-code cp-expense-codes" data-sort-value="{{ entry.expense_codes or '' }}">
                   {% if entry.expense_codes %}
-                  <span class="pl-expense-code">{{ entry.expense_codes }}</span>
+                  <div class="cp-expense-code-list">
+                    {% for code in entry.expense_codes.split(', ') %}
+                    {% if code %}
+                    <span class="pl-expense-code">{{ code }}</span>
+                    {% endif %}
+                    {% endfor %}
+                  </div>
                   {% else %}
                   —
                   {% endif %}
                 </td>
                 {% endif %}
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.total_amount }}" data-sort-value="{{ entry.total_amount }}">{{ entry.total_amount }}</td>
-                <td data-sort-value="{{ entry.allocation_count }}">{{ entry.allocation_count }}</td>
                 <td class="cp-col-actions">
                   <button type="button" class="cp-link-btn cp-view-payment" data-payment-id="{{ entry.id }}">View</button>
                 </td>
