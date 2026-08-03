@@ -1197,6 +1197,20 @@
     if (key === 'floor' || key === 'tables' || key === 'areas') {
       renderFloorList();
     }
+    if (key === 'printers') {
+      var printersPanel = page.querySelector('[data-panel="printers"]');
+      if (
+        printersPanel &&
+        global.hbePosPrinterPrefs &&
+        typeof global.hbePosPrinterPrefs.syncFromAgent === 'function'
+      ) {
+        global.hbePosPrinterPrefs.syncFromAgent(
+          printersPanel,
+          resolvePosOutlet(),
+          { force: true }
+        );
+      }
+    }
     if (!opts.skipPersist) persistSection(key);
   }
 

@@ -12,7 +12,7 @@ var PRECACHE = [
   '/static/pos_offline.js?v=4',
   '/static/ep_form_listbox.js?v=45',
   '/static/de_workspace_nav.js?v=34',
-  '/static/de_workspace_transitions.js?v=109',
+  '/static/de_workspace_transitions.js?v=111',
   '/static/de_pwa.js?v=4',
   '/static/pwa-icon-192.png',
   '/static/pwa-icon-512.png',

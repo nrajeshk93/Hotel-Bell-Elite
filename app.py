@@ -3955,8 +3955,36 @@ def _pos_invoice_belongs_to_outlet(invoice, outlet):
 def point_of_sale():
     """Point of Sale Tables floor — counter workspace (not Sales Analytics)."""
     outlet = _pos_outlet_from_request()
+    areas = []
+    tables = []
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+        layout = get_pos_floor_layout(conn, outlet)
+        floor = _pos_floor_api_payload(conn, layout, outlet)
+        areas = floor.get("areas") or []
+        area_name_by_id = {
+            str(a.get("id") or ""): (a.get("name") or a.get("id") or "Floor")
+            for a in areas
+            if isinstance(a, dict)
+        }
+        tables = []
+        for raw in floor.get("tables") or []:
+            if not isinstance(raw, dict):
+                continue
+            row = dict(raw)
+            area_id = str(row.get("areaId") or "").strip()
+            row["area_key"] = area_name_by_id.get(area_id) or area_id or "Floor"
+            row["area"] = row["area_key"]
+            tables.append(row)
+        conn.commit()
+    finally:
+        conn.close()
     return render_template(
         "point_of_sale.html",
+        tables=tables,
+        areas=areas,
         **_pos_page_context(outlet, "tables"),
     )
 

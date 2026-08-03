@@ -101,6 +101,10 @@ class PrintAgentApiTests(unittest.TestCase):
         self.assertTrue(pair_body.get("ok"))
         self.assertEqual(pair_body.get("apiKey"), body.get("apiKey"))
         self.assertEqual(pair_body.get("localBaseUrl"), "http://127.0.0.1:4567")
+        self.assertEqual(
+            (pair_body.get("mappedPrinters") or {}).get("billing"),
+            "Epson TM-T82",
+        )
 
     def test_updates_and_config(self):
         upd = self.client.get("/api/print-agent/updates/latest?current=1.0.0")

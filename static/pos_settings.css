@@ -276,6 +276,28 @@ body.pos-menu-module .pos-menu-standalone-main .pos-set-panel{padding:0}
 .pos-set-panel-head p{
   margin:4px 0 0;font-size:13px;color:var(--pos-muted);line-height:1.45;
 }
+.pos-set-panel-head-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-shrink:0;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.pos-set-agent-sync{
+  margin:-6px 0 14px;
+  font-size:12.5px;
+  line-height:1.4;
+  color:var(--pos-muted);
+}
+.pos-set-agent-sync.is-ok{color:#047857}
+.pos-set-agent-sync.is-error{color:#B91C1C}
+.pos-set-agent-sync.is-pending{color:#64748B}
+.pos-set-card [data-pos-pc-printer][readonly]{
+  background:#F8FAFC;
+  color:#0F172A;
+  cursor:default;
+}
 .pos-set-panel-actions{display:flex;gap:8px;flex-wrap:wrap}
 
 .pos-set-card-grid{

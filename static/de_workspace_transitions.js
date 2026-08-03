@@ -904,10 +904,6 @@
        RTT does not freeze the previous page for seconds; FOUC risk is low because
        shared shell CSS is already loaded and destination CSS streams in parallel. */
     var limit = timeoutMs == null ? 180 : timeoutMs;
-    // #region agent log
-    var _cssT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    var _cssHrefs = (links || []).map(function(l){ return l && l.getAttribute ? (l.getAttribute('href') || '') : ''; });
-    // #endregion
     return Promise.race([
       Promise.all(links.map(function(link){
         return new Promise(function(resolve){
@@ -920,12 +916,7 @@
         });
       })),
       new Promise(function(resolve){ setTimeout(resolve, limit); })
-    ]).then(function(){
-      // #region agent log
-      var _cssMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - _cssT0;
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'B',location:'de_workspace_transitions.js:waitForStylesheets',message:'stylesheet wait done',data:{ms:Math.round(_cssMs),count:_cssHrefs.length,hrefs:_cssHrefs.slice(0,12),limit:limit},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
-    });
+    ]);
   }
 
   function loadExternalScript(old){
@@ -943,34 +934,26 @@
   function preloadExternalScripts(scriptNodes, done){
     var loaded = window.__deSoftNavScripts = window.__deSoftNavScripts || {};
     var pending = [];
-    var pendingSrcs = [];
     (scriptNodes || []).forEach(function(old){
       if(shouldSkipScript(old)) return;
       var src = old.getAttribute('src');
       if(!src || loaded[src]) return;
       loaded[src] = true;
-      pendingSrcs.push(src);
       pending.push(loadExternalScript(old));
     });
-    // #region agent log
-    var _jsT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    // #endregion
-    function finish(tag){
-      // #region agent log
-      var _jsMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - _jsT0;
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'C',location:'de_workspace_transitions.js:preloadExternalScripts',message:tag,data:{ms:Math.round(_jsMs),count:pendingSrcs.length,srcs:pendingSrcs.slice(0,12)},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
-      if(typeof done === 'function') done();
-    }
     if(!pending.length){
-      finish('script preload skipped (cached)');
+      if(typeof done === 'function') done();
       return;
     }
     /* Cap wait so slow CF revalidation cannot freeze soft-nav before paint. */
     Promise.race([
       Promise.all(pending),
       new Promise(function(resolve){ setTimeout(resolve, 900); })
-    ]).then(function(){ finish('script preload done'); }).catch(function(){ finish('script preload error'); });
+    ]).then(function(){
+      if(typeof done === 'function') done();
+    }).catch(function(){
+      if(typeof done === 'function') done();
+    });
   }
 
   function runScriptNodes(scriptNodes, done){
@@ -1743,9 +1726,9 @@
 
       var finishSwap = function(){
         if(!isCurrentSoftNav(navToken)) return;
-        /* Paint first — do not block the swap on destination JS download.
-           runScriptNodes below still loads/executes scripts after the DOM swap. */
-        preloadExternalScripts(content.scripts, function(){});
+        /* Paint DOM immediately. Do NOT preloadExternalScripts before runScriptNodes —
+           that marks src as loaded and makes runScriptNodes skip waiting, so page
+           inits (e.g. initPosTablesPage) can run before the script exists. */
         document.documentElement.classList.add('de-soft-navigating');
         if(nextTitle) document.title = nextTitle;
         if(nextBodyClass) document.body.className = nextBodyClass;
@@ -1771,13 +1754,6 @@
         }
         runScriptNodes(content.scripts, function(){
           if(!isCurrentSoftNav(navToken)) return;
-          // #region agent log
-          try{
-            var _dbg = window.__deSoftNavDebug || {};
-            var _totalMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - (_dbg.t0 || 0);
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'D',location:'de_workspace_transitions.js:finishSwap',message:'soft-nav complete',data:{path:_dbg.path||url,totalMs:Math.round(_totalMs),prefetchHit:!!_dbg.prefetchHit,htmlMs:_dbg.htmlMs||0,newCss:(addedLinks&&addedLinks.length)||0,paintFirst:true},timestamp:Date.now()})}).catch(function(){});
-          } catch(e){}
-          // #endregion
           finalizeSoftNav();
           restoreSidebarScrollAfterLayout(sidebarScroll);
           markMainLoading(false);
@@ -1864,13 +1840,6 @@
       window.deFullscreen.ensureRoot();
     }
 
-    // #region agent log
-    var _navT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    var _navPath = '';
-    try{ _navPath = new URL(url, window.location.href).pathname; } catch(e){ _navPath = String(url || ''); }
-    window.__deSoftNavDebug = { t0: _navT0, path: _navPath, prefetchHit: false, htmlMs: 0 };
-    // #endregion
-
     var prefetched = takePrefetchedHtml(url);
     var fetchOpts = {
       credentials: 'same-origin',
@@ -1895,37 +1864,19 @@
     })();
     var floorPromise = isPosTablesUrl(url) ? warmPosFloorSnapshot(nav.signal, floorOutlet) : Promise.resolve(null);
 
-    // #region agent log
-    var _htmlT0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-    var _prefetchHit = !!prefetched;
-    if(window.__deSoftNavDebug) window.__deSoftNavDebug.prefetchHit = _prefetchHit;
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'A',location:'de_workspace_transitions.js:softNavigate',message:'soft-nav start',data:{path:_navPath,prefetchHit:_prefetchHit,host:location.host},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
-
-    var htmlPromise = (prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
+    var htmlPromise = prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
       if(contentType.indexOf('text/html') === -1){
         throw new Error('non-html response');
       }
       return response.text();
-    })).then(function(html){
-      // #region agent log
-      var _htmlMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - _htmlT0;
-      if(window.__deSoftNavDebug) window.__deSoftNavDebug.htmlMs = Math.round(_htmlMs);
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'A',location:'de_workspace_transitions.js:htmlPromise',message:'html ready',data:{path:_navPath,prefetchHit:_prefetchHit,htmlMs:Math.round(_htmlMs),htmlBytes:(html&&html.length)||0},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
-      return html;
     });
 
     Promise.all([htmlPromise, leavePromise, floorPromise]).then(function(results){
       if(!isCurrentSoftNav(nav.token)) return;
       var html = results[0];
       if(!html) throw new Error('empty soft nav html');
-      // #region agent log
-      var _gateMs = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - _navT0;
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'E',location:'de_workspace_transitions.js:Promise.all',message:'html+leave+floor gate done',data:{path:_navPath,gateMs:Math.round(_gateMs),prefetchHit:_prefetchHit},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
       if(!doc.querySelector('.de-main-wrapper')){

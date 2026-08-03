@@ -1,1 +1,0 @@
-{"sessionId": "42fa9a", "runId": "post-fix", "hypothesisId": "F", "location": "soft-nav:v109", "message": "paint-first swap; keep prefetch cache; CSS wait 180ms; expanded idle CSS/HTML prefetch; deployed v109", "data": {"css_wait_ms": 180, "paint_first": true, "prefetch_keep": true}, "timestamp": 1785770345546}

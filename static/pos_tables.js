@@ -3296,5 +3296,12 @@
   } else if (!global.__deSoftNavInProgress) {
     /* Soft-nav: deWorkspaceReinit calls init once after scripts load — avoid double API fetch. */
     initPosTablesPage();
+  } else {
+    /* Soft-nav in progress: still init once the current stack clears if reinit missed us. */
+    setTimeout(function () {
+      if (!document.getElementById('pos-tables-page')) return;
+      if (document.querySelector('#pos-floor [data-table-tile]')) return;
+      initPosTablesPage();
+    }, 0);
   }
 })(window);

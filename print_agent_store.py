@@ -245,7 +245,8 @@ def browser_pair_print_agent(conn, business_id: str | None = None) -> dict:
     if biz:
         row = conn.execute(
             """
-            SELECT agent_id, api_key, device_name, last_seen_at, business_id
+            SELECT agent_id, api_key, device_name, last_seen_at, business_id,
+                   mapped_printers_json
             FROM print_agents
             WHERE revoked = 0 AND business_id = ? AND api_key != ''
             ORDER BY datetime(last_seen_at) DESC, datetime(updated_at) DESC
@@ -256,7 +257,8 @@ def browser_pair_print_agent(conn, business_id: str | None = None) -> dict:
     else:
         row = conn.execute(
             """
-            SELECT agent_id, api_key, device_name, last_seen_at, business_id
+            SELECT agent_id, api_key, device_name, last_seen_at, business_id,
+                   mapped_printers_json
             FROM print_agents
             WHERE revoked = 0 AND api_key != ''
             ORDER BY datetime(last_seen_at) DESC, datetime(updated_at) DESC
@@ -272,6 +274,15 @@ def browser_pair_print_agent(conn, business_id: str | None = None) -> dict:
             "allowedOrigins": default_print_agent_origins(),
         }
 
+    mapped = {}
+    try:
+        raw = row["mapped_printers_json"] if "mapped_printers_json" in row.keys() else "{}"
+        parsed = json.loads(raw or "{}")
+        if isinstance(parsed, dict):
+            mapped = {str(k): str(v or "") for k, v in parsed.items()}
+    except (TypeError, ValueError, json.JSONDecodeError):
+        mapped = {}
+
     return {
         "ok": True,
         "agentId": row["agent_id"],
@@ -279,6 +290,7 @@ def browser_pair_print_agent(conn, business_id: str | None = None) -> dict:
         "deviceName": row["device_name"] or "",
         "businessId": row["business_id"] or "",
         "lastSeenAt": row["last_seen_at"] or "",
+        "mappedPrinters": mapped,
         "localBaseUrl": "http://127.0.0.1:4567",
         "port": 4567,
         "allowedOrigins": default_print_agent_origins(),

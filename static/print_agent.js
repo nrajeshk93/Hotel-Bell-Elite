@@ -107,6 +107,7 @@
           agentId: result.data.agentId || '',
           port: result.data.port || DEFAULT_PORT,
           deviceName: result.data.deviceName || '',
+          mappedPrinters: result.data.mappedPrinters || {},
           pairedAt: Date.now()
         });
       })
@@ -115,6 +116,16 @@
       });
 
     return pairPromise;
+  }
+
+  function enrichStatus(data) {
+    var store = loadStore();
+    var out = data && typeof data === 'object' ? Object.assign({}, data) : { ok: false };
+    if (!out.deviceName && store.deviceName) out.deviceName = store.deviceName;
+    if ((!out.printers || !Object.keys(out.printers).length) && store.mappedPrinters) {
+      out.printers = store.mappedPrinters;
+    }
+    return out;
   }
 
   function getStatus(force) {
@@ -131,13 +142,26 @@
       })
       .then(function (result) {
         if (result.ok && result.data) {
-          statusCache = { at: Date.now(), data: result.data };
-          return result.data;
+          var data = enrichStatus(result.data);
+          statusCache = { at: Date.now(), data: data };
+          return data;
         }
         statusCache = { at: Date.now(), data: { ok: false } };
         return { ok: false, error: (result.data && result.data.error) || 'Agent offline' };
       })
       .catch(function () {
+        /* Local agent offline — fall back to last paired device + mapped printers. */
+        var store = loadStore();
+        if (store.apiKey && (store.deviceName || store.mappedPrinters)) {
+          var fallback = enrichStatus({
+            ok: true,
+            offline: true,
+            deviceName: store.deviceName || '',
+            printers: store.mappedPrinters || {}
+          });
+          statusCache = { at: Date.now(), data: fallback };
+          return fallback;
+        }
         statusCache = { at: Date.now(), data: { ok: false, offline: true } };
         return { ok: false, offline: true };
       });
