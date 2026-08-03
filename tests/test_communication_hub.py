@@ -1,5 +1,6 @@
 """Tests for Communication Hub (WhatsApp inbox)."""
 
+import io
 import os
 import tempfile
 import unittest
@@ -76,6 +77,10 @@ class CommunicationHubTests(unittest.TestCase):
         self.assertIn('id="communication-hub-page"', html)
         self.assertIn("Communication Hub", html)
         self.assertIn("data-communication-hub", html)
+        self.assertIn('id="ch-attach-btn"', html)
+        self.assertIn('id="ch-emoji-btn"', html)
+        self.assertNotIn("Attach (coming soon)", html)
+        self.assertNotIn("Emoji (coming soon)", html)
 
     def test_create_conversation_and_send_persists(self):
         create = self.client.post(
@@ -111,6 +116,35 @@ class CommunicationHubTests(unittest.TestCase):
         messages = thread.get_json()["messages"]
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["wa_message_id"], "wamid.test.1")
+
+    def test_send_attachment_persists(self):
+        create = self.client.post(
+            "/communication-hub/api/conversations",
+            json={"phone": "9876543210", "display_name": "Attach Vendor"},
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        conv = create.get_json()["conversation"]
+
+        with mock.patch(
+            "whatsapp_client.upload_media_file",
+            return_value=(True, "", {"id": "media.test.1"}),
+        ), mock.patch(
+            "whatsapp_client.send_media_message",
+            return_value=(True, "", {"messages": [{"id": "wamid.attach.1"}]}),
+        ):
+            send = self.client.post(
+                f"/communication-hub/api/conversations/{conv['id']}/messages",
+                data={
+                    "caption": "Please review",
+                    "file": (io.BytesIO(b"%PDF-1.4 test attachment"), "quote.pdf"),
+                },
+            )
+        self.assertEqual(send.status_code, 200, send.get_data(as_text=True))
+        body = send.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(body["message"]["message_type"], "document")
+        self.assertEqual(body["message"]["media_filename"], "quote.pdf")
+        self.assertEqual(body["message"]["status"], "sent")
 
     def test_webhook_inbound_creates_conversation(self):
         from whatsapp_webhook import process_hub_inbound_messages

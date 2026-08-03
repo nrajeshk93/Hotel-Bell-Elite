@@ -294,6 +294,8 @@
     if(form.closest(
       '.modal-overlay, .modal-backdrop, .hrd-modal-overlay, .hrd-dialog-overlay, [role="dialog"][aria-modal="true"]'
     )) return false;
+    // Communication Hub composer posts via fetch JSON — never soft-navigate on Send.
+    if(form.id === 'ch-composer' || form.closest('#communication-hub-page form.ch-composer')) return false;
     if(form.hasAttribute('data-st-decide-form') || form.id === 'st-reject-form') return false;
     var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase();
     if(method && method !== 'get' && method !== 'post') return false;
@@ -475,7 +477,20 @@
 
       // Only soft-nav POST forms are locked. Modal/JS-handled forms (approvals decide,
       // etc.) must keep their submitter enabled so FormData includes decision=approved.
-      if(!shouldSoftSubmitForm(form)) return;
+      if(!shouldSoftSubmitForm(form)){
+        // #region agent log
+        if(form && (form.id === 'ch-composer' || (form.classList && form.classList.contains('ch-composer')))){
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'send-post',hypothesisId:'SOFT_NAV',location:'de_workspace_transitions.js:submit',message:'soft-nav skipped composer',data:{formId:form.id||'',hasHardNav:form.hasAttribute('data-de-hard-nav')},timestamp:Date.now()})}).catch(function(){});
+        }
+        // #endregion
+        return;
+      }
+
+      // #region agent log
+      if(form && (form.id === 'ch-composer' || (form.classList && form.classList.contains('ch-composer')))){
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'send-post',hypothesisId:'SOFT_NAV',location:'de_workspace_transitions.js:submit',message:'soft-nav STEALING composer (bug)',data:{formId:form.id||'',method:formMethod(form)},timestamp:Date.now()})}).catch(function(){});
+      }
+      // #endregion
 
       if(isPost){
         if(isFormSubmitLocked(form)){
@@ -631,6 +646,12 @@
       /* Keep cache entry so Back / re-open stays instant within TTL. */
       try{
         var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+        /* Inbox must always be fresh — outbound WhatsApp mirrors land in the DB
+           while a stale empty prefetch would wipe the conversation list. */
+        if(path === '/communication-hub'){
+          prefetchCache.delete(key);
+          return null;
+        }
         if(path === '/point-of-sale' && (
           entry.html.indexOf('pos-kot-tokens-modal') === -1 ||
           entry.html.indexOf('pos-today-invoices-modal') === -1
@@ -646,6 +667,9 @@
         if(!html) return null;
         try{
           var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+          if(path === '/communication-hub'){
+            return null;
+          }
           if(path === '/point-of-sale' && (
             html.indexOf('pos-kot-tokens-modal') === -1 ||
             html.indexOf('pos-today-invoices-modal') === -1
@@ -2303,7 +2327,7 @@
         '/static/pos_tables.css?v=35',
         '/static/pos_invoice.css?v=39',
         '/static/purchase_ledger.css?v=29',
-        '/static/communication_hub.css?v=4',
+        '/static/communication_hub.css?v=6',
         '/static/hotel_rooms.css?v=59',
         '/static/hbe_home_premium.css?v=13'
       ].forEach(function(href){

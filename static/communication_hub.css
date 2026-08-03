@@ -35,6 +35,9 @@ body.su-module.communication-hub-module{
   max-height:100%;
   box-sizing:border-box;
   font-family:var(--ch-font);
+  /* Content width (not viewport) drives header wrap when sidebar is open. */
+  container-type:inline-size;
+  container-name:ch-page;
 }
 #communication-hub-page > header.se-sales-header{flex:0 0 auto}
 #communication-hub-page .content.se-content.ch-content{
@@ -49,27 +52,45 @@ body.su-module.communication-hub-module{
 body.su-module.communication-hub-module .su-header-top{
   align-items:center;
   margin-bottom:20px;
+  flex-wrap:wrap;
+  gap:14px 20px;
+  row-gap:14px;
+}
+body.su-module.communication-hub-module .su-header-left{
+  flex:1 1 240px;
+  min-width:0;
+  align-items:center;
+}
+body.su-module.communication-hub-module .su-title h1{
+  font-size:clamp(22px, 2.6cqi + 14px, 34px);
+  line-height:1.2;
+  overflow-wrap:anywhere;
 }
 
 .ch-header-tools{
   display:flex;
   align-items:center;
-  gap:14px;
-  flex:0 1 auto;
+  gap:12px;
+  flex:1 1 280px;
   min-width:0;
+  max-width:100%;
+  margin-left:auto;
+  justify-content:flex-end;
+  flex-wrap:wrap;
 }
 .ch-top-search{
   position:relative;
-  width:min(360px,42vw);
-  min-width:200px;
-  flex:1 1 auto;
+  width:auto;
+  max-width:360px;
+  min-width:0;
+  flex:1 1 200px;
 }
 .ch-top-search input{
   width:100%;
   height:44px;
   border:1px solid #EEF2F7;
   border-radius:999px;
-  padding:0 52px 0 40px;
+  padding:0 16px 0 40px;
   font:500 14px var(--ch-font);
   outline:none;
   background:#fff;
@@ -84,16 +105,6 @@ body.su-module.communication-hub-module .su-header-top{
   position:absolute;left:14px;top:50%;transform:translateY(-50%);
   width:16px;height:16px;stroke:var(--ch-muted);fill:none;stroke-width:2;
   pointer-events:none;
-}
-.ch-top-search kbd{
-  position:absolute;right:12px;top:50%;transform:translateY(-50%);
-  font:600 11px var(--ch-font);
-  color:#94A3B8;
-  border:1px solid #E2E8F0;
-  border-radius:6px;
-  padding:3px 6px;
-  background:#F8FAFC;
-  line-height:1.2;
 }
 .ch-wa-badge{
   display:inline-flex;align-items:center;height:36px;padding:0 14px;
@@ -216,6 +227,7 @@ body.su-module.communication-hub-module .su-header-top{
 .ch-thread-empty{
   flex:1;display:flex;align-items:center;justify-content:center;padding:32px;min-height:0;
 }
+.ch-thread-empty[hidden]{display:none !important}
 .ch-thread-empty-card{
   max-width:380px;text-align:center;background:#fff;border:1px solid var(--ch-border);
   border-radius:16px;padding:32px 28px;box-shadow:0 8px 24px rgba(15,23,42,.06);
@@ -284,11 +296,32 @@ body.su-module.communication-hub-module .su-header-top{
 .ch-composer{
   flex:0 0 auto;display:flex;align-items:center;gap:8px;
   padding:14px 16px;background:#fff;border-top:1px solid var(--ch-border);
+  position:relative;
 }
 .ch-composer-icon{
   width:36px;height:36px;border:0;background:transparent;color:#94A3B8;
   display:inline-flex;align-items:center;justify-content:center;border-radius:10px;cursor:not-allowed;opacity:.55;
 }
+.ch-composer-icon.is-ready{
+  cursor:pointer;opacity:1;color:#64748B;
+}
+.ch-composer-icon.is-ready:hover{background:#F1F5F9;color:var(--ch-accent)}
+.ch-composer-icon.is-ready:disabled{cursor:not-allowed;opacity:.5}
+.ch-attach-input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.ch-emoji-wrap{position:relative;flex:0 0 auto}
+.ch-emoji-panel{
+  position:absolute;left:0;bottom:calc(100% + 8px);z-index:40;
+  width:min(280px,72vw);max-height:220px;overflow:auto;
+  display:grid;grid-template-columns:repeat(8,1fr);gap:2px;
+  padding:8px;border:1px solid var(--ch-border);border-radius:14px;
+  background:#fff;box-shadow:0 12px 28px rgba(15,23,42,.14);
+}
+.ch-emoji-panel[hidden]{display:none !important}
+.ch-emoji-panel button{
+  width:100%;aspect-ratio:1;border:0;border-radius:8px;background:transparent;
+  font-size:20px;line-height:1;cursor:pointer;padding:0;
+}
+.ch-emoji-panel button:hover{background:#F1F5F9}
 .ch-composer-icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}
 .ch-composer-input-wrap{flex:1 1 auto;min-width:0}
 .ch-composer-input-wrap input{
@@ -346,9 +379,48 @@ body.su-module.communication-hub-module .su-header-top{
 }
 .ch-modal-actions .btn-primary{background:var(--ch-accent);border-color:var(--ch-accent);color:#fff}
 
-@media (max-width:980px){
-  .ch-header-tools{width:100%;flex-wrap:wrap}
-  .ch-top-search{width:100%;min-width:0}
+/* Prefer container width: sidebar-open main pane is often < viewport. */
+@container ch-page (max-width: 920px){
+  body.su-module.communication-hub-module .su-header-top,
+  #communication-hub-page .su-header-top{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  #communication-hub-page .ch-header-tools{
+    width:100%;
+    margin-left:0;
+    justify-content:flex-start;
+  }
+  #communication-hub-page .ch-top-search{
+    flex:1 1 auto;
+    max-width:none;
+    width:100%;
+  }
+}
+@container ch-page (max-width: 640px){
+  #communication-hub-page .ch-wa-badge{
+    height:32px;
+    padding:0 10px;
+    font-size:11px;
+  }
+}
+
+/* Viewport fallback when container queries are unavailable */
+@media (max-width:1100px){
+  body.su-module.communication-hub-module .su-header-top{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  body.su-module.communication-hub-module .ch-header-tools{
+    width:100%;
+    margin-left:0;
+    justify-content:flex-start;
+  }
+  body.su-module.communication-hub-module .ch-top-search{
+    flex:1 1 auto;
+    max-width:none;
+    width:100%;
+  }
 }
 @media (max-width:900px){
   .ch-shell{grid-template-columns:1fr;min-height:min(70vh,640px)}

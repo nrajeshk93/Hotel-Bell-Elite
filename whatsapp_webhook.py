@@ -477,6 +477,39 @@ def process_hub_inbound_messages(conn, payload: dict) -> list[str]:
             media_filename=media_filename,
             media_size=media_size,
         )
+        # #region agent log
+        try:
+            import json as _json, time as _time
+            _payload = {
+                "sessionId": "42fa9a",
+                "runId": "pre-fix",
+                "hypothesisId": "A",
+                "location": "whatsapp_webhook.py:process_hub_inbound",
+                "message": "hub_in ingest debug",
+                "data": {
+                    "saved": bool(saved),
+                    "hub_type": hub_type,
+                    "body_len": len(body or ""),
+                    "phone_suffix": str(sender or "")[-4:],
+                    "msg_id_suffix": (inbound_id or "")[-12:],
+                },
+                "timestamp": int(_time.time() * 1000),
+            }
+            for _p in (
+                "/tmp/hbe-debug-42fa9a.ndjson",
+                os.path.join(os.path.dirname(__file__), ".cursor", "debug-42fa9a.log"),
+            ):
+                try:
+                    _parent = os.path.dirname(_p)
+                    if _parent:
+                        os.makedirs(_parent, exist_ok=True)
+                    with open(_p, "a", encoding="utf-8") as _fh:
+                        _fh.write(_json.dumps(_payload) + "\n")
+                except OSError:
+                    pass
+        except Exception:
+            pass
+        # #endregion
         if saved:
             results.append(f"hub_in from={sender} type={hub_type} id={inbound_id[:40]}")
         else:

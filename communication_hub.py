@@ -192,6 +192,28 @@ def append_message(
             (wa_id,),
         ).fetchone()
         if existing:
+            # Enrich media metadata when a mirror row landed first without filenames.
+            if media_filename or media_mime or media_size:
+                conn.execute(
+                    """UPDATE wa_messages
+                       SET media_mime = CASE WHEN COALESCE(media_mime, '') = '' THEN ? ELSE media_mime END,
+                           media_filename = CASE WHEN COALESCE(media_filename, '') = '' THEN ? ELSE media_filename END,
+                           media_size = CASE WHEN COALESCE(media_size, 0) = 0 THEN ? ELSE media_size END,
+                           body = CASE
+                             WHEN COALESCE(body, '') IN ('', 'Photo', 'Document', 'image', 'document')
+                                  AND COALESCE(?, '') != '' THEN ?
+                             ELSE body
+                           END
+                       WHERE id = ?""",
+                    (
+                        media_mime or "",
+                        media_filename or "",
+                        int(media_size or 0),
+                        body or "",
+                        body or "",
+                        existing["id"],
+                    ),
+                )
             row = conn.execute(
                 "SELECT * FROM wa_messages WHERE id = ?",
                 (existing["id"],),
@@ -285,6 +307,9 @@ def record_outbound_hub_message(
     display_name: str = "",
     created_by=None,
     message_type: str = "text",
+    media_mime: str = "",
+    media_filename: str = "",
+    media_size: int = 0,
 ) -> dict | None:
     conversation = get_or_create_conversation(conn, phone, display_name=display_name)
     if not conversation:
@@ -295,12 +320,157 @@ def record_outbound_hub_message(
         direction="out",
         body=body,
         message_type=message_type,
+        media_mime=media_mime,
+        media_filename=media_filename,
+        media_size=media_size,
         wa_message_id=wa_message_id,
         status=status,
         error=error,
         created_by=created_by,
         bump_unread=False,
     )
+
+
+def export_hub_mirror_payload(conn) -> dict:
+    """Snapshot conversations + messages for local-dev mirror pull."""
+    ensure_communication_hub_schema(conn)
+    conversations = list_conversations(conn)
+    rows = conn.execute(
+        """
+        SELECT m.direction, m.message_type, m.body, m.wa_message_id, m.status,
+               m.error, m.media_mime, m.media_filename, m.media_size,
+               m.created_at, c.phone_e164, c.display_name
+        FROM wa_messages m
+        JOIN wa_conversations c ON c.id = m.conversation_id
+        ORDER BY m.id ASC
+        """
+    ).fetchall()
+    messages = []
+    for row in rows:
+        messages.append(
+            {
+                "phone": row["phone_e164"] or "",
+                "display_name": row["display_name"] or "",
+                "direction": row["direction"] or "in",
+                "message_type": row["message_type"] or "text",
+                "body": row["body"] or "",
+                "wa_message_id": row["wa_message_id"] or "",
+                "status": row["status"] or "",
+                "error": row["error"] or "",
+                "media_mime": row["media_mime"] or "",
+                "media_filename": row["media_filename"] or "",
+                "media_size": int(row["media_size"] or 0),
+                "created_at": row["created_at"] or "",
+            }
+        )
+    return {"ok": True, "conversations": conversations, "messages": messages}
+
+
+def pull_hub_mirror_into(conn) -> int:
+    """Pull WhatsApp hub rows from production into this DB (local preview).
+
+    Meta webhooks only hit APP_BASE_URL / production. Local ``127.0.0.1`` never
+    receives them unless we mirror. Opt-in via ``HUB_MIRROR_URL`` + ``HUB_MIRROR_TOKEN``.
+    """
+    import os
+
+    import requests
+
+    base = (os.environ.get("HUB_MIRROR_URL") or "").strip().rstrip("/")
+    token = (os.environ.get("HUB_MIRROR_TOKEN") or "").strip()
+    if not base or not token:
+        return 0
+    url = base + "/communication-hub/api/mirror-export"
+    try:
+        response = requests.get(
+            url,
+            headers={"X-Hub-Mirror-Token": token, "Accept": "application/json"},
+            timeout=12,
+        )
+    except requests.RequestException as exc:
+        log.warning("Hub mirror pull failed: %s", exc)
+        return 0
+    if response.status_code != 200:
+        log.warning("Hub mirror pull HTTP %s", response.status_code)
+        return 0
+    try:
+        payload = response.json()
+    except ValueError:
+        return 0
+    if not isinstance(payload, dict) or not payload.get("ok"):
+        return 0
+
+    ensure_communication_hub_schema(conn)
+    added = 0
+    for item in payload.get("messages") or []:
+        if not isinstance(item, dict):
+            continue
+        phone = wa.normalise_whatsapp_number(item.get("phone") or "")
+        if not phone:
+            continue
+        wa_id = str(item.get("wa_message_id") or "").strip()
+        if wa_id:
+            exists = conn.execute(
+                "SELECT 1 FROM wa_messages WHERE wa_message_id = ? LIMIT 1",
+                (wa_id,),
+            ).fetchone()
+            if exists:
+                continue
+        direction = "out" if str(item.get("direction") or "").lower() == "out" else "in"
+        display_name = str(item.get("display_name") or "").strip()
+        conversation = get_or_create_conversation(conn, phone, display_name=display_name)
+        if not conversation:
+            continue
+        before = conn.execute(
+            "SELECT COUNT(*) AS c FROM wa_messages WHERE conversation_id = ?",
+            (conversation["id"],),
+        ).fetchone()["c"]
+        append_message(
+            conn,
+            conversation["id"],
+            direction=direction,
+            body=str(item.get("body") or ""),
+            message_type=str(item.get("message_type") or "text"),
+            media_mime=str(item.get("media_mime") or ""),
+            media_filename=str(item.get("media_filename") or ""),
+            media_size=int(item.get("media_size") or 0),
+            wa_message_id=wa_id,
+            status=str(item.get("status") or ("sent" if direction == "out" else "delivered")),
+            error=str(item.get("error") or ""),
+            bump_unread=(direction == "in"),
+        )
+        after = conn.execute(
+            "SELECT COUNT(*) AS c FROM wa_messages WHERE conversation_id = ?",
+            (conversation["id"],),
+        ).fetchone()["c"]
+        if after > before:
+            added += 1
+    if added:
+        conn.commit()
+        # #region agent log
+        try:
+            import json as _json
+            import time as _time
+
+            _line = _json.dumps(
+                {
+                    "sessionId": "42fa9a",
+                    "runId": "post-fix",
+                    "hypothesisId": "A",
+                    "location": "communication_hub.py:pull_hub_mirror_into",
+                    "message": "mirrored messages into local db",
+                    "data": {"added": added},
+                    "timestamp": int(_time.time() * 1000),
+                }
+            )
+            _path = os.path.join(os.path.dirname(__file__), ".cursor", "debug-42fa9a.log")
+            os.makedirs(os.path.dirname(_path), exist_ok=True)
+            with open(_path, "a", encoding="utf-8") as _fh:
+                _fh.write(_line + "\n")
+        except OSError:
+            pass
+        # #endregion
+    return added
 
 
 def send_conversation_text(conn, conversation_id: int, text: str, *, user_id=None) -> tuple[bool, str, dict]:
@@ -349,6 +519,191 @@ def send_conversation_text(conn, conversation_id: int, text: str, *, user_id=Non
     }
 
 
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+}
+_ALLOWED_DOC_TYPES = {
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/plain",
+}
+_MAX_ATTACH_BYTES = 16 * 1024 * 1024
+
+
+def send_conversation_attachment(
+    conn,
+    conversation_id: int,
+    *,
+    file_storage,
+    caption: str = "",
+    user_id=None,
+) -> tuple[bool, str, dict]:
+    """Upload a file to WhatsApp and send it on the open conversation."""
+    import json
+    import os
+    import tempfile
+    import time
+
+    def _dbg(hypothesis_id, message, data=None):
+        # #region agent log
+        try:
+            with open(
+                "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-42fa9a.log",
+                "a",
+                encoding="utf-8",
+            ) as _f:
+                _f.write(
+                    json.dumps(
+                        {
+                            "sessionId": "42fa9a",
+                            "runId": "attach-pre",
+                            "hypothesisId": hypothesis_id,
+                            "location": "communication_hub.py:send_conversation_attachment",
+                            "message": message,
+                            "data": data or {},
+                            "timestamp": int(time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+        # #endregion
+
+    conversation = get_conversation(conn, conversation_id)
+    if not conversation:
+        _dbg("ATTACH_D", "conversation missing", {"conversation_id": conversation_id})
+        return False, "Conversation not found.", {}
+    if not wa.whatsapp_configured():
+        _dbg("ATTACH_D", "whatsapp not configured", {})
+        return False, "WhatsApp API is not configured.", {}
+    if file_storage is None or not getattr(file_storage, "filename", None):
+        _dbg("ATTACH_D", "no file", {})
+        return False, "Choose a file to attach.", {}
+
+    filename = os.path.basename(str(file_storage.filename or "attachment")).strip() or "attachment"
+    mime = (getattr(file_storage, "mimetype", None) or "").strip().lower() or "application/octet-stream"
+    if mime in _ALLOWED_IMAGE_TYPES or mime.startswith("image/"):
+        media_type = "image"
+        if mime not in _ALLOWED_IMAGE_TYPES:
+            mime = "image/jpeg"
+    elif mime in _ALLOWED_DOC_TYPES:
+        media_type = "document"
+    else:
+        # Fall back to document for unknown but allow common extensions.
+        ext = os.path.splitext(filename)[1].lower()
+        if ext in {".jpg", ".jpeg", ".png", ".webp"}:
+            media_type = "image"
+            mime = {".png": "image/png", ".webp": "image/webp"}.get(ext, "image/jpeg")
+        elif ext in {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".txt"}:
+            media_type = "document"
+            mime = {
+                ".pdf": "application/pdf",
+                ".doc": "application/msword",
+                ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".xls": "application/vnd.ms-excel",
+                ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ".txt": "text/plain",
+            }.get(ext, "application/octet-stream")
+        else:
+            _dbg("ATTACH_D", "unsupported type", {"filename": filename, "mime": mime})
+            return False, "Unsupported file type. Use an image or PDF/Office document.", {}
+
+    tmp_path = ""
+    try:
+        suffix = os.path.splitext(filename)[1] or ""
+        fd, tmp_path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
+        file_storage.save(tmp_path)
+        size = os.path.getsize(tmp_path)
+        if size <= 0:
+            _dbg("ATTACH_D", "empty file after save", {"filename": filename, "mime": mime})
+            return False, "The selected file is empty.", {}
+        if size > _MAX_ATTACH_BYTES:
+            return False, "File is too large (max 16 MB).", {}
+
+        _dbg(
+            "ATTACH_D",
+            "upload start",
+            {
+                "filename": filename,
+                "mime": mime,
+                "media_type": media_type,
+                "size": size,
+                "phone": conversation.get("phone"),
+            },
+        )
+        ok_up, err_up, body_up = wa.upload_media_file(tmp_path, mime)
+        media_id = ""
+        if isinstance(body_up, dict):
+            media_id = str(body_up.get("id") or "").strip()
+        if not ok_up or not media_id:
+            _dbg("ATTACH_E", "upload failed", {"err": err_up or "", "hasId": bool(media_id)})
+            return False, err_up or "WhatsApp media upload failed.", {}
+
+        ok, err, payload = wa.send_media_message(
+            conversation["phone"],
+            media_id=media_id,
+            media_type=media_type,
+            filename=filename if media_type == "document" else "",
+            caption=caption,
+        )
+        wa_message_id = wa.first_message_id(payload) if ok else ""
+        body_preview = (caption or "").strip() or filename
+        _dbg(
+            "ATTACH_E",
+            "send media result",
+            {"ok": ok, "err": err or "", "wa_message_id": wa_message_id, "media_type": media_type},
+        )
+        if ok:
+            message = append_message(
+                conn,
+                conversation_id,
+                direction="out",
+                body=body_preview,
+                message_type=media_type,
+                media_mime=mime,
+                media_filename=filename,
+                media_size=size,
+                wa_message_id=wa_message_id,
+                status="sent",
+                created_by=user_id,
+            )
+            return True, "", {
+                "conversation": get_conversation(conn, conversation_id),
+                "message": message,
+            }
+        message = append_message(
+            conn,
+            conversation_id,
+            direction="out",
+            body=body_preview,
+            message_type=media_type,
+            media_mime=mime,
+            media_filename=filename,
+            media_size=size,
+            status="failed",
+            error=err or "Send failed",
+            created_by=user_id,
+        )
+        return False, err or "Send failed", {
+            "conversation": get_conversation(conn, conversation_id),
+            "message": message,
+        }
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
 def register_communication_hub(app, *, pop_auth_notice, get_user):
     _bind_helpers(pop_auth_notice=pop_auth_notice, get_user=get_user)
 
@@ -383,10 +738,27 @@ def register_communication_hub(app, *, pop_auth_notice, get_user):
         search = (request.args.get("q") or request.args.get("search") or "").strip()
         conn = get_db()
         try:
+            pull_hub_mirror_into(conn)
             items = list_conversations(conn, search=search)
         finally:
             conn.close()
         return jsonify({"ok": True, "conversations": items})
+
+    @app.route("/communication-hub/api/mirror-export", methods=["GET"])
+    def communication_hub_api_mirror_export():
+        """Token-gated export so local Flask can mirror live WhatsApp hub rows."""
+        import os
+
+        expected = (os.environ.get("HUB_MIRROR_TOKEN") or "").strip()
+        got = (request.headers.get("X-Hub-Mirror-Token") or "").strip()
+        if not expected or got != expected:
+            return jsonify({"ok": False, "error": "Unauthorized"}), 401
+        conn = get_db()
+        try:
+            payload = export_hub_mirror_payload(conn)
+        finally:
+            conn.close()
+        return jsonify(payload)
 
     @app.route("/communication-hub/api/conversations", methods=["POST"])
     def communication_hub_api_conversation_create():
@@ -410,7 +782,12 @@ def register_communication_hub(app, *, pop_auth_notice, get_user):
     def communication_hub_api_messages(conversation_id):
         conn = get_db()
         try:
+            pull_hub_mirror_into(conn)
             conversation = get_conversation(conn, conversation_id)
+            if not conversation:
+                # Phone-keyed mirror may create a different local id — resolve by rematch.
+                pull_hub_mirror_into(conn)
+                conversation = get_conversation(conn, conversation_id)
             if not conversation:
                 return jsonify({"ok": False, "error": "Conversation not found."}), 404
             messages = list_messages(conn, conversation_id, mark_read=True)
@@ -422,10 +799,34 @@ def register_communication_hub(app, *, pop_auth_notice, get_user):
 
     @app.route("/communication-hub/api/conversations/<int:conversation_id>/messages", methods=["POST"])
     def communication_hub_api_message_send(conversation_id):
-        data = request.get_json(silent=True) or {}
-        text = data.get("text") or data.get("body") or data.get("message") or ""
         user = _get_user() if _get_user else None
         user_id = user.get("id") if user else None
+        upload = request.files.get("file") or request.files.get("attachment")
+        if upload and getattr(upload, "filename", None):
+            caption = (
+                request.form.get("caption")
+                or request.form.get("text")
+                or request.form.get("body")
+                or ""
+            )
+            conn = get_db()
+            try:
+                ok, err, payload = send_conversation_attachment(
+                    conn,
+                    conversation_id,
+                    file_storage=upload,
+                    caption=caption,
+                    user_id=user_id,
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            if not ok:
+                return jsonify({"ok": False, "error": err, **payload}), 400
+            return jsonify({"ok": True, **payload})
+
+        data = request.get_json(silent=True) or {}
+        text = data.get("text") or data.get("body") or data.get("message") or ""
         conn = get_db()
         try:
             ok, err, payload = send_conversation_text(

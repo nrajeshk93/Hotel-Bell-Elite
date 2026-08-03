@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=43">
-<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=9">
 <script>
 (function(){
   try{
@@ -31,7 +31,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=9">
 {% endif %}
 
 <div class="main-wrapper" id="communication-hub-page"
@@ -60,7 +60,6 @@
         <label class="ch-top-search" aria-label="Search conversations">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input type="search" id="ch-global-search" placeholder="Search conversations…" autocomplete="off">
-          <kbd>⌘K</kbd>
         </label>
         {% if not whatsapp_configured %}
         <span class="ch-wa-badge ch-wa-badge--warn" title="Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID">WhatsApp not configured</span>
@@ -146,13 +145,17 @@
             </div>
           </header>
           <div class="ch-messages" id="ch-messages" aria-live="polite"></div>
-          <form class="ch-composer" id="ch-composer" autocomplete="off">
-            <button type="button" class="ch-composer-icon" disabled aria-label="Emoji (coming soon)" title="Coming soon">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
-            </button>
-            <button type="button" class="ch-composer-icon" disabled aria-label="Attach (coming soon)" title="Coming soon">
+          <form class="ch-composer" id="ch-composer" autocomplete="off" data-de-hard-nav>
+            <div class="ch-emoji-wrap">
+              <button type="button" class="ch-composer-icon is-ready" id="ch-emoji-btn" aria-label="Insert emoji" title="Emoji" aria-expanded="false" aria-controls="ch-emoji-panel">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><path d="M9 9h.01"/><path d="M15 9h.01"/></svg>
+              </button>
+              <div class="ch-emoji-panel" id="ch-emoji-panel" role="listbox" aria-label="Emoji picker" hidden></div>
+            </div>
+            <button type="button" class="ch-composer-icon is-ready" id="ch-attach-btn" aria-label="Attach file" title="Attach image or document">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
             </button>
+            <input type="file" id="ch-attach-input" class="ch-attach-input" accept="image/jpeg,image/png,image/webp,application/pdf,.doc,.docx,.xls,.xlsx,.txt,image/*" hidden>
             <div class="ch-composer-input-wrap">
               <input type="text" id="ch-composer-input" placeholder="Type a message…" maxlength="4096" autocomplete="off">
             </div>
@@ -191,8 +194,8 @@
   </div>
 </div>
 
-<script type="application/json" id="ch-bootstrap">{{ conversations|tojson }}</script>
-<script src="{{ url_for('static', filename='communication_hub.js') }}?v=1"></script>
+<template id="ch-bootstrap" data-ch-bootstrap="1">{{ conversations|tojson }}</template>
+<script src="{{ url_for('static', filename='communication_hub.js') }}?v=10"></script>
 <script>
 if (typeof window.initCommunicationHubPage === 'function') {
   window.initCommunicationHubPage();

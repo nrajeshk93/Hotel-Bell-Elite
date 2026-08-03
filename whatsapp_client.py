@@ -92,6 +92,93 @@ def graph_messages_url() -> str:
     )
 
 
+def first_message_id(response_body: dict) -> str:
+    messages = (response_body or {}).get("messages") or []
+    if not messages:
+        # Some Graph responses nest under "message" singular.
+        single = (response_body or {}).get("message") or {}
+        if isinstance(single, dict):
+            return str(single.get("id") or "").strip()
+        return ""
+    first = messages[0] if isinstance(messages[0], dict) else {}
+    return str(first.get("id") or "").strip()
+
+
+def _hub_preview_from_payload(payload: dict) -> tuple[str, str]:
+    """Return (message_type, body preview) for Communication Hub mirroring."""
+    msg_type = str((payload or {}).get("type") or "text").strip().lower() or "text"
+    if msg_type == "text":
+        body = str(((payload.get("text") or {}) if isinstance(payload.get("text"), dict) else {}).get("body") or "")
+        return "text", body
+    if msg_type == "template":
+        tpl = payload.get("template") if isinstance(payload.get("template"), dict) else {}
+        name = str((tpl or {}).get("name") or "template").strip() or "template"
+        parts = [f"Template: {name}"]
+        for component in (tpl or {}).get("components") or []:
+            if not isinstance(component, dict):
+                continue
+            if str(component.get("type") or "").lower() != "body":
+                continue
+            for param in component.get("parameters") or []:
+                if not isinstance(param, dict):
+                    continue
+                text = str(param.get("text") or "").strip()
+                if text:
+                    parts.append(text)
+        return "template", "\n".join(parts)
+    if msg_type == "interactive":
+        interactive = payload.get("interactive") if isinstance(payload.get("interactive"), dict) else {}
+        body = ""
+        body_obj = (interactive or {}).get("body")
+        if isinstance(body_obj, dict):
+            body = str(body_obj.get("text") or "")
+        return "other", body
+    if msg_type == "image":
+        image = payload.get("image") if isinstance(payload.get("image"), dict) else {}
+        return "image", str((image or {}).get("caption") or "").strip() or "Photo"
+    if msg_type == "document":
+        document = payload.get("document") if isinstance(payload.get("document"), dict) else {}
+        name = str((document or {}).get("filename") or "").strip()
+        caption = str((document or {}).get("caption") or "").strip()
+        return "document", caption or name or "Document"
+    return msg_type if msg_type in {"image", "document", "audio", "text", "template"} else "other", msg_type.title()
+
+
+def _mirror_outbound_to_hub(payload: dict, response_body: dict) -> None:
+    """Best-effort: every successful Cloud API send appears in Communication Hub."""
+    try:
+        phone = normalise_whatsapp_number((payload or {}).get("to") or "")
+        if not phone:
+            return
+        msg_type, body = _hub_preview_from_payload(payload or {})
+        wa_id = first_message_id(response_body or {})
+        media_filename = ""
+        if msg_type == "document":
+            document = payload.get("document") if isinstance(payload.get("document"), dict) else {}
+            media_filename = str((document or {}).get("filename") or "").strip()
+        elif msg_type == "image":
+            media_filename = "Photo"
+        from communication_hub import record_outbound_hub_message
+        from db import get_db
+
+        conn = get_db()
+        try:
+            record_outbound_hub_message(
+                conn,
+                phone,
+                body or msg_type,
+                wa_message_id=wa_id,
+                status="sent",
+                message_type=msg_type,
+                media_filename=media_filename,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        log.exception("Communication Hub mirror of WhatsApp send failed")
+
+
 def send_payload(payload: dict) -> tuple[bool, str, dict]:
     """POST one WhatsApp Cloud message. No automatic retries (avoids send storms)."""
     if not whatsapp_live_sends_allowed():
@@ -116,6 +203,7 @@ def send_payload(payload: dict) -> tuple[bool, str, dict]:
             body = response.json()
         except ValueError:
             body = {}
+        _mirror_outbound_to_hub(payload, body)
         return True, "", body
     return False, (response.text or "")[:500], {}
 
@@ -216,6 +304,34 @@ def send_text_message(phone: str, text: str) -> tuple[bool, str, dict]:
     return send_payload(payload)
 
 
+def send_media_message(
+    phone: str,
+    *,
+    media_id: str,
+    media_type: str = "document",
+    filename: str = "",
+    caption: str = "",
+) -> tuple[bool, str, dict]:
+    """Send an uploaded WhatsApp media message (image or document)."""
+    kind = "image" if str(media_type or "").lower() == "image" else "document"
+    media_obj = {"id": str(media_id or "").strip()}
+    if not media_obj["id"]:
+        return False, "Media id is required.", {}
+    cap = str(caption or "").strip()
+    if cap:
+        media_obj["caption"] = cap[:1024]
+    if kind == "document" and filename:
+        media_obj["filename"] = str(filename)[:240]
+    payload = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": phone,
+        "type": kind,
+        kind: media_obj,
+    }
+    return send_payload(payload)
+
+
 def send_interactive_buttons(
     phone: str,
     body_text: str,
@@ -250,15 +366,3 @@ def send_interactive_buttons(
         },
     }
     return send_payload(payload)
-
-
-def first_message_id(response_body: dict) -> str:
-    messages = (response_body or {}).get("messages") or []
-    if not messages:
-        # Some Graph responses nest under "message" singular.
-        single = (response_body or {}).get("message") or {}
-        if isinstance(single, dict):
-            return str(single.get("id") or "").strip()
-        return ""
-    first = messages[0] if isinstance(messages[0], dict) else {}
-    return str(first.get("id") or "").strip()

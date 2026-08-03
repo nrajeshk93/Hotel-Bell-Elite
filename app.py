@@ -517,6 +517,7 @@ def enforce_access():
         or request.path == "/sw.js"
         or request.path.startswith("/static/")
         or request.path.startswith("/webhook/")
+        or request.path == "/communication-hub/api/mirror-export"
     ):
         return None
 
