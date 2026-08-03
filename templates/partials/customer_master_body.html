@@ -23,12 +23,14 @@
               <tr>
                 <th scope="col">First Name</th>
                 <th scope="col">Mobile</th>
+                <th scope="col">Email</th>
+                <th scope="col">Address</th>
                 <th class="pl-col-actions" scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% for customer in customers %}
-              <tr data-sort-row data-search="{{ [customer.first_name or '', customer.mobile or '']|join(' ')|lower }}">
+              <tr data-sort-row data-search="{{ [customer.first_name or '', customer.mobile or '', customer.email or '', customer.address or '']|join(' ')|lower }}">
                 <td class="pl-name">{{ customer.first_name }}</td>
                 <td>
                   {% if customer.mobile %}
@@ -37,6 +39,8 @@
                   —
                   {% endif %}
                 </td>
+                <td>{{ customer.email or '—' }}</td>
+                <td>{{ customer.address or '—' }}</td>
                 <td class="pl-col-actions">
                   <div class="act-grp">
                     <a class="act-btn edit"
@@ -69,9 +73,6 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
           <span>{% if form.id %}Edit customer{% else %}Add customer{% endif %}</span>
         </div>
-        {% if form_focus %}
-        <a class="btn" href="{{ url_for('customer_master', embed=1) if embed_mode else url_for('customer_master') }}">Back to list</a>
-        {% endif %}
       </div>
       <div class="card-body">
         <form method="post" action="{{ url_for('save_customer') }}"{% if embed_mode %} data-md-full-nav="1"{% endif %}>
@@ -92,8 +93,15 @@
               <label for="customer-mobile">Mobile number *</label>
               <input id="customer-mobile" class="staff-input" name="mobile" type="tel" inputmode="numeric" maxlength="10" value="{{ form.mobile or '' }}" placeholder="10-digit number" required>
             </div>
+            <div class="staff-field staff-field--inline">
+              <label for="customer-email">Email</label>
+              <input id="customer-email" class="staff-input" name="email" type="email" autocomplete="email" value="{{ form.email or '' }}" placeholder="name@example.com">
+            </div>
+            <div class="staff-field staff-field--inline staff-field--full">
+              <label for="customer-address">Address</label>
+              <textarea id="customer-address" class="staff-input sm-textarea" name="address" rows="2" placeholder="Street, city, state">{{ form.address or '' }}</textarea>
+            </div>
           </div>
-          <p class="sm-meta" style="margin-top:8px;">Mobile numbers must be unique. POS Customer Details updates this list when an invoice is saved.</p>
           <div class="sm-actions">
             <button type="submit" class="btn btn-primary staff-primary">{% if form.id %}Update customer{% else %}Save customer{% endif %}</button>
             <a class="btn staff-secondary" href="{{ url_for('customer_master', embed=1) if embed_mode else url_for('customer_master') }}">Cancel</a>

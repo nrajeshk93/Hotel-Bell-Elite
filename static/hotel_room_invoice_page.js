@@ -953,11 +953,15 @@
     paintAllocBody();
     resetSplits();
     modal.hidden = false;
+    modal.removeAttribute('hidden');
   }
 
   function closeSettleModal() {
     var modal = settleModal();
-    if (modal) modal.hidden = true;
+    if (modal) {
+      modal.hidden = true;
+      modal.setAttribute('hidden', '');
+    }
     closeAllMethodListboxes();
     setSettleError('');
   }
@@ -1492,7 +1496,7 @@
         saveCustomCharge(root);
         return;
       }
-      if (event.target.closest('[data-hri-settle-close]')) {
+      if (event.target.closest('[data-hri-settle-close], [data-hotel-settle-close]')) {
         event.preventDefault();
         closeSettleModal();
         return;

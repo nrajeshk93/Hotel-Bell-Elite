@@ -281,11 +281,13 @@ _HOTEL_ROOMS_ENDPOINTS = {
     "hotel_room_detail_api",
     "hotel_room_invoice_page",
     "hotel_guest_lookup_api",
+    "hotel_customers_api",
     "hotel_id_document_upload",
     "hotel_id_document_file",
     "hotel_invoice_ledger",
     "hotel_invoice_ledger_export",
     "hotel_invoice_ledger_api",
+    "hotel_invoice_ledger_settle_api",
     "hotel_settings",
     "hotel_settings_api",
 }
@@ -345,6 +347,12 @@ _MASTER_ENDPOINTS = {
 
 _REPORTS_ENDPOINTS = {
     "reports",
+    "sales_report_hotel",
+    "sales_report_hotel_export",
+    "sales_report_restaurant",
+    "sales_report_restaurant_export",
+    "sales_report_bar",
+    "sales_report_bar_export",
 }
 
 _SETTINGS_ENDPOINTS = {

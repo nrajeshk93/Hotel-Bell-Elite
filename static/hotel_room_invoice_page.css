@@ -134,6 +134,11 @@
 .hotel-room-invoice-page .pos-inv-tool svg{
   display:block;
   flex-shrink:0;
+  pointer-events:none;
+}
+.hotel-room-invoice-page .pos-inv-toolbar-primary svg,
+.hotel-room-invoice-page #hri-generate svg{
+  pointer-events:none;
 }
 .hotel-room-invoice-page .pos-inv-tool span{
   display:block;

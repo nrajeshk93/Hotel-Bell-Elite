@@ -9,9 +9,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=41">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
 <script>
 (function(){
   try{
@@ -104,7 +105,6 @@
                   <div class="an-range-panel" id="cl-date-range-panel" role="dialog" aria-labelledby="cl-date-range-panel-title" hidden>
                     <div class="an-range-panel-inner">
                       <div class="an-range-panel-h" id="cl-date-range-panel-title">Date range</div>
-                      <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
                       <div class="an-cal-dual">
                         <div class="an-cal-pane">
                           <div class="an-cal-pane-hdr">
@@ -155,11 +155,11 @@
     <div class="pl-summary-row cl-summary-row">
       <article class="card pl-summary-card hbe-kpi-card" aria-label="Actual cash">
         <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 10h.01"/><path d="M18 14h.01"/></svg>
           </div>
           <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Actual Cash</div>
+            <div class="pl-summary-label">Actual cash</div>
             <div class="pl-summary-value pl-amount" data-amount="{{ sales_total }}">{{ sales_total }}</div>
             <div class="pl-summary-meta">{{ sales_count }} entr{{ 'y' if sales_count == 1 else 'ies' }}</div>
           </div>
@@ -167,32 +167,20 @@
       </article>
       <article class="card pl-summary-card hbe-kpi-card" aria-label="Load cash">
         <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </div>
           <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Load Cash</div>
+            <div class="pl-summary-label">Load cash</div>
             <div class="pl-summary-value pl-amount" data-amount="{{ load_total }}">{{ load_total }}</div>
             <div class="pl-summary-meta">{{ load_count }} load{{ '' if load_count == 1 else 's' }}</div>
-          </div>
-        </div>
-      </article>
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Credit cash">
-        <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 10l7-7 7 7"/><path d="M5 14h14"/></svg>
-          </div>
-          <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Credit Cash</div>
-            <div class="pl-summary-value pl-amount" data-amount="{{ credit_total }}">{{ credit_total }}</div>
-            <div class="pl-summary-meta">{{ credit_count }} collection{{ '' if credit_count == 1 else 's' }}</div>
           </div>
         </div>
       </article>
       <article class="card pl-summary-card hbe-kpi-card" aria-label="Cash expenses">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M8 7h8"/><path d="M8 11h8"/><path d="M8 15h5"/></svg>
           </div>
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Expense</div>
@@ -204,10 +192,10 @@
       <article class="card pl-summary-card hbe-kpi-card" aria-label="Transfer out">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M13 5l7 7-7 7"/></svg>
+            <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </div>
           <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Transfer Out</div>
+            <div class="pl-summary-label">Transfer out</div>
             <div class="pl-summary-value pl-amount" data-amount="{{ transfer_total }}">{{ transfer_total }}</div>
             <div class="pl-summary-meta">{{ transfer_count }} transfer{{ '' if transfer_count == 1 else 's' }}</div>
           </div>
@@ -215,11 +203,11 @@
       </article>
       <article class="card pl-summary-card hbe-kpi-card cl-summary-card--available" aria-label="Available cash">
         <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M6 3h12"/><path d="M6 8h12"/><path d="M6 13h3c4 0 6-2 6-5"/><path d="M9 13l9 8"/></svg>
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M20 12V8H6a2 2 0 0 1 0-4h14v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h2v-4Z"/></svg>
           </div>
           <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Available Cash</div>
+            <div class="pl-summary-label">Available cash</div>
             <div class="pl-summary-value pl-amount" data-amount="{{ available_total }}">{{ available_total }}</div>
             <div class="pl-summary-meta">{{ ledger_entries|length }} movement{{ '' if ledger_entries|length == 1 else 's' }}</div>
           </div>
@@ -265,13 +253,19 @@
                 <td class="pl-col-amount cl-balance pl-amount" data-amount="{{ entry.running_balance }}">{{ entry.running_balance }}</td>
                 <td class="pl-col-actions">
                   {% if entry.can_delete %}
-                  <button
-                    type="button"
-                    class="pl-delete-btn cl-delete-btn"
-                    data-entry-type="{{ entry.entry_type }}"
-                    data-source-id="{{ entry.source_id }}"
-                    data-description="{{ entry.description or '' }}"
-                  >Delete</button>
+                  <div class="act-grp pl-action-btns">
+                    <button
+                      type="button"
+                      class="act-btn del pl-delete-btn cl-delete-btn"
+                      data-tip="Delete"
+                      aria-label="Delete {{ cash_ledger_entry_labels.get(entry.entry_type, entry.entry_type)|lower }}"
+                      data-entry-type="{{ entry.entry_type }}"
+                      data-source-id="{{ entry.source_id }}"
+                      data-description="{{ entry.description or '' }}"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                  </div>
                   {% else %}
                   <span class="pl-action-muted">—</span>
                   {% endif %}

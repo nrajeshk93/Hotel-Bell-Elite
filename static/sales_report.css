@@ -1,0 +1,316 @@
+/* Sales Report filters — match Expense Ledger / Hotel Invoice Ledger chrome. */
+
+/* Invoices panel fills remaining viewport height (Expense Ledger pattern). */
+#ep-workspace.de-module .de-main-wrapper:has(#sales-report-page),
+#main-app.de-module .de-main-wrapper:has(#sales-report-page),
+#de-fs-app .de-main-wrapper:has(#sales-report-page){
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+#sales-report-page{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  height:100%;
+  box-sizing:border-box;
+}
+#sales-report-page > header.se-sales-header{flex:0 0 auto}
+#sales-report-page .content.se-content{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  padding-bottom:18px;
+}
+#sales-report-page .pl-summary-row{flex:0 0 auto}
+#sales-report-page .pl-list-panel.hbe-scroll-panel{
+  flex:1 1 auto;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  margin-bottom:0;
+}
+#sales-report-page .pl-list-panel > .card-hdr{flex:0 0 auto}
+#sales-report-page .pl-list-panel > .card-body{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+#sales-report-page .hbe-scroll-panel .pl-table-wrap,
+#sales-report-page .pl-list-panel--scroll .pl-table-wrap{
+  flex:1 1 auto;
+  max-height:none;
+  min-height:min(240px,35vh);
+  height:auto;
+  overflow:auto;
+}
+@media (max-width:760px){
+  #ep-workspace.de-module .de-main-wrapper:has(#sales-report-page),
+  #main-app.de-module .de-main-wrapper:has(#sales-report-page),
+  #de-fs-app .de-main-wrapper:has(#sales-report-page){
+    overflow:auto;
+  }
+  #sales-report-page{
+    height:auto;
+    min-height:0;
+  }
+  #sales-report-page .content.se-content{display:block}
+  #sales-report-page .pl-list-panel.hbe-scroll-panel{display:block}
+  #sales-report-page .pl-list-panel > .card-body{display:block}
+  #sales-report-page .hbe-scroll-panel .pl-table-wrap,
+  #sales-report-page .pl-list-panel--scroll .pl-table-wrap{
+    max-height:min(70vh, calc(44px + 12 * 52px));
+    height:auto;
+    min-height:0;
+  }
+}
+
+body.sales-report-module .se-sales-header-filters:has(#sr-filter-form){
+  justify-content:stretch;
+}
+body.sales-report-module #sr-filter-form.sr-topbar-filters{
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:flex-end;
+  justify-content:flex-start;
+  gap:12px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  flex:1 1 auto;
+  margin:0;
+  padding:0;
+}
+
+/* Search grows; Status stays compact; Date stays auto-width. */
+body.sales-report-module #sr-filter-form .pl-header-field-listbox{
+  position:relative;
+  width:100%;
+}
+body.sales-report-module #sr-filter-form .pl-header-field .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2,#4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  text-align:left;
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:44px;
+  background:#fff !important;
+  border:1px solid var(--border,#E2E8F0) !important;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  padding:0 8px 0 12px;
+  border:0;
+  background:transparent;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  text-align:left;
+  cursor:pointer;
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  align-self:stretch;
+  color:#94A3B8;
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox.is-open{
+  z-index:80;
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox.is-open .se-filter-chip-control,
+body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-chip-control:focus-within,
+body.sales-report-module #sr-filter-form .pl-search-chip.pl-header-field-listbox.is-active .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox.is-open .se-filter-chip-chev{
+  color:#2563EB;
+  transform:rotate(180deg);
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-listbox{
+  padding:6px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  box-shadow:0 8px 24px rgba(15,23,42,.1);
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-listbox-option{
+  padding:10px 12px;
+  border-radius:8px;
+  font-size:13px;
+  font-weight:500;
+}
+body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-listbox-option.is-selected{
+  background:rgba(37,99,235,.08);
+  color:#2563EB;
+  font-weight:600;
+}
+
+body.sales-report-module #sr-filter-form .pl-search-chip{
+  position:relative;
+  flex:1 1 auto;
+  width:auto;
+  min-width:96px;
+  max-width:100%;
+  z-index:20;
+}
+body.sales-report-module #sr-filter-form .pl-search-chip .pl-header-search,
+body.sales-report-module #sr-filter-form .pl-search-chip .pl-search-input{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:100%;
+  min-height:44px;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  outline:none;
+  padding:0 12px;
+  font:inherit;
+  font-size:13px;
+  font-weight:500;
+  color:#111827;
+  appearance:none;
+  -webkit-appearance:none;
+}
+body.sales-report-module #sr-filter-form .pl-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
+body.sales-report-module #sr-filter-form .pl-search-input::placeholder{color:#94A3B8;font-weight:500}
+
+body.sales-report-module #sr-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+  flex:0 1 auto;
+  width:clamp(120px,12vw,180px);
+  min-width:112px;
+  max-width:200px;
+}
+
+/* Override global date-range flex:1 1 280px that forces wrap/stack. */
+body.sales-report-module #sr-filter-form .pl-date-range-host.pl-header-field,
+body.sales-report-module #sr-filter-form .se-filter-chip-date-host.pl-header-field,
+body.sales-report-module #sr-filter-form .se-filter-chip-date-host:has(.se-filter-chip--date-range){
+  flex:0 0 auto;
+  width:auto;
+  min-width:168px;
+  max-width:none;
+  z-index:30;
+  margin-left:0;
+  overflow:visible;
+}
+body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip--date-range{
+  flex:none;
+  min-width:0;
+  width:auto;
+  max-width:none;
+}
+body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip--date-range .se-filter-chip-control{
+  overflow:visible;
+  min-height:52px;
+  height:52px;
+}
+body.sales-report-module #sr-filter-form .pl-date-range-host .an-range-trigger,
+body.sales-report-module #sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+  min-width:168px;
+  width:auto;
+  max-width:min(300px,42vw);
+  min-height:52px;
+  height:52px;
+  padding:0 12px 0 14px;
+  font-size:14px;
+  font-weight:600;
+}
+body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
+}
+
+body.sales-report-module #sr-table{
+  min-width:1080px;
+}
+body.sales-report-module #sr-table .pl-col-status{
+  min-width:108px;
+  white-space:nowrap;
+}
+body.sales-report-module #sr-table .pl-col-amount{
+  white-space:nowrap;
+}
+body.sales-report-module #sr-table .cp-status-pill{
+  pointer-events:none;
+  white-space:nowrap;
+  flex-shrink:0;
+}
+
+@media (max-width:1100px){
+  body.sales-report-module #sr-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+    flex:0 1 auto;
+    width:auto;
+    min-width:104px;
+    max-width:160px;
+  }
+}
+
+@media (max-width:900px){
+  body.sales-report-module #sr-filter-form.sr-topbar-filters{
+    flex-wrap:wrap;
+    justify-content:stretch;
+  }
+  body.sales-report-module #sr-filter-form .pl-search-chip{
+    flex:1 1 100%;
+    max-width:none;
+  }
+  body.sales-report-module #sr-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+    flex:1 1 calc(50% - 6px);
+    max-width:none;
+  }
+  body.sales-report-module #sr-filter-form .pl-date-range-host.pl-header-field,
+  body.sales-report-module #sr-filter-form .se-filter-chip-date-host.pl-header-field{
+    flex:1 1 100%;
+  }
+  body.sales-report-module #sr-filter-form .pl-date-range-host .an-range-trigger{
+    max-width:none;
+    width:100%;
+  }
+}
+
+/* Keep a single-row filter bar even in narrow soft-nav / preview panes. */
+@media (max-width:720px){
+  body.sales-report-module .se-sales-header-filters:has(#sr-filter-form){
+    flex-direction:row;
+    align-items:flex-end;
+  }
+  body.sales-report-module #sr-filter-form.sr-topbar-filters{
+    flex-direction:row;
+    flex-wrap:wrap;
+    width:100%;
+  }
+  body.sales-report-module #sr-filter-form .se-filter-chip,
+  body.sales-report-module #sr-filter-form .se-filter-chip-date-host{
+    width:auto;
+  }
+}

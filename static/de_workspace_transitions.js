@@ -748,6 +748,9 @@
       if(path === '/dashboard') return !!main.querySelector('#dashboard-coming-soon-title');
       if(path === '/master') return !!main.querySelector('#md-master-grid, #md-search-input');
       if(path === '/reports') return !!main.querySelector('#rd-report-sections, #rd-search-input');
+      if(path.indexOf('/reports/sales/') === 0){
+        return !!main.querySelector('#sales-report-page, [data-sales-report]');
+      }
       if(path === '/settings') return !!main.querySelector('#settings-page, [data-settings], #sd-settings-sections');
       if(path === '/access-management') return !!main.querySelector('#am-users-filter-form, #am-users-search');
 
@@ -811,11 +814,12 @@
         if(sidebar.classList.contains('is-pinned')) pinned = true;
       });
       persistOpenNavGroups();
+      /* Only persist pin ON from DOM. Never clear pin here — soft-nav / hover
+         races can briefly drop is-pinned and would wipe the user preference. */
       if(pinned){
         localStorage.setItem('de-sidebar-pinned', '1');
         sessionStorage.setItem('de-sidebar-expanded', '1');
       } else {
-        localStorage.setItem('de-sidebar-pinned', '0');
         sessionStorage.removeItem('de-sidebar-expanded');
       }
       if(isFullscreenActive() || isFullscreenPreferred()){
@@ -1562,9 +1566,13 @@
     sidebarScrollReleaseTimer = setTimeout(function(){
       sidebarScrollReleaseTimer = null;
       clearSidebarScrollLock();
+      if(window.__deSoftNavInProgress) return;
+      if(typeof window.isSidebarHoverExpandSuppressed === 'function' && window.isSidebarHoverExpandSuppressed()) return;
       if(typeof window.preflightActiveNavScroll === 'function'){
         var sb = document.querySelector('#de-sidebar, .de-sidebar');
-        if(sb) window.preflightActiveNavScroll(sb);
+        if(sb && !sb.classList.contains('is-pinned') && !sb.classList.contains('is-expanded')){
+          window.preflightActiveNavScroll(sb);
+        }
       }
     }, typeof delayMs === 'number' ? delayMs : 0);
   }
@@ -1585,9 +1593,16 @@
     }
     if(!active){
       sidebarScrollLockUntil = Math.max(sidebarScrollLockUntil, Date.now() + 200);
-      releaseSidebarScrollLock(300);
+      /* Block hover-expand near Back / main links so the rail does not flash wide
+         then collapse when soft-nav ends (cursor often sits beside the rail). */
+      if(typeof window.suppressSidebarHoverExpand === 'function'){
+        window.suppressSidebarHoverExpand(1200);
+      }
+      releaseSidebarScrollLock(400);
       if(typeof window.syncDeSidebarPointerState === 'function'){
-        window.syncDeSidebarPointerState();
+        window.requestAnimationFrame(function(){
+          window.syncDeSidebarPointerState();
+        });
       }
     }
   }
@@ -2187,6 +2202,9 @@
     if(typeof window.initReportsDashboard === 'function'){
       window.initReportsDashboard();
     }
+    if(typeof window.initSalesReportPage === 'function'){
+      window.initSalesReportPage();
+    }
     if(typeof window.initStockAuditReportPage === 'function'){
       window.initStockAuditReportPage();
     }
@@ -2228,7 +2246,7 @@
       prefetchRestaurantGroup();
       /* Warm CSS for Masters/Stores so first soft-nav does not inject 12 cold sheets. */
       [
-        '/static/masters_dashboard.css?v=25',
+        '/static/masters_dashboard.css?v=26',
         '/static/sales_entry_dashboard.css?v=32',
         '/static/sales_update_header.css?v=5',
         '/static/sales_update_premium.css?v=19',

@@ -607,7 +607,7 @@
         .map(function (c) {
           var id = String(c.id);
           var on = id === want;
-          var name = !ensureFilterOutlet() ? categoryDisplayName(c) : c.name || '';
+          var name = c.name || '';
           return (
             '<button type="button" class="se-filter-listbox-option' +
             (on ? ' is-selected' : '') +
@@ -629,9 +629,7 @@
     var label = 'All Categories';
     if (want) {
       var cat = findCategory(want);
-      label =
-        (cat && (!ensureFilterOutlet() ? categoryDisplayName(cat) : cat.name)) ||
-        'All Categories';
+      label = (cat && cat.name) || 'All Categories';
       if (!cat) want = '';
     }
     setListboxValue('pos-menu-filter-category', want, label);

@@ -120,12 +120,46 @@ body.su-module #pos-il-filter-form .se-filter-chip:not(.se-filter-chip--date-ran
   max-width: none;
 }
 
-body.su-module .pos-invoice-ledger-module .pl-date-range-host {
+/* Date chip — match Expense Ledger (.pl-header-field) sizing; beat sales min-width */
+body.su-module #pos-invoice-ledger-page .pl-date-range-host.pl-header-field {
   flex: 0 0 auto;
-  min-width: 0;
+  min-width: 168px;
+  max-width: none;
   z-index: 30;
   margin-left: 0;
   overflow: visible;
+}
+body.su-module #pos-invoice-ledger-page .pl-date-range-host.pl-header-field .se-filter-chip--date-range {
+  flex: none;
+  min-width: 0;
+  width: auto;
+  max-width: none;
+}
+body.su-module #pos-invoice-ledger-page .pl-date-range-host.pl-header-field .se-filter-chip--date-range .se-filter-chip-control {
+  overflow: visible;
+  min-height: 52px;
+  height: 52px;
+}
+body.su-module #pos-invoice-ledger-page .pl-date-range-host.pl-header-field .an-range-wrap {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: auto;
+}
+body.su-module #pos-invoice-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
+body.su-module #pos-invoice-ledger-page #pos-il-date-range-trigger {
+  min-width: 168px;
+  width: auto;
+  max-width: min(300px, 42vw);
+  min-height: 52px;
+  height: 52px;
+  padding: 0 12px 0 14px;
+  font-size: 14px;
+  font-weight: 600;
+}
+body.su-module #pos-invoice-ledger-page .pl-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control {
+  border-color: #93C5FD !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
 }
 
 .pos-il-kpi-rupee {

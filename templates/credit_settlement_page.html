@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=41">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -180,7 +180,7 @@
 
   <section class="content se-content">
     {% if selected_view == 'outstanding' %}
-    <div class="pl-summary-row">
+    <div class="pl-summary-row cp-outstanding-kpi-row">
       <article class="card pl-summary-card hbe-kpi-card" aria-label="{{ settlement_labels.outstanding_panel_aria }} summary">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
@@ -193,6 +193,37 @@
           </div>
         </div>
       </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Meat category balance">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--red" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M15.4 13.4c1.6 1.6 2.1 4.1 1 5.5-1.4 1.6-3.9 1.1-5.5-.5L4.8 12.3 3.4 13.7 2 12.3l1.4-1.4 6.1-6.1c1.6-1.6 4.1-2.1 5.5-.5 1.4 1.4.9 3.9-.5 5.5z"/><path d="M10.2 8.8l5 5"/><path d="M16.8 15.4c.8.3 1.7.2 2.4-.4"/><path d="M8.5 7.2c-.6.7-.7 1.6-.4 2.4"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Meat</div>
+            <div class="pl-summary-value pl-amount" id="cp-meat-total" data-amount="{{ meat_total }}">{{ meat_total }}</div>
+            <div class="pl-summary-meta">{{ meat_count }} expense{{ '' if meat_count == 1 else 's' }}</div>
+          </div>
+        </div>
+      </article>
+      {% for cat in top_category_kpis %}
+      {% set icon_tone = 'blue' if loop.index0 == 0 else 'purple' %}
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="{{ cat.label }} category balance">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--{{ icon_tone }}" aria-hidden="true">
+            {% if loop.index0 == 0 %}
+            <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 3 5-6"/></svg>
+            {% else %}
+            <svg viewBox="0 0 24 24"><path d="M12 2v4"/><path d="M12 18v4"/><path d="M4.9 4.9l2.8 2.8"/><path d="M16.3 16.3l2.8 2.8"/><path d="M2 12h4"/><path d="M18 12h4"/><path d="M4.9 19.1l2.8-2.8"/><path d="M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="4"/></svg>
+            {% endif %}
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">{{ cat.label }}</div>
+            <div class="pl-summary-value pl-amount" id="cp-top-category-{{ loop.index }}" data-amount="{{ cat.total }}">{{ cat.total }}</div>
+            <div class="pl-summary-meta">{{ cat.count }} expense{{ '' if cat.count == 1 else 's' }}</div>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
     </div>
 
     <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="{{ settlement_labels.outstanding_panel_aria }}">

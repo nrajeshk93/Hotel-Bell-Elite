@@ -388,6 +388,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   stroke-linecap:round;
   stroke-linejoin:round;
   flex-shrink:0;
+  pointer-events:none;
 }
 .pos-inv-btn--primary{
   background:var(--pos-primary);
@@ -1383,6 +1384,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-inv-tool svg{
   width:15px;height:15px;
   stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;
+  pointer-events:none;
 }
 .pos-inv-toolbar-primary{
   margin-left:auto;

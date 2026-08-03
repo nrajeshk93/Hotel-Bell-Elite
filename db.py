@@ -723,6 +723,21 @@ def _normalize_customer_first_name(value):
     return " ".join(str(value or "").split()).strip()
 
 
+def _normalize_customer_address(value):
+    return " ".join(str(value or "").split()).strip()
+
+
+def _normalize_customer_email(value):
+    return " ".join(str(value or "").split()).strip().lower()
+
+
+def _customer_row_field(row, key, default=""):
+    try:
+        return row[key] or default
+    except (KeyError, IndexError, TypeError):
+        return default
+
+
 def ensure_customers_schema(conn):
     """Customer Master table shared with POS Customer Details (unique mobile)."""
     cursor = conn.cursor()
@@ -732,11 +747,24 @@ def ensure_customers_schema(conn):
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             first_name  TEXT    NOT NULL DEFAULT '',
             mobile      TEXT    NOT NULL DEFAULT '',
+            email       TEXT    NOT NULL DEFAULT '',
+            address     TEXT    NOT NULL DEFAULT '',
             created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
             updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         )
         """
     )
+    cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(customers)").fetchall()
+    }
+    if "address" not in cols:
+        cursor.execute(
+            "ALTER TABLE customers ADD COLUMN address TEXT NOT NULL DEFAULT ''"
+        )
+    if "email" not in cols:
+        cursor.execute(
+            "ALTER TABLE customers ADD COLUMN email TEXT NOT NULL DEFAULT ''"
+        )
     cursor.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_mobile_unique
@@ -800,6 +828,8 @@ def customer_row_to_dict(row):
         "first_name": row["first_name"] or "",
         "name": row["first_name"] or "",  # POS autocomplete expects .name
         "mobile": row["mobile"] or "",
+        "email": _customer_row_field(row, "email"),
+        "address": _customer_row_field(row, "address"),
     }
 
 
@@ -807,7 +837,7 @@ def list_customers(conn):
     ensure_customers_schema(conn)
     rows = conn.execute(
         """
-        SELECT id, first_name, mobile
+        SELECT id, first_name, mobile, email, address
         FROM customers
         ORDER BY LOWER(first_name), mobile, id
         """
@@ -824,7 +854,7 @@ def get_customer(conn, customer_id):
     except (TypeError, ValueError):
         return None
     row = conn.execute(
-        "SELECT id, first_name, mobile FROM customers WHERE id = ?",
+        "SELECT id, first_name, mobile, email, address FROM customers WHERE id = ?",
         (customer_id,),
     ).fetchone()
     return customer_row_to_dict(row)
@@ -846,7 +876,7 @@ def search_customers(conn, query, limit=8):
     if len(digits) >= 2:
         rows = conn.execute(
             """
-            SELECT id, first_name, mobile
+            SELECT id, first_name, mobile, email, address
             FROM customers
             WHERE mobile != '' AND mobile LIKE ?
             ORDER BY mobile ASC, LOWER(first_name) ASC, id ASC
@@ -858,7 +888,7 @@ def search_customers(conn, query, limit=8):
 
     rows = conn.execute(
         """
-        SELECT id, first_name, mobile
+        SELECT id, first_name, mobile, email, address
         FROM customers
         WHERE LOWER(first_name) LIKE ?
         ORDER BY LOWER(first_name) ASC, mobile ASC, id ASC
@@ -869,7 +899,7 @@ def search_customers(conn, query, limit=8):
     return [customer_row_to_dict(row) for row in rows]
 
 
-def upsert_customer(conn, first_name, mobile):
+def upsert_customer(conn, first_name, mobile, address="", email=""):
     """Create or update Customer Master from POS (requires 10-digit mobile).
 
     Unique by normalized mobile. If the mobile already exists, update first name
@@ -879,24 +909,39 @@ def upsert_customer(conn, first_name, mobile):
     ensure_customers_schema(conn)
     mobile = _normalize_customer_mobile(mobile)
     first_name = _normalize_customer_first_name(first_name)
+    address = _normalize_customer_address(address)
+    email = _normalize_customer_email(email)
     if len(mobile) != 10:
         return None
 
     existing = conn.execute(
-        "SELECT id, first_name, mobile FROM customers WHERE mobile = ?",
+        "SELECT id, first_name, mobile, email, address FROM customers WHERE mobile = ?",
         (mobile,),
     ).fetchone()
     if existing:
         existing_name = _normalize_customer_first_name(existing["first_name"])
+        existing_address = _normalize_customer_address(
+            _customer_row_field(existing, "address")
+        )
+        existing_email = _normalize_customer_email(
+            _customer_row_field(existing, "email")
+        )
         # Update / fill only when POS supplies a name that should replace blank or prior.
-        if first_name and first_name != existing_name:
+        next_name = first_name if first_name and first_name != existing_name else existing_name
+        next_address = address if address and address != existing_address else existing_address
+        next_email = email if email and email != existing_email else existing_email
+        if (
+            next_name != existing_name
+            or next_address != existing_address
+            or next_email != existing_email
+        ):
             conn.execute(
                 f"""
                 UPDATE customers
-                SET first_name = ?, updated_at = {SQL_NOW}
+                SET first_name = ?, email = ?, address = ?, updated_at = {SQL_NOW}
                 WHERE id = ?
                 """,
-                (first_name, existing["id"]),
+                (next_name or existing_name, next_email, next_address, existing["id"]),
             )
         return get_customer(conn, existing["id"])
 
@@ -904,19 +949,21 @@ def upsert_customer(conn, first_name, mobile):
         first_name = "Guest"
     cursor = conn.execute(
         f"""
-        INSERT INTO customers (first_name, mobile, created_at, updated_at)
-        VALUES (?, ?, {SQL_NOW}, {SQL_NOW})
+        INSERT INTO customers (first_name, mobile, email, address, created_at, updated_at)
+        VALUES (?, ?, ?, ?, {SQL_NOW}, {SQL_NOW})
         """,
-        (first_name, mobile),
+        (first_name, mobile, email, address),
     )
     return get_customer(conn, cursor.lastrowid)
 
 
-def save_customer_record(conn, first_name, mobile, customer_id=None):
+def save_customer_record(conn, first_name, mobile, customer_id=None, address="", email=""):
     """Insert/update Customer Master. Returns (saved_id, errors)."""
     ensure_customers_schema(conn)
     first_name = _normalize_customer_first_name(first_name)
     mobile = _normalize_customer_mobile(mobile)
+    address = _normalize_customer_address(address)
+    email = _normalize_customer_email(email)
     errors = []
     if not first_name:
         errors.append("First name is required.")
@@ -931,6 +978,8 @@ def save_customer_record(conn, first_name, mobile, customer_id=None):
         ).fetchone()
         if existing and (customer_id is None or int(existing["id"]) != int(customer_id)):
             errors.append("A customer with this mobile number already exists.")
+    if email and ("@" not in email or "." not in email.split("@")[-1]):
+        errors.append("Enter a valid email address.")
     if errors:
         return None, errors
 
@@ -938,19 +987,19 @@ def save_customer_record(conn, first_name, mobile, customer_id=None):
         conn.execute(
             f"""
             UPDATE customers
-            SET first_name = ?, mobile = ?, updated_at = {SQL_NOW}
+            SET first_name = ?, mobile = ?, email = ?, address = ?, updated_at = {SQL_NOW}
             WHERE id = ?
             """,
-            (first_name, mobile, customer_id),
+            (first_name, mobile, email, address, customer_id),
         )
         return customer_id, []
 
     cursor = conn.execute(
         f"""
-        INSERT INTO customers (first_name, mobile, created_at, updated_at)
-        VALUES (?, ?, {SQL_NOW}, {SQL_NOW})
+        INSERT INTO customers (first_name, mobile, email, address, created_at, updated_at)
+        VALUES (?, ?, ?, ?, {SQL_NOW}, {SQL_NOW})
         """,
-        (first_name, mobile),
+        (first_name, mobile, email, address),
     )
     return int(cursor.lastrowid), []
 
@@ -992,8 +1041,17 @@ def _normalize_agency_name(value):
     return " ".join(str(value or "").split()).strip()
 
 
+_GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
+
+
 def _normalize_agency_gst(value):
-    return " ".join(str(value or "").split()).strip().upper()
+    return "".join(str(value or "").split()).upper()
+
+
+def is_valid_agency_gst(value):
+    """Empty is allowed; non-empty must be a 15-character GSTIN."""
+    gst = _normalize_agency_gst(value)
+    return (not gst) or bool(_GSTIN_RE.fullmatch(gst))
 
 
 def _normalize_agency_address(value):
@@ -1054,6 +1112,8 @@ def save_agency_record(conn, name, gst="", address="", agency_id=None):
         ).fetchone()
         if existing and (agency_id is None or int(existing["id"]) != int(agency_id)):
             errors.append("An agency with this name already exists.")
+    if gst and not is_valid_agency_gst(gst):
+        errors.append("GST must be a valid 15-character GSTIN (e.g. 35AANFH8592H1ZS).")
     if errors:
         return None, errors
 
@@ -1092,6 +1152,8 @@ def upsert_agency_by_name(conn, name, gst="", address=""):
         return None
     gst = _normalize_agency_gst(gst)
     address = _normalize_agency_address(address)
+    if gst and not is_valid_agency_gst(gst):
+        return None
     existing = conn.execute(
         "SELECT id, gst, address FROM agencies WHERE LOWER(name) = LOWER(?) LIMIT 1",
         (name,),
@@ -6176,6 +6238,7 @@ _HOTEL_MERGE_SHARED_GUEST_KEYS = (
     "checkInDate",
     "checkInTime",
     "checkOutDate",
+    "checkOutTime",
     "nights",
     "adults",
     "children",
@@ -6267,7 +6330,7 @@ def _hotel_copy_stay_fields(dest, source, keys):
     return dest
 
 
-def _hotel_sync_merge_group_shared_data(rooms):
+def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
     """Replicate guest identity across a merge group; keep bill money on primary.
 
     Every merged room should show the same customer details. Folio/payments stay
@@ -6373,6 +6436,10 @@ def _hotel_sync_merge_group_shared_data(rooms):
             elif _normalize_hotel_room_status(room.get("status")) == "occupied":
                 room["status"] = "vacant"
 
+        _hotel_sync_merged_room_rate_folio(
+            primary, rooms, tariff_rates=tariff_rates
+        )
+
 
 def _hotel_overlay_merge_shared_bill_view(room, rooms):
     """API/UI helper: members see the primary's folio and totals."""
@@ -6416,7 +6483,7 @@ def _hotel_overlay_merge_shared_bill_view(room, rooms):
     return room
 
 
-def _hotel_heal_merge_group_occupancy(rooms):
+def _hotel_heal_merge_group_occupancy(rooms, tariff_rates=None):
     """Restore Occupied for in-house stays and merge groups with occupied peers.
 
     Checked-in guests must not display as Vacant until FO checkout clears the stay.
@@ -6424,13 +6491,21 @@ def _hotel_heal_merge_group_occupancy(rooms):
     """
     if not isinstance(rooms, list):
         return
-    # 1) Orphan stay with vacant/dirty inventory → occupied
+    # 1) Orphan stay with vacant/dirty inventory → occupied when truly in-house;
+    #    otherwise drop cancelled reservation shells so vacant rooms stay bookable.
     for room in rooms:
         if not isinstance(room, dict):
             continue
         status = _normalize_hotel_room_status(room.get("status"))
-        if status in ("vacant", "dirty") and _hotel_room_has_inhouse_stay(room):
+        if status not in ("vacant", "dirty"):
+            continue
+        stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+        if not stay:
+            continue
+        if _hotel_room_has_inhouse_stay(room):
             room["status"] = "occupied"
+        else:
+            room.pop("stay", None)
 
     # 2) Merge groups: occupy together only when a real guest exists
     groups = {}
@@ -6533,10 +6608,10 @@ def _hotel_heal_merge_group_occupancy(rooms):
         room["stay"] = _normalize_hotel_room_stay(stay)
 
     # 3) Same guest identity on every room in the merge group
-    _hotel_sync_merge_group_shared_data(rooms)
+    _hotel_sync_merge_group_shared_data(rooms, tariff_rates=tariff_rates)
 
 
-def _normalize_hotel_rooms_payload(floors, rooms, tax_rates=None):
+def _normalize_hotel_rooms_payload(floors, rooms, tax_rates=None, tariff_rates=None):
     """Sanitize floors/rooms lists into a stable layout payload."""
     rates = _hotel_tax_rates_or_default(tax_rates)
     norm_floors = []
@@ -6602,8 +6677,15 @@ def _normalize_hotel_rooms_payload(floors, rooms, tax_rates=None):
             stay = raw.get("stay")
             if isinstance(stay, dict) and stay:
                 room_obj["stay"] = _normalize_hotel_room_stay(stay, tax_rates=rates)
+            upcoming = raw.get("upcomingStay")
+            if not isinstance(upcoming, dict):
+                upcoming = raw.get("upcoming_stay")
+            if isinstance(upcoming, dict) and upcoming:
+                room_obj["upcomingStay"] = _normalize_hotel_room_stay(
+                    upcoming, tax_rates=rates
+                )
             norm_rooms.append(room_obj)
-    _hotel_heal_merge_group_occupancy(norm_rooms)
+    _hotel_heal_merge_group_occupancy(norm_rooms, tariff_rates=tariff_rates)
     norm_rooms.sort(key=lambda r: (r["floorId"], r["number"]))
     return {"floors": norm_floors, "rooms": norm_rooms}
 
@@ -6674,8 +6756,46 @@ def _hotel_merge_occupancy_drift(raw_rooms, healed_rooms):
             "bookingNumber",
             "mergeRole",
             "billingRoomId",
+            "estimatedTotal",
         ):
             if (hstay.get(key) or "") != (rstay.get(key) or ""):
+                return True
+        h_rates = hstay.get("mergeRoomRates") or []
+        r_rates = rstay.get("mergeRoomRates") or []
+        if len(h_rates) != len(r_rates):
+            return True
+        for idx, hrow in enumerate(h_rates):
+            if not isinstance(hrow, dict):
+                continue
+            rrow = r_rates[idx] if idx < len(r_rates) else {}
+            if not isinstance(rrow, dict):
+                return True
+            try:
+                if abs(float(hrow.get("roomRate") or 0) - float(rrow.get("roomRate") or 0)) > 0.009:
+                    return True
+            except (TypeError, ValueError):
+                return True
+        h_folio = [
+            f
+            for f in (hstay.get("folioCharges") or [])
+            if isinstance(f, dict) and str(f.get("source") or "") == "merged_room_rate"
+        ]
+        r_folio = [
+            f
+            for f in (rstay.get("folioCharges") or [])
+            if isinstance(f, dict) and str(f.get("source") or "") == "merged_room_rate"
+        ]
+        if len(h_folio) != len(r_folio):
+            return True
+        h_by_src = {str(f.get("sourceRoomId") or ""): f for f in h_folio}
+        for rf in r_folio:
+            hf = h_by_src.get(str(rf.get("sourceRoomId") or ""))
+            if not hf:
+                return True
+            try:
+                if abs(float(hf.get("amount") or 0) - float(rf.get("amount") or 0)) > 0.009:
+                    return True
+            except (TypeError, ValueError):
                 return True
     return False
 
@@ -6684,6 +6804,7 @@ def get_hotel_rooms_layout(conn):
     """Load hotel rooms layout JSON; seed 20 rooms when empty."""
     ensure_hotel_rooms_schema(conn)
     rates = get_hotel_tax_rates(conn)
+    tariffs = get_hotel_tariff_rates(conn)
     row = conn.execute(
         "SELECT payload FROM hotel_rooms_layout WHERE id = 1"
     ).fetchone()
@@ -6691,7 +6812,10 @@ def get_hotel_rooms_layout(conn):
         payload = default_hotel_rooms_layout()
         save_hotel_rooms_layout(conn, payload.get("floors"), payload.get("rooms"))
         return _normalize_hotel_rooms_payload(
-            payload.get("floors"), payload.get("rooms"), tax_rates=rates
+            payload.get("floors"),
+            payload.get("rooms"),
+            tax_rates=rates,
+            tariff_rates=tariffs,
         )
     try:
         parsed = json.loads(row["payload"] or "{}")
@@ -6705,9 +6829,14 @@ def get_hotel_rooms_layout(conn):
         payload = default_hotel_rooms_layout()
         save_hotel_rooms_layout(conn, payload.get("floors"), payload.get("rooms"))
         return _normalize_hotel_rooms_payload(
-            payload.get("floors"), payload.get("rooms"), tax_rates=rates
+            payload.get("floors"),
+            payload.get("rooms"),
+            tax_rates=rates,
+            tariff_rates=tariffs,
         )
-    layout = _normalize_hotel_rooms_payload(floors, rooms, tax_rates=rates)
+    layout = _normalize_hotel_rooms_payload(
+        floors, rooms, tax_rates=rates, tariff_rates=tariffs
+    )
     if _hotel_merge_occupancy_drift(rooms, layout.get("rooms") or []):
         layout = save_hotel_rooms_layout(
             conn, layout.get("floors") or [], layout.get("rooms") or []
@@ -6719,6 +6848,7 @@ def save_hotel_rooms_layout(conn, floors, rooms):
     """Replace hotel rooms layout payload (singleton row)."""
     ensure_hotel_rooms_schema(conn)
     rates = get_hotel_tax_rates(conn)
+    tariffs = get_hotel_tariff_rates(conn)
     existing_row = conn.execute(
         "SELECT payload FROM hotel_rooms_layout WHERE id = 1"
     ).fetchone()
@@ -6749,7 +6879,9 @@ def save_hotel_rooms_layout(conn, floors, rooms):
                     raise ValueError(
                         f"Cannot remove room {prev.get('number') or rid} while it is {status}."
                     )
-    payload = _normalize_hotel_rooms_payload(floors, rooms, tax_rates=rates)
+    payload = _normalize_hotel_rooms_payload(
+        floors, rooms, tax_rates=rates, tariff_rates=tariffs
+    )
     blob = json.dumps(payload, separators=(",", ":"))
     conn.execute(
         f"""
@@ -6918,6 +7050,9 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
         "checkOutDate": _hotel_str(
             stay.get("checkOutDate") or stay.get("check_out_date"), 20
         ),
+        "checkOutTime": _hotel_str(
+            stay.get("checkOutTime") or stay.get("check_out_time"), 20
+        ),
         "nights": max(1, nights),
         "overstayNights": 0,
         "billableNights": max(1, nights),
@@ -7011,6 +7146,7 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
         "mergeRole": _hotel_str(stay.get("mergeRole") or stay.get("merge_role"), 20).lower(),
         "mergeRoomNumbers": [],
         "mergeRoomLabel": "",
+        "mergeRoomRates": [],
     }
     if out["mergeRole"] not in ("member", "primary"):
         out["mergeRole"] = "member" if out["billingRoomId"] else ""
@@ -7037,6 +7173,37 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
     if not label and merge_numbers:
         label = " + ".join(merge_numbers)
     out["mergeRoomLabel"] = label
+    merge_rates_raw = stay.get("mergeRoomRates") or stay.get("merge_room_rates") or []
+    cleaned_rates = []
+    if isinstance(merge_rates_raw, list):
+        for item in merge_rates_raw[:20]:
+            if not isinstance(item, dict):
+                continue
+            try:
+                row_rate = round(float(item.get("roomRate") or item.get("room_rate") or 0), 2)
+            except (TypeError, ValueError):
+                row_rate = 0.0
+            plan = _hotel_str(item.get("ratePlan") or item.get("rate_plan") or "EP", 20) or "EP"
+            cleaned_rates.append(
+                {
+                    "roomId": _hotel_str(item.get("roomId") or item.get("room_id"), 40),
+                    "number": _hotel_str(item.get("number") or item.get("roomNumber"), 20),
+                    "roomType": _hotel_str(
+                        item.get("roomType") or item.get("room_type"), 40
+                    ),
+                    "roomTypeLabel": _hotel_str(
+                        item.get("roomTypeLabel")
+                        or item.get("room_type_label")
+                        or item.get("roomType")
+                        or item.get("label"),
+                        80,
+                    ),
+                    "ratePlan": plan,
+                    "roomRate": max(0.0, row_rate),
+                    "isPrimary": bool(item.get("isPrimary") or item.get("is_primary")),
+                }
+            )
+    out["mergeRoomRates"] = cleaned_rates
     history = stay.get("transferHistory") or stay.get("transfer_history") or []
     if isinstance(history, list):
         cleaned = []
@@ -7840,7 +8007,9 @@ def save_hotel_room_checkin(conn, room_id, stay, status="occupied"):
             break
     if not found:
         raise ValueError("Room not found.")
-    _hotel_sync_merge_group_shared_data(rooms)
+    _hotel_sync_merge_group_shared_data(
+        rooms, tariff_rates=get_hotel_tariff_rates(conn)
+    )
     if normalized_stay:
         # Prefer the post-sync stay on the target room for guest profile save.
         for room in rooms:
@@ -8248,17 +8417,148 @@ def record_hotel_room_payment(conn, room_id, payment=None, payment_splits=None, 
     raise ValueError("Room not found.")
 
 
-def save_hotel_room_reservation(
-    conn, room_id, check_in_date, check_out_date=None, stay_fields=None
+def record_hotel_room_invoice_payment(
+    conn, invoice_number, payment=None, payment_splits=None, note=""
 ):
-    """Reserve a room for a date window; merges into existing stay when present."""
+    """Record payment against a ledger invoice (live stay or archive-only)."""
+    ensure_hotel_room_invoices_schema(conn)
+    item = get_hotel_room_invoice(conn, invoice_number)
+    if not item:
+        raise ValueError("Invoice not found.")
+    inv_no = _hotel_str(item.get("invoice_number"), 60)
+    if not inv_no:
+        raise ValueError("Invoice not found.")
+    if (item.get("status") or "") == "settled" or float(
+        item.get("balance_amount") or 0
+    ) <= 0.009:
+        raise ValueError("Balance due is already settled.")
+
+    room_id = _hotel_str(item.get("room_id"), 40)
+    live = get_hotel_room(conn, room_id) if room_id else None
+    if live and _normalize_hotel_room_status(live.get("status")) == "occupied":
+        live_stay = live.get("stay") if isinstance(live.get("stay"), dict) else None
+        if live_stay:
+            live_stay = _normalize_hotel_room_stay(live_stay)
+            live_inv = _hotel_str(
+                live_stay.get("invoiceNumber") or live_stay.get("invoice_number"), 60
+            )
+            if live_inv == inv_no:
+                result = record_hotel_room_payment(
+                    conn,
+                    room_id,
+                    payment=payment,
+                    payment_splits=payment_splits,
+                    note=note,
+                )
+                refreshed = get_hotel_room_invoice(conn, inv_no)
+                return {
+                    "invoice": refreshed,
+                    "room": result.get("room")
+                    or (refreshed.get("room") if refreshed else None),
+                    "payment": result.get("payment"),
+                    "payments": result.get("payments") or [],
+                }
+
+    room = dict(item.get("room") or {})
+    stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+    if not stay:
+        raise ValueError("Invoice stay data is missing.")
+    stay = _normalize_hotel_room_stay(stay)
+    if float(stay.get("balanceAmount") or 0) <= 0.009:
+        raise ValueError("Balance due is already settled.")
+    if not stay.get("invoiceGenerated") or not (
+        stay.get("invoiceNumber") or stay.get("invoice_number")
+    ):
+        stay["invoiceGenerated"] = True
+        stay["invoiceNumber"] = inv_no
+
+    balance = round(float(stay.get("balanceAmount") or 0), 2)
+    allow_credit = _hotel_stay_has_agency(stay)
+    payment_records = []
+    if payment_splits is not None:
+        splits = _parse_hotel_room_payment_splits(
+            payment_splits,
+            balance,
+            require_positive=True,
+            allow_credit=allow_credit,
+        )
+        payment_records = _apply_hotel_room_payment_splits(stay, splits, note=note)
+    else:
+        record = _append_hotel_room_payment(
+            stay, payment or {}, allow_credit=allow_credit
+        )
+        if not record:
+            raise ValueError("Payment amount must be greater than zero.")
+        payment_records = [record]
+
+    stay = _normalize_hotel_room_stay(stay)
+    room["stay"] = stay
+    if not room.get("id"):
+        room["id"] = room_id
+    if not room.get("number"):
+        room["number"] = item.get("room_number") or ""
+    upsert_hotel_room_invoice_from_room(conn, room)
+    refreshed = get_hotel_room_invoice(conn, inv_no)
+    return {
+        "invoice": refreshed,
+        "room": (refreshed.get("room") if refreshed else room),
+        "payment": payment_records[0] if payment_records else None,
+        "payments": payment_records,
+    }
+
+
+def _hotel_stay_date_window(stay):
+    """Return (check_in, check_out) ISO dates for a stay, or (None, None)."""
+    if not isinstance(stay, dict):
+        return None, None
+    check_in = str(
+        stay.get("checkInDate") or stay.get("check_in_date") or ""
+    ).strip()[:10]
+    check_out = str(
+        stay.get("checkOutDate") or stay.get("check_out_date") or ""
+    ).strip()[:10]
+    if not check_in:
+        return None, None
+    if not check_out:
+        try:
+            check_out = (
+                datetime.strptime(check_in, "%Y-%m-%d") + timedelta(days=1)
+            ).strftime("%Y-%m-%d")
+        except ValueError:
+            return check_in, None
+    return check_in, check_out
+
+
+def _hotel_date_ranges_overlap(a_in, a_out, b_in, b_out):
+    """Inclusive checkout-day overlap (matches front-desk stay coverage)."""
+    if not (a_in and a_out and b_in and b_out):
+        return False
+    return a_in <= b_out and b_in <= a_out
+
+
+def save_hotel_room_reservation(
+    conn, room_id, check_in_date, check_out_date=None, stay_fields=None, replace=False
+):
+    """Reserve a room for a date window; merges into existing stay when present.
+
+    When replace=True, discard the previous stay and build a fresh reservation.
+    When the room is occupied and the new window does not overlap the in-house
+    stay, store the booking as upcomingStay without clearing the current guest.
+    """
     room = get_hotel_room(conn, room_id)
     if not room:
         raise ValueError("Room not found.")
     status = _normalize_hotel_room_status(room.get("status"))
     stay_existing = room.get("stay") if isinstance(room.get("stay"), dict) else None
-    if status == "occupied" and stay_existing:
-        raise ValueError("Check out the guest before reserving this room.")
+    upcoming_existing = (
+        room.get("upcomingStay")
+        if isinstance(room.get("upcomingStay"), dict)
+        else (
+            room.get("upcoming_stay")
+            if isinstance(room.get("upcoming_stay"), dict)
+            else None
+        )
+    )
 
     check_in = str(check_in_date or "").strip()[:10]
     if not check_in:
@@ -8275,7 +8575,36 @@ def save_hotel_room_reservation(
     if check_out <= check_in:
         raise ValueError("To date must be after from date.")
 
-    stay = dict(stay_existing or {})
+    existing_in, existing_out = _hotel_stay_date_window(stay_existing)
+    upcoming_in, upcoming_out = _hotel_stay_date_window(upcoming_existing)
+
+    stay_overlaps = bool(
+        existing_in
+        and existing_out
+        and _hotel_date_ranges_overlap(check_in, check_out, existing_in, existing_out)
+    )
+
+    # Occupied stay window — reject overlapping dates (keep in-house guest).
+    if status == "occupied" and stay_existing and stay_overlaps:
+        raise ValueError(
+            "Room is occupied for these dates. Choose dates after the "
+            "current guest's checkout."
+        )
+
+    # New Reservation on an existing reserved room — reject overlapping window.
+    if status == "reserved" and replace and stay_overlaps:
+        raise ValueError(
+            "These dates are already reserved. Use Edit Reservation to update "
+            "this booking, or choose dates after the current stay."
+        )
+
+    if upcoming_in and upcoming_out and _hotel_date_ranges_overlap(
+        check_in, check_out, upcoming_in, upcoming_out
+    ):
+        raise ValueError(
+            "These dates already have an upcoming reservation on this room."
+        )
+
     fields = stay_fields if isinstance(stay_fields, dict) else {}
     merge_keys = (
         "guestName",
@@ -8291,37 +8620,110 @@ def save_hotel_room_reservation(
         "invoiceTo",
         "billingName",
     )
-    for key in merge_keys:
-        if key in fields:
-            stay[key] = fields[key]
 
-    guest_name = _hotel_str(stay.get("guestName") or stay.get("guest_name"), 160)
-    first = _hotel_str(stay.get("firstName") or stay.get("first_name"), 80)
-    last = _hotel_str(stay.get("lastName") or stay.get("last_name"), 80)
-    if guest_name and not (first or last):
-        parts = guest_name.split()
-        first = parts[0] if parts else ""
-        last = " ".join(parts[1:]) if len(parts) > 1 else ""
-        stay["firstName"] = first
-        stay["lastName"] = last
-    if not guest_name and (first or last):
-        guest_name = " ".join(p for p in (first, last) if p).strip()
-        stay["guestName"] = guest_name
+    def _build_reservation_stay(base_stay, *, fresh):
+        stay = {} if fresh else dict(base_stay or {})
+        for key in merge_keys:
+            if key in fields:
+                stay[key] = fields[key]
+            elif fresh or replace:
+                if key == "agencyBilling":
+                    stay[key] = False
+                else:
+                    stay[key] = ""
 
-    stay["checkInDate"] = check_in
-    stay["checkOutDate"] = check_out
-    try:
-        start = datetime.strptime(check_in, "%Y-%m-%d")
-        end = datetime.strptime(check_out, "%Y-%m-%d")
-        stay["nights"] = max(1, (end - start).days)
-    except ValueError:
-        stay["nights"] = max(1, int(stay.get("nights") or 1))
+        guest_name = _hotel_str(stay.get("guestName") or stay.get("guest_name"), 160)
+        first = _hotel_str(stay.get("firstName") or stay.get("first_name"), 80)
+        last = _hotel_str(stay.get("lastName") or stay.get("last_name"), 80)
+        if guest_name and not (first or last):
+            parts = guest_name.split()
+            first = parts[0] if parts else ""
+            last = " ".join(parts[1:]) if len(parts) > 1 else ""
+            stay["firstName"] = first
+            stay["lastName"] = last
+        if not guest_name and (first or last):
+            guest_name = " ".join(p for p in (first, last) if p).strip()
+            stay["guestName"] = guest_name
 
-    if stay.get("agencyBilling") and stay.get("agencyName"):
-        stay["invoiceTo"] = stay.get("invoiceTo") or stay.get("agencyName")
-        stay["billingName"] = stay.get("billingName") or stay.get("agencyName")
+        stay["checkInDate"] = check_in
+        stay["checkOutDate"] = check_out
+        try:
+            start = datetime.strptime(check_in, "%Y-%m-%d")
+            end = datetime.strptime(check_out, "%Y-%m-%d")
+            stay["nights"] = max(1, (end - start).days)
+        except ValueError:
+            stay["nights"] = max(1, int(stay.get("nights") or 1))
 
-    return save_hotel_room_checkin(conn, room_id, stay, status="reserved")
+        if stay.get("agencyBilling") and stay.get("agencyName"):
+            stay["invoiceTo"] = stay.get("invoiceTo") or stay.get("agencyName")
+            stay["billingName"] = stay.get("billingName") or stay.get("agencyName")
+        elif fresh or replace:
+            stay["invoiceTo"] = stay.get("invoiceTo") or ""
+            stay["billingName"] = stay.get("billingName") or ""
+
+        if fresh or replace:
+            stay["invoiceNumber"] = ""
+            stay["invoiceGenerated"] = False
+            stay["invoiceGeneratedAt"] = ""
+            stay["payments"] = []
+            stay["folioCharges"] = []
+            stay["checkInAdvancePaid"] = 0
+            stay["advancePaid"] = 0
+            stay["discountType"] = "pct"
+            stay["discountValue"] = 0
+            stay["discountAmount"] = 0
+            stay["discountReason"] = ""
+        return stay
+
+    # Occupied with a non-overlapping future window → queue as upcomingStay.
+    if status == "occupied" and stay_existing:
+        upcoming = _normalize_hotel_room_stay(_build_reservation_stay({}, fresh=True))
+        if not upcoming.get("bookingNumber"):
+            upcoming["bookingNumber"] = f"BK{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        layout = get_hotel_rooms_layout(conn)
+        rooms = layout.get("rooms") or []
+        target = str(room_id or "").strip()
+        found = False
+        for row in rooms:
+            if not isinstance(row, dict):
+                continue
+            if row.get("id") == target or row.get("number") == target:
+                row["upcomingStay"] = upcoming
+                row.pop("upcoming_stay", None)
+                found = True
+                break
+        if not found:
+            raise ValueError("Room not found.")
+        saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+        for row in saved.get("rooms") or []:
+            if row.get("id") == target or row.get("number") == target:
+                result = dict(row)
+                enrich_hotel_room_merge_fields(result, saved.get("rooms"))
+                return result
+        raise ValueError("Room not found.")
+
+    stay = _build_reservation_stay(stay_existing, fresh=bool(replace))
+    # Clear any queued upcoming when taking the primary reserved slot.
+    result = save_hotel_room_checkin(conn, room_id, stay, status="reserved")
+    layout = get_hotel_rooms_layout(conn)
+    rooms = layout.get("rooms") or []
+    target = str(room_id or "").strip()
+    changed = False
+    for row in rooms:
+        if not isinstance(row, dict):
+            continue
+        if row.get("id") == target or row.get("number") == target:
+            if "upcomingStay" in row or "upcoming_stay" in row:
+                row.pop("upcomingStay", None)
+                row.pop("upcoming_stay", None)
+                changed = True
+            break
+    if changed:
+        saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+        for row in saved.get("rooms") or []:
+            if row.get("id") == target or row.get("number") == target:
+                return row
+    return result
 
 
 def _new_hotel_merge_group_id():
@@ -8380,6 +8782,302 @@ def _hotel_member_stay_from_occupied(stay, billing_room_id):
     return _normalize_hotel_room_stay(member)
 
 
+def _hotel_stay_room_rate_only_amount(stay):
+    """Primary roomRate × billable nights (no extras) for merged partner folio lines."""
+    stay = stay if isinstance(stay, dict) else {}
+    try:
+        nights = max(1, int(float(stay.get("nights") or 1)))
+    except (TypeError, ValueError):
+        nights = 1
+    overstay = _hotel_overstay_extra_nights(stay)
+    billable = max(1, nights + overstay)
+    try:
+        rate = float(stay.get("roomRate") or 0)
+    except (TypeError, ValueError):
+        rate = 0.0
+    return round(max(0.0, rate) * billable, 2)
+
+
+def _hotel_rate_for_room_type(room_type, tariff_rates=None):
+    """Nightly tariff for a room type key from settings (or built-in defaults)."""
+    key = str(room_type or "").strip()
+    rates = tariff_rates if isinstance(tariff_rates, dict) else None
+    defaults = HOTEL_DEFAULT_TARIFF_RATES
+    if key not in (
+        "premium_without_balcony",
+        "premium_deluxe_balcony",
+        "premium_suite_tub",
+    ):
+        return 0.0
+    raw = None
+    if rates is not None and key in rates:
+        raw = rates.get(key)
+    if raw is None:
+        raw = defaults.get(key, 0)
+    try:
+        return max(0.0, float(raw or 0))
+    except (TypeError, ValueError):
+        try:
+            return max(0.0, float(defaults.get(key) or 0))
+        except (TypeError, ValueError):
+            return 0.0
+
+
+def _hotel_strip_merged_room_rate_folio(stay, keep_source_room_ids=None):
+    """Drop auto merged-room-rate folio lines; optionally keep listed source room ids."""
+    if not isinstance(stay, dict):
+        return stay
+    folio = stay.get("folioCharges")
+    if not isinstance(folio, list) or not folio:
+        return stay
+    keep = None
+    if keep_source_room_ids is not None:
+        keep = {str(x).strip() for x in keep_source_room_ids if str(x).strip()}
+    next_folio = []
+    for line in folio:
+        if not isinstance(line, dict):
+            next_folio.append(line)
+            continue
+        if str(line.get("source") or "") != "merged_room_rate":
+            next_folio.append(line)
+            continue
+        src = str(line.get("sourceRoomId") or "").strip()
+        if keep is not None and src in keep:
+            next_folio.append(line)
+    stay["folioCharges"] = next_folio
+    return stay
+
+
+def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
+    """Ensure primary folio has one rate×nights line per merge member.
+
+    Skips members that already have an absorb line (source=room_merge) so occupied
+    merges are not double-counted. Upserts source=merged_room_rate lines using
+    mergeRoomRates when present, otherwise each member's room-type tariff from
+    Hotel Settings (not the primary suite rate).
+    """
+    if not isinstance(primary, dict) or not primary.get("mergePrimary"):
+        return
+    if primary.get("stay") and isinstance(primary.get("stay"), dict):
+        if primary["stay"].get("invoiceGenerated") or primary["stay"].get("invoiceNumber"):
+            return
+    group_id = _hotel_room_merge_group_id(primary)
+    if not group_id:
+        return
+    peers = _hotel_rooms_in_merge_group(rooms, group_id)
+    members = [
+        peer
+        for peer in peers
+        if isinstance(peer, dict) and peer.get("id") != primary.get("id")
+    ]
+    primary_stay = (
+        dict(primary.get("stay"))
+        if isinstance(primary.get("stay"), dict)
+        else {}
+    )
+    if not members:
+        _hotel_strip_merged_room_rate_folio(primary_stay, keep_source_room_ids=set())
+        primary["stay"] = _normalize_hotel_room_stay(primary_stay)
+        return
+
+    folio = list(primary_stay.get("folioCharges") or [])
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    member_ids = {str(m.get("id") or "").strip() for m in members if m.get("id")}
+    rate_rows = [
+        row for row in (primary_stay.get("mergeRoomRates") or []) if isinstance(row, dict)
+    ]
+    try:
+        nights = max(1, int(float(primary_stay.get("nights") or 1)))
+    except (TypeError, ValueError):
+        nights = 1
+    overstay = _hotel_overstay_extra_nights(primary_stay)
+    billable = max(1, nights + overstay)
+    try:
+        primary_rate = max(0.0, float(primary_stay.get("roomRate") or 0))
+    except (TypeError, ValueError):
+        primary_rate = 0.0
+    primary_type = str(primary.get("roomType") or "").strip()
+    primary_plan = str(primary_stay.get("ratePlan") or "EP").strip() or "EP"
+    # Vacant merge shells must not get auto folio lines (that would flip status to Occupied).
+    billable_stay = bool(
+        primary_rate > 0
+        or primary_stay.get("checkInDate")
+        or primary_stay.get("checkedInAt")
+        or primary_stay.get("firstName")
+        or primary_stay.get("lastName")
+        or primary_stay.get("guestName")
+        or primary_stay.get("mobile")
+    )
+
+    def _lookup_saved_rate(room_id, number):
+        rid = str(room_id or "").strip()
+        num = str(number or "").strip()
+        for row in rate_rows:
+            if rid and str(row.get("roomId") or "").strip() == rid:
+                try:
+                    return max(0.0, float(row.get("roomRate") or 0)), True
+                except (TypeError, ValueError):
+                    return 0.0, True
+            if num and str(row.get("number") or "").strip() == num:
+                try:
+                    return max(0.0, float(row.get("roomRate") or 0)), True
+                except (TypeError, ValueError):
+                    return 0.0, True
+        return None, False
+
+    def _nightly_rate_for(room, *, is_primary=False):
+        rid = str(room.get("id") or "").strip()
+        num = str(room.get("number") or "").strip()
+        room_type = str(room.get("roomType") or "").strip()
+        saved, has_saved = _lookup_saved_rate(rid, num)
+        type_rate = _hotel_rate_for_room_type(room_type, tariff_rates)
+        if has_saved and saved is not None:
+            # Heal stale rows that copied the primary suite rate onto another type.
+            if (
+                not is_primary
+                and room_type
+                and primary_type
+                and room_type != primary_type
+                and primary_rate > 0
+                and abs(saved - primary_rate) < 0.01
+                and type_rate > 0
+                and abs(type_rate - primary_rate) > 0.01
+            ):
+                return type_rate
+            return saved
+        if is_primary and primary_rate > 0:
+            return primary_rate
+        if type_rate > 0:
+            return type_rate
+        return primary_rate
+
+    def _has_absorb(source_room_id):
+        sid = str(source_room_id or "").strip()
+        for line in folio:
+            if not isinstance(line, dict):
+                continue
+            if str(line.get("source") or "") != "room_merge":
+                continue
+            if str(line.get("sourceRoomId") or "").strip() == sid:
+                return True
+        return False
+
+    def _find_rate_line_index(source_room_id):
+        sid = str(source_room_id or "").strip()
+        for idx, line in enumerate(folio):
+            if not isinstance(line, dict):
+                continue
+            if str(line.get("source") or "") != "merged_room_rate":
+                continue
+            if str(line.get("sourceRoomId") or "").strip() == sid:
+                return idx
+        return -1
+
+    # Keep mergeRoomRates in sync so Estimated Charges / re-edits use per-room tariffs.
+    next_rate_rows = []
+    primary_nightly = _nightly_rate_for(primary, is_primary=True)
+    next_rate_rows.append(
+        {
+            "roomId": str(primary.get("id") or ""),
+            "number": str(primary.get("number") or "").strip(),
+            "roomType": primary_type,
+            "roomTypeLabel": str(
+                primary.get("roomTypeLabel") or primary_type or ""
+            ).strip(),
+            "ratePlan": primary_plan,
+            "roomRate": round(primary_nightly, 2),
+            "isPrimary": True,
+        }
+    )
+    for member in members:
+        mid = str(member.get("id") or "").strip()
+        mnum = str(member.get("number") or "").strip()
+        mtype = str(member.get("roomType") or "").strip()
+        saved_plan = primary_plan
+        for row in rate_rows:
+            if mid and str(row.get("roomId") or "").strip() == mid:
+                saved_plan = str(row.get("ratePlan") or saved_plan).strip() or saved_plan
+                break
+            if mnum and str(row.get("number") or "").strip() == mnum:
+                saved_plan = str(row.get("ratePlan") or saved_plan).strip() or saved_plan
+                break
+        next_rate_rows.append(
+            {
+                "roomId": mid,
+                "number": mnum,
+                "roomType": mtype,
+                "roomTypeLabel": str(
+                    member.get("roomTypeLabel") or mtype or ""
+                ).strip(),
+                "ratePlan": saved_plan,
+                "roomRate": round(_nightly_rate_for(member), 2),
+                "isPrimary": False,
+            }
+        )
+    primary_stay["mergeRoomRates"] = next_rate_rows
+    rate_rows = next_rate_rows
+
+    if not billable_stay:
+        _hotel_strip_merged_room_rate_folio(primary_stay, keep_source_room_ids=set())
+        primary["stay"] = _normalize_hotel_room_stay(primary_stay)
+        return
+
+    # Drop stale merged_room_rate lines for rooms no longer in the group.
+    folio = [
+        line
+        for line in folio
+        if not (
+            isinstance(line, dict)
+            and str(line.get("source") or "") == "merged_room_rate"
+            and str(line.get("sourceRoomId") or "").strip() not in member_ids
+        )
+    ]
+
+    for member in members:
+        mid = str(member.get("id") or "").strip()
+        if not mid:
+            continue
+        if _has_absorb(mid):
+            # Occupied absorb already billed this room — remove any auto rate line.
+            idx = _find_rate_line_index(mid)
+            if idx >= 0:
+                folio.pop(idx)
+            continue
+        number = str(member.get("number") or "").strip() or mid
+        label = f"Room {number} — stay charges"
+        idx = _find_rate_line_index(mid)
+        amount = round(_nightly_rate_for(member) * billable, 2)
+        if amount <= 0:
+            if idx >= 0:
+                folio.pop(idx)
+            continue
+        if idx >= 0:
+            line = dict(folio[idx])
+            line["label"] = label
+            line["amount"] = amount
+            line["sourceRoomNumber"] = number
+            folio[idx] = line
+        else:
+            folio.append(
+                {
+                    "id": f"mrr-{mid}-{stamp.replace(' ', '')}",
+                    "kind": "other",
+                    "label": label,
+                    "amount": amount,
+                    "source": "merged_room_rate",
+                    "invoiceId": "",
+                    "outlet": "",
+                    "at": stamp,
+                    "note": f"Merged room rate for Room {number}",
+                    "sourceRoomId": mid,
+                    "sourceRoomNumber": number,
+                }
+            )
+
+    primary_stay["folioCharges"] = folio
+    primary["stay"] = _normalize_hotel_room_stay(primary_stay)
+
+
 def _hotel_stay_room_charge_amount(stay):
     stay = stay if isinstance(stay, dict) else {}
     try:
@@ -8417,6 +9115,7 @@ def enrich_hotel_room_merge_fields(room, rooms=None):
     result["billingRoomNumber"] = ""
     result["mergeLabel"] = ""
     result["mergePartnerNumbers"] = []
+    result["mergePartners"] = []
     if not group_id and not is_member:
         return result
     peers = _hotel_rooms_in_merge_group(rooms, group_id) if rooms is not None else []
@@ -8439,6 +9138,23 @@ def enrich_hotel_room_merge_fields(room, rooms=None):
         result["billingRoomNumber"] = str(result.get("number") or "")
         partners = [n for n in numbers if n != str(result.get("number") or "")]
         result["mergePartnerNumbers"] = partners
+        partner_rows = []
+        for peer in peers:
+            if not isinstance(peer, dict):
+                continue
+            if peer.get("id") == result.get("id"):
+                continue
+            partner_rows.append(
+                {
+                    "id": peer.get("id") or "",
+                    "number": str(peer.get("number") or "").strip(),
+                    "roomType": peer.get("roomType") or "",
+                    "roomTypeLabel": peer.get("roomTypeLabel")
+                    or peer.get("roomType")
+                    or "",
+                }
+            )
+        result["mergePartners"] = partner_rows
         if partners:
             result["mergeLabel"] = f"{result.get('number')} + {' + '.join(partners)}"
         else:
@@ -8663,6 +9379,7 @@ def merge_hotel_room_billing(conn, from_room_id, to_room_id, note=""):
             "checkInDate",
             "checkInTime",
             "checkOutDate",
+            "checkOutTime",
             "nights",
             "adults",
             "children",
@@ -8697,7 +9414,9 @@ def merge_hotel_room_billing(conn, from_room_id, to_room_id, note=""):
         member_room["mergePrimary"] = False
         member_room["status"] = "occupied" if occupy else "vacant"
 
-    _hotel_sync_merge_group_shared_data(rooms)
+    _hotel_sync_merge_group_shared_data(
+        rooms, tariff_rates=get_hotel_tariff_rates(conn)
+    )
 
     saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
     primary_out = get_hotel_room(conn, primary.get("id"))
@@ -8735,8 +9454,39 @@ def unmerge_hotel_rooms(conn, room_id, scope="one"):
     )
     if dissolve_group:
         targets = _hotel_rooms_in_merge_group(rooms, group_id) if group_id else [room]
+        # Drop auto partner-rate lines; absorbed room_merge folio stays on former primary.
+        for peer in targets:
+            if not peer.get("mergePrimary"):
+                continue
+            pstay = peer.get("stay") if isinstance(peer.get("stay"), dict) else None
+            if pstay:
+                pstay = dict(pstay)
+                _hotel_strip_merged_room_rate_folio(pstay, keep_source_room_ids=set())
+                peer["stay"] = pstay
     else:
         targets = [room]
+        # Removing one member: drop that room's auto rate line from the primary bill.
+        if group_id and not was_primary:
+            for peer in _hotel_rooms_in_merge_group(rooms, group_id):
+                if not peer.get("mergePrimary"):
+                    continue
+                pstay = peer.get("stay") if isinstance(peer.get("stay"), dict) else None
+                if not pstay:
+                    continue
+                pstay = dict(pstay)
+                folio = list(pstay.get("folioCharges") or [])
+                rid = str(room.get("id") or "").strip()
+                pstay["folioCharges"] = [
+                    line
+                    for line in folio
+                    if not (
+                        isinstance(line, dict)
+                        and str(line.get("source") or "") == "merged_room_rate"
+                        and str(line.get("sourceRoomId") or "").strip() == rid
+                    )
+                ]
+                peer["stay"] = pstay
+                break
 
     for target in targets:
         tstay = target.get("stay") if isinstance(target.get("stay"), dict) else None
@@ -8757,8 +9507,13 @@ def unmerge_hotel_rooms(conn, room_id, scope="one"):
                     pstay = dict(pstay)
                     pstay["billingRoomId"] = ""
                     pstay["mergeRole"] = ""
+                    _hotel_strip_merged_room_rate_folio(pstay, keep_source_room_ids=set())
                     peer["stay"] = _normalize_hotel_room_stay(pstay)
                 _hotel_clear_room_merge_fields(peer)
+        else:
+            _hotel_sync_merge_group_shared_data(
+                rooms, tariff_rates=get_hotel_tariff_rates(conn)
+            )
 
     saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
     out = get_hotel_room(conn, room.get("id"))
@@ -8839,6 +9594,7 @@ def set_hotel_merge_primary(conn, room_id):
         "checkInDate",
         "checkInTime",
         "checkOutDate",
+        "checkOutTime",
         "nights",
         "adults",
         "children",
@@ -8948,9 +9704,30 @@ def clear_hotel_room_stay(conn, room_id, status="dirty"):
         stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
         if stay and (stay.get("invoiceNumber") or stay.get("invoice_number")):
             upsert_hotel_room_invoice_from_room(conn, room)
+        upcoming = (
+            room.get("upcomingStay")
+            if isinstance(room.get("upcomingStay"), dict)
+            else (
+                room.get("upcoming_stay")
+                if isinstance(room.get("upcoming_stay"), dict)
+                else None
+            )
+        )
         room.pop("stay", None)
         _hotel_clear_room_merge_fields(room)
-        room["status"] = _normalize_hotel_room_status(status)
+        if upcoming:
+            room["stay"] = _normalize_hotel_room_stay(dict(upcoming))
+            if not room["stay"].get("bookingNumber"):
+                room["stay"]["bookingNumber"] = (
+                    f"BK{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                )
+            room["status"] = "reserved"
+            room.pop("upcomingStay", None)
+            room.pop("upcoming_stay", None)
+        else:
+            room.pop("upcomingStay", None)
+            room.pop("upcoming_stay", None)
+            room["status"] = _normalize_hotel_room_status(status)
     return save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
 
 
@@ -8989,8 +9766,12 @@ def transfer_hotel_room_stay(conn, from_room_id, to_room_id, note=""):
     dest_status = _normalize_hotel_room_status(destination.get("status"))
     if dest_status != "vacant":
         raise ValueError("Guest can only be transferred to a vacant room.")
+    # Vacant rooms may still carry a cancelled reservation shell (dates, empty guest).
+    # Clear that so transfer can proceed; only block a real in-house stay.
     if isinstance(destination.get("stay"), dict) and destination.get("stay"):
-        raise ValueError("Destination room already has guest details.")
+        if _hotel_room_has_inhouse_stay(destination):
+            raise ValueError("Destination room already has guest details.")
+        destination.pop("stay", None)
 
     moved = _normalize_hotel_room_stay(dict(stay))
     note_text = _hotel_str(note, 400)

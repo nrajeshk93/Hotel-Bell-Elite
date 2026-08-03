@@ -270,6 +270,98 @@ html, body {
   overflow: hidden;
 }
 
+.hri-doc {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.hri-doc-masthead {
+  padding: 0 0 12px;
+  border: 0;
+  vertical-align: top;
+}
+
+.hri-doc-foot {
+  padding: 12px 0 0;
+  border: 0;
+  vertical-align: top;
+}
+
+.hri-doc thead {
+  display: table-header-group;
+}
+
+.hri-doc tfoot {
+  /* Keep totals/signatory once at the end — do not repeat on every page. */
+  display: table-row-group;
+}
+
+.hri-doc .hri-colhead th {
+  background: var(--hri-navy);
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  padding: 11px 10px;
+  text-align: left;
+  border-top: 1px solid #d7dee8;
+}
+
+.hri-doc .hri-colhead th:first-child {
+  border-left: 1px solid #d7dee8;
+  border-radius: 10px 0 0 0;
+}
+
+.hri-doc .hri-colhead th:last-child {
+  border-right: 1px solid #d7dee8;
+  border-radius: 0 10px 0 0;
+}
+
+.hri-doc th.num,
+.hri-doc td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.hri-doc th.center,
+.hri-doc td.center {
+  text-align: center;
+}
+
+.hri-doc tbody td {
+  padding: 10px;
+  border-bottom: 1px solid #eef1f5;
+  border-left: 1px solid #d7dee8;
+  border-right: 1px solid #d7dee8;
+  color: var(--hri-navy);
+  vertical-align: top;
+}
+
+.hri-doc tbody td + td {
+  border-left: 0;
+}
+
+.hri-doc tbody tr:nth-child(even) td {
+  background: var(--hri-row);
+}
+
+.hri-doc tbody tr:last-child td {
+  border-bottom: 1px solid #d7dee8;
+}
+
+.hri-doc tbody tr.hri-line:last-of-type td:first-child,
+.hri-doc tbody tr.hri-pad-row:last-child td:first-child {
+  border-radius: 0 0 0 10px;
+}
+
+.hri-doc tbody tr.hri-line:last-of-type td:last-child,
+.hri-doc tbody tr.hri-pad-row:last-child td:last-child {
+  border-radius: 0 0 10px 0;
+}
+
 .hri-table {
   width: 100%;
   border-collapse: collapse;
@@ -483,13 +575,157 @@ html, body {
   }
   .hri-sheet {
     width: auto;
-    min-height: auto;
+    min-height: 0;
     margin: 0;
-    padding: 10mm 12mm;
+    padding: 0;
     box-shadow: none;
   }
   @page {
     size: A4 portrait;
-    margin: 8mm;
+    margin: 8mm 9mm;
+  }
+
+  /* Repeat hotel masthead + column headers on every printed page. */
+  .hri-doc {
+    page-break-inside: auto;
+  }
+  .hri-doc thead {
+    display: table-header-group;
+  }
+  .hri-doc tfoot {
+    display: table-row-group;
+  }
+  .hri-doc tr.hri-line,
+  .hri-doc tr.hri-colhead {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .hri-doc-foot,
+  .hri-bottom,
+  .hri-thanks,
+  .hri-values,
+  .hri-sign {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .hri-pad-row {
+    display: none !important;
+  }
+
+  /* Compact A4 so typical stays fit on one page. */
+  .hri-doc-masthead {
+    padding-bottom: 6px;
+  }
+  .hri-header {
+    gap: 14px;
+    padding-bottom: 8px;
+  }
+  .hri-mark {
+    width: 48px;
+    height: 48px;
+  }
+  .hri-brand-name {
+    font-size: 22px;
+  }
+  .hri-brand-tag {
+    font-size: 9px;
+    letter-spacing: 0.16em;
+  }
+  .hri-brand-rule {
+    margin: 5px 0 4px;
+  }
+  .hri-contact {
+    gap: 3px;
+    font-size: 9.5px;
+    line-height: 1.35;
+    flex-basis: 260px;
+  }
+  .hri-meta-row {
+    margin-top: 8px;
+    gap: 12px;
+  }
+  .hri-title {
+    margin: 0 0 6px;
+    font-size: 24px;
+    letter-spacing: 0.06em;
+  }
+  .hri-meta-list {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .hri-meta-list li {
+    grid-template-columns: 92px 1fr;
+    gap: 6px;
+  }
+  .hri-billto-head {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+  .hri-billto-body {
+    padding: 8px 10px 10px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .hri-doc .hri-colhead th {
+    padding: 7px 8px;
+    font-size: 10px;
+  }
+  .hri-doc tbody td {
+    padding: 5px 8px;
+    font-size: 11px;
+  }
+  .hri-doc-foot {
+    padding-top: 8px;
+  }
+  .hri-bottom {
+    margin-top: 8px;
+    gap: 10px;
+  }
+  .hri-notes-head,
+  .hri-totals-row {
+    padding: 6px 10px;
+    font-size: 11px;
+  }
+  .hri-notes-body {
+    padding: 8px 10px 10px;
+    font-size: 11px;
+  }
+  .hri-words {
+    padding: 6px 10px 8px;
+    font-size: 10px;
+  }
+  .hri-thanks {
+    margin: 12px 0 4px;
+    font-size: 16px;
+    gap: 10px;
+  }
+  .hri-values {
+    margin: 2px 0 10px;
+    gap: 6px;
+  }
+  .hri-value {
+    font-size: 8.5px;
+  }
+  .hri-value-ico {
+    width: 22px;
+    height: 22px;
+    margin-bottom: 3px;
+  }
+  .hri-value-ico svg {
+    width: 11px;
+    height: 11px;
+  }
+  .hri-sign {
+    margin-top: 2px;
+  }
+  .hri-sign-line {
+    height: 36px;
+    margin-bottom: 4px;
+  }
+  .hri-sign-title {
+    font-size: 11px;
+  }
+  .hri-sign-sub {
+    font-size: 10px;
   }
 }

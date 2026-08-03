@@ -236,6 +236,12 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_invoice_delete"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("master"), "master")
         self.assertEqual(get_endpoint_dashboard_module("reports"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_hotel"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_hotel_export"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_restaurant"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_restaurant_export"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_bar"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_bar_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("settings"), "settings")
         self.assertEqual(
             get_endpoint_sales_analytics_submodules("save_sales_update"),

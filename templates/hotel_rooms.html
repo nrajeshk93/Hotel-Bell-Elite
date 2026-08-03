@@ -1,6 +1,7 @@
 {% set de_soft_body_class = 'de-open hotel-rooms-module' %}
 {% set de_soft_page_title = 'Rooms | Hotel | Hotel Bell Elite' %}
 {% from 'partials/hotel_date_macros.html' import hotel_date_field %}
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% if not is_partial_main %}
 <!DOCTYPE html>
 <html lang="en">
@@ -10,10 +11,10 @@
 <title>Rooms | Hotel | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=42">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=6">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=59">
 <script>
 (function(){
   try{
@@ -28,16 +29,18 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=6">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=59">
 {% endif %}
 
-<div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms">
+<div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers">
   <header class="hotel-rooms-header">
     <div class="hotel-rooms-header-copy">
       <h1>Rooms</h1>
     </div>
-    <div class="hotel-rooms-header-actions" aria-label="Page tools"></div>
+    <div class="hotel-rooms-header-actions" aria-label="Page tools">
+      <button type="button" class="btn btn-primary hotel-rooms-reserve-btn" id="hotel-rooms-reserve-btn">Reserve</button>
+    </div>
   </header>
 
   <section class="hotel-rooms-kpis" aria-label="Room status summary">
@@ -78,7 +81,7 @@
       </div>
     </article>
     <article class="hotel-kpi" data-kpi="expected_checkout" role="button" tabindex="0" aria-pressed="false" aria-label="Filter rooms with expected check-out on selected date">
-      <div class="hotel-kpi-icon hotel-kpi-icon--purple" aria-hidden="true">
+      <div class="hotel-kpi-icon hotel-kpi-icon--rose" aria-hidden="true">
         <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
       </div>
       <div>
@@ -148,25 +151,42 @@
       <header class="hr-dialog-head">
         <div>
           <h2 id="hr-merge-title">Merge Rooms</h2>
-          <p>Combine billing onto one primary room</p>
         </div>
         <button type="button" class="hr-dialog-close" aria-label="Close" data-hr-merge-close>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </header>
-      <form class="hr-dialog-body" id="hr-merge-form" novalidate>
-        <input type="hidden" id="hr-merge-from-id" value="">
+      <form class="hr-dialog-body" id="hr-merge-form" novalidate data-selected-room-ids="">
+        <input type="hidden" id="hr-merge-primary-id" value="">
         <label class="hr-field">
-          <span>This room (joins as member)</span>
-          <input type="text" id="hr-merge-from" readonly>
+          <span>Primary bill</span>
+          <input type="text" id="hr-merge-primary" readonly>
         </label>
-        <label class="hr-field">
-          <span>Merge into (Primary bill) *</span>
-          <select id="hr-merge-to" name="toRoomId" required>
-            <option value="">Select primary room…</option>
-          </select>
-        </label>
-        <p class="hr-merge-hint" id="hr-merge-hint">Any rooms can be merged onto one primary bill. Unmerge does not split the bill back.</p>
+        <div class="hr-field hr-board-rooms-field">
+          <span>Select rooms to merge *</span>
+          <div class="hr-board-rooms-select" id="hr-merge-rooms-select">
+            <div class="hr-board-rooms-trigger" id="hr-merge-rooms-trigger">
+              <input
+                type="text"
+                class="hr-board-rooms-search"
+                id="hr-merge-rooms-search"
+                placeholder="Select rooms…"
+                autocomplete="off"
+                role="combobox"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="hr-merge-rooms-menu"
+                aria-autocomplete="list"
+                aria-label="Select or search rooms to merge"
+              >
+              <svg class="hr-board-rooms-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            <div class="hr-board-rooms-menu" id="hr-merge-rooms-menu" role="listbox" aria-multiselectable="true" hidden>
+              <p class="hr-board-rooms-empty" id="hr-merge-rooms-empty" hidden>No rooms available to merge.</p>
+              <div class="hr-board-rooms-options" id="hr-merge-rooms-options"></div>
+            </div>
+          </div>
+        </div>
         <label class="hr-field">
           <span>Note</span>
           <textarea name="note" id="hr-merge-note" rows="2" placeholder="Optional note"></textarea>
@@ -174,7 +194,7 @@
       </form>
       <footer class="hr-dialog-foot">
         <button type="button" class="hr-btn hr-btn--outline" data-hr-merge-close>Cancel</button>
-        <button type="submit" form="hr-merge-form" class="hr-btn hr-btn--primary" id="hr-merge-save">Merge for Billing</button>
+        <button type="submit" form="hr-merge-form" class="hr-btn hr-btn--primary" id="hr-merge-save" disabled aria-disabled="true" title="Select rooms to merge">Merge for Billing</button>
       </footer>
     </div>
   </div>
@@ -184,7 +204,6 @@
       <header class="hr-dialog-head">
         <div>
           <h2 id="hr-transfer-title">Room Transfer</h2>
-          <p>Move the guest to another vacant room</p>
         </div>
         <button type="button" class="hr-dialog-close" aria-label="Close" data-hr-transfer-close>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -200,17 +219,9 @@
           <span>Guest</span>
           <input type="text" id="hr-transfer-guest" readonly>
         </label>
-        <label class="hr-field">
-          <span>Transfer to (vacant only) *</span>
-          <select id="hr-transfer-to" name="toRoomId" required>
-            <option value="">Select vacant room…</option>
-          </select>
-        </label>
-        <p class="hr-merge-hint" id="hr-transfer-hint">Only vacant rooms are listed.</p>
-        <label class="hr-field">
-          <span>Note</span>
-          <textarea name="note" id="hr-transfer-note" rows="2" placeholder="Optional note"></textarea>
-        </label>
+        <div class="hr-field">
+          {{ ep_listbox('toRoomId', 'Transfer to (vacant only) *', [], '', placeholder='Select vacant room…', field_id='hr-transfer-to', extra_class='hr-form-listbox') }}
+        </div>
       </form>
       <footer class="hr-dialog-foot">
         <button type="button" class="hr-btn hr-btn--outline" data-hr-transfer-close>Cancel</button>
@@ -218,11 +229,123 @@
       </footer>
     </div>
   </div>
+
+  <div class="hr-dialog-overlay hr-board-reserve-overlay" id="hr-board-reserve-modal" hidden aria-hidden="true">
+    <div class="hr-dialog hr-dialog--board-reserve" role="dialog" aria-modal="true" aria-labelledby="hr-board-reserve-title">
+      <header class="hr-dialog-head">
+        <div class="hr-board-reserve-head-main">
+          <span class="hr-board-reserve-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
+          </span>
+          <div>
+            <h2 id="hr-board-reserve-title">Reserve Rooms</h2>
+          </div>
+        </div>
+        <button type="button" class="hr-dialog-close" aria-label="Close" data-hr-board-reserve-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <form class="hr-dialog-body hr-board-reserve-body" id="hr-board-reserve-form" novalidate data-de-hard-nav>
+        <div class="hr-board-reserve-dates">
+          {{ hotel_date_field('reserveFrom', 'From', required=true, field_id='hr-board-reserve-from', extra_class='hr-board-date-chip', panel_title='From date', show_cal_icon=false, hint='', min_date='today') }}
+          {{ hotel_date_field('reserveTo', 'To', required=true, field_id='hr-board-reserve-to', extra_class='hr-board-date-chip', panel_title='To date', show_cal_icon=false, hint='', min_date='today', show_today=false) }}
+        </div>
+
+        <div class="hr-board-reserve-party-toggle" id="hr-board-reserve-party-toggle" role="tablist" aria-label="Guest or agency details">
+          <button type="button" class="hr-board-reserve-party-btn is-active" role="tab" aria-selected="true" data-reserve-party="guest" id="hr-board-reserve-tab-guest" aria-controls="hr-board-reserve-panel-guest">
+            Guest
+          </button>
+          <button type="button" class="hr-board-reserve-party-btn" role="tab" aria-selected="false" data-reserve-party="agency" id="hr-board-reserve-tab-agency" aria-controls="hr-board-reserve-panel-agency">
+            Agency
+          </button>
+        </div>
+
+        <section class="hr-board-reserve-section" id="hr-board-reserve-panel-guest" data-reserve-panel="guest" role="tabpanel" aria-labelledby="hr-board-reserve-tab-guest">
+          <div class="hr-board-reserve-grid">
+            <div class="hr-field hr-field--customer-mobile">
+              <span>Mobile Number *</span>
+              <input type="tel" name="mobile" id="hr-board-reserve-mobile" required autocomplete="tel" placeholder="10-digit mobile" inputmode="numeric" maxlength="10" minlength="10" pattern="[0-9]{10}" title="Enter a 10-digit mobile number" aria-autocomplete="list" aria-controls="hr-board-reserve-customer-suggest" aria-expanded="false">
+              <div class="hr-board-customer-suggest" id="hr-board-reserve-customer-suggest" role="listbox" hidden></div>
+            </div>
+            <label class="hr-field">
+              <span>Email</span>
+              <input type="email" name="email" id="hr-board-reserve-email" autocomplete="email" placeholder="name@example.com">
+            </label>
+            <label class="hr-field hr-field--span2">
+              <span>Guest Name *</span>
+              <input type="text" name="guestName" id="hr-board-reserve-guest-name" required autocomplete="name" placeholder="Guest full name">
+            </label>
+          </div>
+        </section>
+
+        <section class="hr-board-reserve-section" id="hr-board-reserve-panel-agency" data-reserve-panel="agency" role="tabpanel" aria-labelledby="hr-board-reserve-tab-agency" hidden>
+          <div class="hr-board-reserve-grid">
+            <label class="hr-field">
+              <span>Agency Name</span>
+              <input type="text" name="agencyName" id="hr-board-reserve-agency-name" list="hr-board-reserve-agency-datalist" placeholder="Agency name" autocomplete="organization">
+              <datalist id="hr-board-reserve-agency-datalist">
+                {% for agency in agencies|default([]) %}
+                <option value="{{ agency.name }}" data-gst="{{ agency.gst or '' }}" data-address="{{ agency.address or '' }}"></option>
+                {% endfor %}
+              </datalist>
+            </label>
+            <label class="hr-field">
+              <span>GST</span>
+              <input type="text" name="agencyGst" id="hr-board-reserve-agency-gst" placeholder="GST number" autocomplete="off">
+            </label>
+            <label class="hr-field hr-field--span2">
+              <span>Address</span>
+              <textarea name="agencyAddress" id="hr-board-reserve-agency-address" rows="2" placeholder="Agency address"></textarea>
+            </label>
+            <div class="hr-field hr-field--span2 hr-board-agency-billing-wrap">
+              <label class="hr-board-check">
+                <input type="checkbox" name="agencyBilling" id="hr-board-reserve-agency-billing" value="1">
+                Agency Billing
+              </label>
+              <p class="hr-board-agency-billing-hint" id="hr-board-reserve-agency-billing-hint" hidden>
+                Invoice will be billed to <strong id="hr-board-reserve-agency-billing-name">Agency Name</strong>
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <div class="hr-field hr-board-rooms-field">
+          <span>Select rooms *</span>
+          <div class="hr-board-rooms-select" id="hr-board-reserve-rooms-select">
+            <div class="hr-board-rooms-trigger" id="hr-board-reserve-rooms-trigger">
+              <input
+                type="text"
+                class="hr-board-rooms-search"
+                id="hr-board-reserve-rooms-search"
+                placeholder="Select rooms…"
+                autocomplete="off"
+                role="combobox"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="hr-board-reserve-rooms-menu"
+                aria-autocomplete="list"
+                aria-label="Select or search rooms"
+              >
+              <svg class="hr-board-rooms-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </div>
+            <div class="hr-board-rooms-menu" id="hr-board-reserve-rooms-menu" role="listbox" aria-multiselectable="true" hidden>
+              <p class="hr-board-rooms-empty" id="hr-board-reserve-rooms-empty" hidden>No rooms available for these dates.</p>
+              <div class="hr-board-rooms-options" id="hr-board-reserve-rooms-options"></div>
+            </div>
+          </div>
+        </div>
+      </form>
+      <footer class="hr-dialog-foot">
+        <button type="button" class="hr-btn hr-btn--outline" data-hr-board-reserve-close>Cancel</button>
+        <button type="submit" form="hr-board-reserve-form" class="hr-btn hr-btn--primary" id="hr-board-reserve-save" disabled aria-disabled="true" title="Enter mobile, guest name, and select rooms">Save Reservation</button>
+      </footer>
+    </div>
+  </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
-<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=5"></script>
-<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=43"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=46"></script>
+<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=70"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

@@ -213,7 +213,7 @@
     /* Hotel New Check-In / Room Transfer — modal body scrolls and clips absolute menus. */
     if (
       root.classList.contains('ep-form-listbox') &&
-      root.closest('#hrd-checkin-modal, #hrd-transfer-modal, .hrd-modal, .hrd-dialog')
+      root.closest('#hrd-checkin-modal, #hrd-transfer-modal, #hr-transfer-modal, .hrd-modal, .hrd-dialog, .hr-dialog')
     ) {
       return true;
     }
@@ -236,7 +236,7 @@
     list.style.width = width + 'px';
     list.style.minWidth = width + 'px';
     list.style.maxHeight = maxHeight + 'px';
-    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #sales-expense-modal, #hrd-checkin-modal, #hrd-transfer-modal') ? '11250' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '10090');
+    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #sales-expense-modal, #hrd-checkin-modal, #hrd-transfer-modal, #hr-transfer-modal') ? '11250' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '10090');
     if (openUp) {
       list.style.top = 'auto';
       list.style.bottom = (window.innerHeight - rect.top + 6) + 'px';

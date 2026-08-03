@@ -137,10 +137,178 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hotel-rooms-page", html)
         self.assertIn("Rooms", html)
         self.assertIn("hotel-rooms-status-listbox", html)
+        self.assertIn("hotel-rooms-reserve-btn", html)
+        self.assertIn("Reserve", html)
+        self.assertIn("hr-board-reserve-modal", html)
+        self.assertIn("hr-board-reserve-form", html)
+        self.assertIn("hr-board-reserve-rooms-select", html)
+        self.assertIn("Save Reservation", html)
+        self.assertIn('data-customers-api="/hotel/api/customers"', html)
         self.assertIn("hotel-rooms-date-filter", html)
         self.assertIn('data-kpi="expected_checkout"', html)
         self.assertIn("Expected Check Out", html)
         self.assertNotIn('data-kpi="reserved"', html)
+
+    def test_board_multi_room_reserve_via_per_room_api(self):
+        """Board Reserve loops single-room reserve; same dates work on free rooms."""
+        stay = {
+            "guestName": "Board Guest",
+            "mobile": "9876543210",
+            "email": "board@example.com",
+        }
+        dates = {
+            "action": "reserve",
+            "checkInDate": "2026-09-10",
+            "checkOutDate": "2026-09-12",
+            "stay": stay,
+        }
+        room_a = self.client.put("/hotel/api/rooms/room-201", json=dates)
+        self.assertEqual(room_a.status_code, 200)
+        self.assertTrue(room_a.get_json()["ok"])
+        self.assertEqual(room_a.get_json()["room"]["status"], "reserved")
+        self.assertEqual(room_a.get_json()["room"]["stay"]["checkInDate"], "2026-09-10")
+
+        room_b = self.client.put("/hotel/api/rooms/room-202", json=dates)
+        self.assertEqual(room_b.status_code, 200)
+        self.assertTrue(room_b.get_json()["ok"])
+        self.assertEqual(room_b.get_json()["room"]["status"], "reserved")
+        self.assertEqual(
+            room_b.get_json()["room"]["stay"]["guestName"], "Board Guest"
+        )
+
+        occupied = self.client.put(
+            "/hotel/api/rooms/room-203",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "In",
+                    "lastName": "House",
+                    "mobile": "9000099999",
+                    "checkInDate": "2026-07-28",
+                    "nights": 2,
+                    "roomRate": 4000,
+                },
+            },
+        )
+        self.assertEqual(occupied.status_code, 200)
+        self.assertEqual(occupied.get_json()["room"]["status"], "occupied")
+
+        # Future non-overlapping dates queue as upcomingStay while still occupied.
+        future = self.client.put(
+            "/hotel/api/rooms/room-203",
+            json={
+                "action": "reserve",
+                "checkInDate": "2026-09-10",
+                "checkOutDate": "2026-09-12",
+                "stay": stay,
+            },
+        )
+        self.assertEqual(future.status_code, 200)
+        future_room = future.get_json()["room"]
+        self.assertTrue(future.get_json()["ok"])
+        self.assertEqual(future_room["status"], "occupied")
+        self.assertEqual(future_room["stay"]["guestName"], "In House")
+        self.assertEqual(future_room["upcomingStay"]["guestName"], "Board Guest")
+        self.assertEqual(future_room["upcomingStay"]["checkInDate"], "2026-09-10")
+
+        overlap_occupied = self.client.put(
+            "/hotel/api/rooms/room-203",
+            json={
+                "action": "reserve",
+                "checkInDate": "2026-07-29",
+                "checkOutDate": "2026-07-31",
+                "stay": {
+                    "guestName": "Overlap Occ",
+                    "mobile": "9111222333",
+                },
+            },
+        )
+        self.assertEqual(overlap_occupied.status_code, 400)
+        self.assertFalse(overlap_occupied.get_json()["ok"])
+
+        overlap_replace = self.client.put(
+            "/hotel/api/rooms/room-201",
+            json={
+                "action": "reserve",
+                "replace": True,
+                "checkInDate": "2026-09-11",
+                "checkOutDate": "2026-09-13",
+                "stay": {
+                    "guestName": "Overlap Guest",
+                    "mobile": "9123456780",
+                },
+            },
+        )
+        self.assertEqual(overlap_replace.status_code, 400)
+        self.assertFalse(overlap_replace.get_json()["ok"])
+        self.assertIn("already reserved", overlap_replace.get_json()["error"].lower())
+
+    def test_occupied_future_reserve_and_checkout_promotes_upcoming(self):
+        """Occupied rooms accept non-overlapping future reserve; checkout promotes it."""
+        checkin = self.client.put(
+            "/hotel/api/rooms/room-204",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Today",
+                    "lastName": "Guest",
+                    "mobile": "9000088888",
+                    "checkInDate": "2026-07-28",
+                    "nights": 2,
+                    "roomRate": 3500,
+                },
+            },
+        )
+        self.assertEqual(checkin.status_code, 200)
+        self.assertEqual(checkin.get_json()["room"]["status"], "occupied")
+        self.assertEqual(
+            checkin.get_json()["room"]["stay"]["checkOutDate"], "2026-07-30"
+        )
+
+        future = self.client.put(
+            "/hotel/api/rooms/room-204",
+            json={
+                "action": "reserve",
+                "checkInDate": "2026-08-20",
+                "checkOutDate": "2026-08-22",
+                "stay": {
+                    "guestName": "Next Guest",
+                    "mobile": "9888777666",
+                    "email": "next@example.com",
+                },
+            },
+        )
+        self.assertEqual(future.status_code, 200)
+        room = future.get_json()["room"]
+        self.assertEqual(room["status"], "occupied")
+        self.assertEqual(room["stay"]["guestName"], "Today Guest")
+        self.assertEqual(room["upcomingStay"]["guestName"], "Next Guest")
+        self.assertEqual(room["upcomingStay"]["checkInDate"], "2026-08-20")
+        self.assertEqual(room["upcomingStay"]["checkOutDate"], "2026-08-22")
+
+        # Overlapping the in-house window still fails.
+        overlap = self.client.put(
+            "/hotel/api/rooms/room-204",
+            json={
+                "action": "reserve",
+                "checkInDate": "2026-07-29",
+                "checkOutDate": "2026-07-31",
+                "stay": {"guestName": "Clash", "mobile": "9777666555"},
+            },
+        )
+        self.assertEqual(overlap.status_code, 400)
+        self.assertIn("occupied", overlap.get_json()["error"].lower())
+
+        checkout = self.client.put(
+            "/hotel/api/rooms/room-204",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(checkout.status_code, 200)
+        after = checkout.get_json()["room"]
+        self.assertEqual(after["status"], "reserved")
+        self.assertEqual(after["stay"]["guestName"], "Next Guest")
+        self.assertEqual(after["stay"]["checkInDate"], "2026-08-20")
+        self.assertNotIn("upcomingStay", after)
 
     def test_room_detail_page_renders(self):
         resp = self.client.get("/hotel/rooms/room-101")
@@ -148,8 +316,10 @@ class HotelRoomsTests(unittest.TestCase):
         html = resp.get_data(as_text=True)
         self.assertIn("hotel-room-detail-page", html)
         self.assertIn("Room 101", html)
-        self.assertIn("New Check-in", html)
+        self.assertIn("Start Check-In", html)
+        self.assertNotIn("New Check-in", html)
         self.assertIn("hrd-reserve", html)
+        self.assertIn("hrd-reserve-new", html)
         self.assertIn("hrd-reserve-modal", html)
 
     def test_room_detail_reserve_and_occupied_reject(self):
@@ -230,18 +400,101 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(checkin.status_code, 200)
         self.assertEqual(checkin.get_json()["room"]["status"], "occupied")
 
+        # Overlapping the in-house stay is still rejected.
         blocked = self.client.put(
             "/hotel/api/rooms/room-106",
             json={
                 "action": "reserve",
-                "checkInDate": "2026-08-10",
-                "checkOutDate": "2026-08-12",
+                "checkInDate": "2026-07-30",
+                "checkOutDate": "2026-08-01",
                 "stay": {"guestName": "Blocked Guest", "mobile": "9111111111"},
             },
         )
         self.assertEqual(blocked.status_code, 400)
         self.assertFalse(blocked.get_json()["ok"])
-        self.assertIn("Check out", blocked.get_json()["error"])
+        self.assertIn("occupied", blocked.get_json()["error"].lower())
+
+        # Non-overlapping future dates queue as upcomingStay.
+        future = self.client.put(
+            "/hotel/api/rooms/room-106",
+            json={
+                "action": "reserve",
+                "checkInDate": "2026-08-10",
+                "checkOutDate": "2026-08-12",
+                "stay": {"guestName": "Future Guest", "mobile": "9111111111"},
+            },
+        )
+        self.assertEqual(future.status_code, 200)
+        self.assertEqual(future.get_json()["room"]["status"], "occupied")
+        self.assertEqual(
+            future.get_json()["room"]["upcomingStay"]["guestName"], "Future Guest"
+        )
+
+    def test_room_detail_reserve_replace_clears_prior_guest(self):
+        first = self.client.put(
+            "/hotel/api/rooms/room-105",
+            json={
+                "action": "reserve",
+                "checkInDate": "2026-08-06",
+                "checkOutDate": "2026-08-08",
+                "stay": {
+                    "guestName": "Priya Shah",
+                    "mobile": "9887766554",
+                    "email": "priya@example.com",
+                    "agencyName": "Travel Co",
+                    "agencyGst": "27AAAAA0000A1Z5",
+                    "agencyAddress": "MG Road",
+                    "agencyBilling": True,
+                },
+            },
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.get_json()["room"]["stay"]["guestName"], "Priya Shah")
+
+        overlap = self.client.put(
+            "/hotel/api/rooms/room-105",
+            json={
+                "action": "reserve",
+                "replace": True,
+                "checkInDate": "2026-08-07",
+                "checkOutDate": "2026-08-09",
+                "stay": {
+                    "guestName": "Overlap Guest",
+                    "mobile": "9000099999",
+                },
+            },
+        )
+        self.assertEqual(overlap.status_code, 400)
+        self.assertFalse(overlap.get_json()["ok"])
+        self.assertIn("already reserved", overlap.get_json()["error"].lower())
+
+        replaced = self.client.put(
+            "/hotel/api/rooms/room-105",
+            json={
+                "action": "reserve",
+                "replace": True,
+                "checkInDate": "2026-08-10",
+                "checkOutDate": "2026-08-12",
+                "stay": {
+                    "guestName": "Asha Rao",
+                    "mobile": "9000012345",
+                    "email": "asha@example.com",
+                },
+            },
+        )
+        self.assertEqual(replaced.status_code, 200)
+        payload = replaced.get_json()
+        self.assertTrue(payload["ok"])
+        stay = payload["room"]["stay"]
+        self.assertEqual(payload["room"]["status"], "reserved")
+        self.assertEqual(stay["guestName"], "Asha Rao")
+        self.assertEqual(stay["mobile"], "9000012345")
+        self.assertEqual(stay["email"], "asha@example.com")
+        self.assertEqual(stay["checkInDate"], "2026-08-10")
+        self.assertEqual(stay["checkOutDate"], "2026-08-12")
+        self.assertEqual(stay.get("agencyName") or "", "")
+        self.assertEqual(stay.get("agencyGst") or "", "")
+        self.assertFalse(stay.get("agencyBilling"))
 
     def test_room_detail_api_get_and_mark_clean(self):
         put_dirty = self.client.put(
@@ -641,6 +894,71 @@ class HotelRoomsTests(unittest.TestCase):
             json={"action": "transfer", "toRoomId": "room-101"},
         )
         self.assertEqual(vacant_only.status_code, 400)
+
+    def test_room_transfer_clears_stale_vacant_stay_shell(self):
+        """Vacant destinations with a cancelled reservation shell must still accept transfer."""
+        import json
+
+        checkin = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000011",
+                    "checkInDate": "2026-07-29",
+                },
+            },
+        )
+        self.assertEqual(checkin.status_code, 200)
+
+        conn = db_mod.get_db()
+        try:
+            layout = db_mod.get_hotel_rooms_layout(conn)
+            rooms = layout.get("rooms") or []
+            for room in rooms:
+                if room.get("id") != "room-105":
+                    continue
+                room["status"] = "vacant"
+                room["stay"] = {
+                    "checkInDate": "2026-08-01",
+                    "checkOutDate": "2026-08-02",
+                    "firstName": "",
+                    "lastName": "",
+                    "guestName": "",
+                }
+                break
+            # Bypass save heal so the cancelled shell is present in storage.
+            blob = json.dumps(
+                {"floors": layout.get("floors") or [], "rooms": rooms},
+                separators=(",", ":"),
+            )
+            conn.execute(
+                """
+                INSERT INTO hotel_rooms_layout (id, payload, updated_at)
+                VALUES (1, ?, datetime('now','localtime'))
+                ON CONFLICT(id) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at
+                """,
+                (blob,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        moved = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "transfer", "toRoomId": "room-105"},
+        )
+        self.assertEqual(moved.status_code, 200, moved.get_data(as_text=True))
+        payload = moved.get_json()
+        self.assertEqual(payload["toRoom"]["id"], "room-105")
+        self.assertEqual(payload["toRoom"]["status"], "occupied")
+        self.assertEqual(payload["toRoom"]["stay"]["firstName"], "Asha")
+        self.assertEqual(payload["fromRoom"]["status"], "dirty")
+        self.assertNotIn("stay", payload["fromRoom"])
 
     def test_guest_lookup_by_mobile(self):
         miss = self.client.get("/hotel/api/guests/lookup?mobile=9111111111")
@@ -1292,6 +1610,10 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("Invoice Ledger", html)
         self.assertIn(inv_no, html)
         self.assertIn("is-open", html)
+        self.assertIn("Un Settled", html)
+        self.assertIn("pos-inv-settle-modal", html)
+        self.assertIn("hotel_settle_modal.js", html)
+        self.assertIn("data-hil-settle", html)
         self.assertIn('data-room-id="room-101"', html)
         self.assertIn("Settle invoice", html)
         self.assertIn("hil-view-btn", html)
@@ -1306,6 +1628,57 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(payload["room"]["stay"]["invoiceNumber"], inv_no)
         self.assertGreater(float(payload["invoice"]["balance_amount"]), 0)
         self.assertEqual(payload["invoice"]["status"], "open")
+
+        settle = self.client.post(
+            f"/hotel/invoice-ledger/api/{inv_no}/settle",
+            json={
+                "payment_splits": [
+                    {"method": "cash", "amount": payload["invoice"]["balance_amount"]}
+                ]
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        settled = settle.get_json()
+        self.assertTrue(settled["ok"])
+        self.assertEqual(settled["invoice"]["status"], "settled")
+        self.assertLessEqual(float(settled["invoice"]["balance_amount"]), 0.009)
+
+    def test_invoice_ledger_settle_after_checkout(self):
+        self._checkin_with_charges(advance=0)
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        stay = gen.get_json()["room"]["stay"]
+        inv_no = stay["invoiceNumber"]
+        balance = stay["balanceAmount"]
+        closed = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+        self.assertNotIn("stay", closed.get_json()["room"])
+
+        settle = self.client.post(
+            f"/hotel/invoice-ledger/api/{inv_no}/settle",
+            json={
+                "payment_splits": [{"method": "upi", "amount": balance}],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        settled = settle.get_json()
+        self.assertTrue(settled["ok"])
+        self.assertEqual(settled["invoice"]["status"], "settled")
+        self.assertLessEqual(float(settled["invoice"]["balance_amount"]), 0.009)
+
+        api = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}")
+        self.assertEqual(api.status_code, 200)
+        item = api.get_json()["invoice"]
+        self.assertEqual(item["status"], "settled")
 
     def test_invoice_ledger_survives_checkout(self):
         self._checkin_with_charges(advance=0)
@@ -1360,6 +1733,10 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(
             get_endpoint_dashboard_module("hotel_invoice_ledger_export"), "hotel_rooms"
+        )
+        self.assertEqual(
+            get_endpoint_dashboard_module("hotel_invoice_ledger_settle_api"),
+            "hotel_rooms",
         )
 
         viewer = {
@@ -1423,6 +1800,21 @@ class HotelRoomsTests(unittest.TestCase):
         # Member room charge + advances moved onto primary folio/advance.
         folio_labels = [f.get("label") for f in primary["stay"]["folioCharges"]]
         self.assertTrue(any("Room 102" in (label or "") for label in folio_labels))
+        absorb_lines = [
+            f
+            for f in primary["stay"]["folioCharges"]
+            if f.get("source") == "room_merge"
+            and str(f.get("sourceRoomId") or "") == "room-102"
+        ]
+        self.assertEqual(len(absorb_lines), 1, primary["stay"]["folioCharges"])
+        # No duplicate auto rate line alongside the absorb for the same member.
+        rate_dupes = [
+            f
+            for f in primary["stay"]["folioCharges"]
+            if f.get("source") == "merged_room_rate"
+            and str(f.get("sourceRoomId") or "") == "room-102"
+        ]
+        self.assertEqual(rate_dupes, [])
         self.assertGreaterEqual(float(primary["stay"]["advancePaid"]), 700)
         self.assertGreater(float(primary["stay"]["estimatedTotal"]), 5750)
 
@@ -1536,6 +1928,132 @@ class HotelRoomsTests(unittest.TestCase):
             float(primary["stay"].get("estimatedTotal") or 0),
             float(member["stay"].get("estimatedTotal") or 0),
         )
+        # Both rooms billed: primary rate×nights + member type tariff×nights.
+        folio = primary["stay"].get("folioCharges") or []
+        rate_lines = [f for f in folio if f.get("source") == "merged_room_rate"]
+        self.assertEqual(len(rate_lines), 1, folio)
+        self.assertIn("105", rate_lines[0].get("label") or "")
+        # Room 105 is premium_without_balcony (default ₹3500) × 2 nights.
+        self.assertEqual(float(rate_lines[0].get("amount") or 0), 7000.0)
+        # Primary ₹3000×2 + member ₹3500×2 = ₹13,000 + 5% GST = ₹13,650
+        self.assertAlmostEqual(
+            float(primary["stay"].get("estimatedTotal") or 0), 13650.0, places=2
+        )
+
+    def test_merged_checkin_uses_per_room_type_tariffs(self):
+        """Suite primary + Deluxe member bill each type's settings tariff."""
+        merged = self.client.put(
+            "/hotel/api/rooms/room-306",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-306",
+                "toRoomId": "room-307",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+        checked = self.client.put(
+            "/hotel/api/rooms/room-307",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000306",
+                    "checkInDate": "2026-08-01",
+                    "nights": 1,
+                    "roomRate": 7500,
+                    "mergeRoomRates": [
+                        {
+                            "roomId": "room-307",
+                            "number": "307",
+                            "roomType": "premium_suite_tub",
+                            "ratePlan": "EP",
+                            "roomRate": 7500,
+                            "isPrimary": True,
+                        },
+                        {
+                            "roomId": "room-306",
+                            "number": "306",
+                            "roomType": "premium_deluxe_balcony",
+                            "ratePlan": "EP",
+                            "roomRate": 4500,
+                            "isPrimary": False,
+                        },
+                    ],
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(checked.status_code, 200, checked.get_data(as_text=True))
+        primary = self.client.get("/hotel/api/rooms/room-307").get_json()["room"]
+        folio = primary["stay"].get("folioCharges") or []
+        rate_lines = [f for f in folio if f.get("source") == "merged_room_rate"]
+        self.assertEqual(len(rate_lines), 1, folio)
+        self.assertIn("306", rate_lines[0].get("label") or "")
+        self.assertEqual(float(rate_lines[0].get("amount") or 0), 4500.0)
+        rates = primary["stay"].get("mergeRoomRates") or []
+        by_num = {str(r.get("number") or ""): r for r in rates}
+        self.assertEqual(float(by_num["307"]["roomRate"]), 7500.0)
+        self.assertEqual(float(by_num["306"]["roomRate"]), 4500.0)
+        # ₹7500 + ₹4500 = ₹12,000 + 5% GST = ₹12,600
+        self.assertAlmostEqual(
+            float(primary["stay"].get("estimatedTotal") or 0), 12600.0, places=2
+        )
+
+    def test_merged_checkin_heals_copied_primary_rate_on_member(self):
+        """Stale mergeRoomRates that copied suite rate onto deluxe are repaired."""
+        merged = self.client.put(
+            "/hotel/api/rooms/room-306",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-306",
+                "toRoomId": "room-307",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+        checked = self.client.put(
+            "/hotel/api/rooms/room-307",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Dev",
+                    "lastName": "Iyer",
+                    "mobile": "9000000307",
+                    "checkInDate": "2026-08-01",
+                    "nights": 1,
+                    "roomRate": 7500,
+                    "mergeRoomRates": [
+                        {
+                            "roomId": "room-307",
+                            "number": "307",
+                            "roomRate": 7500,
+                            "isPrimary": True,
+                        },
+                        {
+                            "roomId": "room-306",
+                            "number": "306",
+                            "roomRate": 7500,
+                            "isPrimary": False,
+                        },
+                    ],
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(checked.status_code, 200, checked.get_data(as_text=True))
+        primary = self.client.get("/hotel/api/rooms/room-307").get_json()["room"]
+        rate_lines = [
+            f
+            for f in (primary["stay"].get("folioCharges") or [])
+            if f.get("source") == "merged_room_rate"
+        ]
+        self.assertEqual(len(rate_lines), 1, primary["stay"].get("folioCharges"))
+        self.assertEqual(float(rate_lines[0].get("amount") or 0), 4500.0)
+        by_num = {
+            str(r.get("number") or ""): r
+            for r in (primary["stay"].get("mergeRoomRates") or [])
+        }
+        self.assertEqual(float(by_num["306"]["roomRate"]), 4500.0)
 
     def test_merge_allows_any_rooms_without_stay(self):
         """Vacant / status-only rooms can join a billing merge group."""

@@ -99,7 +99,47 @@ body.hotel-invoice-ledger-module #hil-table .pl-col-amount{
 }
 #hil-table tr.hil-row.is-open .hil-status-settle{
   cursor:pointer;
+  border:0;
+  font:inherit;
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.3px;
+  text-transform:uppercase;
+  appearance:none;
+  -webkit-appearance:none;
 }
+#hil-table tr.hil-row.is-open .hil-status-settle:focus-visible{
+  outline:2px solid #2563EB;
+  outline-offset:2px;
+}
+
+/* Hotel settle modal — match Create Invoice settle chrome */
+body.hotel-invoice-ledger-module #pos-inv-settle-modal .staff-credit-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:18px;
+}
+body.hotel-invoice-ledger-module #pos-inv-settle-modal .staff-credit-actions .btn{
+  min-height:42px;
+  padding:0 16px;
+  border-radius:10px;
+  border:1px solid #E5E7EB;
+  background:#fff;
+  color:#0F172A;
+  font:700 13px Inter,system-ui,sans-serif;
+  cursor:pointer;
+}
+body.hotel-invoice-ledger-module #pos-inv-settle-modal .staff-credit-actions .btn-primary{
+  background:#2563EB;
+  border-color:#2563EB;
+  color:#fff;
+}
+body.hotel-invoice-ledger-module #pos-inv-settle-modal .staff-credit-actions .btn:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+body.hotel-invoice-ledger-module #pos-inv-settle-modal .staff-field{margin-bottom:14px}
 
 body.hotel-invoice-ledger-module .hil-print-btn svg{
   width:14px;

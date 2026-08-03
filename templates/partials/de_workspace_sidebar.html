@@ -120,9 +120,6 @@
         {% if has_payroll_access('tips') %}
         <a class="de-nav-subitem{% if payroll_view == 'tips' %} is-active{% endif %}" id="de-nav-payroll-tips" href="{{ url_for('sales_update_tips_page', company=nav_company) if nav_company else url_for('sales_update_tips_page') }}"{% if payroll_view == 'tips' %} aria-current="page"{% endif %}>Tips</a>
         {% endif %}
-        {% if has_payroll_access('report') %}
-        <a class="de-nav-subitem{% if payroll_view == 'report' %} is-active{% endif %}" id="de-nav-payroll-report" href="{{ url_for('report', **payroll_period) }}"{% if payroll_view == 'report' %} aria-current="page"{% endif %}>Report</a>
-        {% endif %}
       </div>
     </div>
     {% endif %}

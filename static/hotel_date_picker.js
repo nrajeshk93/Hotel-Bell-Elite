@@ -37,6 +37,75 @@
     );
   }
 
+  function resolveBoundDate(raw) {
+    var text = String(raw || '').trim();
+    if (!text) return null;
+    if (text.toLowerCase() === 'today') return todayISO();
+    return parseISODate(text) ? text : null;
+  }
+
+  function chipMinDate(chip) {
+    return resolveBoundDate(chip && chip.getAttribute('data-min-date'));
+  }
+
+  function chipMaxDate(chip) {
+    return resolveBoundDate(chip && chip.getAttribute('data-max-date'));
+  }
+
+  function chipBlockedRanges(chip) {
+    if (!chip) return [];
+    var raw = String(chip.getAttribute('data-blocked-ranges') || '').trim();
+    if (!raw) return [];
+    var ranges = [];
+    raw.split(',').forEach(function (part) {
+      var text = String(part || '').trim();
+      if (!text) return;
+      var bits = text.split(':');
+      var from = resolveBoundDate(bits[0]);
+      var to = resolveBoundDate(bits[1] || bits[0]);
+      if (!from) return;
+      if (!to) to = from;
+      if (to < from) {
+        var swap = from;
+        from = to;
+        to = swap;
+      }
+      ranges.push({ from: from, to: to });
+    });
+    return ranges;
+  }
+
+  function isDateBlocked(chip, iso) {
+    if (!parseISODate(iso)) return true;
+    var ranges = chipBlockedRanges(chip);
+    for (var i = 0; i < ranges.length; i += 1) {
+      if (iso >= ranges[i].from && iso <= ranges[i].to) return true;
+    }
+    return false;
+  }
+
+  function isDateAllowed(chip, iso) {
+    if (!parseISODate(iso)) return false;
+    var min = chipMinDate(chip);
+    var max = chipMaxDate(chip);
+    if (min && iso < min) return false;
+    if (max && iso > max) return false;
+    if (isDateBlocked(chip, iso)) return false;
+    return true;
+  }
+
+  function clampDateToBounds(chip, iso) {
+    if (!iso) return '';
+    if (!parseISODate(iso)) return '';
+    var min = chipMinDate(chip);
+    var max = chipMaxDate(chip);
+    var next = iso;
+    if (min && next < min) next = min;
+    if (max && next > max) next = max;
+    if (isDateBlocked(chip, next)) return '';
+    return next;
+  }
+
   function formatDateLabel(iso) {
     var parsed = parseISODate(iso);
     if (!parsed) return '';
@@ -149,8 +218,10 @@
         dayNum = i - startPad + 1;
       }
       var iso = toISODate(y, m, dayNum);
+      var allowed = isDateAllowed(chip, iso);
       var cls = 'hotel-date-day';
       if (muted) cls += ' is-muted';
+      if (!allowed) cls += ' is-disabled';
       if (iso === selected) cls += ' is-selected';
       if (iso === today) cls += ' is-today';
       html +=
@@ -162,6 +233,7 @@
         (formatDateLabel(iso) || iso) +
         '"' +
         (iso === selected ? ' aria-current="date"' : '') +
+        (!allowed ? ' disabled aria-disabled="true"' : '') +
         '>' +
         dayNum +
         '</button>';
@@ -285,7 +357,9 @@
 
     var useFixed =
       chip.hasAttribute('data-hotel-date-fixed') ||
-      !!(chip.closest('.hrd-modal-body, .hrd-modal, .hrd-dialog-body'));
+      !!(chip.closest(
+        '.hrd-modal-body, .hrd-modal, .hrd-dialog-body, .hr-dialog-body, .hr-dialog, #hr-board-reserve-modal'
+      ));
 
     if (!useFixed) {
       var rect = chip.getBoundingClientRect();
@@ -312,13 +386,15 @@
       top = Math.max(12, tRect.top - panelH - 8);
     }
     var left = tRect.left;
-    var width = Math.min(312, window.innerWidth - 24);
-    if (left + width > window.innerWidth - 12) {
-      left = Math.max(12, window.innerWidth - width - 12);
+    var panelW = Math.min(312, window.innerWidth - 24);
+    if (left + panelW > window.innerWidth - 12) {
+      /* Keep full calendar in view; prefer flush with the trigger's right edge. */
+      left = Math.max(12, Math.min(tRect.right - panelW, window.innerWidth - panelW - 12));
     }
     panel.style.top = Math.round(top) + 'px';
     panel.style.left = Math.round(left) + 'px';
     panel.style.right = 'auto';
+    panel.style.width = panelW + 'px';
   }
 
   function clearFixedPanel(chip) {
@@ -368,6 +444,14 @@
     if (!input) return;
     var next = String(iso || '').trim();
     if (next && !parseISODate(next)) return;
+    if (next) {
+      if (!isDateAllowed(chip, next)) {
+        // Reject blocked / out-of-bounds picks unless forcing a clamp.
+        if (!opts.forceClamp) return;
+        next = clampDateToBounds(chip, next);
+        if (next && !isDateAllowed(chip, next)) next = '';
+      }
+    }
     input.value = next;
     syncDisplay(chip);
     if (opts.close !== false) closeChip(chip);
@@ -381,6 +465,11 @@
   function bindChip(chip) {
     if (!chip || chip.getAttribute('data-hotel-date-bound') === '1') return;
     chip.setAttribute('data-hotel-date-bound', '1');
+    var input = chip.querySelector('.hotel-date-input, input[type="hidden"]');
+    if (input && input.value) {
+      var clamped = clampDateToBounds(chip, input.value);
+      if (clamped !== input.value) input.value = clamped;
+    }
     syncDisplay(chip);
 
     var trigger = chip.querySelector('.hotel-date-trigger');
@@ -479,6 +568,11 @@
         }
         var dayBtn = event.target.closest('.hotel-date-day');
         if (!dayBtn || !grid.contains(dayBtn)) return;
+        if (dayBtn.disabled || dayBtn.classList.contains('is-disabled')) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         setValue(chip, dayBtn.getAttribute('data-date'));
@@ -523,10 +617,44 @@
       typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
     if (!input) return;
     var chip = input.closest('[data-hotel-date]');
-    if (chip) setValue(chip, iso, { close: false });
+    if (chip) setValue(chip, iso, { close: false, forceClamp: true });
     else {
       input.value = iso || '';
     }
+  }
+
+  function setHotelDateBlockedRanges(inputOrId, ranges) {
+    var input =
+      typeof inputOrId === 'string' ? document.getElementById(inputOrId) : inputOrId;
+    if (!input) return;
+    var chip = input.closest('[data-hotel-date]');
+    if (!chip) return;
+    var list = Array.isArray(ranges) ? ranges : ranges ? [ranges] : [];
+    var encoded = list
+      .map(function (range) {
+        if (!range) return '';
+        if (typeof range === 'string') {
+          var bits = range.split(':');
+          var from = resolveBoundDate(bits[0]);
+          var to = resolveBoundDate(bits[1] || bits[0]);
+          if (!from) return '';
+          return from + ':' + (to || from);
+        }
+        var start = resolveBoundDate(range.from || range.start || range.checkIn);
+        var end = resolveBoundDate(range.to || range.end || range.checkOut || start);
+        if (!start) return '';
+        return start + ':' + (end || start);
+      })
+      .filter(Boolean);
+    if (encoded.length) chip.setAttribute('data-blocked-ranges', encoded.join(','));
+    else chip.removeAttribute('data-blocked-ranges');
+    var current = String(input.value || '').trim();
+    if (current && !isDateAllowed(chip, current)) {
+      setValue(chip, '', { close: false, forceClamp: true });
+    } else {
+      syncDisplay(chip);
+    }
+    if (chip.classList.contains('is-open')) renderPicker(chip);
   }
 
   function closeHotelDatePickers() {
@@ -544,6 +672,7 @@
   global.initHotelDatePickers = initHotelDatePickers;
   global.syncHotelDateChip = syncHotelDateChip;
   global.setHotelDateValue = setHotelDateValue;
+  global.setHotelDateBlockedRanges = setHotelDateBlockedRanges;
   global.closeHotelDatePickers = closeHotelDatePickers;
   global.hotelDateTodayISO = todayISO;
   global.formatHotelDateLabel = formatDateLabel;
@@ -685,6 +814,14 @@
 
   function closeTimeChip(chip) {
     if (!chip) return;
+    /* Commit the wheel draft so a selection is kept even if the last click
+       only updated highlight state (e.g. panel dismissed via backdrop). */
+    if (chip.classList.contains('is-open') && !chip.__hotelTimeSkipCommit) {
+      try {
+        applyDraft(chip, { close: false });
+      } catch (err) {}
+    }
+    chip.__hotelTimeSkipCommit = false;
     var panel = chip.querySelector('.hotel-time-panel, .hotel-date-panel');
     var backdrop = chip.querySelector('.hotel-time-backdrop, .hotel-date-backdrop');
     var trigger = chip.querySelector('.hotel-date-trigger');
@@ -806,6 +943,7 @@
     var periodHost = chip.querySelector('[data-hotel-time-period]');
     var nowBtn = chip.querySelector('[data-hotel-time-now]');
     var clearBtn = chip.querySelector('[data-hotel-time-clear]');
+    var doneBtn = chip.querySelector('[data-hotel-time-done]');
     var backdrop = chip.querySelector('.hotel-time-backdrop, .hotel-date-backdrop');
 
     function onColClick(host, key, transform) {
@@ -843,7 +981,16 @@
       clearBtn.addEventListener('click', function (event) {
         event.preventDefault();
         event.stopPropagation();
+        chip.__hotelTimeSkipCommit = true;
+        chip.__hotelTimeDraft = { hour12: 12, minute: 0, period: 'AM' };
         setTimeValue(chip, '', { close: true });
+      });
+    }
+    if (doneBtn) {
+      doneBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        applyDraft(chip, { close: true });
       });
     }
     if (backdrop) {

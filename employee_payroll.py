@@ -1563,11 +1563,19 @@ def report():
         report_data, payroll_state = _load_monthly_payroll_report(conn, year, month)
     finally:
         conn.close()
-    return _emp_render('employees.html', mode='report',
-                       sel_year=year, sel_month=month,
-                       month_name=calendar.month_name[month],
-                       payroll_state=payroll_state,
-                       report=report_data)
+    return _emp_render(
+        'employees.html',
+        mode='report',
+        sel_year=year,
+        sel_month=month,
+        month_name=calendar.month_name[month],
+        payroll_state=payroll_state,
+        report=report_data,
+        de_nav_section='report',
+        de_nav_payroll_view='',
+        de_nav_report_view='home',
+        de_nav_host='report',
+    )
 
 
 @payroll_bp.route('/monthly_payroll')
@@ -1581,19 +1589,8 @@ def monthly_payroll_report():
         conn.close()
 
     from_hub = (request.args.get("from_hub") or "").strip().lower()
-    if from_hub == "reports":
-        back_href = url_for("reports")
-        back_label = "Back to Reports"
-        de_nav_section = "report"
-        de_nav_payroll_view = ""
-        de_nav_report_view = "home"
-    else:
+    if from_hub != "reports":
         from_hub = ""
-        back_href = url_for("employees")
-        back_label = "Back to Employee Payroll"
-        de_nav_section = "payroll"
-        de_nav_payroll_view = "report"
-        de_nav_report_view = ""
 
     return _emp_render(
         "monthly_payroll_report.html",
@@ -1605,13 +1602,13 @@ def monthly_payroll_report():
         report=report_data,
         payroll_report_url=url_for("export_employees", year=year, month=month),
         filter_form_action=url_for("monthly_payroll_report"),
-        back_href=back_href,
-        back_label=back_label,
+        back_href=url_for("reports"),
+        back_label="Back to Reports",
         from_hub=from_hub,
-        de_nav_section=de_nav_section,
-        de_nav_payroll_view=de_nav_payroll_view,
-        de_nav_report_view=de_nav_report_view,
-        de_nav_host="payroll" if de_nav_section == "payroll" else "report",
+        de_nav_section="report",
+        de_nav_payroll_view="",
+        de_nav_report_view="home",
+        de_nav_host="report",
     )
 
 
@@ -4145,19 +4142,8 @@ def bank_report():
         conn.close()
 
     from_hub = (request.args.get("from_hub") or "").strip().lower()
-    if from_hub == "reports":
-        back_href = url_for("reports")
-        back_label = "Back to Reports"
-        de_nav_section = "report"
-        de_nav_payroll_view = ""
-        de_nav_report_view = "home"
-    else:
+    if from_hub != "reports":
         from_hub = ""
-        back_href = url_for("report", year=year, month=month)
-        back_label = "Back to Payroll Report"
-        de_nav_section = "payroll"
-        de_nav_payroll_view = "report"
-        de_nav_report_view = ""
 
     return _emp_render(
         "bank_report.html",
@@ -4168,13 +4154,13 @@ def bank_report():
         report=report,
         bank_report_url=url_for("export_bank_report", year=year, month=month),
         filter_form_action=url_for("bank_report"),
-        back_href=back_href,
-        back_label=back_label,
+        back_href=url_for("reports"),
+        back_label="Back to Reports",
         from_hub=from_hub,
-        de_nav_section=de_nav_section,
-        de_nav_payroll_view=de_nav_payroll_view,
-        de_nav_report_view=de_nav_report_view,
-        de_nav_host="payroll" if de_nav_section == "payroll" else "report",
+        de_nav_section="report",
+        de_nav_payroll_view="",
+        de_nav_report_view="home",
+        de_nav_host="report",
     )
 
 

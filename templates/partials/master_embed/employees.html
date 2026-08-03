@@ -174,10 +174,10 @@
                 <td data-sort-value="{{ emp.name }}"><div class="pl-name">{{ emp.name }}</div></td>
                 <td data-sort-value="{{ emp.location }}"><span class="emp-dept">{{ emp.location or '—' }}</span></td>
                 <td class="pl-col-amount pl-amount" data-sort-value="{{ emp.gross_salary }}">{{ emp.gross_salary | inr }}</td>
-                <td data-sort-value="{{ emp.address|default('') }}">
-                  <div class="pl-meta emp-master-address">{{ emp.address or '—' }}</div>
+                <td class="emp-master-address-cell" data-sort-value="{{ emp.address|default('') }}">
+                  <div class="emp-master-address">{{ emp.address or '—' }}</div>
                 </td>
-                <td data-sort-value="{{ emp.mobile|default('') }}">{{ emp.mobile or '—' }}</td>
+                <td class="pl-col-phone" data-sort-value="{{ emp.mobile|default('') }}">{{ emp.mobile or '—' }}</td>
                 <td class="tbl-sticky">
                   <div class="act-grp">
                     {% if has_payroll_access('employee') %}

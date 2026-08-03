@@ -63,6 +63,40 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
 .hotel-rooms-header-actions .de-fullscreen-btn{
   flex-shrink:0;
 }
+/* Match Expense Ledger / Purchase Ledger primary header actions */
+.hotel-rooms-header-actions .btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:7px 14px;
+  min-height:32px;
+  border-radius:10px;
+  font:600 12px Inter,'Segoe UI',system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+  background:#fff;
+  color:#475569;
+  border:1px solid #E2E8F0;
+  text-decoration:none;
+  transition:background 160ms ease,border-color 160ms ease,color 160ms ease;
+}
+.hotel-rooms-header-actions .btn:hover{
+  background:#F1F5F9;
+  color:#0F172A;
+}
+.hotel-rooms-header-actions .btn-primary,
+.hotel-rooms-header-actions .hotel-rooms-reserve-btn{
+  background:var(--hotel-primary, #2563EB);
+  border-color:var(--hotel-primary, #2563EB);
+  color:#fff;
+}
+.hotel-rooms-header-actions .btn-primary:hover,
+.hotel-rooms-header-actions .hotel-rooms-reserve-btn:hover{
+  background:#1D4ED8;
+  border-color:#1D4ED8;
+  color:#fff;
+}
 
 .hotel-rooms-kpis{
   display:grid;
@@ -117,6 +151,8 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
 .hotel-kpi-icon--orange{background:var(--hotel-orange-soft);color:var(--hotel-orange)}
 .hotel-kpi-icon--rose{background:var(--hotel-rose-soft);color:var(--hotel-rose)}
 .hotel-kpi-icon--purple{background:var(--hotel-purple-soft);color:var(--hotel-purple)}
+.hotel-kpi-icon--amber{background:#FEF3C7;color:#D97706}
+.hotel-kpi-icon--teal{background:#CCFBF1;color:#0F766E}
 .hotel-kpi-label{
   font-size:12px;
   font-weight:650;
@@ -411,10 +447,30 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   letter-spacing:.02em;
   text-transform:uppercase;
 }
+.hotel-merge-section .hotel-floor-section-title{
+  text-transform:none;
+  letter-spacing:-.01em;
+  font-size:15px;
+  color:var(--hotel-text);
+}
+/* Toolbar-like shell grouping all rooms in a merge, across floors. */
+.hotel-merge-box{
+  background:var(--hotel-card);
+  border:1px solid var(--hotel-border);
+  border-radius:18px;
+  box-shadow:var(--hotel-shadow);
+  padding:14px;
+  min-width:0;
+}
+.hotel-merge-box .hotel-rooms-grid{
+  margin:0;
+  grid-template-columns:repeat(auto-fill, minmax(210px, 1fr));
+  gap:16px;
+}
 .hotel-rooms-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(168px, 1fr));
-  gap:14px;
+  grid-template-columns:repeat(auto-fill, minmax(210px, 1fr));
+  gap:16px;
 }
 #hotel-rooms-floor[data-view="list"] .hotel-rooms-grid{
   grid-template-columns:1fr;
@@ -436,15 +492,19 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   grid-column:2;
   grid-row:1;
   margin-top:0;
+  text-align:left;
 }
 #hotel-rooms-floor[data-view="list"] .hotel-room-type{
   grid-column:2;
   grid-row:2;
   margin-top:2px;
   min-height:0;
-}
-#hotel-rooms-floor[data-view="list"] .hotel-room-merge-tag{
-  grid-column:2;
+  max-height:none;
+  text-align:left;
+  display:-webkit-box;
+  -webkit-line-clamp:2;
+  -webkit-box-orient:vertical;
+  line-clamp:2;
 }
 #hotel-rooms-floor[data-view="list"] .hotel-room-badge{
   grid-column:3;
@@ -457,7 +517,7 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   position:relative;
   display:flex;
   flex-direction:column;
-  min-height:148px;
+  min-height:176px;
   padding:14px;
   border-radius:18px;
   border:1px solid var(--hotel-border);
@@ -805,6 +865,8 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   font-weight:780;
   letter-spacing:-.04em;
   line-height:1;
+  width:100%;
+  text-align:center;
 }
 .hotel-room-type{
   margin-top:8px;
@@ -813,6 +875,26 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   color:var(--hotel-muted);
   line-height:1.35;
   min-height:2.6em;
+  width:100%;
+  text-align:center;
+  overflow:hidden;
+  word-break:break-word;
+  /* Board tiles: block + max-height so text-align:center works.
+     (-webkit-box line-clamp left-aligns text in Chromium.) */
+  display:block;
+  max-height:2.7em;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-type{
+  display:block;
+  -webkit-line-clamp:unset;
+  line-clamp:unset;
+  -webkit-box-orient:unset;
+  text-align:center;
+}
+.hotel-room-type--guest{
+  margin-top:14px;
+  font-weight:650;
+  color:var(--hotel-text);
 }
 .hotel-room-badge{
   margin-top:auto;
@@ -847,24 +929,149 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
 .hotel-room-tile--dirty .hotel-room-badge{background:var(--hotel-rose-soft);color:var(--hotel-rose)}
 .hotel-room-tile--out_of_order .hotel-room-badge{background:var(--hotel-gray-soft);color:var(--hotel-gray)}
 
+/* Same-day expected checkout (before checkout time) — rose tint, same soft chip design as occupied. */
+.hotel-room-tile--checkout-due{
+  background:linear-gradient(180deg,#FFFFFF 0%,#FFF1F2 100%);
+  border-color:#FECDD3;
+}
+.hotel-room-tile--checkout-due .hotel-room-icon{
+  background:var(--hotel-rose-soft);
+  color:var(--hotel-rose);
+}
+.hotel-room-tile--checkout-due .hotel-room-badge{
+  background:var(--hotel-rose-soft);
+  color:var(--hotel-rose);
+}
+
+/* Overdue checkout (occupied) / overdue arrival (reserved) — rose blink (not occupied orange).
+   Soft-nav sets `animation:none!important` on `.de-main-wrapper *`; beat that with
+   higher-specificity selectors so overdue tiles still pulse after SPA navigation. */
+@keyframes hotel-room-attention-pulse{
+  0%, 100%{
+    box-shadow:0 0 0 0 rgba(225,29,72,.0), var(--hotel-shadow);
+    border-color:#FB7185;
+    background:linear-gradient(180deg,#FFFFFF 0%,#FFF1F2 100%);
+  }
+  50%{
+    box-shadow:0 0 0 5px rgba(225,29,72,.32), 0 8px 24px rgba(225,29,72,.14);
+    border-color:#BE123C;
+    background:linear-gradient(180deg,#FFE4E6 0%,#FECDD3 100%);
+  }
+}
+@keyframes hotel-room-attention-badge-pulse{
+  0%, 100%{
+    background:#FFE4E6;
+    color:#BE123C;
+  }
+  50%{
+    background:#E11D48;
+    color:#fff;
+  }
+}
+html.de-soft-nav-session .de-main-wrapper .hotel-room-tile--attention,
+html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention,
+.hotel-room-tile--attention{
+  border-color:#FB7185 !important;
+  animation:hotel-room-attention-pulse 1.4s ease-in-out infinite !important;
+}
+html.de-soft-nav-session .de-main-wrapper .hotel-room-tile--attention .hotel-room-badge,
+html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room-badge,
+.hotel-room-tile--attention .hotel-room-badge{
+  animation:hotel-room-attention-badge-pulse 1.4s ease-in-out infinite !important;
+}
+@media (prefers-reduced-motion: reduce){
+  html.de-soft-nav-session .de-main-wrapper .hotel-room-tile--attention,
+  html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention,
+  .hotel-room-tile--attention{
+    animation:none !important;
+    border-color:#E11D48 !important;
+    box-shadow:inset 0 0 0 2px rgba(225,29,72,.4);
+    background:linear-gradient(180deg,#FFE4E6 0%,#FECDD3 100%);
+  }
+  html.de-soft-nav-session .de-main-wrapper .hotel-room-tile--attention .hotel-room-badge,
+  html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room-badge,
+  .hotel-room-tile--attention .hotel-room-badge{
+    animation:none !important;
+    background:#E11D48;
+    color:#fff;
+  }
+}
+
 .hotel-room-tile--merged{
-  box-shadow:inset 0 0 0 2px rgba(37,99,235,.34);
-  border-color:#93C5FD;
+  /* Same outer border as status tiles (vacant/occupied/…); no blue merge ring. */
   min-width:0;
 }
-.hotel-room-tile--merged .hotel-room-number,
-.hotel-room-number--merged{
-  font-size:clamp(1.05rem, 2.4vw, 1.35rem);
-  line-height:1.15;
-  letter-spacing:-.01em;
-  word-break:break-word;
+/* Single-cell merged chrome — one tile per physical room. */
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto;
+  grid-template-rows:auto auto auto 1fr auto;
+  align-content:stretch;
+  column-gap:8px;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-tile-top{
+  grid-column:1 / -1;
+  grid-row:1;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-number{
+  grid-column:1 / -1;
+  grid-row:2;
+  width:100%;
+  max-width:none;
+  text-align:center;
+  margin-top:0;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-type{
+  grid-column:1 / -1;
+  grid-row:3;
+  width:100%;
+  max-width:none;
+  min-height:0;
+  text-align:center;
+  margin-top:8px;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-badge{
+  grid-column:1;
+  grid-row:5;
+  margin-top:0;
+  align-self:end;
+  justify-self:start;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-merge-tag{
+  grid-column:2;
+  grid-row:5;
+  position:static;
+  right:auto;
+  bottom:auto;
+  margin:0;
+  align-self:end;
+  justify-self:end;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-guest-tip{
+  grid-column:1 / -1;
+  grid-row:1 / -1;
 }
 .hotel-room-merge-tag{
-  margin-top:6px;
+  position:absolute;
+  right:14px;
+  bottom:14px;
+  margin-top:0;
+  height:26px;
+  display:inline-flex;
+  align-items:center;
   font-size:11px;
   font-weight:700;
   color:#1D4ED8;
   letter-spacing:.01em;
+  pointer-events:none;
+  white-space:nowrap;
+}
+#hotel-rooms-floor[data-view="list"] .hotel-room-merge-tag{
+  grid-column:unset;
+  grid-row:unset;
 }
 .hotel-room-menu-sep{
   height:1px;
@@ -889,6 +1096,18 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   border-radius:14px;
   box-shadow:0 18px 50px rgba(15,23,42,.28);
   overflow:hidden;
+}
+/* Transfer listbox must escape dialog clip (workspace transform makes fixed act local). */
+#hr-transfer-modal .hr-dialog,
+#hr-transfer-modal .hr-dialog-body,
+#hr-transfer-modal .hr-field{
+  overflow:visible;
+}
+#hr-transfer-modal .hr-dialog-head{
+  border-radius:14px 14px 0 0;
+}
+#hr-transfer-modal .hr-dialog-foot{
+  border-radius:0 0 14px 14px;
 }
 .hr-dialog-head{
   display:flex;
@@ -963,6 +1182,162 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   line-height:1.4;
 }
 .hr-merge-hint.is-error{color:#DC2626}
+/* Transfer modal — expense-ledger style ep-form-listbox */
+#hr-transfer-modal .hr-field{
+  text-transform:none;
+  letter-spacing:0;
+  font-weight:600;
+}
+#hr-transfer-modal .ep-form-listbox{
+  width:100%;
+  position:relative;
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:#475569;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  line-height:1.2;
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-control{
+  position:relative;
+  display:flex;
+  align-items:center;
+  width:100%;
+  min-height:44px;
+  height:44px;
+  background:#F8FBFF !important;
+  border:1px solid #DBEAFE !important;
+  border-radius:12px;
+  box-shadow:none;
+  overflow:hidden;
+  box-sizing:border-box;
+  pointer-events:auto;
+  opacity:1;
+  cursor:pointer;
+  transition:border-color .15s, box-shadow .15s, background .15s;
+}
+#hr-transfer-modal .ep-form-listbox.is-open .se-filter-chip-control,
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-control:focus-within{
+  border-color:#2563EB !important;
+  background:#EFF6FF !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-icon{
+  display:flex !important;
+  flex-shrink:0;
+  align-items:center;
+  justify-content:center;
+  width:40px;
+  align-self:stretch;
+  color:#64748B;
+  pointer-events:none;
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-icon svg{
+  width:18px;
+  height:18px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  height:44px;
+  border:0;
+  background:transparent !important;
+  color:#0F172A;
+  font:600 14px Inter,system-ui,sans-serif;
+  text-align:left;
+  padding:0 4px 0 0;
+  cursor:pointer;
+  pointer-events:auto;
+  opacity:1;
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-value.is-placeholder{
+  color:#93C5FD;
+  font-weight:500;
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  color:#94A3B8;
+  transition:transform .15s ease;
+}
+#hr-transfer-modal .ep-form-listbox .se-filter-chip-chev svg{
+  width:16px;
+  height:16px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#hr-transfer-modal .ep-form-listbox.is-open .se-filter-chip-chev{
+  transform:rotate(180deg);
+  color:#2563EB;
+}
+#hr-transfer-modal .ep-form-listbox.is-open{
+  z-index:80;
+}
+#hr-transfer-modal .se-filter-listbox{
+  z-index:11250;
+  margin:0;
+  padding:6px;
+  list-style:none;
+  background:#fff;
+  border:1px solid #E5E7EB;
+  border-radius:14px;
+  box-shadow:0 12px 32px rgba(15,23,42,.12), 0 2px 6px rgba(15,23,42,.06);
+  max-height:min(280px, 50vh);
+  overflow-x:hidden;
+  overflow-y:auto;
+}
+#hr-transfer-modal .se-filter-listbox-option{
+  display:block;
+  width:100%;
+  margin:0;
+  padding:10px 12px;
+  border:0;
+  border-radius:10px;
+  background:transparent;
+  color:#111827;
+  font:600 14px Inter,system-ui,sans-serif;
+  text-align:left;
+  cursor:pointer;
+  transition:background .12s ease, color .12s ease;
+}
+#hr-transfer-modal .se-filter-listbox-option:hover,
+#hr-transfer-modal .se-filter-listbox-option:focus{
+  outline:none;
+  background:#F1F5F9;
+  color:#111827;
+}
+#hr-transfer-modal .se-filter-listbox-option.is-selected{
+  background:rgba(37,99,235,.08);
+  color:#2563EB;
+  font-weight:600;
+}
+#hr-transfer-modal .se-filter-listbox-option.is-selected:hover,
+#hr-transfer-modal .se-filter-listbox-option.is-selected:focus{
+  background:rgba(37,99,235,.12);
+}
 .hr-dialog-foot{
   display:flex;
   justify-content:flex-end;
@@ -985,7 +1360,326 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   border-color:#1877F2;
   color:#fff;
 }
+.hr-btn--primary:disabled,
+.hr-btn--primary[aria-disabled="true"]{
+  opacity:.55;
+  cursor:not-allowed;
+}
 .hr-btn--outline:hover{background:#F8FAFC}
+
+.hr-dialog--board-reserve{
+  width:min(560px, 100%);
+  max-height:min(92vh, 780px);
+  display:flex;
+  flex-direction:column;
+  overflow:visible;
+}
+.hr-dialog--board-reserve > .hr-dialog-head{
+  align-items:center;
+  padding:16px 18px;
+}
+.hr-dialog--board-reserve > .hr-dialog-head h2{
+  line-height:1.25;
+}
+.hr-board-reserve-overlay{
+  z-index:5300;
+}
+.hr-board-reserve-head-main{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-width:0;
+  flex:1;
+}
+.hr-board-reserve-head-main > div{
+  display:flex;
+  align-items:center;
+  min-width:0;
+}
+.hr-board-reserve-icon{
+  width:42px;
+  height:42px;
+  border-radius:12px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+  background:rgba(124,58,237,.12);
+  color:#7C3AED;
+}
+.hr-board-reserve-icon svg{
+  width:20px;
+  height:20px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.hr-board-reserve-body{
+  gap:14px;
+  overflow:auto;
+  overflow-x:visible;
+  max-height:min(68vh, 560px);
+  /* Keep room for the rooms dropdown when it opens upward. */
+  padding-bottom:8px;
+}
+.hr-board-reserve-dates{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+@media (max-width:560px){
+  .hr-board-reserve-dates{grid-template-columns:1fr}
+}
+.hr-board-reserve-party-toggle{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.hr-board-reserve-party-btn{
+  height:40px;
+  border:1px solid #E2E8F0;
+  border-radius:10px;
+  background:#fff;
+  color:#64748B;
+  font:700 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  transition:border-color .15s ease, background-color .15s ease, color .15s ease;
+}
+.hr-board-reserve-party-btn:hover{
+  border-color:#BFDBFE;
+  background:#EFF6FF;
+  color:#1D4ED8;
+}
+.hr-board-reserve-party-btn.is-active{
+  background:#EFF6FF;
+  border-color:#2563EB;
+  color:#2563EB;
+}
+.hr-board-reserve-party-btn:focus{outline:none}
+.hr-board-reserve-party-btn:focus-visible{
+  outline:2px solid #2563EB;
+  outline-offset:2px;
+}
+.hr-board-reserve-section{
+  margin:0;
+  padding:0;
+  border:0;
+}
+.hr-board-reserve-section[hidden]{display:none !important}
+.hr-board-reserve-grid{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px 14px;
+}
+.hr-board-reserve-grid .hr-field{
+  text-transform:none;
+  letter-spacing:0;
+  font-weight:600;
+}
+.hr-board-reserve-grid .hr-field--span2{grid-column:span 2}
+.hr-field--customer-mobile{position:relative}
+.hr-board-customer-suggest{
+  position:absolute;
+  left:0;
+  right:0;
+  top:calc(100% + 4px);
+  z-index:60;
+  max-height:220px;
+  overflow:auto;
+  padding:6px;
+  border-radius:10px;
+  background:#fff;
+  border:1px solid #E5E7EB;
+  box-shadow:0 12px 28px rgba(15,23,42,.12);
+}
+.hr-board-customer-suggest[hidden]{display:none !important}
+.hr-board-customer-opt{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  width:100%;
+  padding:10px 12px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  text-align:left;
+  font:inherit;
+  cursor:pointer;
+  color:#111827;
+}
+.hr-board-customer-opt:hover,
+.hr-board-customer-opt.is-active{background:#EFF6FF}
+.hr-board-customer-opt-mobile{
+  font-size:13.5px;
+  font-weight:700;
+  color:#111827;
+}
+.hr-board-customer-opt-name{
+  font-size:12px;
+  font-weight:500;
+  color:#64748B;
+}
+.hr-board-check{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font:600 13px Inter,system-ui,sans-serif;
+  color:#0F172A;
+  text-transform:none;
+  letter-spacing:0;
+  cursor:pointer;
+  min-height:28px;
+}
+.hr-board-check input{
+  width:16px;
+  height:16px;
+  accent-color:#2563EB;
+}
+.hr-board-agency-billing-wrap{gap:8px}
+.hr-board-agency-billing-hint{
+  margin:0;
+  padding:8px 12px;
+  border-radius:10px;
+  background:#EFF6FF;
+  border:1px solid #DBEAFE;
+  color:#1E40AF;
+  font:500 12px Inter,system-ui,sans-serif;
+  line-height:1.4;
+  text-transform:none;
+  letter-spacing:0;
+}
+.hr-board-agency-billing-hint[hidden]{display:none !important}
+.hr-board-agency-billing-hint strong{font-weight:700}
+.hr-board-rooms-field{
+  position:relative;
+  z-index:2;
+  overflow:visible;
+}
+.hr-board-rooms-select{
+  position:relative;
+  overflow:visible;
+}
+.hr-board-rooms-trigger{
+  width:100%;
+  min-height:42px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid #E2E8F0;
+  border-radius:8px;
+  padding:0 10px 0 0;
+  background:#fff;
+  color:#0F172A;
+  cursor:text;
+  box-sizing:border-box;
+}
+.hr-board-rooms-trigger:hover{border-color:#CBD5E1}
+.hr-board-rooms-trigger.is-open,
+.hr-board-rooms-select.is-open .hr-board-rooms-trigger{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.14);
+}
+.hr-board-rooms-search,
+.hr-field .hr-board-rooms-search{
+  flex:1;
+  min-width:0;
+  min-height:40px;
+  height:40px;
+  border:0 !important;
+  border-radius:8px;
+  padding:8px 4px 8px 12px !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  color:#0F172A;
+  font:500 14px Inter,system-ui,sans-serif;
+  text-transform:none;
+  letter-spacing:0;
+  outline:none;
+}
+.hr-board-rooms-search.is-placeholder,
+.hr-board-rooms-search::placeholder{
+  color:#94A3B8;
+}
+.hr-board-rooms-chevron{
+  width:18px;
+  height:18px;
+  flex-shrink:0;
+  stroke:#64748B;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  transition:transform .15s ease;
+  cursor:pointer;
+}
+.hr-board-rooms-trigger.is-open .hr-board-rooms-chevron{
+  transform:rotate(180deg);
+}
+/* In-flow panel — avoids clipping by modal overflow:auto/hidden. */
+.hr-board-rooms-menu{
+  position:relative;
+  left:auto;
+  right:auto;
+  top:auto;
+  bottom:auto;
+  z-index:1;
+  margin-top:8px;
+  max-height:240px;
+  overflow:auto;
+  padding:6px;
+  border-radius:10px;
+  background:#fff;
+  border:1px solid #E2E8F0;
+  box-shadow:0 8px 20px rgba(15,23,42,.1);
+}
+.hr-board-rooms-menu[hidden]{display:none !important}
+.hr-board-rooms-empty{
+  margin:0;
+  padding:10px 8px;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:#64748B;
+  text-transform:none;
+  letter-spacing:0;
+}
+.hr-board-rooms-empty[hidden]{display:none !important}
+.hr-board-rooms-option{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  min-height:0;
+  padding:5px 8px;
+  border:0;
+  border-radius:6px;
+  background:transparent;
+  cursor:pointer;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:#0F172A;
+  text-align:left;
+  text-transform:none;
+  letter-spacing:0;
+  line-height:1.25;
+}
+.hr-board-rooms-option[hidden]{display:none !important}
+.hr-board-rooms-option:hover{background:#F8FAFC}
+.hr-board-rooms-option.is-selected{background:#EFF6FF}
+.hr-board-rooms-option input,
+.hr-field .hr-board-rooms-option input{
+  width:15px;
+  height:15px;
+  min-height:0;
+  min-width:15px;
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  accent-color:#2563EB;
+  flex-shrink:0;
+}
+body.hr-board-reserve-open{overflow:hidden}
 
 .hotel-rooms-empty{
   padding:48px 24px;

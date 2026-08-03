@@ -194,7 +194,7 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-c
 }
 body.su-module .pl-date-range-host.pl-header-field{
   flex:0 0 auto;
-  min-width:0;
+  min-width:168px;
   z-index:30;
   margin-left:0;
   overflow:visible;
@@ -207,14 +207,18 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip--date-range{
 }
 body.su-module .pl-date-range-host.pl-header-field .se-filter-chip--date-range .se-filter-chip-control{
   overflow:visible;
+  min-height:52px;
+  height:52px;
 }
-body.su-module .pl-date-range-host.pl-header-field .an-range-trigger{
-  min-width:140px;
+body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
+body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+  min-width:168px;
   width:auto;
-  max-width:min(280px,40vw);
-  min-height:44px;
-  padding:0 12px;
-  font-size:13px;
+  max-width:min(300px,42vw);
+  min-height:52px;
+  height:52px;
+  padding:0 12px 0 14px;
+  font-size:14px;
   font-weight:600;
 }
 body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .se-filter-chip-control{
@@ -269,6 +273,36 @@ body.su-module .pl-date-input{
   outline:none;
 }
 body.su-module .pl-date-input::-webkit-calendar-picker-indicator{cursor:pointer}
+/* Supplier combobox — type-to-search in the chip (same as Purchase Verification) */
+body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control{
+  background:#fff !important;
+}
+body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox.is-open .se-filter-chip-control,
+body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control:focus-within{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
+}
+body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox{
+  min-height:44px;
+  font-size:13px;
+  font-weight:600;
+  padding:0 0 0 12px;
+}
+body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
+  color:#94A3B8;
+  font-weight:500;
+}
+body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox.is-open{
+  z-index:100;
+}
+body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox .se-filter-listbox{
+  z-index:100;
+}
+body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox.is-open .se-filter-chip-chev{
+  color:#2563EB;
+  transform:rotate(180deg);
+}
 body.su-module .pl-supplier-filter-listbox .se-filter-listbox{
   padding:6px;
   max-height:min(320px,55vh);

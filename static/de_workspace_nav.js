@@ -253,10 +253,36 @@
     return true;
   }
 
+  function isSidebarHoverExpandSuppressed(){
+    return Date.now() < (window.__deSidebarHoverSuppressUntil || 0);
+  }
+
+  function suppressSidebarHoverExpand(ms){
+    ms = typeof ms === 'number' ? ms : 1200;
+    window.__deSidebarHoverSuppressUntil = Date.now() + ms;
+    getAllSidebars().forEach(function(sb){
+      sb.classList.add('de-sidebar--suppress-hover');
+      if(!isDeSidebarPinned(sb)){
+        sb.classList.remove('is-expanded');
+        endSidebarSnapMeasure(sb);
+      }
+    });
+    if(window.__deSidebarHoverSuppressTimer) clearTimeout(window.__deSidebarHoverSuppressTimer);
+    window.__deSidebarHoverSuppressTimer = setTimeout(function(){
+      window.__deSidebarHoverSuppressTimer = null;
+      document.querySelectorAll('.de-sidebar.de-sidebar--suppress-hover').forEach(function(sb){
+        sb.classList.remove('de-sidebar--suppress-hover');
+      });
+    }, ms);
+  }
+
   function expandSidebarAndSnap(sidebar, opts){
     sidebar = sidebar || getSidebar();
     opts = opts || {};
     if(!sidebar) return;
+    if(isSidebarHoverExpandSuppressed() && !isDeSidebarPinned(sidebar)){
+      return;
+    }
     if(typeof window.clearSidebarScrollLock === 'function'){
       window.clearSidebarScrollLock();
     }
@@ -576,10 +602,11 @@
     if(isDeSidebarPinned(sidebar)) return false;
     if(isPointerOverSidebar(sidebar)) return false;
 
+    var wasExpanded = sidebar.classList.contains('is-expanded');
     sidebar.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(group){
       group.classList.remove('is-flyout-active');
     });
-    if(sidebar.classList.contains('is-expanded')){
+    if(wasExpanded){
       sidebar.classList.remove('is-expanded');
       rememberDeSidebarExpanded(false);
     }
@@ -810,7 +837,12 @@
         sidebar.classList.add('is-pinned', 'is-expanded');
       } else {
         sidebar.classList.remove('is-pinned');
-        var keepHover = isHoverExpandAllowed() && sidebar.matches(':hover');
+        /* During soft-nav, ignore :hover — Back sits beside the rail and would
+           leave a sticky is-expanded that sync then collapses (expand/minimize). */
+        var keepHover =
+          !window.__deSoftNavInProgress &&
+          isHoverExpandAllowed() &&
+          sidebar.matches(':hover');
         if(keepHover){
           sidebar.classList.add('is-expanded');
         } else {
@@ -843,6 +875,7 @@
 
     deSidebar.addEventListener('mouseenter', function(){
       clearDeSidebarCollapseTimer();
+      if(isSidebarHoverExpandSuppressed() && !isDeSidebarPinned(deSidebar)) return;
       if(!isDeSidebarPinned(deSidebar)){
         deSidebar.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(group){
           group.classList.remove('is-flyout-active');
@@ -972,6 +1005,8 @@
   window.applyDeSidebarBootState = applyDeSidebarBootState;
   window.reinitDeWorkspaceSidebar = reinitDeWorkspaceSidebar;
   window.syncDeSidebarPointerState = syncDeSidebarPointerState;
+  window.suppressSidebarHoverExpand = suppressSidebarHoverExpand;
+  window.isSidebarHoverExpandSuppressed = isSidebarHoverExpandSuppressed;
   window.findScrollParent = findScrollParent;
   window.centerInScroller = centerInScroller;
   window.ensureVisibleInScroller = ensureVisibleInScroller;

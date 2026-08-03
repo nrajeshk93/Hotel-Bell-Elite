@@ -60,11 +60,13 @@ from db import (
     get_hotel_tax_rates,
     get_hotel_tariff_rates,
     hotel_room_invoice_kpis,
+    is_valid_agency_gst,
     list_hotel_room_invoices,
     save_hotel_room_checkin,
     save_hotel_room_reservation,
     generate_hotel_room_invoice,
     record_hotel_room_payment,
+    record_hotel_room_invoice_payment,
     set_hotel_room_discount,
     append_hotel_room_folio_charge,
     update_hotel_room_charge,
@@ -1900,6 +1902,30 @@ def _render_credit_settlement_page(mode):
     outstanding_total = round_half_up(
         sum(entry["balance"] for entry in outstanding_entries), 2
     )
+    category_totals = {}
+    for entry in outstanding_entries:
+        key = _normalize_expense_category(entry.get("category")) or "other"
+        bucket = category_totals.setdefault(key, {"key": key, "total": 0.0, "count": 0})
+        bucket["total"] = round_half_up(bucket["total"] + entry.get("balance", 0), 2)
+        bucket["count"] += 1
+    for bucket in category_totals.values():
+        bucket["label"] = EXPENSE_CATEGORY_LABELS.get(bucket["key"], bucket["key"].replace("_", " ").title())
+    meat_bucket = category_totals.get("meat") or {"key": "meat", "label": "Meat", "total": 0.0, "count": 0}
+    meat_total = round_half_up(meat_bucket["total"], 2)
+    meat_count = int(meat_bucket["count"])
+    top_category_kpis = sorted(
+        (bucket for key, bucket in category_totals.items() if key != "meat"),
+        key=lambda item: (-item["total"], item["label"].lower()),
+    )[:2]
+    while len(top_category_kpis) < 2:
+        top_category_kpis.append(
+            {
+                "key": "",
+                "label": "—",
+                "total": 0.0,
+                "count": 0,
+            }
+        )
     payment_total = round_half_up(
         sum(entry["total_amount"] for entry in payment_entries), 2
     )
@@ -1966,6 +1992,9 @@ def _render_credit_settlement_page(mode):
         suppliers=suppliers,
         outstanding_entries=outstanding_entries,
         outstanding_total=outstanding_total,
+        meat_total=meat_total,
+        meat_count=meat_count,
+        top_category_kpis=top_category_kpis,
         payment_entries=payment_entries,
         payment_total=payment_total,
         credit_payment_methods=CREDIT_PAYMENT_METHODS,
@@ -3406,6 +3435,357 @@ def reports():
     )
 
 
+_SALES_REPORT_KINDS = {
+    "hotel": {
+        "title": "Hotel Sales",
+        "page_endpoint": "sales_report_hotel",
+        "export_endpoint": "sales_report_hotel_export",
+        "export_sheet": "Hotel Sales",
+        "export_prefix": "hotel_sales",
+    },
+    "restaurant": {
+        "title": "Restaurant Sales",
+        "page_endpoint": "sales_report_restaurant",
+        "export_endpoint": "sales_report_restaurant_export",
+        "export_sheet": "Restaurant Sales",
+        "export_prefix": "restaurant_sales",
+        "outlet": POS_OUTLET_RESTAURANT,
+    },
+    "bar": {
+        "title": "Bar Sales",
+        "page_endpoint": "sales_report_bar",
+        "export_endpoint": "sales_report_bar_export",
+        "export_sheet": "Bar Sales",
+        "export_prefix": "bar_sales",
+        "outlet": POS_OUTLET_BAR,
+    },
+}
+
+
+def _sales_report_filters(args):
+    """Parse shared Sales Report GET filters (page + export)."""
+    today = date.today()
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        args, "date_from", "date_to"
+    )
+    selected_status = (args.get("status") or "all").strip().lower()
+    if selected_status not in ("all", "unsettled", "settled"):
+        selected_status = "all"
+    return {
+        "today": today,
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_filter_active": date_filter_active,
+        "selected_status": selected_status,
+    }
+
+
+def _sales_report_status_labels():
+    return {
+        "all": "All statuses",
+        "unsettled": "Un Settled",
+        "settled": "Settled",
+    }
+
+
+def _sales_report_pos_kpis(invoices):
+    """Invoice-count / total / settled / unsettled KPIs for POS sales reports."""
+    total_sales = 0.0
+    settled_count = 0
+    settled_amount = 0.0
+    unsettled_count = 0
+    unsettled_amount = 0.0
+    for inv in invoices or []:
+        amount = round_half_up(inv.get("grand_total"), 2)
+        total_sales += amount
+        is_settled = bool(inv.get("payment_modes")) or bool(
+            str(inv.get("settled_at") or "").strip()
+        )
+        if is_settled:
+            settled_count += 1
+            settled_amount += amount
+        else:
+            unsettled_count += 1
+            unsettled_amount += amount
+    return {
+        "total": len(invoices or []),
+        "amount_sum": round_half_up(total_sales, 2),
+        "settled": settled_count,
+        "settled_amount": round_half_up(settled_amount, 2),
+        "open": unsettled_count,
+        "outstanding": round_half_up(unsettled_amount, 2),
+    }
+
+
+def _sales_report_load_rows(kind, filters):
+    """Load invoice rows + KPIs for a sales report kind."""
+    meta = _SALES_REPORT_KINDS[kind]
+    date_from = (
+        filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else None
+    )
+    date_to = (
+        filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else None
+    )
+    status = filters["selected_status"]
+
+    conn = get_db()
+    try:
+        if kind == "hotel":
+            ensure_hotel_rooms_schema(conn)
+            hotel_status = ""
+            if status == "settled":
+                hotel_status = "settled"
+            elif status == "unsettled":
+                hotel_status = "open"
+            rows = list_hotel_room_invoices(
+                conn,
+                status=hotel_status,
+                date_from=date_from,
+                date_to=date_to,
+            )
+            kpis = hotel_room_invoice_kpis(rows)
+            conn.commit()
+            return rows, kpis
+
+        ensure_pos_schema(conn)
+        settlement = None if status == "all" else status
+        # When no date filter, match POS ledger default window.
+        query_from = date_from or "2000-01-01"
+        query_to = date_to or filters["today"].isoformat()
+        rows = list_pos_invoices(
+            conn,
+            date_from=query_from,
+            date_to=query_to,
+            settlement=settlement,
+            outlet=meta["outlet"],
+        )
+        kpis = _sales_report_pos_kpis(rows)
+        return rows, kpis
+    finally:
+        conn.close()
+
+
+def _sales_report_page(kind):
+    meta = _SALES_REPORT_KINDS[kind]
+    filters = _sales_report_filters(request.args)
+    rows, kpis = _sales_report_load_rows(kind, filters)
+    status_labels = _sales_report_status_labels()
+
+    clear_kwargs = {}
+    if filters["selected_status"] != "all":
+        clear_kwargs["status"] = filters["selected_status"]
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    if from_hub == "reports":
+        clear_kwargs["from_hub"] = "reports"
+
+    export_kwargs = dict(clear_kwargs)
+    if filters["date_filter_active"]:
+        if filters["date_from"]:
+            export_kwargs["date_from"] = filters["date_from"].isoformat()
+        if filters["date_to"]:
+            export_kwargs["date_to"] = filters["date_to"].isoformat()
+
+    filter_kwargs = {}
+    if from_hub == "reports":
+        filter_kwargs["from_hub"] = "reports"
+
+    return render_template(
+        "sales_report.html",
+        de_nav_section="report",
+        de_nav_report_view="sales",
+        page_title=meta["title"],
+        report_kind=kind,
+        invoices=rows,
+        kpis=kpis,
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else "",
+        date_to=filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else "",
+        active_date_filter=filters["date_filter_active"],
+        selected_status=filters["selected_status"],
+        selected_status_label=status_labels.get(
+            filters["selected_status"], "All statuses"
+        ),
+        filter_form_action=url_for(meta["page_endpoint"], **filter_kwargs),
+        sales_report_clear_url=url_for(meta["page_endpoint"], **clear_kwargs),
+        sales_report_export_url=url_for(meta["export_endpoint"], **export_kwargs),
+        preserve_from_hub=from_hub == "reports",
+    )
+
+
+def _sales_report_export(kind):
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from io import BytesIO
+
+    meta = _SALES_REPORT_KINDS[kind]
+    filters = _sales_report_filters(request.args)
+    rows, _kpis = _sales_report_load_rows(kind, filters)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = meta["export_sheet"]
+    header_font = Font(bold=True)
+    ws["A1"] = f"Hotel Bell Elite — {meta['title']}"
+    ws["A1"].font = Font(bold=True, size=14)
+
+    if kind == "hotel":
+        headers = (
+            "Invoice No",
+            "Invoice Date",
+            "Room",
+            "Guest",
+            "Booking No",
+            "Check In",
+            "Check Out",
+            "Amount",
+            "Advance",
+            "Balance",
+            "Status",
+        )
+        for col, title in enumerate(headers, start=1):
+            cell = ws.cell(row=3, column=col, value=title)
+            cell.font = header_font
+        for idx, row in enumerate(rows, start=4):
+            status_key = (row.get("status") or "").strip().lower()
+            ws.cell(row=idx, column=1, value=row.get("invoice_number") or "")
+            ws.cell(row=idx, column=2, value=row.get("invoice_generated_at") or "")
+            ws.cell(row=idx, column=3, value=row.get("room_number") or "")
+            ws.cell(row=idx, column=4, value=row.get("guest_name") or "")
+            ws.cell(row=idx, column=5, value=row.get("booking_number") or "")
+            ws.cell(row=idx, column=6, value=row.get("check_in_date") or "")
+            ws.cell(row=idx, column=7, value=row.get("check_out_date") or "")
+            ws.cell(row=idx, column=8, value=row.get("estimated_total"))
+            ws.cell(row=idx, column=9, value=row.get("advance_paid"))
+            ws.cell(row=idx, column=10, value=row.get("balance_amount"))
+            ws.cell(
+                row=idx,
+                column=11,
+                value="Settled" if status_key == "settled" else "Un Settled",
+            )
+    else:
+        headers = (
+            "Order No",
+            "Date",
+            "Saved At",
+            "Customer",
+            "Mobile",
+            "Order Type",
+            "Payment Mode",
+            "Settlement",
+            "Captain",
+            "Items",
+            "Subtotal",
+            "Discount",
+            "GST",
+            "Service",
+            "Tip",
+            "Total",
+        )
+        for col, title in enumerate(headers, start=1):
+            cell = ws.cell(row=3, column=col, value=title)
+            cell.font = header_font
+        for idx, inv in enumerate(rows, start=4):
+            is_settled = bool(inv.get("payment_modes")) or bool(
+                str(inv.get("settled_at") or "").strip()
+            )
+            ws.cell(row=idx, column=1, value=inv.get("order_no") or "")
+            ws.cell(row=idx, column=2, value=inv.get("order_date") or "")
+            ws.cell(row=idx, column=3, value=inv.get("saved_at") or "")
+            ws.cell(row=idx, column=4, value=inv.get("customer_name") or "")
+            ws.cell(row=idx, column=5, value=inv.get("customer_mobile") or "")
+            ws.cell(
+                row=idx,
+                column=6,
+                value=inv.get("order_type_label") or inv.get("order_type") or "",
+            )
+            ws.cell(
+                row=idx,
+                column=7,
+                value=inv.get("payment_mode_label") or "Un Settled",
+            )
+            ws.cell(
+                row=idx,
+                column=8,
+                value="Settled" if is_settled else "Un Settled",
+            )
+            ws.cell(row=idx, column=9, value=inv.get("captain") or "")
+            ws.cell(row=idx, column=10, value=int(inv.get("item_count") or 0))
+            ws.cell(row=idx, column=11, value=round_half_up(inv.get("subtotal"), 2))
+            ws.cell(row=idx, column=12, value=round_half_up(inv.get("discount"), 2))
+            ws.cell(row=idx, column=13, value=round_half_up(inv.get("gst"), 2))
+            ws.cell(row=idx, column=14, value=round_half_up(inv.get("service"), 2))
+            ws.cell(row=idx, column=15, value=round_half_up(inv.get("tip"), 2))
+            ws.cell(row=idx, column=16, value=round_half_up(inv.get("grand_total"), 2))
+
+    for column_cells in ws.columns:
+        width = 12
+        for cell in column_cells:
+            value = "" if cell.value is None else str(cell.value)
+            width = max(width, min(len(value) + 2, 40))
+        ws.column_dimensions[column_cells[0].column_letter].width = width
+
+    if filters["date_filter_active"]:
+        stamp = (
+            f"{filters['date_from'].isoformat()}_to_{filters['date_to'].isoformat()}"
+        )
+        fname = f"{meta['export_prefix']}_{stamp}.xlsx"
+    else:
+        fname = f"{meta['export_prefix']}_all.xlsx"
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route("/reports/sales/hotel", endpoint="sales_report_hotel")
+def sales_report_hotel():
+    """Hotel Sales report — room invoices invoice-wise."""
+    return _sales_report_page("hotel")
+
+
+@app.route("/reports/sales/hotel/export", endpoint="sales_report_hotel_export")
+def sales_report_hotel_export():
+    """Excel export for Hotel Sales report."""
+    return _sales_report_export("hotel")
+
+
+@app.route("/reports/sales/restaurant", endpoint="sales_report_restaurant")
+def sales_report_restaurant():
+    """Restaurant Sales report — POS invoices invoice-wise."""
+    return _sales_report_page("restaurant")
+
+
+@app.route("/reports/sales/restaurant/export", endpoint="sales_report_restaurant_export")
+def sales_report_restaurant_export():
+    """Excel export for Restaurant Sales report."""
+    return _sales_report_export("restaurant")
+
+
+@app.route("/reports/sales/bar", endpoint="sales_report_bar")
+def sales_report_bar():
+    """Bar Sales report — POS invoices invoice-wise."""
+    return _sales_report_page("bar")
+
+
+@app.route("/reports/sales/bar/export", endpoint="sales_report_bar_export")
+def sales_report_bar_export():
+    """Excel export for Bar Sales report."""
+    return _sales_report_export("bar")
+
+
 @app.route("/settings")
 def settings():
     """Workspace settings hub."""
@@ -3577,11 +3957,19 @@ def point_of_sale():
 @app.route("/hotel/rooms", endpoint="hotel_rooms")
 def hotel_rooms():
     """Hotel Rooms floor board — occupancy status by floor and type."""
+    conn = get_db()
+    try:
+        ensure_agencies_schema(conn)
+        agencies = list_agencies(conn)
+        conn.commit()
+    finally:
+        conn.close()
     return render_template(
         "hotel_rooms.html",
         de_nav_section="hotel",
         de_nav_hotel_view="rooms",
         today_iso=date.today().isoformat(),
+        agencies=agencies,
     )
 
 
@@ -3693,7 +4081,7 @@ def hotel_invoice_ledger():
 
     status_labels = {
         "all": "All statuses",
-        "open": "Open",
+        "open": "Un Settled",
         "settled": "Settled",
     }
     clear_kwargs = {}
@@ -3794,7 +4182,12 @@ def hotel_invoice_ledger_export():
         ws.cell(row=idx, column=8, value=row.get("estimated_total"))
         ws.cell(row=idx, column=9, value=row.get("advance_paid"))
         ws.cell(row=idx, column=10, value=row.get("balance_amount"))
-        ws.cell(row=idx, column=11, value=(row.get("status") or "").title())
+        status_key = (row.get("status") or "").strip().lower()
+        ws.cell(
+            row=idx,
+            column=11,
+            value="Settled" if status_key == "settled" else "Un Settled",
+        )
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -3823,6 +4216,56 @@ def hotel_invoice_ledger_api(invoice_number):
     if not item:
         return jsonify({"ok": False, "error": "Invoice not found."}), 404
     return jsonify({"ok": True, "invoice": item, "room": item.get("room")})
+
+
+@app.route(
+    "/hotel/invoice-ledger/api/<path:invoice_number>/settle",
+    methods=["POST"],
+    endpoint="hotel_invoice_ledger_settle_api",
+)
+def hotel_invoice_ledger_settle_api(invoice_number):
+    """Record payment for an open hotel invoice from the ledger settle modal."""
+    data = request.get_json(silent=True) or {}
+    payment = data.get("payment") if isinstance(data.get("payment"), dict) else None
+    payment_splits = data.get("payment_splits") or data.get("paymentSplits")
+    note = data.get("note") or data.get("notes") or ""
+    if payment is None and payment_splits is None:
+        payment = {
+            "amount": data.get("amount"),
+            "method": data.get("method") or data.get("paymentMethod"),
+            "reference": data.get("reference")
+            or data.get("paymentReference")
+            or data.get("payment_reference"),
+            "note": note,
+        }
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        try:
+            result = record_hotel_room_invoice_payment(
+                conn,
+                invoice_number,
+                payment=payment,
+                payment_splits=payment_splits
+                if isinstance(payment_splits, list)
+                else None,
+                note=note,
+            )
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+    finally:
+        conn.close()
+    return jsonify(
+        {
+            "ok": True,
+            "invoice": result.get("invoice"),
+            "room": result.get("room"),
+            "payment": result.get("payment"),
+            "payments": result.get("payments") or [],
+        }
+    )
 
 
 @app.route("/hotel/api/rooms", methods=["GET", "PUT"], endpoint="hotel_rooms_api")
@@ -3931,13 +4374,10 @@ def hotel_room_detail(room_id):
     )
     if hk_dirty:
         hk_status = "Dirty"
-        hk_subtitle = "After Checkout"
-    elif status == "vacant":
-        hk_status = "Vacant"
-        hk_subtitle = "Ready for guests"
+        hk_subtitle = "Waiting for cleaning"
     else:
-        hk_status = status_label
-        hk_subtitle = status_subtitles.get(status, "")
+        hk_status = "Cleaned"
+        hk_subtitle = "Ready for guests"
     return render_template(
         "hotel_room_detail.html",
         de_nav_section="hotel",
@@ -4012,6 +4452,20 @@ def hotel_guest_lookup_api():
     if not guest:
         return jsonify({"ok": True, "found": False, "guest": None})
     return jsonify({"ok": True, "found": True, "guest": guest})
+
+
+@app.route("/hotel/api/customers", methods=["GET"], endpoint="hotel_customers_api")
+def hotel_customers_api():
+    """Search Customer Master for hotel reserve/check-in mobile autocomplete."""
+    query = request.args.get("q") or request.args.get("mobile") or ""
+    conn = get_db()
+    try:
+        ensure_customers_schema(conn)
+        customers = search_customers(conn, query, limit=8)
+        conn.commit()
+        return jsonify({"ok": True, "customers": customers})
+    finally:
+        conn.close()
 
 
 @app.route("/hotel/api/id-documents", methods=["POST"], endpoint="hotel_id_document_upload")
@@ -4090,20 +4544,36 @@ def hotel_room_detail_api(room_id):
                     )
                 ).strip()
                 mobile = (stay.get("mobile") or "").strip()
+                mobile_digits = "".join(ch for ch in mobile if ch.isdigit())[:10]
                 if not guest_name:
                     return jsonify({"ok": False, "error": "Guest name is required."}), 400
-                if not mobile:
-                    return jsonify({"ok": False, "error": "Mobile number is required."}), 400
+                if len(mobile_digits) != 10:
+                    return jsonify(
+                        {"ok": False, "error": "Mobile number must be exactly 10 digits."}
+                    ), 400
+                mobile = mobile_digits
+                stay["mobile"] = mobile
                 if not stay.get("guestName"):
                     stay["guestName"] = guest_name
                 if not stay.get("mobileCountry"):
                     stay["mobileCountry"] = "+91"
                 room = save_hotel_room_reservation(
-                    conn, room_id, check_in, check_out, stay_fields=stay
+                    conn,
+                    room_id,
+                    check_in,
+                    check_out,
+                    stay_fields=stay,
+                    replace=bool(data.get("replace")),
                 )
                 try:
                     ensure_customers_schema(conn)
-                    upsert_customer(conn, guest_name, mobile)
+                    upsert_customer(
+                        conn,
+                        guest_name,
+                        mobile,
+                        stay.get("address") or "",
+                        stay.get("email") or "",
+                    )
                 except Exception:
                     pass
                 try:
@@ -4148,11 +4618,28 @@ def hotel_room_detail_api(room_id):
                     return jsonify({"ok": False, "error": "Mobile number is required."}), 400
                 if not (stay.get("checkInDate") or stay.get("check_in_date")):
                     return jsonify({"ok": False, "error": "Check-in date is required."}), 400
+                check_in_raw = (
+                    stay.get("checkInDate") or stay.get("check_in_date") or ""
+                ).strip()
+                try:
+                    check_in_day = date.fromisoformat(check_in_raw[:10])
+                except ValueError:
+                    return jsonify({"ok": False, "error": "Check-in date is invalid."}), 400
+                if check_in_day > date.today():
+                    return jsonify(
+                        {"ok": False, "error": "Future date check-in is not allowed."}
+                    ), 400
                 room = save_hotel_room_checkin(conn, room_id, stay, status="occupied")
                 try:
                     ensure_customers_schema(conn)
                     guest_name = " ".join(p for p in (first, last) if p).strip() or first
-                    upsert_customer(conn, guest_name, mobile)
+                    upsert_customer(
+                        conn,
+                        guest_name,
+                        mobile,
+                        stay.get("address") or "",
+                        stay.get("email") or "",
+                    )
                 except Exception:
                     pass
                 try:
@@ -9089,6 +9576,8 @@ def _customer_form_payload(source=None):
     return {
         "first_name": " ".join(str(source.get("first_name") or "").split()).strip(),
         "mobile": mobile,
+        "email": " ".join(str(source.get("email") or "").split()).strip().lower(),
+        "address": " ".join(str(source.get("address") or "").split()).strip(),
     }
 
 
@@ -9123,6 +9612,8 @@ def customer_master():
             "id": selected_customer["id"],
             "first_name": selected_customer.get("first_name") or "",
             "mobile": selected_customer.get("mobile") or "",
+            "email": selected_customer.get("email") or "",
+            "address": selected_customer.get("address") or "",
         }
     else:
         form = {"id": "", **_customer_form_payload()}
@@ -9171,7 +9662,7 @@ def export_customer_report():
     ws = wb.active
     ws.title = "Customers"
     header_font = Font(bold=True)
-    headers = ["First Name", "Mobile"]
+    headers = ["First Name", "Mobile", "Email", "Address"]
     for col, title in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col, value=title)
         cell.font = header_font
@@ -9179,6 +9670,8 @@ def export_customer_report():
     for idx, customer in enumerate(customers, start=2):
         ws.cell(row=idx, column=1, value=customer.get("first_name") or "")
         ws.cell(row=idx, column=2, value=customer.get("mobile") or "")
+        ws.cell(row=idx, column=3, value=customer.get("email") or "")
+        ws.cell(row=idx, column=4, value=customer.get("address") or "")
 
     for column_cells in ws.columns:
         width = 12
@@ -9216,6 +9709,8 @@ def save_customer():
             payload.get("first_name"),
             payload.get("mobile"),
             customer_id=customer_id,
+            address=payload.get("address") or "",
+            email=payload.get("email") or "",
         )
         if errors:
             customers = list_customers(conn)
@@ -9476,6 +9971,17 @@ def create_agency():
             payload.get("address"),
         )
         if not agency:
+            err_gst = (payload.get("gst") or "").strip()
+            if err_gst and not is_valid_agency_gst(err_gst):
+                return (
+                    jsonify(
+                        {
+                            "ok": False,
+                            "error": "GST must be a valid 15-character GSTIN (e.g. 35AANFH8592H1ZS).",
+                        }
+                    ),
+                    400,
+                )
             return jsonify({"ok": False, "error": "Agency name is required."}), 400
         agencies = list_agencies(conn)
         conn.commit()

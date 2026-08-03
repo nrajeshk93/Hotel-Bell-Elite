@@ -72,6 +72,7 @@ body.su-module .su-page-back{
   display:inline-flex;align-items:center;justify-content:center;color:#475569;flex-shrink:0;
   text-decoration:none;box-shadow:0 1px 2px rgba(15,23,42,.04);
   transition:background .15s ease,border-color .15s ease,color .15s ease;
+  cursor:pointer;padding:0;font:inherit;
 }
 body.su-module .su-page-back svg{
   width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.2;

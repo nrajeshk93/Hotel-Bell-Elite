@@ -303,21 +303,91 @@
       });
   }
 
-  function settleInvoiceUrl(roomId) {
-    return '/hotel/rooms/' + encodeURIComponent(roomId) + '/invoice?settle=1';
+  function settleApiUrl(page, invoiceNumber) {
+    var base =
+      (page && page.getAttribute('data-settle-api-base')) ||
+      '/hotel/invoice-ledger/api/__ID__/settle';
+    var encoded = String(invoiceNumber || '')
+      .split('/')
+      .map(function (part) {
+        return encodeURIComponent(part);
+      })
+      .join('/');
+    return String(base).replace('__ID__', encoded);
   }
 
-  function navigateToSettle(roomId) {
-    if (!roomId) {
-      toast('Room not found for this invoice.');
-      return;
+  function refreshLedgerAfterSettle() {
+    var form = document.getElementById('hil-filter-form');
+    var url = window.location.pathname + (window.location.search || '');
+    if (form) {
+      var status = $('#hil-status', form);
+      if (status && (status.value === 'all' || !status.value)) {
+        status.removeAttribute('name');
+      }
+      var qs = new URLSearchParams(new FormData(form)).toString();
+      url = form.action + (qs ? '?' + qs : '');
     }
-    var url = settleInvoiceUrl(roomId);
     if (typeof global.deNavigateWithTransition === 'function') {
       global.deNavigateWithTransition(url);
       return;
     }
     window.location.href = url;
+  }
+
+  function openSettleFromRow(page, row) {
+    if (!row) return;
+    var invoiceNumber = row.getAttribute('data-invoice-number') || '';
+    if (!invoiceNumber) {
+      toast('Invoice not found.');
+      return;
+    }
+    if (typeof global.bindHotelSettleModal === 'function') {
+      global.bindHotelSettleModal();
+    }
+    if (typeof global.openHotelSettleModal !== 'function') {
+      toast('Payment dialog is unavailable.');
+      return;
+    }
+    var loadUrl = invoiceApiUrl(page, invoiceNumber);
+    fetch(loadUrl, {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data || {} };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data.ok || !result.data.room) {
+          toast((result.data && result.data.error) || 'Could not load invoice.');
+          return;
+        }
+        var invoice = result.data.invoice || {};
+        var balance = Number(
+          invoice.balance_amount != null
+            ? invoice.balance_amount
+            : (result.data.room.stay && result.data.room.stay.balanceAmount) || 0
+        );
+        if (!(balance > 0.009) || invoice.status === 'settled') {
+          toast('Invoice is already settled.');
+          return;
+        }
+        var opened = global.openHotelSettleModal({
+          room: result.data.room,
+          balance: balance,
+          invoiceNumber: invoice.invoice_number || invoiceNumber,
+          settleUrl: settleApiUrl(page, invoice.invoice_number || invoiceNumber),
+          onSuccess: function () {
+            toast('Payment recorded.');
+            refreshLedgerAfterSettle();
+          }
+        });
+        if (!opened) toast('Could not open payment dialog.');
+      })
+      .catch(function () {
+        toast('Could not load invoice.');
+      });
   }
 
   function bindActions(page) {
@@ -336,17 +406,32 @@
         openInvoice(page, printBtn.getAttribute('data-invoice-number'), true);
         return;
       }
+      if (ev.target.closest('.pl-col-actions')) return;
+
+      var settleBtn = ev.target.closest('[data-hil-settle], .hil-status-settle');
+      if (settleBtn) {
+        var settleRow = settleBtn.closest('tr.hil-row.is-open');
+        if (settleRow && page.contains(settleRow)) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openSettleFromRow(page, settleRow);
+        }
+        return;
+      }
       var openRow = ev.target.closest('tr.hil-row.is-open');
-      if (openRow && page.contains(openRow) && !ev.target.closest('.pl-col-actions')) {
-        navigateToSettle(openRow.getAttribute('data-room-id'));
+      if (openRow && page.contains(openRow)) {
+        ev.preventDefault();
+        openSettleFromRow(page, openRow);
       }
     });
     page.addEventListener('keydown', function (ev) {
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
-      var row = ev.target.closest('tr.hil-row.is-open');
-      if (!row || row !== ev.target) return;
+      var settleBtn = ev.target.closest('[data-hil-settle], .hil-status-settle');
+      if (!settleBtn) return;
+      var row = settleBtn.closest('tr.hil-row.is-open');
+      if (!row || !page.contains(row)) return;
       ev.preventDefault();
-      navigateToSettle(row.getAttribute('data-room-id'));
+      openSettleFromRow(page, row);
     });
   }
 
@@ -364,6 +449,9 @@
     bindStatusFilter(page);
     bindDateRange(page);
     bindActions(page);
+    if (typeof global.bindHotelSettleModal === 'function') {
+      global.bindHotelSettleModal();
+    }
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();
     }
@@ -372,6 +460,13 @@
 
   global.hilStatusChanged = hilStatusChanged;
   global.initHotelInvoiceLedgerPage = initHotelInvoiceLedgerPage;
+  global.hilSettleClick = function (btn) {
+    var page = document.getElementById('hotel-invoice-ledger-page');
+    var row = btn && btn.closest ? btn.closest('tr.hil-row.is-open') : null;
+    if (!page || !row) return false;
+    openSettleFromRow(page, row);
+    return false;
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initHotelInvoiceLedgerPage);

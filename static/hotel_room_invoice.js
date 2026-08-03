@@ -18,7 +18,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=4';
+  var CSS_HREF = '/static/hotel_room_invoice.css?v=5';
 
   var ONES = [
     '',
@@ -208,11 +208,14 @@
       phone = String(stay.mobileCountry).trim() + ' ' + phone;
     }
     var email = String(stay.email || '').trim();
+    var gst = agencyBilling ? String(stay.agencyGst || stay.agency_gst || '').trim() : '';
     return {
       name: name,
       address: address,
       phone: phone,
-      email: email
+      email: email,
+      gst: gst,
+      agencyBilling: agencyBilling
     };
   }
 
@@ -481,18 +484,20 @@
     var roomNumber = hotelInvoiceRoomLabel(room);
     var roomNumberSingle = (room && room.number) || '';
 
-    var minRows = 8;
+    var minRows = 4;
     var rowsHtml = lines
       .map(function (row, idx) {
         return (
-          '<tr>' +
+          '<tr class="hri-line">' +
           '<td class="center">' +
           (idx + 1) +
           '</td>' +
           '<td>' +
           escapeHtml(row.description) +
           (roomNumberSingle && /tariff/i.test(row.description)
-            ? ' <span class="muted">(Room ' + escapeHtml(roomNumberSingle) + ')</span>'
+            ? ' <span class="muted">(Room ' +
+              escapeHtml(roomNumberSingle) +
+              ')</span>'
             : '') +
           '</td>' +
           '<td>' +
@@ -513,26 +518,11 @@
       .join('');
     for (var pad = lines.length; pad < minRows; pad++) {
       rowsHtml +=
-        '<tr><td class="center">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>';
+        '<tr class="hri-pad-row"><td class="center">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>';
     }
 
-    return (
-      '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
-      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
-      '<title>Invoice ' +
-      escapeHtml(invoiceNo) +
-      ' | Hotel Bell Elite</title>' +
-      '<link rel="stylesheet" href="' +
-      CSS_HREF +
-      '">' +
-      '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
-      '</head><body>' +
-      '<div class="hri-toolbar">' +
-      '<button type="button" onclick="window.close()">Close</button>' +
-      '<button type="button" class="hri-print" onclick="window.print()">Print Invoice</button>' +
-      '</div>' +
-      '<article class="hri-sheet">' +
-      '<header class="hri-header">' +
+    var mastheadHtml =
+      '<div class="hri-header">' +
       '<div class="hri-brand">' +
       '<img class="hri-mark" src="' +
       HOTEL.markUrl +
@@ -571,7 +561,7 @@
       '<span><strong>GST:</strong> ' +
       escapeHtml(HOTEL.gst) +
       '</span></div>' +
-      '</div></header>' +
+      '</div></div>' +
       '<div class="hri-meta-row">' +
       '<div><h2 class="hri-title">INVOICE</h2>' +
       '<ul class="hri-meta-list">' +
@@ -608,23 +598,18 @@
       (billTo.address
         ? '<div class="muted">' + escapeHtml(billTo.address) + '</div>'
         : '') +
+      (billTo.gst
+        ? '<div class="muted"><strong>GST:</strong> ' + escapeHtml(billTo.gst) + '</div>'
+        : '') +
       (billTo.phone
         ? '<div class="muted">Phone: ' + escapeHtml(billTo.phone) + '</div>'
         : '') +
       (billTo.email
         ? '<div class="muted">Email: ' + escapeHtml(billTo.email) + '</div>'
         : '') +
-      '</div></aside></div>' +
-      '<div class="hri-table-wrap"><table class="hri-table"><thead><tr>' +
-      '<th class="center" style="width:58px">Sl. No.</th>' +
-      '<th>Description</th>' +
-      '<th style="width:110px">Date</th>' +
-      '<th class="center" style="width:56px">Qty</th>' +
-      '<th class="num" style="width:100px">Rate (₹)</th>' +
-      '<th class="num" style="width:110px">Amount (₹)</th>' +
-      '</tr></thead><tbody>' +
-      rowsHtml +
-      '</tbody></table></div>' +
+      '</div></aside></div>';
+
+    var footerHtml =
       '<div class="hri-bottom">' +
       '<section class="hri-notes"><div class="hri-notes-head">' +
       iconDoc() +
@@ -662,7 +647,47 @@
       '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M5 16c0-4 3-7 7-7s7 3 7 7"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><path d="M4 16h16v4H4z"/></svg></div>Memorable Experience</div>' +
       '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 10-4.5-2.5-8-5-8-10V6l8-3 8 3z"/></svg></div>We Value You</div>' +
       '</div>' +
-      '<div class="hri-sign"><div class="hri-sign-box"><div class="hri-sign-line"></div><div class="hri-sign-title">Authorised Signatory</div><div class="hri-sign-sub">Hotel Bell Elite</div></div></div>' +
+      '<div class="hri-sign"><div class="hri-sign-box"><div class="hri-sign-line"></div><div class="hri-sign-title">Authorised Signatory</div><div class="hri-sign-sub">Hotel Bell Elite</div></div></div>';
+
+    return (
+      '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>Invoice ' +
+      escapeHtml(invoiceNo) +
+      ' | Hotel Bell Elite</title>' +
+      '<link rel="stylesheet" href="' +
+      CSS_HREF +
+      '">' +
+      '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
+      '</head><body>' +
+      '<div class="hri-toolbar">' +
+      '<button type="button" onclick="window.close()">Close</button>' +
+      '<button type="button" class="hri-print" onclick="window.print()">Print Invoice</button>' +
+      '</div>' +
+      '<article class="hri-sheet">' +
+      '<table class="hri-doc">' +
+      '<thead>' +
+      '<tr><td colspan="6" class="hri-doc-masthead">' +
+      mastheadHtml +
+      '</td></tr>' +
+      '<tr class="hri-colhead">' +
+      '<th class="center" style="width:58px">Sl. No.</th>' +
+      '<th>Description</th>' +
+      '<th style="width:110px">Date</th>' +
+      '<th class="center" style="width:56px">Qty</th>' +
+      '<th class="num" style="width:100px">Rate (₹)</th>' +
+      '<th class="num" style="width:110px">Amount (₹)</th>' +
+      '</tr>' +
+      '</thead>' +
+      '<tbody>' +
+      rowsHtml +
+      '</tbody>' +
+      '<tfoot>' +
+      '<tr><td colspan="6" class="hri-doc-foot">' +
+      footerHtml +
+      '</td></tr>' +
+      '</tfoot>' +
+      '</table>' +
       '</article></body></html>'
     );
   }

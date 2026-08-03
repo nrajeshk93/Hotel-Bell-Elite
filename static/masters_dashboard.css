@@ -1137,7 +1137,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 .md-master-embed--customer .sm-pl-table {
-  min-width: 420px;
+  min-width: 780px;
 }
 
 .md-master-embed--supplier .sm-pl-table {
@@ -1181,7 +1181,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   visibility: visible;
 }
 
-/* Employee embed list — match Product Master / pl-table column rhythm */
+/* Employee embed list — match Employees page (employees_list.css) column rhythm */
 .md-master-embed--employee .pl-list-panel,
 .md-master-embed--employee .emp-list-panel {
   border: 1px solid #EEF2F7;
@@ -1192,42 +1192,99 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   margin-bottom: 0;
 }
 
-.md-master-embed--employee .md-emp-table {
-  min-width: 920px;
-  table-layout: auto;
+.md-master-embed--employee table.emp-pl-table {
+  min-width: 960px;
 }
 
-.md-master-embed--employee .md-emp-table .pl-col-attend {
-  text-align: center;
+.md-master-embed--employee table.emp-pl-table .pl-name {
+  max-width: 200px;
+}
+
+.md-master-embed--employee table.emp-pl-table .emp-master-address-cell {
+  max-width: 280px;
+}
+
+.md-master-embed--employee table.emp-pl-table .emp-master-address {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--txt2, #4A5568);
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.md-master-embed--employee table.emp-pl-table .pl-col-phone {
   white-space: nowrap;
-  width: 100px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--txt, #1A202C);
 }
 
-.md-master-embed--employee .md-emp-table .pl-col-amount {
+.md-master-embed--employee table.emp-pl-table .pl-col-amount {
   width: 120px;
   white-space: nowrap;
   text-align: right;
 }
 
-.md-master-embed--employee .md-emp-table .pl-amount--ok {
-  color: var(--ok, #16A34A);
-}
-
-.md-master-embed--employee .md-emp-table .emp-dept {
+.md-master-embed--employee table.emp-pl-table .emp-dept {
   font-size: 13px;
   font-weight: 600;
   color: var(--txt2, #4A5568);
 }
 
-.md-master-embed--employee .md-emp-table .pl-col-attend .badge {
-  font-size: 11px;
-  font-weight: 700;
-  padding: 4px 9px;
-  border-radius: 999px;
+.md-master-embed--employee table.emp-pl-table tbody tr:hover td {
+  background: #FAFBFD;
 }
 
-.md-master-embed--employee .md-emp-table tbody tr:hover td {
-  background: #FAFBFD;
+.md-master-embed--employee .emp-list-panel .act-grp {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: #F8FAFD;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 3px;
+  position: relative;
+  overflow: visible;
+}
+
+.md-master-embed--employee .emp-list-panel .act-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: #94A3B8;
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.md-master-embed--employee .emp-list-panel .act-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.md-master-embed--employee .emp-list-panel .act-btn:hover {
+  color: #1A202C;
+}
+
+.md-master-embed--employee .emp-list-panel .act-btn.edit:hover {
+  background: #EEF5FF;
+  color: #1877F2;
 }
 
 /* Employee embed add/edit form */

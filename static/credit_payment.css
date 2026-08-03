@@ -1,5 +1,24 @@
 /* Credit Payment page — builds on purchase_ledger.css */
 
+#credit-payment-page .content.se-content > .pl-summary-row,
+#credit-payment-page .cp-outstanding-kpi-row{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  max-width:none;
+}
+@media (max-width:1100px){
+  #credit-payment-page .content.se-content > .pl-summary-row,
+  #credit-payment-page .cp-outstanding-kpi-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media (max-width:640px){
+  #credit-payment-page .content.se-content > .pl-summary-row,
+  #credit-payment-page .cp-outstanding-kpi-row{
+    grid-template-columns:minmax(0,1fr);
+    max-width:none;
+  }
+}
+
 body.su-module .cp-view-tabs{
   display:inline-flex;
   align-items:center;

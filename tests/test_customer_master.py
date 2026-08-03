@@ -71,6 +71,39 @@ class CustomerMasterTest(unittest.TestCase):
         matches = search_customers(self.conn, "900003")
         self.assertEqual(len(matches), 1)
 
+    def test_save_customer_address(self):
+        saved_id, errors = save_customer_record(
+            self.conn,
+            "Ada",
+            "9000011111",
+            address="12 Hill Road",
+            email="ada@example.com",
+        )
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(saved_id)
+        self.conn.commit()
+        customer = next(
+            r for r in list_customers(self.conn) if r["mobile"] == "9000011111"
+        )
+        self.assertEqual(customer["address"], "12 Hill Road")
+        self.assertEqual(customer["email"], "ada@example.com")
+        updated_id, update_errors = save_customer_record(
+            self.conn,
+            "Ada",
+            "9000011111",
+            customer_id=saved_id,
+            address="45 Lake View",
+            email="ada.lake@example.com",
+        )
+        self.assertEqual(update_errors, [])
+        self.assertEqual(updated_id, saved_id)
+        self.conn.commit()
+        customer = next(
+            r for r in list_customers(self.conn) if r["mobile"] == "9000011111"
+        )
+        self.assertEqual(customer["address"], "45 Lake View")
+        self.assertEqual(customer["email"], "ada.lake@example.com")
+
     def test_customer_master_page(self):
         from app import app
 
@@ -81,9 +114,19 @@ class CustomerMasterTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
         self.assertIn("md-master-embed--customer", html)
-        self.assertIn("Add customer", html)
+        self.assertIn("Add Customer", html)
+        self.assertIn("su-page-back", html)
+        self.assertIn("Back to Master", html)
         self.assertIn("Customers", html)
+        self.assertIn("Email", html)
+        self.assertIn("Address", html)
         self.assertNotIn('id="de-sidebar"', html)
+        form_response = client.get("/customers?focus=form&embed=1")
+        self.assertEqual(form_response.status_code, 200)
+        form_html = form_response.get_data(as_text=True)
+        self.assertIn('name="email"', form_html)
+        self.assertIn('name="address"', form_html)
+        self.assertNotIn("Mobile numbers must be unique", form_html)
 
 
 class PosInvoiceCustomerSyncTests(unittest.TestCase):

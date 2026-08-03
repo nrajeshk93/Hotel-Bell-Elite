@@ -28,6 +28,46 @@
 
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
+  var GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+  function normalizeGstin(value) {
+    return String(value || '')
+      .replace(/\s+/g, '')
+      .toUpperCase();
+  }
+
+  function isValidGstin(value) {
+    var gst = normalizeGstin(value);
+    return !gst || GSTIN_RE.test(gst);
+  }
+
+  function bindAgencyGstInput(input) {
+    if (!input || input.getAttribute('data-gstin-bound') === '1') return;
+    input.setAttribute('data-gstin-bound', '1');
+    input.setAttribute('maxlength', '15');
+    input.setAttribute('spellcheck', 'false');
+    input.addEventListener('input', function () {
+      var cleaned = normalizeGstin(input.value).replace(/[^0-9A-Z]/g, '');
+      if (cleaned.length > 15) cleaned = cleaned.slice(0, 15);
+      if (input.value !== cleaned) input.value = cleaned;
+      input.classList.toggle('is-invalid', !!cleaned && !isValidGstin(cleaned));
+    });
+    input.addEventListener('blur', function () {
+      var gst = normalizeGstin(input.value);
+      input.value = gst;
+      input.classList.toggle('is-invalid', !!gst && !isValidGstin(gst));
+    });
+  }
+
+  function agencyGstValidationError(form) {
+    if (!form || !form.elements.agencyGst) return '';
+    var gst = normalizeGstin(form.elements.agencyGst.value);
+    form.elements.agencyGst.value = gst;
+    if (gst && !isValidGstin(gst)) {
+      return 'GST must be a valid 15-character GSTIN (e.g. 35AANFH8592H1ZS).';
+    }
+    return '';
+  }
 
   function applyTaxRates(rates) {
     if (!rates || typeof rates !== 'object') return;
@@ -178,6 +218,26 @@
     if (outDate) return day <= outDate;
     if (inDate > today) return day === inDate;
     return day <= today;
+  }
+
+  function reservationRangesOverlap(aIn, aOut, bIn, bOut) {
+    var aStart = toDateISO(aIn);
+    var aEnd = toDateISO(aOut);
+    var bStart = toDateISO(bIn);
+    var bEnd = toDateISO(bOut);
+    if (!aStart || !aEnd || !bStart || !bEnd) return false;
+    /* Inclusive checkout day — same coverage as stayCoversDate. */
+    return aStart <= bEnd && bStart <= aEnd;
+  }
+
+  function existingReservationWindow(room) {
+    var stay = room && room.stay && typeof room.stay === 'object' ? room.stay : null;
+    if (!stay) return null;
+    var checkIn = toDateISO(stay.checkInDate || stay.check_in_date);
+    var checkOut = toDateISO(stay.checkOutDate || stay.check_out_date);
+    if (!checkIn) return null;
+    if (!checkOut) checkOut = addDaysISO(checkIn, 1);
+    return { checkIn: checkIn, checkOut: checkOut };
   }
 
   function effectiveStatusForDate(inventoryStatus, checkIn, checkOut, dateIso, todayIso) {
@@ -398,13 +458,54 @@
   function closeMoreMenu(root) {
     root = root || pageRoot();
     if (!root) return;
-    var menu = $('#hrd-more-menu', root);
-    var btn = $('#hrd-more-btn', root);
+    var menu = $('#hrd-more-menu', root) || document.getElementById('hrd-more-menu');
+    var btn = $('#hrd-more-btn', root) || document.getElementById('hrd-more-btn');
     if (menu) {
       menu.hidden = true;
       menu.setAttribute('hidden', '');
+      menu.classList.remove('is-fixed-open');
+      menu.style.position = '';
+      menu.style.top = '';
+      menu.style.left = '';
+      menu.style.right = '';
+      menu.style.bottom = '';
+      menu.style.zIndex = '';
     }
     if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+
+  function positionMoreMenu(btn, menu) {
+    if (!btn || !menu) return;
+    var rect = btn.getBoundingClientRect();
+    var menuWidth = Math.max(168, menu.offsetWidth || 168);
+    var left = Math.round(rect.right - menuWidth);
+    var top = Math.round(rect.bottom + 6);
+    if (left < 8) left = 8;
+    if (left + menuWidth > window.innerWidth - 8) {
+      left = Math.max(8, window.innerWidth - menuWidth - 8);
+    }
+    if (top + (menu.offsetHeight || 200) > window.innerHeight - 8) {
+      top = Math.max(8, Math.round(rect.top - (menu.offsetHeight || 200) - 6));
+    }
+    menu.style.position = 'fixed';
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
+    menu.style.right = 'auto';
+    menu.style.bottom = 'auto';
+    menu.style.zIndex = '12000';
+    menu.classList.add('is-fixed-open');
+  }
+
+  function openMoreMenu(root) {
+    root = root || pageRoot();
+    if (!root) return;
+    var menu = $('#hrd-more-menu', root);
+    var btn = $('#hrd-more-btn', root);
+    if (!menu || !btn) return;
+    menu.hidden = false;
+    menu.removeAttribute('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+    positionMoreMenu(btn, menu);
   }
 
   function setVisible(el, show) {
@@ -418,23 +519,6 @@
       el.setAttribute('hidden', '');
       el.classList.add('is-hidden');
     }
-  }
-
-  function guestInitials(stay) {
-    var first = ((stay && stay.firstName) || '').trim();
-    var last = ((stay && stay.lastName) || '').trim();
-    var name = ((stay && stay.guestName) || '').trim();
-    if (first || last) {
-      return ((first.charAt(0) || '') + (last.charAt(0) || '')).toUpperCase() || 'G';
-    }
-    if (name) {
-      var parts = name.split(/\s+/);
-      return (
-        (parts[0].charAt(0) || '') +
-        ((parts[1] && parts[1].charAt(0)) || '')
-      ).toUpperCase();
-    }
-    return 'G';
   }
 
   function paintGuestPanels(root, room) {
@@ -464,8 +548,6 @@
     setVisible($('#hrd-edit-guest', root), occupied);
 
     if (occupied && stay) {
-      var avatar = $('#hrd-guest-avatar', root);
-      if (avatar) avatar.textContent = guestInitials(stay);
       var nameEl = $('#hrd-guest-name', root);
       if (nameEl) nameEl.textContent = dash(stay.guestName || (stay.firstName + ' ' + stay.lastName));
       var metaEl = $('#hrd-guest-meta', root);
@@ -586,21 +668,59 @@
     return diff > 0 ? diff : 0;
   }
 
-  function chargeLinesFromStay(stay) {
+  function chargeLinesFromStay(stay, room) {
     var bookedNights = Math.max(1, Number((stay && stay.nights) || 1));
     var overstayNights = overstayNightsFromStay(stay);
     var billableNights = Math.max(
       1,
       Number((stay && stay.billableNights) || bookedNights + overstayNights)
     );
+    var mergeRates = Array.isArray(stay && stay.mergeRoomRates)
+      ? stay.mergeRoomRates
+      : [];
+    function mergeRateFor(roomId, number) {
+      var rid = String(roomId || '').trim();
+      var num = String(number || '').trim();
+      for (var i = 0; i < mergeRates.length; i++) {
+        var row = mergeRates[i];
+        if (!row) continue;
+        if (rid && String(row.roomId || '') === rid) {
+          return Math.max(0, Number(row.roomRate || 0));
+        }
+        if (num && String(row.number || '') === num) {
+          return Math.max(0, Number(row.roomRate || 0));
+        }
+      }
+      return null;
+    }
+    var primaryMerge = null;
+    for (var mi = 0; mi < mergeRates.length; mi++) {
+      if (mergeRates[mi] && mergeRates[mi].isPrimary) {
+        primaryMerge = mergeRates[mi];
+        break;
+      }
+    }
     var roomRate = Math.max(0, Number((stay && stay.roomRate) || 0));
+    if (primaryMerge && primaryMerge.roomRate != null) {
+      roomRate = Math.max(0, Number(primaryMerge.roomRate || 0));
+    }
     var bookedCharges = Math.round(roomRate * bookedNights * 100) / 100;
     var overstayCharges =
       Math.round(roomRate * Math.max(0, billableNights - bookedNights) * 100) /
       100;
     var lines = [];
     if (bookedCharges > 0) {
-      lines.push({ label: 'Room Charges', amount: bookedCharges });
+      var roomLabel = 'Room Charges';
+      var isMergePrimary =
+        !!(room && room.isMergePrimary) ||
+        String((stay && stay.mergeRole) || '').toLowerCase() === 'primary';
+      var roomNumber = String(
+        (room && (room.number || room.roomNumber)) || ''
+      ).trim();
+      if (isMergePrimary && roomNumber) {
+        roomLabel = 'Room ' + roomNumber + ' — stay charges';
+      }
+      lines.push({ label: roomLabel, amount: bookedCharges });
     }
     if (overstayCharges > 0) {
       lines.push({
@@ -634,8 +754,21 @@
       if (kind === 'restaurant_room_transfer') restaurant += amount;
       else if (kind === 'bar_room_transfer') bar += amount;
       else {
+        var label = item.label || 'Other Charge';
+        var src = String(item.source || '');
+        if (src === 'merged_room_rate') {
+          var override = mergeRateFor(
+            item.sourceRoomId,
+            item.sourceRoomNumber
+          );
+          if (override != null) {
+            amount =
+              Math.round(override * billableNights * 100) / 100;
+          }
+        }
+        if (!(amount > 0)) return;
         otherFolio.push({
-          label: item.label || 'Other Charge',
+          label: label,
           amount: amount
         });
       }
@@ -658,8 +791,8 @@
     return lines;
   }
 
-  function stayMoneySummary(stay) {
-    var lines = chargeLinesFromStay(stay);
+  function stayMoneySummary(stay, room) {
+    var lines = chargeLinesFromStay(stay, room);
     var subtotal = Math.round(
       lines.reduce(function (sum, row) {
         return sum + Number(row.amount || 0);
@@ -747,7 +880,7 @@
       return;
     }
 
-    var summary = stayMoneySummary(stay);
+    var summary = stayMoneySummary(stay, room);
     var lines = summary.lines;
     var estimated = summary.estimated;
     var advance = summary.advance;
@@ -999,15 +1132,14 @@
     var statusEl = $('[data-kpi-status]', root);
     if (statusEl) statusEl.textContent = STATUS_LABELS[displayStatus] || displayStatus;
 
-    /* Housekeeping card: Dirty while pending clean; otherwise show real room status. */
-    var hkStatus = dirty && !occupied ? 'dirty' : displayStatus;
+    /* Housekeeping card: only Cleaned or Dirty (not room occupancy). */
+    var hkStatus = dirty ? 'dirty' : 'cleaned';
     var hk = $('[data-kpi-hk]', root);
-    if (hk) hk.textContent = STATUS_LABELS[hkStatus] || hkStatus;
+    if (hk) hk.textContent = hkStatus === 'dirty' ? 'Dirty' : 'Cleaned';
     var hkIcon = $('[data-hk-icon]', root);
     if (hkIcon) {
       hkIcon.className =
-        'hrd-kpi-icon hrd-kpi-icon--' +
-        (hkStatus === 'dirty' ? 'rose' : hkStatus === 'occupied' ? 'orange' : 'blue');
+        'hrd-kpi-icon hrd-kpi-icon--' + (hkStatus === 'dirty' ? 'rose' : 'green');
     }
     setVisible($('#hrd-mark-clean', root), dirty && !occupied);
     paintMergeChrome(root, room);
@@ -1060,20 +1192,17 @@
 
     var checkinBtn = $('#hrd-new-checkin', root);
     if (checkinBtn) {
+      setVisible(checkinBtn, occupied);
       if (occupied) {
         checkinBtn.innerHTML =
           '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>' +
           'Check Out';
         checkinBtn.setAttribute('data-action', 'checkout');
-      } else {
-        checkinBtn.innerHTML =
-          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>' +
-          'New Check-in';
-        checkinBtn.setAttribute('data-action', 'checkin');
       }
     }
 
     var reserveBtn = $('#hrd-reserve', root);
+    var reserveNewBtn = $('#hrd-reserve-new', root);
     if (reserveBtn) {
       var showReserve = inventory !== 'occupied';
       setVisible(reserveBtn, showReserve);
@@ -1083,6 +1212,15 @@
           '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>' +
           reserveLabel;
         reserveBtn.setAttribute('data-action', 'reserve');
+      }
+    }
+    if (reserveNewBtn) {
+      setVisible(reserveNewBtn, inventory === 'reserved');
+      if (inventory === 'reserved') {
+        reserveNewBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>' +
+          'New Reservation';
+        reserveNewBtn.setAttribute('data-action', 'reserve-new');
       }
     }
 
@@ -1570,7 +1708,7 @@
       showToast('No guest stay on this room.', true);
       return;
     }
-    var summary = stayMoneySummary(stay);
+    var summary = stayMoneySummary(stay, lastRoom);
     var isPay = mode === 'payment';
     if (isPay && !(stay.invoiceGenerated || stay.invoiceNumber)) {
       showToast('Generate the invoice before recording payment.', true);
@@ -1799,9 +1937,25 @@
       );
   }
 
+  function defaultRateForType(typeOrLabel) {
+    var key = String(typeOrLabel || '').trim();
+    if (key && DEFAULT_RATES[key] != null) return DEFAULT_RATES[key];
+    var normalized = key.toLowerCase();
+    var byLabel = {
+      'premium room': 'premium_without_balcony',
+      'deluxe with balcony': 'premium_deluxe_balcony',
+      'suite room': 'premium_suite_tub',
+      suite: 'premium_suite_tub',
+      deluxe: 'premium_deluxe_balcony'
+    };
+    var mapped = byLabel[normalized];
+    if (mapped && DEFAULT_RATES[mapped] != null) return DEFAULT_RATES[mapped];
+    return 4500;
+  }
+
   function defaultRateFor(root) {
-    var type = root.getAttribute('data-room-type') || '';
-    return DEFAULT_RATES[type] != null ? DEFAULT_RATES[type] : 4500;
+    var type = (root && root.getAttribute('data-room-type')) || '';
+    return defaultRateForType(type);
   }
 
   var SPECIAL_CHARGES = {
@@ -1880,13 +2034,331 @@
   function syncTotals(form) {
     if (!form) return;
     var nights = Math.max(1, Number(form.nights.value || 1));
-    var rate = Math.max(0, Number(form.roomRate.value || 0));
+    var rateSum = collectMergeNightlyRateSum(form);
+    var primaryRate = primaryMergeRoomRate(form);
+    var hiddenRate = form.elements.roomRate || $('#hrd-ci-room-rate', form);
+    if (hiddenRate) hiddenRate.value = String(primaryRate);
+    var hiddenPlan = form.elements.ratePlan || $('#hrd-ci-rate-plan', form);
+    if (hiddenPlan) {
+      var plan = primaryMergeRatePlan(form);
+      if (plan) hiddenPlan.value = plan;
+    }
     var advance = Math.max(0, Number(form.advancePaid.value || 0));
     var extras = specialChargeExtrasTotal(form);
-    var total = Math.round((rate * nights + extras) * 100) / 100;
+    var total = Math.round((rateSum * nights + extras) * 100) / 100;
     var balance = Math.max(0, Math.round((total - advance) * 100) / 100);
     form.totalRate.value = String(total);
     form.balanceAmount.value = String(balance);
+  }
+
+  function ratePlanListboxHtml(fid, selected) {
+    var plan = selected || 'EP';
+    if (!RATE_PLAN_LABELS[plan]) plan = 'EP';
+    var display = RATE_PLAN_LABELS[plan] || plan;
+    var keys = ['EP', 'CP', 'MAP', 'AP'];
+    var options = keys
+      .map(function (key) {
+        var optLabel = RATE_PLAN_LABELS[key] || key;
+        var on = key === plan;
+        return (
+          '<button type="button" class="se-filter-listbox-option' +
+          (on ? ' is-selected' : '') +
+          '" role="option" data-value="' +
+          key +
+          '" data-label="' +
+          escapeHtml(optLabel) +
+          '" data-name="' +
+          escapeHtml(String(optLabel).toLowerCase()) +
+          '" aria-selected="' +
+          (on ? 'true' : 'false') +
+          '">' +
+          escapeHtml(optLabel) +
+          '</button>'
+        );
+      })
+      .join('');
+    return (
+      '<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox hrd-form-listbox hrd-ci-rate-plan-listbox" data-se-listbox data-se-listbox-change="hrdCiMergeRatePlanChanged" id="' +
+      fid +
+      '-listbox">' +
+      '<label class="se-filter-chip-label" id="' +
+      fid +
+      '-label" for="' +
+      fid +
+      '-trigger">Rate Plan</label>' +
+      '<div class="se-filter-chip-control">' +
+      '<span class="se-filter-chip-icon" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>' +
+      '</span>' +
+      '<input type="hidden" id="' +
+      fid +
+      '" data-merge-rate-plan value="' +
+      escapeHtml(plan) +
+      '">' +
+      '<button type="button" class="se-filter-chip-trigger" id="' +
+      fid +
+      '-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="' +
+      fid +
+      '-list" aria-labelledby="' +
+      fid +
+      '-label ' +
+      fid +
+      '-value">' +
+      '<span class="se-filter-chip-value" id="' +
+      fid +
+      '-value">' +
+      escapeHtml(display) +
+      '</span>' +
+      '</button>' +
+      '<span class="se-filter-chip-chev" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>' +
+      '</span>' +
+      '</div>' +
+      '<div class="se-filter-listbox" id="' +
+      fid +
+      '-list" role="listbox" aria-labelledby="' +
+      fid +
+      '-label" hidden>' +
+      '<div class="ep-listbox-options">' +
+      options +
+      '</div></div></div>'
+    );
+  }
+
+  function mergeRateRoomLabel(row) {
+    var number = String((row && row.number) || '').trim();
+    var typeLabel = String(
+      (row && (row.roomTypeLabel || row.roomType || row.label)) || ''
+    ).trim();
+    if (number && typeLabel) return number + ' - ' + typeLabel;
+    return number || typeLabel || 'Room';
+  }
+
+  function collectMergeNightlyRateSum(form) {
+    if (!form) return 0;
+    var rows = $all('[data-merge-room-rate]', form);
+    if (!rows.length) {
+      return Math.max(0, Number((form.elements.roomRate && form.elements.roomRate.value) || 0));
+    }
+    var sum = 0;
+    rows.forEach(function (el) {
+      sum += Math.max(0, Number(el.value || 0));
+    });
+    return Math.round(sum * 100) / 100;
+  }
+
+  function primaryMergeRoomRate(form) {
+    if (!form) return 0;
+    var primary = form.querySelector(
+      '.hrd-ci-rate-room[data-merge-primary="1"] [data-merge-room-rate]'
+    );
+    if (primary) return Math.max(0, Number(primary.value || 0));
+    var first = form.querySelector('[data-merge-room-rate]');
+    if (first) return Math.max(0, Number(first.value || 0));
+    return Math.max(0, Number((form.elements.roomRate && form.elements.roomRate.value) || 0));
+  }
+
+  function primaryMergeRatePlan(form) {
+    if (!form) return 'EP';
+    var primary = form.querySelector(
+      '.hrd-ci-rate-room[data-merge-primary="1"] [data-merge-rate-plan]'
+    );
+    if (primary) return String(primary.value || 'EP');
+    var first = form.querySelector('[data-merge-rate-plan]');
+    if (first) return String(first.value || 'EP');
+    return String((form.elements.ratePlan && form.elements.ratePlan.value) || 'EP');
+  }
+
+  function collectMergeRoomRates(form) {
+    if (!form) return [];
+    return $all('.hrd-ci-rate-room', form).map(function (row) {
+      var rateEl = row.querySelector('[data-merge-room-rate]');
+      var planEl = row.querySelector('[data-merge-rate-plan]');
+      return {
+        roomId: row.getAttribute('data-room-id') || '',
+        number: row.getAttribute('data-room-number') || '',
+        roomType: row.getAttribute('data-room-type') || '',
+        roomTypeLabel: row.getAttribute('data-room-type-label') || '',
+        ratePlan: planEl ? String(planEl.value || 'EP') : 'EP',
+        roomRate: Math.max(0, Number((rateEl && rateEl.value) || 0)),
+        isPrimary: row.getAttribute('data-merge-primary') === '1'
+      };
+    });
+  }
+
+  function buildCheckinRateRooms(root, form, opts) {
+    opts = opts || {};
+    var wrap = $('#hrd-ci-rate-rooms', form) || $('#hrd-ci-rate-rooms', root);
+    if (!wrap || !form) return;
+    var stay = opts.stay || null;
+    var savedRates = Array.isArray(stay && stay.mergeRoomRates)
+      ? stay.mergeRoomRates
+      : [];
+    function savedFor(roomId, number) {
+      for (var i = 0; i < savedRates.length; i++) {
+        var row = savedRates[i];
+        if (!row) continue;
+        if (roomId && String(row.roomId || '') === String(roomId)) return row;
+        if (number && String(row.number || '') === String(number)) return row;
+      }
+      return null;
+    }
+
+    var rooms = [];
+    var primaryId = root.getAttribute('data-room-id') || '';
+    var primaryNumber = root.getAttribute('data-room-number') || '';
+    var primaryTypeKey = root.getAttribute('data-room-type') || '';
+    var primaryTypeLabel =
+      root.getAttribute('data-room-type-label') || primaryTypeKey || '';
+    if (lastRoom) {
+      primaryId = lastRoom.id || primaryId;
+      primaryNumber = lastRoom.number || primaryNumber;
+      primaryTypeKey = lastRoom.roomType || primaryTypeKey;
+      primaryTypeLabel =
+        lastRoom.roomTypeLabel || lastRoom.roomType || primaryTypeLabel;
+    }
+    var primarySaved = savedFor(primaryId, primaryNumber);
+    var primaryDefault = defaultRateForType(primaryTypeKey || primaryTypeLabel);
+    rooms.push({
+      roomId: primaryId,
+      number: primaryNumber,
+      roomType: primaryTypeKey,
+      roomTypeLabel: primaryTypeLabel,
+      ratePlan:
+        (primarySaved && primarySaved.ratePlan) ||
+        (stay && stay.ratePlan) ||
+        'EP',
+      roomRate:
+        primarySaved && primarySaved.roomRate != null
+          ? primarySaved.roomRate
+          : stay && stay.roomRate != null
+            ? stay.roomRate
+            : primaryDefault,
+      isPrimary: true
+    });
+
+    var partners =
+      (lastRoom && Array.isArray(lastRoom.mergePartners) && lastRoom.mergePartners) ||
+      [];
+    if (!partners.length && lastRoom && Array.isArray(lastRoom.mergePartnerNumbers)) {
+      partners = lastRoom.mergePartnerNumbers.map(function (n) {
+        return { number: n, id: '', roomTypeLabel: '', roomType: '' };
+      });
+    }
+    if (lastRoom && lastRoom.isMergePrimary) {
+      partners.forEach(function (peer) {
+        if (!peer) return;
+        var pid = peer.id || peer.roomId || '';
+        var pnum = peer.number || '';
+        if (pid && String(pid) === String(primaryId)) return;
+        if (pnum && String(pnum) === String(primaryNumber)) return;
+        var saved = savedFor(pid, pnum);
+        var peerType = peer.roomType || '';
+        var peerLabel = peer.roomTypeLabel || peer.roomType || '';
+        var peerDefault = defaultRateForType(peerType || peerLabel);
+        var savedRate =
+          saved && saved.roomRate != null ? Number(saved.roomRate) : null;
+        var stayPrimaryRate =
+          stay && stay.roomRate != null ? Number(stay.roomRate) : null;
+        // Prefer type tariff when a prior bug copied the primary suite rate.
+        if (
+          savedRate != null &&
+          stayPrimaryRate != null &&
+          Math.abs(savedRate - stayPrimaryRate) < 0.01 &&
+          peerDefault > 0 &&
+          Math.abs(peerDefault - stayPrimaryRate) > 0.01 &&
+          peerType &&
+          primaryTypeKey &&
+          peerType !== primaryTypeKey
+        ) {
+          savedRate = null;
+        }
+        rooms.push({
+          roomId: pid,
+          number: pnum,
+          roomType: peerType,
+          roomTypeLabel: peerLabel,
+          ratePlan: (saved && saved.ratePlan) || 'EP',
+          roomRate: savedRate != null ? savedRate : peerDefault,
+          isPrimary: false
+        });
+      });
+    } else if (savedRates.length > 1) {
+      savedRates.forEach(function (row) {
+        if (!row || row.isPrimary) return;
+        if (String(row.roomId || '') === String(primaryId)) return;
+        rooms.push({
+          roomId: row.roomId || '',
+          number: row.number || '',
+          roomType: row.roomType || '',
+          roomTypeLabel: row.roomTypeLabel || '',
+          ratePlan: row.ratePlan || 'EP',
+          roomRate:
+            row.roomRate != null
+              ? row.roomRate
+              : defaultRateForType(row.roomType || row.roomTypeLabel),
+          isPrimary: false
+        });
+      });
+    }
+
+    wrap.innerHTML = rooms
+      .map(function (row, idx) {
+        var plan = row.ratePlan || 'EP';
+        var rate = Math.max(0, Number(row.roomRate || 0));
+        return (
+          '<div class="hrd-ci-rate-room" data-room-id="' +
+          escapeHtml(row.roomId || '') +
+          '" data-room-number="' +
+          escapeHtml(row.number || '') +
+          '" data-room-type="' +
+          escapeHtml(row.roomType || '') +
+          '" data-room-type-label="' +
+          escapeHtml(row.roomTypeLabel || '') +
+          '" data-merge-primary="' +
+          (row.isPrimary ? '1' : '0') +
+          '">' +
+          (rooms.length > 1
+            ? '<p class="hrd-ci-rate-room-title">Room ' +
+              escapeHtml(row.number || String(idx + 1)) +
+              (row.isPrimary ? ' (Primary)' : '') +
+              '</p>'
+            : '') +
+          '<label class="hrd-field">' +
+          '<span>Room Number</span>' +
+          '<input type="text" readonly value="' +
+          escapeHtml(mergeRateRoomLabel(row)) +
+          '">' +
+          '</label>' +
+          '<div class="hrd-form-grid hrd-form-grid--2">' +
+          '<div class="hrd-field">' +
+          ratePlanListboxHtml(
+            'hrd-ci-rate-plan-' +
+              String(row.roomId || row.number || idx).replace(/[^\w-]/g, ''),
+            plan
+          ) +
+          '</div>' +
+          '<label class="hrd-field">' +
+          '<span>Room Rate (per night)</span>' +
+          '<span class="hrd-input-affix"><span>₹</span>' +
+          '<input type="number" min="0" step="0.01" data-merge-room-rate value="' +
+          escapeHtml(String(rate)) +
+          '"></span>' +
+          '</label>' +
+          '</div></div>'
+        );
+      })
+      .join('');
+
+    if (typeof global.initEpListboxes === 'function') {
+      global.initEpListboxes();
+    }
+    if (typeof global.rebindEpListbox === 'function') {
+      $all('[data-se-listbox]', wrap).forEach(function (lb) {
+        global.rebindEpListbox(lb);
+      });
+    }
+    syncTotals(form);
   }
 
   function moneyText(n) {
@@ -2225,8 +2697,13 @@
     if (form.elements.totalRate) form.elements.totalRate.readOnly = true;
     var paymentTrigger = document.getElementById('hrd-ci-payment-trigger');
     if (paymentTrigger) paymentTrigger.disabled = locked;
-    var ratePlanTrigger = document.getElementById('hrd-ci-rate-plan-trigger');
-    if (ratePlanTrigger) ratePlanTrigger.disabled = locked;
+    $all('[data-merge-room-rate]', form).forEach(function (el) {
+      el.disabled = locked;
+      el.readOnly = locked;
+    });
+    $all('.hrd-ci-rate-plan-listbox .se-filter-chip-trigger', form).forEach(function (el) {
+      el.disabled = locked;
+    });
     $all(
       '#hrd-ci-early-checkin, #hrd-ci-late-checkout, #hrd-ci-extra-bed, #hrd-ci-early-checkin-edit, #hrd-ci-late-checkout-edit, #hrd-ci-extra-bed-edit',
       form
@@ -2243,6 +2720,14 @@
     CP: 'CP — Breakfast',
     MAP: 'MAP — Breakfast + Dinner',
     AP: 'AP — All Meals'
+  };
+
+  global.hrdCiMergeRatePlanChanged = function () {
+    var root = pageRoot();
+    var form = root && $('#hrd-checkin-form', root);
+    if (!form) return;
+    syncTotals(form);
+    scheduleCheckinDraftSave(root, form);
   };
 
   function checkinDraftKey(root) {
@@ -2349,7 +2834,6 @@
       setFormText(form, 'agencyGst', stay.agencyGst || '');
       setFormText(form, 'agencyAddress', stay.agencyAddress || '');
       setFormText(form, 'nights', stay.nights != null ? stay.nights : '1');
-      setFormText(form, 'roomRate', stay.roomRate != null ? stay.roomRate : '');
       setFormText(form, 'advancePaid', stay.advancePaid != null ? stay.advancePaid : '0');
       setFormText(form, 'paymentReference', stay.paymentReference || '');
       setFormText(form, 'additionalRequests', stay.additionalRequests || '');
@@ -2396,11 +2880,6 @@
         String(stay.children != null ? stay.children : 0),
         String(stay.children != null ? stay.children : 0)
       );
-      resetListboxValue(
-        'hrd-ci-rate-plan',
-        stay.ratePlan || 'EP',
-        RATE_PLAN_LABELS[stay.ratePlan] || stay.ratePlan || 'EP — Room Only'
-      );
       resetListboxValue('hrd-ci-payment', stay.paymentMethod || '', 'Select');
 
       setFormDate(form, 'dateOfBirth', stay.dateOfBirth || '');
@@ -2408,6 +2887,12 @@
       setFormDate(form, 'checkInDate', stay.checkInDate || '');
       setFormDate(form, 'checkOutDate', stay.checkOutDate || '');
       setFormTime(form, 'checkInTime', stay.checkInTime || '');
+      setFormTime(form, 'checkOutTime', stay.checkOutTime || stay.check_out_time || '');
+
+      buildCheckinRateRooms(pageRoot(), form, {
+        stay: stay,
+        defaultRate: defaultRateFor(pageRoot())
+      });
 
       syncCustomerNameFromPersonal(form);
       if (stay.idDocumentPath) {
@@ -2922,6 +3407,333 @@
     });
   }
 
+  function bindCheckinCustomerSuggest(root, form) {
+    if (!form) return;
+    var mobileInput = form.elements.mobile || $('#hrd-ci-mobile', form);
+    var box = $('#hrd-ci-customer-suggest', form);
+    if (!mobileInput || !box) return;
+    if (form.getAttribute('data-ci-customer-suggest-bound') === '1') return;
+    form.setAttribute('data-ci-customer-suggest-bound', '1');
+
+    var timer = null;
+    var results = [];
+    var activeIndex = -1;
+
+    function closeSuggest() {
+      box.hidden = true;
+      box.innerHTML = '';
+      mobileInput.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      results = [];
+    }
+
+    function applyCustomer(customer) {
+      if (!customer) return;
+      var mobile = String(customer.mobile || '').replace(/\D/g, '').slice(0, 10);
+      var name = String(customer.name || customer.first_name || '').trim();
+      var email = String(customer.email || '').trim();
+      var address = String(customer.address || '').trim();
+      if (mobile) {
+        mobileInput.value = mobile;
+        form._hrdLastGuestLookup = mobile;
+      }
+      if (name) {
+        var parts = splitGuestName(name);
+        setFormText(form, 'firstName', parts.firstName);
+        setFormText(form, 'lastName', parts.lastName);
+        syncCustomerNameFromPersonal(form);
+      }
+      if (email) setFormText(form, 'email', email);
+      if (address) setFormText(form, 'address', address);
+      closeSuggest();
+      scheduleCheckinDraftSave(pageRoot(), form);
+      showToast('Customer details loaded.');
+    }
+
+    function renderSuggest(list) {
+      results = list || [];
+      if (!results.length) {
+        closeSuggest();
+        return;
+      }
+      if (activeIndex < 0 || activeIndex >= results.length) activeIndex = 0;
+      box.hidden = false;
+      mobileInput.setAttribute('aria-expanded', 'true');
+      box.innerHTML = results
+        .map(function (c, idx) {
+          return (
+            '<button type="button" class="hrd-customer-opt' +
+            (idx === activeIndex ? ' is-active' : '') +
+            '" role="option" data-customer-index="' +
+            idx +
+            '">' +
+            '<span class="hrd-customer-opt-mobile">' +
+            escapeHtml(c.mobile || '') +
+            '</span>' +
+            '<span class="hrd-customer-opt-name">' +
+            escapeHtml(c.name || c.first_name || '—') +
+            '</span></button>'
+          );
+        })
+        .join('');
+    }
+
+    function runSearch() {
+      var api =
+        (root && root.getAttribute('data-customers-api')) ||
+        '/hotel/api/customers';
+      var digits = String(mobileInput.value || '').replace(/\D/g, '').slice(0, 10);
+      if (mobileInput.value !== digits) mobileInput.value = digits;
+      if (digits.length < 2) {
+        closeSuggest();
+        return;
+      }
+      fetch(api + '?q=' + encodeURIComponent(digits), {
+        credentials: 'same-origin',
+        headers: apiHeaders()
+      })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            return { ok: resp.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok || !result.data || !result.data.ok) {
+            closeSuggest();
+            return;
+          }
+          renderSuggest(result.data.customers || []);
+        })
+        .catch(function () {
+          closeSuggest();
+        });
+    }
+
+    mobileInput.addEventListener('input', function () {
+      var digits = String(mobileInput.value || '').replace(/\D/g, '').slice(0, 10);
+      if (mobileInput.value !== digits) mobileInput.value = digits;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(runSearch, 220);
+    });
+    mobileInput.addEventListener('paste', function (event) {
+      event.preventDefault();
+      var text = '';
+      try {
+        text = (event.clipboardData || window.clipboardData).getData('text') || '';
+      } catch (err) {
+        text = '';
+      }
+      mobileInput.value = String(text).replace(/\D/g, '').slice(0, 10);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(runSearch, 220);
+    });
+    mobileInput.addEventListener('keydown', function (event) {
+      if (box.hidden || !results.length) return;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeIndex = (activeIndex + 1) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeIndex = (activeIndex - 1 + results.length) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'Enter' && activeIndex >= 0) {
+        event.preventDefault();
+        applyCustomer(results[activeIndex]);
+      } else if (event.key === 'Escape') {
+        closeSuggest();
+      }
+    });
+    box.addEventListener('mousedown', function (event) {
+      var btn = event.target.closest('[data-customer-index]');
+      if (!btn) return;
+      event.preventDefault();
+      var idx = Number(btn.getAttribute('data-customer-index'));
+      if (!isNaN(idx) && results[idx]) applyCustomer(results[idx]);
+    });
+    mobileInput.addEventListener('blur', function () {
+      setTimeout(closeSuggest, 150);
+    });
+    document.addEventListener('click', function (event) {
+      if (!form.contains(event.target)) closeSuggest();
+    });
+  }
+
+  function reserveMobileDigits(form) {
+    var mobileInput =
+      (form && ($('#hrd-reserve-mobile', form) || form.elements.mobile)) || null;
+    if (!mobileInput) return '';
+    return String(mobileInput.value || '').replace(/\D/g, '').slice(0, 10);
+  }
+
+  function syncReserveSaveEnabled(root, form) {
+    var saveBtn =
+      (root && $('#hrd-reserve-save', root)) ||
+      document.getElementById('hrd-reserve-save');
+    if (!saveBtn) return;
+    var digits = reserveMobileDigits(form);
+    var ok = digits.length === 10;
+    saveBtn.disabled = !ok;
+    saveBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    if (ok) {
+      saveBtn.removeAttribute('title');
+    } else {
+      saveBtn.title = 'Enter a 10-digit mobile number to save';
+    }
+  }
+
+  function bindReserveCustomerSuggest(root, form) {
+    if (!form) return;
+    var mobileInput = $('#hrd-reserve-mobile', form) || form.elements.mobile;
+    var nameInput = $('#hrd-reserve-guest-name', form) || form.elements.guestName;
+    var box = $('#hrd-reserve-customer-suggest', form);
+    if (!mobileInput || !box) return;
+    if (form.getAttribute('data-customer-suggest-bound') === '1') return;
+    form.setAttribute('data-customer-suggest-bound', '1');
+
+    var timer = null;
+    var results = [];
+    var activeIndex = -1;
+
+    function closeSuggest() {
+      box.hidden = true;
+      box.innerHTML = '';
+      mobileInput.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      results = [];
+    }
+
+    function applyCustomer(customer) {
+      if (!customer) return;
+      var mobile = String(customer.mobile || '').replace(/\D/g, '').slice(0, 10);
+      var name = String(customer.name || customer.first_name || '').trim();
+      var email = String(customer.email || '').trim();
+      if (mobile) mobileInput.value = mobile;
+      if (name && nameInput) nameInput.value = name;
+      var emailInput = $('#hrd-reserve-email', form) || form.elements.email;
+      if (email && emailInput) emailInput.value = email;
+      closeSuggest();
+      syncReserveSaveEnabled(root, form);
+      showToast('Customer details loaded.');
+    }
+
+    function renderSuggest(list) {
+      results = list || [];
+      if (!results.length) {
+        closeSuggest();
+        return;
+      }
+      if (activeIndex < 0 || activeIndex >= results.length) activeIndex = 0;
+      box.hidden = false;
+      mobileInput.setAttribute('aria-expanded', 'true');
+      box.innerHTML = results
+        .map(function (c, idx) {
+          return (
+            '<button type="button" class="hrd-customer-opt' +
+            (idx === activeIndex ? ' is-active' : '') +
+            '" role="option" data-customer-index="' +
+            idx +
+            '">' +
+            '<span class="hrd-customer-opt-mobile">' +
+            escapeHtml(c.mobile || '') +
+            '</span>' +
+            '<span class="hrd-customer-opt-name">' +
+            escapeHtml(c.name || c.first_name || '—') +
+            '</span></button>'
+          );
+        })
+        .join('');
+    }
+
+    function runSearch() {
+      var api =
+        (root && root.getAttribute('data-customers-api')) ||
+        '/hotel/api/customers';
+      var q = String(mobileInput.value || '').trim();
+      var digits = q.replace(/\D/g, '');
+      if (digits.length < 2) {
+        closeSuggest();
+        return;
+      }
+      fetch(api + '?q=' + encodeURIComponent(digits), {
+        credentials: 'same-origin',
+        headers: apiHeaders()
+      })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            return { ok: resp.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok || !result.data || !result.data.ok) {
+            closeSuggest();
+            return;
+          }
+          renderSuggest(result.data.customers || []);
+        })
+        .catch(function () {
+          closeSuggest();
+        });
+    }
+
+    function normalizeMobileAndSync() {
+      var digits = String(mobileInput.value || '').replace(/\D/g, '').slice(0, 10);
+      if (mobileInput.value !== digits) mobileInput.value = digits;
+      syncReserveSaveEnabled(root, form);
+      return digits;
+    }
+
+    mobileInput.addEventListener('input', function () {
+      normalizeMobileAndSync();
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(runSearch, 220);
+    });
+    mobileInput.addEventListener('paste', function (event) {
+      event.preventDefault();
+      var text = '';
+      try {
+        text = (event.clipboardData || window.clipboardData).getData('text') || '';
+      } catch (err) {
+        text = '';
+      }
+      mobileInput.value = String(text).replace(/\D/g, '').slice(0, 10);
+      syncReserveSaveEnabled(root, form);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(runSearch, 220);
+    });
+    mobileInput.addEventListener('keydown', function (event) {
+      if (box.hidden || !results.length) return;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeIndex = (activeIndex + 1) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeIndex = (activeIndex - 1 + results.length) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'Enter' && activeIndex >= 0) {
+        event.preventDefault();
+        applyCustomer(results[activeIndex]);
+      } else if (event.key === 'Escape') {
+        closeSuggest();
+      }
+    });
+    box.addEventListener('mousedown', function (event) {
+      var btn = event.target.closest('[data-customer-index]');
+      if (!btn) return;
+      event.preventDefault();
+      var idx = Number(btn.getAttribute('data-customer-index'));
+      if (!isNaN(idx) && results[idx]) applyCustomer(results[idx]);
+    });
+    mobileInput.addEventListener('blur', function () {
+      normalizeMobileAndSync();
+      setTimeout(closeSuggest, 150);
+    });
+    document.addEventListener('click', function (event) {
+      if (!form.contains(event.target)) closeSuggest();
+    });
+  }
+
   function parseAgenciesData(root) {
     try {
       var raw = root && root.getAttribute('data-agencies');
@@ -2963,6 +3775,11 @@
 
   function bindAgencyMasterControls(root, form) {
     if (!form) return;
+    bindAgencyGstInput(
+      form.elements.agencyGst ||
+        $('#hrd-ci-agency-gst', form) ||
+        $('#hrd-reserve-agency-gst', form)
+    );
     var nameInput =
       form.elements.agencyName ||
       $('#hrd-ci-agency-name', form) ||
@@ -2990,8 +3807,18 @@
         ? String(form.elements.agencyName.value || '').trim()
         : '';
       var gst = form.elements.agencyGst
-        ? String(form.elements.agencyGst.value || '').trim()
+        ? normalizeGstin(form.elements.agencyGst.value)
         : '';
+      if (form.elements.agencyGst) form.elements.agencyGst.value = gst;
+      var gstError = agencyGstValidationError(form);
+      if (gstError) {
+        showToast(gstError, true);
+        try {
+          form.elements.agencyGst.focus();
+          form.elements.agencyGst.select();
+        } catch (err) {}
+        return;
+      }
       var address = form.elements.agencyAddress
         ? String(form.elements.agencyAddress.value || '').trim()
         : '';
@@ -3222,7 +4049,6 @@
     setFormDate(form, 'checkInDate', today);
     form.nights.value = '1';
     setFormDate(form, 'checkOutDate', addDaysISO(today, 1));
-    form.roomRate.value = String(defaultRateFor(root));
     form.advancePaid.value = '0';
     setFormDate(form, 'dateOfBirth', '');
     if (form.elements.agencyName) form.elements.agencyName.value = '';
@@ -3235,6 +4061,7 @@
     bindAgencyBilling(form);
     syncAgencyBillingHint(form);
     bindMobileGuestLookup(root, form);
+    bindCheckinCustomerSuggest(root, form);
     bindAgencyMasterControls(root, form);
     bindIdDocumentUpload(root, form);
     syncAgencyDatalist(root, parseAgenciesData(root));
@@ -3257,18 +4084,11 @@
     resetListbox('hrd-ci-id-type', '', 'Select');
     resetListbox('hrd-ci-adults', '1', '1');
     resetListbox('hrd-ci-children', '0', '0');
-    resetListbox('hrd-ci-rate-plan', 'EP', 'EP — Room Only');
     resetListbox('hrd-ci-payment', '', 'Select');
-    syncTotals(form);
-
-    var roomLabel = $('#hrd-ci-room-label', root);
-    if (roomLabel) {
-      var number = root.getAttribute('data-room-number') || '';
-      var typeLabel = root.getAttribute('data-room-type-label') || '';
-      roomLabel.value = number
-        ? number + (typeLabel ? ' - ' + typeLabel : '')
-        : typeLabel || '';
-    }
+    buildCheckinRateRooms(root, form, {
+      stay: null,
+      defaultRate: defaultRateFor(root)
+    });
 
     var uploadName = $('#hrd-ci-id-upload-name', form) || $('.hrd-upload-text', form);
     var uploadBtn = $('#hrd-ci-id-upload-btn', form);
@@ -3297,6 +4117,16 @@
       if (staySource.bookingNumber && form.bookingNumber) {
         form.bookingNumber.value = staySource.bookingNumber;
       }
+      /* Keep in-progress time edits from an open draft (edit mode skips full draft). */
+      var editDraft = readCheckinDraft(root);
+      if (editDraft && editDraft.open && editDraft.stay) {
+        if (editDraft.stay.checkOutTime) {
+          setFormTime(form, 'checkOutTime', editDraft.stay.checkOutTime);
+        }
+        if (editDraft.stay.checkInTime) {
+          setFormTime(form, 'checkInTime', editDraft.stay.checkInTime);
+        }
+      }
     } else {
       var draft = readCheckinDraft(root);
       if (draft && draft.stay) {
@@ -3309,6 +4139,15 @@
       var timeInput = form.elements.checkInTime;
       if (!timeInput || !String(timeInput.value || '').trim()) {
         setFormTime(form, 'checkInTime', nowTime());
+      }
+      var checkOutTimeInput = form.elements.checkOutTime;
+      if (!checkOutTimeInput || !String(checkOutTimeInput.value || '').trim()) {
+        setFormTime(form, 'checkOutTime', '11:00');
+      }
+    } else {
+      var editOutTime = form.elements.checkOutTime;
+      if (editOutTime && !String(editOutTime.value || '').trim()) {
+        setFormTime(form, 'checkOutTime', '11:00');
       }
     }
 
@@ -3360,6 +4199,9 @@
     if (typeof global.closeHotelDatePickers === 'function') {
       global.closeHotelDatePickers();
     }
+    if (typeof global.closeHotelTimePickers === 'function') {
+      global.closeHotelTimePickers();
+    }
     if (typeof global.closeAllEpListboxes === 'function') {
       global.closeAllEpListboxes();
     }
@@ -3393,6 +4235,14 @@
     if (typeof global.closeHotelDatePickers === 'function') {
       global.closeHotelDatePickers();
     }
+    var form = $('#hrd-reserve-form', root);
+    if (form) {
+      form.removeAttribute('data-reserve-mode');
+      form.removeAttribute('data-existing-reserve-from');
+      form.removeAttribute('data-existing-reserve-to');
+    }
+    var title = $('#hrd-reserve-title', modal) || $('#hrd-reserve-title', root);
+    if (title) title.textContent = 'Reserve Room';
     modal.hidden = true;
     modal.setAttribute('hidden', '');
     modal.setAttribute('aria-hidden', 'true');
@@ -3448,7 +4298,9 @@
     };
   }
 
-  function openReserveModal(root) {
+  function openReserveModal(root, opts) {
+    opts = opts || {};
+    var mode = opts.mode === 'new' ? 'new' : 'edit';
     var modal = $('#hrd-reserve-modal', root);
     var form = $('#hrd-reserve-form', root);
     if (!modal || !form) {
@@ -3461,25 +4313,81 @@
     }
 
     var asOf = headerAsOfDate(root);
-    var stay = lastRoom && lastRoom.stay && typeof lastRoom.stay === 'object' ? lastRoom.stay : null;
-    var fromDate =
-      toDateISO(stay && (stay.checkInDate || stay.check_in_date)) || asOf;
-    var toDate =
-      toDateISO(stay && (stay.checkOutDate || stay.check_out_date)) ||
-      addDaysISO(fromDate, 1);
+    var existingWindow =
+      mapStatus(root.getAttribute('data-room-status')) === 'reserved' ||
+      mapStatus(lastRoom && lastRoom.status) === 'reserved'
+        ? existingReservationWindow(lastRoom)
+        : null;
+    var stay =
+      mode === 'new'
+        ? null
+        : lastRoom && lastRoom.stay && typeof lastRoom.stay === 'object'
+          ? lastRoom.stay
+          : null;
+    var fromDate;
+    var toDate;
+    if (mode === 'new' && existingWindow) {
+      /* Start after the current reserved window so New Reservation is not the same dates. */
+      fromDate = addDaysISO(existingWindow.checkOut, 1);
+      if (asOf && asOf > fromDate) fromDate = asOf;
+      toDate = addDaysISO(fromDate, 1);
+    } else {
+      fromDate =
+        toDateISO(stay && (stay.checkInDate || stay.check_in_date)) || asOf;
+      toDate =
+        toDateISO(stay && (stay.checkOutDate || stay.check_out_date)) ||
+        addDaysISO(fromDate, 1);
+    }
     if (toDate && fromDate && toDate <= fromDate) {
       toDate = addDaysISO(fromDate, 1);
     }
 
+    form.setAttribute('data-reserve-mode', mode);
+    if (existingWindow) {
+      form.setAttribute('data-existing-reserve-from', existingWindow.checkIn);
+      form.setAttribute('data-existing-reserve-to', existingWindow.checkOut);
+    } else {
+      form.removeAttribute('data-existing-reserve-from');
+      form.removeAttribute('data-existing-reserve-to');
+    }
     setFormDate(form, 'reserveFrom', fromDate);
     setFormDate(form, 'reserveTo', toDate);
+
+    function applyReserveBlockedDates() {
+      var fromInput = form.elements.reserveFrom || $('#hrd-reserve-from', form);
+      var toInput = form.elements.reserveTo || $('#hrd-reserve-to', form);
+      var blocked =
+        mode === 'new' && existingWindow
+          ? [{ from: existingWindow.checkIn, to: existingWindow.checkOut }]
+          : [];
+      if (typeof global.setHotelDateBlockedRanges === 'function') {
+        global.setHotelDateBlockedRanges(fromInput, blocked);
+        global.setHotelDateBlockedRanges(toInput, blocked);
+      } else {
+        [fromInput, toInput].forEach(function (input) {
+          if (!input) return;
+          var chip = input.closest('[data-hotel-date]');
+          if (!chip) return;
+          if (blocked.length) {
+            chip.setAttribute(
+              'data-blocked-ranges',
+              blocked[0].from + ':' + blocked[0].to
+            );
+          } else {
+            chip.removeAttribute('data-blocked-ranges');
+          }
+        });
+      }
+    }
+    applyReserveBlockedDates();
 
     var guestName =
       (stay && (stay.guestName || stay.guest_name)) ||
       [stay && stay.firstName, stay && stay.lastName].filter(Boolean).join(' ').trim() ||
       '';
     setFormText(form, 'guestName', guestName);
-    setFormText(form, 'mobile', (stay && stay.mobile) || '');
+    var mobileSeed = String((stay && stay.mobile) || '').replace(/\D/g, '').slice(0, 10);
+    setFormText(form, 'mobile', mobileSeed);
     setFormText(form, 'email', (stay && stay.email) || '');
     setFormText(form, 'agencyName', (stay && stay.agencyName) || '');
     setFormText(form, 'agencyGst', (stay && stay.agencyGst) || '');
@@ -3487,11 +4395,19 @@
     var billing = form.elements.agencyBilling;
     if (billing) billing.checked = !!(stay && stay.agencyBilling);
 
+    var title = $('#hrd-reserve-title', modal) || $('#hrd-reserve-title', root);
+    if (title) {
+      title.textContent = mode === 'new' ? 'New Reservation' : 'Reserve Room';
+    }
+
     bindDateChipPickers(modal);
+    applyReserveBlockedDates();
     bindAgencyBilling(form);
     bindAgencyMasterControls(root, form);
     bindReservePartyToggle(form);
+    bindReserveCustomerSuggest(root, form);
     syncAgencyBillingHint(form);
+    syncReserveSaveEnabled(root, form);
     var preferAgency = !!(
       stay &&
       String(stay.agencyName || '').trim() &&
@@ -3503,12 +4419,24 @@
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('hrd-reserve-open');
+    setTimeout(function () {
+      var mobileFocus = $('#hrd-reserve-mobile', form);
+      if (mobileFocus && !preferAgency) mobileFocus.focus();
+    }, 30);
   }
 
   function submitReservation(root, form) {
     var api = root.getAttribute('data-room-api') || '';
     if (!api) {
       showToast('Room API unavailable.', true);
+      return;
+    }
+    var mobile = reserveMobileDigits(form);
+    if (form.elements.mobile) form.elements.mobile.value = mobile;
+    syncReserveSaveEnabled(root, form);
+    if (mobile.length !== 10) {
+      showToast('Mobile number must be exactly 10 digits.', true);
+      if (form.elements.mobile) form.elements.mobile.focus();
       return;
     }
     var fromInput = form.elements.reserveFrom || $('#hrd-reserve-from', root);
@@ -3530,14 +4458,9 @@
     var guestRaw = form.elements.guestName
       ? String(form.elements.guestName.value || '').trim()
       : '';
-    var mobile = form.elements.mobile ? String(form.elements.mobile.value || '').trim() : '';
     var email = form.elements.email ? String(form.elements.email.value || '').trim() : '';
     if (!guestRaw) {
       showToast('Guest name is required.', true);
-      return;
-    }
-    if (!mobile) {
-      showToast('Mobile number is required.', true);
       return;
     }
 
@@ -3555,6 +4478,49 @@
     if (agencyBilling && !agencyName) {
       showToast('Agency name is required for agency billing.', true);
       return;
+    }
+    var reserveGstError = agencyGstValidationError(form);
+    if (reserveGstError) {
+      showToast(reserveGstError, true);
+      var reserveGstInput = form.elements.agencyGst;
+      if (reserveGstInput) {
+        try {
+          reserveGstInput.focus();
+          reserveGstInput.select();
+        } catch (err) {}
+      }
+      return;
+    }
+    agencyGst = normalizeGstin(agencyGst);
+
+    var replaceMode = form.getAttribute('data-reserve-mode') === 'new';
+    var roomStatus = mapStatus(
+      (lastRoom && lastRoom.status) || root.getAttribute('data-room-status')
+    );
+    var existingFrom =
+      form.getAttribute('data-existing-reserve-from') ||
+      (existingReservationWindow(lastRoom) || {}).checkIn ||
+      '';
+    var existingTo =
+      form.getAttribute('data-existing-reserve-to') ||
+      (existingReservationWindow(lastRoom) || {}).checkOut ||
+      '';
+    if (
+      replaceMode &&
+      roomStatus === 'reserved' &&
+      reservationRangesOverlap(checkInDate, checkOutDate, existingFrom, existingTo)
+    ) {
+      showToast(
+        'These dates are already reserved. Use Edit Reservation to change the guest, or pick dates after the current stay.',
+        true
+      );
+      return;
+    }
+    if (replaceMode && roomStatus === 'reserved') {
+      var okReplace = global.confirm(
+        'This will clear the current reservation and save a new one for different dates. Continue?'
+      );
+      if (!okReplace) return;
     }
 
     var stay = {
@@ -3587,6 +4553,7 @@
         action: 'reserve',
         checkInDate: checkInDate,
         checkOutDate: checkOutDate,
+        replace: !!replaceMode,
         stay: stay
       })
     })
@@ -3599,15 +4566,16 @@
         if (!result.ok || !result.data || !result.data.ok) {
           throw new Error((result.data && result.data.error) || 'Failed to reserve room.');
         }
+        form.removeAttribute('data-reserve-mode');
         closeReserveModal(root);
         paintRoom(root, result.data.room);
-        showToast('Room reserved.');
+        showToast(replaceMode ? 'Reservation replaced.' : 'Room reserved.');
       })
       .catch(function (err) {
         showToast(err.message || 'Failed to reserve room.', true);
       })
       .then(function () {
-        if (saveBtn) saveBtn.disabled = false;
+        syncReserveSaveEnabled(root, form);
       });
   }
 
@@ -3820,6 +4788,8 @@
   }
 
   function closeMergeModal(root) {
+    var form = root && $('#hrd-merge-form', root);
+    closeHrdMergeRoomsMenu(root, form);
     var modal = root && $('#hrd-merge-modal', root);
     if (!modal) return;
     modal.hidden = true;
@@ -3828,40 +4798,311 @@
     document.body.classList.remove('hrd-merge-open');
   }
 
-  function fillMergeRoomOptions(listbox, rooms, currentId) {
-    if (!listbox) return 0;
-    var options = listbox.querySelector('.se-filter-listbox-options') || listbox;
-    options.innerHTML = '';
-    function addOption(value, label, selected) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'se-filter-listbox-option' + (selected ? ' is-selected' : '');
-      btn.setAttribute('role', 'option');
-      btn.setAttribute('data-value', value);
-      btn.setAttribute('data-label', label);
-      btn.setAttribute('aria-selected', selected ? 'true' : 'false');
-      btn.textContent = label;
-      options.appendChild(btn);
+  function hrdMergeSelectedIds(form) {
+    if (!form) return [];
+    var raw = form.getAttribute('data-selected-room-ids') || '';
+    if (!raw) return [];
+    return raw
+      .split(',')
+      .map(function (id) {
+        return String(id || '').trim();
+      })
+      .filter(Boolean);
+  }
+
+  function setHrdMergeSelectedIds(form, ids) {
+    if (!form) return;
+    var unique = [];
+    (ids || []).forEach(function (id) {
+      var key = String(id || '').trim();
+      if (key && unique.indexOf(key) === -1) unique.push(key);
+    });
+    form.setAttribute('data-selected-room-ids', unique.join(','));
+  }
+
+  function hrdMergeRoomOptionLabel(room) {
+    var number = room.number || room.roomNumber || room.id || '';
+    var typeLabel = room.roomTypeLabel || room.roomType || '';
+    var status = STATUS_LABELS[mapStatus(room.status)] || '';
+    var bits = ['Room ' + number];
+    if (typeLabel) bits.push(typeLabel);
+    if (status) bits.push(status);
+    if (room.isMergePrimary) bits.push('primary');
+    return bits.join(' · ');
+  }
+
+  function hrdMergeRoomsSelectionSummary(form, roomsCache) {
+    var selected = hrdMergeSelectedIds(form);
+    if (!selected.length) return '';
+    var rooms = roomsCache || [];
+    var names = selected.map(function (id) {
+      var room = null;
+      for (var i = 0; i < rooms.length; i++) {
+        if (rooms[i] && String(rooms[i].id) === String(id)) {
+          room = rooms[i];
+          break;
+        }
+      }
+      return room ? 'Room ' + (room.number || room.roomNumber || id) : id;
+    });
+    return names.length <= 2 ? names.join(', ') : names.length + ' rooms selected';
+  }
+
+  function syncHrdMergeRoomsTriggerLabel(root, form) {
+    var search = $('#hrd-merge-rooms-search', root);
+    var menu = $('#hrd-merge-rooms-menu', root);
+    if (!search) return;
+    var menuOpen = !!(menu && !menu.hidden);
+    if (menuOpen && search.getAttribute('data-searching') === '1') return;
+    var optionsEl = $('#hrd-merge-rooms-options', root);
+    var roomsCache = (optionsEl && optionsEl.__mergeAvailableRooms) || [];
+    var summary = hrdMergeRoomsSelectionSummary(form, roomsCache);
+    search.value = summary;
+    search.classList.toggle('is-placeholder', !summary);
+    search.placeholder = 'Select rooms…';
+  }
+
+  function syncHrdMergeSaveEnabled(root, form) {
+    var saveBtn = $('#hrd-merge-save', root);
+    if (!saveBtn) return;
+    var ok = hrdMergeSelectedIds(form).length > 0;
+    saveBtn.disabled = !ok;
+    saveBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
+    if (ok) saveBtn.removeAttribute('title');
+    else saveBtn.title = 'Select rooms to merge';
+  }
+
+  function closeHrdMergeRoomsMenu(root, form) {
+    var wrap = $('#hrd-merge-rooms-select', root);
+    var trigger = $('#hrd-merge-rooms-trigger', root);
+    var menu = $('#hrd-merge-rooms-menu', root);
+    var search = $('#hrd-merge-rooms-search', root);
+    if (menu) {
+      menu.hidden = true;
+      menu.setAttribute('hidden', '');
     }
-    var candidates = (rooms || []).filter(function (room) {
+    if (trigger) trigger.classList.remove('is-open');
+    if (search) {
+      search.setAttribute('aria-expanded', 'false');
+      search.removeAttribute('data-searching');
+    }
+    if (wrap) wrap.classList.remove('is-open');
+    syncHrdMergeRoomsTriggerLabel(root, form || $('#hrd-merge-form', root));
+    applyHrdMergeRoomsSearchFilter(root);
+  }
+
+  function openHrdMergeRoomsMenu(root, opts) {
+    opts = opts || {};
+    var wrap = $('#hrd-merge-rooms-select', root);
+    var trigger = $('#hrd-merge-rooms-trigger', root);
+    var menu = $('#hrd-merge-rooms-menu', root);
+    var search = $('#hrd-merge-rooms-search', root);
+    if (!menu || !trigger) return;
+    menu.hidden = false;
+    menu.removeAttribute('hidden');
+    trigger.classList.add('is-open');
+    if (wrap) wrap.classList.add('is-open');
+    if (search) {
+      search.setAttribute('aria-expanded', 'true');
+      if (opts.clearForSearch) {
+        search.setAttribute('data-searching', '1');
+        search.value = '';
+        search.classList.add('is-placeholder');
+      }
+    }
+    applyHrdMergeRoomsSearchFilter(root);
+    try {
+      menu.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    } catch (err) {
+      /* ignore */
+    }
+    if (search && opts.focus !== false) {
+      setTimeout(function () {
+        search.focus();
+        if (opts.clearForSearch) search.select();
+      }, 0);
+    }
+  }
+
+  function applyHrdMergeRoomsSearchFilter(root) {
+    var optionsEl = $('#hrd-merge-rooms-options', root);
+    var emptyEl = $('#hrd-merge-rooms-empty', root);
+    var search = $('#hrd-merge-rooms-search', root);
+    var menu = $('#hrd-merge-rooms-menu', root);
+    if (!optionsEl) return;
+    var query = '';
+    if (search && menu && !menu.hidden && search.getAttribute('data-searching') === '1') {
+      query = normalize(search.value);
+    }
+    var available = (optionsEl.__mergeAvailableRooms || []).slice();
+    var visible = 0;
+    $all('.hr-board-rooms-option', optionsEl).forEach(function (row) {
+      var input = row.querySelector('input[type="checkbox"]');
+      var id = input ? String(input.value || '') : '';
+      var room = null;
+      for (var i = 0; i < available.length; i++) {
+        if (available[i] && String(available[i].id) === id) {
+          room = available[i];
+          break;
+        }
+      }
+      var show = true;
+      if (query && room) {
+        var label = normalize(hrdMergeRoomOptionLabel(room));
+        var number = normalize(room.number || room.roomNumber || '');
+        var typeLabel = normalize(room.roomTypeLabel || room.roomType || '');
+        show =
+          label.indexOf(query) !== -1 ||
+          number.indexOf(query) !== -1 ||
+          typeLabel.indexOf(query) !== -1 ||
+          normalize(room.id || '').indexOf(query) !== -1;
+      } else if (query && !room) {
+        show = false;
+      }
+      row.hidden = !show;
+      if (show) visible += 1;
+    });
+    if (emptyEl) {
+      if (!available.length) {
+        emptyEl.textContent = 'No rooms available to merge.';
+        emptyEl.hidden = false;
+        emptyEl.removeAttribute('hidden');
+      } else if (!visible) {
+        emptyEl.textContent = 'No rooms match your search.';
+        emptyEl.hidden = false;
+        emptyEl.removeAttribute('hidden');
+      } else {
+        emptyEl.hidden = true;
+        emptyEl.setAttribute('hidden', '');
+      }
+    }
+  }
+
+  function fillMergeRoomOptions(root, form, rooms, currentId) {
+    var optionsEl = $('#hrd-merge-rooms-options', root);
+    var emptyEl = $('#hrd-merge-rooms-empty', root);
+    if (!optionsEl) return 0;
+    var selected = hrdMergeSelectedIds(form);
+    var available = (rooms || []).filter(function (room) {
       if (!room) return false;
       if (String(room.id) === String(currentId)) return false;
       if (room.isMergeMember) return false;
       return true;
     });
-    addOption('', 'Select primary room', true);
-    candidates.forEach(function (room) {
-      var statusLabel = STATUS_LABELS[mapStatus(room.status)] || mapStatus(room.status);
-      var label =
-        'Room ' +
-        (room.number || '') +
-        (room.roomTypeLabel ? ' — ' + room.roomTypeLabel : '') +
-        (statusLabel ? ' · ' + statusLabel : '') +
-        (room.isMergePrimary ? ' (primary)' : '');
-      addOption(room.id, label, false);
+    available.sort(function (a, b) {
+      var an = String(a.number || a.roomNumber || a.id || '');
+      var bn = String(b.number || b.roomNumber || b.id || '');
+      return an.localeCompare(bn, undefined, { numeric: true });
     });
-    resetListbox('hrd-merge-to', '', 'Select primary room');
-    return candidates.length;
+    var keep = selected.filter(function (id) {
+      return available.some(function (room) {
+        return String(room.id) === String(id);
+      });
+    });
+    setHrdMergeSelectedIds(form, keep);
+    optionsEl.__mergeAvailableRooms = available;
+    if (!available.length) {
+      optionsEl.innerHTML = '';
+      if (emptyEl) {
+        emptyEl.textContent = 'No rooms available to merge.';
+        emptyEl.hidden = false;
+        emptyEl.removeAttribute('hidden');
+      }
+      syncHrdMergeRoomsTriggerLabel(root, form);
+      syncHrdMergeSaveEnabled(root, form);
+      return 0;
+    }
+    optionsEl.innerHTML = available
+      .map(function (room) {
+        var id = String(room.id || '');
+        var checked = keep.indexOf(id) !== -1;
+        return (
+          '<label class="hr-board-rooms-option' +
+          (checked ? ' is-selected' : '') +
+          '" role="option" aria-selected="' +
+          (checked ? 'true' : 'false') +
+          '">' +
+          '<input type="checkbox" value="' +
+          escapeHtml(id) +
+          '"' +
+          (checked ? ' checked' : '') +
+          '>' +
+          '<span>' +
+          escapeHtml(hrdMergeRoomOptionLabel(room)) +
+          '</span></label>'
+        );
+      })
+      .join('');
+    applyHrdMergeRoomsSearchFilter(root);
+    syncHrdMergeRoomsTriggerLabel(root, form);
+    syncHrdMergeSaveEnabled(root, form);
+    return available.length;
+  }
+
+  function bindHrdMergeRoomsMultiSelect(root, form) {
+    if (!form || form.getAttribute('data-merge-rooms-bound') === '1') return;
+    form.setAttribute('data-merge-rooms-bound', '1');
+    form.addEventListener('change', function (event) {
+      var input = event.target;
+      if (!input || input.type !== 'checkbox') return;
+      if (!input.closest('#hrd-merge-rooms-options')) return;
+      var selected = hrdMergeSelectedIds(form);
+      var id = String(input.value || '');
+      var idx = selected.indexOf(id);
+      if (input.checked && idx === -1) selected.push(id);
+      if (!input.checked && idx !== -1) selected.splice(idx, 1);
+      setHrdMergeSelectedIds(form, selected);
+      var row = input.closest('.hr-board-rooms-option');
+      if (row) {
+        row.classList.toggle('is-selected', !!input.checked);
+        row.setAttribute('aria-selected', input.checked ? 'true' : 'false');
+      }
+      var search = $('#hrd-merge-rooms-search', root);
+      if (!(search && search.getAttribute('data-searching') === '1')) {
+        syncHrdMergeRoomsTriggerLabel(root, form);
+      }
+      syncHrdMergeSaveEnabled(root, form);
+    });
+    var search = $('#hrd-merge-rooms-search', root);
+    if (search && search.getAttribute('data-bound') !== '1') {
+      search.setAttribute('data-bound', '1');
+      search.addEventListener('focus', function () {
+        openHrdMergeRoomsMenu(root, { clearForSearch: true, focus: false });
+      });
+      search.addEventListener('click', function (event) {
+        event.stopPropagation();
+        openHrdMergeRoomsMenu(root, { clearForSearch: true, focus: false });
+      });
+      search.addEventListener('input', function () {
+        search.setAttribute('data-searching', '1');
+        search.classList.toggle('is-placeholder', !String(search.value || '').trim());
+        openHrdMergeRoomsMenu(root, { clearForSearch: false, focus: false });
+        applyHrdMergeRoomsSearchFilter(root);
+      });
+      search.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          closeHrdMergeRoomsMenu(root, form);
+          search.blur();
+        } else if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          openHrdMergeRoomsMenu(root, { clearForSearch: false, focus: false });
+        }
+      });
+    }
+    var trigger = $('#hrd-merge-rooms-trigger', root);
+    if (trigger && trigger.getAttribute('data-chevron-bound') !== '1') {
+      trigger.setAttribute('data-chevron-bound', '1');
+      trigger.addEventListener('click', function (event) {
+        if (event.target && event.target.closest('#hrd-merge-rooms-search')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        var menu = $('#hrd-merge-rooms-menu', root);
+        if (menu && !menu.hidden) closeHrdMergeRoomsMenu(root, form);
+        else openHrdMergeRoomsMenu(root, { clearForSearch: true });
+      });
+    }
   }
 
   function openMergeModal(root) {
@@ -3875,25 +5116,28 @@
       showToast('This room is already a merge member. Unmerge first.', true);
       return;
     }
+    bindHrdMergeRoomsMultiSelect(root, form);
     var number = root.getAttribute('data-room-number') || '';
-    var fromInput = $('#hrd-merge-from', root);
-    if (fromInput) fromInput.value = 'Room ' + number;
+    var typeLabel =
+      (lastRoom && (lastRoom.roomTypeLabel || lastRoom.roomType)) || '';
+    var primaryInput = $('#hrd-merge-primary', root);
+    if (primaryInput) {
+      primaryInput.value =
+        'Room ' + number + (typeLabel ? ' — ' + typeLabel : '');
+    }
     var note = $('#hrd-merge-note', root);
     if (note) note.value = '';
-    var hint = $('#hrd-merge-hint', root);
-    resetListbox('hrd-merge-to', '', 'Loading rooms…');
-    if (hint) {
-      hint.textContent =
-        'Any rooms can be merged onto one primary bill. Unmerge does not split the bill back.';
-      hint.classList.remove('is-error');
+    setHrdMergeSelectedIds(form, []);
+    syncHrdMergeSaveEnabled(root, form);
+    var optionsEl = $('#hrd-merge-rooms-options', root);
+    if (optionsEl) optionsEl.innerHTML = '';
+    var emptyEl = $('#hrd-merge-rooms-empty', root);
+    if (emptyEl) {
+      emptyEl.textContent = 'Loading rooms…';
+      emptyEl.hidden = false;
+      emptyEl.removeAttribute('hidden');
     }
-    if (typeof global.initEpListboxes === 'function') global.initEpListboxes();
-    if (typeof global.rebindEpListbox === 'function') {
-      Array.from(modal.querySelectorAll('[data-se-listbox]')).forEach(function (lb) {
-        global.rebindEpListbox(lb);
-      });
-    }
-    var listbox = $('#hrd-merge-to-listbox', root);
+    syncHrdMergeRoomsTriggerLabel(root, form);
     modal.hidden = false;
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
@@ -3913,71 +5157,89 @@
         if (!data || !data.ok) {
           throw new Error((data && data.error) || 'Could not load rooms.');
         }
-        var count = fillMergeRoomOptions(listbox, data.rooms || [], currentId);
-        if (hint && !count) {
-          hint.textContent = 'No other rooms available to merge into.';
-          hint.classList.add('is-error');
+        var count = fillMergeRoomOptions(root, form, data.rooms || [], currentId);
+        if (!count) {
+          showToast('No other rooms available to merge.', true);
         }
       })
       .catch(function (err) {
-        resetListbox('hrd-merge-to', '', 'Could not load rooms');
-        if (hint) {
-          hint.textContent = err.message || 'Could not load rooms.';
-          hint.classList.add('is-error');
+        if (emptyEl) {
+          emptyEl.textContent = err.message || 'Could not load rooms.';
+          emptyEl.hidden = false;
+          emptyEl.removeAttribute('hidden');
         }
         showToast(err.message || 'Could not load rooms.', true);
       });
   }
 
   function submitMerge(root, form) {
-    var toRoomId = (form.toRoomId && form.toRoomId.value) || '';
-    if (!toRoomId) {
-      showToast('Select a primary room to merge into.', true);
+    var primaryId = root.getAttribute('data-room-id') || '';
+    var roomIds = hrdMergeSelectedIds(form);
+    if (!primaryId || !roomIds.length) {
+      showToast('Select at least one room to merge.', true);
       return Promise.reject(new Error('validation'));
-    }
-    var api = root.getAttribute('data-room-api') || '';
-    if (!api) {
-      showToast('Room API unavailable.', true);
-      return Promise.reject(new Error('missing api'));
     }
     var saveBtn = $('#hrd-merge-save', root);
     if (saveBtn) saveBtn.disabled = true;
+    closeHrdMergeRoomsMenu(root, form);
     var note = (form.note && form.note.value) || '';
-    var fromRoomId = root.getAttribute('data-room-id') || '';
-
-    return fetch(api, {
-      method: 'PUT',
-      credentials: 'same-origin',
-      headers: apiHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        action: 'merge_rooms',
-        fromRoomId: fromRoomId,
-        toRoomId: toRoomId,
-        note: note
-      })
-    })
-      .then(function (resp) {
-        return resp.json().then(function (data) {
-          return { ok: resp.ok, data: data };
-        });
-      })
-      .then(function (result) {
-        if (!result.ok || !result.data || !result.data.ok) {
-          throw new Error((result.data && result.data.error) || 'Merge failed.');
-        }
+    var chain = Promise.resolve();
+    var mergedCount = 0;
+    var lastPrimary = null;
+    roomIds.forEach(function (fromId) {
+      chain = chain.then(function () {
+        return fetch('/hotel/api/rooms/' + encodeURIComponent(fromId), {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: apiHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({
+            action: 'merge_rooms',
+            fromRoomId: fromId,
+            toRoomId: primaryId,
+            note: note
+          })
+        })
+          .then(function (resp) {
+            return resp.json().then(function (data) {
+              return { ok: resp.ok, data: data };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok || !result.data || !result.data.ok) {
+              throw new Error(
+                (result.data && result.data.error) || 'Merge failed.'
+              );
+            }
+            mergedCount += 1;
+            lastPrimary =
+              result.data.primaryRoom || result.data.room || lastPrimary;
+          });
+      });
+    });
+    return chain
+      .then(function () {
         closeMergeModal(root);
-        var primary = result.data.primaryRoom || result.data.room;
+        var primary = lastPrimary;
         showToast(
-          'Rooms merged. Billing is on Room ' +
-            ((primary && primary.number) || toRoomId) +
-            '.'
+          mergedCount === 1
+            ? 'Rooms merged. Billing is on Room ' +
+                ((primary && primary.number) ||
+                  root.getAttribute('data-room-number') ||
+                  primaryId) +
+                '.'
+            : mergedCount +
+                ' rooms merged. Billing is on Room ' +
+                ((primary && primary.number) ||
+                  root.getAttribute('data-room-number') ||
+                  primaryId) +
+                '.'
         );
-        if (primary && primary.id) {
-          navigateTo('/hotel/rooms/' + encodeURIComponent(primary.id));
-        } else if (result.data.memberRoom) {
-          paintRoom(root, result.data.memberRoom);
+        if (primary) {
+          paintRoom(root, primary);
+        } else {
+          return loadRoomIfNeeded(root);
         }
-        return result.data;
+        return primary;
       })
       .catch(function (err) {
         if (err.message !== 'validation') {
@@ -3986,7 +5248,7 @@
         throw err;
       })
       .finally(function () {
-        if (saveBtn) saveBtn.disabled = false;
+        syncHrdMergeSaveEnabled(root, form);
       });
   }
 
@@ -4079,7 +5341,13 @@
 
     function val(name) {
       var el = form.elements[name];
-      return el ? String(el.value || '').trim() : '';
+      if (!el) {
+        el = form.querySelector('[name="' + name + '"]');
+      }
+      /* Named radio groups return a RadioNodeList — prefer .value when present. */
+      if (el && typeof el.value === 'string') return String(el.value || '').trim();
+      if (el && el.length && el[0]) return String(el[0].value || '').trim();
+      return '';
     }
 
     return {
@@ -4115,12 +5383,14 @@
       checkInDate: val('checkInDate'),
       checkInTime: val('checkInTime'),
       checkOutDate: val('checkOutDate'),
+      checkOutTime: val('checkOutTime') || '11:00',
       nights: Number(val('nights') || 1),
       adults: Number(val('adults') || 1),
       children: Number(val('children') || 0),
-      ratePlan: val('ratePlan'),
-      roomRate: Number(val('roomRate') || 0),
+      ratePlan: primaryMergeRatePlan(form),
+      roomRate: primaryMergeRoomRate(form),
       totalRate: Number(val('totalRate') || 0),
+      mergeRoomRates: collectMergeRoomRates(form),
       paymentMethod: val('paymentMethod'),
       advancePaid: Number(val('advancePaid') || 0),
       paymentReference: val('paymentReference'),
@@ -4170,10 +5440,29 @@
       showToast('Check-in date is required.', true);
       return Promise.reject(new Error('validation'));
     }
+    if (stay.checkInDate > todayISO()) {
+      showToast('Future date check-in is not allowed.', true);
+      return Promise.reject(new Error('validation'));
+    }
     if (stay.agencyBilling && !stay.agencyName) {
       showToast('Agency Name is required for Agency Billing.', true);
       return Promise.reject(new Error('validation'));
     }
+    var gstError = agencyGstValidationError(form);
+    if (gstError) {
+      showToast(gstError, true);
+      var gstInput = form.elements.agencyGst;
+      if (gstInput) {
+        try {
+          gstInput.focus();
+          gstInput.select();
+        } catch (err) {}
+      }
+      return Promise.reject(new Error('validation'));
+    }
+    stay.agencyGst = form.elements.agencyGst
+      ? normalizeGstin(form.elements.agencyGst.value)
+      : stay.agencyGst;
     if (stay.agencyBilling) {
       stay.invoiceTo = stay.agencyName;
       stay.billingName = stay.agencyName;
@@ -4361,9 +5650,14 @@
     if (genInvoice && root.contains(genInvoice)) {
       event.preventDefault();
       event.stopPropagation();
+      var genHref = genInvoice.getAttribute('href') || '';
       var roomId = root.getAttribute('data-room-id') || '';
-      if (!roomId) return;
-      navigateTo('/hotel/rooms/' + encodeURIComponent(roomId) + '/invoice');
+      navigateTo(
+        genHref ||
+          (roomId
+            ? '/hotel/rooms/' + encodeURIComponent(roomId) + '/invoice'
+            : '')
+      );
       return;
     }
 
@@ -4385,10 +5679,13 @@
     if (recordPay && root.contains(recordPay)) {
       event.preventDefault();
       event.stopPropagation();
+      var payHref = recordPay.getAttribute('href') || '';
       var payRoomId = root.getAttribute('data-room-id') || '';
-      if (!payRoomId) return;
       navigateTo(
-        '/hotel/rooms/' + encodeURIComponent(payRoomId) + '/invoice?settle=1'
+        payHref ||
+          (payRoomId
+            ? '/hotel/rooms/' + encodeURIComponent(payRoomId) + '/invoice?settle=1'
+            : '')
       );
       return;
     }
@@ -4438,6 +5735,18 @@
       closeMergeModal(root);
       return;
     }
+    if (mergeModal && !mergeModal.hidden) {
+      var mergeRoomsSelect = $('#hrd-merge-rooms-select', root);
+      var mergeRoomsMenu = $('#hrd-merge-rooms-menu', root);
+      if (
+        mergeRoomsSelect &&
+        mergeRoomsMenu &&
+        !mergeRoomsMenu.hidden &&
+        !mergeRoomsSelect.contains(event.target)
+      ) {
+        closeHrdMergeRoomsMenu(root, $('#hrd-merge-form', root));
+      }
+    }
 
     var reserveModal = $('#hrd-reserve-modal', root);
     if (reserveModal && !reserveModal.hidden && event.target === reserveModal) {
@@ -4471,11 +5780,7 @@
       if (!menu) return;
       var willOpen = menu.hidden || menu.hasAttribute('hidden');
       closeMoreMenu(root);
-      if (willOpen) {
-        menu.hidden = false;
-        menu.removeAttribute('hidden');
-        moreBtn.setAttribute('aria-expanded', 'true');
-      }
+      if (willOpen) openMoreMenu(root);
       return;
     }
 
@@ -4621,7 +5926,11 @@
         return;
       }
       if (action === 'reserve') {
-        openReserveModal(root);
+        openReserveModal(root, { mode: 'edit' });
+        return;
+      }
+      if (action === 'reserve-new') {
+        openReserveModal(root, { mode: 'new' });
         return;
       }
     }
@@ -4688,6 +5997,12 @@
       }
       var mergeModal = $('#hrd-merge-modal', root);
       if (mergeModal && !mergeModal.hidden) {
+        var mergeRoomsMenu = $('#hrd-merge-rooms-menu', root);
+        if (mergeRoomsMenu && !mergeRoomsMenu.hidden) {
+          event.preventDefault();
+          closeHrdMergeRoomsMenu(root, $('#hrd-merge-form', root));
+          return;
+        }
         event.preventDefault();
         closeMergeModal(root);
         return;
@@ -4742,7 +6057,8 @@
       name === 'roomRate' ||
       name === 'advancePaid' ||
       name === 'checkInDate' ||
-      name === 'checkOutDate'
+      name === 'checkOutDate' ||
+      event.target.getAttribute('data-merge-room-rate') != null
     ) {
       if (name === 'nights' || name === 'checkInDate') {
         var nights = Math.max(1, Number(form.nights.value || 1));
@@ -4788,6 +6104,12 @@
       } else if (kind) {
         clearSpecialCharge(form, kind);
       }
+    }
+    if (
+      event.target.getAttribute('data-merge-rate-plan') != null ||
+      event.target.getAttribute('data-merge-room-rate') != null
+    ) {
+      syncTotals(form);
     }
     scheduleCheckinDraftSave(root, form);
   }
@@ -4866,6 +6188,29 @@
     document.addEventListener('input', handleInput, true);
     document.addEventListener('change', handleChange, true);
     document.addEventListener('submit', handleSubmit, true);
+    if (!document.__hotelRoomDetailScrollBound) {
+      document.__hotelRoomDetailScrollBound = true;
+      window.addEventListener(
+        'scroll',
+        function () {
+          var root = pageRoot();
+          if (!root) return;
+          var menu = $('#hrd-more-menu', root);
+          var btn = $('#hrd-more-btn', root);
+          if (!menu || !btn || menu.hidden || menu.hasAttribute('hidden')) return;
+          positionMoreMenu(btn, menu);
+        },
+        true
+      );
+      window.addEventListener('resize', function () {
+        var root = pageRoot();
+        if (!root) return;
+        var menu = $('#hrd-more-menu', root);
+        var btn = $('#hrd-more-btn', root);
+        if (!menu || !btn || menu.hidden || menu.hasAttribute('hidden')) return;
+        positionMoreMenu(btn, menu);
+      });
+    }
     document.__hotelRoomDetailDocBound = true;
   }
 

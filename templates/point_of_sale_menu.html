@@ -32,16 +32,19 @@
     <div class="su-header-top">
       <div class="su-header-left">
         <div class="su-header-nav">
+          {% if request.args.get('embed') == '1' %}
+          <button type="button" class="su-page-back" onclick="if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back to Master">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+          </button>
+          {% else %}
           {% include 'partials/su_page_back.html' with context %}
+          {% endif %}
           <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
             <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
         </div>
         <div class="su-title">
           <div class="su-title-row">
-            <div class="su-title-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
-            </div>
             <h1>Menu &amp; Margin Calculator</h1>
           </div>
         </div>
@@ -128,7 +131,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
-<script src="{{ url_for('static', filename='pos_menu.js') }}?v=36"></script>
+<script src="{{ url_for('static', filename='pos_menu.js') }}?v=37"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>
