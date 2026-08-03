@@ -1686,6 +1686,39 @@
     );
   }
 
+  /** Plain-text KOT for Hotel Print Agent thermal printers (no HTML/CSS). */
+  function buildKotTicketText(page, pending, opts) {
+    opts = opts || {};
+    var now = new Date();
+    var table = fieldValue('pos-inv-table', page) || '—';
+    var orderTypeValue =
+      fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
+    var orderType = ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue;
+    var isBar = opts.menuOutlet === 'bar';
+    var heading = isBar ? 'BAR ORDER TOKEN' : 'KITCHEN ORDER TOKEN';
+    var foot = isBar ? '-- Confirmed for bar --' : '-- Confirmed for kitchen --';
+    var lines = [
+      heading,
+      '--------------------------------',
+      'Order: ' + (state.orderNo || '—'),
+      'Table: ' + table,
+      'Type:  ' + orderType,
+      'Time:  ' + formatDate(now) + ' ' + formatTime(now),
+      '--------------------------------'
+    ];
+    (pending || []).forEach(function (entry) {
+      var line = entry.line || {};
+      var note = String(line.notes || '').trim();
+      lines.push(String(entry.qty || 0) + ' x ' + String(line.name || ''));
+      if (line.variant) lines.push('    ' + String(line.variant));
+      if (note) lines.push('    Note: ' + note);
+    });
+    lines.push('--------------------------------');
+    lines.push(foot);
+    lines.push('');
+    return lines.join('\n');
+  }
+
   function printKotTicketBrowser(html) {
     // #region agent log
     (function (payload) {
@@ -1763,11 +1796,15 @@
         var html = buildKotTicketHtml(page, group.entries, {
           menuOutlet: group.menuOutlet
         });
+        var text = buildKotTicketText(page, group.entries, {
+          menuOutlet: group.menuOutlet
+        });
         var jobId = 'kot-' + group.menuOutlet + '-' + baseId + '-' + Date.now() + '-' + idx;
         global.hbePosPrinterPrefs
           .printKotHtml(html, {
             menuOutlet: group.menuOutlet,
             jobId: jobId,
+            text: text,
             allowBrowserFallback: false
           })
           .then(function (result) {
@@ -1776,7 +1813,7 @@
               var body = JSON.stringify(payload);
               fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
               fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-            })({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'B',location:'pos_invoice.js:printKotTicket.result',message:'printKotHtml result',data:{via:result&&result.via,err:result&&result.error&&result.error.message,role:group.menuOutlet,htmlLen:(html&&html.length)||0},timestamp:Date.now()});
+            })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'F',location:'pos_invoice.js:printKotTicket.result',message:'printKotHtml result',data:{via:result&&result.via,err:result&&result.error&&result.error.message,role:group.menuOutlet,htmlLen:(html&&html.length)||0,textLen:(text&&text.length)||0,textPreview:String(text||'').slice(0,80)},timestamp:Date.now()});
             // #endregion
             if (result && result.via === 'failed') {
               toast(

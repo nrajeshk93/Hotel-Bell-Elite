@@ -2127,6 +2127,44 @@
     );
   }
 
+  function buildKotTokenText(token, lines, allLines, opts) {
+    opts = opts || {};
+    var now = new Date();
+    var orderNo = (token && (token.kot_no || token.order_no)) || '—';
+    var table = (token && token.name) || '—';
+    var totalCount = (allLines || lines || []).length;
+    var selectedCount = (lines || []).length;
+    var subsetNote =
+      selectedCount < totalCount
+        ? selectedCount + ' of ' + totalCount + ' items'
+        : selectedCount + (selectedCount === 1 ? ' item' : ' items');
+    var isBar = opts.menuOutlet === 'bar';
+    var heading = isBar ? 'BAR ORDER TOKEN' : 'KITCHEN ORDER TOKEN';
+    var foot = isBar ? '-- Resent for bar --' : '-- Resent for kitchen --';
+    var out = [
+      heading,
+      '*** REPRINT / RESEND ***',
+      '--------------------------------',
+      'Order: ' + orderNo,
+      'Table: ' + table,
+      'Type:  Dine In',
+      'Items: ' + subsetNote,
+      'Time:  ' + now.toLocaleString(),
+      '--------------------------------'
+    ];
+    (lines || []).forEach(function (line) {
+      var qty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
+      var note = String(line.notes || '').trim();
+      out.push(qty + ' x ' + String(line.name || ''));
+      if (line.variant) out.push('    ' + String(line.variant));
+      if (note) out.push('    Note: ' + note);
+    });
+    out.push('--------------------------------');
+    out.push(foot);
+    out.push('');
+    return out.join('\n');
+  }
+
   function printKotTokenTicket(token, selectedLines, preOpenedWin) {
     var earlyWin = preOpenedWin || null;
     try {
@@ -2183,6 +2221,9 @@
         var html = buildKotTokenHtml(token, group.lines, allLines, {
           menuOutlet: group.menuOutlet
         });
+        var text = buildKotTokenText(token, group.lines, allLines, {
+          menuOutlet: group.menuOutlet
+        });
         var jobId =
           'kot-resend-' + group.menuOutlet + '-' + baseId + '-' + Date.now() + '-' + idx;
 
@@ -2190,6 +2231,7 @@
           .printKotHtml(html, {
             menuOutlet: group.menuOutlet,
             jobId: jobId,
+            text: text,
             allowBrowserFallback: false
           })
           .then(function (result) {

@@ -136,7 +136,7 @@
       return { via: 'failed', error: error };
     }
 
-    if (!html) {
+    if (!html && !(opts.text && String(opts.text).trim())) {
       return Promise.resolve(fail(new Error('Nothing to print.')));
     }
     if (
@@ -157,15 +157,16 @@
       var body = JSON.stringify(payload);
       fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
       fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-    })({sessionId:'42fa9a',hypothesisId:'B',location:'pos_printers.js:printKotHtml.attempt',message:'calling HotelPrintAgent.print',data:{role:role,allowBrowser:!!allowBrowser,htmlLen:(html&&html.length)||0},timestamp:Date.now()});
+    })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:printKotHtml.attempt',message:'calling HotelPrintAgent.print',data:{role:role,allowBrowser:!!allowBrowser,htmlLen:(html&&html.length)||0,contentType:opts.text?'text':(opts.contentType||'html'),textLen:opts.text?String(opts.text).length:0,textPreview:opts.text?String(opts.text).slice(0,120):''},timestamp:Date.now()});
     // #endregion
 
     return global.HotelPrintAgent.print({
       printerRole: role,
       documentType: 'kot',
-      contentType: 'html',
+      /* Prefer plain text — agent HtmlToPlain left <style> CSS on thermal printers. */
+      contentType: opts.text ? 'text' : opts.contentType || 'html',
       contentEncoding: 'utf8',
-      content: html,
+      content: opts.text ? String(opts.text) : html,
       copies: opts.copies || 1,
       jobId: opts.jobId || undefined,
       idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
@@ -176,7 +177,7 @@
           var body = JSON.stringify(payload);
           fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
           fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-        })({sessionId:'42fa9a',hypothesisId:'B',location:'pos_printers.js:printKotHtml.ok',message:'agent print ok',data:{role:role,printerName:data&&data.printerName,jobId:data&&data.jobId},timestamp:Date.now()});
+        })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:printKotHtml.ok',message:'agent print ok',data:{role:role,printerName:data&&data.printerName,jobId:data&&data.jobId,contentType:opts.text?'text':(opts.contentType||'html'),textLen:opts.text?String(opts.text).length:0},timestamp:Date.now()});
         // #endregion
         return { via: 'agent', data: data };
       })
