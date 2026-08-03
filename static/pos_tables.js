@@ -2129,40 +2129,29 @@
 
   function buildKotTokenText(token, lines, allLines, opts) {
     opts = opts || {};
-    var now = new Date();
-    var orderNo = (token && (token.kot_no || token.order_no)) || '—';
-    var table = (token && token.name) || '—';
-    var totalCount = (allLines || lines || []).length;
-    var selectedCount = (lines || []).length;
-    var subsetNote =
-      selectedCount < totalCount
-        ? selectedCount + ' of ' + totalCount + ' items'
-        : selectedCount + (selectedCount === 1 ? ' item' : ' items');
-    var isBar = opts.menuOutlet === 'bar';
-    var heading = isBar ? 'BAR ORDER TOKEN' : 'KITCHEN ORDER TOKEN';
-    var foot = isBar ? '-- Resent for bar --' : '-- Resent for kitchen --';
-    var out = [
-      heading,
-      '*** REPRINT / RESEND ***',
-      '--------------------------------',
-      'Order: ' + orderNo,
-      'Table: ' + table,
-      'Type:  Dine In',
-      'Items: ' + subsetNote,
-      'Time:  ' + now.toLocaleString(),
-      '--------------------------------'
-    ];
-    (lines || []).forEach(function (line) {
-      var qty = Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0;
-      var note = String(line.notes || '').trim();
-      out.push(qty + ' x ' + String(line.name || ''));
-      if (line.variant) out.push('    ' + String(line.variant));
-      if (note) out.push('    Note: ' + note);
+    var items = (lines || []).map(function (line) {
+      return {
+        qty: Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0,
+        name: line.name,
+        variant: line.variant,
+        notes: line.notes
+      };
     });
-    out.push('--------------------------------');
-    out.push(foot);
-    out.push('');
-    return out.join('\n');
+    if (
+      global.hbePosPrinterPrefs &&
+      typeof global.hbePosPrinterPrefs.formatKotTicketText === 'function'
+    ) {
+      return global.hbePosPrinterPrefs.formatKotTicketText({
+        menuOutlet: opts.menuOutlet,
+        orderNo: (token && (token.kot_no || token.order_no)) || '—',
+        orderType: 'Dine In',
+        tableLabel: (token && token.name) || '—',
+        when: new Date(),
+        items: items,
+        resend: true
+      });
+    }
+    return '';
   }
 
   function printKotTokenTicket(token, selectedLines, preOpenedWin) {

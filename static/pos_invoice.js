@@ -1686,37 +1686,35 @@
     );
   }
 
-  /** Plain-text KOT for Hotel Print Agent thermal printers (no HTML/CSS). */
+  /** Plain-text KOT for Hotel Print Agent — 80mm ORDER TICKET layout. */
   function buildKotTicketText(page, pending, opts) {
     opts = opts || {};
-    var now = new Date();
-    var table = fieldValue('pos-inv-table', page) || '—';
     var orderTypeValue =
       fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
-    var orderType = ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue;
-    var isBar = opts.menuOutlet === 'bar';
-    var heading = isBar ? 'BAR ORDER TOKEN' : 'KITCHEN ORDER TOKEN';
-    var foot = isBar ? '-- Confirmed for bar --' : '-- Confirmed for kitchen --';
-    var lines = [
-      heading,
-      '--------------------------------',
-      'Order: ' + (state.orderNo || '—'),
-      'Table: ' + table,
-      'Type:  ' + orderType,
-      'Time:  ' + formatDate(now) + ' ' + formatTime(now),
-      '--------------------------------'
-    ];
-    (pending || []).forEach(function (entry) {
+    var items = (pending || []).map(function (entry) {
       var line = entry.line || {};
-      var note = String(line.notes || '').trim();
-      lines.push(String(entry.qty || 0) + ' x ' + String(line.name || ''));
-      if (line.variant) lines.push('    ' + String(line.variant));
-      if (note) lines.push('    Note: ' + note);
+      return {
+        qty: entry.qty,
+        name: line.name,
+        variant: line.variant,
+        notes: line.notes
+      };
     });
-    lines.push('--------------------------------');
-    lines.push(foot);
-    lines.push('');
-    return lines.join('\n');
+    if (
+      global.hbePosPrinterPrefs &&
+      typeof global.hbePosPrinterPrefs.formatKotTicketText === 'function'
+    ) {
+      return global.hbePosPrinterPrefs.formatKotTicketText({
+        menuOutlet: opts.menuOutlet,
+        orderNo: state.orderNo || '—',
+        orderType: ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue,
+        tableLabel: fieldValue('pos-inv-table', page) || '—',
+        when: new Date(),
+        items: items,
+        resend: false
+      });
+    }
+    return '';
   }
 
   function printKotTicketBrowser(html) {

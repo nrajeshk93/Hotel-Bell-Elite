@@ -101,6 +101,158 @@
     return resolveOutlet(outlet) === 'bar' ? 'bar' : 'kitchen1';
   }
 
+  /** ~80mm thermal character width (Consolas ~9.5pt). */
+  var KOT_COLS = 42;
+
+  function kotRule() {
+    return '------------------------------------------'.slice(0, KOT_COLS);
+  }
+
+  function kotPad(left, right) {
+    left = String(left == null ? '' : left);
+    right = String(right == null ? '' : right);
+    var gap = KOT_COLS - left.length - right.length;
+    if (gap < 1) {
+      left = left.slice(0, Math.max(0, KOT_COLS - right.length - 1));
+      gap = Math.max(1, KOT_COLS - left.length - right.length);
+    }
+    var spaces = '';
+    for (var i = 0; i < gap; i++) spaces += ' ';
+    return left + spaces + right;
+  }
+
+  function kotCenter(text) {
+    text = String(text == null ? '' : text);
+    if (text.length >= KOT_COLS) return text.slice(0, KOT_COLS);
+    var pad = Math.floor((KOT_COLS - text.length) / 2);
+    var spaces = '';
+    for (var i = 0; i < pad; i++) spaces += ' ';
+    return spaces + text;
+  }
+
+  function kotTableNo(label) {
+    var raw = String(label == null ? '' : label).trim();
+    var m = raw.match(/(\d+)\s*$/);
+    if (m) return m[1];
+    return raw.replace(/^table\s*/i, '').trim() || raw || '—';
+  }
+
+  function kotFormatDate(d) {
+    var dt = d instanceof Date ? d : new Date();
+    var months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    var day = String(dt.getDate()).padStart(2, '0');
+    var mon = months[dt.getMonth()] || '';
+    var year = dt.getFullYear();
+    var h = dt.getHours();
+    var m = dt.getMinutes();
+    var ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12;
+    if (!h) h = 12;
+    return (
+      day +
+      '-' +
+      mon +
+      '-' +
+      year +
+      ' ' +
+      h +
+      ':' +
+      String(m).padStart(2, '0') +
+      ' ' +
+      ampm
+    );
+  }
+
+  function getKotReceiptMeta(outlet) {
+    var o = resolveOutlet(outlet);
+    var cfg =
+      typeof global.getPosReceiptConfig === 'function'
+        ? global.getPosReceiptConfig(o)
+        : null;
+    if (!cfg && typeof document !== 'undefined') {
+      try {
+        var el = document.getElementById('pos-receipt-config-data');
+        if (el) cfg = JSON.parse(el.textContent || '{}');
+      } catch (e) {
+        cfg = null;
+      }
+    }
+    cfg = cfg || {};
+    return {
+      brand: 'HOTEL BELL ELITE',
+      business:
+        cfg.business_name ||
+        (o === 'bar' ? 'IRISH BARREL HOUSE BAR' : 'SPICE MULTICUISINE'),
+      userLabel: cfg.user_label || (o === 'bar' ? 'BAR' : 'RESTAURANT'),
+      kitchenLabel: o === 'bar' ? 'BAR' : 'KITCHEN'
+    };
+  }
+
+  /**
+   * Compact 80mm ORDER TICKET layout (matches kitchen thermal format).
+   * Prefixes <<C>>/<<B>>/<<L>> are honored by Hotel Print Agent 1.2.2+.
+   */
+  function formatKotTicketText(opts) {
+    opts = opts || {};
+    var meta = getKotReceiptMeta(opts.menuOutlet || opts.outlet);
+    var orderNo = opts.orderNo || '—';
+    var orderType = opts.orderType || 'Dine In';
+    var tableNo = kotTableNo(opts.tableLabel);
+    var when = opts.when instanceof Date ? opts.when : new Date();
+    var items = Array.isArray(opts.items) ? opts.items : [];
+    var isResend = !!opts.resend;
+    var rule = kotRule();
+    var lines = [
+      '<<C>>' + meta.brand,
+      '<<C>>' + String(meta.business).toUpperCase(),
+      rule,
+      'Order No. : ' + orderNo,
+      'Order Type : ' + orderType,
+      'Date : ' + kotFormatDate(when),
+      '<<L>>Table No. : ' + tableNo,
+      'Kitchen : ' + meta.kitchenLabel,
+      'User : ' + meta.userLabel,
+      rule
+    ];
+    if (isResend) {
+      lines.push('<<C>>REPRINT / RESEND');
+      lines.push(rule);
+    }
+    lines.push('<<C>>ORDER TICKET');
+    lines.push(rule);
+    lines.push('<<B>>' + kotPad('Items', 'Qty'));
+    lines.push(rule);
+    var totalQty = 0;
+    items.forEach(function (it) {
+      var qty = Number(it.qty) || 0;
+      totalQty += qty;
+      var name = String(it.name || '')
+        .trim()
+        .toUpperCase();
+      lines.push('<<B>>' + kotPad(name, String(qty)));
+      if (it.variant) lines.push('  ' + String(it.variant).trim());
+      if (it.notes) lines.push('  Note: ' + String(it.notes).trim());
+    });
+    lines.push(rule);
+    lines.push('<<B>>' + kotPad('Total Items', String(totalQty)));
+    lines.push(rule);
+    lines.push('');
+    return lines.join('\n');
+  }
+
   /**
    * Send a KOT HTML slip to the Restaurant or Bar KOT printer via Hotel Print
    * Agent (silent — no Chrome print dialog).
@@ -481,6 +633,7 @@
     shouldAutoPrintKot: shouldAutoPrintKot,
     shouldAutoPrintReceiptOnSettle: shouldAutoPrintReceiptOnSettle,
     kotPrinterRole: kotPrinterRole,
+    formatKotTicketText: formatKotTicketText,
     printKotHtml: printKotHtml,
     invoicePrinterRole: invoicePrinterRole,
     printInvoiceHtml: printInvoiceHtml,
