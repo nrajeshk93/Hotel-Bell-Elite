@@ -1686,33 +1686,37 @@
     );
   }
 
-  /** Plain-text KOT for Hotel Print Agent — 80mm ORDER TICKET layout. */
-  function buildKotTicketText(page, pending, opts) {
+  /** Plain-text / ESC-POS KOT model for Hotel Print Agent. */
+  function buildKotTicketModel(page, pending, opts) {
     opts = opts || {};
     var orderTypeValue =
       fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
-    var items = (pending || []).map(function (entry) {
-      var line = entry.line || {};
-      return {
-        qty: entry.qty,
-        name: line.name,
-        variant: line.variant,
-        notes: line.notes
-      };
-    });
+    return {
+      menuOutlet: opts.menuOutlet,
+      orderNo: state.orderNo || '—',
+      orderType: ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue,
+      tableLabel: fieldValue('pos-inv-table', page) || '—',
+      when: new Date(),
+      items: (pending || []).map(function (entry) {
+        var line = entry.line || {};
+        return {
+          qty: entry.qty,
+          name: line.name,
+          variant: line.variant,
+          notes: line.notes
+        };
+      }),
+      resend: false
+    };
+  }
+
+  function buildKotTicketText(page, pending, opts) {
+    var model = buildKotTicketModel(page, pending, opts);
     if (
       global.hbePosPrinterPrefs &&
       typeof global.hbePosPrinterPrefs.formatKotTicketText === 'function'
     ) {
-      return global.hbePosPrinterPrefs.formatKotTicketText({
-        menuOutlet: opts.menuOutlet,
-        orderNo: state.orderNo || '—',
-        orderType: ORDER_TYPE_LABELS[orderTypeValue] || orderTypeValue,
-        tableLabel: fieldValue('pos-inv-table', page) || '—',
-        when: new Date(),
-        items: items,
-        resend: false
-      });
+      return global.hbePosPrinterPrefs.formatKotTicketText(model);
     }
     return '';
   }
@@ -1794,6 +1798,9 @@
         var html = buildKotTicketHtml(page, group.entries, {
           menuOutlet: group.menuOutlet
         });
+        var kot = buildKotTicketModel(page, group.entries, {
+          menuOutlet: group.menuOutlet
+        });
         var text = buildKotTicketText(page, group.entries, {
           menuOutlet: group.menuOutlet
         });
@@ -1802,6 +1809,7 @@
           .printKotHtml(html, {
             menuOutlet: group.menuOutlet,
             jobId: jobId,
+            kot: kot,
             text: text,
             allowBrowserFallback: false
           })
@@ -1811,7 +1819,7 @@
               var body = JSON.stringify(payload);
               fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
               fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-            })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'F',location:'pos_invoice.js:printKotTicket.result',message:'printKotHtml result',data:{via:result&&result.via,err:result&&result.error&&result.error.message,role:group.menuOutlet,htmlLen:(html&&html.length)||0,textLen:(text&&text.length)||0,textPreview:String(text||'').slice(0,80)},timestamp:Date.now()});
+            })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'G',location:'pos_invoice.js:printKotTicket.result',message:'printKotHtml result',data:{via:result&&result.via,err:result&&result.error&&result.error.message,role:group.menuOutlet,fallback:result&&result.fallback,textLen:(text&&text.length)||0},timestamp:Date.now()});
             // #endregion
             if (result && result.via === 'failed') {
               toast(

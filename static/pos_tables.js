@@ -2127,29 +2127,33 @@
     );
   }
 
-  function buildKotTokenText(token, lines, allLines, opts) {
+  function buildKotTokenModel(token, lines, opts) {
     opts = opts || {};
-    var items = (lines || []).map(function (line) {
-      return {
-        qty: Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0,
-        name: line.name,
-        variant: line.variant,
-        notes: line.notes
-      };
-    });
+    return {
+      menuOutlet: opts.menuOutlet,
+      orderNo: (token && (token.kot_no || token.order_no)) || '—',
+      orderType: 'Dine In',
+      tableLabel: (token && token.name) || '—',
+      when: new Date(),
+      items: (lines || []).map(function (line) {
+        return {
+          qty: Number(line.sent_qty != null ? line.sent_qty : line.qty) || 0,
+          name: line.name,
+          variant: line.variant,
+          notes: line.notes
+        };
+      }),
+      resend: true
+    };
+  }
+
+  function buildKotTokenText(token, lines, allLines, opts) {
+    var model = buildKotTokenModel(token, lines, opts);
     if (
       global.hbePosPrinterPrefs &&
       typeof global.hbePosPrinterPrefs.formatKotTicketText === 'function'
     ) {
-      return global.hbePosPrinterPrefs.formatKotTicketText({
-        menuOutlet: opts.menuOutlet,
-        orderNo: (token && (token.kot_no || token.order_no)) || '—',
-        orderType: 'Dine In',
-        tableLabel: (token && token.name) || '—',
-        when: new Date(),
-        items: items,
-        resend: true
-      });
+      return global.hbePosPrinterPrefs.formatKotTicketText(model);
     }
     return '';
   }
@@ -2210,6 +2214,9 @@
         var html = buildKotTokenHtml(token, group.lines, allLines, {
           menuOutlet: group.menuOutlet
         });
+        var kot = buildKotTokenModel(token, group.lines, {
+          menuOutlet: group.menuOutlet
+        });
         var text = buildKotTokenText(token, group.lines, allLines, {
           menuOutlet: group.menuOutlet
         });
@@ -2220,6 +2227,7 @@
           .printKotHtml(html, {
             menuOutlet: group.menuOutlet,
             jobId: jobId,
+            kot: kot,
             text: text,
             allowBrowserFallback: false
           })

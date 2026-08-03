@@ -202,8 +202,8 @@
   }
 
   /**
-   * Compact 80mm ORDER TICKET layout (matches kitchen thermal format).
-   * Prefixes <<C>>/<<B>>/<<L>> are honored by Hotel Print Agent 1.2.2+.
+   * Compact 80mm ORDER TICKET layout (plain text — no markup tags).
+   * Prefer formatKotTicketEscPos for thermal printers (full paper width).
    */
   function formatKotTicketText(opts) {
     opts = opts || {};
@@ -216,24 +216,24 @@
     var isResend = !!opts.resend;
     var rule = kotRule();
     var lines = [
-      '<<C>>' + meta.brand,
-      '<<C>>' + String(meta.business).toUpperCase(),
+      kotCenter(meta.brand),
+      kotCenter(String(meta.business).toUpperCase()),
       rule,
       'Order No. : ' + orderNo,
       'Order Type : ' + orderType,
       'Date : ' + kotFormatDate(when),
-      '<<L>>Table No. : ' + tableNo,
+      'Table No. : ' + tableNo,
       'Kitchen : ' + meta.kitchenLabel,
       'User : ' + meta.userLabel,
       rule
     ];
     if (isResend) {
-      lines.push('<<C>>REPRINT / RESEND');
+      lines.push(kotCenter('REPRINT / RESEND'));
       lines.push(rule);
     }
-    lines.push('<<C>>ORDER TICKET');
+    lines.push(kotCenter('ORDER TICKET'));
     lines.push(rule);
-    lines.push('<<B>>' + kotPad('Items', 'Qty'));
+    lines.push(kotPad('Items', 'Qty'));
     lines.push(rule);
     var totalQty = 0;
     items.forEach(function (it) {
@@ -242,20 +242,132 @@
       var name = String(it.name || '')
         .trim()
         .toUpperCase();
-      lines.push('<<B>>' + kotPad(name, String(qty)));
+      lines.push(kotPad(name, String(qty)));
       if (it.variant) lines.push('  ' + String(it.variant).trim());
       if (it.notes) lines.push('  Note: ' + String(it.notes).trim());
     });
     lines.push(rule);
-    lines.push('<<B>>' + kotPad('Total Items', String(totalQty)));
+    lines.push(kotPad('Total Items', String(totalQty)));
     lines.push(rule);
     lines.push('');
     return lines.join('\n');
   }
 
+  function escPosEncodeAscii(str) {
+    var s = String(str == null ? '' : str);
+    var out = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      out += c < 128 ? s.charAt(i) : '?';
+    }
+    return out;
+  }
+
+  function toBase64Binary(binStr) {
+    if (typeof btoa !== 'function') return '';
+    return btoa(String(binStr || ''));
+  }
+
   /**
-   * Send a KOT HTML slip to the Restaurant or Bar KOT printer via Hotel Print
+   * ESC/POS bytes for 80mm kitchen printers — full width, no GDI wrap.
+   * Works with existing Hotel Print Agent (contentType: escpos).
+   */
+  function formatKotTicketEscPos(opts) {
+    opts = opts || {};
+    var ESC = '\x1b';
+    var GS = '\x1d';
+    var meta = getKotReceiptMeta(opts.menuOutlet || opts.outlet);
+    var orderNo = opts.orderNo || '—';
+    var orderType = opts.orderType || 'Dine In';
+    var tableNo = kotTableNo(opts.tableLabel);
+    var when = opts.when instanceof Date ? opts.when : new Date();
+    var items = Array.isArray(opts.items) ? opts.items : [];
+    var isResend = !!opts.resend;
+    var rule = kotRule();
+    var parts = [];
+
+    function raw(s) {
+      parts.push(s);
+    }
+    function line(s) {
+      parts.push(escPosEncodeAscii(s) + '\n');
+    }
+    function center(on) {
+      raw(ESC + 'a' + (on ? '\x01' : '\x00'));
+    }
+    function bold(on) {
+      raw(ESC + 'E' + (on ? '\x01' : '\x00'));
+    }
+    function doubleH(on) {
+      /* GS ! n — bit 0/4 double height/width */
+      raw(GS + '!' + (on ? '\x11' : '\x00'));
+    }
+
+    raw(ESC + '@'); /* initialize */
+    center(true);
+    bold(true);
+    line(meta.brand);
+    line(String(meta.business).toUpperCase());
+    bold(false);
+    center(false);
+    line(rule);
+    line('Order No. : ' + orderNo);
+    line('Order Type : ' + orderType);
+    line('Date : ' + kotFormatDate(when));
+    bold(true);
+    doubleH(true);
+    line('Table No. : ' + tableNo);
+    doubleH(false);
+    bold(false);
+    line('Kitchen : ' + meta.kitchenLabel);
+    line('User : ' + meta.userLabel);
+    line(rule);
+    if (isResend) {
+      center(true);
+      bold(true);
+      line('REPRINT / RESEND');
+      bold(false);
+      center(false);
+      line(rule);
+    }
+    center(true);
+    bold(true);
+    line('ORDER TICKET');
+    bold(false);
+    center(false);
+    line(rule);
+    bold(true);
+    line(kotPad('Items', 'Qty'));
+    bold(false);
+    line(rule);
+    var totalQty = 0;
+    items.forEach(function (it) {
+      var qty = Number(it.qty) || 0;
+      totalQty += qty;
+      var name = String(it.name || '')
+        .trim()
+        .toUpperCase();
+      bold(true);
+      line(kotPad(name, String(qty)));
+      bold(false);
+      if (it.variant) line('  ' + String(it.variant).trim());
+      if (it.notes) line('  Note: ' + String(it.notes).trim());
+    });
+    line(rule);
+    bold(true);
+    line(kotPad('Total Items', String(totalQty)));
+    bold(false);
+    line(rule);
+    raw('\n\n');
+    /* Partial cut if supported; ignored by printers that don't. */
+    raw(GS + 'V' + '\x01');
+    return parts.join('');
+  }
+
+  /**
+   * Send a KOT slip to the Restaurant or Bar KOT printer via Hotel Print
    * Agent (silent — no Chrome print dialog).
+   * Prefers ESC/POS for full-width thermal output on existing EXE builds.
    * Set opts.allowBrowserFallback = true only when a browser dialog is OK.
    */
   function printKotHtml(html, opts) {
@@ -288,7 +400,20 @@
       return { via: 'failed', error: error };
     }
 
-    if (!html && !(opts.text && String(opts.text).trim())) {
+    var kot = opts.kot || null;
+    var text =
+      opts.text ||
+      (kot ? formatKotTicketText(kot) : '');
+    var escposB64 = '';
+    if (kot) {
+      try {
+        escposB64 = toBase64Binary(formatKotTicketEscPos(kot));
+      } catch (e) {
+        escposB64 = '';
+      }
+    }
+
+    if (!html && !text && !escposB64) {
       return Promise.resolve(fail(new Error('Nothing to print.')));
     }
     if (
@@ -304,36 +429,73 @@
       );
     }
 
+    var job = {
+      printerRole: role,
+      documentType: 'kot',
+      copies: opts.copies || 1,
+      jobId: opts.jobId || undefined,
+      idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
+    };
+    if (escposB64) {
+      job.contentType = 'escpos';
+      job.contentEncoding = 'base64';
+      job.content = escposB64;
+    } else if (text) {
+      job.contentType = 'text';
+      job.contentEncoding = 'utf8';
+      job.content = String(text);
+    } else {
+      job.contentType = opts.contentType || 'html';
+      job.contentEncoding = 'utf8';
+      job.content = html;
+    }
+
     // #region agent log
     (function (payload) {
       var body = JSON.stringify(payload);
       fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
       fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-    })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:printKotHtml.attempt',message:'calling HotelPrintAgent.print',data:{role:role,allowBrowser:!!allowBrowser,htmlLen:(html&&html.length)||0,contentType:opts.text?'text':(opts.contentType||'html'),textLen:opts.text?String(opts.text).length:0,textPreview:opts.text?String(opts.text).slice(0,120):''},timestamp:Date.now()});
+    })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'G',location:'pos_printers.js:printKotHtml.attempt',message:'calling HotelPrintAgent.print',data:{role:role,contentType:job.contentType,contentEncoding:job.contentEncoding,textLen:text?String(text).length:0,escposLen:escposB64?escposB64.length:0,textPreview:text?String(text).slice(0,100):''},timestamp:Date.now()});
     // #endregion
 
-    return global.HotelPrintAgent.print({
-      printerRole: role,
-      documentType: 'kot',
-      /* Prefer plain text — agent HtmlToPlain left <style> CSS on thermal printers. */
-      contentType: opts.text ? 'text' : opts.contentType || 'html',
-      contentEncoding: 'utf8',
-      content: opts.text ? String(opts.text) : html,
-      copies: opts.copies || 1,
-      jobId: opts.jobId || undefined,
-      idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
-    })
+    return global.HotelPrintAgent.print(job)
       .then(function (data) {
         // #region agent log
         (function (payload) {
           var body = JSON.stringify(payload);
           fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
           fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-        })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'F',location:'pos_printers.js:printKotHtml.ok',message:'agent print ok',data:{role:role,printerName:data&&data.printerName,jobId:data&&data.jobId,contentType:opts.text?'text':(opts.contentType||'html'),textLen:opts.text?String(opts.text).length:0},timestamp:Date.now()});
+        })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'G',location:'pos_printers.js:printKotHtml.ok',message:'agent print ok',data:{role:role,printerName:data&&data.printerName,jobId:data&&data.jobId,contentType:job.contentType},timestamp:Date.now()});
         // #endregion
         return { via: 'agent', data: data };
       })
       .catch(function (err) {
+        /* If RAW/ESC-POS rejected by driver, fall back to plain text once. */
+        if (job.contentType === 'escpos' && text) {
+          // #region agent log
+          (function (payload) {
+            var body = JSON.stringify(payload);
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
+            fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
+          })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'G',location:'pos_printers.js:printKotHtml.escposFallback',message:'escpos failed, trying text',data:{err:err&&err.message},timestamp:Date.now()});
+          // #endregion
+          return global.HotelPrintAgent.print({
+            printerRole: role,
+            documentType: 'kot',
+            contentType: 'text',
+            contentEncoding: 'utf8',
+            content: String(text),
+            copies: opts.copies || 1,
+            jobId: (opts.jobId || 'kot') + '-txt',
+            idempotencyKey: ((opts.idempotencyKey || opts.jobId || '') + '-txt') || undefined
+          })
+            .then(function (data) {
+              return { via: 'agent', data: data, fallback: 'text' };
+            })
+            .catch(function (err2) {
+              return fail(err2 || err);
+            });
+        }
         return fail(err);
       });
   }
@@ -634,6 +796,7 @@
     shouldAutoPrintReceiptOnSettle: shouldAutoPrintReceiptOnSettle,
     kotPrinterRole: kotPrinterRole,
     formatKotTicketText: formatKotTicketText,
+    formatKotTicketEscPos: formatKotTicketEscPos,
     printKotHtml: printKotHtml,
     invoicePrinterRole: invoicePrinterRole,
     printInvoiceHtml: printInvoiceHtml,
