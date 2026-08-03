@@ -295,60 +295,63 @@
     function center(on) {
       raw(ESC + 'a' + (on ? '\x01' : '\x00'));
     }
-    function bold(on) {
-      raw(ESC + 'E' + (on ? '\x01' : '\x00'));
-    }
     /**
-     * ESC/POS character scale via GS ! n (1–8). width/height are multipliers.
-     * Example: charSize(2,2) ≈ double-wide + double-tall.
+     * Printer-safe emphasis. Many Windows/RAW thermal stacks ignore GS ! alone;
+     * ESC ! bit flags are more widely honored (Champ / RP series).
+     * opts: { bold, doubleH, doubleW }
      */
-    function charSize(widthMul, heightMul) {
-      var w = Math.max(1, Math.min(8, Number(widthMul) || 1)) - 1;
-      var h = Math.max(1, Math.min(8, Number(heightMul) || 1)) - 1;
+    function textStyle(opts) {
+      opts = opts || {};
+      var n = 0;
+      if (opts.bold) n |= 0x08;
+      if (opts.doubleH) n |= 0x10;
+      if (opts.doubleW) n |= 0x20;
+      raw(ESC + '!' + String.fromCharCode(n));
+      /* Mirror with GS ! for firmwares that prefer it. */
+      var w = opts.doubleW ? 1 : 0;
+      var h = opts.doubleH ? 1 : 0;
       raw(GS + '!' + String.fromCharCode((w << 4) | h));
+      if (opts.bold) raw(ESC + 'E' + '\x01');
+      else raw(ESC + 'E' + '\x00');
     }
 
     raw(ESC + '@'); /* initialize */
     center(true);
-    bold(true);
-    charSize(1, 1);
+    textStyle({ bold: true });
     line(meta.brand);
-    /* Spice / outlet name: +4 visual size vs body → 2×2 scale, bold. */
-    bold(true);
-    charSize(2, 2);
+    /* Spice / outlet: larger + bold (double width & height). */
+    textStyle({ bold: true, doubleH: true, doubleW: true });
     line(String(meta.business).toUpperCase());
-    charSize(1, 1);
-    bold(false);
+    textStyle({});
     center(false);
     line(rule);
     line('Order No. : ' + orderNo);
     line('Order Type : ' + orderType);
     line('Date : ' + kotFormatDate(when));
-    /* Table No: was 2×2; reduce ~2 steps → normal size, bold only. */
-    bold(true);
-    charSize(1, 1);
+    /* Table No: normal size, bold only (no double). */
+    textStyle({ bold: true });
     line('Table No. : ' + tableNo);
-    bold(false);
+    textStyle({});
     line('Kitchen : ' + meta.kitchenLabel);
     line('User : ' + meta.userLabel);
     line(rule);
     if (isResend) {
       center(true);
-      bold(true);
+      textStyle({ bold: true });
       line('REPRINT / RESEND');
-      bold(false);
+      textStyle({});
       center(false);
       line(rule);
     }
     center(true);
-    bold(true);
+    textStyle({ bold: true });
     line('ORDER TICKET');
-    bold(false);
+    textStyle({});
     center(false);
     line(rule);
-    bold(true);
+    textStyle({ bold: true });
     line(kotPad('Items', 'Qty'));
-    bold(false);
+    textStyle({});
     line(rule);
     var totalQty = 0;
     items.forEach(function (it) {
@@ -357,16 +360,16 @@
       var name = String(it.name || '')
         .trim()
         .toUpperCase();
-      bold(true);
+      textStyle({ bold: true });
       line(kotPad(name, String(qty)));
-      bold(false);
+      textStyle({});
       if (it.variant) line('  ' + String(it.variant).trim());
       if (it.notes) line('  Note: ' + String(it.notes).trim());
     });
     line(rule);
-    bold(true);
+    textStyle({ bold: true });
     line(kotPad('Total Items', String(totalQty)));
-    bold(false);
+    textStyle({});
     line(rule);
     raw('\n\n');
     /* Partial cut if supported; ignored by printers that don't. */
@@ -396,13 +399,6 @@
           : new Error(
               'Print Agent did not print. Open Hotel Print Agent and map the KOT printer.'
             );
-      // #region agent log
-      (function (payload) {
-        var body = JSON.stringify(payload);
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-        fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-      })({sessionId:'42fa9a',hypothesisId:'B_D',location:'pos_printers.js:printKotHtml.fail',message:'printKotHtml fail',data:{role:role,allowBrowser:!!allowBrowser,err:error&&error.message,htmlLen:(html&&html.length)||0},timestamp:Date.now()});
-      // #endregion
       if (allowBrowser) {
         browserPrint();
         return { via: 'browser', error: error };
@@ -460,35 +456,14 @@
       job.content = html;
     }
 
-    // #region agent log
-    (function (payload) {
-      var body = JSON.stringify(payload);
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-      fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-    })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'H',location:'pos_printers.js:printKotHtml.attempt',message:'calling HotelPrintAgent.print',data:{role:role,contentType:job.contentType,contentEncoding:job.contentEncoding,textLen:text?String(text).length:0,escposLen:escposB64?escposB64.length:0,fontTune:{spice:'2x2 bold',tableNo:'1x1 bold (was 2x2)'},textPreview:text?String(text).slice(0,100):''},timestamp:Date.now()});
-    // #endregion
 
     return global.HotelPrintAgent.print(job)
       .then(function (data) {
-        // #region agent log
-        (function (payload) {
-          var body = JSON.stringify(payload);
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-          fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-        })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'G',location:'pos_printers.js:printKotHtml.ok',message:'agent print ok',data:{role:role,printerName:data&&data.printerName,jobId:data&&data.jobId,contentType:job.contentType},timestamp:Date.now()});
-        // #endregion
         return { via: 'agent', data: data };
       })
       .catch(function (err) {
         /* If RAW/ESC-POS rejected by driver, fall back to plain text once. */
         if (job.contentType === 'escpos' && text) {
-          // #region agent log
-          (function (payload) {
-            var body = JSON.stringify(payload);
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-            fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-          })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'G',location:'pos_printers.js:printKotHtml.escposFallback',message:'escpos failed, trying text',data:{err:err&&err.message},timestamp:Date.now()});
-          // #endregion
           return global.HotelPrintAgent.print({
             printerRole: role,
             documentType: 'kot',
@@ -798,6 +773,210 @@
     });
   }
 
+  /**
+   * Local KOT simulation: build a thermal-width PDF and trigger browser download
+   * (typically ~/Downloads). Used to verify layout before silent Print Agent jobs.
+   */
+  function downloadKotTicketPdf(opts, filename) {
+    opts = opts || {};
+    var meta = getKotReceiptMeta(opts.menuOutlet || opts.outlet);
+    var orderNo = String(opts.orderNo || '—');
+    var orderType = String(opts.orderType || 'Dine In');
+    var tableNo = kotTableNo(opts.tableLabel);
+    var when = opts.when instanceof Date ? opts.when : new Date();
+    var items = Array.isArray(opts.items) ? opts.items : [];
+    var isResend = !!opts.resend;
+    var rule = kotRule();
+    var pageW = 226.77; /* 80mm */
+    var margin = 14;
+    var contentW = pageW - margin * 2;
+    var rows = [];
+
+    function add(text, font, size, align) {
+      rows.push({
+        text: String(text == null ? '' : text),
+        font: font || 'F1',
+        size: size || 9,
+        align: align || 'left'
+      });
+    }
+    function addGap(h) {
+      rows.push({ gap: h || 4 });
+    }
+
+    add(meta.brand, 'F2', 11, 'center');
+    add(String(meta.business).toUpperCase(), 'F2', 15, 'center'); /* +size, bold */
+    addGap(3);
+    add(rule, 'F1', 8, 'left');
+    add('Order No. : ' + orderNo, 'F1', 9, 'left');
+    add('Order Type : ' + orderType, 'F1', 9, 'left');
+    add('Date : ' + kotFormatDate(when), 'F1', 9, 'left');
+    add('Table No. : ' + tableNo, 'F2', 11, 'left'); /* bold, not double-size */
+    add('Kitchen : ' + meta.kitchenLabel, 'F1', 9, 'left');
+    add('User : ' + meta.userLabel, 'F1', 9, 'left');
+    add(rule, 'F1', 8, 'left');
+    if (isResend) {
+      add('REPRINT / RESEND', 'F2', 10, 'center');
+      add(rule, 'F1', 8, 'left');
+    }
+    add('ORDER TICKET', 'F2', 11, 'center');
+    add(rule, 'F1', 8, 'left');
+    add(kotPad('Items', 'Qty'), 'F2', 9, 'left');
+    add(rule, 'F1', 8, 'left');
+    var totalQty = 0;
+    items.forEach(function (it) {
+      var qty = Number(it.qty) || 0;
+      totalQty += qty;
+      add(
+        kotPad(
+          String(it.name || '')
+            .trim()
+            .toUpperCase(),
+          String(qty)
+        ),
+        'F2',
+        9,
+        'left'
+      );
+      if (it.variant) add('  ' + String(it.variant).trim(), 'F1', 8, 'left');
+      if (it.notes) add('  Note: ' + String(it.notes).trim(), 'F1', 8, 'left');
+    });
+    add(rule, 'F1', 8, 'left');
+    add(kotPad('Total Items', String(totalQty)), 'F2', 9, 'left');
+    add(rule, 'F1', 8, 'left');
+
+    var y = 0;
+    var lineHs = [];
+    rows.forEach(function (r) {
+      if (r.gap) {
+        lineHs.push(r.gap);
+        y += r.gap;
+        return;
+      }
+      var h = (r.size || 9) * 1.25;
+      lineHs.push(h);
+      y += h;
+    });
+    var pageH = Math.max(200, margin * 2 + y + 16);
+
+    function esc(s) {
+      return String(s)
+        .replace(/\\/g, '\\\\')
+        .replace(/\(/g, '\\(')
+        .replace(/\)/g, '\\)');
+    }
+
+    var stream = 'BT\n';
+    var cursor = pageH - margin;
+    rows.forEach(function (r, idx) {
+      var h = lineHs[idx];
+      if (r.gap) {
+        cursor -= h;
+        return;
+      }
+      cursor -= h;
+      var font = r.font === 'F2' ? '/F2' : '/F1';
+      var size = r.size || 9;
+      var x = margin;
+      if (r.align === 'center') {
+        /* Approximate center using average char width ~0.5*size for Helvetica. */
+        var approx = String(r.text).length * size * 0.5;
+        x = Math.max(margin, (pageW - approx) / 2);
+      }
+      /* Use Tm (absolute), not Td — relative Td stacked Y and pushed lines off-page. */
+      stream +=
+        font +
+        ' ' +
+        size +
+        ' Tf\n1 0 0 1 ' +
+        x.toFixed(2) +
+        ' ' +
+        cursor.toFixed(2) +
+        ' Tm\n(' +
+        esc(r.text) +
+        ') Tj\n';
+    });
+    stream += 'ET';
+
+    var objects = [];
+    function obj(body) {
+      objects.push(body);
+      return objects.length;
+    }
+    var iFont1 = obj('<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>');
+    var iFont2 = obj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+    var iContent = obj(
+      '<< /Length ' + stream.length + ' >>\nstream\n' + stream + '\nendstream'
+    );
+    var iPage = obj(
+      '<< /Type /Page /Parent 0 0 R /MediaBox [0 0 ' +
+        pageW.toFixed(2) +
+        ' ' +
+        pageH.toFixed(2) +
+        '] /Contents ' +
+        iContent +
+        ' 0 R /Resources << /Font << /F1 ' +
+        iFont1 +
+        ' 0 R /F2 ' +
+        iFont2 +
+        ' 0 R >> >> >>'
+    );
+    var iPages = obj('<< /Type /Pages /Kids [' + iPage + ' 0 R] /Count 1 >>');
+    var iCatalog = obj('<< /Type /Catalog /Pages ' + iPages + ' 0 R >>');
+    /* Fix page parent ref */
+    objects[iPage - 1] = objects[iPage - 1].replace(
+      '/Parent 0 0 R',
+      '/Parent ' + iPages + ' 0 R'
+    );
+
+    var pdf = '%PDF-1.4\n';
+    var xref = [];
+    objects.forEach(function (body, i) {
+      xref.push(pdf.length);
+      pdf += i + 1 + ' 0 obj\n' + body + '\nendobj\n';
+    });
+    var xrefStart = pdf.length;
+    pdf += 'xref\n0 ' + (objects.length + 1) + '\n';
+    pdf += '0000000000 65535 f \n';
+    xref.forEach(function (off) {
+      pdf += String(off).padStart(10, '0') + ' 00000 n \n';
+    });
+    pdf +=
+      'trailer\n<< /Size ' +
+      (objects.length + 1) +
+      ' /Root ' +
+      iCatalog +
+      ' 0 R >>\nstartxref\n' +
+      xrefStart +
+      '\n%%EOF';
+
+    var bin = new Uint8Array(pdf.length);
+    for (var i = 0; i < pdf.length; i++) bin[i] = pdf.charCodeAt(i) & 0xff;
+    var blob = new Blob([bin], { type: 'application/pdf' });
+    var url = URL.createObjectURL(blob);
+    var safeOrder = orderNo.replace(/[^\w.\-]+/g, '_');
+    var name =
+      filename ||
+      'KOT-' + safeOrder + '-' + Date.now() + '.pdf';
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      try {
+        document.body.removeChild(a);
+      } catch (e) {}
+      try {
+        URL.revokeObjectURL(url);
+      } catch (e2) {}
+    }, 1500);
+
+
+    return { ok: true, filename: name, bytes: bin.length };
+  }
+
   global.hbePosPrinterPrefs = {
     get: get,
     set: set,
@@ -807,6 +986,7 @@
     kotPrinterRole: kotPrinterRole,
     formatKotTicketText: formatKotTicketText,
     formatKotTicketEscPos: formatKotTicketEscPos,
+    downloadKotTicketPdf: downloadKotTicketPdf,
     printKotHtml: printKotHtml,
     invoicePrinterRole: invoicePrinterRole,
     printInvoiceHtml: printInvoiceHtml,

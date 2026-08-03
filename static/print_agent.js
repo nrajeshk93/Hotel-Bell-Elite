@@ -179,13 +179,6 @@
       idempotencyKey: job.idempotencyKey || job.jobId || undefined
     };
 
-    // #region agent log
-    (function (payload) {
-      var body = JSON.stringify(payload);
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-      fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-    })({sessionId:'42fa9a',hypothesisId:'B_E',location:'print_agent.js:print.start',message:'HotelPrintAgent.print start',data:{role:payload.printerRole,contentType:payload.contentType,contentLen:(payload.content&&payload.content.length)||0,hasApiKey:!!loadStore().apiKey},timestamp:Date.now()});
-    // #endregion
 
     return ensurePaired(false)
       .catch(function () {
@@ -197,13 +190,6 @@
       })
       .then(function (result) {
         if (!result.ok || !result.data || result.data.ok === false) {
-          // #region agent log
-          (function (payload) {
-            var body = JSON.stringify(payload);
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-            fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-          })({sessionId:'42fa9a',hypothesisId:'B_E',location:'print_agent.js:print.statusFail',message:'local /status failed',data:{httpOk:!!(result&&result.ok),status:result&&result.status,err:result&&result.data&&result.data.error},timestamp:Date.now()});
-          // #endregion
           throw new Error(
             'Print Agent is not running on this PC. Open Hotel Print Agent from the system tray.'
           );
@@ -221,22 +207,8 @@
       })
       .then(function (result) {
         if (!result.ok || !result.data || result.data.ok === false) {
-          // #region agent log
-          (function (payload) {
-            var body = JSON.stringify(payload);
-            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-            fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-          })({sessionId:'42fa9a',hypothesisId:'B_E',location:'print_agent.js:print.fail',message:'local /print failed',data:{httpStatus:result&&result.status,err:result&&result.data&&result.data.error,ok:result&&result.data&&result.data.ok},timestamp:Date.now()});
-          // #endregion
           throw new Error((result.data && result.data.error) || 'Print failed.');
         }
-        // #region agent log
-        (function (payload) {
-          var body = JSON.stringify(payload);
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-          fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-        })({sessionId:'42fa9a',hypothesisId:'B_E',location:'print_agent.js:print.ok',message:'local /print ok',data:{printerName:result.data&&result.data.printerName,jobId:result.data&&result.data.jobId},timestamp:Date.now()});
-        // #endregion
         return result.data;
       });
   }

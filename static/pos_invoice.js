@@ -1722,13 +1722,6 @@
   }
 
   function printKotTicketBrowser(html) {
-    // #region agent log
-    (function (payload) {
-      var body = JSON.stringify(payload);
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-      fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-    })({sessionId:'42fa9a',hypothesisId:'A_C',location:'pos_invoice.js:printKotTicketBrowser',message:'browser KOT print invoked',data:{htmlLen:(html&&html.length)||0,hasBody:!!(html&&html.indexOf('<body>')>=0),titleMatch:!!(html&&/title>KOT/.test(html))},timestamp:Date.now()});
-    // #endregion
     var win = global.open('', '_blank', 'width=380,height=600');
     if (!win) return;
     win.document.write(html);
@@ -1774,18 +1767,8 @@
       var canAgent =
         global.hbePosPrinterPrefs &&
         typeof global.hbePosPrinterPrefs.printKotHtml === 'function';
-      var hasHotelAgent =
-        typeof global.HotelPrintAgent === 'object' &&
-        typeof global.HotelPrintAgent.print === 'function';
       var baseId = String(state.invoiceId || state.orderNo || Date.now());
 
-      // #region agent log
-      (function (payload) {
-        var body = JSON.stringify(payload);
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-        fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-      })({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'A_D',location:'pos_invoice.js:printKotTicket',message:'printKotTicket entry',data:{canAgent:!!canAgent,hasHotelAgent:!!hasHotelAgent,groupCount:groups.length,pendingCount:pending.length,scriptHint:(document.querySelector('script[src*="pos_invoice.js"]')||{}).src||'',printersHint:(document.querySelector('script[src*="pos_printers.js"]')||{}).src||''},timestamp:Date.now()});
-      // #endregion
 
       if (!canAgent) {
         toast(
@@ -1804,7 +1787,8 @@
         var text = buildKotTicketText(page, group.entries, {
           menuOutlet: group.menuOutlet
         });
-        var jobId = 'kot-' + group.menuOutlet + '-' + baseId + '-' + Date.now() + '-' + idx;
+        var jobId =
+          'kot-' + group.menuOutlet + '-' + baseId + '-' + Date.now() + '-' + idx;
         global.hbePosPrinterPrefs
           .printKotHtml(html, {
             menuOutlet: group.menuOutlet,
@@ -1814,13 +1798,6 @@
             allowBrowserFallback: false
           })
           .then(function (result) {
-            // #region agent log
-            (function (payload) {
-              var body = JSON.stringify(payload);
-              fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
-              fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
-            })({sessionId:'42fa9a',runId:'post-fix',hypothesisId:'G',location:'pos_invoice.js:printKotTicket.result',message:'printKotHtml result',data:{via:result&&result.via,err:result&&result.error&&result.error.message,role:group.menuOutlet,fallback:result&&result.fallback,textLen:(text&&text.length)||0},timestamp:Date.now()});
-            // #endregion
             if (result && result.via === 'failed') {
               toast(
                 (result.error && result.error.message) ||

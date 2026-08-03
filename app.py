@@ -10377,34 +10377,6 @@ def print_agent_browser_pair():
         conn.close()
 
 
-@app.route("/api/hbe-agent-debug", methods=["POST"], endpoint="hbe_agent_debug")
-def hbe_agent_debug():
-    """Temporary NDJSON sink for Print Agent debug (session 42fa9a)."""
-    import time as _time
-
-    payload = request.get_json(silent=True) or {}
-    if not isinstance(payload, dict):
-        return jsonify({"ok": False}), 400
-    payload.setdefault("sessionId", "42fa9a")
-    payload.setdefault("timestamp", int(_time.time() * 1000))
-    payload["serverRecvAt"] = int(_time.time() * 1000)
-    line = json.dumps(payload, ensure_ascii=False, default=str)
-    paths = (
-        "/tmp/hbe-debug-42fa9a.ndjson",
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cursor", "debug-42fa9a.log"),
-    )
-    for path in paths:
-        try:
-            parent = os.path.dirname(path)
-            if parent:
-                os.makedirs(parent, exist_ok=True)
-            with open(path, "a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
-        except OSError:
-            continue
-    return jsonify({"ok": True})
-
-
 if __name__ == "__main__":
     init_db()
     app.run(debug=True, host="127.0.0.1", port=8002)

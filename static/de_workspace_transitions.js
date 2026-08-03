@@ -919,8 +919,32 @@
     ]);
   }
 
+  function scriptPathname(src){
+    if(!src) return '';
+    try{
+      return new URL(src, window.location.href).pathname;
+    } catch(e){
+      return String(src).split('?')[0];
+    }
+  }
+
   function loadExternalScript(old){
     return new Promise(function(resolve){
+      var src = old.getAttribute('src') || '';
+      var path = scriptPathname(src);
+      var loaded = window.__deSoftNavScripts = window.__deSoftNavScripts || {};
+      /* Drop older ?v= copies of the same file so the latest IIFE wins. */
+      if(path){
+        Array.from(document.querySelectorAll('script[src]')).forEach(function(el){
+          var existing = el.getAttribute('src') || '';
+          if(!existing || existing === src) return;
+          if(scriptPathname(existing) !== path) return;
+          try{
+            if(el.parentNode) el.parentNode.removeChild(el);
+          } catch(err){}
+          try{ delete loaded[existing]; } catch(err2){}
+        });
+      }
       var external = document.createElement('script');
       Array.from(old.attributes).forEach(function(attr){
         external.setAttribute(attr.name, attr.value);
