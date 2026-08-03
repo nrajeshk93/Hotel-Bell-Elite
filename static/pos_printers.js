@@ -103,25 +103,62 @@
 
   /**
    * Send a KOT HTML slip to the Restaurant or Bar KOT printer via Hotel Print
-   * Agent. opts.menuOutlet / opts.printerRole selects the destination.
-   * Falls back to opts.browserPrint when the agent is offline.
+   * Agent (silent — no Chrome print dialog).
+   * Set opts.allowBrowserFallback = true only when a browser dialog is OK.
    */
   function printKotHtml(html, opts) {
     opts = opts || {};
     var role =
       opts.printerRole ||
       kotPrinterRole(opts.menuOutlet != null ? opts.menuOutlet : opts.outlet);
+    var allowBrowser = opts.allowBrowserFallback === true;
     var browserPrint =
       typeof opts.browserPrint === 'function' ? opts.browserPrint : function () {};
 
+    function fail(err) {
+      var error =
+        err && err.message
+          ? err
+          : new Error(
+              'Print Agent did not print. Open Hotel Print Agent and map the KOT printer.'
+            );
+      // #region agent log
+      (function (payload) {
+        var body = JSON.stringify(payload);
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
+        fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
+      })({sessionId:'42fa9a',hypothesisId:'B_D',location:'pos_printers.js:printKotHtml.fail',message:'printKotHtml fail',data:{role:role,allowBrowser:!!allowBrowser,err:error&&error.message,htmlLen:(html&&html.length)||0},timestamp:Date.now()});
+      // #endregion
+      if (allowBrowser) {
+        browserPrint();
+        return { via: 'browser', error: error };
+      }
+      return { via: 'failed', error: error };
+    }
+
+    if (!html) {
+      return Promise.resolve(fail(new Error('Nothing to print.')));
+    }
     if (
-      !html ||
       typeof global.HotelPrintAgent !== 'object' ||
       typeof global.HotelPrintAgent.print !== 'function'
     ) {
-      browserPrint();
-      return Promise.resolve({ via: 'browser' });
+      return Promise.resolve(
+        fail(
+          new Error(
+            'Print Agent is not loaded. Refresh the page, or open Hotel Print Agent on this PC.'
+          )
+        )
+      );
     }
+
+    // #region agent log
+    (function (payload) {
+      var body = JSON.stringify(payload);
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
+      fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
+    })({sessionId:'42fa9a',hypothesisId:'B',location:'pos_printers.js:printKotHtml.attempt',message:'calling HotelPrintAgent.print',data:{role:role,allowBrowser:!!allowBrowser,htmlLen:(html&&html.length)||0},timestamp:Date.now()});
+    // #endregion
 
     return global.HotelPrintAgent.print({
       printerRole: role,
@@ -134,11 +171,17 @@
       idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
     })
       .then(function (data) {
+        // #region agent log
+        (function (payload) {
+          var body = JSON.stringify(payload);
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
+          fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
+        })({sessionId:'42fa9a',hypothesisId:'B',location:'pos_printers.js:printKotHtml.ok',message:'agent print ok',data:{role:role,printerName:data&&data.printerName,jobId:data&&data.jobId},timestamp:Date.now()});
+        // #endregion
         return { via: 'agent', data: data };
       })
-      .catch(function () {
-        browserPrint();
-        return { via: 'browser' };
+      .catch(function (err) {
+        return fail(err);
       });
   }
 
@@ -148,23 +191,44 @@
   }
 
   /**
-   * Send a guest invoice HTML slip to the station’s Restaurant/Bar Invoice
-   * (billing) printer via Hotel Print Agent. Falls back to opts.browserPrint
-   * when the agent is offline.
+   * Silent invoice/bill print via Hotel Print Agent (billing role).
+   * Set opts.allowBrowserFallback = true to open Chrome print as a last resort.
    */
   function printInvoiceHtml(html, opts) {
     opts = opts || {};
     var role = invoicePrinterRole(opts.outlet);
+    var allowBrowser = opts.allowBrowserFallback === true;
     var browserPrint =
       typeof opts.browserPrint === 'function' ? opts.browserPrint : function () {};
 
+    function fail(err) {
+      var error =
+        err && err.message
+          ? err
+          : new Error(
+              'Print Agent did not print. Open Hotel Print Agent and map the Invoice printer.'
+            );
+      if (allowBrowser) {
+        browserPrint();
+        return { via: 'browser', error: error };
+      }
+      return { via: 'failed', error: error };
+    }
+
+    if (!html) {
+      return Promise.resolve(fail(new Error('Nothing to print.')));
+    }
     if (
-      !html ||
       typeof global.HotelPrintAgent !== 'object' ||
       typeof global.HotelPrintAgent.print !== 'function'
     ) {
-      browserPrint();
-      return Promise.resolve({ via: 'browser' });
+      return Promise.resolve(
+        fail(
+          new Error(
+            'Print Agent is not loaded. Refresh the page, or open Hotel Print Agent on this PC.'
+          )
+        )
+      );
     }
 
     return global.HotelPrintAgent.print({
@@ -180,9 +244,8 @@
       .then(function (data) {
         return { via: 'agent', data: data };
       })
-      .catch(function () {
-        browserPrint();
-        return { via: 'browser' };
+      .catch(function (err) {
+        return fail(err);
       });
   }
 
@@ -321,7 +384,11 @@
         return global.HotelPrintAgent.getStatus(true);
       })
       .then(function (status) {
-        if (!status || !status.ok) {
+        var hasMapping =
+          status &&
+          ((status.printers && Object.keys(status.printers).length) ||
+            status.deviceName);
+        if (!status || (!status.ok && !hasMapping)) {
           setAgentSyncStatus(panel, {
             ok: false,
             message:
@@ -336,13 +403,15 @@
         applyToPanel(panel, outlet);
         setPanelFieldsFromAgent(panel, true);
 
+        var live = !!(status.ok && !status.offline);
         var bits = [];
         if (patch.stationName) bits.push(patch.stationName);
-        if (status.offline) bits.push('last known mapping');
-        else bits.push('live from agent');
+        bits.push(live ? 'live from agent' : 'last known mapping');
         setAgentSyncStatus(panel, {
-          ok: true,
-          message: 'From Hotel Print Agent' + (bits.length ? ' · ' + bits.join(' · ') : '')
+          ok: live,
+          message:
+            (live ? 'From Hotel Print Agent' : 'Agent offline') +
+            (bits.length ? ' · ' + bits.join(' · ') : '')
         });
         return patch;
       })

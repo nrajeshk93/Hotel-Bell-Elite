@@ -2142,9 +2142,13 @@
         toast('No kitchen items to resend for this table.');
         return;
       }
-      /* Open during the click gesture — delayed opens are blocked in fullscreen. */
-      if (!earlyWin) {
-        earlyWin = openBlankPrintWindow(380, 600);
+
+      /* Silent print via agent — close any gesture popup; never open Chrome dialog. */
+      if (earlyWin) {
+        try {
+          earlyWin.close();
+        } catch (closeEarly) {}
+        earlyWin = null;
       }
 
       var restaurantLines = [];
@@ -2164,10 +2168,16 @@
       var canAgent =
         global.hbePosPrinterPrefs &&
         typeof global.hbePosPrinterPrefs.printKotHtml === 'function';
+      if (!canAgent) {
+        toast(
+          'Hotel Print Agent is required for silent KOT printing. Install and open it on this PC.'
+        );
+        return;
+      }
+
       var baseId = String(
         (token && (token.invoice_id || token.kot_no)) || Date.now()
       );
-      var fallbackUsed = false;
 
       groups.forEach(function (group, idx) {
         var html = buildKotTokenHtml(token, group.lines, allLines, {
@@ -2176,55 +2186,21 @@
         var jobId =
           'kot-resend-' + group.menuOutlet + '-' + baseId + '-' + Date.now() + '-' + idx;
 
-        function browserPrint() {
-          var win = null;
-          if (!fallbackUsed && earlyWin) {
-            win = earlyWin;
-            earlyWin = null;
-            fallbackUsed = true;
-          }
-          if (
-            !openHtmlPrintWindow(html, {
-              width: 380,
-              height: 600,
-              preOpened: win
-            })
-          ) {
-            toast('Could not open the KOT window. Check your pop-up blocker.');
-          }
-        }
-
-        if (canAgent) {
-          global.hbePosPrinterPrefs
-            .printKotHtml(html, {
-              menuOutlet: group.menuOutlet,
-              jobId: jobId,
-              browserPrint: browserPrint
-            })
-            .then(function (result) {
-              if (result && result.via === 'agent' && earlyWin && idx === groups.length - 1) {
-                try {
-                  earlyWin.close();
-                } catch (closeErr) {}
-                earlyWin = null;
-              }
-            });
-        } else {
-          browserPrint();
-        }
+        global.hbePosPrinterPrefs
+          .printKotHtml(html, {
+            menuOutlet: group.menuOutlet,
+            jobId: jobId,
+            allowBrowserFallback: false
+          })
+          .then(function (result) {
+            if (result && result.via === 'failed') {
+              toast(
+                (result.error && result.error.message) ||
+                  'KOT print failed. Open Hotel Print Agent and map Restaurant / Bar KOT.'
+              );
+            }
+          });
       });
-
-      if (canAgent && earlyWin) {
-        /* Close spare popup if agent will handle every group. */
-        setTimeout(function () {
-          if (earlyWin) {
-            try {
-              earlyWin.close();
-            } catch (closeErr) {}
-            earlyWin = null;
-          }
-        }, 1200);
-      }
     } catch (err) {
       if (earlyWin) {
         try {
@@ -2654,30 +2630,18 @@
         event.preventDefault();
         event.stopPropagation();
         if (resendAll.disabled) return;
-        /* Open immediately — gesture must not be spent on validation first. */
-        var aWin = openBlankPrintWindow(380, 600);
         var aIdx = Number(resendAll.getAttribute('data-kot-resend-all-idx'));
         var aToken = currentKotTokens[aIdx];
         if (!aToken) {
-          if (aWin) {
-            try {
-              aWin.close();
-            } catch (err) {}
-          }
           toast('KOT not found. Refresh and try again.');
           return;
         }
         if (aToken.customer_bill_sent) {
-          if (aWin) {
-            try {
-              aWin.close();
-            } catch (err) {}
-          }
           toast('Bill sent — resend disabled for this order.');
           return;
         }
         /* Resend all uses full kitchen sent_qty on each line. */
-        printKotTokenTicket(aToken, null, aWin);
+        printKotTokenTicket(aToken, null, null);
         toast('KOT resent for ' + (aToken.name || 'table') + '.');
         return;
       }
@@ -2687,38 +2651,22 @@
         event.preventDefault();
         event.stopPropagation();
         if (resendSel.disabled) return;
-        var rWin = openBlankPrintWindow(380, 600);
         var rIdx = Number(resendSel.getAttribute('data-kot-resend-selected'));
         var rToken = currentKotTokens[rIdx];
         if (!rToken) {
-          if (rWin) {
-            try {
-              rWin.close();
-            } catch (err) {}
-          }
           toast('KOT not found. Refresh and try again.');
           return;
         }
         if (rToken.customer_bill_sent) {
-          if (rWin) {
-            try {
-              rWin.close();
-            } catch (err) {}
-          }
           toast('Bill sent — resend disabled for this order.');
           return;
         }
         var selected = selectedKotTokenLines(rIdx);
         if (!selected.length) {
-          if (rWin) {
-            try {
-              rWin.close();
-            } catch (err) {}
-          }
           toast('Select at least one product to resend.');
           return;
         }
-        printKotTokenTicket(rToken, selected, rWin);
+        printKotTokenTicket(rToken, selected, null);
         toast(
           selected.length === 1
             ? '1 item resent for ' + (rToken.name || 'table') + '.'
@@ -2873,14 +2821,25 @@
         global.hbePosPrinterPrefs &&
         typeof global.hbePosPrinterPrefs.printInvoiceHtml === 'function'
       ) {
-        global.hbePosPrinterPrefs.printInvoiceHtml(html, {
-          outlet: outlet,
-          jobId: jobId,
-          browserPrint: browserPrint
-        });
+        global.hbePosPrinterPrefs
+          .printInvoiceHtml(html, {
+            outlet: outlet,
+            jobId: jobId,
+            allowBrowserFallback: false
+          })
+          .then(function (result) {
+            if (result && result.via === 'failed') {
+              toast(
+                (result.error && result.error.message) ||
+                  'Bill print failed. Open Hotel Print Agent and map Restaurant Invoice.'
+              );
+            }
+          });
         return;
       }
-      browserPrint();
+      toast(
+        'Hotel Print Agent is required for silent bill printing. Install and open it on this PC.'
+      );
     } catch (err) {
       toast('Could not print bill. Try again.');
     }

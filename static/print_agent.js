@@ -150,20 +150,17 @@
         return { ok: false, error: (result.data && result.data.error) || 'Agent offline' };
       })
       .catch(function () {
-        /* Local agent offline — fall back to last paired device + mapped printers. */
+        /* Local agent unreachable — keep last known mapping for Settings UI only.
+           ok:false so print() never treats this as a live agent. */
         var store = loadStore();
-        if (store.apiKey && (store.deviceName || store.mappedPrinters)) {
-          var fallback = enrichStatus({
-            ok: true,
-            offline: true,
-            deviceName: store.deviceName || '',
-            printers: store.mappedPrinters || {}
-          });
-          statusCache = { at: Date.now(), data: fallback };
-          return fallback;
-        }
-        statusCache = { at: Date.now(), data: { ok: false, offline: true } };
-        return { ok: false, offline: true };
+        var fallback = {
+          ok: false,
+          offline: true,
+          deviceName: store.deviceName || '',
+          printers: store.mappedPrinters || {}
+        };
+        statusCache = { at: Date.now(), data: fallback };
+        return fallback;
       });
   }
 
@@ -182,21 +179,40 @@
       idempotencyKey: job.idempotencyKey || job.jobId || undefined
     };
 
+    // #region agent log
+    (function (payload) {
+      var body = JSON.stringify(payload);
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
+      fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
+    })({sessionId:'42fa9a',hypothesisId:'B_E',location:'print_agent.js:print.start',message:'HotelPrintAgent.print start',data:{role:payload.printerRole,contentType:payload.contentType,contentLen:(payload.content&&payload.content.length)||0,hasApiKey:!!loadStore().apiKey},timestamp:Date.now()});
+    // #endregion
+
     return ensurePaired(false)
-      .then(function () {
-        return getStatus(true);
+      .catch(function () {
+        /* /status is public; still try print with any cached key. */
+        return loadStore();
       })
-      .then(function (status) {
-        if (!status || !status.ok) {
+      .then(function () {
+        return fetchLocal('/status');
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || result.data.ok === false) {
+          // #region agent log
+          (function (payload) {
+            var body = JSON.stringify(payload);
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
+            fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
+          })({sessionId:'42fa9a',hypothesisId:'B_E',location:'print_agent.js:print.statusFail',message:'local /status failed',data:{httpOk:!!(result&&result.ok),status:result&&result.status,err:result&&result.data&&result.data.error},timestamp:Date.now()});
+          // #endregion
           throw new Error(
             'Print Agent is not running on this PC. Open Hotel Print Agent from the system tray.'
           );
         }
+        statusCache = { at: Date.now(), data: enrichStatus(result.data) };
         return fetchLocal('/print', { method: 'POST', body: payload });
       })
       .then(function (result) {
         if (result.status === 401) {
-          // Key rotated — re-pair once
           return ensurePaired(true).then(function () {
             return fetchLocal('/print', { method: 'POST', body: payload });
           });
@@ -205,8 +221,22 @@
       })
       .then(function (result) {
         if (!result.ok || !result.data || result.data.ok === false) {
+          // #region agent log
+          (function (payload) {
+            var body = JSON.stringify(payload);
+            fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
+            fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
+          })({sessionId:'42fa9a',hypothesisId:'B_E',location:'print_agent.js:print.fail',message:'local /print failed',data:{httpStatus:result&&result.status,err:result&&result.data&&result.data.error,ok:result&&result.data&&result.data.ok},timestamp:Date.now()});
+          // #endregion
           throw new Error((result.data && result.data.error) || 'Print failed.');
         }
+        // #region agent log
+        (function (payload) {
+          var body = JSON.stringify(payload);
+          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:body}).catch(function(){});
+          fetch('/api/hbe-agent-debug',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},body:body}).catch(function(){});
+        })({sessionId:'42fa9a',hypothesisId:'B_E',location:'print_agent.js:print.ok',message:'local /print ok',data:{printerName:result.data&&result.data.printerName,jobId:result.data&&result.data.jobId},timestamp:Date.now()});
+        // #endregion
         return result.data;
       });
   }
