@@ -511,9 +511,9 @@ body.home-module .de-main-inner.db-main-inner--home{
   .db-home .db-home-card{
     width:100%;
     min-width:0;
-    height:210px;
-    min-height:210px;
-    max-height:210px;
+    height:226px;
+    min-height:226px;
+    max-height:226px;
     box-sizing:border-box;
     display:flex;
     flex-direction:column;
@@ -604,18 +604,13 @@ body.home-module .de-main-inner.db-main-inner--home{
   .db-home .db-home-card h2{
     margin-top:20px;
     margin-bottom:0;
-    flex:1 1 auto;
-    min-height:0;
+    flex:0 0 auto;
     font-size:24px;
     line-height:1.25;
     font-weight:600;
     color:var(--home-title);
     letter-spacing:-.02em;
-    display:-webkit-box;
-    -webkit-box-orient:vertical;
-    -webkit-line-clamp:2;
-    line-clamp:2;
-    overflow:hidden;
+    overflow:visible;
   }
   .db-home .db-home-card-foot{
     display:flex;
@@ -737,6 +732,6 @@ body.home-module .de-main-inner.db-main-inner--home{
     
     .db-home .db-home-title h1{font-size:28px}
     .db-home .db-home-grid{grid-template-columns:1fr;gap:20px}
-    .db-home .db-home-card{height:190px;min-height:190px;max-height:190px;padding:24px 22px 20px}
+    .db-home .db-home-card{height:206px;min-height:206px;max-height:206px;padding:24px 22px 20px}
     .db-home .db-home-card h2{font-size:20px}
   }
