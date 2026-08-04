@@ -60,7 +60,10 @@
     '/point-of-sale/invoice',
     '/hotel/rooms',
     '/hotel/invoice-ledger',
-    '/communication-hub'
+    '/communication-hub',
+    '/access-management',
+    '/employees',
+    '/settings'
   ];
   var SKIP_SCRIPT_PARTS = [
     'de_fullscreen.js',
@@ -650,6 +653,31 @@
   function storePrefetchHtml(key, html){
     prefetchCache.set(key, { html: html, ts: Date.now() });
     prunePrefetchCache();
+    /* Warm destination stylesheets early so soft-nav does not paint before CSS. */
+    try{
+      warmStylesheetsFromHtml(html);
+    } catch(e){}
+  }
+
+  function warmStylesheetsFromHtml(html){
+    if(!html) return;
+    var re = /<link[^>]+rel=["']stylesheet["'][^>]*>/gi;
+    var tag;
+    while((tag = re.exec(html))){
+      var hrefMatch = tag[0].match(/href=["']([^"']+)["']/i);
+      if(!hrefMatch) continue;
+      var href = hrefMatch[1];
+      if(!href || href.indexOf('/static/') === -1) continue;
+      var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]')).some(function(el){
+        return (el.getAttribute('href') || '') === href;
+      });
+      if(exists) continue;
+      var link = document.createElement('link');
+      link.rel = 'preload';
+      link.as = 'style';
+      link.href = href;
+      document.head.appendChild(link);
+    }
   }
 
   function prefetchSoftNav(url){
@@ -940,8 +968,18 @@
   function mergeStylesheetLink(link, addedLinks){
     var href = link.getAttribute('href');
     if(!href) return;
-    var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).some(function(existing){
-      return existing.getAttribute('href') === href;
+    var path = '';
+    try{ path = new URL(href, window.location.href).pathname; } catch(e){ path = String(href).split('?')[0]; }
+    var exists = false;
+    Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).forEach(function(existing){
+      var eh = existing.getAttribute('href') || '';
+      if(eh === href){ exists = true; return; }
+      /* Same file, different ?v= — drop the stale sheet so the new one applies. */
+      try{
+        if(path && new URL(eh, window.location.href).pathname === path){
+          if(existing.parentNode) existing.parentNode.removeChild(existing);
+        }
+      } catch(err){}
     });
     if(exists) return;
     var clone = link.cloneNode(true);
@@ -986,23 +1024,68 @@
 
   function waitForStylesheets(links, timeoutMs){
     if(!links || !links.length) return Promise.resolve();
-    /* Cold first-open can inject many CSS files. Prefer a short wait so AWS/CF
-       RTT does not freeze the previous page for seconds; FOUC risk is low because
-       shared shell CSS is already loaded and destination CSS streams in parallel. */
-    var limit = timeoutMs == null ? 180 : timeoutMs;
+    /* Wait for destination CSS before swapping DOM. A short 180ms race caused
+       FOUC on AWS (plain HTML flash) when module sheets (e.g. access_management)
+       arrived after the swap. Cap high enough for CF RTT but not forever. */
+    var limit = timeoutMs == null ? 2000 : timeoutMs;
+    var t0 = Date.now();
+    var hrefs = links.map(function(link){
+      return (link.getAttribute('href') || '').split('/').pop();
+    });
+    // #region agent log
+    __deDbgLog('F1', 'de_workspace_transitions.js:waitForStylesheets', 'waiting for CSS', {
+      count: links.length,
+      hrefs: hrefs.slice(0, 12),
+      limitMs: limit,
+      url: __deDbgNavUrl
+    });
+    // #endregion
+    function sheetReady(link){
+      try{
+        if(link.sheet) return true;
+      } catch(e){}
+      return false;
+    }
+    function waitOne(link){
+      return new Promise(function(resolve){
+        if(sheetReady(link)){ resolve('ready'); return; }
+        var settled = false;
+        var timer = null;
+        function finish(how){
+          if(settled) return;
+          settled = true;
+          if(timer) clearInterval(timer);
+          resolve(how);
+        }
+        link.addEventListener('load', function(){ finish('load'); }, { once: true });
+        link.addEventListener('error', function(){ finish('error'); }, { once: true });
+        var polls = 0;
+        timer = setInterval(function(){
+          polls++;
+          if(sheetReady(link)) finish('poll');
+          else if(polls > 100) finish('poll-giveup');
+        }, 20);
+      });
+    }
     return Promise.race([
-      Promise.all(links.map(function(link){
-        return new Promise(function(resolve){
-          try{
-            if(link.sheet){ resolve(); return; }
-          } catch(e){}
-          var done = function(){ resolve(); };
-          link.addEventListener('load', done, { once: true });
-          link.addEventListener('error', done, { once: true });
-        });
-      })),
-      new Promise(function(resolve){ setTimeout(resolve, limit); })
-    ]);
+      Promise.all(links.map(waitOne)).then(function(){ return 'loaded'; }),
+      new Promise(function(resolve){
+        setTimeout(function(){ resolve('timeout'); }, limit);
+      })
+    ]).then(function(result){
+      var pending = links.filter(function(link){ return !sheetReady(link); }).map(function(link){
+        return (link.getAttribute('href') || '').split('/').pop();
+      });
+      // #region agent log
+      __deDbgLog('F1', 'de_workspace_transitions.js:waitForStylesheets:done', 'CSS wait finished', {
+        ms: Date.now() - t0,
+        result: result,
+        pendingCount: pending.length,
+        pending: pending.slice(0, 8),
+        url: __deDbgNavUrl
+      });
+      // #endregion
+    });
   }
 
   function scriptPathname(src){
@@ -1916,7 +1999,32 @@
         });
       };
 
-      waitForStylesheets(addedLinks).then(finishSwap);
+      waitForStylesheets(addedLinks).then(function(){
+        /* If the wait timed out with sheets still pending, hold the previous
+           styled page until those loads finish — never paint unstyled HTML. */
+        var pending = (addedLinks || []).filter(function(link){
+          try{ return !link.sheet; } catch(e){ return true; }
+        });
+        if(!pending.length){
+          finishSwap();
+          return;
+        }
+        // #region agent log
+        __deDbgLog('F1', 'de_workspace_transitions.js:applySoftSwap', 'holding swap for late CSS', {
+          pending: pending.map(function(l){ return (l.getAttribute('href') || '').split('/').pop(); }).slice(0, 8),
+          url: __deDbgNavUrl
+        });
+        // #endregion
+        Promise.all(pending.map(function(link){
+          return new Promise(function(resolve){
+            try{ if(link.sheet){ resolve(); return; } } catch(e){}
+            var done = function(){ resolve(); };
+            link.addEventListener('load', done, { once: true });
+            link.addEventListener('error', done, { once: true });
+            setTimeout(done, 2500);
+          });
+        })).then(finishSwap);
+      });
       return;
     }
 
@@ -2474,15 +2582,17 @@
         '/static/sales_entry_dashboard.css?v=33',
         '/static/sales_update_header.css?v=9',
         '/static/sales_update_premium.css?v=22',
-        '/static/de_workspace_shell.css?v=43',
+        '/static/de_workspace_shell.css?v=44',
         '/static/stores.css?v=75',
         '/static/ep_form_listbox.css?v=21',
         '/static/pos_tables.css?v=35',
-        '/static/pos_invoice.css?v=39',
+        '/static/pos_invoice.css?v=52',
         '/static/purchase_ledger.css?v=29',
         '/static/communication_hub.css?v=6',
-        '/static/hotel_rooms.css?v=59',
-        '/static/hbe_home_premium.css?v=13'
+        '/static/hotel_rooms.css?v=60',
+        '/static/hotel_date_picker.css?v=9',
+        '/static/access_management_premium.css?v=19',
+        '/static/hbe_home_premium.css?v=19'
       ].forEach(function(href){
         try{
           var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]')).some(function(el){
