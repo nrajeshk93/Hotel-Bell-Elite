@@ -267,12 +267,46 @@
         endSidebarSnapMeasure(sb);
       }
     });
+    // #region agent log
+    try{
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},
+        body:JSON.stringify({
+          sessionId:'42fa9a',
+          runId:'nav-lag-pre',
+          hypothesisId:'H6',
+          location:'de_workspace_nav.js:suppressSidebarHoverExpand',
+          message:'sidebar pointer-events suppressed',
+          data:{ms:ms,path:(location.pathname||'')},
+          timestamp:Date.now()
+        })
+      }).catch(function(){});
+    } catch(e){}
+    // #endregion
     if(window.__deSidebarHoverSuppressTimer) clearTimeout(window.__deSidebarHoverSuppressTimer);
     window.__deSidebarHoverSuppressTimer = setTimeout(function(){
       window.__deSidebarHoverSuppressTimer = null;
       document.querySelectorAll('.de-sidebar.de-sidebar--suppress-hover').forEach(function(sb){
         sb.classList.remove('de-sidebar--suppress-hover');
       });
+      // #region agent log
+      try{
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{
+          method:'POST',
+          headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},
+          body:JSON.stringify({
+            sessionId:'42fa9a',
+            runId:'nav-lag-pre',
+            hypothesisId:'H6',
+            location:'de_workspace_nav.js:suppressSidebarHoverExpand:end',
+            message:'sidebar suppress cleared',
+            data:{ms:ms,path:(location.pathname||'')},
+            timestamp:Date.now()
+          })
+        }).catch(function(){});
+      } catch(e2){}
+      // #endregion
     }, ms);
   }
 

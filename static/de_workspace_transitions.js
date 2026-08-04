@@ -7,6 +7,48 @@
   var FS_KEY = 'de-fullscreen-active';
   var PREFETCH_TTL_MS = 90000;
   var PREFETCH_MAX = 20;
+  // #region agent log
+  var __deDbgNavT0 = 0;
+  var __deDbgNavUrl = '';
+  function __deDbgUiFreezeSnapshot(){
+    var main = document.querySelector('.de-main-wrapper');
+    var dateTriggers = document.querySelectorAll('.hotel-date-trigger, .ep-date-chip button, [data-hotel-date] .hotel-date-trigger');
+    var disabledDates = 0;
+    for(var i = 0; i < dateTriggers.length; i++){
+      if(dateTriggers[i].disabled || dateTriggers[i].getAttribute('aria-disabled') === 'true') disabledDates++;
+    }
+    var lockedBtns = document.querySelectorAll('[data-de-lock-reenable]').length;
+    var disabledBtns = document.querySelectorAll('button:disabled, input[type="submit"]:disabled').length;
+    return {
+      loading: !!(main && main.classList.contains('is-soft-nav-loading')),
+      softNavClass: document.documentElement.classList.contains('de-soft-navigating'),
+      softNavSession: document.documentElement.classList.contains('de-soft-nav-session'),
+      softNavFlag: !!window.__deSoftNavInProgress,
+      disabledDates: disabledDates,
+      dateTriggerCount: dateTriggers.length,
+      lockedSubmitBtns: lockedBtns,
+      disabledBtns: disabledBtns,
+      path: (location.pathname || '')
+    };
+  }
+  function __deDbgLog(hypothesisId, location, message, data){
+    try{
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},
+        body:JSON.stringify({
+          sessionId:'42fa9a',
+          runId:'nav-lag-pre',
+          hypothesisId:hypothesisId,
+          location:location,
+          message:message,
+          data:data || {},
+          timestamp:Date.now()
+        })
+      }).catch(function(){});
+    } catch(e){}
+  }
+  // #endregion
   var IDLE_PREFETCH_PATHS = [
     '/home',
     '/accounts',
@@ -357,6 +399,13 @@
       btn.setAttribute('data-de-lock-reenable', '1');
       btn.disabled = true;
     }
+    // #region agent log
+    __deDbgLog('H3', 'de_workspace_transitions.js:lockFormSubmit', 'submit locked', {
+      formId: form.id || '',
+      action: (form.getAttribute('action') || '').slice(0, 80),
+      lockedCount: controls.length
+    });
+    // #endregion
   }
 
   function unlockFormSubmit(form){
@@ -367,6 +416,12 @@
       controls[i].disabled = false;
       controls[i].removeAttribute('data-de-lock-reenable');
     }
+    // #region agent log
+    __deDbgLog('H3', 'de_workspace_transitions.js:unlockFormSubmit', 'submit unlocked', {
+      formId: form.id || '',
+      unlockedCount: controls.length
+    });
+    // #endregion
   }
 
   function stripPartialParam(url){
@@ -688,6 +743,13 @@
     var main = document.querySelector('.de-main-wrapper');
     if(!main) return;
     main.classList.toggle('is-soft-nav-loading', !!active);
+    // #region agent log
+    __deDbgLog('H1', 'de_workspace_transitions.js:markMainLoading', active ? 'loading ON' : 'loading OFF', Object.assign({
+      active: !!active,
+      elapsedMs: __deDbgNavT0 ? (Date.now() - __deDbgNavT0) : null,
+      url: __deDbgNavUrl
+    }, __deDbgUiFreezeSnapshot()));
+    // #endregion
   }
 
   function posSettingsSectionFromStorage(){
@@ -1007,12 +1069,23 @@
   function runScriptNodes(scriptNodes, done){
     var loaded = window.__deSoftNavScripts = window.__deSoftNavScripts || {};
     var index = 0;
+    // #region agent log
+    var __scriptT0 = Date.now();
+    var __scriptCount = (scriptNodes || []).length;
+    // #endregion
 
     function next(){
       while(index < scriptNodes.length && shouldSkipScript(scriptNodes[index])){
         index++;
       }
       if(index >= scriptNodes.length){
+        // #region agent log
+        __deDbgLog('H5', 'de_workspace_transitions.js:runScriptNodes', 'scripts done', {
+          count: __scriptCount,
+          ms: Date.now() - __scriptT0,
+          url: __deDbgNavUrl
+        });
+        // #endregion
         done();
         return;
       }
@@ -1810,6 +1883,14 @@
           playMainEnterReveal(curMain);
           /* Re-warm common destinations after each open (prefetch is no longer one-shot). */
           try{ idlePrefetchSidebarDestinations(); } catch(e2){}
+          // #region agent log
+          setTimeout(function(){
+            __deDbgLog('H4', 'de_workspace_transitions.js:applySoftSwap:post300', 'post-swap UI snapshot', Object.assign({
+              elapsedMs: __deDbgNavT0 ? (Date.now() - __deDbgNavT0) : null,
+              url: __deDbgNavUrl
+            }, __deDbgUiFreezeSnapshot()));
+          }, 300);
+          // #endregion
         });
       };
 
@@ -1879,6 +1960,26 @@
     var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
     markMainLoading(true);
+    // #region agent log
+    __deDbgNavT0 = Date.now();
+    __deDbgNavUrl = String(url || '');
+    __deDbgLog('H2', 'de_workspace_transitions.js:softNavigate', 'soft-nav start', {
+      url: __deDbgNavUrl,
+      token: nav.token,
+      prefetched: false
+    });
+    setTimeout(function(){
+      var snap = __deDbgUiFreezeSnapshot();
+      if(snap.loading || snap.softNavFlag || snap.lockedSubmitBtns){
+        __deDbgLog('H1', 'de_workspace_transitions.js:softNavigate:watchdog2s', 'UI still frozen 2s after start', Object.assign({
+          elapsedMs: Date.now() - __deDbgNavT0,
+          url: __deDbgNavUrl,
+          token: nav.token,
+          stillCurrent: isCurrentSoftNav(nav.token)
+        }, snap));
+      }
+    }, 2000);
+    // #endregion
     /* First soft-nav in a session previously lacked this class until after reveal,
        so opacity:0 enter styles could still paint a plain box on first module open. */
     document.documentElement.classList.add('de-soft-nav-session');
@@ -1889,6 +1990,11 @@
     }
 
     var prefetched = takePrefetchedHtml(url);
+    // #region agent log
+    if(prefetched){
+      __deDbgLog('H2', 'de_workspace_transitions.js:softNavigate', 'using prefetch cache', { url: __deDbgNavUrl });
+    }
+    // #endregion
     var fetchOpts = {
       credentials: 'same-origin',
       headers: {
@@ -1912,6 +2018,7 @@
     })();
     var floorPromise = isPosTablesUrl(url) ? warmPosFloorSnapshot(nav.signal, floorOutlet) : Promise.resolve(null);
 
+    var htmlFetchT0 = Date.now();
     var htmlPromise = prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
@@ -1919,12 +2026,28 @@
         throw new Error('non-html response');
       }
       return response.text();
+    }).then(function(html){
+      // #region agent log
+      __deDbgLog('H2', 'de_workspace_transitions.js:softNavigate', 'html fetched', {
+        url: __deDbgNavUrl,
+        htmlMs: Date.now() - htmlFetchT0,
+        htmlBytes: html ? html.length : 0
+      });
+      // #endregion
+      return html;
     });
 
     Promise.all([htmlPromise, leavePromise, floorPromise]).then(function(results){
       if(!isCurrentSoftNav(nav.token)) return;
       var html = results[0];
       if(!html) throw new Error('empty soft nav html');
+      // #region agent log
+      __deDbgLog('H2', 'de_workspace_transitions.js:softNavigate', 'ready to swap', {
+        url: __deDbgNavUrl,
+        totalMs: Date.now() - __deDbgNavT0,
+        htmlMs: Date.now() - htmlFetchT0
+      });
+      // #endregion
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
       if(!doc.querySelector('.de-main-wrapper')){
@@ -1932,7 +2055,15 @@
       }
       applySoftSwap(doc, url, done, sidebarScroll, nav.token);
     }).catch(function(err){
-      if(err && err.name === 'AbortError') return;
+      if(err && err.name === 'AbortError'){
+        // #region agent log
+        __deDbgLog('H1', 'de_workspace_transitions.js:softNavigate', 'aborted (no unlock here)', {
+          url: __deDbgNavUrl,
+          loading: __deDbgUiFreezeSnapshot().loading
+        });
+        // #endregion
+        return;
+      }
       if(!isCurrentSoftNav(nav.token)) return;
       // Keep captured rail scroll in sessionStorage for hard-nav boot restore.
       if(sidebarScroll){
