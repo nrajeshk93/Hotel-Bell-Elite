@@ -490,8 +490,350 @@
     return 'billing';
   }
 
+  function billAmt(n) {
+    var v = Math.round((Number(n) || 0) * 100) / 100;
+    return v.toFixed(2);
+  }
+
+  function billPadLeft(s, width) {
+    s = String(s == null ? '' : s);
+    if (s.length >= width) return s.slice(-width);
+    var pad = '';
+    for (var i = 0; i < width - s.length; i++) pad += ' ';
+    return pad + s;
+  }
+
+  function billWrap(text, width) {
+    var words = String(text || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(' ');
+    var lines = [];
+    var cur = '';
+    words.forEach(function (w) {
+      if (!w) return;
+      if (!cur) {
+        cur = w;
+        return;
+      }
+      if ((cur + ' ' + w).length <= width) {
+        cur += ' ' + w;
+      } else {
+        lines.push(cur);
+        cur = w;
+      }
+    });
+    if (cur) lines.push(cur);
+    return lines.length ? lines : [''];
+  }
+
+  function billActiveTaxRates() {
+    var rates = global.HBE_POS_TAX_RATES;
+    if (!rates || typeof rates !== 'object') {
+      return { cgst: 0.025, ugst: 0.025, vat: 0.1 };
+    }
+    return {
+      cgst: rates.cgst != null && isFinite(Number(rates.cgst)) ? Number(rates.cgst) : 0.025,
+      ugst: rates.ugst != null && isFinite(Number(rates.ugst)) ? Number(rates.ugst) : 0.025,
+      vat: rates.vat != null && isFinite(Number(rates.vat)) ? Number(rates.vat) : 0.1
+    };
+  }
+
+  function billNormalizeTotals(invoice) {
+    var gst = Number(invoice && invoice.gst != null ? invoice.gst : 0);
+    return {
+      subtotal: Number(invoice && invoice.subtotal != null ? invoice.subtotal : 0),
+      discount: Number(invoice && invoice.discount != null ? invoice.discount : 0),
+      gst: gst,
+      vat: Number(invoice && invoice.vat != null ? invoice.vat : 0),
+      cgst: invoice && invoice.cgst != null ? Number(invoice.cgst) : gst / 2,
+      ugst: invoice && invoice.ugst != null ? Number(invoice.ugst) : gst / 2,
+      service: Number(invoice && invoice.service != null ? invoice.service : 0),
+      tip: Number(invoice && invoice.tip != null ? invoice.tip : 0),
+      roundOff: Number(invoice && invoice.round_off != null ? invoice.round_off : 0),
+      total: Number(
+        invoice && invoice.grand_total != null
+          ? invoice.grand_total
+          : invoice && invoice.total != null
+            ? invoice.total
+            : 0
+      )
+    };
+  }
+
+  function billResolveDate(invoice) {
+    var raw = String(
+      (invoice && (invoice.saved_at || invoice.created_at || invoice.order_date)) || ''
+    ).trim();
+    if (!raw) return new Date();
+    var normalized = raw.indexOf('T') >= 0 ? raw : raw.replace(' ', 'T');
+    var parsed = new Date(normalized);
+    return !isNaN(parsed.getTime()) ? parsed : new Date();
+  }
+
+  function billItemRows(name, qty, rate, amt) {
+    var right =
+      billPadLeft(String(qty), 3) +
+      ' ' +
+      billPadLeft(billAmt(rate), 7) +
+      ' ' +
+      billPadLeft(billAmt(amt), 8);
+    var nameWidth = Math.max(8, KOT_COLS - right.length - 1);
+    var nm = String(name || '')
+      .trim()
+      .toUpperCase();
+    var rows = [];
+    if (nm.length <= nameWidth) {
+      rows.push(kotPad(nm, right));
+      return rows;
+    }
+    /* Wrap long names; amounts stay on the first line. */
+    var chunks = billWrap(nm, nameWidth);
+    rows.push(kotPad(chunks[0], right));
+    for (var i = 1; i < chunks.length; i++) {
+      rows.push(String(chunks[i]).slice(0, KOT_COLS));
+    }
+    return rows;
+  }
+
+  function billPaymentLabel(pay) {
+    if (pay && pay.payment_method_label) return String(pay.payment_method_label);
+    var raw = String((pay && pay.payment_method) || 'Cash')
+      .replace(/_/g, ' ')
+      .trim();
+    if (!raw) return 'Cash';
+    var lower = raw.toLowerCase();
+    if (lower === 'upi') return 'UPI';
+    if (lower === 'card') return 'Card';
+    if (lower === 'cash') return 'Cash';
+    return raw.replace(/\b\w/g, function (c) {
+      return c.toUpperCase();
+    });
+  }
+
+  /**
+   * Plain-text Spice-style guest bill for thermal printers (no HTML/CSS).
+   */
+  function formatCustomerBillText(invoice, opts) {
+    opts = opts || {};
+    invoice = invoice || {};
+    var o = resolveOutlet(opts.outlet || invoice.outlet);
+    var meta = getKotReceiptMeta(o);
+    var cfg =
+      typeof global.getPosReceiptConfig === 'function'
+        ? global.getPosReceiptConfig(o)
+        : {};
+    var totals = billNormalizeTotals(invoice);
+    var rates = billActiveTaxRates();
+    var when = billResolveDate(invoice);
+    var orderNo = invoice.order_no || '—';
+    var table = invoice.table_label || invoice.table || '—';
+    var lines = Array.isArray(invoice.lines) ? invoice.lines : [];
+    var rule = kotRule();
+    var out = [];
+
+    out.push(kotCenter(String(meta.business || cfg.business_name || '').toUpperCase()));
+    billWrap(cfg.address || '', KOT_COLS).forEach(function (ln) {
+      out.push(kotCenter(ln));
+    });
+    var taxLine = 'GST ' + (cfg.gst || '');
+    if (cfg.fssai) taxLine += ' | FSSAI ' + cfg.fssai;
+    billWrap(taxLine, KOT_COLS).forEach(function (ln) {
+      out.push(kotCenter(ln));
+    });
+    out.push(rule);
+    out.push(kotPad('Invoice', String(orderNo)));
+    out.push(kotPad('Date', kotFormatDate(when)));
+    out.push(kotPad('Table', String(table)));
+    out.push(rule);
+    out.push(
+      kotPad(
+        'ITEMS',
+        billPadLeft('QTY', 3) + ' ' + billPadLeft('RATE', 7) + ' ' + billPadLeft('AMOUNT', 8)
+      )
+    );
+    out.push(rule);
+    if (!lines.length) {
+      out.push(kotCenter('No items'));
+    } else {
+      lines.forEach(function (line) {
+        var qty = Number(line.qty) || 0;
+        var rate = Number(line.rate) || 0;
+        var amt = line.line_total != null ? Number(line.line_total) : rate * qty;
+        billItemRows(line.name, qty, rate, amt).forEach(function (row) {
+          out.push(row);
+        });
+      });
+    }
+    out.push(rule);
+    out.push(kotPad('Sub-Total', billAmt(totals.subtotal)));
+    if (Number(totals.discount) > 0) {
+      out.push(kotPad('Discount', '-' + billAmt(totals.discount)));
+    }
+    out.push(kotPad('CGST @ ' + rates.cgst * 100 + '%', billAmt(totals.cgst)));
+    out.push(kotPad('UGST @ ' + rates.ugst * 100 + '%', billAmt(totals.ugst)));
+    if (Number(totals.vat) > 0) {
+      out.push(kotPad('VAT @ ' + rates.vat * 100 + '%', billAmt(totals.vat)));
+    }
+    if (Number(totals.service) > 0) {
+      out.push(kotPad('Service Charge', billAmt(totals.service)));
+    }
+    if (Number(totals.tip) > 0) {
+      out.push(kotPad('Tip', billAmt(totals.tip)));
+    }
+    if (Math.abs(Number(totals.roundOff) || 0) >= 0.005) {
+      out.push(kotPad('Round-Off', billAmt(totals.roundOff)));
+    }
+    out.push(rule);
+    out.push(kotPad('TOTAL', billAmt(totals.total)));
+    var payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+    if (payments.length) {
+      out.push(rule);
+      out.push(kotCenter('RECEIPTS'));
+      payments.forEach(function (pay) {
+        out.push(kotPad(billPaymentLabel(pay), billAmt(pay.amount)));
+      });
+    }
+    out.push('');
+    out.push('User : ' + (cfg.user_label || meta.userLabel || 'RESTAURANT'));
+    out.push('');
+    return out.join('\n');
+  }
+
+  /** ESC/POS bytes for 80mm guest invoice — avoids HTML/CSS dump on thermal. */
+  function formatCustomerBillEscPos(invoice, opts) {
+    opts = opts || {};
+    invoice = invoice || {};
+    var ESC = '\x1b';
+    var GS = '\x1d';
+    var o = resolveOutlet(opts.outlet || invoice.outlet);
+    var meta = getKotReceiptMeta(o);
+    var cfg =
+      typeof global.getPosReceiptConfig === 'function'
+        ? global.getPosReceiptConfig(o)
+        : {};
+    var totals = billNormalizeTotals(invoice);
+    var rates = billActiveTaxRates();
+    var when = billResolveDate(invoice);
+    var orderNo = invoice.order_no || '—';
+    var table = invoice.table_label || invoice.table || '—';
+    var items = Array.isArray(invoice.lines) ? invoice.lines : [];
+    var rule = kotRule();
+    var parts = [];
+
+    function raw(s) {
+      parts.push(s);
+    }
+    function line(s) {
+      parts.push(escPosEncodeAscii(s) + '\n');
+    }
+    function center(on) {
+      raw(ESC + 'a' + (on ? '\x01' : '\x00'));
+    }
+    function textStyle(styleOpts) {
+      styleOpts = styleOpts || {};
+      var n = 0;
+      if (styleOpts.bold) n |= 0x08;
+      if (styleOpts.doubleH) n |= 0x10;
+      if (styleOpts.doubleW) n |= 0x20;
+      raw(ESC + '!' + String.fromCharCode(n));
+      var w = styleOpts.doubleW ? 1 : 0;
+      var h = styleOpts.doubleH ? 1 : 0;
+      raw(GS + '!' + String.fromCharCode((w << 4) | h));
+      if (styleOpts.bold) raw(ESC + 'E' + '\x01');
+      else raw(ESC + 'E' + '\x00');
+    }
+
+    raw(ESC + '@');
+    center(true);
+    textStyle({ bold: true, doubleH: true });
+    line(String(meta.business || cfg.business_name || '').toUpperCase());
+    textStyle({});
+    billWrap(cfg.address || '', KOT_COLS).forEach(function (ln) {
+      line(ln);
+    });
+    var taxLine = 'GST ' + (cfg.gst || '');
+    if (cfg.fssai) taxLine += ' | FSSAI ' + cfg.fssai;
+    billWrap(taxLine, KOT_COLS).forEach(function (ln) {
+      line(ln);
+    });
+    center(false);
+    line(rule);
+    line(kotPad('Invoice', String(orderNo)));
+    line(kotPad('Date', kotFormatDate(when)));
+    textStyle({ bold: true });
+    line(kotPad('Table', String(table)));
+    textStyle({});
+    line(rule);
+    textStyle({ bold: true });
+    line(
+      kotPad(
+        'ITEMS',
+        billPadLeft('QTY', 3) + ' ' + billPadLeft('RATE', 7) + ' ' + billPadLeft('AMOUNT', 8)
+      )
+    );
+    textStyle({});
+    line(rule);
+    if (!items.length) {
+      center(true);
+      line('No items');
+      center(false);
+    } else {
+      items.forEach(function (it) {
+        var qty = Number(it.qty) || 0;
+        var rate = Number(it.rate) || 0;
+        var amt = it.line_total != null ? Number(it.line_total) : rate * qty;
+        billItemRows(it.name, qty, rate, amt).forEach(function (row) {
+          line(row);
+        });
+      });
+    }
+    line(rule);
+    line(kotPad('Sub-Total', billAmt(totals.subtotal)));
+    if (Number(totals.discount) > 0) {
+      line(kotPad('Discount', '-' + billAmt(totals.discount)));
+    }
+    line(kotPad('CGST @ ' + rates.cgst * 100 + '%', billAmt(totals.cgst)));
+    line(kotPad('UGST @ ' + rates.ugst * 100 + '%', billAmt(totals.ugst)));
+    if (Number(totals.vat) > 0) {
+      line(kotPad('VAT @ ' + rates.vat * 100 + '%', billAmt(totals.vat)));
+    }
+    if (Number(totals.service) > 0) {
+      line(kotPad('Service Charge', billAmt(totals.service)));
+    }
+    if (Number(totals.tip) > 0) {
+      line(kotPad('Tip', billAmt(totals.tip)));
+    }
+    if (Math.abs(Number(totals.roundOff) || 0) >= 0.005) {
+      line(kotPad('Round-Off', billAmt(totals.roundOff)));
+    }
+    line(rule);
+    textStyle({ bold: true, doubleH: true });
+    line(kotPad('TOTAL', billAmt(totals.total)));
+    textStyle({});
+    var payments = Array.isArray(invoice.payments) ? invoice.payments : [];
+    if (payments.length) {
+      line(rule);
+      center(true);
+      textStyle({ bold: true });
+      line('RECEIPTS');
+      textStyle({});
+      center(false);
+      payments.forEach(function (pay) {
+        line(kotPad(billPaymentLabel(pay), billAmt(pay.amount)));
+      });
+    }
+    line('');
+    line('User : ' + (cfg.user_label || meta.userLabel || 'RESTAURANT'));
+    raw('\n\n');
+    raw(GS + 'V' + '\x01');
+    return parts.join('');
+  }
+
   /**
    * Silent invoice/bill print via Hotel Print Agent (billing role).
+   * Prefers ESC/POS (same path as KOT) — HTML contentType is printed as raw
+   * text by some agent builds and dumps CSS onto the thermal paper.
    * Set opts.allowBrowserFallback = true to open Chrome print as a last resort.
    */
   function printInvoiceHtml(html, opts) {
@@ -500,6 +842,7 @@
     var allowBrowser = opts.allowBrowserFallback === true;
     var browserPrint =
       typeof opts.browserPrint === 'function' ? opts.browserPrint : function () {};
+    var invoice = opts.invoice || opts.bill || null;
 
     function fail(err) {
       var error =
@@ -515,7 +858,7 @@
       return { via: 'failed', error: error };
     }
 
-    if (!html) {
+    if (!html && !invoice) {
       return Promise.resolve(fail(new Error('Nothing to print.')));
     }
     if (
@@ -531,20 +874,69 @@
       );
     }
 
-    return global.HotelPrintAgent.print({
+    var text = '';
+    var escposB64 = '';
+    if (invoice) {
+      try {
+        text = formatCustomerBillText(invoice, { outlet: opts.outlet });
+      } catch (e) {
+        text = '';
+      }
+      try {
+        escposB64 = toBase64Binary(formatCustomerBillEscPos(invoice, { outlet: opts.outlet }));
+      } catch (e2) {
+        escposB64 = '';
+      }
+    }
+
+    var job = {
       printerRole: role,
       documentType: opts.documentType || 'receipt',
-      contentType: 'html',
-      contentEncoding: 'utf8',
-      content: html,
       copies: opts.copies || 1,
       jobId: opts.jobId || undefined,
       idempotencyKey: opts.idempotencyKey || opts.jobId || undefined
-    })
+    };
+    if (escposB64) {
+      job.contentType = 'escpos';
+      job.contentEncoding = 'base64';
+      job.content = escposB64;
+    } else if (text) {
+      job.contentType = 'text';
+      job.contentEncoding = 'utf8';
+      job.content = String(text);
+    } else if (html) {
+      /* Last resort — may dump CSS on older agents; prefer passing opts.invoice. */
+      job.contentType = 'html';
+      job.contentEncoding = 'utf8';
+      job.content = html;
+    } else {
+      return Promise.resolve(fail(new Error('Nothing to print.')));
+    }
+
+    return global.HotelPrintAgent.print(job)
       .then(function (data) {
         return { via: 'agent', data: data };
       })
       .catch(function (err) {
+        if (job.contentType === 'escpos' && text) {
+          return global.HotelPrintAgent.print({
+            printerRole: role,
+            documentType: opts.documentType || 'receipt',
+            contentType: 'text',
+            contentEncoding: 'utf8',
+            content: String(text),
+            copies: opts.copies || 1,
+            jobId: (opts.jobId || 'inv') + '-txt',
+            idempotencyKey:
+              (opts.idempotencyKey || opts.jobId || '') + '-txt' || undefined
+          })
+            .then(function (data) {
+              return { via: 'agent', data: data, fallback: 'text' };
+            })
+            .catch(function (err2) {
+              return fail(err2 || err);
+            });
+        }
         return fail(err);
       });
   }
@@ -986,6 +1378,8 @@
     kotPrinterRole: kotPrinterRole,
     formatKotTicketText: formatKotTicketText,
     formatKotTicketEscPos: formatKotTicketEscPos,
+    formatCustomerBillText: formatCustomerBillText,
+    formatCustomerBillEscPos: formatCustomerBillEscPos,
     downloadKotTicketPdf: downloadKotTicketPdf,
     printKotHtml: printKotHtml,
     invoicePrinterRole: invoicePrinterRole,

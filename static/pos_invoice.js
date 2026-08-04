@@ -1812,16 +1812,14 @@
   }
 
   /** Customer-facing bill HTML — same layout used by Print and Send to Customer. */
-  function buildCustomerBillHtml(page, invoice) {
+  function resolveCustomerBillPayload(page, invoice) {
     var now = new Date();
     var outlet = (page && page.getAttribute('data-pos-outlet')) || 'restaurant';
     var lines =
       invoice && Array.isArray(invoice.lines) && invoice.lines.length
         ? invoice.lines
         : state.lines;
-    var totals = invoice
-      ? normalizeTotals(invoice)
-      : calcTotals();
+    var totals = invoice ? normalizeTotals(invoice) : calcTotals();
     var billData = invoice
       ? Object.assign({}, invoice)
       : {
@@ -1853,6 +1851,14 @@
         };
     if (!billData.outlet) billData.outlet = outlet;
     if (!Array.isArray(billData.lines)) billData.lines = lines;
+    billData._printNow = now;
+    return billData;
+  }
+
+  function buildCustomerBillHtml(page, invoice) {
+    var billData = resolveCustomerBillPayload(page, invoice);
+    var outlet = billData.outlet || 'restaurant';
+    var now = billData._printNow || new Date();
     if (typeof global.buildPosCustomerBillHtml === 'function') {
       return global.buildPosCustomerBillHtml(billData, { now: now, outlet: outlet });
     }
@@ -2165,13 +2171,21 @@
   function printCustomerBill(page, invoice, opts) {
     opts = opts || {};
     try {
-      var html = buildCustomerBillHtml(page, invoice);
-      var outlet = (page && page.getAttribute('data-pos-outlet')) || undefined;
+      var billPayload = resolveCustomerBillPayload(page, invoice);
+      var html =
+        typeof global.buildPosCustomerBillHtml === 'function'
+          ? global.buildPosCustomerBillHtml(billPayload, {
+              now: new Date(),
+              outlet: billPayload.outlet
+            })
+          : buildCustomerBillHtml(page, invoice);
+      var outlet =
+        (page && page.getAttribute('data-pos-outlet')) || billPayload.outlet || undefined;
       var wantAuto = opts.autoPrint !== false;
       var jobId =
         'inv-' +
         String(
-          (invoice && (invoice.id || invoice.order_no)) ||
+          (billPayload && (billPayload.id || billPayload.order_no)) ||
             state.invoiceId ||
             state.orderNo ||
             Date.now()
@@ -2195,6 +2209,7 @@
           prefs.printInvoiceHtml(html, {
             outlet: outlet,
             jobId: jobId,
+            invoice: billPayload,
             browserPrint: function () {}
           });
         }
@@ -2207,6 +2222,7 @@
           .printInvoiceHtml(html, {
             outlet: outlet,
             jobId: jobId,
+            invoice: billPayload,
             allowBrowserFallback: false
           })
           .then(function (result) {

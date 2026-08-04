@@ -2864,6 +2864,7 @@
           .printInvoiceHtml(html, {
             outlet: outlet,
             jobId: jobId,
+            invoice: invoice,
             allowBrowserFallback: false
           })
           .then(function (result) {
