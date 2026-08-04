@@ -805,10 +805,33 @@
     if (!isFinite(discountValue)) discountValue = 0;
     var discount = Math.round(Number((stay && stay.discountAmount) || 0) * 100) / 100;
     if (discount > subtotal) discount = subtotal;
-    var taxable = Math.round(Math.max(0, subtotal - discount) * 100) / 100;
+    /* Room rate and stay lines are tax-inclusive — extract CGST/UGST from the total. */
+    var inclusive = Math.round(Math.max(0, subtotal - discount) * 100) / 100;
+    var factor = 1 + CGST_RATE + UGST_RATE;
+    var taxable =
+      factor > 0 ? Math.round((inclusive / factor) * 100) / 100 : inclusive;
     var cgst = Math.round(taxable * CGST_RATE * 100) / 100;
-    var ugst = Math.round(taxable * UGST_RATE * 100) / 100;
-    var computedEstimated = Math.round((taxable + cgst + ugst) * 100) / 100;
+    var ugst = Math.round((inclusive - taxable - cgst) * 100) / 100;
+    if (ugst < 0) ugst = 0;
+    var computedEstimated = inclusive;
+    /* Show exclusive line amounts so CGST/UGST add to the estimated total. */
+    if (factor > 0) {
+      lines = lines.map(function (row) {
+        var amt = Math.round(Number(row.amount || 0) * 100) / 100;
+        return Object.assign({}, row, {
+          amount: Math.round((amt / factor) * 100) / 100
+        });
+      });
+      subtotal = Math.round(
+        lines.reduce(function (sum, row) {
+          return sum + Number(row.amount || 0);
+        }, 0) * 100
+      ) / 100;
+      if (discount > 0) {
+        discount = Math.round((discount / factor) * 100) / 100;
+        if (discount > subtotal) discount = subtotal;
+      }
+    }
     /* Prefer live recompute so overstay nights update even if stay payload is stale. */
     var estimated = computedEstimated;
     if (
@@ -1051,6 +1074,7 @@
   function paintMergeChrome(root, room) {
     var banner = $('#hrd-merge-banner', root);
     var mergeBtn = $('#hrd-menu-merge', root);
+    var extendBtn = $('#hrd-menu-extend', root);
     var unmergeBtn = $('#hrd-menu-unmerge', root);
     var unmergeGroupBtn = $('#hrd-menu-unmerge-group', root);
     var primaryBtn = $('#hrd-menu-set-primary', root);
@@ -1061,8 +1085,10 @@
       isMember ||
       isPrimary
     );
+    var occupied = mapStatus(room && room.status) === 'occupied' && !!(room && room.stay);
 
     if (mergeBtn) mergeBtn.hidden = isMember;
+    if (extendBtn) extendBtn.hidden = !occupied;
     if (unmergeBtn) unmergeBtn.hidden = !inGroup;
     if (unmergeGroupBtn) unmergeGroupBtn.hidden = !isPrimary;
     if (primaryBtn) primaryBtn.hidden = !isMember;
@@ -2339,7 +2365,7 @@
           ) +
           '</div>' +
           '<label class="hrd-field">' +
-          '<span>Room Rate (per night)</span>' +
+          '<span>Room Rate (per night, incl. tax)</span>' +
           '<span class="hrd-input-affix"><span>₹</span>' +
           '<input type="number" min="0" step="0.01" data-merge-room-rate value="' +
           escapeHtml(String(rate)) +
@@ -4028,6 +4054,8 @@
   function openCheckinModal(root, opts) {
     opts = opts || {};
     var editing = !!opts.edit;
+    var extending = !!opts.extend;
+    if (extending) editing = true;
     var staySource =
       opts.stay ||
       (editing && lastRoom && lastRoom.stay ? lastRoom.stay : null);
@@ -4038,7 +4066,7 @@
       return;
     }
     if (editing && !staySource) {
-      showToast('No guest stay to edit.', true);
+      showToast(extending ? 'No guest checked in to extend.' : 'No guest stay to edit.', true);
       return;
     }
     form.reset();
@@ -4154,9 +4182,13 @@
     setInvoiceLockedFormFields(form, staySource || (lastRoom && lastRoom.stay) || null);
 
     var titleEl = $('#hrd-checkin-title', root);
-    if (titleEl) titleEl.textContent = editing ? 'Edit Guest' : 'New Check-In';
+    if (titleEl) {
+      titleEl.textContent = extending ? 'Extend Stay' : editing ? 'Edit Guest' : 'New Check-In';
+    }
     var saveBtn = $('#hrd-checkin-save', root);
-    if (saveBtn) saveBtn.textContent = editing ? 'Save Changes' : 'Check-In';
+    if (saveBtn) {
+      saveBtn.textContent = extending ? 'Save Stay' : editing ? 'Save Changes' : 'Check-In';
+    }
 
     modal.hidden = false;
     modal.removeAttribute('hidden');
@@ -4171,6 +4203,20 @@
       global.deFullscreen.updateUi();
     }
     setTimeout(function () {
+      if (extending) {
+        var nightsField = form.querySelector('#hrd-ci-nights') || form.elements.nights;
+        var outField =
+          form.querySelector('#hrd-ci-checkout-date') || form.elements.checkOutDate;
+        if (nightsField && typeof nightsField.focus === 'function') {
+          nightsField.focus();
+          if (typeof nightsField.select === 'function') nightsField.select();
+          return;
+        }
+        if (outField && typeof outField.focus === 'function') {
+          outField.focus();
+          return;
+        }
+      }
       var mobile = form.querySelector('#hrd-ci-mobile') || form.elements.mobile;
       if (mobile) mobile.focus();
     }, 40);
@@ -5866,7 +5912,7 @@
           showToast('No guest checked in to extend.', true);
           return;
         }
-        openCheckinModal(root, { edit: true });
+        openCheckinModal(root, { edit: true, extend: true });
         return;
       }
       if (dueAction === 'checkout') {
@@ -5891,6 +5937,14 @@
           return;
         }
         openCheckinModal(root);
+        return;
+      }
+      if (action === 'extend') {
+        if (mapStatus(root.getAttribute('data-room-status')) !== 'occupied') {
+          showToast('No guest checked in to extend.', true);
+          return;
+        }
+        openCheckinModal(root, { edit: true, extend: true });
         return;
       }
       if (action === 'edit-guest') {
@@ -6214,9 +6268,42 @@
     document.__hotelRoomDetailDocBound = true;
   }
 
+  function consumeExtendStayQuery() {
+    try {
+      var url = new URL(window.location.href);
+      if (url.searchParams.get('extend') !== '1') return false;
+      url.searchParams.delete('extend');
+      var next = url.pathname + (url.search || '') + (url.hash || '');
+      if (window.history && typeof window.history.replaceState === 'function') {
+        window.history.replaceState({}, '', next);
+      }
+      return true;
+    } catch (err) {
+      return /[?&]extend=1(?:&|$)/.test(String(window.location.search || ''));
+    }
+  }
+
+  function maybeOpenExtendStay(root) {
+    if (!consumeExtendStayQuery()) return;
+    root = root || pageRoot();
+    if (!root) return;
+    if (mapStatus(root.getAttribute('data-room-status')) !== 'occupied') {
+      showToast('No guest checked in to extend.', true);
+      return;
+    }
+    if (!(lastRoom && lastRoom.stay)) {
+      showToast('No guest checked in to extend.', true);
+      return;
+    }
+    openCheckinModal(root, { edit: true, extend: true });
+  }
+
   function loadRoomIfNeeded(root) {
     var api = root.getAttribute('data-room-api') || '';
-    if (!api) return;
+    if (!api) {
+      maybeOpenExtendStay(root);
+      return;
+    }
     fetch(api, {
       method: 'GET',
       credentials: 'same-origin',
@@ -6227,8 +6314,11 @@
       })
       .then(function (data) {
         if (data && data.ok && data.room) paintRoom(root, data.room);
+        maybeOpenExtendStay(root);
       })
-      .catch(function () {});
+      .catch(function () {
+        maybeOpenExtendStay(root);
+      });
   }
 
   function initHotelRoomDetailPage() {

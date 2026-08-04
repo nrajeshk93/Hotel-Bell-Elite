@@ -16,6 +16,7 @@ Covers:
 import os
 import tempfile
 import unittest
+from datetime import date, timedelta
 from unittest import mock
 
 import db as db_mod
@@ -581,6 +582,9 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertIn("transaction", settle.get_json()["error"].lower())
 
     def test_settle_bill_accepts_room_transfer_mode(self):
+        today = date.today()
+        check_in = today.isoformat()
+        check_out = (today + timedelta(days=1)).isoformat()
         checkin = self.client.put(
             "/hotel/api/rooms/room-101",
             json={
@@ -589,7 +593,8 @@ class PosTableOccupancyTests(unittest.TestCase):
                     "firstName": "Asha",
                     "lastName": "Nair",
                     "mobile": "9000000001",
-                    "checkInDate": "2026-07-29",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
                     "roomRate": 2000,
                     "nights": 1,
                     "advancePaid": 0,

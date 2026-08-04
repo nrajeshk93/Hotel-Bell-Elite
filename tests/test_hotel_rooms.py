@@ -1044,10 +1044,10 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay["earlyCheckinAmount"], 250)
         self.assertEqual(len(stay["folioCharges"]), 1)
         self.assertEqual(stay["folioCharges"][0]["kind"], "restaurant_room_transfer")
-        # room 5000 + extras 750 + folio 420 = 6170 + 5% GST
-        self.assertEqual(stay["estimatedTotal"], 6478.5)
+        # room 5000 + extras 750 + folio 420 = 6170 (tax-inclusive rates)
+        self.assertEqual(stay["estimatedTotal"], 6170.0)
         self.assertEqual(stay["advancePaid"], 1000)
-        self.assertEqual(stay["balanceAmount"], 5478.5)
+        self.assertEqual(stay["balanceAmount"], 5170.0)
 
         detail = self.client.get("/hotel/rooms/room-101")
         self.assertEqual(detail.status_code, 200)
@@ -1068,8 +1068,8 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(dest["firstName"], "Ravi")
         self.assertEqual(len(dest["folioCharges"]), 1)
         self.assertEqual(dest["folioCharges"][0]["amount"], 420)
-        self.assertEqual(dest["estimatedTotal"], 6478.5)
-        self.assertEqual(dest["balanceAmount"], 5478.5)
+        self.assertEqual(dest["estimatedTotal"], 6170.0)
+        self.assertEqual(dest["balanceAmount"], 5170.0)
         self.assertNotIn("stay", moved.get_json()["fromRoom"])
 
     def test_pos_occupied_rooms_api_lists_in_house_only(self):
@@ -1147,9 +1147,9 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay["nights"], 1)
         self.assertEqual(stay["overstayNights"], 1)
         self.assertEqual(stay["billableNights"], 2)
-        # 3500 * 2 nights + 5% GST
-        self.assertEqual(stay["estimatedTotal"], 7350.0)
-        self.assertEqual(stay["balanceAmount"], 7350.0)
+        # 3500 * 2 nights (tax-inclusive)
+        self.assertEqual(stay["estimatedTotal"], 7000.0)
+        self.assertEqual(stay["balanceAmount"], 7000.0)
 
         # Two days past expected checkout → two overstay nights.
         older_out = (today - timedelta(days=2)).isoformat()
@@ -1174,14 +1174,14 @@ class HotelRoomsTests(unittest.TestCase):
         stay2 = res2.get_json()["room"]["stay"]
         self.assertEqual(stay2["overstayNights"], 2)
         self.assertEqual(stay2["billableNights"], 3)
-        self.assertEqual(stay2["estimatedTotal"], 11025.0)
+        self.assertEqual(stay2["estimatedTotal"], 10500.0)
 
     def test_generate_invoice_mints_number_and_allows_partial_payment(self):
         room = self._checkin_with_charges()
         stay = room["stay"]
-        self.assertEqual(stay["estimatedTotal"], 6037.5)
+        self.assertEqual(stay["estimatedTotal"], 5750.0)
         self.assertEqual(stay["advancePaid"], 1000)
-        self.assertEqual(stay["balanceAmount"], 5037.5)
+        self.assertEqual(stay["balanceAmount"], 4750.0)
         self.assertFalse(stay.get("invoiceGenerated"))
 
         detail = self.client.get("/hotel/rooms/room-101")
@@ -1205,7 +1205,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hri-sum-cgst", inv_html)
         self.assertIn("hri-sum-ugst", inv_html)
         self.assertIn("UGST", inv_html)
-        self.assertIn("(2.5%)", inv_html)
+        self.assertIn("(2.5% incl.)", inv_html)
         self.assertIn("hri-tool-discount", inv_html)
         self.assertIn("Add Discount", inv_html)
         self.assertIn("hri-discount-modal", inv_html)
@@ -1236,7 +1236,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay["payments"][0]["amount"], 1500)
         self.assertEqual(stay["payments"][0]["method"], "upi")
         self.assertEqual(stay["advancePaid"], 2500)
-        self.assertEqual(stay["balanceAmount"], 3537.5)
+        self.assertEqual(stay["balanceAmount"], 3250.0)
         self.assertEqual(body["room"]["status"], "occupied")
 
         # Second generate does not mint a new number.
@@ -1252,8 +1252,8 @@ class HotelRoomsTests(unittest.TestCase):
 
     def test_set_discount_updates_balance_and_locks_after_generate(self):
         room = self._checkin_with_charges()
-        self.assertEqual(room["stay"]["estimatedTotal"], 6037.5)
-        self.assertEqual(room["stay"]["balanceAmount"], 5037.5)
+        self.assertEqual(room["stay"]["estimatedTotal"], 5750.0)
+        self.assertEqual(room["stay"]["balanceAmount"], 4750.0)
 
         discounted = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -1268,8 +1268,8 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay["discountType"], "pct")
         self.assertEqual(stay["discountValue"], 10)
         self.assertEqual(stay["discountAmount"], 575.0)
-        self.assertEqual(stay["estimatedTotal"], 5433.76)
-        self.assertEqual(stay["balanceAmount"], 4433.76)
+        self.assertEqual(stay["estimatedTotal"], 5175.0)
+        self.assertEqual(stay["balanceAmount"], 4175.0)
 
         needs_reason = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -1321,7 +1321,7 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(added.status_code, 200, added.get_data(as_text=True))
         stay = added.get_json()["room"]["stay"]
-        self.assertEqual(stay["estimatedTotal"], round(before + 350 * 1.05, 2))
+        self.assertEqual(stay["estimatedTotal"], round(before + 350, 2))
         labels = [f.get("label") for f in stay.get("folioCharges") or []]
         self.assertIn("Mini bar", labels)
 
@@ -1507,7 +1507,7 @@ class HotelRoomsTests(unittest.TestCase):
         stay = split.get_json()["room"]["stay"]
         self.assertTrue(stay["invoiceGenerated"])
         self.assertEqual(stay["advancePaid"], 5000)
-        self.assertEqual(stay["balanceAmount"], 1037.5)
+        self.assertEqual(stay["balanceAmount"], 750.0)
         self.assertEqual(len(stay["payments"]), 2)
         methods = sorted(p["method"] for p in stay["payments"])
         self.assertEqual(methods, ["cash", "upi"])
@@ -1529,10 +1529,10 @@ class HotelRoomsTests(unittest.TestCase):
             json={
                 "action": "record_payment",
                 "payment_splits": [
-                    {"payment_method": "cash", "amount": 537.5},
+                    {"payment_method": "cash", "amount": 400},
                     {
                         "payment_method": "bank_transfer",
-                        "amount": 500,
+                        "amount": 350,
                         "transaction_id": "NEFT991",
                     },
                 ],
@@ -1890,6 +1890,7 @@ class HotelRoomsTests(unittest.TestCase):
 
     def test_checkin_on_merge_primary_replicates_to_member(self):
         """After vacant-vacant merge, check-in on primary copies guest onto the member."""
+        check_in, check_out = self._stay_window(nights=2)
         merged = self.client.put(
             "/hotel/api/rooms/room-105",
             json={
@@ -1908,7 +1909,8 @@ class HotelRoomsTests(unittest.TestCase):
                     "lastName": "Singh",
                     "mobile": "9000000088",
                     "email": "karan@example.com",
-                    "checkInDate": "2026-08-01",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
                     "nights": 2,
                     "roomRate": 3000,
                     "advancePaid": 500,
@@ -1935,13 +1937,14 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("105", rate_lines[0].get("label") or "")
         # Room 105 is premium_without_balcony (default ₹3500) × 2 nights.
         self.assertEqual(float(rate_lines[0].get("amount") or 0), 7000.0)
-        # Primary ₹3000×2 + member ₹3500×2 = ₹13,000 + 5% GST = ₹13,650
+        # Primary ₹3000×2 + member ₹3500×2 = ₹13,000 (tax-inclusive)
         self.assertAlmostEqual(
-            float(primary["stay"].get("estimatedTotal") or 0), 13650.0, places=2
+            float(primary["stay"].get("estimatedTotal") or 0), 13000.0, places=2
         )
 
     def test_merged_checkin_uses_per_room_type_tariffs(self):
         """Suite primary + Deluxe member bill each type's settings tariff."""
+        check_in, check_out = self._stay_window(nights=1)
         merged = self.client.put(
             "/hotel/api/rooms/room-306",
             json={
@@ -1959,7 +1962,8 @@ class HotelRoomsTests(unittest.TestCase):
                     "firstName": "Asha",
                     "lastName": "Nair",
                     "mobile": "9000000306",
-                    "checkInDate": "2026-08-01",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
                     "nights": 1,
                     "roomRate": 7500,
                     "mergeRoomRates": [
@@ -1995,13 +1999,14 @@ class HotelRoomsTests(unittest.TestCase):
         by_num = {str(r.get("number") or ""): r for r in rates}
         self.assertEqual(float(by_num["307"]["roomRate"]), 7500.0)
         self.assertEqual(float(by_num["306"]["roomRate"]), 4500.0)
-        # ₹7500 + ₹4500 = ₹12,000 + 5% GST = ₹12,600
+        # ₹7500 + ₹4500 = ₹12,000 (tax-inclusive)
         self.assertAlmostEqual(
-            float(primary["stay"].get("estimatedTotal") or 0), 12600.0, places=2
+            float(primary["stay"].get("estimatedTotal") or 0), 12000.0, places=2
         )
 
     def test_merged_checkin_heals_copied_primary_rate_on_member(self):
         """Stale mergeRoomRates that copied suite rate onto deluxe are repaired."""
+        check_in, check_out = self._stay_window(nights=1)
         merged = self.client.put(
             "/hotel/api/rooms/room-306",
             json={
@@ -2019,7 +2024,8 @@ class HotelRoomsTests(unittest.TestCase):
                     "firstName": "Dev",
                     "lastName": "Iyer",
                     "mobile": "9000000307",
-                    "checkInDate": "2026-08-01",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
                     "nights": 1,
                     "roomRate": 7500,
                     "mergeRoomRates": [

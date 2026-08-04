@@ -82,6 +82,7 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
         </button>
         <div class="hrd-more-menu" id="hrd-more-menu" role="menu" hidden>
+          <button type="button" class="hrd-more-item" role="menuitem" data-action="extend" id="hrd-menu-extend" hidden>Extend Stay</button>
           <button type="button" class="hrd-more-item" role="menuitem" data-action="transfer">Room Transfer</button>
           <button type="button" class="hrd-more-item" role="menuitem" data-action="merge" id="hrd-menu-merge" hidden>Merge Rooms</button>
           <button type="button" class="hrd-more-item" role="menuitem" data-action="unmerge" id="hrd-menu-unmerge" hidden>Unmerge Room</button>
@@ -334,8 +335,8 @@
               <dt>Discount <span class="hrd-charges-muted" data-charges-discount-hint></span></dt>
               <dd data-charges-discount>—</dd>
             </div>
-            <div><dt>CGST <span class="hrd-charges-muted">(2.5%)</span></dt><dd data-charges-cgst>—</dd></div>
-            <div><dt>UGST <span class="hrd-charges-muted">(2.5%)</span></dt><dd data-charges-ugst>—</dd></div>
+            <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-cgst>—</dd></div>
+            <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-ugst>—</dd></div>
             <div><dt>Estimated Total</dt><dd data-charges-total>—</dd></div>
             <div><dt>Advance Paid</dt><dd data-charges-advance>—</dd></div>
             <div class="hrd-charges-balance"><dt>Balance Due</dt><dd data-charges-balance>—</dd></div>
@@ -867,8 +868,8 @@
             <dt>Discount <span class="hrd-charges-muted" id="hrd-invoice-discount-hint"></span></dt>
             <dd id="hrd-invoice-discount">—</dd>
           </div>
-          <div><dt>CGST <span class="hrd-charges-muted">(2.5%)</span></dt><dd id="hrd-invoice-cgst">—</dd></div>
-          <div><dt>UGST <span class="hrd-charges-muted">(2.5%)</span></dt><dd id="hrd-invoice-ugst">—</dd></div>
+          <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-cgst">—</dd></div>
+          <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-ugst">—</dd></div>
           <div><dt>Estimated Total</dt><dd id="hrd-invoice-total">—</dd></div>
           <div><dt>Advance Paid</dt><dd id="hrd-invoice-advance">—</dd></div>
           <div class="hrd-charges-balance"><dt>Balance Due</dt><dd id="hrd-invoice-balance">—</dd></div>
@@ -1003,8 +1004,8 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=45"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=12"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=100"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=13"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=102"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

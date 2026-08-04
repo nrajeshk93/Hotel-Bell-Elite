@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=42">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=59">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=60">
 <script>
 (function(){
   try{
@@ -30,7 +30,7 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=59">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=60">
 {% endif %}
 
 <div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers">
@@ -230,6 +230,44 @@
     </div>
   </div>
 
+  <div class="hr-dialog-overlay" id="hr-extend-modal" hidden aria-hidden="true">
+    <div class="hr-dialog hr-dialog--extend" role="dialog" aria-modal="true" aria-labelledby="hr-extend-title">
+      <header class="hr-dialog-head">
+        <div>
+          <h2 id="hr-extend-title">Extend Stay</h2>
+        </div>
+        <button type="button" class="hr-dialog-close" aria-label="Close" data-hr-extend-close>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <form class="hr-dialog-body" id="hr-extend-form" novalidate>
+        <input type="hidden" id="hr-extend-room-id" value="">
+        <label class="hr-field">
+          <span>Room</span>
+          <input type="text" id="hr-extend-room" readonly>
+        </label>
+        <label class="hr-field">
+          <span>Guest</span>
+          <input type="text" id="hr-extend-guest" readonly>
+        </label>
+        <div class="hr-extend-dates">
+          <label class="hr-field">
+            <span>Check-in</span>
+            <input type="text" id="hr-extend-checkin" readonly>
+          </label>
+          <div class="hr-field hr-extend-checkout-field">
+            {{ hotel_date_field('extendCheckOut', 'Check-out *', required=true, field_id='hr-extend-checkout', extra_class='hr-board-date-chip', panel_title='Check-out date', show_cal_icon=false, hint='', show_today=false) }}
+          </div>
+        </div>
+        <p class="hr-extend-nights" id="hr-extend-nights" aria-live="polite">1 night</p>
+      </form>
+      <footer class="hr-dialog-foot">
+        <button type="button" class="hr-btn hr-btn--outline" data-hr-extend-close>Cancel</button>
+        <button type="submit" form="hr-extend-form" class="hr-btn hr-btn--primary" id="hr-extend-save">Update Stay</button>
+      </footer>
+    </div>
+  </div>
+
   <div class="hr-dialog-overlay hr-board-reserve-overlay" id="hr-board-reserve-modal" hidden aria-hidden="true">
     <div class="hr-dialog hr-dialog--board-reserve" role="dialog" aria-modal="true" aria-labelledby="hr-board-reserve-title">
       <header class="hr-dialog-head">
@@ -345,7 +383,7 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=46"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=8"></script>
-<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=70"></script>
+<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=72"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

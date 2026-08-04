@@ -174,8 +174,8 @@ class HotelSettingsTests(unittest.TestCase):
                 },
                 tax_rates=rates,
             )
-            # taxable 1000 → CGST 40 + UGST 40
-            self.assertEqual(stay["estimatedTotal"], 1080.0)
+            # roomRate 1000 is tax-inclusive (CGST/UGST extracted, not added)
+            self.assertEqual(stay["estimatedTotal"], 1000.0)
             conn.commit()
         finally:
             conn.close()

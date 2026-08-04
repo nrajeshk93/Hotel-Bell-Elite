@@ -5798,6 +5798,29 @@ def _hotel_tax_rates_or_default(tax_rates=None):
     }
 
 
+def _hotel_split_inclusive_tax(inclusive_amount, tax_rates=None):
+    """Split a tax-inclusive amount into taxable + CGST + UGST.
+
+    Hotel room rates and stay extras are stored inclusive of GST. Returns
+    (taxable, cgst, ugst, inclusive) where inclusive == taxable + cgst + ugst.
+    """
+    rates = _hotel_tax_rates_or_default(tax_rates)
+    try:
+        inclusive = round(max(0.0, float(inclusive_amount or 0)), 2)
+    except (TypeError, ValueError):
+        inclusive = 0.0
+    factor = 1.0 + float(rates["cgst"]) + float(rates["ugst"])
+    if factor <= 0:
+        return inclusive, 0.0, 0.0, inclusive
+    taxable = round(inclusive / factor, 2)
+    cgst = round(taxable * float(rates["cgst"]), 2)
+    ugst = round(inclusive - taxable - cgst, 2)
+    if ugst < 0:
+        ugst = 0.0
+        cgst = round(inclusive - taxable, 2)
+    return taxable, cgst, ugst, inclusive
+
+
 def ensure_hotel_room_invoices_schema(conn):
     """Archive of generated room stay invoices (survives checkout)."""
     conn.execute(
@@ -7480,11 +7503,11 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
     out["discountValue"] = discount_value
     out["discountAmount"] = discount_amount
     out["discountReason"] = discount_reason
-    taxable = round(max(gross - discount_amount, 0), 2)
-    rates = _hotel_tax_rates_or_default(tax_rates)
-    cgst = round(taxable * rates["cgst"], 2)
-    ugst = round(taxable * rates["ugst"], 2)
-    estimated = round(taxable + cgst + ugst, 2)
+    # Room rate / extras / folio on the stay are tax-inclusive.
+    inclusive = round(max(gross - discount_amount, 0), 2)
+    _taxable, _cgst, _ugst, estimated = _hotel_split_inclusive_tax(
+        inclusive, tax_rates
+    )
     out["estimatedTotal"] = estimated
     # Prefer computed balance so folio posts stay in sync.
     out["balanceAmount"] = round(max(estimated - out["advancePaid"], 0), 2)

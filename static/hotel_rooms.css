@@ -1109,6 +1109,34 @@ html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room
 #hr-transfer-modal .hr-dialog-foot{
   border-radius:0 0 14px 14px;
 }
+#hr-extend-modal .hr-dialog,
+#hr-extend-modal .hr-dialog-body,
+#hr-extend-modal .hr-field{
+  overflow:visible;
+}
+#hr-extend-modal .hr-dialog{
+  max-width:420px;
+}
+#hr-extend-modal .hr-dialog-head{
+  border-radius:14px 14px 0 0;
+}
+#hr-extend-modal .hr-dialog-foot{
+  border-radius:0 0 14px 14px;
+}
+.hr-extend-dates{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.hr-extend-nights{
+  margin:4px 0 0;
+  font-size:13px;
+  font-weight:600;
+  color:#475569;
+}
+@media (max-width:520px){
+  .hr-extend-dates{grid-template-columns:1fr}
+}
 .hr-dialog-head{
   display:flex;
   align-items:flex-start;

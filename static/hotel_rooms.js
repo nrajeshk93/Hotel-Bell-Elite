@@ -864,6 +864,9 @@
     }
     if (canTransfer) {
       items.push(
+        '<button type="button" class="hotel-room-menu-item" role="menuitem" data-room-action="extend">Extend Stay</button>'
+      );
+      items.push(
         '<button type="button" class="hotel-room-menu-item" role="menuitem" data-room-action="transfer">Room Transfer</button>'
       );
     }
@@ -2879,6 +2882,226 @@
       });
   }
 
+  function prettyStayDate(iso) {
+    var value = toDateISO(iso);
+    if (!value) return '—';
+    var parts = value.split('-');
+    if (parts.length !== 3) return value;
+    var months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
+    ];
+    return (
+      Number(parts[2]) +
+      ' ' +
+      (months[Number(parts[1]) - 1] || '') +
+      ' ' +
+      parts[0]
+    );
+  }
+
+  function nightsBetweenISO(checkIn, checkOut) {
+    var a = toDateISO(checkIn);
+    var b = toDateISO(checkOut);
+    if (!a || !b) return 1;
+    var aParts = a.split('-').map(Number);
+    var bParts = b.split('-').map(Number);
+    var start = new Date(aParts[0], aParts[1] - 1, aParts[2]);
+    var end = new Date(bParts[0], bParts[1] - 1, bParts[2]);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 1;
+    var days = Math.round((end.getTime() - start.getTime()) / 86400000);
+    return Math.max(1, days);
+  }
+
+  function syncExtendNightsLabel() {
+    var form = document.getElementById('hr-extend-form');
+    var nightsEl = document.getElementById('hr-extend-nights');
+    if (!form || !nightsEl) return;
+    var checkIn = form.getAttribute('data-checkin') || '';
+    var checkOutInput = document.getElementById('hr-extend-checkout');
+    var checkOut = toDateISO(checkOutInput && checkOutInput.value);
+    var nights = nightsBetweenISO(checkIn, checkOut);
+    nightsEl.textContent = nights + (nights === 1 ? ' night' : ' nights');
+  }
+
+  function closeExtendModal() {
+    var modal = document.getElementById('hr-extend-modal');
+    if (!modal) return;
+    if (typeof global.closeHotelDatePickers === 'function') {
+      global.closeHotelDatePickers();
+    }
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('hr-extend-open');
+    var form = document.getElementById('hr-extend-form');
+    if (form) {
+      form.removeAttribute('data-checkin');
+      form.__hrExtendStay = null;
+    }
+  }
+
+  function fillExtendModal(room) {
+    var modal = document.getElementById('hr-extend-modal');
+    var form = document.getElementById('hr-extend-form');
+    var roomIdInput = document.getElementById('hr-extend-room-id');
+    var roomInput = document.getElementById('hr-extend-room');
+    var guestInput = document.getElementById('hr-extend-guest');
+    var checkInInput = document.getElementById('hr-extend-checkin');
+    var checkOutInput = document.getElementById('hr-extend-checkout');
+    if (!modal || !form || !checkOutInput) {
+      showToast('Extend form unavailable.', true);
+      return;
+    }
+    var stay = room && room.stay && typeof room.stay === 'object' ? room.stay : null;
+    if (mapStatus(room && room.status) !== 'occupied' || !stay) {
+      showToast('Check in a guest before extending stay.', true);
+      return;
+    }
+    var checkIn = toDateISO(stay.checkInDate || stay.check_in_date || '');
+    var checkOut = toDateISO(
+      stay.checkOutDate || stay.check_out_date || stay.expectedCheckOut || ''
+    );
+    if (!checkIn) {
+      showToast('Check-in date is missing for this stay.', true);
+      return;
+    }
+    if (!checkOut || checkOut <= checkIn) {
+      checkOut = addDaysISO(checkIn, Math.max(1, Number(stay.nights) || 1));
+    }
+    if (roomIdInput) roomIdInput.value = room.id || '';
+    if (roomInput) roomInput.value = 'Room ' + (room.number || '');
+    if (guestInput) guestInput.value = guestLabelForRoom(room);
+    if (checkInInput) checkInInput.value = prettyStayDate(checkIn);
+    form.setAttribute('data-checkin', checkIn);
+    form.__hrExtendStay = Object.assign({}, stay);
+    if (typeof global.setHotelDateValue === 'function') {
+      global.setHotelDateValue(checkOutInput, checkOut);
+    } else {
+      checkOutInput.value = checkOut;
+    }
+    if (typeof global.initHotelDatePickers === 'function') {
+      global.initHotelDatePickers(modal);
+    }
+    if (typeof global.syncHotelDateChip === 'function') {
+      global.syncHotelDateChip(checkOutInput);
+    }
+    syncExtendNightsLabel();
+    if (checkOutInput.getAttribute('data-hr-extend-bound') !== '1') {
+      checkOutInput.setAttribute('data-hr-extend-bound', '1');
+      checkOutInput.addEventListener('change', syncExtendNightsLabel);
+    }
+    modal.hidden = false;
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('hr-extend-open');
+    setTimeout(function () {
+      try {
+        var chip = modal.querySelector('#hr-extend-checkout-chip') || checkOutInput;
+        if (chip && typeof chip.focus === 'function') chip.focus();
+      } catch (err) {}
+    }, 40);
+  }
+
+  function openExtendModal(roomId) {
+    var source = findRoomInLayout(roomId);
+    if (!source) {
+      showToast('Room not found.', true);
+      return;
+    }
+    if (mapStatus(source.status) !== 'occupied' || !source.stay) {
+      showToast('Check in a guest before extending stay.', true);
+      return;
+    }
+    /* Prefill from board cache, then refresh from API for latest stay. */
+    fillExtendModal(source);
+    fetch(roomDetailApi(roomId), {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: apiHeaders()
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok || !result.data.room) {
+          return;
+        }
+        var modal = document.getElementById('hr-extend-modal');
+        if (!modal || modal.hidden) return;
+        fillExtendModal(result.data.room);
+      })
+      .catch(function () {});
+  }
+
+  function submitExtendForm(form) {
+    var roomId = (document.getElementById('hr-extend-room-id') || {}).value || '';
+    var checkIn = form.getAttribute('data-checkin') || '';
+    var checkOutInput = document.getElementById('hr-extend-checkout');
+    var checkOut = toDateISO(checkOutInput && checkOutInput.value);
+    var stay = form.__hrExtendStay ? Object.assign({}, form.__hrExtendStay) : null;
+    if (!roomId || !stay) {
+      showToast('Stay details unavailable.', true);
+      return;
+    }
+    if (!checkOut) {
+      showToast('Choose a check-out date.', true);
+      return;
+    }
+    if (!checkIn || checkOut <= checkIn) {
+      showToast('Check-out must be after check-in.', true);
+      return;
+    }
+    var nights = nightsBetweenISO(checkIn, checkOut);
+    stay.checkInDate = checkIn;
+    stay.checkOutDate = checkOut;
+    stay.nights = nights;
+    var saveBtn = document.getElementById('hr-extend-save');
+    if (saveBtn) saveBtn.disabled = true;
+    var page = document.getElementById('hotel-rooms-page');
+    fetch(roomDetailApi(roomId), {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ action: 'checkin', stay: stay })
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok) {
+          throw new Error(
+            (result.data && result.data.error) || 'Could not update stay.'
+          );
+        }
+        closeExtendModal();
+        showToast(
+          'Stay extended to ' + prettyStayDate(checkOut) + ' (' + nights + (nights === 1 ? ' night' : ' nights') + ').'
+        );
+        return loadRooms(page);
+      })
+      .catch(function (err) {
+        showToast(err.message || 'Could not update stay.', true);
+      })
+      .finally(function () {
+        if (saveBtn) saveBtn.disabled = false;
+      });
+  }
+
   function putRoomAction(roomId, payload, successMessage) {
     var page = document.getElementById('hotel-rooms-page');
     return fetch(roomDetailApi(roomId), {
@@ -2913,6 +3136,10 @@
     }
     if (action === 'merge') {
       openMergeModal(roomId);
+      return;
+    }
+    if (action === 'extend') {
+      openExtendModal(roomId);
       return;
     }
     if (action === 'transfer') {
@@ -3188,6 +3415,15 @@
       });
     }
 
+    var extendForm = document.getElementById('hr-extend-form');
+    if (extendForm && extendForm.getAttribute('data-hr-extend-bound') !== '1') {
+      extendForm.setAttribute('data-hr-extend-bound', '1');
+      extendForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        submitExtendForm(extendForm);
+      });
+    }
+
     var boardReserveForm = document.getElementById('hr-board-reserve-form');
     if (boardReserveForm && boardReserveForm.getAttribute('data-hr-board-reserve-bound') !== '1') {
       boardReserveForm.setAttribute('data-hr-board-reserve-bound', '1');
@@ -3256,6 +3492,12 @@
       closeTransferModal();
       return;
     }
+    var extendClose = event.target.closest('[data-hr-extend-close]');
+    if (extendClose) {
+      event.preventDefault();
+      closeExtendModal();
+      return;
+    }
     var boardReserveClose = event.target.closest('[data-hr-board-reserve-close]');
     if (boardReserveClose) {
       event.preventDefault();
@@ -3281,6 +3523,11 @@
     var transferModal = document.getElementById('hr-transfer-modal');
     if (transferModal && !transferModal.hidden && event.target === transferModal) {
       closeTransferModal();
+      return;
+    }
+    var extendModal = document.getElementById('hr-extend-modal');
+    if (extendModal && !extendModal.hidden && event.target === extendModal) {
+      closeExtendModal();
       return;
     }
     var boardReserveModal = document.getElementById('hr-board-reserve-modal');
@@ -3323,6 +3570,14 @@
     var transferModal = document.getElementById('hr-transfer-modal');
     if (transferModal && !transferModal.hidden) {
       closeTransferModal();
+      return;
+    }
+    var extendModal = document.getElementById('hr-extend-modal');
+    if (extendModal && !extendModal.hidden) {
+      if (typeof global.closeHotelDatePickers === 'function') {
+        global.closeHotelDatePickers();
+      }
+      closeExtendModal();
       return;
     }
     var mergeModal = document.getElementById('hr-merge-modal');

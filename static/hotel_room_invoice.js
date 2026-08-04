@@ -458,10 +458,36 @@
       }
     }
     if (discount > subtotal) discount = subtotal;
-    var taxable = Math.round(Math.max(0, subtotal - discount) * 100) / 100;
+    /* Stay amounts are tax-inclusive — extract CGST/UGST; total stays inclusive. */
+    var inclusive = Math.round(Math.max(0, subtotal - discount) * 100) / 100;
+    var factor = 1 + CGST_RATE + UGST_RATE;
+    var taxable =
+      factor > 0 ? Math.round((inclusive / factor) * 100) / 100 : inclusive;
     var cgst = Math.round(taxable * CGST_RATE * 100) / 100;
-    var ugst = Math.round(taxable * UGST_RATE * 100) / 100;
-    var total = Math.round((taxable + cgst + ugst) * 100) / 100;
+    var ugst = Math.round((inclusive - taxable - cgst) * 100) / 100;
+    if (ugst < 0) ugst = 0;
+    var total = inclusive;
+
+    /* Invoice line amounts shown as taxable (exclusive) so tax rows add cleanly. */
+    if (factor > 0) {
+      lines = lines.map(function (row) {
+        var amt = Math.round(Number(row.amount || 0) * 100) / 100;
+        var rate = Math.round(Number(row.rate || 0) * 100) / 100;
+        return Object.assign({}, row, {
+          amount: Math.round((amt / factor) * 100) / 100,
+          rate: rate > 0 ? Math.round((rate / factor) * 100) / 100 : rate
+        });
+      });
+      subtotal = Math.round(
+        lines.reduce(function (sum, row) {
+          return sum + Number(row.amount || 0);
+        }, 0) * 100
+      ) / 100;
+      if (discount > 0) {
+        discount = Math.round((discount / factor) * 100) / 100;
+        if (discount > subtotal) discount = subtotal;
+      }
+    }
 
     var checkIn = toDateISO(stay.checkInDate || stay.check_in_date);
     var checkOut = toDateISO(stay.checkOutDate || stay.check_out_date);

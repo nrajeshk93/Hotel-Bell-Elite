@@ -186,11 +186,11 @@
             <dd id="hri-sum-discount">−₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row">
-            <dt>CGST <span class="pos-inv-summary-muted">(2.5%)</span></dt>
+            <dt>CGST <span class="pos-inv-summary-muted">(2.5% incl.)</span></dt>
             <dd id="hri-sum-cgst">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row">
-            <dt>UGST <span class="pos-inv-summary-muted">(2.5%)</span></dt>
+            <dt>UGST <span class="pos-inv-summary-muted">(2.5% incl.)</span></dt>
             <dd id="hri-sum-ugst">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row">
@@ -283,7 +283,7 @@
   {% include 'partials/hotel_settle_modal.html' %}
 </div>
 
-<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=13"></script>
 <script src="{{ url_for('static', filename='hotel_room_invoice_page.js') }}?v=17"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
