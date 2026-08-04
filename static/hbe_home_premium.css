@@ -154,48 +154,123 @@ body.home-module .de-main-inner.db-main-inner--home{
     right:0;
     z-index:100;
     border-radius:16px;
-    border:1px solid #EEF2F7;
+    border:1px solid #E2E8F0;
     background:#FFFFFF;
-    box-shadow:0 12px 40px rgba(15,23,42,.12);
+    box-shadow:0 14px 40px rgba(15,23,42,.14);
     position:absolute;
     display:none;
-    min-width:260px;
-    padding:14px;
+    min-width:300px;
+    max-width:min(360px,92vw);
+    padding:0;
+    overflow:hidden;
   }
   .db-home .db-notifications.is-open .db-notification-menu{display:block}
+  .db-home .db-notification-head{
+    padding:12px 14px 10px;
+    border-bottom:1px solid #EEF2F7;
+    background:#F8FAFC;
+  }
   .db-home .db-notification-title{
-    font-size:13px;
-    font-weight:700;
-    color:#111827;
-    margin-bottom:10px;
-  }
-  .db-home .db-notification-item strong{
     display:block;
-    font-size:13px;
-    color:#111827;
+    margin:0;
+    font-size:11px;
+    font-weight:800;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:#64748B;
   }
-  .db-home .db-notification-item span{
+  .db-home .db-notification-list{
+    padding:8px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+    max-height:min(360px,50vh);
+    overflow:auto;
+  }
+  .db-home .db-notification-item{
+    box-sizing:border-box;
+  }
+  .db-home .db-notification-item--empty{
     display:block;
-    margin-top:4px;
-    font-size:12px;
-    color:#6B7280;
-    line-height:1.5;
+    padding:12px 14px;
+    border-radius:12px;
+    background:#F8FAFC;
+    border:1px dashed #E2E8F0;
   }
   .db-home .db-notification-item--link{
-    display:block;
-    margin:0 -6px;
-    padding:10px 12px;
+    display:grid;
+    grid-template-columns:36px minmax(0,1fr);
+    column-gap:12px;
+    align-items:center;
+    margin:0;
+    padding:12px;
+    border:1px solid #EEF2F7;
     border-radius:12px;
+    background:#FFFFFF;
     text-decoration:none;
     color:inherit;
-    transition:background var(--de-motion-fast, 180ms) var(--de-ease-material, cubic-bezier(0.4, 0, 0.2, 1));
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+    transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;
   }
   .db-home .db-notification-item--link:hover{
     background:#F8FAFC;
+    border-color:#DBEAFE;
+    box-shadow:0 4px 12px rgba(37,99,235,.08);
   }
   .db-home .db-notification-item--link:focus-visible{
     outline:2px solid rgba(37,99,235,.35);
     outline-offset:2px;
+  }
+  .db-home .db-notification-item-icon{
+    width:36px;
+    height:36px;
+    margin:0;
+    border-radius:10px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background:#EFF6FF;
+    color:#2563EB;
+    flex:0 0 auto;
+  }
+  .db-home .db-notification-item-icon svg{
+    width:18px;
+    height:18px;
+    stroke:currentColor;
+    fill:none;
+    stroke-width:1.75;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+  }
+  .db-home .db-notification-item-copy{
+    min-width:0;
+    margin:0;
+    padding:0;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    gap:2px;
+  }
+  .db-home .db-notification-item-title{
+    display:block;
+    margin:0;
+    padding:0;
+    font-size:13px;
+    font-weight:700;
+    line-height:1.35;
+    color:#0F172A;
+  }
+  .db-home .db-notification-item-body{
+    display:block;
+    margin:0;
+    padding:0;
+    font-size:12px;
+    font-weight:500;
+    line-height:1.4;
+    color:#64748B;
+  }
+  .db-home .db-notification-item--empty .db-notification-item-title{
+    margin:0 0 2px;
   }
   .db-home .db-profile-menu{
     top:calc(100% + 10px);
@@ -257,9 +332,9 @@ body.home-module .de-main-inner.db-main-inner--home{
     right:0;
     z-index:100;
     border-radius:16px;
-    border:1px solid #EEF2F7;
+    border:1px solid #E2E8F0;
     background:#FFFFFF;
-    box-shadow:0 12px 40px rgba(15,23,42,.12);
+    box-shadow:0 14px 40px rgba(15,23,42,.14);
   }
   .db-home .db-home-grid{
     position:relative;
@@ -337,11 +412,11 @@ body.home-module .de-main-inner.db-main-inner--home{
   }
   .db-home .db-home-bell-dot{
     position:absolute;
-    top:9px;
-    right:10px;
-    width:7px;
-    height:7px;
-    min-width:0;
+    top:4px;
+    right:4px;
+    width:10px;
+    height:10px;
+    min-width:10px;
     padding:0;
     border-radius:50%;
     background:#2563EB;
@@ -350,6 +425,61 @@ body.home-module .de-main-inner.db-main-inner--home{
     display:none;
   }
   .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot{display:block}
+  /* Soft-nav sets animation:none!important on .de-main-wrapper *; beat it like Rooms tiles. */
+  html.de-soft-nav-session .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell,
+  html.de-soft-navigating .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell,
+  .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell{
+    color:#2563EB;
+    border-color:#93C5FD;
+    background:#EFF6FF;
+    animation:dbHomeBellAttention 1.4s ease-in-out infinite !important;
+  }
+  html.de-soft-nav-session .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot,
+  html.de-soft-navigating .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot,
+  .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot{
+    animation:dbHomeBellDotPulse 1.4s ease-in-out infinite !important;
+  }
+  .db-home .db-home-bell.db-home-bell--pulse{
+    animation:dbHomeBellPulse .9s ease-out 1 !important;
+  }
+  @keyframes dbHomeBellAttention{
+    0%, 100%{
+      box-shadow:0 0 0 0 rgba(37,99,235,0);
+      border-color:#93C5FD;
+      background:#EFF6FF;
+    }
+    50%{
+      box-shadow:0 0 0 5px rgba(37,99,235,.22);
+      border-color:#2563EB;
+      background:#DBEAFE;
+    }
+  }
+  @keyframes dbHomeBellDotPulse{
+    0%, 100%{
+      background:#3B82F6;
+      transform:scale(1);
+    }
+    50%{
+      background:#1D4ED8;
+      transform:scale(1.15);
+    }
+  }
+  @keyframes dbHomeBellPulse{
+    0%{box-shadow:0 0 0 0 rgba(37,99,235,.35)}
+    70%{box-shadow:0 0 0 10px rgba(37,99,235,0)}
+    100%{box-shadow:0 0 0 0 rgba(37,99,235,0)}
+  }
+  @media (prefers-reduced-motion: reduce){
+    html.de-soft-nav-session .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell,
+    html.de-soft-navigating .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell,
+    .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell,
+    html.de-soft-nav-session .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot,
+    html.de-soft-navigating .de-main-wrapper .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot,
+    .db-home .db-notifications.has-unread:not(.is-read) .db-home-bell-dot,
+    .db-home .db-home-bell.db-home-bell--pulse{
+      animation:none !important;
+    }
+  }
   .db-home .db-profile-trigger .db-avatar{
     width:40px;
     height:40px;

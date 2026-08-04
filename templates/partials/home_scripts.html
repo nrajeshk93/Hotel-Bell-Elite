@@ -16,18 +16,198 @@
   const trigger = document.getElementById('dashboard-profile-trigger');
   const notifications = document.getElementById('dashboard-notifications');
   const notificationsTrigger = document.getElementById('dashboard-notifications-trigger');
+  const notificationsList = document.getElementById('dashboard-notifications-list');
+  const NOTIF_POLL_MS = 8000;
+  const BELL_ACK_FP_KEY = 'hbe-home-bell-ack-fp';
+  let notifFingerprint = '';
+  let notifTimer = 0;
+
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function fingerprintItems(items) {
+    return (items || [])
+      .map(function (item) {
+        return String(item.id || '') + '|' + String(item.title || '') + '|' + String(item.body || '');
+      })
+      .join('||');
+  }
+
+  function readBellAckFp() {
+    try {
+      return String(sessionStorage.getItem(BELL_ACK_FP_KEY) || '');
+    } catch (_err) {
+      return '';
+    }
+  }
+
+  function writeBellAckFp(fp) {
+    try {
+      if (fp) sessionStorage.setItem(BELL_ACK_FP_KEY, fp);
+      else sessionStorage.removeItem(BELL_ACK_FP_KEY);
+    } catch (_err) {}
+  }
+
+  function renderNotifications(items) {
+    if (!notificationsList) return;
+    if (!items || !items.length) {
+      notificationsList.innerHTML =
+        '<div class="db-notification-item db-notification-item--empty">' +
+        '<strong class="db-notification-item-title">All caught up</strong>' +
+        '<span class="db-notification-item-body">No new notifications right now.</span>' +
+        '</div>';
+      return;
+    }
+    notificationsList.innerHTML = items
+      .map(function (item) {
+        return (
+          '<a class="db-notification-item db-notification-item--link" role="menuitem" href="' +
+          escHtml(item.href || '#') +
+          '" data-notification-id="' +
+          escHtml(item.id || '') +
+          '">' +
+          '<span class="db-notification-item-icon" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>' +
+          '</span>' +
+          '<span class="db-notification-item-copy">' +
+          '<strong class="db-notification-item-title">' +
+          escHtml(item.title || 'Notification') +
+          '</strong>' +
+          '<span class="db-notification-item-body">' +
+          escHtml(item.body || '') +
+          '</span>' +
+          '</span>' +
+          '</a>'
+        );
+      })
+      .join('');
+  }
+
+  function itemsFromDom() {
+    return Array.prototype.map.call(
+      (notificationsList && notificationsList.querySelectorAll('.db-notification-item--link')) || [],
+      function (el) {
+        const copy = el.querySelector('.db-notification-item-copy');
+        const titleEl = copy ? copy.querySelector('.db-notification-item-title') : null;
+        const bodyEl = copy ? copy.querySelector('.db-notification-item-body') : null;
+        return {
+          id: el.getAttribute('data-notification-id') || el.getAttribute('href') || '',
+          title: (titleEl && titleEl.textContent) || '',
+          body: (bodyEl && bodyEl.textContent) || '',
+        };
+      }
+    );
+  }
+
+  function applyNotifications(items, opts) {
+    opts = opts || {};
+    const nextFp = fingerprintItems(items);
+    const willUnread = !!(items && items.length);
+    if (opts.acknowledge && nextFp) writeBellAckFp(nextFp);
+    const ackFp = readBellAckFp();
+    const wasQuiet = !!(notifications && notifications.classList.contains('is-read'));
+    if (notificationsList) renderNotifications(items || []);
+    if (notifications) {
+      if (!willUnread) {
+        notifications.classList.remove('has-unread');
+        notifications.classList.add('is-read');
+        writeBellAckFp('');
+      } else if (ackFp && ackFp === nextFp) {
+        /* Same set already opened — keep quiet. */
+        notifications.classList.add('has-unread');
+        notifications.classList.add('is-read');
+      } else {
+        /* New or unacknowledged set — attention. */
+        notifications.classList.add('has-unread');
+        notifications.classList.remove('is-read');
+        if (opts.announce && wasQuiet && notificationsTrigger) {
+          notificationsTrigger.classList.add('db-home-bell--pulse');
+          window.setTimeout(function () {
+            notificationsTrigger.classList.remove('db-home-bell--pulse');
+          }, 1200);
+        }
+      }
+    }
+    // #region agent log
+    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'notif-pre',hypothesisId:'N6',location:'home_scripts.html:applyNotifications',message:'bell state applied',data:{count:(items||[]).length,ids:(items||[]).map(function(i){return i.id;}),willUnread:willUnread,ackMatch:!!(ackFp&&ackFp===nextFp),hasUnreadClass:!!(notifications&&notifications.classList.contains('has-unread')),isRead:!!(notifications&&notifications.classList.contains('is-read')),host:location.host},timestamp:Date.now()})}).catch(function(){});
+    // #endregion
+    notifFingerprint = nextFp;
+  }
+
+  function refreshNotifications(announce, opts) {
+    opts = opts || {};
+    if (!notifications) return Promise.resolve();
+    const url = notifications.getAttribute('data-notifications-url') || '';
+    if (!url) return Promise.resolve();
+    return fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, status: res.status, data: data || {} };
+        });
+      })
+      .then(function (res) {
+        // #region agent log
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'notif-pre',hypothesisId:'N5',location:'home_scripts.html:refreshNotifications',message:'poll notifications result',data:{httpOk:!!res.ok,status:res.status,ok:!!(res.data&&res.data.ok),count:((res.data&&res.data.notifications)||[]).length,ids:((res.data&&res.data.notifications)||[]).map(function(i){return i.id;}),host:location.host,url:url},timestamp:Date.now()})}).catch(function(){});
+        // #endregion
+        if (!res.data || !res.data.ok) return;
+        applyNotifications(res.data.notifications || [], {
+          announce: !!announce,
+          acknowledge: !!opts.acknowledge,
+        });
+      })
+      .catch(function (err) {
+        // #region agent log
+        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'notif-pre',hypothesisId:'N5',location:'home_scripts.html:refreshNotifications.err',message:'poll notifications failed',data:{err:String(err&&err.message||err||''),host:location.host},timestamp:Date.now()})}).catch(function(){});
+        // #endregion
+      });
+  }
+
+  function startNotificationPolling() {
+    if (notifTimer) return;
+    if (!notifFingerprint) notifFingerprint = fingerprintItems(itemsFromDom());
+    if (notifTimer) clearInterval(notifTimer);
+    if (window.__dbHomeNotifTimer) clearInterval(window.__dbHomeNotifTimer);
+    notifTimer = window.setInterval(function () {
+      if (!document.getElementById('dashboard-notifications')) return;
+      if (document.hidden) return;
+      refreshNotifications(true);
+    }, NOTIF_POLL_MS);
+    window.__dbHomeNotifTimer = notifTimer;
+    document.addEventListener('visibilitychange', function () {
+      if (!document.hidden) refreshNotifications(true);
+    });
+  }
 
   if (notifications && notificationsTrigger) {
+    /* Restore quiet state if this session already acknowledged the SSR set. */
+    if (notifications.classList.contains('has-unread')) {
+      const ssrFp = fingerprintItems(itemsFromDom());
+      const ackFp = readBellAckFp();
+      if (ssrFp && ackFp && ackFp === ssrFp) {
+        notifications.classList.add('is-read');
+      }
+      notifFingerprint = ssrFp;
+    }
     notificationsTrigger.addEventListener('click', function(event){
       event.stopPropagation();
       const isOpen = notifications.classList.toggle('is-open');
       notificationsTrigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
-      if (isOpen) notifications.classList.add('is-read');
+      if (isOpen) {
+        notifications.classList.add('is-read');
+        if (notifFingerprint) writeBellAckFp(notifFingerprint);
+        refreshNotifications(false, { acknowledge: true });
+      }
       if (isOpen && profile) {
         profile.classList.remove('is-open');
         if (trigger) trigger.setAttribute('aria-expanded', 'false');
       }
     });
+    startNotificationPolling();
   }
 
   if (profile && trigger) {

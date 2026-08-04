@@ -207,6 +207,77 @@
       .join('');
   }
 
+  function scrollThreadToComposer(reason) {
+    var host = $('#ch-messages');
+    var input = $('#ch-composer-input');
+    var composer = $('#ch-composer');
+    if (host) host.scrollTop = host.scrollHeight;
+    if (composer && typeof composer.scrollIntoView === 'function') {
+      try {
+        composer.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (e) {}
+    }
+    if (input && state.activeId) {
+      try {
+        input.focus({ preventScroll: true });
+      } catch (e2) {
+        try {
+          input.focus();
+        } catch (e3) {}
+      }
+    }
+    logComposerScroll(reason || 'scrollThreadToComposer');
+  }
+
+  function logComposerScroll(tag, extra) {
+    // #region agent log
+    try {
+      var composer = $('#ch-composer');
+      var msgs = $('#ch-messages');
+      var active = $('#ch-thread-active');
+      var content = page && page.querySelector('.ch-content');
+      var mainWrap = document.querySelector('.de-main-wrapper');
+      var cRect = composer ? composer.getBoundingClientRect() : null;
+      var mRect = msgs ? msgs.getBoundingClientRect() : null;
+      var data = {
+        tag: tag || '',
+        activeId: state.activeId,
+        winH: window.innerHeight,
+        winScrollY: window.scrollY || window.pageYOffset || 0,
+        docScrollH: document.documentElement ? document.documentElement.scrollHeight : 0,
+        mainScrollTop: mainWrap ? Math.round(mainWrap.scrollTop || 0) : null,
+        mainClientH: mainWrap ? Math.round(mainWrap.clientHeight || 0) : null,
+        mainScrollH: mainWrap ? Math.round(mainWrap.scrollHeight || 0) : null,
+        composerTop: cRect ? Math.round(cRect.top) : null,
+        composerBottom: cRect ? Math.round(cRect.bottom) : null,
+        composerInView: cRect
+          ? cRect.top >= 0 && cRect.bottom <= window.innerHeight + 1
+          : false,
+        composerPartiallyInView: cRect
+          ? cRect.bottom > 0 && cRect.top < window.innerHeight
+          : false,
+        msgScrollTop: msgs ? Math.round(msgs.scrollTop) : null,
+        msgScrollH: msgs ? Math.round(msgs.scrollHeight) : null,
+        msgClientH: msgs ? Math.round(msgs.clientHeight) : null,
+        msgAtBottom: msgs
+          ? msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 8
+          : null,
+        msgTop: mRect ? Math.round(mRect.top) : null,
+        msgBottom: mRect ? Math.round(mRect.bottom) : null,
+        activeOverflow: active ? (getComputedStyle(active).overflow || '') : '',
+        contentOverflow: content ? (getComputedStyle(content).overflow || '') : '',
+        contentScrollTop: content ? Math.round(content.scrollTop || 0) : null,
+      };
+      if (extra) {
+        Object.keys(extra).forEach(function (k) {
+          data[k] = extra[k];
+        });
+      }
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'scroll-post',hypothesisId:'SCROLL',location:'communication_hub.js:logComposerScroll',message:'composer scroll geometry',data:data,timestamp:Date.now()})}).catch(function(){});
+    } catch (e) {}
+    // #endregion
+  }
+
   function renderMessages() {
     var host = $('#ch-messages');
     if (!host) return;
@@ -252,6 +323,9 @@
     });
     host.innerHTML = html.join('') || '<div class="ch-day-sep">No messages yet</div>';
     host.scrollTop = host.scrollHeight;
+    requestAnimationFrame(function () {
+      scrollThreadToComposer('after_renderMessages.raf');
+    });
   }
 
   function showThread(conversation) {
@@ -355,6 +429,9 @@
       if (idx >= 0) state.conversations[idx] = conversation;
       else state.conversations.unshift(conversation);
       showThread(conversation);
+      // #region agent log
+      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'read-pre',hypothesisId:'R3',location:'communication_hub.js:applyMessages',message:'conversation applied after load',data:{convId:conversation.id,unread:Number(conversation.unread_count||0),activeId:state.activeId,host:location.host},timestamp:Date.now()})}).catch(function(){});
+      // #endregion
     }
     if (fp !== state.messagesFingerprint) {
       state.messagesFingerprint = fp;
@@ -401,6 +478,7 @@
     if (conv) showThread(conv);
     renderList(($('#ch-list-search') || {}).value || '');
     ensureMessagePolling();
+    logComposerScroll('openConversation.showThread');
     return fetchJson(messagesUrl(id)).then(function (res) {
       if (!res.data || !res.data.ok) {
         setSendError((res.data && res.data.error) || 'Unable to load messages.');
@@ -408,6 +486,9 @@
       }
       if (Number(state.activeId) !== Number(id)) return;
       applyMessages(res.data.messages || [], res.data.conversation || null);
+      requestAnimationFrame(function () {
+        scrollThreadToComposer('openConversation.afterApply.raf');
+      });
     });
   }
 

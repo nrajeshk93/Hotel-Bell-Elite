@@ -9,7 +9,7 @@
 <title>Home | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=40">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=17">
 <script>
 (function(){
   try{
@@ -23,7 +23,7 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_home_premium.css') }}?v=17">
 {% endif %}
 <div class="de-main-inner db-main-inner--home">
   <div id="dashboard-home-panel" class="db-home">
@@ -41,26 +41,35 @@
           <input id="dashboard-search" type="search" placeholder="Search applications..." autocomplete="off">
         </label>
 
-        <div class="db-notifications{% if home_notifications|default([]) %} has-unread{% endif %}" id="dashboard-notifications">
+        <div class="db-notifications{% if home_notifications|default([]) %} has-unread{% endif %}" id="dashboard-notifications" data-notifications-url="{{ url_for('home_api_notifications') }}">
           <button class="db-home-bell" type="button" id="dashboard-notifications-trigger" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
             <span class="db-home-bell-dot" aria-hidden="true"></span>
           </button>
-          <div class="db-notification-menu" role="menu" aria-label="Notifications">
-            <div class="db-notification-title">Notifications</div>
+          <div class="db-notification-menu" role="menu" aria-label="Notifications" id="dashboard-notifications-menu">
+            <div class="db-notification-head">
+              <span class="db-notification-title">Notifications</span>
+            </div>
+            <div id="dashboard-notifications-list" class="db-notification-list">
             {% if home_notifications|default([]) %}
               {% for item in home_notifications %}
-              <a class="db-notification-item db-notification-item--link" role="menuitem" href="{{ item.href }}">
-                <strong>{{ item.title }}</strong>
-                <span>{{ item.body }}</span>
+              <a class="db-notification-item db-notification-item--link" role="menuitem" href="{{ item.href }}" data-notification-id="{{ item.id }}">
+                <span class="db-notification-item-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+                </span>
+                <span class="db-notification-item-copy">
+                  <strong class="db-notification-item-title">{{ item.title }}</strong>
+                  <span class="db-notification-item-body">{{ item.body }}</span>
+                </span>
               </a>
               {% endfor %}
             {% else %}
-            <div class="db-notification-item">
-              <strong>All caught up</strong>
-              <span>No new notifications right now.</span>
+            <div class="db-notification-item db-notification-item--empty">
+              <strong class="db-notification-item-title">All caught up</strong>
+              <span class="db-notification-item-body">No new notifications right now.</span>
             </div>
             {% endif %}
+            </div>
           </div>
         </div>
 

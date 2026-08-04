@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=43">
-<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=10">
 <script>
 (function(){
   try{
@@ -31,7 +31,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=10">
 {% endif %}
 
 <div class="main-wrapper" id="communication-hub-page"
@@ -195,7 +195,7 @@
 </div>
 
 <template id="ch-bootstrap" data-ch-bootstrap="1">{{ conversations|tojson }}</template>
-<script src="{{ url_for('static', filename='communication_hub.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='communication_hub.js') }}?v=13"></script>
 <script>
 if (typeof window.initCommunicationHubPage === 'function') {
   window.initCommunicationHubPage();

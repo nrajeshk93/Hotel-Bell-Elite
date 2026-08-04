@@ -165,6 +165,33 @@ def list_messages(conn, conversation_id: int, *, mark_read: bool = False) -> lis
                WHERE id = ?""",
             (int(conversation_id),),
         )
+        # #region agent log
+        try:
+            import json as _json
+            import time as _time
+
+            with open(
+                "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-42fa9a.log",
+                "a",
+                encoding="utf-8",
+            ) as _fh:
+                _fh.write(
+                    _json.dumps(
+                        {
+                            "sessionId": "42fa9a",
+                            "runId": "read-pre",
+                            "hypothesisId": "R2",
+                            "location": "communication_hub.py:list_messages",
+                            "message": "marked conversation read",
+                            "data": {"conversation_id": int(conversation_id)},
+                            "timestamp": int(_time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+        # #endregion
     return [_message_dict(row) for row in rows]
 
 
@@ -331,6 +358,46 @@ def record_outbound_hub_message(
     )
 
 
+def build_hub_home_notification(conn) -> dict | None:
+    """Return a home-bell notification dict when hub conversations have unread inbound."""
+    ensure_communication_hub_schema(conn)
+    total = int(
+        (
+            conn.execute(
+                "SELECT COALESCE(SUM(unread_count), 0) AS c FROM wa_conversations"
+            ).fetchone()
+            or {"c": 0}
+        )["c"]
+        or 0
+    )
+    if total <= 0:
+        return None
+    top = conn.execute(
+        """SELECT display_name, phone_e164, last_preview, unread_count
+           FROM wa_conversations
+           WHERE COALESCE(unread_count, 0) > 0
+           ORDER BY COALESCE(last_message_at, '') DESC, id DESC
+           LIMIT 1"""
+    ).fetchone()
+    label = ""
+    preview = ""
+    if top:
+        label = str(top["display_name"] or top["phone_e164"] or "WhatsApp").strip() or "WhatsApp"
+        preview = str(top["last_preview"] or "").strip()
+    if total == 1:
+        title = f"New message from {label}"
+        body = preview or "Open Communication Hub to reply."
+    else:
+        title = f"{total} new WhatsApp messages"
+        body = f"Latest from {label}" + (f": {preview}" if preview else ".")
+    return {
+        "id": "communication-hub-unread",
+        "title": title,
+        "body": body[:180],
+        "href": "",  # filled by caller with url_for
+    }
+
+
 def export_hub_mirror_payload(conn) -> dict:
     """Snapshot conversations + messages for local-dev mirror pull."""
     ensure_communication_hub_schema(conn)
@@ -445,7 +512,72 @@ def pull_hub_mirror_into(conn) -> int:
         ).fetchone()["c"]
         if after > before:
             added += 1
-    if added:
+
+    # Sync previews/timestamps from production, but never overwrite local unread.
+    # Forcing remote unread_count re-marked conversations as unread after open
+    # (local mark_read → later poll → unread restored from prod).
+    preview_synced = 0
+    for item in payload.get("conversations") or []:
+        if not isinstance(item, dict):
+            continue
+        phone = wa.normalise_whatsapp_number(
+            item.get("phone") or item.get("phone_e164") or ""
+        )
+        if not phone:
+            continue
+        preview = str(item.get("last_preview") or "").strip()
+        last_at = str(item.get("last_message_at") or "").strip()
+        if not preview and not last_at:
+            continue
+        row = conn.execute(
+            "SELECT id, unread_count FROM wa_conversations WHERE phone_e164 = ?",
+            (phone,),
+        ).fetchone()
+        if not row:
+            continue
+        remote_unread = int(item.get("unread_count") or 0)
+        local_unread = int(row["unread_count"] or 0)
+        conn.execute(
+            """UPDATE wa_conversations
+               SET last_preview = CASE WHEN ? != '' THEN ? ELSE last_preview END,
+                   last_message_at = CASE WHEN ? != '' THEN ? ELSE last_message_at END,
+                   updated_at = datetime('now','localtime')
+             WHERE id = ?""",
+            (preview, preview, last_at, last_at, row["id"]),
+        )
+        preview_synced += 1
+        # #region agent log
+        try:
+            import json as _json
+            import time as _time
+
+            with open(
+                "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-42fa9a.log",
+                "a",
+                encoding="utf-8",
+            ) as _fh:
+                _fh.write(
+                    _json.dumps(
+                        {
+                            "sessionId": "42fa9a",
+                            "runId": "read-pre",
+                            "hypothesisId": "R1",
+                            "location": "communication_hub.py:pull_hub_mirror_into",
+                            "message": "mirror skipped unread overwrite",
+                            "data": {
+                                "local_unread": local_unread,
+                                "remote_unread": remote_unread,
+                                "kept_local": True,
+                            },
+                            "timestamp": int(_time.time() * 1000),
+                        }
+                    )
+                    + "\n"
+                )
+        except OSError:
+            pass
+        # #endregion
+    if added or preview_synced:
         conn.commit()
         # #region agent log
         try:
@@ -455,11 +587,11 @@ def pull_hub_mirror_into(conn) -> int:
             _line = _json.dumps(
                 {
                     "sessionId": "42fa9a",
-                    "runId": "post-fix",
-                    "hypothesisId": "A",
+                    "runId": "read-pre",
+                    "hypothesisId": "R1",
                     "location": "communication_hub.py:pull_hub_mirror_into",
                     "message": "mirrored messages into local db",
-                    "data": {"added": added},
+                    "data": {"added": added, "preview_synced": preview_synced},
                     "timestamp": int(_time.time() * 1000),
                 }
             )

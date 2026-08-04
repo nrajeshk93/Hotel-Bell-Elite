@@ -195,9 +195,6 @@
         {% if has_stores_access('indent') %}
         <a class="de-nav-subitem{% if stores_view == 'indent' or stores_view == 'approvals' %} is-active{% endif %}" id="de-nav-stores-indent" href="{{ url_for('stores_indent') }}"{% if stores_view == 'indent' or stores_view == 'approvals' %} aria-current="page"{% endif %}>Indent</a>
         {% endif %}
-        {% if has_stores_access('purchase_requests') %}
-        <a class="de-nav-subitem{% if stores_view == 'purchase_requests' %} is-active{% endif %}" id="de-nav-stores-pr" href="{{ url_for('stores_purchase_requests') }}"{% if stores_view == 'purchase_requests' %} aria-current="page"{% endif %}>Stock Inward</a>
-        {% endif %}
         {% if has_stores_access('stock') %}
         <a class="de-nav-subitem{% if stores_view == 'stock' %} is-active{% endif %}" id="de-nav-stores-stock" href="{{ url_for('stores_stock') }}"{% if stores_view == 'stock' %} aria-current="page"{% endif %}>Stock</a>
         {% endif %}

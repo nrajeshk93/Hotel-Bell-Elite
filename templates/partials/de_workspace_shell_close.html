@@ -9,4 +9,6 @@
 <script src="{{ url_for('static', filename='hbe_table_scroll.js') }}?v=3"></script>
 <script src="{{ url_for('static', filename='de_pwa.js') }}?v=4"></script>
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=6"></script>
+<script>window.__HBE_NOTIF_URL = {{ url_for('home_api_notifications')|tojson }};</script>
+<script src="{{ url_for('static', filename='hbe_app_toast.js') }}?v=2"></script>
 {% endif %}

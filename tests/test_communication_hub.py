@@ -197,6 +197,21 @@ class CommunicationHubTests(unittest.TestCase):
         finally:
             conn.close()
 
+        home = self.client.get("/home")
+        self.assertEqual(home.status_code, 200)
+        html = home.get_data(as_text=True)
+        self.assertIn("New message from Inbound Guest", html)
+        self.assertIn("has-unread", html)
+        self.assertIn('href="/communication-hub"', html)
+
+        api = self.client.get("/home/api/notifications")
+        self.assertEqual(api.status_code, 200)
+        payload = api.get_json()
+        self.assertTrue(payload.get("ok"))
+        self.assertTrue(payload.get("unread"))
+        ids = [item.get("id") for item in payload.get("notifications") or []]
+        self.assertIn("communication-hub-unread", ids)
+
     def test_webhook_skips_indent_button_for_hub_duplicate(self):
         from whatsapp_webhook import process_hub_inbound_messages
 
