@@ -1084,7 +1084,7 @@
           setAgentSyncStatus(panel, {
             ok: false,
             message:
-              'Hotel Print Agent is not running on this PC. Open it from the system tray, map printers, then Refresh.'
+              'Hotel Print Agent is not running on this PC. Open the tray app (enable Start with Windows), map printers, then Refresh.'
           });
           setPanelFieldsFromAgent(panel, false);
           return null;
@@ -1102,7 +1102,7 @@
         setAgentSyncStatus(panel, {
           ok: live,
           message:
-            (live ? 'From Hotel Print Agent' : 'Agent offline') +
+            (live ? 'From Hotel Print Agent' : 'Agent offline — open the tray app') +
             (bits.length ? ' · ' + bits.join(' · ') : '')
         });
         return patch;
@@ -1111,7 +1111,7 @@
         setAgentSyncStatus(panel, {
           ok: false,
           message:
-            'Could not reach Hotel Print Agent. Open the EXE on this PC and try Refresh.'
+            'Could not reach Hotel Print Agent on this PC. Open the tray app (Start with Windows), then Refresh.'
         });
         setPanelFieldsFromAgent(panel, false);
         return null;

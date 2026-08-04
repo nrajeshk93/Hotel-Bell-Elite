@@ -227,12 +227,17 @@ body.de-open.ep-module{overflow:auto;}
   #dashboard.de-module .de-sidebar.de-sidebar--snap-measure *{
     transition:none!important;
   }
-  /* Invisible expanded measure while the right panel is active — no wide flash. */
+  /* Invisible expanded measure while the right panel is active — no wide flash.
+     Keep the collapsed flex footprint so is-expanded during measure cannot
+     push the main panel (open/close flicker). */
   #main-app.de-module .de-sidebar.de-sidebar--preflight-hidden,
   #ep-workspace.de-module .de-sidebar.de-sidebar--preflight-hidden,
   #dashboard.de-module .de-sidebar.de-sidebar--preflight-hidden{
     visibility:hidden!important;
     pointer-events:none!important;
+    width:var(--de-sidebar-collapsed)!important;
+    min-width:var(--de-sidebar-collapsed)!important;
+    max-width:var(--de-sidebar-collapsed)!important;
   }
   /* Width expands via .is-expanded / .is-pinned (JS) and :hover (pointer over rail).
      Unpinned + not hovered must collapse — syncDeSidebarPointerState clears sticky is-expanded. */

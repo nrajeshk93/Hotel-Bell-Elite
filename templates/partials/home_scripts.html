@@ -133,9 +133,6 @@
         }
       }
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'notif-pre',hypothesisId:'N6',location:'home_scripts.html:applyNotifications',message:'bell state applied',data:{count:(items||[]).length,ids:(items||[]).map(function(i){return i.id;}),willUnread:willUnread,ackMatch:!!(ackFp&&ackFp===nextFp),hasUnreadClass:!!(notifications&&notifications.classList.contains('has-unread')),isRead:!!(notifications&&notifications.classList.contains('is-read')),host:location.host},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
     notifFingerprint = nextFp;
   }
 
@@ -151,9 +148,6 @@
         });
       })
       .then(function (res) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'notif-pre',hypothesisId:'N5',location:'home_scripts.html:refreshNotifications',message:'poll notifications result',data:{httpOk:!!res.ok,status:res.status,ok:!!(res.data&&res.data.ok),count:((res.data&&res.data.notifications)||[]).length,ids:((res.data&&res.data.notifications)||[]).map(function(i){return i.id;}),host:location.host,url:url},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         if (!res.data || !res.data.ok) return;
         applyNotifications(res.data.notifications || [], {
           announce: !!announce,
@@ -161,9 +155,6 @@
         });
       })
       .catch(function (err) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'notif-pre',hypothesisId:'N5',location:'home_scripts.html:refreshNotifications.err',message:'poll notifications failed',data:{err:String(err&&err.message||err||''),host:location.host},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
       });
   }
 

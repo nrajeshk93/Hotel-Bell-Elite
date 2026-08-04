@@ -5897,35 +5897,8 @@ def point_of_sale_api_menu_products():
 
 def _home_notifications(user):
     """Build home-page bell items for modules the current user can access."""
-    import json as _json
-    import time as _time
-
-    def _dbg(hypothesis_id, message, data=None):
-        # #region agent log
-        try:
-            _path = "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-42fa9a.log"
-            with open(_path, "a", encoding="utf-8") as _fh:
-                _fh.write(
-                    _json.dumps(
-                        {
-                            "sessionId": "42fa9a",
-                            "runId": "notif-pre",
-                            "hypothesisId": hypothesis_id,
-                            "location": "app.py:_home_notifications",
-                            "message": message,
-                            "data": data or {},
-                            "timestamp": int(_time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except OSError:
-            pass
-        # #endregion
-
     notifications = []
     if not user:
-        _dbg("N1", "no user", {})
         return notifications
     if user_can_access_stores_submodule(user, "approvals"):
         conn = get_db()
@@ -5945,75 +5918,28 @@ def _home_notifications(user):
                 "body": f"{pending_count} {label} waiting for your review.",
                 "href": url_for("stores_approvals"),
             })
-    hub_access = user_can_access_dashboard(user, "communication_hub")
-    _dbg("N2", "hub access check", {"hub_access": hub_access, "user_id": user.get("id")})
-    if hub_access:
+    if user_can_access_dashboard(user, "communication_hub"):
         from communication_hub import build_hub_home_notification, pull_hub_mirror_into
 
         conn = get_db()
         try:
-            mirrored = pull_hub_mirror_into(conn)
+            pull_hub_mirror_into(conn)
             hub_item = build_hub_home_notification(conn)
-            unread_sum = conn.execute(
-                "SELECT COALESCE(SUM(unread_count), 0) AS c FROM wa_conversations"
-            ).fetchone()["c"]
-            _dbg(
-                "N3",
-                "hub notification build",
-                {
-                    "mirrored": int(mirrored or 0),
-                    "unread_sum": int(unread_sum or 0),
-                    "has_item": bool(hub_item),
-                    "title": (hub_item or {}).get("title") or "",
-                },
-            )
         finally:
             conn.close()
         if hub_item:
             hub_item["href"] = url_for("communication_hub")
             notifications.append(hub_item)
-    _dbg("N4", "notifications result", {"count": len(notifications), "ids": [n.get("id") for n in notifications]})
     return notifications
 
 
 @app.route("/home/api/notifications")
 def home_api_notifications():
     """JSON feed for the home bell (polled so new WhatsApp messages surface live)."""
-    import json as _json
-    import time as _time
-
     user = get_current_user()
     if not user:
         return jsonify({"ok": False, "error": "Unauthorized"}), 401
     items = _home_notifications(user)
-    # #region agent log
-    try:
-        with open(
-            "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-42fa9a.log",
-            "a",
-            encoding="utf-8",
-        ) as _fh:
-            _fh.write(
-                _json.dumps(
-                    {
-                        "sessionId": "42fa9a",
-                        "runId": "notif-pre",
-                        "hypothesisId": "N5",
-                        "location": "app.py:home_api_notifications",
-                        "message": "home api notifications",
-                        "data": {
-                            "count": len(items),
-                            "ids": [i.get("id") for i in items],
-                            "host": (request.host or ""),
-                        },
-                        "timestamp": int(_time.time() * 1000),
-                    }
-                )
-                + "\n"
-            )
-    except OSError:
-        pass
-    # #endregion
     return jsonify({"ok": True, "notifications": items, "unread": len(items) > 0})
 
 
@@ -10462,11 +10388,14 @@ def print_agent_browser_pair():
         or str(user.get("business_id") or user.get("businessId") or "").strip()
         or "default"
     )
+    agent_id = (request.args.get("agentId") or "").strip()
     conn = get_db()
     try:
-        result = browser_pair_print_agent(conn, business_id=business_id)
+        result = browser_pair_print_agent(
+            conn, business_id=business_id, agent_id=agent_id or None
+        )
         # Also try empty / any agent if business-specific miss (single-tenant installs)
-        if not result.get("ok") and business_id != "default":
+        if not result.get("ok") and not agent_id and business_id != "default":
             result = browser_pair_print_agent(conn, business_id=None)
         status = 200 if result.get("ok") else 404
         return jsonify(result), status

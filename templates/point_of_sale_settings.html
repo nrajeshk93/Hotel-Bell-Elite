@@ -8,7 +8,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Settings | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=44">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settings.css') }}?v=36">
@@ -306,7 +306,7 @@
         <div class="pos-set-panel-head">
           <div>
             <h2>Printers</h2>
-            <p>Station and printers are read from Hotel Print Agent on this PC.</p>
+            <p>Station and printers are read from Hotel Print Agent on this PC. Keep the agent open in the system tray (enable <strong>Start with Windows</strong> so it does not ask you to run the EXE every time).</p>
           </div>
           <div class="pos-set-panel-head-actions">
             <button type="button" class="pos-set-btn pos-set-btn--ghost" data-pos-agent-refresh>
@@ -451,7 +451,7 @@
 })(window);
 </script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='pos_printers.js') }}?v=17"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=18"></script>
 <script src="{{ url_for('static', filename='pos_settings.js') }}?v=26"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}

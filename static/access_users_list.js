@@ -22,29 +22,29 @@
     var countEl = byId('am-users-count');
     var emptyFilterEl = byId('am-users-empty-filter');
     var paginationEl = byId('am-users-pagination');
-    var columnsEl = document.querySelector('.am-users-columns');
+    var tableWrap = listEl.closest('.pl-table-wrap');
 
-    var cards = Array.prototype.slice.call(listEl.querySelectorAll('.am-user-card'));
+    var rows = Array.prototype.slice.call(listEl.querySelectorAll('.am-user-row'));
     var pageSize = 10;
     var currentPage = 1;
 
-    function getFilteredCards(){
+    function getFilteredRows(){
       var query = (searchEl && searchEl.value || '').trim().toLowerCase();
       var role = roleFilterEl ? roleFilterEl.value : 'all';
       var status = statusFilterEl ? statusFilterEl.value : 'all';
 
-      return cards.filter(function(card){
-        var searchData = card.getAttribute('data-search') || '';
-        var cardRole = card.getAttribute('data-role') || '';
-        var cardStatus = card.getAttribute('data-status') || '';
+      return rows.filter(function(row){
+        var searchData = row.getAttribute('data-search') || '';
+        var rowRole = row.getAttribute('data-role') || '';
+        var rowStatus = row.getAttribute('data-status') || '';
         var matchesSearch = !query || searchData.indexOf(query) !== -1;
-        var matchesRole = role === 'all' || cardRole === role;
-        var matchesStatus = status === 'all' || cardStatus === status;
+        var matchesRole = role === 'all' || rowRole === role;
+        var matchesStatus = status === 'all' || rowStatus === status;
         return matchesSearch && matchesRole && matchesStatus;
       });
     }
 
-    function sortCards(filtered){
+    function sortRows(filtered){
       return filtered.slice().sort(function(a, b){
         var nameA = a.getAttribute('data-name') || '';
         var nameB = b.getAttribute('data-name') || '';
@@ -109,36 +109,36 @@
     }
 
     function applyFilters(){
-      var filtered = sortCards(getFilteredCards());
+      var filtered = sortRows(getFilteredRows());
       var totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
       if(currentPage > totalPages) currentPage = totalPages;
 
-      cards.forEach(function(card){
-        card.classList.add('is-hidden');
-        listEl.appendChild(card);
+      rows.forEach(function(row){
+        row.classList.add('is-hidden');
+        listEl.appendChild(row);
       });
 
       var visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-      visible.forEach(function(card){
-        card.classList.remove('is-hidden');
-        listEl.appendChild(card);
+      visible.forEach(function(row){
+        row.classList.remove('is-hidden');
+        listEl.appendChild(row);
       });
 
       if(countEl){
         var suffix = filtered.length === 1 ? ' account' : ' accounts';
-        var totalSuffix = cards.length === 1 ? ' account' : ' accounts';
-        if(filtered.length === cards.length){
+        var totalSuffix = rows.length === 1 ? ' account' : ' accounts';
+        if(filtered.length === rows.length){
           countEl.textContent = filtered.length + suffix;
         }else{
-          countEl.textContent = filtered.length + ' of ' + cards.length + totalSuffix;
+          countEl.textContent = filtered.length + ' of ' + rows.length + totalSuffix;
         }
       }
 
       if(emptyFilterEl){
         emptyFilterEl.classList.toggle('hidden', filtered.length > 0);
       }
-      if(columnsEl){
-        columnsEl.style.display = filtered.length > 0 ? '' : 'none';
+      if(tableWrap){
+        tableWrap.hidden = filtered.length === 0;
       }
       if(searchChip){
         searchChip.classList.toggle('is-active', !!(searchEl && (searchEl.value || '').trim()));

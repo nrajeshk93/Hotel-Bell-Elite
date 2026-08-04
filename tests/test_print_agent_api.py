@@ -95,16 +95,26 @@ class PrintAgentApiTests(unittest.TestCase):
         )
         self.assertEqual(denied.status_code, 401)
 
-        pair = self.client.get("/api/print-agent/browser-pair?businessId=biz-demo")
+        pair = self.client.get(
+            "/api/print-agent/browser-pair"
+            "?businessId=biz-demo&agentId=11111111-2222-3333-4444-555555555555"
+        )
         self.assertEqual(pair.status_code, 200, pair.get_data(as_text=True))
         pair_body = pair.get_json()
         self.assertTrue(pair_body.get("ok"))
         self.assertEqual(pair_body.get("apiKey"), body.get("apiKey"))
+        self.assertEqual(pair_body.get("agentId"), "11111111-2222-3333-4444-555555555555")
         self.assertEqual(pair_body.get("localBaseUrl"), "http://127.0.0.1:4567")
         self.assertEqual(
             (pair_body.get("mappedPrinters") or {}).get("billing"),
             "Epson TM-T82",
         )
+
+        miss = self.client.get(
+            "/api/print-agent/browser-pair?agentId=00000000-0000-0000-0000-000000000000"
+        )
+        self.assertEqual(miss.status_code, 404)
+        self.assertFalse((miss.get_json() or {}).get("ok"))
 
     def test_updates_and_config(self):
         upd = self.client.get("/api/print-agent/updates/latest?current=1.0.0")

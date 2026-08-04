@@ -238,33 +238,53 @@ def heartbeat_print_agent(conn, payload: dict, bearer_token: str | None) -> dict
     }
 
 
-def browser_pair_print_agent(conn, business_id: str | None = None) -> dict:
-    """Return local-agent credentials for a logged-in cloud browser session."""
+def browser_pair_print_agent(
+    conn, business_id: str | None = None, agent_id: str | None = None
+) -> dict:
+    """Return local-agent credentials for a logged-in cloud browser session.
+
+    Prefer ``agent_id`` when the browser already discovered the loopback agent on
+    this PC — otherwise the newest heartbeat for the business may belong to a
+    different workstation and pairing silently breaks.
+    """
     ensure_print_agent_schema(conn)
-    biz = (business_id or "").strip()
-    if biz:
+    wanted_id = (agent_id or "").strip()
+    if wanted_id:
         row = conn.execute(
             """
             SELECT agent_id, api_key, device_name, last_seen_at, business_id,
                    mapped_printers_json
             FROM print_agents
-            WHERE revoked = 0 AND business_id = ? AND api_key != ''
-            ORDER BY datetime(last_seen_at) DESC, datetime(updated_at) DESC
+            WHERE revoked = 0 AND agent_id = ? AND api_key != ''
             LIMIT 1
             """,
-            (biz,),
+            (wanted_id,),
         ).fetchone()
     else:
-        row = conn.execute(
-            """
-            SELECT agent_id, api_key, device_name, last_seen_at, business_id,
-                   mapped_printers_json
-            FROM print_agents
-            WHERE revoked = 0 AND api_key != ''
-            ORDER BY datetime(last_seen_at) DESC, datetime(updated_at) DESC
-            LIMIT 1
-            """
-        ).fetchone()
+        biz = (business_id or "").strip()
+        if biz:
+            row = conn.execute(
+                """
+                SELECT agent_id, api_key, device_name, last_seen_at, business_id,
+                       mapped_printers_json
+                FROM print_agents
+                WHERE revoked = 0 AND business_id = ? AND api_key != ''
+                ORDER BY datetime(last_seen_at) DESC, datetime(updated_at) DESC
+                LIMIT 1
+                """,
+                (biz,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT agent_id, api_key, device_name, last_seen_at, business_id,
+                       mapped_printers_json
+                FROM print_agents
+                WHERE revoked = 0 AND api_key != ''
+                ORDER BY datetime(last_seen_at) DESC, datetime(updated_at) DESC
+                LIMIT 1
+                """
+            ).fetchone()
 
     if not row or not (row["api_key"] or "").strip():
         return {

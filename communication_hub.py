@@ -165,33 +165,6 @@ def list_messages(conn, conversation_id: int, *, mark_read: bool = False) -> lis
                WHERE id = ?""",
             (int(conversation_id),),
         )
-        # #region agent log
-        try:
-            import json as _json
-            import time as _time
-
-            with open(
-                "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-42fa9a.log",
-                "a",
-                encoding="utf-8",
-            ) as _fh:
-                _fh.write(
-                    _json.dumps(
-                        {
-                            "sessionId": "42fa9a",
-                            "runId": "read-pre",
-                            "hypothesisId": "R2",
-                            "location": "communication_hub.py:list_messages",
-                            "message": "marked conversation read",
-                            "data": {"conversation_id": int(conversation_id)},
-                            "timestamp": int(_time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except OSError:
-            pass
-        # #endregion
     return [_message_dict(row) for row in rows]
 
 
@@ -546,62 +519,8 @@ def pull_hub_mirror_into(conn) -> int:
             (preview, preview, last_at, last_at, row["id"]),
         )
         preview_synced += 1
-        # #region agent log
-        try:
-            import json as _json
-            import time as _time
-
-            with open(
-                "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-42fa9a.log",
-                "a",
-                encoding="utf-8",
-            ) as _fh:
-                _fh.write(
-                    _json.dumps(
-                        {
-                            "sessionId": "42fa9a",
-                            "runId": "read-pre",
-                            "hypothesisId": "R1",
-                            "location": "communication_hub.py:pull_hub_mirror_into",
-                            "message": "mirror skipped unread overwrite",
-                            "data": {
-                                "local_unread": local_unread,
-                                "remote_unread": remote_unread,
-                                "kept_local": True,
-                            },
-                            "timestamp": int(_time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except OSError:
-            pass
-        # #endregion
     if added or preview_synced:
         conn.commit()
-        # #region agent log
-        try:
-            import json as _json
-            import time as _time
-
-            _line = _json.dumps(
-                {
-                    "sessionId": "42fa9a",
-                    "runId": "read-pre",
-                    "hypothesisId": "R1",
-                    "location": "communication_hub.py:pull_hub_mirror_into",
-                    "message": "mirrored messages into local db",
-                    "data": {"added": added, "preview_synced": preview_synced},
-                    "timestamp": int(_time.time() * 1000),
-                }
-            )
-            _path = os.path.join(os.path.dirname(__file__), ".cursor", "debug-42fa9a.log")
-            os.makedirs(os.path.dirname(_path), exist_ok=True)
-            with open(_path, "a", encoding="utf-8") as _fh:
-                _fh.write(_line + "\n")
-        except OSError:
-            pass
-        # #endregion
     return added
 
 
@@ -677,46 +596,15 @@ def send_conversation_attachment(
     user_id=None,
 ) -> tuple[bool, str, dict]:
     """Upload a file to WhatsApp and send it on the open conversation."""
-    import json
     import os
     import tempfile
-    import time
-
-    def _dbg(hypothesis_id, message, data=None):
-        # #region agent log
-        try:
-            with open(
-                "/Users/rajesh/Documents/New project/Hotel Bell elite/.cursor/debug-42fa9a.log",
-                "a",
-                encoding="utf-8",
-            ) as _f:
-                _f.write(
-                    json.dumps(
-                        {
-                            "sessionId": "42fa9a",
-                            "runId": "attach-pre",
-                            "hypothesisId": hypothesis_id,
-                            "location": "communication_hub.py:send_conversation_attachment",
-                            "message": message,
-                            "data": data or {},
-                            "timestamp": int(time.time() * 1000),
-                        }
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-        # #endregion
 
     conversation = get_conversation(conn, conversation_id)
     if not conversation:
-        _dbg("ATTACH_D", "conversation missing", {"conversation_id": conversation_id})
         return False, "Conversation not found.", {}
     if not wa.whatsapp_configured():
-        _dbg("ATTACH_D", "whatsapp not configured", {})
         return False, "WhatsApp API is not configured.", {}
     if file_storage is None or not getattr(file_storage, "filename", None):
-        _dbg("ATTACH_D", "no file", {})
         return False, "Choose a file to attach.", {}
 
     filename = os.path.basename(str(file_storage.filename or "attachment")).strip() or "attachment"
@@ -744,7 +632,6 @@ def send_conversation_attachment(
                 ".txt": "text/plain",
             }.get(ext, "application/octet-stream")
         else:
-            _dbg("ATTACH_D", "unsupported type", {"filename": filename, "mime": mime})
             return False, "Unsupported file type. Use an image or PDF/Office document.", {}
 
     tmp_path = ""
@@ -755,28 +642,15 @@ def send_conversation_attachment(
         file_storage.save(tmp_path)
         size = os.path.getsize(tmp_path)
         if size <= 0:
-            _dbg("ATTACH_D", "empty file after save", {"filename": filename, "mime": mime})
             return False, "The selected file is empty.", {}
         if size > _MAX_ATTACH_BYTES:
             return False, "File is too large (max 16 MB).", {}
 
-        _dbg(
-            "ATTACH_D",
-            "upload start",
-            {
-                "filename": filename,
-                "mime": mime,
-                "media_type": media_type,
-                "size": size,
-                "phone": conversation.get("phone"),
-            },
-        )
         ok_up, err_up, body_up = wa.upload_media_file(tmp_path, mime)
         media_id = ""
         if isinstance(body_up, dict):
             media_id = str(body_up.get("id") or "").strip()
         if not ok_up or not media_id:
-            _dbg("ATTACH_E", "upload failed", {"err": err_up or "", "hasId": bool(media_id)})
             return False, err_up or "WhatsApp media upload failed.", {}
 
         ok, err, payload = wa.send_media_message(
@@ -788,11 +662,6 @@ def send_conversation_attachment(
         )
         wa_message_id = wa.first_message_id(payload) if ok else ""
         body_preview = (caption or "").strip() or filename
-        _dbg(
-            "ATTACH_E",
-            "send media result",
-            {"ok": ok, "err": err or "", "wa_message_id": wa_message_id, "media_type": media_type},
-        )
         if ok:
             message = append_message(
                 conn,

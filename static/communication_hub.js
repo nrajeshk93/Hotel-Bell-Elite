@@ -226,56 +226,6 @@
         } catch (e3) {}
       }
     }
-    logComposerScroll(reason || 'scrollThreadToComposer');
-  }
-
-  function logComposerScroll(tag, extra) {
-    // #region agent log
-    try {
-      var composer = $('#ch-composer');
-      var msgs = $('#ch-messages');
-      var active = $('#ch-thread-active');
-      var content = page && page.querySelector('.ch-content');
-      var mainWrap = document.querySelector('.de-main-wrapper');
-      var cRect = composer ? composer.getBoundingClientRect() : null;
-      var mRect = msgs ? msgs.getBoundingClientRect() : null;
-      var data = {
-        tag: tag || '',
-        activeId: state.activeId,
-        winH: window.innerHeight,
-        winScrollY: window.scrollY || window.pageYOffset || 0,
-        docScrollH: document.documentElement ? document.documentElement.scrollHeight : 0,
-        mainScrollTop: mainWrap ? Math.round(mainWrap.scrollTop || 0) : null,
-        mainClientH: mainWrap ? Math.round(mainWrap.clientHeight || 0) : null,
-        mainScrollH: mainWrap ? Math.round(mainWrap.scrollHeight || 0) : null,
-        composerTop: cRect ? Math.round(cRect.top) : null,
-        composerBottom: cRect ? Math.round(cRect.bottom) : null,
-        composerInView: cRect
-          ? cRect.top >= 0 && cRect.bottom <= window.innerHeight + 1
-          : false,
-        composerPartiallyInView: cRect
-          ? cRect.bottom > 0 && cRect.top < window.innerHeight
-          : false,
-        msgScrollTop: msgs ? Math.round(msgs.scrollTop) : null,
-        msgScrollH: msgs ? Math.round(msgs.scrollHeight) : null,
-        msgClientH: msgs ? Math.round(msgs.clientHeight) : null,
-        msgAtBottom: msgs
-          ? msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight < 8
-          : null,
-        msgTop: mRect ? Math.round(mRect.top) : null,
-        msgBottom: mRect ? Math.round(mRect.bottom) : null,
-        activeOverflow: active ? (getComputedStyle(active).overflow || '') : '',
-        contentOverflow: content ? (getComputedStyle(content).overflow || '') : '',
-        contentScrollTop: content ? Math.round(content.scrollTop || 0) : null,
-      };
-      if (extra) {
-        Object.keys(extra).forEach(function (k) {
-          data[k] = extra[k];
-        });
-      }
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'scroll-post',hypothesisId:'SCROLL',location:'communication_hub.js:logComposerScroll',message:'composer scroll geometry',data:data,timestamp:Date.now()})}).catch(function(){});
-    } catch (e) {}
-    // #endregion
   }
 
   function renderMessages() {
@@ -429,9 +379,6 @@
       if (idx >= 0) state.conversations[idx] = conversation;
       else state.conversations.unshift(conversation);
       showThread(conversation);
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'read-pre',hypothesisId:'R3',location:'communication_hub.js:applyMessages',message:'conversation applied after load',data:{convId:conversation.id,unread:Number(conversation.unread_count||0),activeId:state.activeId,host:location.host},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
     }
     if (fp !== state.messagesFingerprint) {
       state.messagesFingerprint = fp;
@@ -442,9 +389,6 @@
 
   function refreshActiveMessages() {
     if (!state.activeId || !page) {
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'E',location:'communication_hub.js:refreshActiveMessages.skip',message:'poll skipped no activeId/page',data:{activeId:state.activeId,hasPage:!!page,host:location.host},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
       return Promise.resolve();
     }
     var id = state.activeId;
@@ -453,17 +397,11 @@
       var msgs = (res.data && res.data.messages) || [];
       var fp = messagesFingerprint(msgs);
       var changed = fp !== state.messagesFingerprint;
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'A_C_D',location:'communication_hub.js:refreshActiveMessages',message:'poll messages result',data:{host:location.host,href:location.href,convId:id,url:url,ok:!!(res.data&&res.data.ok),httpOk:!!res.ok,status:res.status,msgCount:msgs.length,inCount:msgs.filter(function(m){return m.direction==='in';}).length,lastDir:msgs.length?msgs[msgs.length-1].direction:'',lastBodyLen:msgs.length?String(msgs[msgs.length-1].body||'').length:0,fpChanged:changed,prevFpLen:String(state.messagesFingerprint||'').length,script:(document.querySelector('script[src*="communication_hub.js"]:last-of-type')||{}).src||''},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
       if (!res.data || !res.data.ok) return;
       /* Ignore stale responses if the user switched chats mid-flight. */
       if (Number(state.activeId) !== Number(id)) return;
       applyMessages(msgs, res.data.conversation || null);
     }).catch(function (err) {
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'C',location:'communication_hub.js:refreshActiveMessages.err',message:'poll fetch failed',data:{host:location.host,err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
     });
   }
 
@@ -478,7 +416,6 @@
     if (conv) showThread(conv);
     renderList(($('#ch-list-search') || {}).value || '');
     ensureMessagePolling();
-    logComposerScroll('openConversation.showThread');
     return fetchJson(messagesUrl(id)).then(function (res) {
       if (!res.data || !res.data.ok) {
         setSendError((res.data && res.data.error) || 'Unable to load messages.');
@@ -535,9 +472,6 @@
     if (state.sending) reason = 'sending';
     else if (!state.activeId) reason = 'no_activeId';
     else if (!text) reason = 'empty_text';
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'send-post',hypothesisId:'F_H_J',location:'communication_hub.js:sendMessage.entry',message:'send attempted',data:{reason:reason||'ok',activeId:state.activeId,sending:!!state.sending,textLen:text.length,host:location.host,hasComposer:!!$('#ch-composer'),btnDisabled:!!(($('#ch-send-btn')||{}).disabled)},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
     if (reason) return;
     state.sending = true;
     setSendError('');
@@ -550,15 +484,9 @@
       body: JSON.stringify({ text: text }),
     })
       .then(function (res) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'I',location:'communication_hub.js:sendMessage.result',message:'send api result',data:{ok:!!(res.data&&res.data.ok),httpOk:!!res.ok,status:res.status,err:(res.data&&res.data.error)||'',hasMessage:!!(res.data&&res.data.message),url:url},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         applySendResult(res, input);
       })
       .catch(function (err) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'I',location:'communication_hub.js:sendMessage.network',message:'send network error',data:{err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         setSendError('Network error while sending.');
       })
       .then(function () {
@@ -627,9 +555,6 @@
       input.setSelectionRange(caret, caret);
     } catch (e) {}
     input.focus();
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'emoji-pre',hypothesisId:'EMOJI_A',location:'communication_hub.js:insertEmojiAtCursor',message:'emoji inserted',data:{emojiLen:String(emoji).length,textLen:next.length,activeId:state.activeId},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
   }
 
   function ensureEmojiPanel() {
@@ -659,9 +584,6 @@
     var open = !!panel.hidden;
     panel.hidden = !open;
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'emoji-pre',hypothesisId:'EMOJI_B',location:'communication_hub.js:toggleEmojiPanel',message:'emoji panel toggled',data:{open:open,disabled:!!btn.disabled,host:location.host},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
   }
 
   function sendAttachment(file) {
@@ -669,9 +591,6 @@
     if (state.sending) reason = 'sending';
     else if (!state.activeId) reason = 'no_activeId';
     else if (!file) reason = 'no_file';
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'attach-pre',hypothesisId:'ATTACH_A',location:'communication_hub.js:sendAttachment.entry',message:'attach send attempted',data:{reason:reason||'ok',activeId:state.activeId,fileName:file&&file.name||'',fileSize:file&&file.size||0,fileType:file&&file.type||'',host:location.host,attachBtnDisabled:!!(($('#ch-attach-btn')||{}).disabled)},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
     if (reason) {
       if (reason === 'no_activeId') setSendError('Open a conversation before attaching a file.');
       return;
@@ -694,15 +613,9 @@
       body: fd,
     })
       .then(function (res) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'attach-pre',hypothesisId:'ATTACH_B',location:'communication_hub.js:sendAttachment.result',message:'attach api result',data:{ok:!!(res.data&&res.data.ok),httpOk:!!res.ok,status:res.status,err:(res.data&&res.data.error)||'',msgType:(res.data&&res.data.message&&res.data.message.message_type)||'',mediaName:(res.data&&res.data.message&&res.data.message.media_filename)||'',url:url},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         applySendResult(res, input);
       })
       .catch(function (err) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'attach-pre',hypothesisId:'ATTACH_B',location:'communication_hub.js:sendAttachment.network',message:'attach network error',data:{err:String(err&&err.message||err||'')},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         setSendError('Network error while uploading attachment.');
       })
       .then(function () {
@@ -717,9 +630,6 @@
 
   function ensureMessagePolling() {
     if (state.messagePollTimer) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'B',location:'communication_hub.js:ensureMessagePolling',message:'message poll timer started',data:{host:location.host,intervalMs:MESSAGE_POLL_MS,activeId:state.activeId},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
     state.messagePollTimer = setInterval(function () {
       if (!document.getElementById('communication-hub-page')) return;
       if (!state.activeId) return;
@@ -784,15 +694,9 @@
     var composer = $('#ch-composer');
     if (composer) {
       composer.addEventListener('submit', sendMessage);
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'G',location:'communication_hub.js:bind',message:'composer submit bound',data:{host:location.host,hasSendBtn:!!$('#ch-send-btn')},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
       var sendBtn = $('#ch-send-btn');
       if (sendBtn) {
         sendBtn.addEventListener('click', function () {
-          // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'G_L',location:'communication_hub.js:sendBtn.click',message:'send button click',data:{activeId:state.activeId,sending:!!state.sending,inputLen:((($('#ch-composer-input')||{}).value)||'').trim().length},timestamp:Date.now()})}).catch(function(){});
-          // #endregion
         });
       }
       var attachBtn = $('#ch-attach-btn');
@@ -819,9 +723,6 @@
       }
       if (attachBtn && attachInput) {
         attachBtn.addEventListener('click', function () {
-          // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'attach-pre',hypothesisId:'ATTACH_C',location:'communication_hub.js:attachBtn.click',message:'attach button click',data:{activeId:state.activeId,sending:!!state.sending,disabled:!!attachBtn.disabled,host:location.host},timestamp:Date.now()})}).catch(function(){});
-          // #endregion
           if (state.sending || attachBtn.disabled) return;
           if (!state.activeId) {
             setSendError('Open a conversation before attaching a file.');
@@ -831,16 +732,10 @@
         });
         attachInput.addEventListener('change', function () {
           var file = attachInput.files && attachInput.files[0];
-          // #region agent log
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'attach-pre',hypothesisId:'ATTACH_C',location:'communication_hub.js:attachInput.change',message:'attach file selected',data:{hasFile:!!file,fileName:file&&file.name||'',fileSize:file&&file.size||0,fileType:file&&file.type||'',activeId:state.activeId},timestamp:Date.now()})}).catch(function(){});
-          // #endregion
           if (file) sendAttachment(file);
         });
       }
     } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'G',location:'communication_hub.js:bind',message:'composer missing at bind',data:{host:location.host},timestamp:Date.now()})}).catch(function(){});
-      // #endregion
     }
     ['ch-new-chat-btn', 'ch-empty-new-btn'].forEach(function (id) {
       var el = document.getElementById(id);
@@ -865,9 +760,6 @@
     if (!page || page.__chBound) return;
     page.__chBound = true;
     state.conversations = loadBootstrap();
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'pre-fix',hypothesisId:'A_B',location:'communication_hub.js:init',message:'hub init',data:{host:location.host,href:location.href,bootCount:state.conversations.length,apiUrl:page.getAttribute('data-conversations-url')||'',msgTpl:page.getAttribute('data-messages-url-template')||'',script:(document.querySelector('script[src*="communication_hub.js"]:last-of-type')||{}).src||''},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
     bind();
     renderList('');
     hideThread();

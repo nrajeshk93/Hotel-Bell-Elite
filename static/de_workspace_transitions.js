@@ -7,48 +7,6 @@
   var FS_KEY = 'de-fullscreen-active';
   var PREFETCH_TTL_MS = 90000;
   var PREFETCH_MAX = 20;
-  // #region agent log
-  var __deDbgNavT0 = 0;
-  var __deDbgNavUrl = '';
-  function __deDbgUiFreezeSnapshot(){
-    var main = document.querySelector('.de-main-wrapper');
-    var dateTriggers = document.querySelectorAll('.hotel-date-trigger, .ep-date-chip button, [data-hotel-date] .hotel-date-trigger');
-    var disabledDates = 0;
-    for(var i = 0; i < dateTriggers.length; i++){
-      if(dateTriggers[i].disabled || dateTriggers[i].getAttribute('aria-disabled') === 'true') disabledDates++;
-    }
-    var lockedBtns = document.querySelectorAll('[data-de-lock-reenable]').length;
-    var disabledBtns = document.querySelectorAll('button:disabled, input[type="submit"]:disabled').length;
-    return {
-      loading: !!(main && main.classList.contains('is-soft-nav-loading')),
-      softNavClass: document.documentElement.classList.contains('de-soft-navigating'),
-      softNavSession: document.documentElement.classList.contains('de-soft-nav-session'),
-      softNavFlag: !!window.__deSoftNavInProgress,
-      disabledDates: disabledDates,
-      dateTriggerCount: dateTriggers.length,
-      lockedSubmitBtns: lockedBtns,
-      disabledBtns: disabledBtns,
-      path: (location.pathname || '')
-    };
-  }
-  function __deDbgLog(hypothesisId, location, message, data){
-    try{
-      fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},
-        body:JSON.stringify({
-          sessionId:'42fa9a',
-          runId:'nav-lag-post',
-          hypothesisId:hypothesisId,
-          location:location,
-          message:message,
-          data:data || {},
-          timestamp:Date.now()
-        })
-      }).catch(function(){});
-    } catch(e){}
-  }
-  // #endregion
   var IDLE_PREFETCH_PATHS = [
     '/home',
     '/accounts',
@@ -402,13 +360,6 @@
       btn.setAttribute('data-de-lock-reenable', '1');
       btn.disabled = true;
     }
-    // #region agent log
-    __deDbgLog('H3', 'de_workspace_transitions.js:lockFormSubmit', 'submit locked', {
-      formId: form.id || '',
-      action: (form.getAttribute('action') || '').slice(0, 80),
-      lockedCount: controls.length
-    });
-    // #endregion
   }
 
   function unlockFormSubmit(form){
@@ -419,12 +370,6 @@
       controls[i].disabled = false;
       controls[i].removeAttribute('data-de-lock-reenable');
     }
-    // #region agent log
-    __deDbgLog('H3', 'de_workspace_transitions.js:unlockFormSubmit', 'submit unlocked', {
-      formId: form.id || '',
-      unlockedCount: controls.length
-    });
-    // #endregion
   }
 
   function stripPartialParam(url){
@@ -536,19 +481,9 @@
       // Only soft-nav POST forms are locked. Modal/JS-handled forms (approvals decide,
       // etc.) must keep their submitter enabled so FormData includes decision=approved.
       if(!shouldSoftSubmitForm(form)){
-        // #region agent log
-        if(form && (form.id === 'ch-composer' || (form.classList && form.classList.contains('ch-composer')))){
-          fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'send-post',hypothesisId:'SOFT_NAV',location:'de_workspace_transitions.js:submit',message:'soft-nav skipped composer',data:{formId:form.id||'',hasHardNav:form.hasAttribute('data-de-hard-nav')},timestamp:Date.now()})}).catch(function(){});
-        }
-        // #endregion
         return;
       }
 
-      // #region agent log
-      if(form && (form.id === 'ch-composer' || (form.classList && form.classList.contains('ch-composer')))){
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'send-post',hypothesisId:'SOFT_NAV',location:'de_workspace_transitions.js:submit',message:'soft-nav STEALING composer (bug)',data:{formId:form.id||'',method:formMethod(form)},timestamp:Date.now()})}).catch(function(){});
-      }
-      // #endregion
 
       if(isPost){
         if(isFormSubmitLocked(form)){
@@ -771,13 +706,6 @@
     var main = document.querySelector('.de-main-wrapper');
     if(!main) return;
     main.classList.toggle('is-soft-nav-loading', !!active);
-    // #region agent log
-    __deDbgLog('H1', 'de_workspace_transitions.js:markMainLoading', active ? 'loading ON' : 'loading OFF', Object.assign({
-      active: !!active,
-      elapsedMs: __deDbgNavT0 ? (Date.now() - __deDbgNavT0) : null,
-      url: __deDbgNavUrl
-    }, __deDbgUiFreezeSnapshot()));
-    // #endregion
   }
 
   function posSettingsSectionFromStorage(){
@@ -1028,18 +956,6 @@
        FOUC on AWS (plain HTML flash) when module sheets (e.g. access_management)
        arrived after the swap. Cap high enough for CF RTT but not forever. */
     var limit = timeoutMs == null ? 2000 : timeoutMs;
-    var t0 = Date.now();
-    var hrefs = links.map(function(link){
-      return (link.getAttribute('href') || '').split('/').pop();
-    });
-    // #region agent log
-    __deDbgLog('F1', 'de_workspace_transitions.js:waitForStylesheets', 'waiting for CSS', {
-      count: links.length,
-      hrefs: hrefs.slice(0, 12),
-      limitMs: limit,
-      url: __deDbgNavUrl
-    });
-    // #endregion
     function sheetReady(link){
       try{
         if(link.sheet) return true;
@@ -1048,44 +964,28 @@
     }
     function waitOne(link){
       return new Promise(function(resolve){
-        if(sheetReady(link)){ resolve('ready'); return; }
+        if(sheetReady(link)){ resolve(); return; }
         var settled = false;
         var timer = null;
-        function finish(how){
+        function finish(){
           if(settled) return;
           settled = true;
           if(timer) clearInterval(timer);
-          resolve(how);
+          resolve();
         }
-        link.addEventListener('load', function(){ finish('load'); }, { once: true });
-        link.addEventListener('error', function(){ finish('error'); }, { once: true });
+        link.addEventListener('load', finish, { once: true });
+        link.addEventListener('error', finish, { once: true });
         var polls = 0;
         timer = setInterval(function(){
           polls++;
-          if(sheetReady(link)) finish('poll');
-          else if(polls > 100) finish('poll-giveup');
+          if(sheetReady(link) || polls > 100) finish();
         }, 20);
       });
     }
     return Promise.race([
-      Promise.all(links.map(waitOne)).then(function(){ return 'loaded'; }),
-      new Promise(function(resolve){
-        setTimeout(function(){ resolve('timeout'); }, limit);
-      })
-    ]).then(function(result){
-      var pending = links.filter(function(link){ return !sheetReady(link); }).map(function(link){
-        return (link.getAttribute('href') || '').split('/').pop();
-      });
-      // #region agent log
-      __deDbgLog('F1', 'de_workspace_transitions.js:waitForStylesheets:done', 'CSS wait finished', {
-        ms: Date.now() - t0,
-        result: result,
-        pendingCount: pending.length,
-        pending: pending.slice(0, 8),
-        url: __deDbgNavUrl
-      });
-      // #endregion
-    });
+      Promise.all(links.map(waitOne)),
+      new Promise(function(resolve){ setTimeout(resolve, limit); })
+    ]);
   }
 
   function scriptPathname(src){
@@ -1152,23 +1052,12 @@
   function runScriptNodes(scriptNodes, done){
     var loaded = window.__deSoftNavScripts = window.__deSoftNavScripts || {};
     var index = 0;
-    // #region agent log
-    var __scriptT0 = Date.now();
-    var __scriptCount = (scriptNodes || []).length;
-    // #endregion
 
     function next(){
       while(index < scriptNodes.length && shouldSkipScript(scriptNodes[index])){
         index++;
       }
       if(index >= scriptNodes.length){
-        // #region agent log
-        __deDbgLog('H5', 'de_workspace_transitions.js:runScriptNodes', 'scripts done', {
-          count: __scriptCount,
-          ms: Date.now() - __scriptT0,
-          url: __deDbgNavUrl
-        });
-        // #endregion
         done();
         return;
       }
@@ -1789,14 +1678,10 @@
     sidebarScrollReleaseTimer = setTimeout(function(){
       sidebarScrollReleaseTimer = null;
       clearSidebarScrollLock();
-      if(window.__deSoftNavInProgress) return;
-      if(typeof window.isSidebarHoverExpandSuppressed === 'function' && window.isSidebarHoverExpandSuppressed()) return;
-      if(typeof window.preflightActiveNavScroll === 'function'){
-        var sb = document.querySelector('#de-sidebar, .de-sidebar');
-        if(sb && !sb.classList.contains('is-pinned') && !sb.classList.contains('is-expanded')){
-          window.preflightActiveNavScroll(sb);
-        }
-      }
+      /* Do NOT preflightActiveNavScroll here. Expanding the live rail (even with
+         visibility:hidden) still changes flex width and makes the unpinned panel
+         open/close a second time after soft-nav. Scroll cache is already warmed
+         while the user hovered/clicked the nav. */
     }, typeof delayMs === 'number' ? delayMs : 0);
   }
 
@@ -1816,11 +1701,19 @@
     }
     if(!active){
       sidebarScrollLockUntil = Math.max(sidebarScrollLockUntil, Date.now() + 200);
-      /* Block hover-expand near Back / main links so the rail does not flash wide
-         then collapse when soft-nav ends (cursor often sits beside the rail).
-         Keep this short — long suppress + pointer-events:none made the next
-         module click feel dead for ~1.8s after each open. */
-      if(typeof window.suppressSidebarHoverExpand === 'function'){
+      /* If the pointer is still on the unpinned rail, keep it expanded and skip
+         hover-suppress. Forcing collapse while :hover is true shrinks the hit
+         area under the cursor → mouseleave → later re-expand (double open/close). */
+      var sbEnd = document.querySelector('#de-sidebar, .de-sidebar');
+      var keepHoverExpand = false;
+      try{
+        keepHoverExpand = !!(sbEnd && !sbEnd.classList.contains('is-pinned') && sbEnd.matches(':hover'));
+      } catch(eHover){
+        keepHoverExpand = false;
+      }
+      if(keepHoverExpand){
+        sbEnd.classList.add('is-expanded');
+      } else if(typeof window.suppressSidebarHoverExpand === 'function'){
         window.suppressSidebarHoverExpand(220);
       }
       releaseSidebarScrollLock(400);
@@ -1888,12 +1781,6 @@
       || document.documentElement.classList.contains('de-soft-navigating')
       || window.__deSoftNavInProgress){
       main.classList.remove('de-main-enter');
-      // #region agent log
-      __deDbgLog('H4', 'de_workspace_transitions.js:playMainEnterReveal', 'skip enter fade (soft-nav)', {
-        url: __deDbgNavUrl,
-        path: location.pathname || ''
-      });
-      // #endregion
       return;
     }
     main.classList.remove('de-main-enter');
@@ -1988,14 +1875,6 @@
           playMainEnterReveal(curMain);
           /* Re-warm common destinations after each open (prefetch is no longer one-shot). */
           try{ idlePrefetchSidebarDestinations(); } catch(e2){}
-          // #region agent log
-          setTimeout(function(){
-            __deDbgLog('H4', 'de_workspace_transitions.js:applySoftSwap:post300', 'post-swap UI snapshot', Object.assign({
-              elapsedMs: __deDbgNavT0 ? (Date.now() - __deDbgNavT0) : null,
-              url: __deDbgNavUrl
-            }, __deDbgUiFreezeSnapshot()));
-          }, 300);
-          // #endregion
         });
       };
 
@@ -2009,12 +1888,6 @@
           finishSwap();
           return;
         }
-        // #region agent log
-        __deDbgLog('F1', 'de_workspace_transitions.js:applySoftSwap', 'holding swap for late CSS', {
-          pending: pending.map(function(l){ return (l.getAttribute('href') || '').split('/').pop(); }).slice(0, 8),
-          url: __deDbgNavUrl
-        });
-        // #endregion
         Promise.all(pending.map(function(link){
           return new Promise(function(resolve){
             try{ if(link.sheet){ resolve(); return; } } catch(e){}
@@ -2090,26 +1963,6 @@
     var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
     markMainLoading(true);
-    // #region agent log
-    __deDbgNavT0 = Date.now();
-    __deDbgNavUrl = String(url || '');
-    __deDbgLog('H2', 'de_workspace_transitions.js:softNavigate', 'soft-nav start', {
-      url: __deDbgNavUrl,
-      token: nav.token,
-      prefetched: false
-    });
-    setTimeout(function(){
-      var snap = __deDbgUiFreezeSnapshot();
-      if(snap.loading || snap.softNavFlag || snap.lockedSubmitBtns){
-        __deDbgLog('H1', 'de_workspace_transitions.js:softNavigate:watchdog2s', 'UI still frozen 2s after start', Object.assign({
-          elapsedMs: Date.now() - __deDbgNavT0,
-          url: __deDbgNavUrl,
-          token: nav.token,
-          stillCurrent: isCurrentSoftNav(nav.token)
-        }, snap));
-      }
-    }, 2000);
-    // #endregion
     /* First soft-nav in a session previously lacked this class until after reveal,
        so opacity:0 enter styles could still paint a plain box on first module open. */
     document.documentElement.classList.add('de-soft-nav-session');
@@ -2120,11 +1973,6 @@
     }
 
     var prefetched = takePrefetchedHtml(url);
-    // #region agent log
-    if(prefetched){
-      __deDbgLog('H2', 'de_workspace_transitions.js:softNavigate', 'using prefetch cache', { url: __deDbgNavUrl });
-    }
-    // #endregion
     var fetchOpts = {
       credentials: 'same-origin',
       headers: {
@@ -2148,7 +1996,6 @@
     })();
     var floorPromise = isPosTablesUrl(url) ? warmPosFloorSnapshot(nav.signal, floorOutlet) : Promise.resolve(null);
 
-    var htmlFetchT0 = Date.now();
     var htmlPromise = prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
@@ -2156,28 +2003,12 @@
         throw new Error('non-html response');
       }
       return response.text();
-    }).then(function(html){
-      // #region agent log
-      __deDbgLog('H2', 'de_workspace_transitions.js:softNavigate', 'html fetched', {
-        url: __deDbgNavUrl,
-        htmlMs: Date.now() - htmlFetchT0,
-        htmlBytes: html ? html.length : 0
-      });
-      // #endregion
-      return html;
     });
 
     Promise.all([htmlPromise, leavePromise, floorPromise]).then(function(results){
       if(!isCurrentSoftNav(nav.token)) return;
       var html = results[0];
       if(!html) throw new Error('empty soft nav html');
-      // #region agent log
-      __deDbgLog('H2', 'de_workspace_transitions.js:softNavigate', 'ready to swap', {
-        url: __deDbgNavUrl,
-        totalMs: Date.now() - __deDbgNavT0,
-        htmlMs: Date.now() - htmlFetchT0
-      });
-      // #endregion
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
       if(!doc.querySelector('.de-main-wrapper')){
@@ -2185,15 +2016,7 @@
       }
       applySoftSwap(doc, url, done, sidebarScroll, nav.token);
     }).catch(function(err){
-      if(err && err.name === 'AbortError'){
-        // #region agent log
-        __deDbgLog('H1', 'de_workspace_transitions.js:softNavigate', 'aborted (no unlock here)', {
-          url: __deDbgNavUrl,
-          loading: __deDbgUiFreezeSnapshot().loading
-        });
-        // #endregion
-        return;
-      }
+      if(err && err.name === 'AbortError') return;
       if(!isCurrentSoftNav(nav.token)) return;
       // Keep captured rail scroll in sessionStorage for hard-nav boot restore.
       if(sidebarScroll){
@@ -2582,7 +2405,7 @@
         '/static/sales_entry_dashboard.css?v=33',
         '/static/sales_update_header.css?v=9',
         '/static/sales_update_premium.css?v=22',
-        '/static/de_workspace_shell.css?v=44',
+        '/static/de_workspace_shell.css?v=45',
         '/static/stores.css?v=75',
         '/static/ep_form_listbox.css?v=21',
         '/static/pos_tables.css?v=35',

@@ -181,9 +181,6 @@
       dismissToast(card);
     }, SHOW_MS);
 
-    // #region agent log
-    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'toast-pre',hypothesisId:'T1',location:'hbe_app_toast.js:showToast',message:'toast shown',data:{id:item.id||'',title:item.title||'',host:location.host,href:href},timestamp:Date.now()})}).catch(function(){});
-    // #endregion
   }
 
   function maybeAnnounce(items) {
@@ -223,9 +220,6 @@
         });
       })
       .then(function (res) {
-        // #region agent log
-        fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},body:JSON.stringify({sessionId:'42fa9a',runId:'toast-pre',hypothesisId:'T2',location:'hbe_app_toast.js:poll',message:'toast poll',data:{httpOk:!!res.ok,ok:!!(res.data&&res.data.ok),count:((res.data&&res.data.notifications)||[]).length,host:location.host},timestamp:Date.now()})}).catch(function(){});
-        // #endregion
         if (!res.data || !res.data.ok) return;
         maybeAnnounce(res.data.notifications || []);
       })

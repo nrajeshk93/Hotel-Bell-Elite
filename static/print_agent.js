@@ -2,8 +2,8 @@
  * Hotel Bell Elite — browser bridge to the local Hotel Print Agent.
  *
  * Works from cloud https://belleliteaccounts.com (and local dev):
- * 1) Pairs with SaaS (/api/print-agent/browser-pair) to get the agent API key
- * 2) Calls http://127.0.0.1:4567 with CORS + credentials headers
+ * 1) Probes http://127.0.0.1:4567 so this PC's agent wins over another station
+ * 2) Pairs with SaaS (/api/print-agent/browser-pair?agentId=…) for the API key
  * 3) Prints by printerRole — browser never needs Windows printer names
  */
 (function (global) {
@@ -86,20 +86,99 @@
     });
   }
 
+  function sleep(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  /**
+   * Ask the loopback agent who it is (no SaaS key required for /status).
+   * Retries briefly — EXE can take a moment after Windows logon / tray start.
+   */
+  function probeLocalAgent(attempts) {
+    var total = typeof attempts === 'number' ? attempts : 1;
+    var tryOnce = function () {
+      return fetch(baseUrl() + '/status', {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        mode: 'cors',
+        cache: 'no-store',
+        credentials: 'omit'
+      }).then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, status: resp.status, data: data || {} };
+        });
+      });
+    };
+
+    var run = function (left) {
+      return tryOnce().then(
+        function (result) {
+          if (result.ok && result.data && result.data.ok !== false) {
+            return result;
+          }
+          if (left <= 1) return result;
+          return sleep(350).then(function () {
+            return run(left - 1);
+          });
+        },
+        function () {
+          if (left <= 1) {
+            return { ok: false, status: 0, data: { ok: false, offline: true } };
+          }
+          return sleep(350).then(function () {
+            return run(left - 1);
+          });
+        }
+      );
+    };
+
+    return run(Math.max(1, total));
+  }
+
+  function agentIdFromStatus(data) {
+    if (!data || typeof data !== 'object') return '';
+    return String(data.agentId || data.agent_id || '').trim();
+  }
+
+  function pairUrl(agentId) {
+    var qs = [];
+    if (agentId) qs.push('agentId=' + encodeURIComponent(agentId));
+    return '/api/print-agent/browser-pair' + (qs.length ? '?' + qs.join('&') : '');
+  }
+
   /** Pull API key from cloud so https://belleliteaccounts.com can authorize localhost prints. */
   function ensurePaired(force) {
     var store = loadStore();
-    if (!force && store.apiKey) {
+    if (!force && store.apiKey && store.agentId) {
       return Promise.resolve(store);
     }
     if (pairPromise && !force) return pairPromise;
 
-    pairPromise = fetchSaas('/api/print-agent/browser-pair')
+    pairPromise = probeLocalAgent(force ? 3 : 2)
+      .then(function (local) {
+        var localId = agentIdFromStatus(local && local.data);
+        var preferId = localId || String(store.agentId || '').trim();
+        return fetchSaas(pairUrl(preferId)).then(function (result) {
+          /* Local agent found but SaaS has no row for that id — fall back to latest. */
+          if (
+            (!result.ok || !result.data || !result.data.ok || !result.data.apiKey) &&
+            preferId
+          ) {
+            return fetchSaas(pairUrl(''));
+          }
+          return result;
+        });
+      })
+      .catch(function () {
+        return fetchSaas(pairUrl(String(store.agentId || '').trim()));
+      })
       .then(function (result) {
         if (!result.ok || !result.data || !result.data.ok || !result.data.apiKey) {
           throw new Error(
             (result.data && result.data.error) ||
-              'Print Agent is not paired. Install Hotel Print Agent on this PC and Register it.'
+              'Print Agent is not paired. Install Hotel Print Agent on this PC, Register it, and leave it running in the tray.'
           );
         }
         return saveStore({
@@ -125,6 +204,10 @@
     if ((!out.printers || !Object.keys(out.printers).length) && store.mappedPrinters) {
       out.printers = store.mappedPrinters;
     }
+    var id = agentIdFromStatus(out);
+    if (id && id !== store.agentId) {
+      saveStore({ agentId: id });
+    }
     return out;
   }
 
@@ -133,16 +216,25 @@
     if (!force && statusCache.data && now - statusCache.at < 5000) {
       return Promise.resolve(statusCache.data);
     }
-    return ensurePaired(false)
+    return ensurePaired(!!force)
       .catch(function () {
         return loadStore();
       })
       .then(function () {
-        return fetchLocal('/status');
+        return probeLocalAgent(force ? 3 : 2).then(function (probed) {
+          if (probed.ok && probed.data) {
+            return probed;
+          }
+          return fetchLocal('/status');
+        });
       })
       .then(function (result) {
-        if (result.ok && result.data) {
+        if (result.ok && result.data && result.data.ok !== false) {
           var data = enrichStatus(result.data);
+          /* Keep SaaS mapping fresh for this PC's agent id. */
+          if (force && agentIdFromStatus(data)) {
+            ensurePaired(true).catch(function () {});
+          }
           statusCache = { at: Date.now(), data: data };
           return data;
         }
@@ -179,19 +271,18 @@
       idempotencyKey: job.idempotencyKey || job.jobId || undefined
     };
 
-
     return ensurePaired(false)
       .catch(function () {
         /* /status is public; still try print with any cached key. */
         return loadStore();
       })
       .then(function () {
-        return fetchLocal('/status');
+        return probeLocalAgent(2);
       })
       .then(function (result) {
         if (!result.ok || !result.data || result.data.ok === false) {
           throw new Error(
-            'Print Agent is not running on this PC. Open Hotel Print Agent from the system tray.'
+            'Print Agent is not running on this PC. Open Hotel Print Agent, leave it in the system tray (enable Start with Windows), then try again.'
           );
         }
         statusCache = { at: Date.now(), data: enrichStatus(result.data) };
@@ -251,6 +342,7 @@
     testPrint: testPrint,
     configure: configure,
     ensurePaired: ensurePaired,
+    probeLocalAgent: probeLocalAgent,
     baseUrl: baseUrl
   };
 })(window);
