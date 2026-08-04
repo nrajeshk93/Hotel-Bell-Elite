@@ -37,10 +37,7 @@
   50%{transform:translateX(180%)}
   100%{transform:translateX(320%)}
 }
-.de-main-wrapper.is-soft-nav-loading{
-  /* Keep previous page fully visible while HTML loads; only block clicks. */
-  pointer-events:none;
-}
+/* Soft-nav loading: progress bar only — do not freeze the main pane. */
 /* Suppress enter-from-opacity:0 animations only around the DOM swap frame. */
 html.de-soft-navigating .de-main-wrapper,
 html.de-soft-navigating .de-main-wrapper *{
@@ -262,7 +259,7 @@ body.de-open.ep-module{overflow:auto;}
     width:var(--de-sidebar-collapsed)!important;
     min-width:var(--de-sidebar-collapsed)!important;
     max-width:var(--de-sidebar-collapsed)!important;
-    pointer-events:none;
+    /* Keep nav links clickable — only hover-expand is suppressed in JS. */
   }
   #main-app.de-module .sb-brand-text,
   #ep-workspace.de-module .sb-brand-text,

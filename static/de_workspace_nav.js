@@ -274,7 +274,7 @@
         headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},
         body:JSON.stringify({
           sessionId:'42fa9a',
-          runId:'nav-lag-pre',
+          runId:'nav-lag-post',
           hypothesisId:'H6',
           location:'de_workspace_nav.js:suppressSidebarHoverExpand',
           message:'sidebar pointer-events suppressed',
@@ -297,7 +297,7 @@
           headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},
           body:JSON.stringify({
             sessionId:'42fa9a',
-            runId:'nav-lag-pre',
+            runId:'nav-lag-post',
             hypothesisId:'H6',
             location:'de_workspace_nav.js:suppressSidebarHoverExpand:end',
             message:'sidebar suppress cleared',

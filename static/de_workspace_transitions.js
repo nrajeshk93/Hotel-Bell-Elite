@@ -38,7 +38,7 @@
         headers:{'Content-Type':'application/json','X-Debug-Session-Id':'42fa9a'},
         body:JSON.stringify({
           sessionId:'42fa9a',
-          runId:'nav-lag-pre',
+          runId:'nav-lag-post',
           hypothesisId:hypothesisId,
           location:location,
           message:message,
@@ -1108,11 +1108,14 @@
       }
 
       if(batch.length){
-        Promise.all(batch.map(function(old){
-          var src = old.getAttribute('src');
-          loaded[src] = true;
-          return loadExternalScript(old);
-        })).then(next);
+        Promise.race([
+          Promise.all(batch.map(function(old){
+            var src = old.getAttribute('src');
+            loaded[src] = true;
+            return loadExternalScript(old);
+          })),
+          new Promise(function(resolve){ setTimeout(resolve, 1200); })
+        ]).then(next);
         return;
       }
 
@@ -1132,7 +1135,10 @@
           return;
         }
         loaded[src] = true;
-        loadExternalScript(old).then(next);
+        Promise.race([
+          loadExternalScript(old),
+          new Promise(function(resolve){ setTimeout(resolve, 1200); })
+        ]).then(next);
         return;
       }
       try{
@@ -1728,9 +1734,11 @@
     if(!active){
       sidebarScrollLockUntil = Math.max(sidebarScrollLockUntil, Date.now() + 200);
       /* Block hover-expand near Back / main links so the rail does not flash wide
-         then collapse when soft-nav ends (cursor often sits beside the rail). */
+         then collapse when soft-nav ends (cursor often sits beside the rail).
+         Keep this short — long suppress + pointer-events:none made the next
+         module click feel dead for ~1.8s after each open. */
       if(typeof window.suppressSidebarHoverExpand === 'function'){
-        window.suppressSidebarHoverExpand(1200);
+        window.suppressSidebarHoverExpand(220);
       }
       releaseSidebarScrollLock(400);
       if(typeof window.syncDeSidebarPointerState === 'function'){
@@ -1778,7 +1786,7 @@
       if(window.deFullscreen && typeof window.deFullscreen.updateUi === 'function'){
         window.deFullscreen.updateUi();
       }
-    }, 600);
+    }, 120);
   }
 
   function prefersReducedMotion(){
@@ -1791,6 +1799,20 @@
 
   function playMainEnterReveal(main){
     if(!main || prefersReducedMotion()) return;
+    /* Soft-nav already painted the destination HTML. A second opacity:0 → 1
+       fade reads as "page opened then refreshed" (esp. on AWS RTT). Skip. */
+    if(document.documentElement.classList.contains('de-soft-nav-session')
+      || document.documentElement.classList.contains('de-soft-navigating')
+      || window.__deSoftNavInProgress){
+      main.classList.remove('de-main-enter');
+      // #region agent log
+      __deDbgLog('H4', 'de_workspace_transitions.js:playMainEnterReveal', 'skip enter fade (soft-nav)', {
+        url: __deDbgNavUrl,
+        path: location.pathname || ''
+      });
+      // #endregion
+      return;
+    }
     main.classList.remove('de-main-enter');
     /* Force reflow so re-adding the class retriggers the animation. */
     void main.offsetWidth;

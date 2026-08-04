@@ -1,18 +1,18 @@
 /* Hotel Bell Elite — POS offline service worker (v4).
  * Floor APIs are never cached — occupancy must update immediately after save.
  * Invoice HTML is network-first so workspace chrome (sidebar modules) is not stuck. */
-var CACHE_VERSION = 'hbe-pos-v4';
+var CACHE_VERSION = 'hbe-pos-v5';
 var PRECACHE = [
   '/point-of-sale/invoice',
   '/static/manifest.webmanifest',
-  '/static/de_workspace_shell.css?v=43',
+  '/static/de_workspace_shell.css?v=44',
   '/static/ep_form_listbox.css?v=21',
   '/static/pos_invoice.css?v=51',
   '/static/pos_invoice.js?v=105',
   '/static/pos_offline.js?v=4',
-  '/static/ep_form_listbox.js?v=45',
-  '/static/de_workspace_nav.js?v=34',
-  '/static/de_workspace_transitions.js?v=111',
+  '/static/ep_form_listbox.js?v=47',
+  '/static/de_workspace_nav.js?v=35',
+  '/static/de_workspace_transitions.js?v=117',
   '/static/de_pwa.js?v=4',
   '/static/pwa-icon-192.png',
   '/static/pwa-icon-512.png',
