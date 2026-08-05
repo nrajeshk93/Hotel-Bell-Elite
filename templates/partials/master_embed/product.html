@@ -4,7 +4,7 @@
     <div class="su-header-top">
       <div class="su-header-left">
         <div class="su-header-nav">
-          <button type="button" class="su-page-back" onclick="if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back to Master">
+          <button type="button" class="su-page-back" onclick="if (typeof closeProductMasterModal === 'function') closeProductMasterModal(); else if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
           </button>
         </div>
@@ -57,7 +57,7 @@
       editing=editing|default(false),
       categories=categories|default([]),
       default_units=default_units|default(['kg','pcs','liter']),
-      product_outlets=product_outlets|default([{'key':'restaurant','label':'Restaurant'},{'key':'bar','label':'Bar'},{'key':'both','label':'Both'}]),
+      product_outlets=product_outlets|default([{'key':'bar','label':'Bar'},{'key':'restaurant','label':'Restaurant'}]),
       products=products|default([]),
       product_count=product_count|default(0),
       selected_outlet=selected_outlet|default('both'),

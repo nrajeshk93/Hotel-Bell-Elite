@@ -427,6 +427,19 @@
     );
   }
 
+  function nightsBetweenISO(checkIn, checkOut) {
+    var a = toDateISO(checkIn);
+    var b = toDateISO(checkOut);
+    if (!a || !b) return 1;
+    var aParts = a.split('-').map(Number);
+    var bParts = b.split('-').map(Number);
+    var start = new Date(aParts[0], aParts[1] - 1, aParts[2]);
+    var end = new Date(bParts[0], bParts[1] - 1, bParts[2]);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return 1;
+    var days = Math.round((end.getTime() - start.getTime()) / 86400000);
+    return Math.max(1, days);
+  }
+
   function showToast(message, isError) {
     var root = pageRoot();
     var toast = (root && $('#hrd-toast', root)) || document.getElementById('hrd-toast');
@@ -4274,6 +4287,242 @@
     document.body.classList.remove('hrd-transfer-open');
   }
 
+  function syncExtendNightsLabel(root) {
+    root = root || pageRoot();
+    var form = root && $('#hrd-extend-form', root);
+    var nightsEl = root && $('#hrd-extend-nights', root);
+    if (!form || !nightsEl) return;
+    var checkIn = form.getAttribute('data-checkin') || '';
+    var checkOutInput = $('#hrd-extend-checkout', root);
+    var checkOut = toDateISO(checkOutInput && checkOutInput.value);
+    var nights = nightsBetweenISO(checkIn, checkOut);
+    nightsEl.textContent = nights + (nights === 1 ? ' night' : ' nights');
+  }
+
+  function closeExtendModal(root) {
+    root = root || pageRoot();
+    var modal = root && $('#hrd-extend-modal', root);
+    if (!modal) return;
+    if (typeof global.closeHotelDatePickers === 'function') {
+      global.closeHotelDatePickers();
+    }
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('hrd-extend-open');
+    var form = $('#hrd-extend-form', root);
+    if (form) {
+      form.removeAttribute('data-checkin');
+      form.__hrdExtendStay = null;
+    }
+  }
+
+  function fillExtendModal(root, room) {
+    root = root || pageRoot();
+    var modal = root && $('#hrd-extend-modal', root);
+    var form = root && $('#hrd-extend-form', root);
+    var checkOutInput = root && $('#hrd-extend-checkout', root);
+    if (!modal || !form || !checkOutInput) {
+      showToast('Extend form unavailable.', true);
+      return false;
+    }
+    var stay = room && room.stay && typeof room.stay === 'object' ? room.stay : null;
+    if (mapStatus(room && room.status) !== 'occupied' || !stay) {
+      showToast('Check in a guest before extending stay.', true);
+      return false;
+    }
+    var checkIn = toDateISO(stay.checkInDate || stay.check_in_date || '');
+    var checkOut = toDateISO(
+      stay.checkOutDate || stay.check_out_date || stay.expectedCheckOut || ''
+    );
+    if (!checkIn) {
+      showToast('Check-in date is missing for this stay.', true);
+      return false;
+    }
+    if (!checkOut || checkOut <= checkIn) {
+      checkOut = addDaysISO(checkIn, Math.max(1, Number(stay.nights) || 1));
+    }
+    var roomIdInput = $('#hrd-extend-room-id', root);
+    var roomInput = $('#hrd-extend-room', root);
+    var guestInput = $('#hrd-extend-guest', root);
+    var checkInInput = $('#hrd-extend-checkin', root);
+    if (roomIdInput) roomIdInput.value = room.id || root.getAttribute('data-room-id') || '';
+    if (roomInput) {
+      var typeLabel =
+        room.roomTypeLabel ||
+        room.roomType ||
+        root.getAttribute('data-room-type-label') ||
+        '';
+      roomInput.value =
+        'Room ' +
+        (room.number || root.getAttribute('data-room-number') || '') +
+        (typeLabel ? ' — ' + typeLabel : '');
+    }
+    if (guestInput) {
+      guestInput.value = dash(
+        stay.guestName ||
+          stay.guest_name ||
+          ((stay.firstName || '') + ' ' + (stay.lastName || '')).trim()
+      );
+    }
+    if (checkInInput) checkInInput.value = prettyDateISO(checkIn);
+    form.setAttribute('data-checkin', checkIn);
+    form.__hrdExtendStay = Object.assign({}, stay);
+    if (typeof global.setHotelDateValue === 'function') {
+      global.setHotelDateValue(checkOutInput, checkOut);
+    } else {
+      checkOutInput.value = checkOut;
+    }
+    if (typeof global.initHotelDatePickers === 'function') {
+      global.initHotelDatePickers(modal);
+    }
+    if (typeof global.syncHotelDateChip === 'function') {
+      global.syncHotelDateChip(checkOutInput);
+    }
+    syncExtendNightsLabel(root);
+    if (checkOutInput.getAttribute('data-hrd-extend-bound') !== '1') {
+      checkOutInput.setAttribute('data-hrd-extend-bound', '1');
+      checkOutInput.addEventListener('change', function () {
+        syncExtendNightsLabel(pageRoot());
+      });
+    }
+    modal.hidden = false;
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('hrd-extend-open');
+    setTimeout(function () {
+      try {
+        var chip =
+          modal.querySelector('#hrd-extend-checkout-chip') || checkOutInput;
+        if (chip && typeof chip.focus === 'function') chip.focus();
+      } catch (err) {}
+    }, 40);
+    return true;
+  }
+
+  function openExtendModal(root) {
+    root = root || pageRoot();
+    if (!root) return;
+    if (mapStatus(root.getAttribute('data-room-status')) !== 'occupied') {
+      showToast('No guest checked in to extend.', true);
+      return;
+    }
+    var source =
+      lastRoom && lastRoom.stay
+        ? lastRoom
+        : {
+            id: root.getAttribute('data-room-id') || '',
+            number: root.getAttribute('data-room-number') || '',
+            status: root.getAttribute('data-room-status') || '',
+            stay: null
+          };
+    if (!(source && source.stay)) {
+      showToast('No guest checked in to extend.', true);
+      return;
+    }
+    if (!fillExtendModal(root, source)) return;
+    var api = root.getAttribute('data-room-api') || '';
+    if (!api) return;
+    fetch(api, {
+      method: 'GET',
+      credentials: 'same-origin',
+      headers: apiHeaders()
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok || !result.data.room) {
+          return;
+        }
+        var modal = $('#hrd-extend-modal', root);
+        if (!modal || modal.hidden) return;
+        lastRoom = result.data.room;
+        fillExtendModal(root, result.data.room);
+      })
+      .catch(function () {});
+  }
+
+  function submitExtendForm(root, form) {
+    root = root || pageRoot();
+    form = form || (root && $('#hrd-extend-form', root));
+    if (!root || !form) {
+      showToast('Extend form unavailable.', true);
+      return Promise.reject(new Error('missing form'));
+    }
+    var roomId =
+      (($('#hrd-extend-room-id', root) || {}).value || '').trim() ||
+      root.getAttribute('data-room-id') ||
+      '';
+    var checkIn = form.getAttribute('data-checkin') || '';
+    var checkOutInput = $('#hrd-extend-checkout', root);
+    var checkOut = toDateISO(checkOutInput && checkOutInput.value);
+    var stay = form.__hrdExtendStay ? Object.assign({}, form.__hrdExtendStay) : null;
+    if (!roomId || !stay) {
+      showToast('Stay details unavailable.', true);
+      return Promise.reject(new Error('missing stay'));
+    }
+    if (!checkOut) {
+      showToast('Choose a check-out date.', true);
+      return Promise.reject(new Error('validation'));
+    }
+    if (!checkIn || checkOut <= checkIn) {
+      showToast('Check-out must be after check-in.', true);
+      return Promise.reject(new Error('validation'));
+    }
+    var nights = nightsBetweenISO(checkIn, checkOut);
+    stay.checkInDate = checkIn;
+    stay.checkOutDate = checkOut;
+    stay.nights = nights;
+    var api = root.getAttribute('data-room-api') || '';
+    if (!api) {
+      showToast('Room API unavailable.', true);
+      return Promise.reject(new Error('missing api'));
+    }
+    var saveBtn = $('#hrd-extend-save', root);
+    if (saveBtn) saveBtn.disabled = true;
+    return fetch(api, {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ action: 'checkin', stay: stay })
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok) {
+          throw new Error(
+            (result.data && result.data.error) || 'Could not update stay.'
+          );
+        }
+        closeExtendModal(root);
+        paintRoom(root, result.data.room);
+        showToast(
+          'Stay extended to ' +
+            prettyDateISO(checkOut) +
+            ' (' +
+            nights +
+            (nights === 1 ? ' night' : ' nights') +
+            ').'
+        );
+        return result.data.room;
+      })
+      .catch(function (err) {
+        if (err.message !== 'validation') {
+          showToast(err.message || 'Could not update stay.', true);
+        }
+        return Promise.reject(err);
+      })
+      .finally(function () {
+        if (saveBtn) saveBtn.disabled = false;
+      });
+  }
+
   function closeReserveModal(root) {
     root = root || pageRoot();
     var modal = root && $('#hrd-reserve-modal', root);
@@ -5660,6 +5909,14 @@
       return;
     }
 
+    var extendClose = event.target.closest('[data-hrd-extend-close]');
+    if (extendClose && root.contains(extendClose)) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeExtendModal(root);
+      return;
+    }
+
     var mergeClose = event.target.closest('[data-hrd-merge-close]');
     if (mergeClose && root.contains(mergeClose)) {
       event.preventDefault();
@@ -5771,6 +6028,14 @@
       event.preventDefault();
       event.stopPropagation();
       closeTransferModal(root);
+      return;
+    }
+
+    var extendModal = $('#hrd-extend-modal', root);
+    if (extendModal && !extendModal.hidden && event.target === extendModal) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeExtendModal(root);
       return;
     }
 
@@ -5912,7 +6177,7 @@
           showToast('No guest checked in to extend.', true);
           return;
         }
-        openCheckinModal(root, { edit: true, extend: true });
+        openExtendModal(root);
         return;
       }
       if (dueAction === 'checkout') {
@@ -5924,7 +6189,7 @@
     var actionBtn = event.target.closest('[data-action]');
     if (actionBtn && root.contains(actionBtn)) {
       /* Ignore clicks inside an already-open modal form controls that aren't actions. */
-      if (actionBtn.closest('#hrd-checkin-modal') || actionBtn.closest('#hrd-transfer-modal') || actionBtn.closest('#hrd-merge-modal') || actionBtn.closest('#hrd-reserve-modal') || actionBtn.closest('#hrd-invoice-modal')) {
+      if (actionBtn.closest('#hrd-checkin-modal') || actionBtn.closest('#hrd-transfer-modal') || actionBtn.closest('#hrd-extend-modal') || actionBtn.closest('#hrd-merge-modal') || actionBtn.closest('#hrd-reserve-modal') || actionBtn.closest('#hrd-invoice-modal')) {
         return;
       }
       event.preventDefault();
@@ -5944,7 +6209,7 @@
           showToast('No guest checked in to extend.', true);
           return;
         }
-        openCheckinModal(root, { edit: true, extend: true });
+        openExtendModal(root);
         return;
       }
       if (action === 'edit-guest') {
@@ -6047,6 +6312,12 @@
       if (transferModal && !transferModal.hidden) {
         event.preventDefault();
         closeTransferModal(root);
+        return;
+      }
+      var extendModal = $('#hrd-extend-modal', root);
+      if (extendModal && !extendModal.hidden) {
+        event.preventDefault();
+        closeExtendModal(root);
         return;
       }
       var mergeModal = $('#hrd-merge-modal', root);
@@ -6192,6 +6463,13 @@
       submitTransfer(root, transferForm);
       return;
     }
+    var extendForm = $('#hrd-extend-form', root);
+    if (extendForm && event.target === extendForm) {
+      event.preventDefault();
+      event.stopPropagation();
+      submitExtendForm(root, extendForm);
+      return;
+    }
     var mergeForm = $('#hrd-merge-form', root);
     if (mergeForm && event.target === mergeForm) {
       event.preventDefault();
@@ -6295,7 +6573,7 @@
       showToast('No guest checked in to extend.', true);
       return;
     }
-    openCheckinModal(root, { edit: true, extend: true });
+    openExtendModal(root);
   }
 
   function loadRoomIfNeeded(root) {

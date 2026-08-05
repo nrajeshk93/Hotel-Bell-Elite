@@ -549,7 +549,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 
 /* Menu Master / page-shell masters have their own title + actions — drop duplicate dialog chrome. */
 #md-master-modal:has(#pos-menu-page) .md-master-dialog-hdr,
-#md-master-modal:has(.md-master-embed--page-shell) .md-master-dialog-hdr {
+:is(#md-master-modal, #st-product-master-modal):has(.md-master-embed--page-shell) .md-master-dialog-hdr {
   display: none;
 }
 
@@ -608,14 +608,16 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 
 /* Menu Master embed: fill the fullscreen dialog and scroll the table, not the page chrome */
 #md-master-modal .md-master-dialog-body:has(#pos-menu-page),
-#md-master-modal .md-master-dialog-body:has(.md-master-embed--page-shell) {
+:is(#md-master-modal, #st-product-master-modal) .md-master-dialog-body:has(.md-master-embed--page-shell),
+#st-product-master-modal .st-product-master-modal-body:has(.md-master-embed--page-shell) {
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 #md-master-modal .md-master-modal-inject:has(#pos-menu-page),
-#md-master-modal .md-master-modal-inject:has(.md-master-embed--page-shell) {
+:is(#md-master-modal, #st-product-master-modal) .md-master-modal-inject:has(.md-master-embed--page-shell),
+#st-product-master-modal .st-product-master-modal-inject:has(.md-master-embed--page-shell) {
   display: flex !important;
   flex-direction: column;
   flex: 1 1 auto;
@@ -625,7 +627,8 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 #md-master-modal #pos-menu-page,
-#md-master-modal .md-master-embed--page-shell {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell,
+#st-product-master-modal .md-master-embed--page-shell {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -638,7 +641,8 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 #md-master-modal #pos-menu-page > .se-sales-header,
-#md-master-modal .md-master-embed--page-shell > .md-master-embed-header {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell > .md-master-embed-header,
+#st-product-master-modal .md-master-embed--page-shell > .md-master-embed-header {
   flex-shrink: 0;
   max-width: none;
   width: 100%;
@@ -648,7 +652,8 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 #md-master-modal #pos-menu-page > .se-content,
-#md-master-modal .md-master-embed--page-shell > .md-master-embed-body {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell > .md-master-embed-body,
+#st-product-master-modal .md-master-embed--page-shell > .md-master-embed-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
@@ -665,7 +670,8 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 #md-master-modal #pos-menu-page .pos-menu-header-actions,
-#md-master-modal .md-master-embed-header-actions {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-header-actions,
+#st-product-master-modal .md-master-embed-header-actions {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -673,14 +679,16 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 #md-master-modal #pos-menu-page .pos-menu-embed-close,
-#md-master-modal .md-master-embed-header-actions .pos-menu-embed-close,
-#md-master-modal .md-master-embed-header-actions .md-master-modal-close {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-header-actions .pos-menu-embed-close,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-header-actions .md-master-modal-close,
+#st-product-master-modal .md-master-embed-header-actions .pos-menu-embed-close,
+#st-product-master-modal .md-master-embed-header-actions .md-master-modal-close {
   display: inline-flex;
   margin-left: 4px;
 }
 
 .md-master-embed--page-shell .su-title-icon,
-#md-master-modal .md-master-embed--page-shell .su-title-icon {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .su-title-icon {
   width: 48px !important;
   height: 48px !important;
   min-width: 48px !important;
@@ -699,7 +707,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 .md-master-embed--page-shell .su-title-icon svg,
-#md-master-modal .md-master-embed--page-shell .su-title-icon svg {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .su-title-icon svg {
   width: 24px !important;
   height: 24px !important;
   min-width: 24px !important;
@@ -714,7 +722,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   stroke-linejoin: round;
 }
 
-#md-master-modal .md-master-embed-filter-form-row {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-filter-form-row {
   display: flex;
   align-items: flex-end;
   gap: 12px;
@@ -723,7 +731,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 /* Page-shell search chips — match Menu Master (single control, no nested input border). */
-#md-master-modal .md-master-embed--page-shell .pl-search-chip {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip {
   position: relative;
   flex: 1 1 auto;
   width: auto;
@@ -732,7 +740,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   z-index: 2;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-label {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .se-filter-chip-label {
   color: #6B7280;
   text-align: left;
   text-transform: none;
@@ -742,7 +750,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   margin-bottom: 6px;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control {
   min-height: 48px;
   border-radius: 12px;
   border: 1px solid #E5E7EB !important;
@@ -757,7 +765,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   padding: 0 4px 0 0;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-icon {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .se-filter-chip-icon {
   width: 44px;
   flex-shrink: 0;
   display: inline-flex;
@@ -766,7 +774,7 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   color: #2563EB;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-icon svg {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .se-filter-chip-icon svg {
   width: 18px;
   height: 18px;
   stroke: currentColor;
@@ -776,8 +784,8 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   stroke-linejoin: round;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .pl-search-input,
-#md-master-modal .md-master-embed--page-shell .pl-search-chip input[type="search"] {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .pl-search-input,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip input[type="search"] {
   flex: 1 1 auto;
   min-width: 0;
   width: 100%;
@@ -795,12 +803,12 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   border-radius: 0;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .pl-search-input::-webkit-search-cancel-button,
-#md-master-modal .md-master-embed--page-shell .pl-search-chip input[type="search"]::-webkit-search-cancel-button {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .pl-search-input::-webkit-search-cancel-button,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip input[type="search"]::-webkit-search-cancel-button {
   -webkit-appearance: none;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .st-product-search-clear {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .st-product-search-clear {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -815,14 +823,14 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   cursor: pointer;
   padding: 0;
 }
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .st-product-search-clear[hidden] {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .st-product-search-clear[hidden] {
   display: none !important;
 }
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .st-product-search-clear:hover {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .st-product-search-clear:hover {
   background: #E2E8F0;
   color: #0F172A;
 }
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .st-product-search-clear svg {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .st-product-search-clear svg {
   width: 16px;
   height: 16px;
   stroke: currentColor;
@@ -832,25 +840,25 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   stroke-linejoin: round;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .pl-search-input::placeholder,
-#md-master-modal .md-master-embed--page-shell .pl-search-chip input[type="search"]::placeholder {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .pl-search-input::placeholder,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip input[type="search"]::placeholder {
   color: #94A3B8;
   font-weight: 500;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip.is-active .se-filter-chip-control,
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control:focus-within {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip.is-active .se-filter-chip-control,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control:focus-within {
   border-color: #93C5FD !important;
   background: #EFF6FF !important;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-search-chip.is-active .se-filter-chip-icon,
-#md-master-modal .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control:focus-within .se-filter-chip-icon {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip.is-active .se-filter-chip-icon,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip .se-filter-chip-control:focus-within .se-filter-chip-icon {
   color: #2563EB;
 }
 
-#md-master-modal .md-master-embed-outlet-chips {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-outlet-chips {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -858,10 +866,10 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   padding-bottom: 2px;
 }
 
-#md-master-modal .md-master-embed--page-shell .pl-list-panel,
-#md-master-modal .md-master-embed--page-shell .sm-list-panel,
-#md-master-modal .md-master-embed--page-shell .st-products-panel,
-#md-master-modal .md-master-embed--page-shell .emp-list-panel {
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-list-panel,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .sm-list-panel,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .st-products-panel,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .emp-list-panel {
   min-height: calc(100vh - 280px);
 }
 

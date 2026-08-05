@@ -1,29 +1,28 @@
-<div class="md-master-embed md-master-embed--page-shell md-master-embed--supplier"
-     data-md-modal-title="Supplier Master">
+<div class="md-master-embed md-master-embed--page-shell md-master-embed--category"
+     data-md-modal-title="Category Master">
   <header class="se-sales-header su-header md-master-embed-header">
     <div class="su-header-top">
       <div class="su-header-left">
         <div class="su-title">
           <div class="su-title-row">
-            <h1>Supplier Master</h1>
+            <h1>Category Master</h1>
           </div>
         </div>
       </div>
       <div class="su-header-tools md-master-embed-header-actions">
-        <a class="btn" href="{{ supplier_report_url }}" download data-de-no-soft-nav="1">Export</a>
-        <button type="button" class="btn btn-primary" id="sm-open-supplier-modal" data-sm-action="open-supplier-modal">Add Supplier</button>
+        <button type="button" class="btn btn-primary" id="cm-open-category-modal" data-cm-action="open-category-modal">Add Category</button>
       </div>
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <div class="sr-topbar-filters md-master-embed-filter-form-row" aria-label="Supplier filters">
-          <div class="se-filter-chip se-filter-chip--search pl-search-chip" id="sm-supplier-search-chip">
-            <label class="se-filter-chip-label" for="sm-supplier-search">Search</label>
+        <div class="sr-topbar-filters md-master-embed-filter-form-row" aria-label="Category filters">
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip" id="cm-category-search-chip">
+            <label class="se-filter-chip-label" for="cm-category-search">Search</label>
             <div class="se-filter-chip-control">
               <span class="se-filter-chip-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
               </span>
-              <input type="search" id="sm-supplier-search" class="pl-search-input" placeholder="Name, GST, phone, bank…" autocomplete="off" aria-label="Search suppliers">
+              <input type="search" id="cm-category-search" class="pl-search-input" placeholder="Name or outlet…" autocomplete="off" aria-label="Search categories">
             </div>
           </div>
         </div>
@@ -33,21 +32,21 @@
 
   <div class="md-master-embed-body">
     {% with embed_page_shell=true %}
-    {% include 'partials/supplier_master_body.html' %}
+    {% include 'partials/category_master_body.html' %}
     {% endwith %}
   </div>
 
-  <script src="{{ url_for('static', filename='supplier_master.js') }}?v=2"></script>
+  <script src="{{ url_for('static', filename='category_master.js') }}?v=1"></script>
   <script>
-  (function initSmSupplierEmbedSearch(){
-    var searchInput = document.getElementById('sm-supplier-search');
-    var table = document.getElementById('sm-supplier-table');
-    if (!searchInput || !table || searchInput.getAttribute('data-sm-search-bound') === '1') return;
-    searchInput.setAttribute('data-sm-search-bound', '1');
-    var countEl = document.getElementById('sm-supplier-count');
-    var tableWrap = document.getElementById('sm-supplier-table-wrap');
-    var emptyEl = document.getElementById('sm-supplier-search-empty');
-    var chip = document.getElementById('sm-supplier-search-chip');
+  (function initCmCategoryEmbedSearch(){
+    var searchInput = document.getElementById('cm-category-search');
+    var table = document.getElementById('cm-category-table');
+    if (!searchInput || !table || searchInput.getAttribute('data-cm-search-bound') === '1') return;
+    searchInput.setAttribute('data-cm-search-bound', '1');
+    var countEl = document.getElementById('cm-category-count');
+    var tableWrap = document.getElementById('cm-category-table-wrap');
+    var emptyEl = document.getElementById('cm-category-search-empty');
+    var chip = document.getElementById('cm-category-search-chip');
     function applySearch(){
       var needle = String(searchInput.value || '').trim().toLowerCase();
       if (chip) chip.classList.toggle('is-active', !!needle);
@@ -67,6 +66,6 @@
     searchInput.addEventListener('keydown', function(e){ if (e.key === 'Enter') e.preventDefault(); });
     applySearch();
   })();
-  if (typeof window.initSupplierMasterPage === 'function') window.initSupplierMasterPage();
+  if (typeof window.initCategoryMasterPage === 'function') window.initCategoryMasterPage();
   </script>
 </div>

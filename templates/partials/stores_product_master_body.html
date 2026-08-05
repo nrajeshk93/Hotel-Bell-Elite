@@ -7,6 +7,10 @@
 {% for outlet in product_outlets %}
   {% set outlet_ns.options = outlet_ns.options + [(outlet.key, outlet.label)] %}
 {% endfor %}
+{% set supplier_ns = namespace(options=[]) %}
+{% for supplier in suppliers|default([]) %}
+  {% set supplier_ns.options = supplier_ns.options + [(supplier.id|string, supplier.name)] %}
+{% endfor %}
 {% set default_pack_unit = 'gram' if 'gram' in default_units else (default_units[0] if default_units else 'kg') %}
 
 {% macro variant_unit_listbox(selected_unit, fid) -%}
@@ -85,6 +89,18 @@
         </div>
         <div class="st-product-modal-field">
           {{ ep_listbox('outlet', 'Outlet *', outlet_ns.options, form.outlet or '', placeholder='Select outlet…', field_id='st-product-outlet', extra_class='st-product-listbox') }}
+        </div>
+      </div>
+
+      <div class="st-product-modal-grid st-product-modal-grid--suppliers" aria-label="Preferred suppliers">
+        <div class="st-product-modal-field">
+          {{ ep_listbox('preferred_supplier_1_id', 'Supplier 1', supplier_ns.options, form.preferred_supplier_1_id or '', placeholder='Select supplier…', field_id='st-product-supplier-1', searchable=true, extra_class='st-product-listbox') }}
+        </div>
+        <div class="st-product-modal-field">
+          {{ ep_listbox('preferred_supplier_2_id', 'Supplier 2', supplier_ns.options, form.preferred_supplier_2_id or '', placeholder='Select supplier…', field_id='st-product-supplier-2', searchable=true, extra_class='st-product-listbox') }}
+        </div>
+        <div class="st-product-modal-field">
+          {{ ep_listbox('preferred_supplier_3_id', 'Supplier 3', supplier_ns.options, form.preferred_supplier_3_id or '', placeholder='Select supplier…', field_id='st-product-supplier-3', searchable=true, extra_class='st-product-listbox') }}
         </div>
       </div>
 

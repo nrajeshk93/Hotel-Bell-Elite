@@ -59,7 +59,10 @@
     <section class="card pl-list-panel st-panel st-audit-queue-card" aria-label="Audit queue">
       <div class="card-hdr">
         <div class="card-title"><span>Audit Queue (Verify one by one)</span></div>
-        <span class="pl-count" id="st-audit-queue-count">{{ total }} product{% if total != 1 %}s{% endif %}</span>
+        <div class="st-audit-queue-actions">
+          <button type="button" class="btn" id="st-audit-new-btn" title="Complete the current audit and start a fresh queue">New Audit</button>
+          <span class="pl-count" id="st-audit-queue-count">{{ total }} product{% if total != 1 %}s{% endif %}</span>
+        </div>
       </div>
       <div class="card-body" style="padding:0;">
         {% if lines %}

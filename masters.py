@@ -4,7 +4,7 @@ from __future__ import annotations
 
 MASTER_CATEGORY_LABELS = {
     "all": "All",
-    "restaurant": "Restaurant",
+    "restaurant": "Restaurant & Bar",
     "inventory": "Inventory",
     "accounts": "Accounts",
     "hr": "Employee Payroll",
@@ -76,6 +76,18 @@ MASTER_DEFINITIONS = [
         "recently_updated": True,
     },
     {
+        "id": "category",
+        "name": "Category Master",
+        "icon": "tag",
+        "icon_tone": "violet",
+        "category": "restaurant",
+        "route": "category_master",
+        "path": "/masters/categories",
+        "record_count": 0,
+        "active": True,
+        "recently_updated": True,
+    },
+    {
         "id": "employee",
         "name": "Employee Master",
         "icon": "person",
@@ -95,6 +107,7 @@ _DB_COUNT_QUERIES = {
     "agency": "SELECT COUNT(*) AS n FROM agencies",
     "product": "SELECT COUNT(*) AS n FROM store_products",
     "menu": "SELECT COUNT(*) AS n FROM pos_menu_items WHERE is_active = 1",
+    "category": "SELECT COUNT(*) AS n FROM pos_menu_categories WHERE is_active = 1",
     "employee": "SELECT COUNT(*) AS n FROM employees WHERE status = 'active'",
 }
 

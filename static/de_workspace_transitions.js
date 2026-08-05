@@ -625,6 +625,7 @@
       var path = new URL(url, window.location.href).pathname.toLowerCase();
       if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1) return;
       if(path === '/accounts/credit-payment/report' || path === '/accounts/purchase-verification/report') return;
+      if(path === '/accounts/purchase-ledger/report' || path === '/accounts/cash-ledger/report') return;
       /* Payroll HTML /report — not a file download. Do not treat /reports hub as export. */
       if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path)) return;
     } catch(e){}
@@ -849,7 +850,7 @@
 
       /* Stores */
       if(path === '/stores/indent') return !!main.querySelector('#st-indent-search, #st-indent-list-count');
-      if(path === '/stores/purchase-requests') return !!main.querySelector('#st-inward-indent, #st-inward-indent-listbox');
+      if(path === '/stores/purchase-requests') return !!main.querySelector('#st-inward-page, #st-inward-indent, #st-inward-indent-listbox, #st-inward-direct-lines');
       if(path === '/stores/stock') return !!main.querySelector('#st-stock-search, #st-stock-out-filter');
       if(path === '/stores/stock-audit') return !!main.querySelector('#st-audit-page, #st-audit-queue, #st-audit-search');
       if(path === '/stores/stock-audit/report') return !!main.querySelector('#st-audit-report-page, #st-audit-report-filter-form');
@@ -1933,10 +1934,10 @@
     if(!link || !link.closest) return false;
     // Full-page master shells (e.g. Employee Master) use .md-master-embed but
     // must soft-nav normally — only the Masters modal stays fragment-bound.
-    if(link.closest('#md-master-modal, .md-master-modal, #md-master-modal-inject')){
+    if(link.closest('#md-master-modal, .md-master-modal, #md-master-modal-inject, #st-product-master-modal, #st-product-master-modal-inject')){
       return true;
     }
-    if(link.closest('.md-master-embed--page-shell') && !link.closest('#md-master-modal')){
+    if(link.closest('.md-master-embed--page-shell') && !link.closest('#md-master-modal, #st-product-master-modal')){
       return false;
     }
     return !!link.closest('.md-master-embed');
@@ -2181,6 +2182,7 @@
     if(path.indexOf('/export/') !== -1) return true;
     /* Accounts Excel downloads (not HTML report pages). */
     if(path === '/accounts/credit-payment/report' || path === '/accounts/purchase-verification/report') return true;
+    if(path === '/accounts/purchase-ledger/report' || path === '/accounts/cash-ledger/report') return true;
     if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path) || /\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(rawHref)){
       return true;
     }

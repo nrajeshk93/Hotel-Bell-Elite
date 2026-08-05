@@ -40,7 +40,6 @@ STORES_FILTER_OUTLETS = (
     {"key": "both", "label": "All"},
 ) + STORES_OUTLETS
 PRODUCT_OUTLETS = (
-    {"key": "both", "label": "Both"},
     {"key": "bar", "label": "Bar"},
     {"key": "restaurant", "label": "Restaurant"},
 )
@@ -98,6 +97,13 @@ PAGE_META = {
         "cta": "New Indent",
         "cta_endpoint": "stores_indent",
         "cta_args": {"focus": "form"},
+    },
+    "purchase_orders": {
+        "title": "Purchase Order",
+        "subtitle": "",
+        "step": "Purchase Order",
+        "list_endpoint": "stores_orders",
+        "cta": None,
     },
     "approvals": {
         "title": "Approvals",
@@ -344,11 +350,33 @@ def _parse_product_outlet(raw: str | None) -> str:
     return key if key in PRODUCT_OUTLET_KEYS else "restaurant"
 
 
+def _parse_optional_supplier_id(raw) -> int | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        supplier_id = int(text)
+    except (TypeError, ValueError):
+        return None
+    return supplier_id if supplier_id > 0 else None
+
+
+def _product_preferred_supplier_ids_from_form(form) -> tuple[int | None, int | None, int | None]:
+    return (
+        _parse_optional_supplier_id(form.get("preferred_supplier_1_id")),
+        _parse_optional_supplier_id(form.get("preferred_supplier_2_id")),
+        _parse_optional_supplier_id(form.get("preferred_supplier_3_id")),
+    )
+
+
 def _product_outlet_label(outlet: str) -> str:
-    key = _parse_product_outlet(outlet)
+    key = _normalize_outlet_key(outlet or "restaurant")
     for item in PRODUCT_OUTLETS:
         if item["key"] == key:
             return item["label"]
+    # Legacy products may still be stored as "both".
+    if key == "both":
+        return "Both"
     return "Restaurant"
 
 
@@ -1385,6 +1413,337 @@ def _product_names_for_outlet(conn, stores_outlet: str) -> set[str]:
     return names
 
 
+def _product_category_by_item_name(conn, stores_outlet: str | None = None) -> dict[str, str]:
+    """Map product name (casefold) → Product Master category display name."""
+    catalog = _load_product_catalog(conn, stores_outlet=stores_outlet)
+    mapping: dict[str, str] = {}
+    for cat in catalog:
+        cat_name = str(cat.get("name") or "").strip()
+        if not cat_name:
+            continue
+        for product in cat.get("products") or []:
+            pname = str(product.get("name") or "").strip()
+            if pname:
+                mapping[pname.casefold()] = cat_name
+    return mapping
+
+
+def _resolve_expense_category_from_product_category(
+    product_category_name: str,
+    expense_choices: list[tuple[str, str]] | None = None,
+) -> tuple[str, str] | None:
+    """Map a Product Master category to an expense category key + label."""
+    import app as app_module
+
+    raw = (product_category_name or "").strip()
+    if not raw:
+        return None
+    choices = list(expense_choices or app_module.EXPENSE_CATEGORIES)
+    # Exact / casefold label match first (e.g. Dairy Products).
+    for key, label in choices:
+        if label.casefold() == raw.casefold():
+            return key, label
+    # Builtin aliases (Vegetable → vegetables).
+    normalized = app_module._normalize_expense_category(raw)
+    if normalized:
+        for key, label in choices:
+            if key == normalized:
+                return key, label
+        # Normalized custom key with original label preserved when possible.
+        return normalized, raw
+    key = app_module._slugify_expense_category_key(raw)
+    if not key:
+        return None
+    return key, raw
+
+
+def _ensure_expense_category(conn, category_key: str, category_label: str) -> tuple[str, str]:
+    """Ensure expense category exists (builtin or custom table); return key, label."""
+    import app as app_module
+    import re
+
+    key = (category_key or "").strip()
+    label = (category_label or "").strip() or key.replace("_", " ").title()
+    if not key:
+        return "", ""
+    for builtin_key, builtin_label in app_module.EXPENSE_CATEGORIES:
+        if builtin_key == key or builtin_label.casefold() == label.casefold():
+            return builtin_key, builtin_label
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", key):
+        key = app_module._slugify_expense_category_key(label) or key
+    if not key or not re.fullmatch(r"[a-z][a-z0-9_]{0,79}", key):
+        return "", ""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS expense_categories (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_key  TEXT    NOT NULL UNIQUE,
+            name          TEXT    NOT NULL COLLATE NOCASE,
+            sort_order    INTEGER NOT NULL DEFAULT 0,
+            is_active     INTEGER NOT NULL DEFAULT 1,
+            created_at    TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+    """)
+    by_key = conn.execute(
+        "SELECT category_key, name, is_active FROM expense_categories WHERE category_key = ?",
+        (key,),
+    ).fetchone()
+    by_name = conn.execute(
+        "SELECT category_key, name, is_active FROM expense_categories WHERE lower(name) = lower(?)",
+        (label,),
+    ).fetchone()
+    existing = by_name or by_key
+    if existing:
+        if int(existing["is_active"] or 0) != 1:
+            conn.execute(
+                "UPDATE expense_categories SET is_active = 1, name = ? WHERE category_key = ?",
+                (label, existing["category_key"]),
+            )
+        return existing["category_key"], existing["name"] if int(existing["is_active"] or 0) == 1 else label
+    max_sort = conn.execute(
+        "SELECT COALESCE(MAX(sort_order), 0) AS m FROM expense_categories"
+    ).fetchone()["m"]
+    conn.execute(
+        """
+        INSERT INTO expense_categories (category_key, name, sort_order, is_active)
+        VALUES (?, ?, ?, 1)
+        """,
+        (key, label, int(max_sort) + 10),
+    )
+    return key, label
+
+
+def _sync_product_categories_into_expense_categories(conn) -> list[tuple[str, str]]:
+    """Ensure every Product Master category is selectable as an expense category."""
+    import app as app_module
+
+    rows = conn.execute(
+        """
+        SELECT name FROM store_product_categories
+        WHERE is_active = 1
+        ORDER BY sort_order, lower(name), id
+        """
+    ).fetchall()
+    for row in rows:
+        resolved = _resolve_expense_category_from_product_category(row["name"])
+        if not resolved:
+            continue
+        key, label = resolved
+        # Prefer Product Master display name for custom categories.
+        if key not in dict(app_module.EXPENSE_CATEGORIES):
+            label = (row["name"] or "").strip() or label
+        _ensure_expense_category(conn, key, label)
+    return app_module._expense_category_choices(conn)
+
+
+def _pick_expense_category_from_product_categories(
+    category_names: list[str],
+    amounts: list[float] | None = None,
+    expense_choices: list[tuple[str, str]] | None = None,
+) -> tuple[str, str] | None:
+    """Pick one expense category from product categories (dominant by amount, else first)."""
+    pairs: list[tuple[str, float]] = []
+    for idx, name in enumerate(category_names):
+        label = (name or "").strip()
+        if not label:
+            continue
+        amt = 0.0
+        if amounts and idx < len(amounts):
+            try:
+                amt = float(amounts[idx] or 0)
+            except (TypeError, ValueError):
+                amt = 0.0
+        pairs.append((label, amt))
+    if not pairs:
+        return None
+    totals: dict[str, float] = {}
+    order: list[str] = []
+    for label, amt in pairs:
+        key = label.casefold()
+        if key not in totals:
+            totals[key] = 0.0
+            order.append(label)
+        totals[key] += max(amt, 0.0)
+    # Prefer highest amount; ties keep first-seen product category.
+    best_label = max(order, key=lambda lab: (totals[lab.casefold()], -order.index(lab)))
+    return _resolve_expense_category_from_product_category(best_label, expense_choices)
+
+
+def _inward_line_amount(qty: Any, unit_price: Any, tax_percent: Any = 0) -> float:
+    """Line total including tax, rounded like expense amounts."""
+    import app as app_module
+
+    unit_cost = _unit_cost_with_tax(unit_price, tax_percent)
+    if unit_cost is None:
+        return 0.0
+    try:
+        q = float(qty or 0)
+    except (TypeError, ValueError):
+        q = 0.0
+    if q <= 0:
+        return 0.0
+    return app_module.round_half_up(q * float(unit_cost), 2)
+
+
+def _group_inward_lines_by_expense_category(
+    conn,
+    *,
+    stores_outlet: str,
+    lines: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Group inward lines by Product Master → expense category.
+
+    Each input line must include item_name, qty, unit_price, and optionally
+    tax_percent. Extra keys are preserved on the line within the group.
+
+    Returns (groups, error) where each group is:
+      {category_key, category_label, amount, lines[]}
+    """
+    import app as app_module
+
+    if not lines:
+        return [], "No lines to group."
+
+    product_cat_map = _product_category_by_item_name(conn, stores_outlet=None)
+    expense_choices = _sync_product_categories_into_expense_categories(conn)
+    groups_by_key: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+
+    for line in lines:
+        item_name = str(line.get("item_name") or "").strip()
+        if not item_name:
+            return [], "Every line needs a product name."
+        pm_cat = product_cat_map.get(item_name.casefold(), "")
+        if not pm_cat:
+            return [], f"{item_name} has no Product Master category."
+        resolved = _resolve_expense_category_from_product_category(pm_cat, expense_choices)
+        if not resolved:
+            return [], f"Could not resolve expense category for {item_name}."
+        raw_key, raw_label = resolved
+        # Prefer Product Master display name for custom categories.
+        if raw_key not in dict(app_module.EXPENSE_CATEGORIES):
+            raw_label = pm_cat or raw_label
+        ensured_key, ensured_label = _ensure_expense_category(conn, raw_key, raw_label)
+        category_key = ensured_key or raw_key
+        category_label = ensured_label or raw_label or pm_cat
+        if not category_key:
+            return [], f"Could not resolve expense category for {item_name}."
+
+        amount = _inward_line_amount(
+            line.get("qty"),
+            line.get("unit_price"),
+            line.get("tax_percent"),
+        )
+        if category_key not in groups_by_key:
+            groups_by_key[category_key] = {
+                "category_key": category_key,
+                "category_label": category_label,
+                "amount": 0.0,
+                "lines": [],
+            }
+            order.append(category_key)
+        group = groups_by_key[category_key]
+        group["lines"].append(line)
+        group["amount"] = app_module.round_half_up(float(group["amount"]) + amount, 2)
+
+    groups = [groups_by_key[key] for key in order]
+    for group in groups:
+        if float(group["amount"] or 0) <= 0:
+            return [], (
+                f"Category {group['category_label']} needs a positive amount."
+            )
+    return groups, None
+
+
+def _create_inward_category_expenses(
+    conn,
+    user,
+    *,
+    base_expense_data: dict[str, Any],
+    groups: list[dict[str, Any]],
+    description_suffix: str = "",
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Create one Hotel expense per category group; share supplier/invoice/payment.
+
+    Cash is validated once against the grand total. Invoice uniqueness is
+    checked once against existing expenses; batch rows may share the invoice.
+    """
+    import app as app_module
+
+    if not groups:
+        return [], "No expense categories to create."
+
+    grand = app_module.round_half_up(
+        sum(float(g.get("amount") or 0) for g in groups),
+        2,
+    )
+    posted_raw = base_expense_data.get("amount")
+    if posted_raw not in (None, ""):
+        posted_amount = app_module.parse_money(posted_raw)
+        if posted_amount > 0 and abs(posted_amount - grand) > 1.0:
+            return [], "Expense amount does not match invoice line totals."
+
+    company = base_expense_data.get("company") or app_module.DEFAULT_COMPANY
+    sales_date = base_expense_data.get("date") or ""
+    payment_type = app_module._normalize_expense_payment_type(
+        base_expense_data.get("payment_type")
+    )
+    cash_error = app_module._validate_cash_expense_against_available(
+        conn, company, sales_date, grand, payment_type
+    )
+    if cash_error:
+        return [], cash_error
+
+    duplicate = app_module._duplicate_expense_invoice(
+        conn,
+        base_expense_data.get("supplier_id"),
+        base_expense_data.get("invoice_number"),
+    )
+    if duplicate:
+        code = duplicate["expense_code"] or f"#{duplicate['id']}"
+        return [], (
+            f"An expense with this supplier and invoice number already exists ({code})."
+        )
+
+    base_desc = (base_expense_data.get("description") or "").strip()
+    results: list[dict[str, Any]] = []
+    for group in groups:
+        cat_label = str(group.get("category_label") or group.get("category_key") or "").strip()
+        if base_desc:
+            desc = f"{base_desc} · {cat_label}" if cat_label else base_desc
+        elif description_suffix and cat_label:
+            desc = f"Stock inward {description_suffix} · {cat_label}"
+        elif cat_label:
+            desc = f"Stock inward · {cat_label}"
+        else:
+            desc = "Stock inward"
+
+        expense_data = dict(base_expense_data)
+        expense_data["category"] = group["category_key"]
+        expense_data["amount"] = group["amount"]
+        expense_data["description"] = desc
+        result, err = app_module._create_sales_expense(
+            conn,
+            user,
+            expense_data,
+            default_location=app_module.OUTLET_HOTEL,
+            allow_shared_invoice=True,
+            skip_cash_check=True,
+        )
+        if err:
+            return [], err
+        entry = {
+            "expense_id": result["expense_id"],
+            "expense_code": result.get("expense_code"),
+            "category": group["category_key"],
+            "category_label": group.get("category_label") or "",
+            "amount": group["amount"],
+        }
+        results.append(entry)
+        group["expense_id"] = entry["expense_id"]
+        group["expense_code"] = entry.get("expense_code")
+    return results, None
+
+
 def _format_ledger_qty(value: Any) -> str:
     try:
         n = float(value or 0)
@@ -1714,6 +2073,11 @@ def _page_render(page_key: str, **kwargs):
     # List filters use All/Bar/Restaurant across Stores pages (including Product Master).
     outlet = _parse_outlet_filter(raw_outlet)
     outlets_for_ui = STORES_FILTER_OUTLETS
+    # Stock Inward requires a concrete outlet — no "All" option on this page.
+    if page_key == "purchase_requests":
+        outlets_for_ui = STORES_OUTLETS
+        if outlet not in OUTLET_KEYS:
+            outlet = "bar"
     meta = PAGE_META[page_key]
     cta_url = None
     if meta.get("cta_endpoint"):
@@ -1731,10 +2095,17 @@ def _page_render(page_key: str, **kwargs):
     indent_form_unset = bool(kwargs.pop("indent_form_unset", False))
     selected_outlet = "" if indent_form_unset else outlet
     selected_outlet_label = "Select outlet" if indent_form_unset else _outlet_label(outlet)
+    if page_key == "purchase_requests":
+        kwargs.setdefault(
+            "back_href",
+            url_for("stores_stock", outlet=outlet if outlet else "both"),
+        )
+        kwargs.setdefault("back_label", "Back to Stock")
+    nav_stores_view = kwargs.pop("de_nav_stores_view", page_key)
     return render_template(
         "stores_page.html",
         de_nav_section="stores",
-        de_nav_stores_view=page_key,
+        de_nav_stores_view=nav_stores_view,
         stores_outlets=outlets_for_ui,
         selected_outlet=selected_outlet,
         selected_outlet_label=selected_outlet_label,
@@ -1785,6 +2156,9 @@ def stores_product_master():
         "default_unit": "kg",
         "outlet": "",
         "approximate_price": "",
+        "preferred_supplier_1_id": "",
+        "preferred_supplier_2_id": "",
+        "preferred_supplier_3_id": "",
         "variants": [],
     }
 
@@ -1862,6 +2236,10 @@ def stores_product_master():
                 form["outlet"] = raw_outlet if raw_outlet in PRODUCT_OUTLET_KEYS else ""
                 form["category_id"] = (request.form.get("category_id") or "").strip()
                 form["product_id"] = (request.form.get("product_id") or "").strip()
+                pref1, pref2, pref3 = _product_preferred_supplier_ids_from_form(request.form)
+                form["preferred_supplier_1_id"] = str(pref1) if pref1 else ""
+                form["preferred_supplier_2_id"] = str(pref2) if pref2 else ""
+                form["preferred_supplier_3_id"] = str(pref3) if pref3 else ""
                 try:
                     category_id = int(form["category_id"])
                 except (TypeError, ValueError):
@@ -1926,6 +2304,15 @@ def stores_product_master():
                 if unit_infer_error:
                     errors.append(unit_infer_error)
                 errors.extend(variant_errors)
+                for slot, supplier_id in ((1, pref1), (2, pref2), (3, pref3)):
+                    if not supplier_id:
+                        continue
+                    exists_supplier = conn.execute(
+                        "SELECT id FROM suppliers WHERE id = ?",
+                        (supplier_id,),
+                    ).fetchone()
+                    if not exists_supplier:
+                        errors.append(f"Supplier {slot} was not found.")
                 if not errors:
                     exists = conn.execute(
                         """
@@ -1950,7 +2337,11 @@ def stores_product_master():
                                 """
                                 UPDATE store_products
                                 SET category_id = ?, name = ?, default_unit = ?, outlet = ?,
-                                    approximate_price = ?, updated_at = ?
+                                    approximate_price = ?,
+                                    preferred_supplier_1_id = ?,
+                                    preferred_supplier_2_id = ?,
+                                    preferred_supplier_3_id = ?,
+                                    updated_at = ?
                                 WHERE id = ?
                                 """,
                                 (
@@ -1959,6 +2350,9 @@ def stores_product_master():
                                     form["default_unit"],
                                     form["outlet"],
                                     approx_price,
+                                    pref1,
+                                    pref2,
+                                    pref3,
                                     _now(),
                                     product_id,
                                 ),
@@ -1980,8 +2374,9 @@ def stores_product_master():
                             """
                             INSERT INTO store_products
                                 (category_id, name, default_unit, outlet, approximate_price,
+                                 preferred_supplier_1_id, preferred_supplier_2_id, preferred_supplier_3_id,
                                  is_active, sort_order, updated_at)
-                            VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                             """,
                             (
                                 category_id,
@@ -1989,6 +2384,9 @@ def stores_product_master():
                                 form["default_unit"],
                                 form["outlet"],
                                 approx_price,
+                                pref1,
+                                pref2,
+                                pref3,
                                 int(max_sort) + 10,
                                 _now(),
                             ),
@@ -2001,7 +2399,8 @@ def stores_product_master():
         if edit_id_int and request.method == "GET":
             row = conn.execute(
                 """
-                SELECT id, category_id, name, default_unit, outlet, approximate_price
+                SELECT id, category_id, name, default_unit, outlet, approximate_price,
+                       preferred_supplier_1_id, preferred_supplier_2_id, preferred_supplier_3_id
                 FROM store_products
                 WHERE id = ? AND is_active = 1
                 """,
@@ -2016,6 +2415,10 @@ def stores_product_master():
                 form["approximate_price"] = _format_optional_price(
                     row["approximate_price"] if "approximate_price" in row.keys() else None
                 )
+                for slot in (1, 2, 3):
+                    key = f"preferred_supplier_{slot}_id"
+                    val = row[key] if key in row.keys() else None
+                    form[key] = str(val) if val else ""
                 form["variants"] = []
                 for v in _load_variants_by_product_ids(conn, [edit_id_int]).get(edit_id_int, []):
                     pack_qty, pack_unit = _split_variant_label(v["label"] or "")
@@ -2058,6 +2461,8 @@ def stores_product_master():
         if form.get("default_unit") and form["default_unit"] not in product_units:
             product_units = list(product_units) + [form["default_unit"]]
         product_count = len(products)
+        import app as app_module
+        suppliers = app_module._all_suppliers(conn)
     finally:
         conn.close()
 
@@ -2072,6 +2477,7 @@ def stores_product_master():
             categories=[dict(row) for row in categories],
             default_units=product_units,
             product_outlets=PRODUCT_OUTLETS,
+            suppliers=suppliers,
             show_form=focus or bool(errors) or show_category_modal or show_unit_modal,
             show_category_modal=show_category_modal,
             show_unit_modal=show_unit_modal,
@@ -2090,6 +2496,7 @@ def stores_product_master():
         categories=[dict(row) for row in categories],
         default_units=product_units,
         product_count=product_count,
+        suppliers=suppliers,
         show_form=focus or bool(errors) or show_category_modal or show_unit_modal,
         show_category_modal=show_category_modal,
         show_unit_modal=show_unit_modal,
@@ -2163,7 +2570,7 @@ def stores():
     user = _get_user()
     endpoint = _first_stores_endpoint(user)
     if not endpoint:
-        flash("No Procurement & Inventory pages are available for this account.", "error")
+        flash("No Purchase & Inventory pages are available for this account.", "error")
         return redirect(url_for("home"))
     return redirect(
         url_for(endpoint, outlet=request.args.get("outlet") or "both")
@@ -2481,7 +2888,11 @@ def stores_indent():
                 return redirect(url_for("stores_indent", outlet=outlet, view=list_view))
             if row["status"] not in EDITABLE_INDENT_STATUSES:
                 flash("Only draft, waiting, or rejected indents can be edited.", "error")
-                return redirect(url_for("stores_indent", outlet=row["outlet"], view="rejected" if row["status"] == "rejected" else "approved"))
+                if row["status"] == "rejected":
+                    return redirect(url_for("stores_indent", outlet=row["outlet"], view="rejected"))
+                if row["status"] == "approved":
+                    return redirect(url_for("stores_indent", outlet=row["outlet"], view="approved"))
+                return redirect(url_for("stores_indent", outlet=row["outlet"]))
             outlet = _parse_outlet(row["outlet"])
             open_edit_id = edit_id
             list_view = "rejected" if row["status"] == "rejected" else "pending"
@@ -2572,6 +2983,106 @@ def stores_indent():
         editing=bool(form.get("indent_id")),
         indent_list_views=INDENT_LIST_VIEWS,
         selected_indent_view=list_view,
+        de_nav_stores_view="indent",
+    )
+
+
+def _load_indent_list_for_view(conn, outlet: str, list_view: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    """Return (indents, indent_view_data, stores_ledger_data) for a list view."""
+    status_keys = INDENT_LIST_VIEW_STATUSES[list_view]
+    status_placeholders = ",".join("?" for _ in status_keys)
+    if outlet == "both":
+        rows = conn.execute(
+            f"""
+            SELECT i.*, u.full_name AS created_by_name,
+                   d.full_name AS decided_by_name,
+                   d.username AS decided_by_username,
+                   (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                   (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
+            FROM store_indents i
+            LEFT JOIN users u ON u.id = i.created_by
+            LEFT JOIN users d ON d.id = i.decided_by
+            WHERE i.outlet IN ('bar', 'restaurant')
+              AND i.status IN ({status_placeholders})
+            ORDER BY i.created_at DESC, i.id DESC
+            """,
+            status_keys,
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            f"""
+            SELECT i.*, u.full_name AS created_by_name,
+                   d.full_name AS decided_by_name,
+                   d.username AS decided_by_username,
+                   (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                   (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
+            FROM store_indents i
+            LEFT JOIN users u ON u.id = i.created_by
+            LEFT JOIN users d ON d.id = i.decided_by
+            WHERE i.outlet = ?
+              AND i.status IN ({status_placeholders})
+            ORDER BY i.created_at DESC, i.id DESC
+            """,
+            (outlet, *status_keys),
+        ).fetchall()
+    indents = [dict(row) for row in rows]
+    indent_view_data = _indent_view_payload(conn, indents)
+    stores_ledger_data = _stores_ledger_payload(conn, "both")
+    return indents, indent_view_data, stores_ledger_data
+
+
+@stores_bp.route("/stores/orders", endpoint="stores_orders")
+def stores_orders():
+    """Purchase Order page — approved indents ready for PO download.
+
+    Path is /stores/orders (not …/purchase-order) so soft-nav does not treat it
+    as an Excel download.
+    """
+    _get_user()
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    list_view = "approved"
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        indents, indent_view_data, stores_ledger_data = _load_indent_list_for_view(
+            conn, outlet, list_view
+        )
+        catalog = _load_product_catalog(conn, stores_outlet=outlet) if outlet != "both" else []
+    finally:
+        conn.close()
+
+    empty_form = {
+        "indent_id": "",
+        "notes": "",
+        "submission_token": "",
+        "lines": [{
+            "item_name": "",
+            "quantity": "",
+            "unit": "kg",
+            "notes": "",
+            "approximate_price": "",
+            "pack_label": "",
+            "pack_qty_in_base": "",
+        }],
+    }
+
+    return _page_render(
+        "purchase_orders",
+        outlet=outlet,
+        indents=indents,
+        indent_view_data=indent_view_data,
+        stores_ledger_data=stores_ledger_data,
+        product_catalog=catalog,
+        show_form=False,
+        open_edit_id=0,
+        indent_form_unset=False,
+        form=empty_form,
+        errors=[],
+        editing=False,
+        indent_list_views=(),
+        selected_indent_view=list_view,
+        de_nav_stores_view="purchase_order",
     )
 
 
@@ -2669,7 +3180,7 @@ def stores_indent_purchase_order(indent_id: int):
         ).fetchone()
         if not indent:
             flash("Indent not found.", "error")
-            return redirect(url_for("stores_indent", view="approved"))
+            return redirect(url_for("stores_orders"))
         if indent["status"] != "approved":
             flash("Purchase orders are available for approved indents only.", "error")
             return redirect(url_for("stores_indent", outlet=indent["outlet"], view="pending"))
@@ -2799,7 +3310,7 @@ def stores_indent_delete(indent_id: int):
         if status == "approved":
             if not user or not user.get("is_admin"):
                 flash("Only administrators can delete approved indents.", "error")
-                return redirect(url_for("stores_indent", outlet=outlet, view="approved"))
+                return redirect(url_for("stores_orders", outlet=outlet))
             ok, message = _delete_approved_indent_non_inwarded(conn, indent_id)
             if ok:
                 conn.commit()
@@ -2807,7 +3318,7 @@ def stores_indent_delete(indent_id: int):
             else:
                 conn.rollback()
                 flash(message, "error")
-            return redirect(url_for("stores_indent", outlet=outlet, view="approved"))
+            return redirect(url_for("stores_orders", outlet=outlet))
 
         if status not in ("draft", "pending"):
             flash("Only draft or waiting indents can be deleted.", "error")
@@ -3038,10 +3549,25 @@ def stores_indent_reopen(indent_id: int):
     return redirect(url_for("stores_approvals", outlet=outlet))
 
 
+def _parse_inward_view(raw: Any) -> str:
+    value = str(raw or "").strip().lower()
+    if value == "direct":
+        return "direct"
+    return "approved"
+
+
 @stores_bp.route("/stores/purchase-requests", methods=["GET", "POST"])
 def stores_purchase_requests():
     outlet = _parse_outlet_filter(request.args.get("outlet") or request.form.get("outlet"))
+    inward_view = _parse_inward_view(request.args.get("view") or request.form.get("view"))
     user = _get_user()
+    # Stock Inward has no "All" outlet — coerce legacy ?outlet=both to Bar.
+    if outlet not in OUTLET_KEYS:
+        redirect_kwargs = {"outlet": "bar", "view": inward_view}
+        indent_arg = request.args.get("indent") or request.form.get("indent")
+        if indent_arg:
+            redirect_kwargs["indent"] = indent_arg
+        return redirect(url_for("stores_purchase_requests", **redirect_kwargs))
 
     if request.method == "POST" and request.form.get("action") == "create_from_indent":
         try:
@@ -3057,7 +3583,7 @@ def stores_purchase_requests():
             ).fetchone()
             if not indent:
                 flash("Select an approved indent.", "error")
-                return redirect(url_for("stores_purchase_requests", outlet=outlet))
+                return redirect(url_for("stores_purchase_requests", outlet=outlet, view=inward_view))
             write_outlet = _parse_outlet(indent["outlet"])
             existing = conn.execute(
                 "SELECT id FROM store_purchase_requests WHERE indent_id = ?",
@@ -3065,14 +3591,14 @@ def stores_purchase_requests():
             ).fetchone()
             if existing:
                 flash("A purchase request already exists for this indent.", "error")
-                return redirect(url_for("stores_purchase_requests", outlet=write_outlet))
+                return redirect(url_for("stores_purchase_requests", outlet=write_outlet, view="approved"))
             lines = conn.execute(
                 "SELECT * FROM store_indent_lines WHERE indent_id = ? ORDER BY id",
                 (indent_id,),
             ).fetchall()
             if not lines:
                 flash("This indent has no items.", "error")
-                return redirect(url_for("stores_purchase_requests", outlet=write_outlet))
+                return redirect(url_for("stores_purchase_requests", outlet=write_outlet, view="approved"))
             pr_no = _next_doc_no(conn, "store_purchase_requests", "pr_no", "PR", write_outlet)
             cur = conn.execute(
                 """
@@ -3111,7 +3637,7 @@ def stores_purchase_requests():
         finally:
             conn.close()
         flash("Purchase request created.", "ok")
-        return redirect(url_for("stores_purchase_requests", outlet=write_outlet))
+        return redirect(url_for("stores_purchase_requests", outlet=write_outlet, view="approved"))
 
     if request.method == "POST" and request.form.get("action") == "confirm_stock_inward":
         # Stock + expense must go through the expense modal / JSON endpoint.
@@ -3120,148 +3646,177 @@ def stores_purchase_requests():
             indent_id = int(request.form.get("indent_id") or 0)
         except (TypeError, ValueError):
             indent_id = 0
-        redirect_kwargs = {"outlet": outlet}
+        redirect_kwargs = {"outlet": outlet, "view": inward_view}
         if indent_id:
             redirect_kwargs["indent"] = indent_id
         return redirect(url_for("stores_purchase_requests", **redirect_kwargs))
 
-    outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
     # Lazy import avoids circular import with app.register_stores
     import app as app_module
+
+    approved_indents: list[dict[str, Any]] = []
+    selected_indent = None
+    selected_lines: list[dict[str, Any]] = []
+    indent_view_data: list[dict[str, Any]] = []
+    product_catalog: list[dict[str, Any]] = []
+    direct_outlet_unset = False
 
     conn = get_db()
     expense_categories = app_module.EXPENSE_CATEGORIES
     try:
         ensure_stores_schema(conn)
-        approved_rows = conn.execute(
-            f"""
-            SELECT i.*, u.full_name AS created_by_name,
-                   d.full_name AS decided_by_name,
-                   d.username AS decided_by_username,
-                   (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
-                   (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
-            FROM store_indents i
-            LEFT JOIN users u ON u.id = i.created_by
-            LEFT JOIN users d ON d.id = i.decided_by
-            WHERE {outlet_sql} AND i.status = 'approved'
-              AND EXISTS (
-                SELECT 1 FROM store_indent_lines l
-                WHERE l.indent_id = i.id
-                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
-              )
-            ORDER BY i.decided_at DESC, i.id DESC
-            """,
-            outlet_params,
-        ).fetchall()
-        approved_indents = [dict(row) for row in approved_rows]
-        selected_indent = None
-        selected_lines: list[dict[str, Any]] = []
-        try:
-            selected_id = int(request.args.get("indent") or 0)
-        except (TypeError, ValueError):
-            selected_id = 0
-        if selected_id:
-            for row in approved_indents:
-                if int(row["id"]) == selected_id:
-                    selected_indent = row
-                    break
-        if selected_indent is None and len(approved_indents) == 1:
-            selected_indent = approved_indents[0]
-        if selected_indent is not None:
-            line_rows = conn.execute(
-                """
-                SELECT id, item_name, quantity, quantity_received, unit, notes, approximate_price,
-                       pack_label, pack_qty_in_base
-                FROM store_indent_lines
-                WHERE indent_id = ?
-                ORDER BY id
-                """,
-                (int(selected_indent["id"]),),
-            ).fetchall()
-            for line in line_rows:
-                approx = line["approximate_price"]
-                try:
-                    qty_val = float(line["quantity"] or 0)
-                except (TypeError, ValueError):
-                    qty_val = 0.0
-                try:
-                    received_val = float(line["quantity_received"] or 0)
-                except (KeyError, TypeError, ValueError):
-                    received_val = 0.0
-                remaining_val = qty_val - received_val
-                if remaining_val <= 0.0001:
-                    continue
-                if abs(qty_val - round(qty_val)) < 0.0001:
-                    qty_display = str(int(round(qty_val)))
-                else:
-                    qty_display = ("%g" % qty_val)
-                if abs(remaining_val - round(remaining_val)) < 0.0001:
-                    remaining_display = str(int(round(remaining_val)))
-                else:
-                    remaining_display = ("%g" % remaining_val)
-                if abs(received_val - round(received_val)) < 0.0001:
-                    received_display = str(int(round(received_val)))
-                else:
-                    received_display = ("%g" % received_val)
-                try:
-                    rate_val = float(approx) if approx is not None and approx != "" else 0.0
-                except (TypeError, ValueError):
-                    rate_val = 0.0
-                pack_label = ""
-                try:
-                    pack_label = (line["pack_label"] or "").strip()
-                except (KeyError, TypeError):
-                    pack_label = ""
-                pack_qty = _row_pack_qty_in_base(line)
-                base_unit = line["unit"] or ""
-                if pack_label and pack_qty is not None:
-                    display_unit = f"{_format_ledger_qty(pack_qty)} {base_unit}".strip()
-                else:
-                    display_unit = base_unit
-                display_name = _format_indent_line_item(line)
-                selected_lines.append({
-                    "id": int(line["id"]),
-                    "item_name": display_name,
-                    "quantity": qty_val,
-                    "quantity_display": qty_display,
-                    "quantity_received": received_val,
-                    "quantity_received_display": received_display,
-                    "remaining": remaining_val,
-                    "remaining_display": remaining_display,
-                    "unit": display_unit,
-                    "notes": line["notes"] or "",
-                    "approximate_price": approx,
-                    "approximate_price_display": _format_optional_price(approx),
-                    "rate_value": rate_val,
-                    "initial": (line["item_name"] or "?")[:1].upper(),
-                    "pack_label": pack_label,
-                    "pack_qty_in_base": _row_pack_qty_in_base(line),
-                })
-            selected_indent = {
-                **selected_indent,
-                "outlet": _parse_outlet(selected_indent.get("outlet")),
-                "outlet_label": _outlet_label(_parse_outlet(selected_indent.get("outlet"))),
-            }
-        indent_view_data = _indent_view_payload(
-            conn,
-            [selected_indent] if selected_indent else [],
-        )
         suppliers = app_module._all_suppliers(conn)
         today = date.today()
         available_cash = app_module._cash_ledger_available_as_of(
             conn, app_module.DEFAULT_COMPANY, today
         )
         expense_categories = app_module._expense_category_choices(conn)
+        expense_categories = _sync_product_categories_into_expense_categories(conn)
+        conn.commit()
+
+        if inward_view == "direct":
+            write_outlet = _parse_outlet(outlet) if outlet and outlet != "both" else ""
+            direct_outlet_unset = not bool(write_outlet)
+            if write_outlet:
+                product_catalog = _load_product_catalog(conn, stores_outlet=write_outlet)
+            inward_confirm_url = url_for("stores_confirm_direct_stock_inward_expense")
+        else:
+            outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
+            approved_rows = conn.execute(
+                f"""
+                SELECT i.*, u.full_name AS created_by_name,
+                       d.full_name AS decided_by_name,
+                       d.username AS decided_by_username,
+                       (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
+                       (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
+                FROM store_indents i
+                LEFT JOIN users u ON u.id = i.created_by
+                LEFT JOIN users d ON d.id = i.decided_by
+                WHERE {outlet_sql} AND i.status = 'approved'
+                  AND EXISTS (
+                    SELECT 1 FROM store_indent_lines l
+                    WHERE l.indent_id = i.id
+                      AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+                  )
+                ORDER BY i.decided_at DESC, i.id DESC
+                """,
+                outlet_params,
+            ).fetchall()
+            approved_indents = [dict(row) for row in approved_rows]
+            try:
+                selected_id = int(request.args.get("indent") or 0)
+            except (TypeError, ValueError):
+                selected_id = 0
+            if selected_id:
+                for row in approved_indents:
+                    if int(row["id"]) == selected_id:
+                        selected_indent = row
+                        break
+            if selected_indent is None and len(approved_indents) == 1:
+                selected_indent = approved_indents[0]
+            if selected_indent is not None:
+                product_cat_map = _product_category_by_item_name(
+                    conn, stores_outlet=selected_indent.get("outlet") or outlet
+                )
+                line_rows = conn.execute(
+                    """
+                    SELECT id, item_name, quantity, quantity_received, unit, notes, approximate_price,
+                           pack_label, pack_qty_in_base
+                    FROM store_indent_lines
+                    WHERE indent_id = ?
+                    ORDER BY id
+                    """,
+                    (int(selected_indent["id"]),),
+                ).fetchall()
+                for line in line_rows:
+                    approx = line["approximate_price"]
+                    try:
+                        qty_val = float(line["quantity"] or 0)
+                    except (TypeError, ValueError):
+                        qty_val = 0.0
+                    try:
+                        received_val = float(line["quantity_received"] or 0)
+                    except (KeyError, TypeError, ValueError):
+                        received_val = 0.0
+                    remaining_val = qty_val - received_val
+                    if remaining_val <= 0.0001:
+                        continue
+                    if abs(qty_val - round(qty_val)) < 0.0001:
+                        qty_display = str(int(round(qty_val)))
+                    else:
+                        qty_display = ("%g" % qty_val)
+                    if abs(remaining_val - round(remaining_val)) < 0.0001:
+                        remaining_display = str(int(round(remaining_val)))
+                    else:
+                        remaining_display = ("%g" % remaining_val)
+                    if abs(received_val - round(received_val)) < 0.0001:
+                        received_display = str(int(round(received_val)))
+                    else:
+                        received_display = ("%g" % received_val)
+                    try:
+                        rate_val = float(approx) if approx is not None and approx != "" else 0.0
+                    except (TypeError, ValueError):
+                        rate_val = 0.0
+                    pack_label = ""
+                    try:
+                        pack_label = (line["pack_label"] or "").strip()
+                    except (KeyError, TypeError):
+                        pack_label = ""
+                    pack_qty = _row_pack_qty_in_base(line)
+                    base_unit = line["unit"] or ""
+                    if pack_label and pack_qty is not None:
+                        display_unit = f"{_format_ledger_qty(pack_qty)} {base_unit}".strip()
+                    else:
+                        display_unit = base_unit
+                    display_name = _format_indent_line_item(line)
+                    raw_item_name = (line["item_name"] or "").strip()
+                    product_category = product_cat_map.get(raw_item_name.casefold(), "")
+                    selected_lines.append({
+                        "id": int(line["id"]),
+                        "item_name": display_name,
+                        "product_category": product_category,
+                        "quantity": qty_val,
+                        "quantity_display": qty_display,
+                        "quantity_received": received_val,
+                        "quantity_received_display": received_display,
+                        "remaining": remaining_val,
+                        "remaining_display": remaining_display,
+                        "unit": display_unit,
+                        "notes": line["notes"] or "",
+                        "approximate_price": approx,
+                        "approximate_price_display": _format_optional_price(approx),
+                        "rate_value": rate_val,
+                        "initial": (raw_item_name or "?")[:1].upper(),
+                        "pack_label": pack_label,
+                        "pack_qty_in_base": _row_pack_qty_in_base(line),
+                    })
+                selected_indent = {
+                    **selected_indent,
+                    "outlet": _parse_outlet(selected_indent.get("outlet")),
+                    "outlet_label": _outlet_label(_parse_outlet(selected_indent.get("outlet"))),
+                }
+            indent_view_data = _indent_view_payload(
+                conn,
+                [selected_indent] if selected_indent else [],
+            )
+            inward_confirm_url = url_for("stores_confirm_stock_inward_expense")
     finally:
         conn.close()
 
     return _page_render(
         "purchase_requests",
         outlet=outlet,
+        inward_view=inward_view,
+        inward_list_views=[
+            ("approved", "Indent Approved"),
+            ("direct", "Without Indent Approval"),
+        ],
         approved_indents=approved_indents,
         selected_indent=selected_indent,
         selected_lines=selected_lines,
         indent_view_data=indent_view_data,
+        product_catalog=product_catalog,
+        direct_outlet_unset=direct_outlet_unset,
         suppliers=suppliers,
         expense_categories=expense_categories,
         expense_payment_types=app_module.EXPENSE_PAYMENT_TYPES,
@@ -3271,8 +3826,9 @@ def stores_purchase_requests():
         default_company=app_module.DEFAULT_COMPANY,
         default_location=app_module.OUTLET_HOTEL,
         today_iso=today.isoformat(),
-        inward_confirm_url=url_for("stores_confirm_stock_inward_expense"),
+        inward_confirm_url=inward_confirm_url,
         inward_save_category_url=url_for("stores_save_expense_category"),
+        back_href=url_for("stores_stock", outlet=outlet if outlet else "both"),
     )
 
 
@@ -3421,6 +3977,7 @@ def stores_confirm_stock_inward_expense():
 
     conn = get_db()
     write_outlet = "bar"
+    expenses: list[dict[str, Any]] = []
     try:
         ensure_stores_schema(conn)
         indent = conn.execute(
@@ -3438,7 +3995,7 @@ def stores_confirm_stock_inward_expense():
             return jsonify({"ok": False, "error": "This indent has no items."}), 400
 
         lines_by_id = {int(row["id"]): row for row in lines}
-        received_pairs: list[tuple[Any, float, float | None, float | None]] = []
+        group_input: list[dict[str, Any]] = []
         for line_id, (received_qty, unit_price, tax_percent) in selected.items():
             line = lines_by_id.get(line_id)
             if not line:
@@ -3466,7 +4023,33 @@ def stores_confirm_stock_inward_expense():
             if unit_cost is None:
                 # Fall back to approved indent price (ex-tax) when UI omits entered rate.
                 unit_cost = _unit_cost_with_tax(line["approximate_price"], 0)
-            received_pairs.append((line, received_qty, unit_cost, unit_price))
+            price_for_amount = unit_price
+            tax_for_amount = tax_percent
+            if price_for_amount is None:
+                try:
+                    price_for_amount = float(line["approximate_price"] or 0)
+                except (TypeError, ValueError):
+                    price_for_amount = 0.0
+                tax_for_amount = 0.0
+            group_input.append({
+                "item_name": line["item_name"],
+                "qty": received_qty,
+                "unit_price": price_for_amount,
+                "tax_percent": tax_for_amount,
+                "_line": line,
+                "_unit_cost": unit_cost,
+                "_entered_price": unit_price,
+                "_received_qty": received_qty,
+            })
+
+        groups, group_error = _group_inward_lines_by_expense_category(
+            conn,
+            stores_outlet=indent["outlet"],
+            lines=group_input,
+        )
+        if group_error:
+            conn.rollback()
+            return jsonify({"ok": False, "error": group_error}), 400
 
         expense_data = {
             "company": data.get("company") or app_module.DEFAULT_COMPANY,
@@ -3476,96 +4059,106 @@ def stores_confirm_stock_inward_expense():
             or f"Stock inward {indent['indent_no']}",
             "amount": data.get("amount"),
             "payment_type": data.get("payment_type"),
-            "category": data.get("category"),
             "transaction_id": data.get("transaction_id"),
             "invoice_number": data.get("invoice_number"),
             "supplier_id": data.get("supplier_id"),
         }
-        expense_result, expense_error = app_module._create_sales_expense(
+        expenses, expense_error = _create_inward_category_expenses(
             conn,
             user,
-            expense_data,
-            default_location=app_module.OUTLET_HOTEL,
+            base_expense_data=expense_data,
+            groups=groups,
+            description_suffix=str(indent["indent_no"] or ""),
         )
         if expense_error:
             conn.rollback()
             return jsonify({"ok": False, "error": expense_error}), 400
 
         payment_type = app_module._normalize_expense_payment_type(expense_data.get("payment_type"))
-        expense_amount = app_module.parse_money(expense_data.get("amount"))
-        approved_total = 0.0
-        for line, received_qty, _unit_cost, _entered_price in received_pairs:
-            try:
-                unit_price = float(line["approximate_price"] or 0)
-            except (TypeError, ValueError):
-                unit_price = 0.0
-            approved_total += float(received_qty) * unit_price
-        approved_total = app_module.round_half_up(approved_total, 2)
-        # Credit ≤ approved total skips Purchase Verification; any overage must be verified.
-        if (
-            payment_type == app_module.EXPENSE_PAYMENT_CREDIT
-            and expense_amount - approved_total <= 0.001
-        ):
-            verify_notes = f"Auto-verified from stock inward {indent['indent_no']}"
-            if notes:
-                verify_notes = f"{verify_notes}: {notes}"
-            _, verify_error = app_module._auto_verify_expense(
-                conn,
-                expense_id=expense_result["expense_id"],
-                supplier_id=expense_data["supplier_id"],
-                amount=expense_amount,
-                company=expense_data["company"],
-                user=user,
-                notes=verify_notes,
-            )
-            if verify_error:
-                conn.rollback()
-                return jsonify({"ok": False, "error": verify_error}), 400
+        # Credit ≤ that group's approved-rate subtotal auto-verifies that expense.
+        if payment_type == app_module.EXPENSE_PAYMENT_CREDIT:
+            for group in groups:
+                approved_total = 0.0
+                for payload in group["lines"]:
+                    line = payload["_line"]
+                    received_qty = float(payload["_received_qty"])
+                    try:
+                        approx = float(line["approximate_price"] or 0)
+                    except (TypeError, ValueError):
+                        approx = 0.0
+                    approved_total += received_qty * approx
+                approved_total = app_module.round_half_up(approved_total, 2)
+                group_amount = app_module.parse_money(group["amount"])
+                if group_amount - approved_total > 0.001:
+                    continue
+                verify_notes = (
+                    f"Auto-verified from stock inward {indent['indent_no']}"
+                    f" · {group.get('category_label') or group['category_key']}"
+                )
+                if notes:
+                    verify_notes = f"{verify_notes}: {notes}"
+                _, verify_error = app_module._auto_verify_expense(
+                    conn,
+                    expense_id=group["expense_id"],
+                    supplier_id=expense_data["supplier_id"],
+                    amount=group_amount,
+                    company=expense_data["company"],
+                    user=user,
+                    notes=verify_notes,
+                )
+                if verify_error:
+                    conn.rollback()
+                    return jsonify({"ok": False, "error": verify_error}), 400
 
         movement_note = f"Stock inward from {indent['indent_no']}"
         if notes:
             movement_note = f"{movement_note}: {notes}"
-        for line, received_qty, unit_cost, entered_price in received_pairs:
-            stock_qty = _line_stock_qty_delta(line, received_qty)
-            stock_unit_cost = _line_stock_unit_cost(line, unit_cost)
-            _adjust_stock(
-                conn,
-                outlet=write_outlet,
-                item_name=line["item_name"],
-                unit=line["unit"] or "",
-                qty_delta=stock_qty,
-                movement_type="receive",
-                ref_type="stock_inward",
-                ref_id=indent_id,
-                notes=movement_note,
-                user_id=user["id"] if user else None,
-                unit_cost=stock_unit_cost,
-            )
-            master_price = entered_price
-            if master_price is None:
+        for group in groups:
+            for payload in group["lines"]:
+                line = payload["_line"]
+                received_qty = float(payload["_received_qty"])
+                unit_cost = payload["_unit_cost"]
+                entered_price = payload["_entered_price"]
+                stock_qty = _line_stock_qty_delta(line, received_qty)
+                stock_unit_cost = _line_stock_unit_cost(line, unit_cost)
+                _adjust_stock(
+                    conn,
+                    outlet=write_outlet,
+                    item_name=line["item_name"],
+                    unit=line["unit"] or "",
+                    qty_delta=stock_qty,
+                    movement_type="receive",
+                    ref_type="stock_inward",
+                    ref_id=indent_id,
+                    notes=movement_note,
+                    user_id=user["id"] if user else None,
+                    unit_cost=stock_unit_cost,
+                )
+                master_price = entered_price
+                if master_price is None:
+                    try:
+                        if line["approximate_price"] is not None and line["approximate_price"] != "":
+                            master_price = float(line["approximate_price"])
+                    except (KeyError, TypeError, ValueError):
+                        master_price = None
+                _update_product_master_price_from_inward(
+                    conn,
+                    item_name=line["item_name"],
+                    pack_label=_row_pack_label(line),
+                    unit_price=master_price,
+                )
                 try:
-                    if line["approximate_price"] is not None and line["approximate_price"] != "":
-                        master_price = float(line["approximate_price"])
+                    already = float(line["quantity_received"] or 0)
                 except (KeyError, TypeError, ValueError):
-                    master_price = None
-            _update_product_master_price_from_inward(
-                conn,
-                item_name=line["item_name"],
-                pack_label=_row_pack_label(line),
-                unit_price=master_price,
-            )
-            try:
-                already = float(line["quantity_received"] or 0)
-            except (KeyError, TypeError, ValueError):
-                already = 0.0
-            conn.execute(
-                """
-                UPDATE store_indent_lines
-                SET quantity_received = ?
-                WHERE id = ?
-                """,
-                (already + float(received_qty), int(line["id"])),
-            )
+                    already = 0.0
+                conn.execute(
+                    """
+                    UPDATE store_indent_lines
+                    SET quantity_received = ?
+                    WHERE id = ?
+                    """,
+                    (already + float(received_qty), int(line["id"])),
+                )
 
         # Refresh remaining after this confirm.
         remaining_rows = conn.execute(
@@ -3610,10 +4203,193 @@ def stores_confirm_stock_inward_expense():
     return jsonify({
         "ok": True,
         "redirect": redirect_url,
-        "expense_id": expense_result["expense_id"],
-        "expense_code": expense_result.get("expense_code"),
+        "expense_id": expenses[0]["expense_id"] if expenses else None,
+        "expense_code": expenses[0].get("expense_code") if expenses else None,
+        "expenses": expenses,
         "message": message,
         "partial": still_open,
+    })
+
+
+@stores_bp.route("/stores/purchase-requests/confirm-direct-with-expense", methods=["POST"])
+def stores_confirm_direct_stock_inward_expense():
+    """Confirm without-indent stock inward; expense always awaits Purchase Verification."""
+    user = _get_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+
+    import app as app_module
+
+    data = request.get_json(silent=True) or {}
+    outlet_filter = _parse_outlet_filter(data.get("outlet"))
+    if outlet_filter not in OUTLET_KEYS:
+        return jsonify({"ok": False, "error": "Choose Bar or Restaurant."}), 400
+    write_outlet = outlet_filter
+    notes = (data.get("notes") or "").strip()[:500]
+    raw_lines = data.get("lines") or []
+    if not isinstance(raw_lines, list):
+        raw_lines = []
+
+    parsed_lines: list[dict[str, Any]] = []
+    for raw in raw_lines:
+        if not isinstance(raw, dict):
+            continue
+        item_name = str(raw.get("item_name") or "").strip()
+        if not item_name:
+            continue
+        try:
+            qty = float(raw.get("qty") or raw.get("received_qty") or raw.get("quantity") or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty <= 0:
+            continue
+        unit_price = None
+        tax_percent = None
+        try:
+            if raw.get("unit_price") not in (None, ""):
+                unit_price = float(raw.get("unit_price"))
+        except (TypeError, ValueError):
+            unit_price = None
+        if unit_price is None or unit_price <= 0:
+            continue
+        try:
+            if raw.get("tax_percent") not in (None, ""):
+                tax_percent = float(raw.get("tax_percent"))
+        except (TypeError, ValueError):
+            tax_percent = None
+        unit = str(raw.get("unit") or "").strip() or "kg"
+        pack_label = str(raw.get("pack_label") or "").strip()
+        pack_qty = None
+        try:
+            if raw.get("pack_qty_in_base") not in (None, ""):
+                pack_qty = float(raw.get("pack_qty_in_base"))
+                if pack_qty <= 0:
+                    pack_qty = None
+        except (TypeError, ValueError):
+            pack_qty = None
+        parsed_lines.append({
+            "item_name": item_name,
+            "qty": qty,
+            "unit": unit,
+            "unit_price": unit_price,
+            "tax_percent": tax_percent,
+            "pack_label": pack_label,
+            "pack_qty_in_base": pack_qty,
+        })
+
+    if not parsed_lines:
+        return jsonify({
+            "ok": False,
+            "error": "Add at least one product with quantity and price.",
+        }), 400
+
+    conn = get_db()
+    expenses: list[dict[str, Any]] = []
+    try:
+        ensure_stores_schema(conn)
+        allowed_names = _product_names_for_outlet(conn, write_outlet)
+        for line in parsed_lines:
+            if line["item_name"].casefold() not in allowed_names:
+                return jsonify({
+                    "ok": False,
+                    "error": f"{line['item_name']} is not in Product Master for this outlet.",
+                }), 400
+
+        groups, group_error = _group_inward_lines_by_expense_category(
+            conn,
+            stores_outlet=write_outlet,
+            lines=parsed_lines,
+        )
+        if group_error:
+            conn.rollback()
+            return jsonify({"ok": False, "error": group_error}), 400
+
+        invoice_number = (data.get("invoice_number") or "").strip()
+        description = (data.get("description") or "").strip()
+        if not description:
+            description = "Stock inward without indent approval"
+            if invoice_number:
+                description = f"{description} · Inv {invoice_number}"
+
+        expense_data = {
+            "company": data.get("company") or app_module.DEFAULT_COMPANY,
+            "location": app_module.OUTLET_HOTEL,
+            "date": data.get("date") or date.today().isoformat(),
+            "description": description,
+            "amount": data.get("amount"),
+            "payment_type": data.get("payment_type"),
+            "transaction_id": data.get("transaction_id"),
+            "invoice_number": invoice_number,
+            "supplier_id": data.get("supplier_id"),
+        }
+        expenses, expense_error = _create_inward_category_expenses(
+            conn,
+            user,
+            base_expense_data=expense_data,
+            groups=groups,
+            description_suffix="without indent approval",
+        )
+        if expense_error:
+            conn.rollback()
+            return jsonify({"ok": False, "error": expense_error}), 400
+
+        # Never auto-verify — without an approved indent, Purchase Verification is required.
+        movement_note = "Stock inward without indent approval"
+        if invoice_number:
+            movement_note = f"{movement_note} · Inv {invoice_number}"
+        if notes:
+            movement_note = f"{movement_note}: {notes}"
+
+        for group in groups:
+            expense_id = int(group["expense_id"])
+            for line in group["lines"]:
+                unit_cost = _unit_cost_with_tax(line["unit_price"], line["tax_percent"])
+                fake_line = {
+                    "item_name": line["item_name"],
+                    "unit": line["unit"],
+                    "pack_label": line["pack_label"],
+                    "pack_qty_in_base": line["pack_qty_in_base"],
+                }
+                stock_qty = _line_stock_qty_delta(fake_line, line["qty"])
+                stock_unit_cost = _line_stock_unit_cost(fake_line, unit_cost)
+                _adjust_stock(
+                    conn,
+                    outlet=write_outlet,
+                    item_name=line["item_name"],
+                    unit=line["unit"] or "",
+                    qty_delta=stock_qty,
+                    movement_type="receive",
+                    ref_type="stock_inward_direct",
+                    ref_id=expense_id,
+                    notes=movement_note,
+                    user_id=user["id"] if user else None,
+                    unit_cost=stock_unit_cost,
+                )
+                _update_product_master_price_from_inward(
+                    conn,
+                    item_name=line["item_name"],
+                    pack_label=line["pack_label"],
+                    unit_price=line["unit_price"],
+                )
+
+        conn.commit()
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    return jsonify({
+        "ok": True,
+        "redirect": url_for("stores_stock", outlet=write_outlet),
+        "expense_id": expenses[0]["expense_id"] if expenses else None,
+        "expense_code": expenses[0].get("expense_code") if expenses else None,
+        "expenses": expenses,
+        "message": "Stock inward recorded. Expense awaits Purchase Verification.",
+        "partial": False,
     })
 
 
@@ -3839,6 +4615,186 @@ def _enrich_stock_items(
     return items
 
 
+STOCK_REPORT_LOW_THRESHOLD = 5.0
+
+
+def _stock_item_status(qty: float, low_threshold: float = STOCK_REPORT_LOW_THRESHOLD) -> tuple[str, str]:
+    if qty <= 0:
+        return "out", "Out"
+    if qty <= low_threshold:
+        return "low", "Low"
+    return "healthy", "Healthy"
+
+
+def _load_stock_report_items(
+    conn,
+    outlet: str,
+    *,
+    category: str = "",
+    status: str = "",
+    q: str = "",
+) -> list[dict[str, Any]]:
+    outlet_sql, outlet_params = _outlet_match_sql("outlet", outlet)
+    outlet_sql_m, outlet_params_m = _outlet_match_sql("m.outlet", outlet)
+    items = conn.execute(
+        f"""
+        SELECT * FROM store_stock_items
+        WHERE {outlet_sql}
+        ORDER BY lower(item_name), lower(unit)
+        """,
+        outlet_params,
+    ).fetchall()
+    inward_costs = _inward_weighted_unit_costs(conn, outlet_sql_m, outlet_params_m)
+    stock_items = _enrich_stock_items(
+        conn,
+        [dict(row) for row in items],
+        inward_costs=inward_costs,
+    )
+    cat_filter = (category or "").strip().lower()
+    if cat_filter in ("", "all"):
+        cat_filter = ""
+    status_filter = (status or "").strip().lower()
+    if status_filter in ("", "all"):
+        status_filter = ""
+    needle = (q or "").strip().lower()
+    out: list[dict[str, Any]] = []
+    for item in stock_items:
+        try:
+            qty = float(item.get("qty_on_hand") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        status_key, status_label = _stock_item_status(qty)
+        category_name = (item.get("category_name") or "").strip()
+        if cat_filter and category_name.lower() != cat_filter:
+            continue
+        if status_filter and status_key != status_filter:
+            continue
+        hay = " ".join(
+            [
+                str(item.get("item_name") or ""),
+                str(item.get("unit") or ""),
+                category_name,
+                str(item.get("qty_on_hand") or ""),
+                status_label,
+            ]
+        ).lower()
+        if needle and needle not in hay:
+            continue
+        unit_price = item.get("approximate_price")
+        try:
+            unit_price_f = float(unit_price) if unit_price is not None else None
+        except (TypeError, ValueError):
+            unit_price_f = None
+        line_value = (
+            round(qty * unit_price_f, 2) if unit_price_f is not None else None
+        )
+        out.append(
+            {
+                "item_name": item.get("item_name") or "",
+                "category_name": category_name or "Uncategorised",
+                "qty_on_hand": round(qty, 3),
+                "unit": item.get("unit") or "",
+                "status": status_label,
+                "unit_price": unit_price_f,
+                "value": line_value,
+                "outlet": item.get("outlet") or "",
+                "outlet_label": _outlet_label(_normalize_outlet_key(item.get("outlet"))),
+            }
+        )
+    return out
+
+
+def _excel_number(value: Any) -> int | float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if abs(number - round(number)) < 1e-9:
+        return int(round(number))
+    return round(number, 3)
+
+
+def _build_stock_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
+    """Build Stock Report Excel matching the bordered table layout users expect."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Stock Report"
+    header_font = Font(name="Calibri", size=12, bold=True, color="000000")
+    body_font = Font(name="Calibri", size=12, color="000000")
+    # Light blue header (Excel theme accent ≈ tinted)
+    header_fill = PatternFill("solid", fgColor="DDEBF7")
+    center = Alignment(horizontal="center", vertical="center", wrap_text=False)
+    thin = Side(style="thin", color="000000")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    headers = [
+        "Product",
+        "Category",
+        "On hand",
+        "Unit",
+        "Status",
+        "Unit price",
+        "Value",
+        "Outlet",
+    ]
+    widths = (22, 18, 12, 10, 12, 12, 12, 14)
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=1, column=col, value=title)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = center
+        cell.border = border
+        ws.column_dimensions[get_column_letter(col)].width = widths[col - 1]
+    for idx, row in enumerate(rows, start=2):
+        values = [
+            row.get("item_name") or "",
+            row.get("category_name") or "",
+            _excel_number(row.get("qty_on_hand")),
+            row.get("unit") or "",
+            row.get("status") or "",
+            _excel_number(row.get("unit_price")),
+            _excel_number(row.get("value")),
+            row.get("outlet_label") or row.get("outlet") or "",
+        ]
+        for col, value in enumerate(values, start=1):
+            cell = ws.cell(row=idx, column=col, value=value)
+            cell.font = body_font
+            cell.alignment = center
+            cell.border = border
+    ws.freeze_panes = "A2"
+    if rows:
+        ws.auto_filter.ref = f"A1:H{len(rows) + 1}"
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def _stock_export_filter_args(
+    outlet: str,
+    *,
+    category: str = "",
+    status: str = "",
+    q: str = "",
+) -> dict[str, str]:
+    args: dict[str, str] = {"outlet": outlet or "both"}
+    cat = (category or "").strip()
+    if cat and cat.lower() != "all":
+        args["category"] = cat
+    st = (status or "").strip().lower()
+    if st and st != "all":
+        args["status"] = st
+    needle = (q or "").strip()
+    if needle:
+        args["q"] = needle
+    return args
+
+
 @stores_bp.route("/stores/stock")
 def stores_stock():
     outlet = _parse_outlet_filter(request.args.get("outlet"))
@@ -3884,6 +4840,9 @@ def stores_stock():
     )
     has_prices = any(item.get("approximate_price") is not None for item in stock_items)
     has_inward_prices = any(item.get("price_source") == "inward" for item in stock_items)
+    stock_export_url = url_for(
+        "stores_stock_export", **_stock_export_filter_args(outlet)
+    )
     return _page_render(
         "stock",
         outlet=outlet,
@@ -3891,7 +4850,38 @@ def stores_stock():
         stock_categories=categories,
         stock_has_prices=has_prices,
         stock_has_inward_prices=has_inward_prices,
+        stock_export_url=stock_export_url,
         movements=[dict(row) for row in movements],
+    )
+
+
+@stores_bp.route("/stores/stock/export")
+def stores_stock_export():
+    """Excel download of current stock on hand (Stock Report)."""
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    category = str(request.args.get("category") or "").strip()
+    status = str(request.args.get("status") or "").strip().lower()
+    q = str(request.args.get("q") or "").strip()
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        rows = _load_stock_report_items(
+            conn,
+            outlet,
+            category=category,
+            status=status,
+            q=q,
+        )
+    finally:
+        conn.close()
+    buf = _build_stock_report_xlsx(rows)
+    stamp = datetime.now().strftime("%Y%m%d")
+    outlet_slug = re.sub(r"[^\w.-]+", "_", outlet or "all")
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=f"stock_report_{outlet_slug}_{stamp}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 

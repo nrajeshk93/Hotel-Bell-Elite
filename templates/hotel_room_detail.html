@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=40">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=81">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=82">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=1">
 <script>
 (function(){
@@ -35,7 +35,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=40">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=81">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=82">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=1">
 {% endif %}
 
@@ -943,6 +943,51 @@
   </div>
 </div>
 
+{# Extend Stay modal #}
+<div class="hrd-dialog-overlay" id="hrd-extend-modal" hidden aria-hidden="true">
+  <div class="hrd-dialog hrd-dialog--extend" role="dialog" aria-modal="true" aria-labelledby="hrd-extend-title">
+    <header class="hrd-dialog-head">
+      <div class="hrd-dialog-head-main">
+        <span class="hrd-dialog-icon hrd-dialog-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
+        </span>
+        <div>
+          <h2 id="hrd-extend-title">Extend Stay</h2>
+          <p>Update expected check-out date</p>
+        </div>
+      </div>
+      <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-extend-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form class="hrd-dialog-body" id="hrd-extend-form" novalidate>
+      <input type="hidden" id="hrd-extend-room-id" value="">
+      <label class="hrd-field">
+        <span>Room</span>
+        <input type="text" id="hrd-extend-room" readonly>
+      </label>
+      <label class="hrd-field">
+        <span>Guest</span>
+        <input type="text" id="hrd-extend-guest" readonly>
+      </label>
+      <div class="hrd-extend-dates">
+        <label class="hrd-field">
+          <span>Check-in</span>
+          <input type="text" id="hrd-extend-checkin" readonly>
+        </label>
+        <div class="hrd-field hrd-extend-checkout-field">
+          {{ hotel_date_field('extendCheckOut', 'Check-out', required=true, field_id='hrd-extend-checkout', extra_class='hrd-date-chip', panel_title='Check-out date', show_cal_icon=false, hint='', show_today=false) }}
+        </div>
+      </div>
+      <p class="hrd-extend-nights" id="hrd-extend-nights" aria-live="polite">1 night</p>
+    </form>
+    <footer class="hrd-dialog-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-extend-close>Cancel</button>
+      <button type="submit" form="hrd-extend-form" class="hrd-btn hrd-btn--primary" id="hrd-extend-save">Update Stay</button>
+    </footer>
+  </div>
+</div>
+
 {# Merge Rooms modal #}
 <div class="hrd-dialog-overlay" id="hrd-merge-modal" hidden aria-hidden="true">
   <div class="hrd-dialog" role="dialog" aria-modal="true" aria-labelledby="hrd-merge-title">
@@ -1002,10 +1047,10 @@
 </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=47"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=13"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=102"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=103"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

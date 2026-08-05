@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Supplier Master | Hotel Bell Elite</title>
+<title>Category Master | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
@@ -12,8 +12,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
 <link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=101">
 <script>
 (function(){
   try{
@@ -25,7 +25,7 @@
 </head>
 <body class="de-open su-module">
 {% include 'partials/de_workspace_shell_open.html' %}
-<div class="main-wrapper" id="supplier-master-page">
+<div class="main-wrapper" id="category-master-page">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -39,21 +39,21 @@
         </div>
         <div class="su-title">
           <div class="su-title-row">
-            <h1>Supplier Master</h1>
+            <h1>Category Master</h1>
           </div>
         </div>
       </div>
       <div class="su-header-tools">
-        <a class="btn btn-primary" href="{{ supplier_report_url }}" download>Supplier Report</a>
-        <button type="button" class="btn btn-primary" id="sm-open-supplier-modal" data-sm-action="open-supplier-modal">Add supplier</button>
+        <button type="button" class="btn btn-primary" id="cm-open-category-modal" data-cm-action="open-category-modal">Add category</button>
       </div>
     </div>
   </header>
 
-  {% include 'partials/supplier_master_body.html' %}
+  {% include 'partials/category_master_body.html' %}
 </div>
-<script src="{{ url_for('static', filename='supplier_master.js') }}?v=2"></script>
-<script>if (typeof window.initSupplierMasterPage === 'function') window.initSupplierMasterPage();</script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='category_master.js') }}?v=1"></script>
+<script>if (typeof window.initCategoryMasterPage === 'function') window.initCategoryMasterPage();</script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

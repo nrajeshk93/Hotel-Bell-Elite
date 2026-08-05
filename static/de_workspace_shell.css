@@ -564,7 +564,7 @@ body.de-open.ep-module{overflow:auto;}
     outline:none;
     box-sizing:border-box;
   }
-  /* Let long group labels wrap (e.g. Procurement & Inventory). */
+  /* Let long group labels wrap (e.g. Purchase & Inventory). */
   #main-app.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle,
   #ep-workspace.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle,
   #dashboard.de-module .de-sidebar:is(:hover, .is-expanded, .is-pinned) #de-nav-stores-toggle{

@@ -578,7 +578,7 @@ def enforce_access():
     if not user_can_access_endpoint_stores(user, endpoint):
         label = _STORES_SUBMODULE_LABELS.get(
             get_endpoint_stores_submodule(endpoint) or "",
-            "requested Procurement & Inventory section",
+            "requested Purchase & Inventory section",
         )
         return _permission_denied_response(f"You do not have access to {label}.")
 
@@ -2714,9 +2714,19 @@ def _duplicate_expense_invoice(conn, supplier_id, invoice_number, exclude_expens
              WHERE supplier_id = ? AND LOWER(TRIM(invoice_number)) = LOWER(?)
                AND TRIM(invoice_number) != ''"""
     params = [supplier_id, invoice_number]
-    if exclude_expense_id:
-        sql += " AND id != ?"
-        params.append(exclude_expense_id)
+    exclude_ids = []
+    if exclude_expense_id is not None:
+        if isinstance(exclude_expense_id, (list, tuple, set)):
+            exclude_ids = [int(x) for x in exclude_expense_id if x is not None]
+        else:
+            try:
+                exclude_ids = [int(exclude_expense_id)]
+            except (TypeError, ValueError):
+                exclude_ids = []
+    if exclude_ids:
+        placeholders = ",".join("?" for _ in exclude_ids)
+        sql += f" AND id NOT IN ({placeholders})"
+        params.extend(exclude_ids)
     return conn.execute(sql, params).fetchone()
 
 
@@ -3429,6 +3439,186 @@ def master():
         de_nav_master_view="home",
         **payload,
     )
+
+
+def _category_master_page_render(template, **kwargs):
+    kwargs.setdefault("auth_notice", _pop_auth_notice())
+    kwargs.setdefault("de_nav_section", "master")
+    kwargs.setdefault("de_nav_master_view", "category_master")
+    return render_template(template, **kwargs)
+
+
+def _category_master_form_payload(source=None, *, category_id=""):
+    source = source or {}
+    outlet = normalize_pos_outlet(source.get("outlet") or POS_OUTLET_RESTAURANT)
+    visible_raw = source.get("is_visible")
+    if isinstance(visible_raw, bool):
+        is_visible = visible_raw
+    elif visible_raw is None and not source:
+        is_visible = True
+    else:
+        is_visible = str(visible_raw or "").strip().lower() in ("1", "true", "on", "yes")
+    return {
+        "id": category_id or "",
+        "name": " ".join(str(source.get("name") or "").split()).strip(),
+        "outlet": outlet,
+        "is_visible": is_visible,
+    }
+
+
+@app.route("/masters/categories", endpoint="category_master")
+def category_master():
+    """POS menu Category Master — list and manage Restaurant/Bar categories."""
+    user = get_current_user()
+    if not (
+        user_can_access_dashboard(user, "master")
+        or user_can_access_dashboard(user, "point_of_sale")
+        or user_can_access_dashboard(user, "point_of_sale_bar")
+    ):
+        return _permission_denied_response("You do not have access to Category Master.")
+
+    selected_id = (request.args.get("category_id") or "").strip()
+    saved_flag = (request.args.get("saved") or "").strip()
+    form_focus = (request.args.get("focus") or "").strip() == "form"
+
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        categories = list_pos_menu_categories(
+            conn, outlets=[POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
+        )
+        selected = None
+        if selected_id:
+            selected = next((c for c in categories if str(c["id"]) == selected_id), None)
+        conn.commit()
+    finally:
+        conn.close()
+
+    if selected:
+        form = {
+            "id": selected["id"],
+            "name": selected.get("name") or "",
+            "outlet": selected.get("outlet") or POS_OUTLET_RESTAURANT,
+            "is_visible": bool(selected.get("is_visible", True)),
+        }
+    else:
+        form = _category_master_form_payload()
+
+    success_message = ""
+    if saved_flag == "created":
+        success_message = "Category created successfully."
+    elif saved_flag == "updated":
+        success_message = "Category updated successfully."
+    elif saved_flag == "deleted":
+        success_message = "Category deleted successfully."
+
+    return _category_master_page_render(
+        "partials/master_embed/category.html" if is_embed_request() else "category_master.html",
+        categories=categories,
+        form=form,
+        errors=[],
+        success_message=success_message,
+        form_focus=form_focus or bool(selected),
+        show_form=form_focus or bool(selected),
+        embed_mode=is_embed_request(),
+    )
+
+
+@app.route("/masters/categories/save", methods=["POST"], endpoint="save_category_master")
+def save_category_master():
+    user = get_current_user()
+    if not (
+        user_can_access_dashboard(user, "master")
+        or user_can_access_dashboard(user, "point_of_sale")
+        or user_can_access_dashboard(user, "point_of_sale_bar")
+    ):
+        return _permission_denied_response("You do not have access to Category Master.")
+
+    category_id_raw = (request.form.get("category_id") or "").strip()
+    try:
+        category_id = int(category_id_raw) if category_id_raw else None
+    except (TypeError, ValueError):
+        category_id = None
+    payload = _category_master_form_payload(request.form, category_id=category_id or "")
+    embed = is_embed_request() or str(request.form.get("embed") or request.args.get("embed") or "") == "1"
+
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            save_pos_menu_category(
+                conn,
+                category_id=category_id,
+                name=payload["name"],
+                is_visible=payload["is_visible"],
+                outlet=payload["outlet"],
+            )
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            categories = list_pos_menu_categories(
+                conn, outlets=[POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
+            )
+            form = dict(payload)
+            form["id"] = category_id or ""
+            return _category_master_page_render(
+                "partials/master_embed/category.html" if is_embed_request() else "category_master.html",
+                categories=categories,
+                form=form,
+                errors=[str(exc)],
+                success_message="",
+                form_focus=True,
+                show_form=True,
+                embed_mode=is_embed_request(),
+            ), 400
+    finally:
+        conn.close()
+
+    redirect_kwargs = {"saved": "updated" if category_id else "created"}
+    if embed:
+        redirect_kwargs["embed"] = 1
+    return redirect(url_for("category_master", **redirect_kwargs))
+
+
+@app.route("/masters/categories/delete", methods=["POST"], endpoint="delete_category_master")
+def delete_category_master():
+    user = get_current_user()
+    if not (
+        user_can_access_dashboard(user, "master")
+        or user_can_access_dashboard(user, "point_of_sale")
+        or user_can_access_dashboard(user, "point_of_sale_bar")
+    ):
+        return _permission_denied_response("You do not have access to Category Master.")
+
+    category_id_raw = (request.form.get("category_id") or "").strip()
+    embed = is_embed_request() or str(request.form.get("embed") or request.args.get("embed") or "") == "1"
+    redirect_kwargs = {}
+    if embed:
+        redirect_kwargs["embed"] = 1
+
+    try:
+        category_id = int(category_id_raw)
+    except (TypeError, ValueError):
+        _queue_auth_notice("Category not found.")
+        return redirect(url_for("category_master", **redirect_kwargs))
+
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            soft_delete_pos_menu_category(conn, category_id)
+            conn.commit()
+        except ValueError:
+            conn.rollback()
+            _queue_auth_notice("Category not found.")
+            fail_kwargs = dict(redirect_kwargs)
+            fail_kwargs["category_id"] = category_id
+            return redirect(url_for("category_master", **fail_kwargs))
+    finally:
+        conn.close()
+
+    redirect_kwargs["saved"] = "deleted"
+    return redirect(url_for("category_master", **redirect_kwargs))
 
 
 @app.route("/reports")
@@ -6549,13 +6739,15 @@ def export_purchase_ledger_report():
     selected_payment, payment_type = _parse_purchase_ledger_payment(
         request.args.get("payment")
     )
-    if selected_category != PURCHASE_LEDGER_FILTER_ALL and selected_category not in EXPENSE_CATEGORY_LABELS:
+    if selected_category != PURCHASE_LEDGER_FILTER_ALL and not _normalize_expense_category(selected_category):
         category = None
+        selected_category = PURCHASE_LEDGER_FILTER_ALL
     if selected_payment != PURCHASE_LEDGER_FILTER_ALL and selected_payment not in EXPENSE_PAYMENT_LABELS:
         payment_type = None
 
     conn = get_db()
     try:
+        category_labels = _expense_category_labels(conn)
         entries = _purchase_ledger_entries(
             conn,
             query_date_from,
@@ -6596,7 +6788,14 @@ def export_purchase_ledger_report():
         ws.cell(row=idx, column=1, value=entry.get("expense_code") or "")
         ws.cell(row=idx, column=2, value=entry.get("sales_date") or "")
         ws.cell(row=idx, column=3, value=entry.get("description") or "")
-        ws.cell(row=idx, column=4, value=EXPENSE_CATEGORY_LABELS.get(category_key, category_key))
+        ws.cell(
+            row=idx,
+            column=4,
+            value=category_labels.get(
+                category_key,
+                EXPENSE_CATEGORY_LABELS.get(category_key, category_key),
+            ),
+        )
         ws.cell(row=idx, column=5, value=entry.get("invoice_number") or "")
         ws.cell(row=idx, column=6, value=entry.get("supplier_name") or "")
         ws.cell(row=idx, column=7, value=entry.get("supplier_gst") or "")
@@ -6722,8 +6921,22 @@ def _update_purchase_ledger_expense(conn, user, data):
     if not supplier:
         return None, "Selected supplier was not found."
 
+    # Multi-category stock inward can share one supplier+invoice across expenses.
+    # When editing one row, exclude siblings that already share the prior invoice.
+    exclude_ids = [expense_id]
+    prior_invoice = _normalize_invoice_number(existing.get("invoice_number"))
+    prior_supplier = existing.get("supplier_id")
+    if prior_invoice and prior_supplier:
+        sibling_rows = conn.execute(
+            """SELECT id FROM sales_update_expenses
+               WHERE supplier_id = ? AND LOWER(TRIM(invoice_number)) = LOWER(?)
+                 AND TRIM(invoice_number) != ''""",
+            (prior_supplier, prior_invoice),
+        ).fetchall()
+        exclude_ids = [int(row["id"]) for row in sibling_rows] or [expense_id]
+
     duplicate = _duplicate_expense_invoice(
-        conn, supplier_id, invoice_number, exclude_expense_id=expense_id
+        conn, supplier_id, invoice_number, exclude_expense_id=exclude_ids
     )
     if duplicate:
         code = duplicate["expense_code"] or f"#{duplicate['id']}"
@@ -8440,7 +8653,16 @@ def sales_update_add_expense():
     return jsonify({"ok": True, **result})
 
 
-def _create_sales_expense(conn, user, data, *, default_location=None, include_sales_totals=False):
+def _create_sales_expense(
+    conn,
+    user,
+    data,
+    *,
+    default_location=None,
+    include_sales_totals=False,
+    allow_shared_invoice=False,
+    skip_cash_check=False,
+):
     company = data.get("company", DEFAULT_COMPANY)
     location = data.get("location", default_location or DEFAULT_LOCATION)
     sales_date = data.get("date", "")
@@ -8474,16 +8696,18 @@ def _create_sales_expense(conn, user, data, *, default_location=None, include_sa
     if not supplier:
         return None, "Selected supplier was not found."
 
-    cash_error = _validate_cash_expense_against_available(
-        conn, company, sales_date, amount, payment_type
-    )
-    if cash_error:
-        return None, cash_error
+    if not skip_cash_check:
+        cash_error = _validate_cash_expense_against_available(
+            conn, company, sales_date, amount, payment_type
+        )
+        if cash_error:
+            return None, cash_error
 
-    duplicate = _duplicate_expense_invoice(conn, supplier_id, invoice_number)
-    if duplicate:
-        code = duplicate["expense_code"] or f"#{duplicate['id']}"
-        return None, f"An expense with this supplier and invoice number already exists ({code})."
+    if not allow_shared_invoice:
+        duplicate = _duplicate_expense_invoice(conn, supplier_id, invoice_number)
+        if duplicate:
+            code = duplicate["expense_code"] or f"#{duplicate['id']}"
+            return None, f"An expense with this supplier and invoice number already exists ({code})."
 
     expense_code = _next_expense_code(conn, company)
     cursor = conn.execute(
@@ -8497,6 +8721,8 @@ def _create_sales_expense(conn, user, data, *, default_location=None, include_sa
         "expense_id": expense_id,
         "expense_code": expense_code,
         "sales_date": sales_date,
+        "category": category,
+        "amount": amount,
     }
     if include_sales_totals:
         result["expense_total"] = _sales_expense_total(conn, company, location, sales_date)
@@ -9572,6 +9798,7 @@ def save_supplier():
     supplier_id_raw = request.form.get("supplier_id", "").strip()
     supplier_id = int(supplier_id_raw) if supplier_id_raw else None
     payload = _supplier_form_payload(request.form)
+    embed = is_embed_request() or str(request.form.get("embed") or request.args.get("embed") or "") == "1"
 
     conn = get_db()
     try:
@@ -9582,7 +9809,7 @@ def save_supplier():
             form = dict(payload)
             form["id"] = supplier_id or ""
             return _supplier_page_render(
-                "supplier_master.html",
+                "partials/master_embed/supplier.html" if is_embed_request() else "supplier_master.html",
                 suppliers=suppliers,
                 form=form,
                 selected_supplier=selected_supplier,
@@ -9591,13 +9818,17 @@ def save_supplier():
                 form_focus=True,
                 show_form=True,
                 supplier_report_url=url_for("export_supplier_report"),
+                embed_mode=is_embed_request(),
             ), 400
         conn.commit()
     finally:
         conn.close()
 
     result_flag = "updated" if supplier_id else "created"
-    return redirect(url_for("supplier_master", saved=result_flag))
+    redirect_kwargs = {"saved": result_flag}
+    if embed:
+        redirect_kwargs["embed"] = 1
+    return redirect(url_for("supplier_master", **redirect_kwargs))
 
 
 @app.route("/suppliers/delete", methods=["POST"])
@@ -9607,9 +9838,14 @@ def delete_supplier():
         return _permission_denied_response("You do not have access to Supplier Master.")
 
     supplier_id = request.form.get("supplier_id", "").strip()
+    embed = is_embed_request() or str(request.form.get("embed") or request.args.get("embed") or "") == "1"
+    redirect_kwargs = {}
+    if embed:
+        redirect_kwargs["embed"] = 1
+
     if not supplier_id:
         _queue_auth_notice("Supplier not found.")
-        return redirect(url_for("supplier_master"))
+        return redirect(url_for("supplier_master", **redirect_kwargs))
 
     conn = get_db()
     try:
@@ -9619,13 +9855,16 @@ def delete_supplier():
         ).fetchone()["total"]
         if in_use:
             _queue_auth_notice("This supplier cannot be deleted because it is linked to existing expenses.")
-            return redirect(url_for("supplier_master", supplier_id=supplier_id))
+            fail_kwargs = dict(redirect_kwargs)
+            fail_kwargs["supplier_id"] = supplier_id
+            return redirect(url_for("supplier_master", **fail_kwargs))
         conn.execute("DELETE FROM suppliers WHERE id = ?", (supplier_id,))
         conn.commit()
     finally:
         conn.close()
 
-    return redirect(url_for("supplier_master", saved="deleted"))
+    redirect_kwargs["saved"] = "deleted"
+    return redirect(url_for("supplier_master", **redirect_kwargs))
 
 
 @app.route("/suppliers/create", methods=["POST"])

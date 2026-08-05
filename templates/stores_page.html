@@ -1,12 +1,12 @@
-{% set de_soft_body_class = 'de-open su-module' ~ (' st-indent-shell' if page_key == 'indent' else (' st-inward-shell' if page_key == 'purchase_requests' else (' st-stock-shell' if page_key == 'stock' else (' st-audit-shell' if page_key in ('stock_audit', 'stock_audit_report') else '')))) %}
-{% set de_soft_page_title = (page_title ~ ' | Procurement & Inventory | Hotel Bell Elite') %}
+{% set de_soft_body_class = 'de-open su-module' ~ (' st-indent-shell' if page_key in ('indent', 'purchase_orders') else (' st-inward-shell' if page_key == 'purchase_requests' else (' st-stock-shell' if page_key in ('stock', 'stock_audit') else (' st-audit-shell' if page_key == 'stock_audit_report' else '')))) %}
+{% set de_soft_page_title = (page_title ~ ' | Purchase & Inventory | Hotel Bell Elite') %}
 {% if not is_partial_main %}
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>{{ page_title }} | Procurement &amp; Inventory | Hotel Bell Elite</title>
+<title>{{ page_title }} | Purchase &amp; Inventory | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
@@ -16,15 +16,16 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=97">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=103">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
-{% if page_key == 'indent' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
+{% if page_key in ('indent', 'purchase_orders') %}
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=49">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=69">
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=41">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=69">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=51">
 {% endif %}
 <script>
 (function(){
@@ -35,7 +36,7 @@
 })();
 </script>
 </head>
-<body class="de-open su-module{% if page_key == 'indent' %} st-indent-shell{% elif page_key == 'purchase_requests' %} st-inward-shell{% elif page_key == 'stock' %} st-stock-shell{% elif page_key in ('stock_audit', 'stock_audit_report') %} st-audit-shell{% endif %}">
+<body class="de-open su-module{% if page_key in ('indent', 'purchase_orders') %} st-indent-shell{% elif page_key == 'purchase_requests' %} st-inward-shell{% elif page_key in ('stock', 'stock_audit') %} st-stock-shell{% if page_key == 'stock_audit' %} st-audit-shell{% endif %}{% elif page_key == 'stock_audit_report' %} st-audit-shell{% endif %}">
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
@@ -45,15 +46,16 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=97">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=103">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
-{% if page_key == 'indent' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
+{% if page_key in ('indent', 'purchase_orders') %}
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=49">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=69">
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=62">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=41">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=69">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=51">
 {% endif %}
 {% endif %}
 <div class="main-wrapper">
@@ -68,37 +70,30 @@
         </div>
         <div class="su-title">
           <div class="su-title-row">
-            <div class="su-title-icon" aria-hidden="true">
-              {% if page_key == 'purchase_requests' %}
-              <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-              {% else %}
-              <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
-              {% endif %}
-            </div>
             <h1>{{ page_title }}</h1>
           </div>
         </div>
       </div>
       <div class="su-header-tools">
-        {% if page_key == 'indent' %}
-        <a class="btn" href="{{ url_for('stores_product_master') }}">Product Master</a>
+        {% if page_key in ('indent', 'purchase_orders') %}
+        <button type="button" class="btn" id="st-product-master-open" data-st-product-master-url="{{ url_for('stores_product_master', embed=1) }}">Product Master</button>
         <button type="button" class="btn" id="st-approvals-open" data-st-approvals-url="{{ url_for('stores_approvals') }}">Approval</button>
         <button type="button" class="btn" id="st-stores-ledger-open">Ledger</button>
         {% endif %}
+        {% if page_key in ('stock', 'stock_audit') %}
         {% if page_key == 'stock' %}
-        <button type="button" class="btn" disabled title="Coming soon">Stock Transfer</button>
-        <button type="button" class="btn" id="st-stock-out-filter" aria-pressed="false" title="Show only out-of-stock items">Out of stock</button>
-        {% if has_stores_access('stock_audit') %}
-        <a class="btn" href="{{ url_for('stores_stock_audit', outlet=selected_outlet) }}">Stock Adjustment</a>
-        {% else %}
-        <button type="button" class="btn" disabled title="Stock Audit access required">Stock Adjustment</button>
+        <button type="button" class="btn btn-primary" id="st-stock-out-filter" aria-pressed="false" title="Show only out-of-stock items">Out of stock</button>
         {% endif %}
-        <a class="btn btn-primary" href="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}">New Stock Entry</a>
-        {% if stock_items %}
-        <button type="button" class="btn" id="st-stock-export" title="Download CSV of visible rows">Export</button>
-        {% endif %}
+        {% if page_key == 'stock' %}
+          {% if stock_export_url %}
+          <a class="btn btn-primary" id="st-stock-export" href="{{ stock_export_url }}" download title="Download Stock Report Excel">Export</a>
+          {% else %}
+          <button type="button" class="btn btn-primary" disabled title="Nothing to export">Export</button>
+          {% endif %}
         {% elif page_key == 'stock_audit' %}
-        <button type="button" class="btn btn-primary" id="st-audit-new-btn" title="Complete the current audit and start a fresh queue">New Audit</button>
+        <a class="btn btn-primary" href="{{ url_for('stores_stock', outlet=selected_outlet) }}" title="Export from Stock">Export</a>
+        {% endif %}
+        <a class="btn btn-primary" href="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}">Stock Inward</a>
         {% elif page_key == 'stock_audit_report' and audit_report_export_url %}
         <a class="btn btn-primary" href="{{ audit_report_export_url }}">Export Excel</a>
         {% elif page_key == 'product_master' and page_cta %}
@@ -113,7 +108,7 @@
         {% endif %}
       </div>
     </div>
-    {% if show_outlet_tabs and page_key != 'indent' %}
+    {% if show_outlet_tabs and page_key not in ('indent', 'purchase_orders') %}
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
         {% if page_key == 'stock_audit_report' %}
@@ -134,42 +129,16 @@
             </div>
           </div>
           {% elif page_key == 'stock' %}
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" id="st-outlet-listbox">
-            <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
-              </span>
-              <input type="hidden" id="st-outlet" name="outlet" value="{{ selected_outlet }}">
-              <button type="button" class="se-filter-chip-trigger" id="st-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-outlet-list" aria-labelledby="st-outlet-label st-outlet-value">
-                <span class="se-filter-chip-value" id="st-outlet-value">{{ selected_outlet_label }}</span>
-              </button>
-              <span class="se-filter-chip-chev" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-              </span>
-            </div>
-            <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
-              {% for outlet in stores_outlets %}
-              <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
-              {% endfor %}
-            </div>
-          </div>
-          <div class="se-filter-chip se-filter-chip--search st-stock-search-chip" id="st-stock-search-chip">
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field st-stock-search-chip" id="st-stock-search-chip">
             <label class="se-filter-chip-label" for="st-stock-search">Search</label>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-              </span>
-              <input type="search" id="st-stock-search" class="st-stock-search-input" placeholder="Product, unit, category…" autocomplete="off" aria-label="Search stock">
+              <input type="search" id="st-stock-search" class="pl-search-input pl-header-search st-stock-search-input" placeholder="Product, unit, category…" autocomplete="off" aria-label="Search stock">
             </div>
           </div>
           {% if stock_categories|default([]) %}
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-stock-filter-chip" data-se-listbox data-se-listbox-change="stStockCategoryChanged" id="st-stock-category-listbox">
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field st-stock-filter-chip" data-se-listbox data-se-listbox-change="stStockCategoryChanged" id="st-stock-category-listbox">
             <span class="se-filter-chip-label" id="st-stock-category-label">Category</span>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
-              </span>
               <input type="hidden" id="st-stock-category" value="all">
               <button type="button" class="se-filter-chip-trigger" id="st-stock-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-stock-category-list" aria-labelledby="st-stock-category-label st-stock-category-value">
                 <span class="se-filter-chip-value" id="st-stock-category-value">All categories</span>
@@ -179,19 +148,18 @@
               </span>
             </div>
             <div class="se-filter-listbox" id="st-stock-category-list" role="listbox" aria-labelledby="st-stock-category-label" hidden>
+              <div class="ep-listbox-options">
               <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="all" data-name="all categories" data-label="All categories" aria-selected="true">All categories</button>
               {% for cat in stock_categories %}
               <button type="button" class="se-filter-listbox-option" role="option" data-value="{{ cat|lower }}" data-name="{{ cat|lower }}" data-label="{{ cat }}" aria-selected="false">{{ cat }}</button>
               {% endfor %}
+              </div>
             </div>
           </div>
           {% endif %}
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-stock-filter-chip" data-se-listbox data-se-listbox-change="stStockStatusChanged" id="st-stock-status-listbox">
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field st-stock-filter-chip" data-se-listbox data-se-listbox-change="stStockStatusChanged" id="st-stock-status-listbox">
             <span class="se-filter-chip-label" id="st-stock-status-label">Stock Status</span>
             <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2.5"/></svg>
-              </span>
               <input type="hidden" id="st-stock-status" value="all">
               <button type="button" class="se-filter-chip-trigger" id="st-stock-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-stock-status-list" aria-labelledby="st-stock-status-label st-stock-status-value">
                 <span class="se-filter-chip-value" id="st-stock-status-value">All statuses</span>
@@ -201,10 +169,31 @@
               </span>
             </div>
             <div class="se-filter-listbox" id="st-stock-status-list" role="listbox" aria-labelledby="st-stock-status-label" hidden>
+              <div class="ep-listbox-options">
               <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="all" data-name="all statuses" data-label="All statuses" aria-selected="true">All statuses</button>
               <button type="button" class="se-filter-listbox-option" role="option" data-value="healthy" data-name="healthy" data-label="Healthy" aria-selected="false">Healthy</button>
               <button type="button" class="se-filter-listbox-option" role="option" data-value="low" data-name="low" data-label="Low" aria-selected="false">Low</button>
               <button type="button" class="se-filter-listbox-option" role="option" data-value="out" data-name="out" data-label="Out" aria-selected="false">Out</button>
+              </div>
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" id="st-outlet-listbox">
+            <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="st-outlet" name="outlet" value="{{ selected_outlet }}">
+              <button type="button" class="se-filter-chip-trigger" id="st-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-outlet-list" aria-labelledby="st-outlet-label st-outlet-value">
+                <span class="se-filter-chip-value" id="st-outlet-value">{{ selected_outlet_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
+              <div class="ep-listbox-options">
+              {% for outlet in stores_outlets %}
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+              {% endfor %}
+              </div>
             </div>
           </div>
           {% endif %}
@@ -215,7 +204,7 @@
               <input type="search" id="st-audit-search" class="pl-search-input pl-header-search st-audit-search-input" placeholder="Product, category, unit, status…" autocomplete="off" aria-label="Search audit queue">
             </div>
           </div>
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-audit-category-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="stAuditCategoryChanged" id="st-audit-category-listbox">
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-audit-category-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="stAuditCategoryChanged" id="st-audit-category-listbox">
             <span class="se-filter-chip-label" id="st-audit-category-label">Category</span>
             <div class="se-filter-chip-control">
               <input type="hidden" id="st-audit-category" value="all">
@@ -227,15 +216,31 @@
               </span>
             </div>
             <div class="se-filter-listbox" id="st-audit-category-list" role="listbox" aria-labelledby="st-audit-category-label" hidden>
+              <div class="ep-listbox-options">
               <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="all" data-name="all categories" data-label="All categories" aria-selected="true">All categories</button>
               {% for cat in audit_categories|default([]) %}
               <button type="button" class="se-filter-listbox-option" role="option" data-value="{{ cat|lower }}" data-name="{{ cat|lower }}" data-label="{{ cat }}" aria-selected="false">{{ cat }}</button>
+              {% endfor %}
+              </div>
+            </div>
+          </div>
+          {% endif %}
+          {% if page_key == 'purchase_requests' and not detail %}
+          {% set inward_view = inward_view|default('approved') %}
+          <div class="st-inward-mode-tabs">
+            <span class="se-filter-chip-label" aria-hidden="true">Mode</span>
+            <div class="cp-view-tabs st-inward-view-tabs" role="tablist" aria-label="Stock inward mode">
+              {% for view_key, view_label in inward_list_views|default([('approved', 'Indent Approved'), ('direct', 'Without Indent Approval')]) %}
+              <a class="cp-view-tab{% if inward_view == view_key %} is-active{% endif %}"
+                 href="{{ url_for('stores_purchase_requests', outlet=selected_outlet, view=view_key) }}"
+                 role="tab"
+                 aria-selected="{{ 'true' if inward_view == view_key else 'false' }}">{{ view_label }}</a>
               {% endfor %}
             </div>
           </div>
           {% endif %}
           {% if page_key != 'stock' and page_key != 'stock_audit_report' %}
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox{% if page_key == 'stock_audit' %} pl-header-field-listbox pl-header-field{% endif %}" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" id="st-outlet-listbox">
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-outlet-listbox{% if page_key == 'stock_audit' %} pl-header-field-listbox pl-header-field{% endif %}" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}"{% if page_key == 'purchase_requests' %} data-st-indent-view="{{ inward_view|default('approved') }}"{% endif %} id="st-outlet-listbox">
             <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
             <div class="se-filter-chip-control">
               {% if page_key != 'stock_audit' %}
@@ -252,19 +257,22 @@
               </span>
             </div>
             <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
+              <div class="ep-listbox-options">
               {% for outlet in stores_outlets %}
               <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
               {% endfor %}
+              </div>
             </div>
           </div>
           {% endif %}
-          {% if page_key == 'purchase_requests' and not detail %}
+          {% if page_key == 'purchase_requests' and not detail and (inward_view|default('approved')) == 'approved' %}
           <div
             class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-inward-indent-listbox"
             data-se-listbox
             data-se-listbox-change="stInwardIndentChanged"
             data-st-inward-endpoint="{{ url_for('stores_purchase_requests') }}"
             data-st-inward-outlet="{{ selected_outlet }}"
+            data-st-inward-view="approved"
             id="st-inward-indent-listbox"
           >
             <span class="se-filter-chip-label" id="st-inward-indent-label">Indent</span>
@@ -328,7 +336,7 @@
 
     {% if page_key == 'product_master' %}
       {% include 'partials/stores_product_master_body.html' %}
-    {% elif page_key == 'indent' %}
+    {% elif page_key in ('indent', 'purchase_orders') %}
       {% include 'partials/stores_indent_body.html' %}
     {% elif page_key == 'approvals' %}
       {% include 'partials/stores_approvals_body.html' %}
@@ -344,8 +352,8 @@
   </section>
 </div>
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=47"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=69"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=76"></script>
 {% if page_key == 'stock_audit' %}
 <script src="{{ url_for('static', filename='stores_stock_audit.js') }}?v=28"></script>
 {% endif %}

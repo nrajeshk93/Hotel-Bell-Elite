@@ -169,19 +169,24 @@
     if (!root) {
       root = document.querySelector('#st-indent-edit-modal.open .st-lines-wrap')
         || document.querySelector('#st-indent-form .st-lines-wrap')
+        || document.querySelector('#st-inward-form .st-lines-wrap')
         || document;
     }
     var lines = root.querySelectorAll ? root.querySelectorAll('.st-line') : [];
     var grand = 0;
     lines.forEach(function (line) {
       var qtyEl = line.querySelector('input[name="quantity"]');
-      var priceEl = line.querySelector('[data-st-approx-price], input[name="approximate_price"]');
+      var priceEl = line.querySelector('[data-st-approx-price], input[name="approximate_price"], input[name="unit_price"]');
+      var taxEl = line.querySelector('[data-st-direct-tax], input[name="tax_percent"]');
       var totalEl = line.querySelector('[data-st-line-total]');
       var qty = qtyEl ? parseFloat(qtyEl.value) : 0;
       var price = priceEl ? parseFloat(priceEl.value) : 0;
-      var lineTotal = (isFinite(qty) && qty > 0 && isFinite(price) && price > 0)
-        ? Math.round(qty * price * 100) / 100
-        : 0;
+      var tax = taxEl ? parseFloat(taxEl.value) : 0;
+      if (!isFinite(tax) || tax < 0) tax = 0;
+      var lineTotal = 0;
+      if (isFinite(qty) && qty > 0 && isFinite(price) && price > 0) {
+        lineTotal = Math.round(qty * price * (1 + tax / 100) * 100) / 100;
+      }
       if (totalEl) {
         totalEl.textContent = lineTotal > 0 ? formatIndentMoney(lineTotal) : '—';
         totalEl.classList.toggle('is-empty', lineTotal <= 0);
@@ -189,13 +194,25 @@
       grand += lineTotal;
     });
     var grandEl = root.querySelector
-      ? root.querySelector('[data-st-indent-grand-total]')
+      ? (root.querySelector('[data-st-indent-grand-total]')
+        || root.querySelector('[data-st-inward-direct-grand-total]'))
       : null;
     if (!grandEl && root !== document) {
       var wrap = (root.closest && root.closest('.st-lines-wrap')) || root;
-      grandEl = wrap.querySelector ? wrap.querySelector('[data-st-indent-grand-total]') : null;
+      grandEl = wrap.querySelector
+        ? (wrap.querySelector('[data-st-indent-grand-total]')
+          || wrap.querySelector('[data-st-inward-direct-grand-total]'))
+        : null;
     }
     if (grandEl) grandEl.textContent = grand > 0 ? formatIndentMoney(grand) : '—';
+    try {
+      if (typeof isDirectInwardMode === 'function' && isDirectInwardMode()) {
+        var directConfirm = document.getElementById('st-inward-confirm');
+        if (directConfirm && typeof selectedDirectInwardLines === 'function') {
+          directConfirm.disabled = selectedDirectInwardLines().length === 0;
+        }
+      }
+    } catch (err) { /* ignore */ }
   }
 
   window.stProductPicked = function (root) {
@@ -502,9 +519,11 @@
     var host = modalHost();
     var main = document.querySelector('.de-main-wrapper');
     if (!host) return;
-    ['st-indent-view-modal', 'st-indent-edit-modal', 'st-reject-modal', 'st-stores-ledger-modal', 'st-ledger-pending-modal', 'st-approvals-modal'].forEach(function (id) {
+    ['st-indent-view-modal', 'st-indent-edit-modal', 'st-reject-modal', 'st-stores-ledger-modal', 'st-ledger-pending-modal', 'st-approvals-modal', 'st-product-master-modal'].forEach(function (id) {
       var live = main ? main.querySelector('#' + id) : null;
       Array.from(document.querySelectorAll('#' + id)).forEach(function (el) {
+        // Keep overlays that are open (mountModal moves them onto #de-fs-app).
+        if (el.classList.contains('open') || el.classList.contains('active')) return;
         if (live && el === live) return;
         if (!live && el.parentElement === host) {
           el.parentNode.removeChild(el);
@@ -593,6 +612,213 @@
     closeRejectModal();
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function buildProductMasterEmbedUrl(url) {
+    try {
+      var parsed = new URL(url || '/stores/product-master', window.location.origin);
+      if (parsed.origin !== window.location.origin) return url;
+      parsed.searchParams.set('embed', '1');
+      return parsed.pathname + parsed.search + parsed.hash;
+    } catch (err) {
+      var raw = String(url || '/stores/product-master');
+      if (raw.indexOf('embed=1') !== -1) return raw;
+      return raw + (raw.indexOf('?') === -1 ? '?' : '&') + 'embed=1';
+    }
+  }
+
+  function productMasterOpenUrl() {
+    var openBtn = document.getElementById('st-product-master-open')
+      || document.getElementById('st-product-master-open-inline');
+    return buildProductMasterEmbedUrl(
+      (openBtn && openBtn.getAttribute('data-st-product-master-url')) || '/stores/product-master?embed=1'
+    );
+  }
+
+  function closeProductMasterModal() {
+    var modal = document.getElementById('st-product-master-modal');
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+  window.closeProductMasterModal = closeProductMasterModal;
+
+  function ensureProductMasterEmbedClose(inject) {
+    if (!inject) return;
+    var tools = inject.querySelector('.md-master-embed--page-shell .md-master-embed-header-actions');
+    if (!tools || tools.querySelector('[data-st-pm-close]')) return;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'md-master-modal-close pos-menu-embed-close';
+    btn.setAttribute('data-st-pm-close', '1');
+    btn.setAttribute('aria-label', 'Close Product Master');
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      closeProductMasterModal();
+    });
+    tools.appendChild(btn);
+  }
+
+  function bindProductMasterEmbedNav(inject) {
+    if (!inject || inject.__stPmNavBound) return;
+    inject.__stPmNavBound = true;
+    inject.addEventListener('click', function (e) {
+      var link = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+      if (!link || !inject.contains(link)) return;
+      if (link.hasAttribute('download')) return;
+      if (link.target && link.target !== '_self') return;
+      if (link.hasAttribute('data-de-no-soft-nav') || link.hasAttribute('data-st-product-delete')) return;
+      var href = link.getAttribute('href');
+      if (!href || href.charAt(0) === '#') return;
+      e.preventDefault();
+      e.stopPropagation();
+      loadProductMasterModal(true, href);
+    });
+  }
+
+  function paintProductMasterModal(html) {
+    var body = document.getElementById('st-product-master-modal-body');
+    var inject = document.getElementById('st-product-master-modal-inject');
+    var loading = document.getElementById('st-product-master-modal-loading');
+    if (!body || !inject) return false;
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var fragment = doc.querySelector('.md-master-embed')
+      || doc.querySelector('.main-wrapper')
+      || doc.body;
+    if (!fragment) {
+      inject.hidden = true;
+      if (loading) {
+        loading.hidden = false;
+        loading.className = 'st-product-master-modal-error';
+        loading.textContent = 'Could not load Product Master.';
+      }
+      return false;
+    }
+    inject.innerHTML = fragment === doc.body ? fragment.innerHTML : fragment.outerHTML;
+    inject.querySelectorAll('script').forEach(function (oldScript) {
+      var script = document.createElement('script');
+      Array.prototype.slice.call(oldScript.attributes).forEach(function (attr) {
+        script.setAttribute(attr.name, attr.value);
+      });
+      script.textContent = oldScript.textContent;
+      oldScript.parentNode.replaceChild(script, oldScript);
+    });
+    // Keep POSTs inside this popup (embed forms use data-md-full-nav for Masters).
+    inject.querySelectorAll('form[data-md-full-nav]').forEach(function (form) {
+      form.removeAttribute('data-md-full-nav');
+      form.setAttribute('data-st-pm-embed-form', '1');
+    });
+    if (loading) loading.hidden = true;
+    inject.hidden = false;
+    ensureProductMasterEmbedClose(inject);
+    bindProductMasterEmbedNav(inject);
+    try {
+      if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+    } catch (err) { /* ignore */ }
+    try {
+      if (typeof window.initStoresPage === 'function') window.initStoresPage();
+    } catch (err) { /* ignore */ }
+    var titleEl = document.getElementById('st-product-master-modal-title');
+    var embedRoot = inject.querySelector('[data-md-modal-title]');
+    if (titleEl && embedRoot) {
+      var nextTitle = String(embedRoot.getAttribute('data-md-modal-title') || '').trim();
+      if (nextTitle) titleEl.textContent = nextTitle;
+    }
+    return true;
+  }
+
+  function loadProductMasterModal(force, urlOverride) {
+    var modal = document.getElementById('st-product-master-modal');
+    var body = document.getElementById('st-product-master-modal-body');
+    var inject = document.getElementById('st-product-master-modal-inject');
+    var loading = document.getElementById('st-product-master-modal-loading');
+    if (!modal || !body) return;
+    var url = buildProductMasterEmbedUrl(urlOverride || productMasterOpenUrl());
+    if (!force && body.getAttribute('data-st-loaded') === url && inject && !inject.hidden) return;
+    body.setAttribute('data-st-loaded', '');
+    if (inject) {
+      inject.hidden = true;
+      inject.innerHTML = '';
+      inject.__stPmNavBound = false;
+    }
+    if (loading) {
+      loading.hidden = false;
+      loading.className = 'st-product-master-modal-loading';
+      loading.textContent = 'Loading Product Master…';
+    }
+    fetch(url, {
+      credentials: 'same-origin',
+      headers: { Accept: 'text/html' },
+      redirect: 'follow'
+    }).then(function (response) {
+      if (!response.ok) throw new Error('product master fetch failed');
+      return response.text();
+    }).then(function (html) {
+      if (paintProductMasterModal(html)) body.setAttribute('data-st-loaded', url);
+    }).catch(function () {
+      if (inject) inject.hidden = true;
+      if (loading) {
+        loading.hidden = false;
+        loading.className = 'st-product-master-modal-error';
+        loading.innerHTML = 'Could not load Product Master. <a href="' +
+          String(url).replace(/"/g, '&quot;') + '">Open full page</a>';
+      }
+    });
+  }
+
+  function openProductMasterModal() {
+    var modal = document.getElementById('st-product-master-modal');
+    if (!modal) return;
+    mountModal(modal);
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    loadProductMasterModal(true);
+  }
+
+  function submitProductMasterModalForm(form, submitter) {
+    if (!form) return;
+    var action = form.getAttribute('action') || productMasterOpenUrl();
+    var method = (form.getAttribute('method') || 'post').toUpperCase();
+    var body = null;
+    if (method === 'GET') {
+      try {
+        var getUrl = new URL(action, window.location.origin);
+        new FormData(form).forEach(function (value, key) {
+          if (value != null && String(value) !== '') getUrl.searchParams.set(key, value);
+        });
+        loadProductMasterModal(true, getUrl.pathname + getUrl.search);
+      } catch (err) {
+        loadProductMasterModal(true, action);
+      }
+      return;
+    }
+    try {
+      body = submitter ? new FormData(form, submitter) : new FormData(form);
+    } catch (err) {
+      body = new FormData(form);
+    }
+    if (submitter && submitter.name) {
+      body.set(submitter.name, submitter.value != null ? String(submitter.value) : '');
+    }
+    if (!body.get('embed')) body.set('embed', '1');
+    fetch(action, {
+      method: method,
+      body: body,
+      credentials: 'same-origin',
+      headers: { Accept: 'text/html' },
+      redirect: 'follow'
+    }).then(function (response) {
+      if (!response.ok) throw new Error('product master action failed');
+      return response.text();
+    }).then(function (html) {
+      paintProductMasterModal(html);
+      var modalBody = document.getElementById('st-product-master-modal-body');
+      if (modalBody) modalBody.setAttribute('data-st-loaded', productMasterOpenUrl());
+    }).catch(function () {
+      window.location.href = action;
+    });
   }
 
   function extractApprovalsContent(html) {
@@ -1268,6 +1494,16 @@
       openApprovalsModal();
       return;
     }
+    if (target.closest('#st-product-master-open, #st-product-master-open-inline')) {
+      event.preventDefault();
+      openProductMasterModal();
+      return;
+    }
+    if (target.closest('#st-product-master-close, [data-st-pm-close]')) {
+      event.preventDefault();
+      closeProductMasterModal();
+      return;
+    }
     if (target.closest('#st-approvals-close, #st-approvals-dismiss')) {
       event.preventDefault();
       closeApprovalsModal();
@@ -1322,6 +1558,11 @@
       closeLedgerPendingModal();
       return;
     }
+    var productMasterModal = document.getElementById('st-product-master-modal');
+    if (productMasterModal && productMasterModal.classList.contains('open') && event.target === productMasterModal) {
+      closeProductMasterModal();
+      return;
+    }
     var approvalsModal = document.getElementById('st-approvals-modal');
     if (approvalsModal && approvalsModal.classList.contains('open') && event.target === approvalsModal) {
       closeApprovalsModal();
@@ -1366,6 +1607,21 @@
     var ledgerPendingModal = document.getElementById('st-ledger-pending-modal');
     if (ledgerPendingModal && ledgerPendingModal.classList.contains('open')) {
       closeLedgerPendingModal();
+      return;
+    }
+    var productMasterModal = document.getElementById('st-product-master-modal');
+    if (productMasterModal && productMasterModal.classList.contains('open')) {
+      var nestedProduct = document.getElementById('st-product-modal');
+      var nestedCategory = document.getElementById('st-category-modal');
+      var nestedUnit = document.getElementById('st-unit-modal');
+      if (
+        (nestedProduct && nestedProduct.classList.contains('active'))
+        || (nestedCategory && nestedCategory.classList.contains('active'))
+        || (nestedUnit && nestedUnit.classList.contains('active'))
+      ) {
+        return;
+      }
+      closeProductMasterModal();
       return;
     }
     var approvalsModal = document.getElementById('st-approvals-modal');
@@ -1419,6 +1675,17 @@
   function onStoresSubmit(event) {
     var form = event.target;
     if (!form) return;
+    var productMasterModal = document.getElementById('st-product-master-modal');
+    if (
+      productMasterModal
+      && productMasterModal.classList.contains('open')
+      && productMasterModal.contains(form)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      submitProductMasterModalForm(form, event.submitter || null);
+      return;
+    }
     var approvalsModal = document.getElementById('st-approvals-modal');
     if (
       approvalsModal
@@ -1747,6 +2014,10 @@
     var form = document.getElementById('st-inward-form');
     var confirmBtn = document.getElementById('st-inward-confirm');
     if (!form || !confirmBtn) return;
+    if (isDirectInwardMode()) {
+      confirmBtn.disabled = selectedDirectInwardLines().length === 0;
+      return;
+    }
     var selectedCount = 0;
     var incomplete = false;
     form.querySelectorAll('[data-st-inward-row]').forEach(function (row) {
@@ -1790,19 +2061,79 @@
     if (!root) return;
     var endpoint = root.getAttribute('data-st-inward-endpoint') || '/stores/purchase-requests';
     var outlet = root.getAttribute('data-st-inward-outlet') || '';
+    var view = root.getAttribute('data-st-inward-view') || 'approved';
     try {
       var url = new URL(endpoint, window.location.origin);
       if (outlet) url.searchParams.set('outlet', outlet);
+      if (view) url.searchParams.set('view', view);
       if (value) url.searchParams.set('indent', value);
       else url.searchParams.delete('indent');
       stSoftNavigate(url.pathname + url.search);
     } catch (e) {
       var qs = [];
       if (outlet) qs.push('outlet=' + encodeURIComponent(outlet));
+      if (view) qs.push('view=' + encodeURIComponent(view));
       if (value) qs.push('indent=' + encodeURIComponent(value));
       stSoftNavigate(endpoint + (qs.length ? ('?' + qs.join('&')) : ''));
     }
   };
+
+  function isDirectInwardMode() {
+    var page = document.getElementById('st-inward-page');
+    var confirmBtn = document.getElementById('st-inward-confirm');
+    if (confirmBtn && confirmBtn.getAttribute('data-st-inward-mode') === 'direct') return true;
+    return !!(page && page.getAttribute('data-st-inward-view') === 'direct');
+  }
+
+  function selectedDirectInwardLines() {
+    var form = document.getElementById('st-inward-form');
+    var lines = [];
+    if (!form) return lines;
+    form.querySelectorAll('[data-st-inward-direct-row]').forEach(function (row) {
+      var itemEl = row.querySelector('[data-st-direct-item], input[name="item_name"]');
+      var itemName = itemEl ? String(itemEl.value || '').trim() : '';
+      if (!itemName) return;
+      var qtyEl = row.querySelector('[data-st-direct-qty], input[name="quantity"]');
+      var priceEl = row.querySelector('[data-st-direct-price], [data-st-approx-price]');
+      var qty = qtyEl ? parseInwardQty(qtyEl.value) : 0;
+      var price = priceEl ? parseInwardQty(priceEl.value) : 0;
+      if (qty <= 0 || price <= 0) return;
+      var taxEl = row.querySelector('[data-st-direct-tax]');
+      var tax = taxEl ? parseInwardQty(taxEl.value) : 0;
+      if (tax < 0) tax = 0;
+      var unitEl = row.querySelector('[data-st-unit], input[name="unit"]');
+      var packLabel = row.querySelector('[data-st-pack-label]');
+      var packQty = row.querySelector('[data-st-pack-qty]');
+      var packQtyVal = null;
+      if (packQty && String(packQty.value || '') !== '') {
+        packQtyVal = parseInwardQty(packQty.value);
+        if (!(packQtyVal > 0)) packQtyVal = null;
+      }
+      lines.push({
+        item_name: itemName,
+        qty: qty,
+        unit: unitEl ? String(unitEl.value || 'kg') : 'kg',
+        unit_price: price,
+        tax_percent: tax,
+        pack_label: packLabel ? String(packLabel.value || '') : '',
+        pack_qty_in_base: packQtyVal,
+        product_category: (function () {
+          var productRoot = row.querySelector('.st-product-listbox');
+          var selected = productRoot
+            ? productRoot.querySelector('.se-filter-listbox-option.is-selected')
+            : null;
+          if (selected) return String(selected.getAttribute('data-category') || '').trim();
+          if (!productRoot) return '';
+          var match = null;
+          productRoot.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
+            if (String(opt.getAttribute('data-value') || '') === itemName) match = opt;
+          });
+          return match ? String(match.getAttribute('data-category') || '').trim() : '';
+        })()
+      });
+    });
+    return lines;
+  }
 
   function selectedInwardLines() {
     var form = document.getElementById('st-inward-form');
@@ -1828,7 +2159,8 @@
         received_qty: qty,
         rate: approvedRate,
         unit_price: unitPrice,
-        tax_percent: taxPercent
+        tax_percent: taxPercent,
+        product_category: String(row.getAttribute('data-product-category') || '').trim()
       });
     });
     return lines;
@@ -1976,6 +2308,156 @@
     }
   }
 
+  function slugifyInwardCategoryKey(name) {
+    var value = String(name || '').trim().toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '');
+    if (!value) return '';
+    if (/^\d/.test(value)) value = 'cat_' + value;
+    return value.slice(0, 80);
+  }
+
+  function formatInwardBreakdownMoney(amount) {
+    var n = Number(amount || 0);
+    if (!isFinite(n)) n = 0;
+    n = Math.round(n * 100) / 100;
+    if (typeof window.formatINR === 'function') {
+      try {
+        return window.formatINR(n, 2);
+      } catch (err) { /* fall through */ }
+    }
+    return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function buildInwardCategoryGroups(lines) {
+    var groups = [];
+    var byKey = {};
+    var missing = [];
+    (lines || []).forEach(function (line) {
+      var cat = String(line.product_category || '').trim();
+      if (!cat) {
+        var item = String(line.item_name || '').trim() || 'Item';
+        if (missing.indexOf(item) === -1) missing.push(item);
+        return;
+      }
+      var key = cat.toLowerCase();
+      if (!Object.prototype.hasOwnProperty.call(byKey, key)) {
+        byKey[key] = {
+          category_label: cat,
+          category_key: slugifyInwardCategoryKey(cat),
+          amount: 0,
+          lines: []
+        };
+        groups.push(byKey[key]);
+      }
+      var qty = Number(line.qty || line.received_qty || 0) || 0;
+      var price = Number(line.unit_price || 0) || 0;
+      var tax = Number(line.tax_percent || 0) || 0;
+      var lineTotal = inwardLineTotal(qty, price, tax);
+      byKey[key].amount += lineTotal;
+      byKey[key].lines.push(line);
+    });
+    groups.forEach(function (g) {
+      g.amount = Math.round(g.amount * 100) / 100;
+    });
+    var grand = groups.reduce(function (sum, g) { return sum + g.amount; }, 0);
+    return {
+      groups: groups,
+      grandTotal: Math.round(grand * 100) / 100,
+      missing: missing
+    };
+  }
+
+  function renderInwardCategoryBreakdown(lines) {
+    var wrap = document.getElementById('st-inward-cat-breakdown');
+    var note = document.getElementById('st-inward-cat-breakdown-note');
+    var amountEl = document.getElementById('st-inward-expense-amount');
+    var built = buildInwardCategoryGroups(lines);
+    if (wrap) {
+      wrap.innerHTML = '';
+      if (!built.groups.length) {
+        var empty = document.createElement('div');
+        empty.className = 'st-inward-cat-breakdown-empty';
+        empty.id = 'st-inward-cat-breakdown-empty';
+        empty.textContent = built.missing.length
+          ? 'Products need a Product Master category'
+          : 'From invoice lines';
+        wrap.appendChild(empty);
+      } else {
+        built.groups.forEach(function (group) {
+          var row = document.createElement('div');
+          row.className = 'st-inward-cat-breakdown-row';
+          row.setAttribute('role', 'listitem');
+          var label = document.createElement('span');
+          label.className = 'st-inward-cat-breakdown-label';
+          label.textContent = group.category_label;
+          var amount = document.createElement('span');
+          amount.className = 'st-inward-cat-breakdown-amount';
+          amount.textContent = formatInwardBreakdownMoney(group.amount);
+          row.appendChild(label);
+          row.appendChild(amount);
+          wrap.appendChild(row);
+        });
+      }
+    }
+    if (note) note.hidden = built.groups.length < 2;
+    if (amountEl) {
+      if (built.grandTotal > 0) {
+        amountEl.value = String(Math.round(built.grandTotal));
+      } else {
+        amountEl.value = '';
+      }
+    }
+    return built;
+  }
+
+  function findInwardExpenseCategoryOption(productCategoryName) {
+    var options = document.getElementById('st-inward-category-options');
+    if (!options || !productCategoryName) return null;
+    var raw = String(productCategoryName).trim();
+    var rawFold = raw.toLowerCase();
+    var slug = slugifyInwardCategoryKey(raw);
+    var aliasSlug = slug === 'vegetable' ? 'vegetables' : slug;
+    var found = null;
+    options.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
+      if (found) return;
+      var key = String(opt.getAttribute('data-value') || '');
+      var label = String(opt.getAttribute('data-label') || opt.textContent || '').trim();
+      if (label.toLowerCase() === rawFold || key === slug || key === aliasSlug) {
+        found = { key: key, label: label || raw };
+      }
+    });
+    return found;
+  }
+
+  async function ensureInwardExpenseCategory(productCategoryName) {
+    var existing = findInwardExpenseCategoryOption(productCategoryName);
+    if (existing) return existing;
+    var confirmBtn = document.getElementById('st-inward-confirm');
+    var modal = document.getElementById('st-inward-category-modal');
+    var url = (modal && modal.getAttribute('data-st-save-category-url'))
+      || (confirmBtn && confirmBtn.getAttribute('data-st-inward-save-category-url'))
+      || '';
+    if (!url || !productCategoryName) return null;
+    try {
+      var res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ category_name: productCategoryName })
+      });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok || !data.ok) return null;
+      var key = data.category_key || slugifyInwardCategoryKey(productCategoryName);
+      var label = data.category_label || productCategoryName;
+      upsertInwardCategoryOption(key, label);
+      return { key: key, label: label };
+    } catch (err) {
+      return null;
+    }
+  }
+
   var inwardAvailableCash = 0;
   var inwardAvailableFetchToken = 0;
 
@@ -2030,6 +2512,8 @@
     var amountEl = document.getElementById('st-inward-expense-amount');
     var invoiceEl = document.getElementById('st-inward-invoice-number');
     var transactionEl = document.getElementById('st-inward-transaction-id');
+    var breakdown = document.getElementById('st-inward-cat-breakdown');
+    var note = document.getElementById('st-inward-cat-breakdown-note');
     setInwardExpenseError('');
     setInwardAmountWarn('');
     setInwardApprovedHint(0);
@@ -2039,39 +2523,52 @@
     if (amountEl) amountEl.removeAttribute('data-approved-total');
     if (invoiceEl) invoiceEl.value = '';
     if (transactionEl) transactionEl.value = '';
+    if (breakdown) {
+      breakdown.innerHTML = '<div class="st-inward-cat-breakdown-empty" id="st-inward-cat-breakdown-empty">From invoice lines</div>';
+    }
+    if (note) note.hidden = true;
     setInwardListboxValue('st-inward-supplier', '', '', 'Select supplier');
-    setInwardListboxValue('st-inward-category', '', '', 'Select category');
     setInwardListboxValue('st-inward-payment', '', '', 'Select payment type');
     syncInwardPaymentVisibility();
     refreshInwardAvailableCash();
   }
 
-  function openInwardExpenseModal() {
+  async function openInwardExpenseModal() {
     var modal = document.getElementById('st-inward-expense-modal');
     var confirmBtn = document.getElementById('st-inward-confirm');
     if (!modal || !confirmBtn || confirmBtn.disabled) return;
-    var lines = selectedInwardLines();
+    var directMode = isDirectInwardMode();
+    var lines = directMode ? selectedDirectInwardLines() : selectedInwardLines();
     if (!lines.length) return;
     resetInwardExpenseForm();
     var amountEl = document.getElementById('st-inward-expense-amount');
-    var approvedTotal = computeInwardApproxTotal(lines);
-    var enteredTotal = computeInwardEnteredTotal(lines);
+    var approvedTotal = directMode ? 0 : computeInwardApproxTotal(lines);
+    var built = renderInwardCategoryBreakdown(lines);
     if (amountEl) {
       amountEl.setAttribute('data-approved-total', String(Math.round(approvedTotal || 0)));
-      // Prefill Value from user-entered inward prices only (not approved defaults).
-      if (enteredTotal > 0) {
-        amountEl.value = String(Math.round(enteredTotal));
-      }
     }
     setInwardApprovedHint(approvedTotal);
     syncInwardAmountWarn();
-    var indentNo = confirmBtn.getAttribute('data-st-inward-indent-no') || '';
-    var notesEl = document.getElementById('st-inward-notes');
-    var notes = notesEl ? String(notesEl.value || '').trim() : '';
-    var description = 'Stock inward ' + indentNo;
-    if (notes) description += ' — ' + notes;
     var descriptionEl = document.getElementById('st-inward-expense-description');
-    if (descriptionEl) descriptionEl.value = description;
+    if (directMode) {
+      var notesEl = document.getElementById('st-inward-notes');
+      var notes = notesEl ? String(notesEl.value || '').trim() : '';
+      var description = 'Stock inward without indent approval';
+      if (notes) description += ' — ' + notes;
+      if (descriptionEl) descriptionEl.value = description;
+    } else {
+      var indentNo = confirmBtn.getAttribute('data-st-inward-indent-no') || '';
+      var notesEl2 = document.getElementById('st-inward-notes');
+      var notes2 = notesEl2 ? String(notesEl2.value || '').trim() : '';
+      var description2 = 'Stock inward ' + indentNo;
+      if (notes2) description2 += ' — ' + notes2;
+      if (descriptionEl) descriptionEl.value = description2;
+    }
+    if (!built.groups.length || built.missing.length) {
+      setInwardExpenseError('Products need a Product Master category before confirming.');
+    } else {
+      setInwardExpenseError('');
+    }
     openInwardModal(modal);
     if (descriptionEl) descriptionEl.focus();
   }
@@ -2081,9 +2578,12 @@
     var saveBtn = document.getElementById('st-inward-expense-save');
     var modal = document.getElementById('st-inward-expense-modal');
     if (!confirmBtn) return;
-    var lines = selectedInwardLines();
+    var directMode = isDirectInwardMode();
+    var lines = directMode ? selectedDirectInwardLines() : selectedInwardLines();
     if (!lines.length) {
-      setInwardExpenseError('Select at least one item with a received quantity.');
+      setInwardExpenseError(directMode
+        ? 'Add at least one product with quantity and price.'
+        : 'Select at least one item with a received quantity.');
       return;
     }
     var indentEl = document.getElementById('st-inward-indent-id');
@@ -2095,13 +2595,11 @@
     var notesEl = document.getElementById('st-inward-notes');
     var purchaseDate = dateEl ? dateEl.value : '';
     var description = descriptionEl ? descriptionEl.value.trim() : '';
+    var built = renderInwardCategoryBreakdown(lines);
     roundInwardExpenseAmount();
     var amountRaw = amountEl ? amountEl.value : '';
     var supplierId = document.getElementById('st-inward-supplier-input')
       ? document.getElementById('st-inward-supplier-input').value
-      : '';
-    var category = document.getElementById('st-inward-category-input')
-      ? document.getElementById('st-inward-category-input').value
       : '';
     var paymentType = document.getElementById('st-inward-payment-input')
       ? document.getElementById('st-inward-payment-input').value
@@ -2117,8 +2615,8 @@
       setInwardExpenseError('Please select a supplier.');
       return;
     }
-    if (!category) {
-      setInwardExpenseError('Please select a category.');
+    if (!built.groups.length || built.missing.length) {
+      setInwardExpenseError('Products need a Product Master category before confirming.');
       return;
     }
     if (!description) {
@@ -2154,27 +2652,43 @@
     setInwardExpenseError('');
     if (saveBtn) saveBtn.disabled = true;
     var payload = {
-      indent_id: indentEl ? indentEl.value : '',
       notes: notesEl ? String(notesEl.value || '').trim() : '',
-      lines: lines.map(function (line) {
-        return {
-          line_id: line.line_id,
-          received_qty: line.received_qty,
-          unit_price: line.unit_price,
-          tax_percent: line.tax_percent
-        };
-      }),
       company: confirmBtn.getAttribute('data-st-default-company') || '',
       location: confirmBtn.getAttribute('data-st-default-location') || '',
       date: purchaseDate,
       description: description,
       amount: amountRaw,
       payment_type: paymentType,
-      category: category,
       transaction_id: paymentType === 'bank_transfer' ? transactionId : '',
       invoice_number: invoiceNumber,
       supplier_id: supplierId
     };
+    if (directMode) {
+      payload.outlet = confirmBtn.getAttribute('data-st-outlet')
+        || (document.getElementById('st-outlet') || {}).value
+        || '';
+      payload.lines = lines.map(function (line) {
+        return {
+          item_name: line.item_name,
+          qty: line.qty,
+          unit: line.unit,
+          unit_price: line.unit_price,
+          tax_percent: line.tax_percent,
+          pack_label: line.pack_label,
+          pack_qty_in_base: line.pack_qty_in_base
+        };
+      });
+    } else {
+      payload.indent_id = indentEl ? indentEl.value : '';
+      payload.lines = lines.map(function (line) {
+        return {
+          line_id: line.line_id,
+          received_qty: line.received_qty,
+          unit_price: line.unit_price,
+          tax_percent: line.tax_percent
+        };
+      });
+    }
     try {
       var res = await fetch(confirmUrl, {
         method: 'POST',
@@ -2286,6 +2800,15 @@
     }
     if (target.matches('[data-st-inward-bulk-tax]')) {
       applyInwardBulkTax(target.value);
+      return;
+    }
+    if (
+      target.matches('[data-st-direct-qty], [data-st-direct-price], [data-st-direct-tax], [data-st-approx-price]')
+      || (target.closest('[data-st-inward-direct-row]') && (
+        target.name === 'quantity' || target.name === 'tax_percent' || target.name === 'unit_price'
+      ))
+    ) {
+      syncIndentLineTotals(target.closest('.st-lines-wrap') || page);
       return;
     }
     if (target.matches('[data-st-inward-qty], [data-st-inward-price], [data-st-inward-tax]')) {
@@ -2488,6 +3011,10 @@
       });
     }
     syncInwardPaymentVisibility();
+    if (isDirectInwardMode()) {
+      syncIndentLineTotals(page.querySelector('.st-inward-direct-lines-wrap') || page);
+      syncInwardConfirm();
+    }
   }
 
   function initStFlashAutoDismiss() {
@@ -2518,9 +3045,14 @@
     var modal = document.getElementById('st-product-modal');
     var url = modal && modal.getAttribute('data-st-list-url');
     if (!url) return;
-    /* Stay inside Masters modal — just dismiss the product form overlay. */
+    /* Stay inside Masters / Indent Product Master popup — just dismiss the form overlay. */
     var masterModal = document.getElementById('md-master-modal');
     if (masterModal && masterModal.classList.contains('open')) {
+      if (modal) modal.classList.remove('active');
+      return;
+    }
+    var indentPm = document.getElementById('st-product-master-modal');
+    if (indentPm && indentPm.classList.contains('open')) {
       if (modal) modal.classList.remove('active');
       return;
     }
@@ -2629,6 +3161,9 @@
       if (typeof window.resetEpListbox === 'function') {
         window.resetEpListbox('st-product-category', '', 'Select category…');
         window.resetEpListbox('st-product-outlet', '', 'Select outlet…');
+        window.resetEpListbox('st-product-supplier-1', '', 'Select supplier…');
+        window.resetEpListbox('st-product-supplier-2', '', 'Select supplier…');
+        window.resetEpListbox('st-product-supplier-3', '', 'Select supplier…');
       }
       modal.setAttribute('data-st-editing', '0');
     }
@@ -3250,6 +3785,25 @@
       btn.title = active ? 'Show all stock items' : 'Show only out-of-stock items';
     }
 
+    function syncStockExportLink() {
+      var link = document.getElementById('st-stock-export');
+      if (!link || !link.href) return;
+      try {
+        var url = new URL(link.href, window.location.origin);
+        var searchEl = document.getElementById('st-stock-search');
+        var category = getCategory();
+        var status = getStatus();
+        var q = String((searchEl && searchEl.value) || '').trim();
+        if (category && category !== 'all') url.searchParams.set('category', category);
+        else url.searchParams.delete('category');
+        if (status && status !== 'all') url.searchParams.set('status', status);
+        else url.searchParams.delete('status');
+        if (q) url.searchParams.set('q', q);
+        else url.searchParams.delete('q');
+        link.href = url.pathname + url.search;
+      } catch (err) {}
+    }
+
     function formatQty(n) {
       if (!isFinite(n)) return '0';
       var rounded = Math.round(n * 100) / 100;
@@ -3337,6 +3891,7 @@
       if (emptyEl) emptyEl.hidden = !noMatch;
       if (tableWrap) tableWrap.hidden = !!noMatch;
       updateKpis(rows);
+      syncStockExportLink();
     }
 
     window.stStockApplyFilters = applyStockFilters;
@@ -3372,49 +3927,6 @@
           setStockStatusFilter(getStatus() === 'out' ? 'all' : 'out');
           return;
         }
-        var exportBtn = t.closest('#st-stock-export');
-        if (!exportBtn) return;
-        e.preventDefault();
-        var table = getTable();
-        var page = getPage();
-        if (!table) return;
-        var rows = matchedRows();
-        var hasPrices = page && page.getAttribute('data-has-prices') === '1';
-        var lines = [
-          hasPrices
-            ? ['Product', 'Category', 'On hand', 'Unit', 'Status', 'Value']
-            : ['Product', 'Category', 'On hand', 'Unit', 'Status']
-        ];
-        rows.forEach(function (row) {
-          var nameEl = row.querySelector('.st-stock-product-name, .pl-name');
-          var badge = row.querySelector('.st-stock-badge');
-          var cells = row.querySelectorAll('td');
-          var line = [
-            nameEl ? nameEl.textContent.trim() : '',
-            cells[1] ? cells[1].textContent.trim() : String(row.getAttribute('data-category') || ''),
-            String(row.getAttribute('data-qty') || ''),
-            cells[3] ? cells[3].textContent.trim() : '',
-            badge ? badge.textContent.trim() : ''
-          ];
-          if (hasPrices) line.push(cells[5] ? cells[5].textContent.trim() : '—');
-          lines.push(line);
-        });
-        var csv = lines.map(function (cols) {
-          return cols.map(function (c) {
-            var s = String(c == null ? '' : c);
-            if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-            return s;
-          }).join(',');
-        }).join('\n');
-        var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'stock-export.csv';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(function () { URL.revokeObjectURL(url); }, 500);
       });
     }
 
@@ -3446,6 +3958,7 @@
       && !document.getElementById('st-stores-ledger-modal')
       && !document.getElementById('st-ledger-pending-modal')
       && !document.getElementById('st-approvals-modal')
+      && !document.getElementById('st-product-master-modal')
     ) {
       return;
     }

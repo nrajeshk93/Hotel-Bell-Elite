@@ -57,13 +57,13 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Bar",
                 "Hotel",
                 "Communication Hub",
-                "Procurement & Inventory",
+                "Purchase & Inventory",
                 "Master",
                 "Report",
                 "Settings",
             ],
         )
-        stores = next(node for node in tree if node["label"] == "Procurement & Inventory")
+        stores = next(node for node in tree if node["label"] == "Purchase & Inventory")
         stores_children = [child["label"] for child in stores["children"]]
         self.assertEqual(
             stores_children,
@@ -112,7 +112,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         pos = next(node for node in tree if node["label"] == "Restaurant")
         self.assertEqual(pos["dashboardKey"], "point_of_sale")
         self.assertEqual(pos["children"], [])
-        stores = next(node for node in tree if node["label"] == "Procurement & Inventory")
+        stores = next(node for node in tree if node["label"] == "Purchase & Inventory")
         self.assertEqual(stores["dashboardKey"], "stores")
         self.assertEqual(len(stores["children"]), 5)
         master = next(node for node in tree if node["label"] == "Master")

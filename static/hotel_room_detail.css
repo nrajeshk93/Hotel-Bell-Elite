@@ -2503,6 +2503,28 @@ body.hrd-checkin-open{overflow:hidden}
   color:#64748B;
 }
 .hrd-transfer-hint.is-error{color:#DC2626}
+.hrd-dialog--extend{
+  width:min(420px, 100%);
+  max-height:min(90vh, 560px);
+  overflow:visible;
+}
+#hrd-extend-modal .hrd-dialog-body,
+#hrd-extend-modal .hrd-field{
+  overflow:visible;
+}
+.hrd-extend-dates{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.hrd-extend-nights{
+  margin:4px 0 0;
+  font:600 13px Inter,system-ui,sans-serif;
+  color:#475569;
+}
+@media (max-width:520px){
+  .hrd-extend-dates{grid-template-columns:1fr}
+}
 .hrd-dialog-foot{
   display:flex;
   justify-content:flex-end;
@@ -2513,6 +2535,7 @@ body.hrd-checkin-open{overflow:hidden}
 }
 body.hrd-transfer-open{overflow:hidden}
 body.hrd-reserve-open{overflow:hidden}
+body.hrd-extend-open{overflow:hidden}
 
 /* Time chips — white field (dates use hotel_date_picker.css) */
 body.hotel-room-detail-module .ep-time-chip,

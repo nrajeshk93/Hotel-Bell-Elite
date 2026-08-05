@@ -18,15 +18,29 @@ body.su-module.st-indent-shell .su-header{
   padding:24px 32px 8px;
   max-width:1400px;
   margin:0 auto;
+  container-type:inline-size;
+  container-name:st-indent-header;
 }
 
 body.su-module.st-indent-shell .su-header-top{
   align-items:center;
-  gap:20px;
-  flex-wrap:nowrap;
+  gap:12px 16px;
+  flex-wrap:wrap;
+  min-width:0;
+}
+
+body.su-module.st-indent-shell .su-header-left{
+  min-width:0;
+  flex:1 1 160px;
 }
 
 /* Match Purchase Ledger / su-module header type */
+body.su-module.st-indent-shell .su-title{
+  min-width:0;
+}
+body.su-module.st-indent-shell .su-title-row{
+  min-width:0;
+}
 body.su-module.st-indent-shell .su-title h1{
   font-size:34px;
   line-height:1.15;
@@ -34,6 +48,9 @@ body.su-module.st-indent-shell .su-title h1{
   color:#111827;
   letter-spacing:-.03em;
   margin:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 
 body.su-module.st-indent-shell .su-title p{
@@ -67,11 +84,13 @@ body.su-module.st-indent-shell .su-title-icon svg{
 body.su-module.st-indent-shell .su-header-tools{
   display:flex;
   align-items:center;
-  gap:10px;
-  flex:0 0 auto;
-  flex-wrap:nowrap;
+  gap:8px;
+  flex:1 1 auto;
+  flex-wrap:wrap;
   margin-left:auto;
   justify-content:flex-end;
+  min-width:0;
+  max-width:100%;
 }
 
 /* Match Supplier Master .btn / .btn-primary header actions (~34px) */
@@ -82,11 +101,53 @@ body.su-module.st-indent-shell .su-header-tools .btn{
   border-radius:6px;
   font:600 12px/1.2 Inter,system-ui,sans-serif;
   box-sizing:border-box;
+  flex:0 0 auto;
+  white-space:nowrap;
 }
 body.su-module.st-indent-shell .su-header-tools .btn svg{
   width:14px;
   height:14px;
   flex-shrink:0;
+}
+body.su-module.st-indent-shell .su-header-tools .de-fullscreen-btn{
+  flex:0 0 auto;
+}
+
+/* Header reflows from available width (sidebar open/closed), not viewport alone */
+@container st-indent-header (max-width:780px){
+  body.su-module.st-indent-shell .su-title h1{font-size:28px}
+  body.su-module.st-indent-shell .su-header-tools{gap:8px}
+  body.su-module.st-indent-shell .su-header-tools .btn{
+    padding:7px 12px;
+  }
+}
+@container st-indent-header (max-width:640px){
+  body.su-module.st-indent-shell .su-header-top{
+    flex-direction:column;
+    align-items:stretch;
+    gap:14px;
+  }
+  body.su-module.st-indent-shell .su-header-left{
+    flex:1 1 auto;
+  }
+  body.su-module.st-indent-shell .su-header-tools{
+    margin-left:0;
+    justify-content:flex-start;
+    width:100%;
+  }
+  body.su-module.st-indent-shell .su-title h1{font-size:26px}
+}
+@container st-indent-header (max-width:420px){
+  body.su-module.st-indent-shell .su-title h1{font-size:22px}
+  body.su-module.st-indent-shell .su-header-tools .btn{
+    flex:1 1 calc(50% - 4px);
+    justify-content:center;
+    text-align:center;
+  }
+  body.su-module.st-indent-shell .su-header-tools .btn.btn-primary,
+  body.su-module.st-indent-shell .su-header-tools .de-fullscreen-btn{
+    flex:1 1 100%;
+  }
 }
 
 /* Fullscreen control uses shared de-fullscreen-btn size (40px), same as Purchase Ledger */
@@ -369,9 +430,10 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-wrap{
   container-type:inline-size;
   container-name:st-indent-lines;
 }
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line,
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer,
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row{
+/* Exclude Stock Inward direct rows (extra Tax column) — see stores_inward.css */
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line),
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer:not(.st-inward-direct-footer),
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head-row:not(.st-inward-direct-head-cols){
   --st-line-pack:minmax(110px,140px);
   --st-line-qty:minmax(96px,120px);
   --st-line-unit:minmax(88px,110px);
@@ -531,6 +593,9 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-unit-listbox .se-
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-product-listbox .se-filter-chip-trigger{
   padding-left:14px;
 }
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-product-listbox.is-open{
+  z-index:80;
+}
 body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-product-listbox input.se-filter-chip-combobox{
   flex:1 1 auto;
   min-width:0;
@@ -618,7 +683,7 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price inpu
   box-shadow:0 0 0 4px rgba(37,99,235,.1);
 }
 
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove{
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-line-remove{
   width:44px;
   height:44px;
   border-radius:12px;
@@ -631,12 +696,12 @@ body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove{
   cursor:pointer;
   transition:background .2s, border-color .2s, transform .15s;
 }
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove:hover{
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-line-remove:hover{
   background:#FEF2F2;
   border-color:#FCA5A5;
 }
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove:active{transform:scale(.96)}
-body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove svg{
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-line-remove:active{transform:scale(.96)}
+body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-line-remove svg{
   width:18px;height:18px;
   stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;
 }
@@ -1459,7 +1524,7 @@ body.su-module #st-indent-edit-modal .st-indent-edit-actions{
   body.su-module .st-card-body,
   body.su-module .st-intro-card{padding-left:20px;padding-right:20px}
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head{display:none}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line){
     grid-template-columns:1fr 1fr;
     gap:12px;
     padding:16px;
@@ -1467,28 +1532,28 @@ body.su-module #st-indent-edit-modal .st-indent-edit-actions{
     border-radius:16px;
     background:#FCFCFD;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--product{grid-column:1 / -1}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price{grid-column:1 / 2}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--line-total{grid-column:2 / 3}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove{grid-column:1 / -1;width:100%}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--product{grid-column:1 / -1}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--price{grid-column:1 / 2}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--line-total{grid-column:2 / 3}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-line-remove{grid-column:1 / -1;width:100%}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer:not(.st-inward-direct-footer){
     grid-template-columns:1fr auto;
     gap:12px;
     padding:12px 4px 0;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-label{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer:not(.st-inward-direct-footer) .st-lines-footer-label{
     grid-column:1;
     justify-self:start;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-value{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer:not(.st-inward-direct-footer) .st-lines-footer-value{
     grid-column:2;
     justify-self:end;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--product::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--unit::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--line-total::before{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--product::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--qty::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--unit::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--price::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--line-total::before{
     content:attr(data-st-label);
     display:block;
     margin:0 0 6px;
@@ -1505,7 +1570,7 @@ body.su-module #st-indent-edit-modal .st-indent-edit-actions{
 }
 @container st-indent-lines (max-width:640px){
   body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-head{display:none}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line){
     grid-template-columns:1fr 1fr;
     gap:12px;
     padding:16px;
@@ -1513,27 +1578,27 @@ body.su-module #st-indent-edit-modal .st-indent-edit-actions{
     border-radius:16px;
     background:#FCFCFD;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--product{grid-column:1 / -1}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price{grid-column:1 / 2}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--line-total{grid-column:2 / 3}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line-remove{grid-column:1 / -1;width:100%}
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--product{grid-column:1 / -1}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--price{grid-column:1 / 2}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--line-total{grid-column:2 / 3}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-line-remove{grid-column:1 / -1;width:100%}
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer:not(.st-inward-direct-footer){
     grid-template-columns:1fr auto;
     gap:12px;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-label{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer:not(.st-inward-direct-footer) .st-lines-footer-label{
     grid-column:1;
     justify-self:start;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer-value{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-lines-footer:not(.st-inward-direct-footer) .st-lines-footer-value{
     grid-column:2;
     justify-self:end;
   }
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--product::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--qty::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--unit::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--price::before,
-  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-field--line-total::before{
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--product::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--qty::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--unit::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--price::before,
+  body.su-module :is(.st-indent-page, #st-indent-edit-modal) .st-line:not(.st-inward-direct-line) .st-field--line-total::before{
     content:attr(data-st-label);
     display:block;
     margin:0 0 6px;
@@ -1542,4 +1607,60 @@ body.su-module #st-indent-edit-modal .st-indent-edit-actions{
     text-transform:uppercase;
     letter-spacing:.04em;
   }
+}
+
+/* Product Master popup on Indent */
+body.su-module #st-product-master-modal{
+  z-index:10080;
+}
+body.su-module #st-product-master-modal .st-product-master-modal-box{
+  width:min(1120px,100%);
+  height:min(820px, calc(100vh - 40px));
+  max-height:calc(100vh - 40px);
+  min-height:min(520px, calc(100vh - 40px));
+  overflow:hidden;
+  background:#fff;
+  border:1px solid #E5E7EB;
+  border-radius:20px;
+  box-shadow:0 16px 40px rgba(15,23,42,.18);
+  display:flex;
+  flex-direction:column;
+  padding:0;
+}
+body.su-module #st-product-master-modal:has(.md-master-embed--page-shell) .st-product-master-modal-head{
+  display:none;
+}
+body.su-module #st-product-master-modal .st-product-master-modal-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  padding:0;
+}
+body.su-module #st-product-master-modal .st-product-master-modal-inject{
+  flex:1 1 auto;
+  min-height:0;
+  height:100%;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+}
+body.su-module #st-product-master-modal .st-product-master-modal-loading,
+body.su-module #st-product-master-modal .st-product-master-modal-error{
+  margin:auto;
+  padding:32px 24px;
+  text-align:center;
+  color:#64748B;
+  font:500 14px Inter,system-ui,sans-serif;
+}
+body.su-module #st-product-master-modal .st-product-master-modal-error{color:#B91C1C}
+body.su-module #st-product-master-modal .st-product-modal,
+body.su-module #st-product-master-modal .st-category-modal,
+body.su-module #st-product-master-modal .st-unit-modal{
+  z-index:10100;
+}
+body.su-module #st-product-master-modal .st-category-modal,
+body.su-module #st-product-master-modal .st-unit-modal{
+  z-index:10110;
 }

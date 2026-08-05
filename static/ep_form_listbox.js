@@ -100,6 +100,9 @@
       if (list) {
         list.hidden = true;
         clearFixedListbox(list);
+        resetListboxPanelSize(list);
+        var emptyStatus = list.querySelector('.se-filter-listbox-status[data-ep-empty]');
+        if (emptyStatus) emptyStatus.hidden = true;
       }
     }
     if (list && wasOpen && !prefersReducedMotion()) {
@@ -206,8 +209,15 @@
       return false;
     }
     if (root.classList.contains('ep-toolbar-listbox')) return true;
+    /* Product / category / unit overlays sit under a transformed workspace +
+       overflow:hidden master shell. Fixed + getBoundingClientRect misaligns the
+       panel (and overflow clips it), so Outlet/Category look open but options
+       cannot be clicked. Absolute under the chip stays selectable. */
+    if (root.closest('#st-product-modal, #st-category-modal, #st-unit-modal')) {
+      return false;
+    }
     // Indent edit / similar modals clip absolute menus via overflow:auto/hidden.
-    if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal, #st-stores-ledger-modal, #st-ledger-pending-modal, #st-product-modal, #st-category-modal, #st-unit-modal')) {
+    if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal, #st-stores-ledger-modal, #st-ledger-pending-modal')) {
       return true;
     }
     /* Hotel New Check-In / Room Transfer — modal body scrolls and clips absolute menus. */
@@ -261,28 +271,43 @@
     list.scrollTop = 0;
   }
 
+  function resetListboxPanelSize(list){
+    if (!list) return;
+    list.style.maxHeight = '';
+    list.style.paddingBottom = '';
+  }
+
   /** Scroll selected into view when the list overflows; never pad below the last option. */
   function scrollSelectedToTop(list){
     if (!list) return;
     var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
-    if (!selected || selected.classList.contains('is-filtered-out')) return;
+    if (!selected || selected.classList.contains('is-filtered-out')) {
+      resetListboxPanelSize(list);
+      return;
+    }
     list.style.paddingBottom = '';
     requestAnimationFrame(function(){
       var searchWrap = list.querySelector('.ep-listbox-search-wrap, .pl-supplier-search-wrap, .staff-supplier-search-wrap');
       var topPad = searchWrap ? searchWrap.offsetHeight : 0;
-      var cap = parseFloat(list.style.maxHeight) || list.clientHeight || 260;
+      var cssCap = parseFloat(list.style.maxHeight);
+      var naturalCap = 260;
+      var cap = (cssCap && cssCap >= 48) ? cssCap : Math.max(list.clientHeight || 0, naturalCap);
       var options = list.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)');
+      if (!options.length) {
+        resetListboxPanelSize(list);
+        return;
+      }
 
-      // Short list: size to content only (no tall empty tray).
-      // Never collapse to padding-only height while options exist (layout race → 14px sliver).
-      if (list.scrollHeight <= cap + 1) {
-        var contentH = list.scrollHeight;
-        if (options.length && contentH < 48) {
-          list.style.maxHeight = cap + 'px';
+      var contentH = list.scrollHeight;
+      /* Short list: hug content — do not force a tall empty tray. */
+      if (contentH <= cap + 1) {
+        if (contentH < 40) {
+          /* Layout race before options paint — leave CSS sizing alone. */
+          resetListboxPanelSize(list);
           list.scrollTop = 0;
           return;
         }
-        list.style.maxHeight = Math.max(contentH, options.length ? 88 : contentH) + 'px';
+        list.style.maxHeight = contentH + 'px';
         list.scrollTop = 0;
         return;
       }
@@ -302,10 +327,33 @@
         if (!last) return;
         var gap = list.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
         if (gap > 10) {
-          list.style.maxHeight = Math.max(88, list.clientHeight - gap + 4) + 'px';
+          list.style.maxHeight = Math.max(contentH > 0 ? Math.min(contentH, list.clientHeight) : 40, list.clientHeight - gap + 4) + 'px';
         }
       });
     });
+  }
+
+  function syncListboxEmptyState(root){
+    var list = root && root.querySelector('.se-filter-listbox');
+    if (!list) return;
+    var optionsWrap = optionsWrapFor(root) || list;
+    var visible = visibleOptions(root);
+    var status = list.querySelector('.se-filter-listbox-status[data-ep-empty]');
+    if (visible.length) {
+      if (status) status.hidden = true;
+      return;
+    }
+    if (!status) {
+      status = document.createElement('div');
+      status.className = 'se-filter-listbox-status';
+      status.setAttribute('data-ep-empty', '1');
+      status.setAttribute('role', 'status');
+      optionsWrap.appendChild(status);
+    }
+    status.hidden = false;
+    status.textContent = root.hasAttribute('data-se-listbox-searchable')
+      ? 'No matching products'
+      : 'No options';
   }
 
   function openListbox(root, opts){
@@ -327,15 +375,23 @@
     root.classList.remove('is-closing');
     if (list) {
       list.hidden = false;
+      resetListboxPanelSize(list);
       if (shouldUseFixedListbox(root)) {
         positionFixedListbox(root, list);
       } else {
         clearFixedListbox(list);
       }
     }
-    /* Add is-open immediately so header filters (opacity overridden) paint on first click.
-       Keep a frame delay only for panels that still rely on the opacity transition. */
-    if (root.closest('#room-transfer-filter-form, #purchase-ledger-filter-form, #credits-dashboard-filter-form')) {
+    /* Open immediately for comboboxes / indent lines so opacity isn't 0 during
+       measure (delayed is-open caused a locked ~14px empty panel). Header
+       filter chips also need an immediate paint. */
+    if (
+      isCombobox(root) ||
+      root.closest(
+        '.st-indent-page, #st-indent-edit-modal, #st-indent-form, ' +
+        '#room-transfer-filter-form, #purchase-ledger-filter-form, #credits-dashboard-filter-form'
+      )
+    ) {
       root.classList.add('is-open');
     } else {
       global.requestAnimationFrame(function () {
@@ -350,6 +406,7 @@
           query = combo.value;
         }
         filterSearchableOptions(root, query);
+        syncListboxEmptyState(root);
         if (!isCombobox(root) || !opts.keepQuery) {
           scrollSelectedToTop(list);
         }
@@ -490,7 +547,9 @@
         if (!root.classList.contains('is-open')) {
           openListbox(root, { keepQuery: true });
         } else {
+          resetListboxPanelSize(list);
           filterSearchableOptions(root, combo.value);
+          syncListboxEmptyState(root);
           if (shouldUseFixedListbox(root)) positionFixedListbox(root, list);
         }
       }, listenOpts);
@@ -569,7 +628,9 @@
 
     if (search && !combo) {
       search.addEventListener('input', function(){
+        resetListboxPanelSize(list);
         filterSearchableOptions(root, search.value);
+        syncListboxEmptyState(root);
       }, listenOpts);
       search.addEventListener('click', function(e){ e.stopPropagation(); }, listenOpts);
       search.addEventListener('keydown', function(e){

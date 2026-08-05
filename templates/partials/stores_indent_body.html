@@ -45,7 +45,7 @@
         </table>
       </div>
       <div class="st-detail-actions">
-        <a class="st-btn st-btn--ghost" href="{{ url_for('stores_indent', outlet=selected_outlet, view='approved' if detail.status == 'approved' else 'pending') }}">Back to list</a>
+        <a class="st-btn st-btn--ghost" href="{{ url_for('stores_orders', outlet=selected_outlet) if page_key == 'purchase_orders' else url_for('stores_indent', outlet=selected_outlet, view=('approved' if detail.status == 'approved' else 'pending')) }}">Back to list</a>
         {% if detail.status == 'approved' %}
         <a class="st-btn st-btn--primary" href="{{ url_for('stores_indent_purchase_order', indent_id=detail.id) }}" download>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -218,6 +218,7 @@
         </div>
       </div>
       <div class="st-indent-filter-bar-end">
+        {% if indent_list_views %}
         <div class="st-indent-status-tabs">
           <span class="se-filter-chip-label" aria-hidden="true">Status</span>
           <div class="cp-view-tabs st-indent-view-tabs" role="tablist" aria-label="Indent status">
@@ -229,6 +230,7 @@
             {% endfor %}
           </div>
         </div>
+        {% endif %}
         <div class="st-intro-outlet">
           <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint) }}" data-st-indent-view="{{ indent_view }}" id="st-outlet-listbox">
             <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
@@ -262,7 +264,7 @@
           <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
         </span>
         <h2 class="st-card-title">
-          {% if indent_view == 'approved' %}Approved{% elif indent_view == 'rejected' %}Rejected{% else %}Pending Approval{% endif %}
+          {% if page_key == 'purchase_orders' %}Purchase Order{% elif indent_view == 'approved' %}Approved{% elif indent_view == 'rejected' %}Rejected{% else %}Pending Approval{% endif %}
           · <span id="st-indent-list-count">{{ indents|length }}</span>
         </h2>
       </div>

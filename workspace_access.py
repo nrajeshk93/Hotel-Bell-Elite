@@ -124,7 +124,7 @@ _WORKSPACE_MODULE_REGISTRY = (
     },
     {
         "key": "stores",
-        "label": "Procurement & Inventory",
+        "label": "Purchase & Inventory",
         "permission_scope": "stores",
         "permission_field": "stores_modules",
         "permission_children": _STORES_SUBMODULES,
@@ -322,6 +322,7 @@ _STORES_ENDPOINT_GROUPS = {
         "stores_indent_detail",
         "stores_indent_delete",
         "stores_indent_purchase_order",
+        "stores_orders",
     },
     "approvals": {
         "stores_approvals",
@@ -333,10 +334,12 @@ _STORES_ENDPOINT_GROUPS = {
         "stores_pr_receive",
         "stores_pr_detail",
         "stores_confirm_stock_inward_expense",
+        "stores_confirm_direct_stock_inward_expense",
         "stores_save_expense_category",
     },
     "stock": {
         "stores_stock",
+        "stores_stock_export",
     },
     "stock_audit": {
         "stores_stock_audit",
@@ -363,6 +366,9 @@ _MASTER_ENDPOINTS = {
     "export_agency_report",
     "create_agency",
     "list_agencies_api",
+    "category_master",
+    "save_category_master",
+    "delete_category_master",
 }
 
 _REPORTS_ENDPOINTS = {
@@ -1196,7 +1202,7 @@ def validate_access_user_form(
         )
     if "stores" in dashboard_modules and not stores_modules and not is_admin:
         errors.append(
-            "Choose at least one Procurement & Inventory submodule when Procurement & Inventory access is enabled."
+            "Choose at least one Purchase & Inventory submodule when Purchase & Inventory access is enabled."
         )
 
     if not actor_is_admin:

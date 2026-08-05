@@ -55,7 +55,7 @@
         </div>
       </div>
       <div class="su-header-tools">
-        <a class="btn btn-primary" href="{{ purchase_ledger_report_url }}" download>Purchase Ledger Report</a>
+        <a class="btn btn-primary" href="{{ purchase_ledger_report_url }}" download="purchase_ledger.xlsx">Purchase Ledger Report</a>
         <button type="button" class="btn btn-primary" id="pl-open-add-purchase">Add Purchase</button>
       </div>
     </div>
@@ -365,7 +365,7 @@
 {% include 'partials/purchase_ledger_add_modal.html' %}
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=10"></script>
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=47"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 {% include 'partials/purchase_ledger_filter_scripts.html' %}
 {% include 'partials/purchase_ledger_add_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}

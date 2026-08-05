@@ -183,12 +183,12 @@ REPORT_DEFINITIONS = [
     {
         "id": "stock",
         "name": "Stock Report",
-        "description": "Outlet stock on hand — export CSV from Stock.",
+        "description": "Outlet stock on hand — export Excel from Stock.",
         "icon": "package",
         "icon_tone": "amber",
         "category": "inventory",
         "view_route": "stores_stock",
-        "download_route": None,
+        "download_route": "stores_stock_export",
         "downloadable": True,
     },
     {

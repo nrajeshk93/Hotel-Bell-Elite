@@ -295,6 +295,84 @@ class StoresFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_product_preferred_suppliers_save_and_reload(self):
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(category)
+            category_id = category["id"]
+            conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', '')",
+                ("Preferred Alpha",),
+            )
+            conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', '')",
+                ("Preferred Beta",),
+            )
+            conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', '')",
+                ("Preferred Gamma",),
+            )
+            conn.commit()
+            s1, s2, s3 = [
+                row["id"]
+                for row in conn.execute(
+                    """
+                    SELECT id FROM suppliers
+                    WHERE name IN ('Preferred Alpha', 'Preferred Beta', 'Preferred Gamma')
+                    ORDER BY name
+                    """
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/product-master",
+            data={
+                "action": "save_product",
+                "category_id": str(category_id),
+                "name": "Preferred Supplier Product",
+                "outlet": "restaurant",
+                "preferred_supplier_1_id": str(s1),
+                "preferred_supplier_2_id": str(s2),
+                "preferred_supplier_3_id": str(s3),
+                "variant_qty": ["1"],
+                "variant_unit": ["kg"],
+                "variant_approximate_price": ["100"],
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(create.status_code, 200)
+        self.assertIn(b"Product added to master", create.data)
+
+        conn = db_mod.get_db()
+        try:
+            product = conn.execute(
+                """
+                SELECT id, preferred_supplier_1_id, preferred_supplier_2_id, preferred_supplier_3_id
+                FROM store_products
+                WHERE lower(name) = lower('Preferred Supplier Product') AND is_active = 1
+                """
+            ).fetchone()
+            self.assertIsNotNone(product)
+            pid = product["id"]
+            self.assertEqual(int(product["preferred_supplier_1_id"]), s1)
+            self.assertEqual(int(product["preferred_supplier_2_id"]), s2)
+            self.assertEqual(int(product["preferred_supplier_3_id"]), s3)
+        finally:
+            conn.close()
+
+        edit_page = self.client.get(f"/stores/product-master?edit={pid}")
+        self.assertEqual(edit_page.status_code, 200)
+        self.assertIn(b"Supplier 1", edit_page.data)
+        self.assertIn(b"Supplier 2", edit_page.data)
+        self.assertIn(b"Supplier 3", edit_page.data)
+        self.assertIn(b'id="st-product-supplier-1"', edit_page.data)
+        self.assertIn(str(s1).encode(), edit_page.data)
+
     def test_product_pack_variants_save_and_reload(self):
         conn = db_mod.get_db()
         try:
@@ -1273,18 +1351,24 @@ class StoresFlowTests(unittest.TestCase):
         )
         self.assertEqual(decide.status_code, 302)
 
-        # Approved total = 5 × 40 = 200; amount 201 must not auto-verify.
+        # Approved total = 5 × 40 = 200; entered rate 40.2 → 201 must not auto-verify.
         confirm = self.client.post(
             "/stores/purchase-requests/confirm-with-expense",
             json={
                 "indent_id": indent_id,
                 "notes": "over price delivery",
-                "lines": [{"line_id": int(line_id), "received_qty": 5}],
+                "lines": [
+                    {
+                        "line_id": int(line_id),
+                        "received_qty": 5,
+                        "unit_price": 40.2,
+                        "tax_percent": 0,
+                    }
+                ],
                 "date": date.today().isoformat(),
                 "description": "Stock inward over approved",
                 "amount": 201,
                 "payment_type": "credit",
-                "category": "grocery",
                 "supplier_id": supplier_id,
             },
         )
@@ -1380,6 +1464,341 @@ class StoresFlowTests(unittest.TestCase):
         self.assertEqual(bad.status_code, 400)
         self.assertIn(b"Select an approved indent", bad.data)
 
+    def test_stock_inward_mode_tabs_and_direct_confirm(self):
+        from datetime import date
+
+        approved = self.client.get("/stores/purchase-requests?outlet=bar&view=approved")
+        self.assertEqual(approved.status_code, 200)
+        self.assertIn(b"Indent Approved", approved.data)
+        self.assertIn(b"Without Indent Approval", approved.data)
+        self.assertIn(b'id="st-inward-indent-listbox"', approved.data)
+        self.assertIn(b'cp-view-tab is-active', approved.data)
+        # Stock Inward outlet filter is Bar / Restaurant only (no All).
+        self.assertNotRegex(
+            approved.data,
+            rb'id="st-outlet-list"[^>]*>[\s\S]*?data-value="both"',
+        )
+        self.assertIn(b'data-value="bar"', approved.data)
+        self.assertIn(b'data-value="restaurant"', approved.data)
+
+        # Legacy ?outlet=both redirects to a concrete outlet (Bar).
+        both_redirect = self.client.get(
+            "/stores/purchase-requests?outlet=both&view=direct",
+            follow_redirects=False,
+        )
+        self.assertEqual(both_redirect.status_code, 302)
+        self.assertIn("outlet=bar", both_redirect.headers.get("Location", ""))
+
+        direct = self.client.get("/stores/purchase-requests?outlet=bar&view=direct")
+        self.assertEqual(direct.status_code, 200)
+        self.assertNotIn(b'id="st-inward-indent-listbox"', direct.data)
+        self.assertIn(b"Invoice Items", direct.data)
+        self.assertIn(b'data-st-inward-view="direct"', direct.data)
+        self.assertIn(b"st-inward-direct-line", direct.data)
+
+        missing_outlet = self.client.post(
+            "/stores/purchase-requests/confirm-direct-with-expense",
+            json={
+                "outlet": "both",
+                "lines": [{"item_name": "Onion", "qty": 1, "unit": "kg", "unit_price": 20}],
+                "date": date.today().isoformat(),
+                "description": "Direct inward",
+                "amount": 20,
+                "payment_type": "credit",
+                "category": "grocery",
+                "supplier_id": 1,
+            },
+        )
+        self.assertEqual(missing_outlet.status_code, 400)
+        self.assertIn(b"Choose Bar or Restaurant", missing_outlet.data)
+
+        empty_lines = self.client.post(
+            "/stores/purchase-requests/confirm-direct-with-expense",
+            json={
+                "outlet": "restaurant",
+                "lines": [],
+                "date": date.today().isoformat(),
+                "description": "Direct inward",
+                "amount": 20,
+                "payment_type": "credit",
+                "category": "grocery",
+                "supplier_id": 1,
+            },
+        )
+        self.assertEqual(empty_lines.status_code, 400)
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name) VALUES (?)",
+                ("Direct Inward Supplier",),
+            )
+            supplier_id = conn.execute(
+                "SELECT id FROM suppliers WHERE name = 'Direct Inward Supplier'"
+            ).fetchone()["id"]
+            before = conn.execute(
+                """
+                SELECT COALESCE(qty_on_hand, 0) AS qty FROM store_stock_items
+                WHERE outlet = 'restaurant' AND item_name = 'Onion' AND unit = 'kg'
+                """
+            ).fetchone()
+            before_qty = float(before["qty"]) if before else 0.0
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Seeded Product Master maps Onion to restaurant (not bar).
+        confirm = self.client.post(
+            "/stores/purchase-requests/confirm-direct-with-expense",
+            json={
+                "outlet": "restaurant",
+                "notes": "No indent",
+                "lines": [
+                    {
+                        "item_name": "Onion",
+                        "qty": 3,
+                        "unit": "kg",
+                        "unit_price": 25,
+                        "tax_percent": 0,
+                    }
+                ],
+                "date": date.today().isoformat(),
+                "description": "Stock inward without indent approval",
+                "amount": 75,
+                "payment_type": "credit",
+                "category": "grocery",
+                "invoice_number": "INV-DIRECT-1",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(confirm.status_code, 200, confirm.data)
+        payload = confirm.get_json()
+        self.assertTrue(payload.get("ok"))
+        self.assertIn("/stores/stock", payload.get("redirect", ""))
+        expense_id = payload.get("expense_id")
+        self.assertTrue(expense_id)
+        expenses = payload.get("expenses") or []
+        self.assertEqual(len(expenses), 1)
+        self.assertEqual(expenses[0].get("expense_id"), expense_id)
+
+        conn = db_mod.get_db()
+        try:
+            stock = conn.execute(
+                """
+                SELECT qty_on_hand FROM store_stock_items
+                WHERE outlet = 'restaurant' AND item_name = 'Onion' AND unit = 'kg'
+                """
+            ).fetchone()
+            self.assertIsNotNone(stock)
+            self.assertAlmostEqual(float(stock["qty_on_hand"]), before_qty + 3.0)
+            movement = conn.execute(
+                """
+                SELECT ref_type, ref_id FROM store_stock_movements
+                WHERE ref_type = 'stock_inward_direct' AND ref_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (int(expense_id),),
+            ).fetchone()
+            self.assertIsNotNone(movement)
+            verified = conn.execute(
+                """
+                SELECT COALESCE(SUM(amount), 0) AS total
+                FROM purchase_verification_allocations
+                WHERE expense_id = ?
+                """,
+                (int(expense_id),),
+            ).fetchone()["total"]
+            self.assertEqual(float(verified), 0.0)
+            pending = self.app_mod._pending_purchase_verifications(conn)
+            self.assertTrue(any(int(row["id"]) == int(expense_id) for row in pending))
+            expense = conn.execute(
+                "SELECT description, invoice_number FROM sales_update_expenses WHERE id = ?",
+                (int(expense_id),),
+            ).fetchone()
+            self.assertIsNotNone(expense)
+            self.assertIn("without indent", (expense["description"] or "").lower())
+            self.assertEqual(expense["invoice_number"] or "", "INV-DIRECT-1")
+        finally:
+            conn.close()
+
+    def test_direct_stock_inward_multi_category_expenses(self):
+        from datetime import date
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name) VALUES (?)",
+                ("Multi Cat Supplier",),
+            )
+            supplier_id = conn.execute(
+                "SELECT id FROM suppliers WHERE name = 'Multi Cat Supplier'"
+            ).fetchone()["id"]
+            before_rows = {
+                row["item_name"]: float(row["qty"] or 0)
+                for row in conn.execute(
+                    """
+                    SELECT item_name, COALESCE(qty_on_hand, 0) AS qty
+                    FROM store_stock_items
+                    WHERE outlet = 'restaurant'
+                      AND item_name IN ('Chicken Whole', 'Butter')
+                      AND unit = 'kg'
+                    """
+                ).fetchall()
+            }
+            conn.commit()
+        finally:
+            conn.close()
+
+        confirm = self.client.post(
+            "/stores/purchase-requests/confirm-direct-with-expense",
+            json={
+                "outlet": "restaurant",
+                "notes": "Split categories",
+                "lines": [
+                    {
+                        "item_name": "Chicken Whole",
+                        "qty": 2,
+                        "unit": "kg",
+                        "unit_price": 1000,
+                        "tax_percent": 0,
+                    },
+                    {
+                        "item_name": "Butter",
+                        "qty": 1,
+                        "unit": "kg",
+                        "unit_price": 500,
+                        "tax_percent": 0,
+                    },
+                ],
+                "date": date.today().isoformat(),
+                "description": "Stock inward without indent approval",
+                "amount": 2500,
+                "payment_type": "credit",
+                "invoice_number": "INV-MULTI-1",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(confirm.status_code, 200, confirm.data)
+        payload = confirm.get_json()
+        self.assertTrue(payload.get("ok"))
+        expenses = payload.get("expenses") or []
+        self.assertEqual(len(expenses), 2)
+        self.assertEqual(payload.get("expense_id"), expenses[0]["expense_id"])
+
+        conn = db_mod.get_db()
+        try:
+            rows = conn.execute(
+                """
+                SELECT id, category, amount, invoice_number, supplier_id
+                FROM sales_update_expenses
+                WHERE supplier_id = ? AND invoice_number = ?
+                ORDER BY id
+                """,
+                (supplier_id, "INV-MULTI-1"),
+            ).fetchall()
+            self.assertEqual(len(rows), 2)
+            cats = {str(row["category"]) for row in rows}
+            self.assertIn("non_veg", cats)
+            self.assertIn("dairy_products", cats)
+            amounts = {str(row["category"]): float(row["amount"]) for row in rows}
+            self.assertAlmostEqual(amounts["non_veg"], 2000.0)
+            self.assertAlmostEqual(amounts["dairy_products"], 500.0)
+
+            for item_name, qty_delta in (("Chicken Whole", 2.0), ("Butter", 1.0)):
+                stock = conn.execute(
+                    """
+                    SELECT qty_on_hand FROM store_stock_items
+                    WHERE outlet = 'restaurant' AND item_name = ? AND unit = 'kg'
+                    """,
+                    (item_name,),
+                ).fetchone()
+                self.assertIsNotNone(stock)
+                self.assertAlmostEqual(
+                    float(stock["qty_on_hand"]),
+                    before_rows.get(item_name, 0.0) + qty_delta,
+                )
+
+            for row in rows:
+                item_name = "Chicken Whole" if row["category"] == "non_veg" else "Butter"
+                movement = conn.execute(
+                    """
+                    SELECT item_name, ref_type, ref_id
+                    FROM store_stock_movements
+                    WHERE ref_type = 'stock_inward_direct' AND ref_id = ?
+                    ORDER BY id DESC LIMIT 1
+                    """,
+                    (int(row["id"]),),
+                ).fetchone()
+                self.assertIsNotNone(movement)
+                self.assertEqual(movement["item_name"], item_name)
+        finally:
+            conn.close()
+
+    def test_direct_stock_inward_missing_product_category_rejected(self):
+        from datetime import date
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name) VALUES (?)",
+                ("No Cat Supplier",),
+            )
+            supplier_id = conn.execute(
+                "SELECT id FROM suppliers WHERE name = 'No Cat Supplier'"
+            ).fetchone()["id"]
+            # Insert a product without a Product Master category name (orphan category_id).
+            conn.execute(
+                """
+                INSERT INTO store_product_categories (name, sort_order, is_active)
+                VALUES ('Temp Blank Cat', 999, 1)
+                """
+            )
+            cat_id = conn.execute(
+                "SELECT id FROM store_product_categories WHERE name = 'Temp Blank Cat'"
+            ).fetchone()["id"]
+            conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, is_active, sort_order)
+                VALUES (?, 'Uncategorized Widget', 'kg', 'restaurant', 1, 10)
+                """,
+                (cat_id,),
+            )
+            # Wipe category name so mapping fails (simulate missing PM category).
+            conn.execute(
+                "UPDATE store_product_categories SET name = '' WHERE id = ?",
+                (cat_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        confirm = self.client.post(
+            "/stores/purchase-requests/confirm-direct-with-expense",
+            json={
+                "outlet": "restaurant",
+                "lines": [
+                    {
+                        "item_name": "Uncategorized Widget",
+                        "qty": 1,
+                        "unit": "kg",
+                        "unit_price": 10,
+                        "tax_percent": 0,
+                    }
+                ],
+                "date": date.today().isoformat(),
+                "description": "Stock inward without indent approval",
+                "amount": 10,
+                "payment_type": "credit",
+                "invoice_number": "INV-NOCAT-1",
+                "supplier_id": supplier_id,
+            },
+        )
+        self.assertEqual(confirm.status_code, 400, confirm.data)
+        body = confirm.get_json() or {}
+        self.assertFalse(body.get("ok", True))
+        self.assertIn("category", (body.get("error") or "").lower())
+
     def test_indent_approved_view_includes_approver(self):
         create = self.client.post(
             "/stores/indent?outlet=bar",
@@ -1427,6 +1846,29 @@ class StoresFlowTests(unittest.TestCase):
         self.assertIn(b"Approved", page.data)
         self.assertIn(b"Rejected", page.data)
         self.assertIn(b"cp-view-tabs", page.data)
+        self.assertIn(b'id="de-nav-stores-purchase-order"', page.data)
+        self.assertIn(b">Purchase Order</a>", page.data)
+        self.assertIn(b'id="de-nav-stores-indent"', page.data)
+        # Default Indent list keeps Indent nav active (not Purchase Order).
+        self.assertRegex(
+            page.data,
+            rb'class="de-nav-subitem is-active"[^>]*id="de-nav-stores-indent"|id="de-nav-stores-indent"[^>]*class="de-nav-subitem is-active"',
+        )
+        # Approved tab stays on Indent (does not jump to Purchase Order).
+        approved_tab = self.client.get("/stores/indent?view=approved")
+        self.assertEqual(approved_tab.status_code, 200)
+        self.assertIn(b'href="/stores/indent?outlet=both&amp;view=approved"', approved_tab.data)
+        self.assertRegex(
+            approved_tab.data,
+            rb'class="de-nav-subitem is-active"[^>]*id="de-nav-stores-indent"|id="de-nav-stores-indent"[^>]*class="de-nav-subitem is-active"',
+        )
+        po_page = self.client.get("/stores/orders")
+        self.assertEqual(po_page.status_code, 200)
+        self.assertIn(b"Purchase Order", po_page.data)
+        self.assertRegex(
+            po_page.data,
+            rb'class="de-nav-subitem is-active"[^>]*id="de-nav-stores-purchase-order"|id="de-nav-stores-purchase-order"[^>]*class="de-nav-subitem is-active"',
+        )
 
     def test_indent_rejected_tab_allows_edit_and_resubmit(self):
         create = self.client.post(
@@ -1507,13 +1949,23 @@ class StoresFlowTests(unittest.TestCase):
     def test_stores_outlet_filter_includes_all(self):
         for path in (
             "/stores/approvals",
-            "/stores/purchase-requests",
             "/stores/stock",
         ):
             page = self.client.get(path)
             self.assertEqual(page.status_code, 200, path)
             self.assertIn(b'data-value="both"', page.data, path)
             self.assertIn(b">All</button>", page.data, path)
+
+        # Stock Inward: Bar / Restaurant only (no All); bare URL redirects to Bar.
+        inward = self.client.get("/stores/purchase-requests", follow_redirects=False)
+        self.assertEqual(inward.status_code, 302)
+        self.assertIn("outlet=bar", inward.headers.get("Location", ""))
+        inward_bar = self.client.get("/stores/purchase-requests?outlet=bar")
+        self.assertEqual(inward_bar.status_code, 200)
+        self.assertNotIn(b'data-value="both"', inward_bar.data)
+        self.assertNotIn(b">All</button>", inward_bar.data)
+        self.assertIn(b'data-value="bar"', inward_bar.data)
+        self.assertIn(b'data-value="restaurant"', inward_bar.data)
 
     def test_approvals_table_is_sortable(self):
         create = self.client.post(
@@ -1767,7 +2219,7 @@ class StoresFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
-        approved_page = self.client.get("/stores/indent?outlet=bar&view=approved")
+        approved_page = self.client.get("/stores/orders?outlet=bar")
         self.assertEqual(approved_page.status_code, 200)
         self.assertIn(indent_no.encode(), approved_page.data)
         self.assertIn(f"/stores/indent/{indent_id}/purchase-order".encode(), approved_page.data)
@@ -2161,7 +2613,7 @@ class StoresFlowTests(unittest.TestCase):
         self.assertEqual(stock_before[("Potato", "kg")], 10.0)
         self.assertNotIn(("Tomato", "kg"), stock_before)
 
-        approved_list = self.client.get("/stores/indent?outlet=bar&view=approved")
+        approved_list = self.client.get("/stores/orders?outlet=bar")
         self.assertEqual(approved_list.status_code, 200)
         self.assertIn(b'data-tip="Delete remaining"', approved_list.data)
         self.assertIn(b"Already inwarded stock will not be changed", approved_list.data)
@@ -2272,7 +2724,7 @@ class StoresFlowTests(unittest.TestCase):
         with mock.patch.object(self.app_mod, "get_current_user", return_value=clerk), mock.patch.object(
             self.stores_mod, "_get_user", return_value=clerk
         ):
-            listing = self.client.get("/stores/indent?outlet=bar&view=approved")
+            listing = self.client.get("/stores/orders?outlet=bar")
             self.assertEqual(listing.status_code, 200)
             self.assertIn(b'data-tip="Download PO"', listing.data)
             self.assertNotIn(b'data-tip="Delete remaining"', listing.data)
@@ -2599,6 +3051,51 @@ class StoresFlowTests(unittest.TestCase):
         ):
             denied = self.client.get("/stores/stock-audit/report?outlet=restaurant")
         self.assertIn(denied.status_code, (302, 403))
+
+    def test_stock_report_export(self):
+        self._seed_stock_item(item_name="Cabbage", qty=13.0)
+        self._seed_stock_item(item_name="Onion", qty=0.0)
+        page = self.client.get("/stores/stock?outlet=restaurant")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"/stores/stock/export", page.data)
+        self.assertIn(b"Download Stock Report Excel", page.data)
+
+        export = self.client.get("/stores/stock/export?outlet=restaurant")
+        self.assertEqual(export.status_code, 200)
+        self.assertIn(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            export.content_type,
+        )
+        self.assertTrue(export.data[:2] == b"PK")
+        self.assertIn(b"stock_report_", export.headers.get("Content-Disposition", "").encode())
+
+        from openpyxl import load_workbook
+        import io
+
+        wb = load_workbook(io.BytesIO(export.data))
+        ws = wb.active
+        self.assertEqual(ws.title, "Stock Report")
+        headers = [ws.cell(1, c).value for c in range(1, 9)]
+        self.assertEqual(
+            headers,
+            [
+                "Product",
+                "Category",
+                "On hand",
+                "Unit",
+                "Status",
+                "Unit price",
+                "Value",
+                "Outlet",
+            ],
+        )
+        self.assertTrue(ws.cell(1, 1).font.bold)
+        self.assertEqual(ws.cell(1, 1).border.left.style, "thin")
+        self.assertEqual(ws.freeze_panes, "A2")
+
+        out_only = self.client.get("/stores/stock/export?outlet=restaurant&status=out")
+        self.assertEqual(out_only.status_code, 200)
+        self.assertTrue(out_only.data[:2] == b"PK")
 
     def test_stock_audit_access_gate(self):
         self._seed_stock_item(item_name="Chicken", qty=5.0)

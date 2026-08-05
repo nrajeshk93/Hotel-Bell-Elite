@@ -10,6 +10,8 @@
     customer: '/customers',
     agency: '/agencies',
     product: '/stores/product-master',
+    menu: '/point-of-sale/menu',
+    category: '/masters/categories',
     employee: '/employees'
   };
 
@@ -299,6 +301,12 @@
           if (inject.querySelector('#st-product-modal') && typeof global.initStoresPage === 'function') {
             global.initStoresPage();
           }
+          if (inject.querySelector('#sm-supplier-modal') && typeof global.initSupplierMasterPage === 'function') {
+            global.initSupplierMasterPage();
+          }
+          if (inject.querySelector('#cm-category-modal') && typeof global.initCategoryMasterPage === 'function') {
+            global.initCategoryMasterPage();
+          }
         } catch (err) {
           if (typeof console !== 'undefined' && console.error) {
             console.error('Stores product embed init failed', err);
@@ -438,6 +446,38 @@
 
   function onDocumentKeydown(e, createModal) {
     if (e.key !== 'Escape') return;
+    var categoryModal = document.getElementById('cm-category-modal');
+    if (categoryModal && categoryModal.classList.contains('active')) {
+      e.preventDefault();
+      if (typeof global.closeCategoryMasterModal === 'function') {
+        global.closeCategoryMasterModal({ navigate: true, reset: true });
+      } else {
+        categoryModal.classList.remove('active');
+        categoryModal.setAttribute('aria-hidden', 'true');
+      }
+      return;
+    }
+    var supplierModal = document.getElementById('sm-supplier-modal');
+    if (supplierModal && supplierModal.classList.contains('active')) {
+      e.preventDefault();
+      if (typeof global.closeSupplierModal === 'function') {
+        global.closeSupplierModal({ navigate: true, reset: true });
+      } else {
+        supplierModal.classList.remove('active');
+        supplierModal.setAttribute('aria-hidden', 'true');
+      }
+      return;
+    }
+    var productModal = document.getElementById('st-product-modal');
+    if (productModal && productModal.classList.contains('active')) {
+      e.preventDefault();
+      if (typeof global.closeProductModal === 'function') {
+        global.closeProductModal();
+      } else {
+        productModal.classList.remove('active');
+      }
+      return;
+    }
     var masterModal = document.getElementById('md-master-modal');
     if (masterModal && masterModal.classList.contains('open')) {
       e.preventDefault();

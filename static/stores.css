@@ -17,38 +17,177 @@ body.su-module .st-outlet-filter-form{
 }
 
 body.su-module .st-product-filter-form,
-body.su-module .st-stock-filter-form{
-  justify-content:flex-start;
+body.su-module .st-stock-filter-form,
+body.su-module .st-audit-filter-form{
+  justify-content:flex-end;
 }
 
-body.su-module .st-stock-filter-form{
-  gap:12px;
-  justify-content:flex-start;
+/* Stock / Stock Audit — Expense Ledger filter chrome */
+body.su-module .st-stock-filter-form,
+body.su-module .st-audit-filter-form{
+  display:flex;
   flex-wrap:nowrap;
-}
-
-body.su-module .st-stock-filter-form .st-outlet-listbox{
-  flex:0 0 180px;
-  min-width:140px;
-  max-width:200px;
-}
-
-body.su-module .st-stock-filter-form .st-stock-search-chip{
+  align-items:flex-end;
+  justify-content:flex-end;
+  gap:12px;
+  width:100%;
+  max-width:100%;
+  min-width:0;
+  margin-left:0;
   flex:1 1 auto;
-  min-width:160px;
+}
+
+body.su-module .st-stock-filter-form .st-stock-search-chip,
+body.su-module .st-audit-filter-form .st-audit-search-chip{
+  flex:1 1 auto;
+  min-width:180px;
   max-width:none;
   width:auto;
 }
 
-body.su-module .st-stock-filter-chip{
-  flex:0 0 160px;
+body.su-module .st-stock-filter-form .st-stock-filter-chip,
+body.su-module .st-stock-filter-form .st-outlet-listbox,
+body.su-module .st-audit-filter-form .st-audit-category-listbox,
+body.su-module .st-audit-filter-form .st-outlet-listbox{
+  flex:0 1 180px;
   min-width:140px;
-  max-width:200px;
+  max-width:220px;
+  width:100%;
+  position:relative;
 }
 
-/* Keep Category + Stock Status grouped on the right of the flexible search. */
-body.su-module .st-stock-filter-form .st-stock-search-chip + .st-stock-filter-chip{
+body.su-module .st-stock-filter-form .pl-header-field .se-filter-chip-label,
+body.su-module .st-audit-filter-form .pl-header-field .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2,#4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  text-align:left;
+}
+
+body.su-module .st-stock-filter-form .pl-header-field-listbox .se-filter-chip-control,
+body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:44px;
+  background:#fff !important;
+  border:1px solid var(--border,#E2E8F0) !important;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+  box-shadow:none;
+}
+
+body.su-module .st-stock-filter-form .pl-header-field-listbox .se-filter-chip-trigger,
+body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  padding:0 8px 0 12px;
+  border:0;
+  background:transparent;
+  font:600 13px Inter,system-ui,sans-serif;
+  color:#111827;
+  text-align:left;
+  cursor:pointer;
+}
+
+body.su-module .st-stock-filter-form .pl-header-field-listbox .se-filter-chip-value,
+body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+body.su-module .st-stock-filter-form .pl-header-field-listbox .se-filter-chip-chev,
+body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  width:34px;
+  color:#94A3B8;
+}
+
+body.su-module .st-stock-filter-form .pl-header-field-listbox.is-open .se-filter-chip-control,
+body.su-module .st-stock-filter-form .pl-header-field-listbox .se-filter-chip-control:focus-within,
+body.su-module .st-stock-filter-form .pl-search-chip.pl-header-field-listbox.is-active .se-filter-chip-control,
+body.su-module .st-audit-filter-form .pl-header-field-listbox.is-open .se-filter-chip-control,
+body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-control:focus-within,
+body.su-module .st-audit-filter-form .pl-search-chip.pl-header-field-listbox.is-active .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+
+body.su-module .st-stock-filter-form .pl-header-field-listbox.is-open .se-filter-chip-chev,
+body.su-module .st-audit-filter-form .pl-header-field-listbox.is-open .se-filter-chip-chev{
+  transform:rotate(180deg);
+  color:#1877F2;
+}
+
+body.su-module .st-stock-filter-form .pl-search-chip .pl-header-search,
+body.su-module .st-stock-filter-form .st-stock-search-input,
+body.su-module .st-audit-filter-form .pl-search-chip .pl-header-search,
+body.su-module .st-audit-filter-form .st-audit-search-input{
+  width:100%;
+  min-height:44px;
+  border:0;
+  background:transparent;
+  padding:0 12px;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:#111827;
+  outline:none;
+  box-shadow:none;
+}
+
+body.su-module .st-stock-filter-form .pl-header-field-listbox.is-open,
+body.su-module .st-audit-filter-form .pl-header-field-listbox.is-open{
+  z-index:40;
+}
+
+body.su-module.st-stock-shell .su-header-tools{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex:0 0 auto;
+  flex-wrap:nowrap;
   margin-left:auto;
+  justify-content:flex-end;
+  min-width:0;
+}
+
+body.su-module.st-stock-shell .su-header-tools .btn,
+body.su-module.st-stock-shell .su-header-tools .de-fullscreen-btn{
+  flex-shrink:0;
+  white-space:nowrap;
+}
+/* Match Expense Ledger / Purchase Ledger header actions */
+body.su-module.st-stock-shell .su-header-tools .btn{
+  min-height:34px;
+  height:34px;
+  padding:7px 14px;
+  border-radius:6px;
+  font:600 12px/1.2 Inter,system-ui,sans-serif;
+  box-sizing:border-box;
+}
+
+@media (max-width:980px){
+  body.su-module .st-stock-filter-form,
+  body.su-module .st-audit-filter-form{
+    flex-wrap:wrap;
+    justify-content:stretch;
+  }
+  body.su-module .st-stock-filter-form .st-stock-filter-chip,
+  body.su-module .st-stock-filter-form .st-outlet-listbox,
+  body.su-module .st-audit-filter-form .st-audit-category-listbox,
+  body.su-module .st-audit-filter-form .st-outlet-listbox{
+    flex:1 1 140px;
+    max-width:none;
+  }
 }
 
 body.su-module .st-product-search-chip,
@@ -144,6 +283,35 @@ body.su-module .st-audit-search-chip.is-active .se-filter-chip-control{
 body.su-module .st-product-search-chip.is-active .se-filter-chip-icon,
 body.su-module .st-stock-search-chip.is-active .se-filter-chip-icon,
 body.su-module .st-audit-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
+
+/* Stock shell: Expense Ledger field height/chrome wins over generic search chips */
+body.su-module.st-stock-shell .st-stock-filter-form .pl-header-field-listbox .se-filter-chip-control,
+body.su-module.st-stock-shell .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-control{
+  min-height:44px !important;
+  height:44px;
+  max-height:44px;
+  border-radius:8px !important;
+  border:1px solid var(--border,#E2E8F0) !important;
+  background:#fff !important;
+  overflow:hidden;
+}
+body.su-module.st-stock-shell .st-stock-filter-form .pl-search-chip .pl-header-search,
+body.su-module.st-stock-shell .st-stock-filter-form .st-stock-search-input,
+body.su-module.st-stock-shell .st-audit-filter-form .pl-search-chip .pl-header-search,
+body.su-module.st-stock-shell .st-audit-filter-form .st-audit-search-input{
+  height:44px;
+  min-height:44px;
+  padding:0 12px;
+  font:500 13px Inter,system-ui,sans-serif;
+}
+body.su-module.st-stock-shell .st-stock-filter-form .pl-search-chip.is-active .se-filter-chip-control,
+body.su-module.st-stock-shell .st-audit-filter-form .pl-search-chip.is-active .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  background:#fff !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+body.su-module.st-stock-shell .su-title-row{gap:0}
+body.su-module.st-stock-shell .su-title h1{letter-spacing:-.03em}
 
 body.su-module .st-outlet-listbox{
   flex:0 0 180px;
@@ -1136,10 +1304,23 @@ body.su-module .modal-box{
   box-shadow:0 20px 60px rgba(0,0,0,.18);
   font-family:Inter,system-ui,sans-serif;
 }
-body.su-module .st-product-modal-box{width:680px;max-width:min(680px,94vw)}
+body.su-module .st-product-modal-box{
+  width:680px;
+  max-width:min(680px,94vw);
+  /* Let Outlet/Category listboxes paint outside the card (absolute menus). */
+  overflow:visible;
+}
 body.su-module .st-category-modal{z-index:420}
 body.su-module .st-unit-modal{z-index:420}
-body.su-module .st-category-modal-box{width:420px}
+body.su-module .st-category-modal-box{
+  width:420px;
+  overflow:visible;
+}
+body.su-module .st-product-modal .ep-form-listbox.is-open,
+body.su-module .st-category-modal .ep-form-listbox.is-open,
+body.su-module .st-unit-modal .ep-form-listbox.is-open{
+  z-index:60;
+}
 body.su-module .st-category-modal .btn-secondary{
   background:#fff;
   color:var(--txt2,#64748B);
@@ -1213,6 +1394,9 @@ body.su-module .st-product-modal-grid{
   gap:12px;
   margin-bottom:0;
   align-items:end;
+}
+body.su-module .st-product-modal-grid--suppliers{
+  grid-template-columns:repeat(3, minmax(0,1fr));
 }
 body.su-module .st-product-modal-grid .st-product-modal-field{margin-bottom:14px}
 body.su-module .st-product-variants-field{margin-bottom:16px}
@@ -1399,7 +1583,8 @@ body.su-module .st-product-modal .btn-secondary:hover{
   body.su-module .st-line .st-field--unit,
   body.su-module .st-line .st-field:nth-child(4){grid-column:1 / -1}
   body.su-module .st-line-remove{grid-column:1 / -1;width:100%}
-  body.su-module .st-product-modal-grid{grid-template-columns:1fr}
+  body.su-module .st-product-modal-grid,
+  body.su-module .st-product-modal-grid--suppliers{grid-template-columns:1fr}
 }
 
 
@@ -1422,6 +1607,15 @@ body.su-module.st-stock-shell .su-header-tools .btn,
 body.su-module.st-stock-shell .su-header-tools .de-fullscreen-btn{
   flex-shrink:0;
   white-space:nowrap;
+}
+/* Match Expense Ledger / Purchase Ledger header actions */
+body.su-module.st-stock-shell .su-header-tools .btn{
+  min-height:34px;
+  height:34px;
+  padding:7px 14px;
+  border-radius:6px;
+  font:600 12px/1.2 Inter,system-ui,sans-serif;
+  box-sizing:border-box;
 }
 body.su-module.st-stock-shell .content.se-content{
   background:#F8FAFC;
@@ -1547,6 +1741,12 @@ body.su-module .su-header-tools #st-stock-out-filter[aria-pressed="true"]{
   border-color:#FECACA;
   background:#FEF2F2;
   color:#B91C1C;
+}
+body.su-module .st-audit-queue-actions{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  flex-shrink:0;
 }
 
 body.su-module .st-stock-badge{

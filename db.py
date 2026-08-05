@@ -5260,6 +5260,15 @@ def ensure_stores_schema(conn):
         cursor.execute(
             "ALTER TABLE store_products ADD COLUMN approximate_price REAL"
         )
+    for preferred_col in (
+        "preferred_supplier_1_id",
+        "preferred_supplier_2_id",
+        "preferred_supplier_3_id",
+    ):
+        if preferred_col not in product_cols:
+            cursor.execute(
+                f"ALTER TABLE store_products ADD COLUMN {preferred_col} INTEGER"
+            )
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_products_category
         ON store_products(category_id, is_active, sort_order, name)

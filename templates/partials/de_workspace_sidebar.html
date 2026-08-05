@@ -188,12 +188,13 @@
     <div class="de-nav-group{% if stores_open %} is-open is-child-active{% endif %}" id="de-nav-stores-group">
       <button type="button" class="de-nav-group-toggle" id="de-nav-stores-toggle" aria-expanded="{{ 'true' if stores_open else 'false' }}" aria-controls="de-nav-stores-sub" onclick="toggleDeNavGroup(event, 'de-nav-stores-group')">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
-        <span class="de-nav-label-multiline">Procurement &amp;<br>Inventory</span>
+        <span class="de-nav-label-multiline">Purchase &amp;<br>Inventory</span>
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-stores-sub">
         {% if has_stores_access('indent') %}
         <a class="de-nav-subitem{% if stores_view == 'indent' or stores_view == 'approvals' %} is-active{% endif %}" id="de-nav-stores-indent" href="{{ url_for('stores_indent') }}"{% if stores_view == 'indent' or stores_view == 'approvals' %} aria-current="page"{% endif %}>Indent</a>
+        <a class="de-nav-subitem{% if stores_view == 'purchase_order' %} is-active{% endif %}" id="de-nav-stores-purchase-order" href="{{ url_for('stores_orders') }}"{% if stores_view == 'purchase_order' %} aria-current="page"{% endif %}>Purchase Order</a>
         {% endif %}
         {% if has_stores_access('stock') %}
         <a class="de-nav-subitem{% if stores_view == 'stock' %} is-active{% endif %}" id="de-nav-stores-stock" href="{{ url_for('stores_stock') }}"{% if stores_view == 'stock' %} aria-current="page"{% endif %}>Stock</a>

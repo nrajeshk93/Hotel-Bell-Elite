@@ -37,18 +37,124 @@
   </div>
 </article>
 {% else %}
-<section class="st-indent-page st-inward-page" id="st-inward-page" data-st-inward>
+{% set inward_view = inward_view|default('approved') %}
+<section class="st-indent-page st-inward-page{% if inward_view == 'direct' %} st-inward-page--direct{% endif %}" id="st-inward-page" data-st-inward data-st-inward-view="{{ inward_view }}">
   <form
     method="post"
-    action="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}"
+    action="{{ url_for('stores_purchase_requests', outlet=selected_outlet, view=inward_view) }}"
     class="st-indent-form st-inward-form"
     id="st-inward-form"
   >
     <input type="hidden" name="action" value="confirm_stock_inward">
     <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+    <input type="hidden" name="view" value="{{ inward_view }}">
     <input type="hidden" name="indent_id" id="st-inward-indent-id" value="{{ selected_indent.id if selected_indent else '' }}">
 
-    {% if selected_indent %}
+    {% if inward_view == 'direct' %}
+    {# —— Without Indent Approval —— #}
+    <article class="st-card st-inward-card st-inward-direct">
+      <div class="st-card-head">
+        <div class="st-card-title-wrap">
+          <span class="st-card-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+          </span>
+          <h2 class="st-card-title">Invoice Items</h2>
+        </div>
+      </div>
+      <div class="st-card-body st-lines-wrap st-inward-direct-lines-wrap">
+        {% if direct_outlet_unset %}
+        <div class="st-flash">
+          Choose <strong>Bar</strong> or <strong>Restaurant</strong> to load products.
+        </div>
+        {% else %}
+        {% set ns = namespace(has_products=false) %}
+        {% for cat in product_catalog or [] %}
+          {% if cat.products %}{% set ns.has_products = true %}{% endif %}
+        {% endfor %}
+        {% if not ns.has_products %}
+        <div class="st-flash st-flash--error">
+          No {{ selected_outlet_label }} products in master yet.
+          Add products in Product Master for this outlet.
+        </div>
+        {% else %}
+        <div class="st-lines-head" aria-hidden="true">
+          <div class="st-lines-head-row st-lines-head-row--cols st-inward-direct-head-cols">
+            <span>Item</span>
+            <span>Pack</span>
+            <span>Qty</span>
+            <span>Unit</span>
+            <span>Price / qty</span>
+            <span>Tax %</span>
+            <span>Total</span>
+            <span>Action</span>
+          </div>
+        </div>
+        <div class="st-lines" id="st-inward-direct-lines">
+          {% set fid = 'st-direct-item-0' %}
+          {% set ufid = 'st-direct-unit-0' %}
+          {% set has_item = false %}
+          {% set line = {"item_name": "", "quantity": "", "unit": "kg", "approximate_price": "", "approximate_price_display": "", "tax_percent": ""} %}
+          {% include 'partials/stores_inward_direct_line.html' %}
+        </div>
+        <div class="st-lines-footer st-inward-direct-footer" aria-live="polite">
+          <span class="st-lines-footer-label">Total</span>
+          <strong class="st-lines-footer-value" id="st-inward-direct-grand-total" data-st-inward-direct-grand-total>—</strong>
+        </div>
+        <template id="st-inward-direct-line-template">
+          {% set fid = 'st-direct-item-new' %}
+          {% set ufid = 'st-direct-unit-new' %}
+          {% set has_item = false %}
+          {% set line = {"item_name": "", "quantity": "", "unit": "kg", "approximate_price": "", "approximate_price_display": "", "tax_percent": ""} %}
+          {% include 'partials/stores_inward_direct_line.html' %}
+        </template>
+        <div class="st-items-notes">
+          <div class="st-notes-left">
+            <span class="st-card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
+            </span>
+            <h3 class="st-card-title">Notes</h3>
+          </div>
+          <div class="st-notes-right">
+            <label class="st-sr-only" for="st-inward-notes">Notes</label>
+            <textarea id="st-inward-notes" name="notes" maxlength="500" rows="2" placeholder="Optional note for Purchase Verification." data-st-notes-counter></textarea>
+            <div class="st-notes-count"><span data-st-notes-count>0</span> / 500</div>
+          </div>
+        </div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </article>
+
+    {% if not direct_outlet_unset %}
+    {% set ns2 = namespace(has_products=false) %}
+    {% for cat in product_catalog or [] %}
+      {% if cat.products %}{% set ns2.has_products = true %}{% endif %}
+    {% endfor %}
+    {% if ns2.has_products %}
+    <div class="st-sticky-actions st-inward-actions">
+      <button type="button" class="st-btn st-btn--secondary" data-st-add-line id="st-inward-direct-add-line">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        Add item
+      </button>
+      <button type="button" class="st-btn st-btn--primary" id="st-inward-confirm" disabled
+        data-st-inward-mode="direct"
+        data-st-inward-confirm-url="{{ inward_confirm_url }}"
+        data-st-inward-save-category-url="{{ inward_save_category_url }}"
+        data-st-inward-indent-no=""
+        data-st-default-company="{{ default_company }}"
+        data-st-default-location="{{ default_location }}"
+        data-st-available-cash="{{ available_cash|default(0) }}"
+        data-st-available-cash-url="{{ available_cash_url }}"
+        data-st-today="{{ today_iso }}"
+        data-st-outlet="{{ selected_outlet }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+        Confirm Stock Inward
+      </button>
+    </div>
+    {% endif %}
+    {% endif %}
+
+    {% elif selected_indent %}
     {# —— Approved Items —— #}
     <article class="st-card st-inward-card st-inward-approved">
       <div class="st-card-head st-inward-card-head st-inward-approved-head">
@@ -106,7 +212,7 @@
             </thead>
             <tbody>
               {% for line in selected_lines %}
-              <tr class="st-inward-row" data-st-inward-row data-ordered="{{ line.remaining_display }}" data-rate="{{ line.rate_value }}">
+              <tr class="st-inward-row" data-st-inward-row data-ordered="{{ line.remaining_display }}" data-rate="{{ line.rate_value }}" data-product-category="{{ line.product_category|default('') }}">
                 <td class="st-inward-col-check">
                   <input
                     type="checkbox"
@@ -247,8 +353,9 @@
     </article>
 
     <div class="st-sticky-actions st-inward-actions">
-      <a class="st-btn st-btn--secondary" href="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}" id="st-inward-cancel">Cancel</a>
+      <a class="st-btn st-btn--secondary" href="{{ url_for('stores_purchase_requests', outlet=selected_outlet, view='approved') }}" id="st-inward-cancel">Cancel</a>
       <button type="button" class="st-btn st-btn--primary" id="st-inward-confirm" disabled
+        data-st-inward-mode="approved"
         data-st-inward-confirm-url="{{ inward_confirm_url }}"
         data-st-inward-save-category-url="{{ inward_save_category_url }}"
         data-st-inward-indent-no="{{ selected_indent.indent_no }}"
@@ -323,7 +430,7 @@
   </div>
   <script id="st-indent-view-data" type="application/json">{{ indent_view_data|default([])|tojson }}</script>
 
-  {% if selected_indent %}
+  {% if selected_indent or inward_view == 'direct' %}
   <div class="modal-backdrop" id="st-inward-expense-modal" aria-hidden="true">
     <div class="staff-credit-box pl-add-purchase-box st-inward-expense-box" role="dialog" aria-modal="true" aria-labelledby="st-inward-expense-title">
       <div class="staff-credit-head">
@@ -338,21 +445,13 @@
       </div>
       <div id="st-inward-expense-error" class="staff-credit-error"></div>
       <div class="staff-field">
-        <div class="se-filter-chip se-filter-chip--date st-inward-date-chip" id="st-inward-date-chip">
-          <span class="se-filter-chip-label" id="st-inward-expense-date-label">Purchase date *</span>
-          <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
-            </span>
-            <input id="st-inward-expense-date"
-                   class="staff-input pl-date-input"
-                   type="date"
-                   value="{{ today_iso }}"
-                   max="{{ today_iso }}"
-                   required
-                   aria-labelledby="st-inward-expense-date-label">
-          </div>
-        </div>
+        <label for="st-inward-expense-date">Purchase date *</label>
+        <input id="st-inward-expense-date"
+               class="staff-input pl-date-input"
+               type="date"
+               value="{{ today_iso }}"
+               max="{{ today_iso }}"
+               required>
       </div>
       <div class="staff-field">
         <span class="staff-supplier-field-label">Supplier *</span>
@@ -387,42 +486,14 @@
         </div>
       </div>
       <div class="staff-grid pl-add-category-row">
-        <div class="staff-field staff-field--inline st-inward-cat-field">
-          <button type="button"
-                  class="st-add-category-btn"
-                  id="st-inward-add-category-btn"
-                  data-st-action="open-inward-category-modal"
-                  aria-label="Add category"
-                  aria-haspopup="dialog"
-                  aria-controls="st-inward-category-modal">
-            Add
-          </button>
-          <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox staff-expense-supplier-listbox" data-se-listbox data-se-listbox-searchable id="st-inward-category-listbox">
-            <span class="se-filter-chip-label" id="st-inward-category-label">Category *</span>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
-              </span>
-              <input type="hidden" id="st-inward-category-input" value="">
-              <button type="button" class="se-filter-chip-trigger" id="st-inward-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-inward-category-list" aria-labelledby="st-inward-category-label st-inward-category-value">
-                <span class="se-filter-chip-value staff-supplier-placeholder" id="st-inward-category-value">Select category</span>
-              </button>
-              <span class="se-filter-chip-chev" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-              </span>
-            </div>
-            <div class="se-filter-listbox staff-expense-supplier-panel" id="st-inward-category-list" role="listbox" aria-labelledby="st-inward-category-label" hidden>
-              <div class="staff-supplier-search-wrap">
-                <input type="search" class="staff-supplier-search ep-listbox-search" id="st-inward-category-search" placeholder="Search category..." autocomplete="off" aria-label="Search categories">
-              </div>
-              <div class="staff-supplier-options" id="st-inward-category-options">
-                {% for category_key, category_label in expense_categories|default([]) %}
-                <button type="button" class="se-filter-listbox-option staff-category-option" role="option" data-value="{{ category_key }}" data-label="{{ category_label }}" data-name="{{ category_label|lower }}" aria-selected="false">{{ category_label }}</button>
-                {% endfor %}
-              </div>
-              <div class="staff-supplier-empty" id="st-inward-category-empty" hidden>No categories match your search.</div>
-            </div>
+        <div class="staff-field staff-field--inline st-inward-cat-breakdown-field">
+          <span class="st-inward-cat-breakdown-heading" id="st-inward-cat-breakdown-label">Categories</span>
+          <div class="st-inward-cat-breakdown" id="st-inward-cat-breakdown" role="list" aria-labelledby="st-inward-cat-breakdown-label">
+            <div class="st-inward-cat-breakdown-empty" id="st-inward-cat-breakdown-empty">From invoice lines</div>
           </div>
+          <p class="st-inward-cat-breakdown-note" id="st-inward-cat-breakdown-note" hidden>
+            Expense Ledger will show one entry per category.
+          </p>
         </div>
         <div class="staff-field staff-field--inline">
           <label for="st-inward-invoice-number">Invoice number</label>
@@ -436,7 +507,7 @@
         </div>
         <div class="staff-field staff-field--inline">
           <label for="st-inward-expense-amount">Value (₹) *</label>
-          <input id="st-inward-expense-amount" class="staff-input" type="number" min="1" step="1" placeholder="e.g. 250">
+          <input id="st-inward-expense-amount" class="staff-input" type="number" min="1" step="1" placeholder="e.g. 250" readonly tabindex="-1">
           <p id="st-inward-approved-hint" class="st-inward-approved-hint" hidden></p>
           <div id="st-inward-amount-warn" class="st-inward-amount-warn" hidden role="status"></div>
         </div>
@@ -445,9 +516,6 @@
         <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox staff-expense-payment-listbox" data-se-listbox data-se-listbox-change="stInwardPaymentChanged" id="st-inward-payment-listbox">
           <span class="se-filter-chip-label" id="st-inward-payment-label">Payment type *</span>
           <div class="se-filter-chip-control">
-            <span class="se-filter-chip-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-            </span>
             <input type="hidden" id="st-inward-payment-input" value="">
             <button type="button" class="se-filter-chip-trigger" id="st-inward-payment-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-inward-payment-list" aria-labelledby="st-inward-payment-label st-inward-payment-value">
               <span class="se-filter-chip-value staff-supplier-placeholder" id="st-inward-payment-value">Select payment type</span>

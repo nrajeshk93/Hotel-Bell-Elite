@@ -6,6 +6,30 @@ body.su-module.st-inward-shell .st-inward-header-filters{
   flex-wrap:wrap;
   gap:12px;
 }
+body.su-module.st-inward-shell .su-header-tools{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex:0 0 auto;
+  flex-wrap:nowrap;
+  margin-left:auto;
+  justify-content:flex-end;
+  min-width:0;
+}
+/* Match Expense Ledger / Stock header actions */
+body.su-module.st-inward-shell .su-header-tools .btn{
+  min-height:34px;
+  height:34px;
+  padding:7px 14px;
+  border-radius:6px;
+  font:600 12px/1.2 Inter,system-ui,sans-serif;
+  box-sizing:border-box;
+  flex-shrink:0;
+  white-space:nowrap;
+}
+body.su-module.st-inward-shell .su-header-tools .de-fullscreen-btn{
+  flex-shrink:0;
+}
 body.su-module.st-inward-shell .st-inward-indent-listbox{
   min-width:min(240px,100%);
 }
@@ -508,31 +532,26 @@ body.su-module #st-inward-expense-modal .se-filter-chip-value.is-placeholder{
   color:#94A3B8;
 }
 
-/* Purchase date — Expense Ledger chip look (green date chip + pl-date-input) */
-body.su-module #st-inward-expense-modal .st-inward-date-chip{
+/* Purchase date — same field as Expense Ledger Add Purchase */
+body.su-module #st-inward-expense-modal .staff-input.pl-date-input{
   width:100%;
-}
-body.su-module #st-inward-expense-modal .st-inward-date-chip .se-filter-chip-control{
-  width:100%;
-  min-height:48px;
-  display:flex;
-  align-items:center;
-}
-body.su-module #st-inward-expense-modal .st-inward-date-chip .pl-date-input{
-  flex:1 1 auto;
-  min-width:0;
-  width:100%;
-  height:48px;
-  border:0;
-  background:transparent;
+  height:44px;
+  min-height:44px;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:6px;
+  background:#fff;
+  padding:0 14px;
   font:600 14px Inter,system-ui,sans-serif;
-  color:#111827;
-  padding:0 12px 0 4px;
+  color:var(--txt,#1A202C);
+  box-sizing:border-box;
   outline:none;
-  box-shadow:none;
 }
-body.su-module #st-inward-expense-modal .st-inward-date-chip .pl-date-input:focus{
-  box-shadow:none;
+body.su-module #st-inward-expense-modal .staff-input.pl-date-input:focus{
+  border-color:var(--acc,#1877F2);
+  box-shadow:0 0 0 3px rgba(24,119,242,.08);
+}
+body.su-module #st-inward-expense-modal .staff-input.pl-date-input::-webkit-calendar-picker-indicator{
+  cursor:pointer;
 }
 
 /* Category Add — same top-right control as Product Master */
@@ -549,6 +568,65 @@ body.su-module #st-inward-expense-modal .st-inward-cat-field .st-add-category-bt
 }
 body.su-module .st-inward-category-modal{
   z-index:520;
+}
+
+/* Read-only multi-category breakdown on Confirm stock & expense */
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-field{
+  min-width:0;
+}
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-heading{
+  display:block;
+  margin:0 0 6px;
+  color:#64748B;
+  font:700 11px/1.2 Inter,system-ui,sans-serif;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  min-height:42px;
+  padding:8px 10px;
+  border:1px solid #E2E8F0;
+  border-radius:10px;
+  background:#F8FAFC;
+}
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-row{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+  font:600 13px/1.35 Inter,system-ui,sans-serif;
+  color:#0F172A;
+}
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-label{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-amount{
+  flex:0 0 auto;
+  font-variant-numeric:tabular-nums;
+  color:#334155;
+}
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-empty{
+  color:#94A3B8;
+  font:500 13px/1.35 Inter,system-ui,sans-serif;
+}
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-note{
+  margin:6px 0 0;
+  color:#64748B;
+  font:500 12px/1.4 Inter,system-ui,sans-serif;
+}
+body.su-module #st-inward-expense-modal .st-inward-cat-breakdown-note[hidden]{
+  display:none!important;
+}
+body.su-module #st-inward-expense-modal #st-inward-expense-amount[readonly]{
+  background:#F8FAFC;
+  color:#0F172A;
+  cursor:default;
 }
 
 body.su-module .st-inward-approved-hint{
@@ -574,4 +652,305 @@ body.su-module .st-inward-amount-warn.is-visible{
 }
 body.su-module .st-inward-amount-warn[hidden]{
   display:none!important;
+}
+
+/* Stock Inward mode tabs (Indent Approved / Without Indent Approval) */
+body.su-module.st-inward-shell .st-inward-mode-tabs{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px;
+  flex:0 0 auto;
+}
+body.su-module.st-inward-shell .st-inward-mode-tabs .se-filter-chip-label{
+  display:block;
+  color:#64748B;
+  margin:0;
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+body.su-module.st-inward-shell .st-inward-view-tabs{
+  margin-right:0;
+}
+
+/* Legacy locked category chip (kept for older cached markup) */
+body.su-module #st-inward-expense-modal .st-inward-cat-field--auto .st-add-category-btn[hidden]{
+  display:none !important;
+}
+body.su-module #st-inward-expense-modal #st-inward-category-listbox.is-locked{
+  pointer-events:none;
+}
+body.su-module #st-inward-expense-modal #st-inward-category-listbox.is-locked .se-filter-chip-control{
+  background:#F8FAFC;
+}
+body.su-module #st-inward-expense-modal #st-inward-category-listbox.is-locked .se-filter-chip-chev{
+  opacity:.35;
+}
+body.su-module #st-inward-expense-modal #st-inward-payment-listbox .se-filter-chip-trigger{
+  padding-left:14px;
+}
+
+/* Direct inward Product Master lines — Indent-matched 8-col grid (Tax + action). */
+body.su-module #st-inward-page .st-inward-direct-lines-wrap{
+  container-type:inline-size;
+  container-name:st-inward-direct-lines;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap > .st-lines-head{
+  padding:0;
+  margin-bottom:10px;
+}
+body.su-module #st-inward-page .st-inward-direct-head-cols,
+body.su-module #st-inward-page .st-inward-direct-line,
+body.su-module #st-inward-page .st-inward-direct-footer{
+  --st-direct-gap:14px;
+  --st-direct-pack:minmax(110px,140px);
+  --st-direct-qty:minmax(96px,120px);
+  --st-direct-unit:minmax(88px,110px);
+  --st-direct-price:minmax(110px,1fr);
+  --st-direct-tax:minmax(72px,96px);
+  --st-direct-total:minmax(110px,1fr);
+  --st-direct-action:36px;
+  display:grid;
+  grid-template-columns:
+    minmax(0,1.6fr)
+    var(--st-direct-pack)
+    var(--st-direct-qty)
+    var(--st-direct-unit)
+    var(--st-direct-price)
+    var(--st-direct-tax)
+    var(--st-direct-total)
+    var(--st-direct-action);
+  gap:var(--st-direct-gap);
+  align-items:center;
+  box-sizing:border-box;
+  padding-left:4px;
+  padding-right:4px;
+}
+body.su-module #st-inward-page .st-inward-direct-head-cols{
+  align-items:end;
+  padding-top:0;
+  padding-bottom:8px;
+  border-bottom:1px solid #E8EDF5;
+  margin:0;
+  font:700 10px/1.2 Inter,system-ui,sans-serif;
+  color:#94A3B8;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
+body.su-module #st-inward-page .st-inward-direct-head-cols > span{
+  display:block;
+  min-width:0;
+  text-align:center;
+}
+body.su-module #st-inward-page .st-inward-direct-head-cols > span:first-child{text-align:left}
+body.su-module #st-inward-page .st-inward-direct-head-cols > span:last-child{
+  font-size:0;
+  line-height:0;
+  color:transparent;
+  overflow:hidden;
+}
+body.su-module #st-inward-page .st-inward-direct-lines-wrap > .st-lines{
+  gap:14px;
+}
+body.su-module #st-inward-page .st-inward-direct-line{
+  padding-top:4px;
+  padding-bottom:4px;
+  border-bottom:none;
+}
+body.su-module #st-inward-page .st-inward-direct-line > .st-field{
+  min-width:0;
+  width:100%;
+}
+body.su-module #st-inward-page .st-inward-direct-line > .st-field--product{grid-column:1}
+body.su-module #st-inward-page .st-inward-direct-line > .st-field--pack{grid-column:2}
+body.su-module #st-inward-page .st-inward-direct-line > .st-field--qty{grid-column:3}
+body.su-module #st-inward-page .st-inward-direct-line > .st-field--unit{grid-column:4}
+body.su-module #st-inward-page .st-inward-direct-line > .st-field--price{grid-column:5}
+body.su-module #st-inward-page .st-inward-direct-line > .st-field--tax{grid-column:6}
+body.su-module #st-inward-page .st-inward-direct-line > .st-field--line-total{grid-column:7}
+body.su-module #st-inward-page .st-inward-direct-line > .st-line-remove-wrap{
+  grid-column:8;
+  justify-self:center;
+  align-self:center;
+  margin:0;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-field--qty input[type="number"],
+body.su-module #st-inward-page .st-inward-direct-line .st-field--price input[type="number"],
+body.su-module #st-inward-page .st-inward-direct-line .st-field--tax input[type="number"]{
+  width:100%;
+  height:52px;
+  min-height:52px;
+  border:1px solid #E5E7EB;
+  border-radius:12px;
+  background:#fff;
+  padding:0 14px;
+  font:600 14px Inter,system-ui,sans-serif;
+  color:#0F172A;
+  text-align:center;
+  box-sizing:border-box;
+  -moz-appearance:textfield;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-field--qty input[type="number"]::-webkit-outer-spin-button,
+body.su-module #st-inward-page .st-inward-direct-line .st-field--qty input[type="number"]::-webkit-inner-spin-button,
+body.su-module #st-inward-page .st-inward-direct-line .st-field--price input[type="number"]::-webkit-outer-spin-button,
+body.su-module #st-inward-page .st-inward-direct-line .st-field--price input[type="number"]::-webkit-inner-spin-button,
+body.su-module #st-inward-page .st-inward-direct-line .st-field--tax input[type="number"]::-webkit-outer-spin-button,
+body.su-module #st-inward-page .st-inward-direct-line .st-field--tax input[type="number"]::-webkit-inner-spin-button{
+  -webkit-appearance:none;
+  margin:0;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-field--qty input[type="number"]:focus,
+body.su-module #st-inward-page .st-inward-direct-line .st-field--price input[type="number"]:focus,
+body.su-module #st-inward-page .st-inward-direct-line .st-field--tax input[type="number"]:focus{
+  outline:none;
+  border-color:#93C5FD;
+  box-shadow:0 0 0 4px rgba(37,99,235,.1);
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-line-total{
+  width:100%;
+  min-height:52px;
+  justify-content:center;
+  text-align:center;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-line-remove-wrap.act-grp{
+  display:inline-flex;
+  align-items:center;
+  gap:2px;
+  background:#F8FAFD;
+  border:1px solid #E2E8F0;
+  border-radius:8px;
+  padding:3px;
+  position:relative;
+  overflow:visible;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-line-remove.act-btn{
+  appearance:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  margin:0;
+  padding:0;
+  border:none;
+  border-radius:6px;
+  background:transparent;
+  color:#94A3B8;
+  cursor:pointer;
+  flex-shrink:0;
+  position:relative;
+  transition:background .12s,color .12s;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-line-remove.act-btn svg{
+  width:14px;
+  height:14px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  pointer-events:none;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-line-remove.act-btn:hover{
+  background:#FEF2F2;
+  color:#DC2626;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-line-remove.act-btn[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute;
+  top:calc(100% + 8px);
+  left:50%;
+  transform:translateX(-50%);
+  background:#1A202C;
+  color:#fff;
+  font-size:10px;
+  font-weight:600;
+  white-space:nowrap;
+  padding:4px 8px;
+  border-radius:4px;
+  pointer-events:none;
+  opacity:0;
+  visibility:hidden;
+  z-index:30;
+  box-shadow:0 4px 12px rgba(15,23,42,.18);
+  transition:opacity .12s,visibility .12s;
+}
+body.su-module #st-inward-page .st-inward-direct-line .st-line-remove.act-btn[data-tip]:hover::after,
+body.su-module #st-inward-page .st-inward-direct-line .st-line-remove.act-btn[data-tip]:focus-visible::after{
+  opacity:1;
+  visibility:visible;
+}
+body.su-module #st-inward-page .st-inward-direct-footer{
+  margin-top:14px;
+  padding-top:12px;
+  padding-bottom:0;
+  border-top:1px solid #E8EDF5;
+  align-items:center;
+}
+body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-label{
+  grid-column:1 / 7;
+  justify-self:end;
+  align-self:center;
+  font:650 12px Inter,system-ui,sans-serif;
+  color:#64748B;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  padding-right:0;
+}
+body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-value{
+  grid-column:7;
+  justify-self:stretch;
+  align-self:center;
+  text-align:center;
+  font:700 15px Inter,system-ui,sans-serif;
+  color:#0F172A;
+  padding:0;
+}
+@container st-inward-direct-lines (max-width:900px){
+  body.su-module #st-inward-page .st-inward-direct-head-cols{display:none}
+  body.su-module #st-inward-page .st-inward-direct-line{
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    padding:16px;
+    border:1px solid #E8EDF5;
+    border-radius:16px;
+    margin-bottom:10px;
+    background:#FCFCFD;
+  }
+  body.su-module #st-inward-page .st-inward-direct-line > .st-field--product{grid-column:1 / -1}
+  body.su-module #st-inward-page .st-inward-direct-line > .st-field--pack{grid-column:auto}
+  body.su-module #st-inward-page .st-inward-direct-line > .st-field--qty{grid-column:auto}
+  body.su-module #st-inward-page .st-inward-direct-line > .st-field--unit{grid-column:auto}
+  body.su-module #st-inward-page .st-inward-direct-line > .st-field--price{grid-column:1}
+  body.su-module #st-inward-page .st-inward-direct-line > .st-field--tax{grid-column:2}
+  body.su-module #st-inward-page .st-inward-direct-line > .st-field--line-total{grid-column:1 / -1}
+  body.su-module #st-inward-page .st-inward-direct-line > .st-line-remove-wrap{
+    grid-column:1 / -1;
+    justify-self:end;
+  }
+  body.su-module #st-inward-page .st-inward-direct-line > .st-field[data-st-label]::before{
+    content:attr(data-st-label);
+    display:block;
+    margin:0 0 6px;
+    font:700 10px Inter,system-ui,sans-serif;
+    color:#94A3B8;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  body.su-module #st-inward-page .st-inward-direct-footer{
+    grid-template-columns:1fr auto;
+    padding-left:4px;
+    padding-right:4px;
+  }
+  body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-label{
+    grid-column:1;
+    justify-self:start;
+  }
+  body.su-module #st-inward-page .st-inward-direct-footer .st-lines-footer-value{
+    grid-column:2;
+    justify-self:end;
+    text-align:right;
+  }
 }
