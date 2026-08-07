@@ -5097,6 +5097,10 @@ def ensure_stores_schema(conn):
               )
             """
         )
+    if "quantity_ordered" not in indent_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_indent_lines ADD COLUMN quantity_ordered REAL NOT NULL DEFAULT 0"
+        )
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_indent_whatsapp_messages (
             id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -5143,6 +5147,288 @@ def ensure_stores_schema(conn):
           AND approval_token != ''
           AND send_kind != ''
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_po_lines (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            indent_id   INTEGER NOT NULL,
+            line_id     INTEGER NOT NULL UNIQUE,
+            supplier_id INTEGER,
+            rate        REAL,
+            quantity    REAL,
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (indent_id) REFERENCES store_indents(id) ON DELETE CASCADE,
+            FOREIGN KEY (line_id) REFERENCES store_indent_lines(id) ON DELETE CASCADE,
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+        )
+    """)
+    po_line_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_po_lines)").fetchall()
+    }
+    if "quantity" not in po_line_cols:
+        cursor.execute("ALTER TABLE store_po_lines ADD COLUMN quantity REAL")
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_po_lines_indent
+        ON store_po_lines(indent_id)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_po_sends (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            indent_id        INTEGER NOT NULL,
+            supplier_id      INTEGER,
+            phone            TEXT    NOT NULL DEFAULT '',
+            message          TEXT    NOT NULL DEFAULT '',
+            pdf_name         TEXT    NOT NULL DEFAULT '',
+            include_pdf      INTEGER NOT NULL DEFAULT 1,
+            conversation_id  INTEGER,
+            wa_message_id    TEXT    NOT NULL DEFAULT '',
+            status           TEXT    NOT NULL DEFAULT 'sent',
+            error            TEXT    NOT NULL DEFAULT '',
+            sent_by          INTEGER,
+            sent_at          TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (indent_id) REFERENCES store_indents(id) ON DELETE CASCADE,
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(id),
+            FOREIGN KEY (sent_by) REFERENCES users(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_po_sends_indent
+        ON store_po_sends(indent_id, sent_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_po_sends_sent_at
+        ON store_po_sends(sent_at DESC)
+    """)
+    po_send_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_po_sends)").fetchall()
+    }
+    if "po_no" not in po_send_cols:
+        cursor.execute(
+            "ALTER TABLE store_po_sends ADD COLUMN po_no TEXT NOT NULL DEFAULT ''"
+        )
+    # PO numbers run as PO/{BAR|RES}/{YY-YY}/{n} per outlet + fiscal year.
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_po_seq (
+            fiscal_year TEXT    PRIMARY KEY,
+            last_seq    INTEGER NOT NULL DEFAULT 0
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_purchase_orders (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            indent_id   INTEGER NOT NULL,
+            supplier_id INTEGER NOT NULL,
+            po_no       TEXT    NOT NULL UNIQUE,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (indent_id) REFERENCES store_indents(id) ON DELETE CASCADE,
+            FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+        )
+    """)
+    # Allow multiple POs per indent×supplier when partial quantities remain.
+    po_table_sql_row = cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='store_purchase_orders'"
+    ).fetchone()
+    po_sql_text = (po_table_sql_row[0] or "") if po_table_sql_row else ""
+    if "UNIQUE (indent_id, supplier_id)" in po_sql_text:
+        cursor.execute("""
+            CREATE TABLE store_purchase_orders_new (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                indent_id   INTEGER NOT NULL,
+                supplier_id INTEGER NOT NULL,
+                po_no       TEXT    NOT NULL UNIQUE,
+                created_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (indent_id) REFERENCES store_indents(id) ON DELETE CASCADE,
+                FOREIGN KEY (supplier_id) REFERENCES suppliers(id)
+            )
+        """)
+        cursor.execute(
+            """
+            INSERT INTO store_purchase_orders_new
+                (id, indent_id, supplier_id, po_no, created_at)
+            SELECT id, indent_id, supplier_id, po_no, created_at
+            FROM store_purchase_orders
+            """
+        )
+        cursor.execute("DROP TABLE store_purchase_orders")
+        cursor.execute(
+            "ALTER TABLE store_purchase_orders_new RENAME TO store_purchase_orders"
+        )
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_purchase_orders_indent
+        ON store_purchase_orders(indent_id)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_purchase_orders_indent_supplier
+        ON store_purchase_orders(indent_id, supplier_id)
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS store_purchase_order_lines (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            purchase_order_id  INTEGER NOT NULL,
+            line_id            INTEGER,
+            item_name          TEXT    NOT NULL DEFAULT '',
+            display_name       TEXT    NOT NULL DEFAULT '',
+            quantity           REAL    NOT NULL DEFAULT 0,
+            unit               TEXT    NOT NULL DEFAULT '',
+            pack_label         TEXT    NOT NULL DEFAULT '',
+            pack_qty_in_base   REAL,
+            rate               REAL,
+            quantity_received  REAL    NOT NULL DEFAULT 0,
+            FOREIGN KEY (purchase_order_id) REFERENCES store_purchase_orders(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_purchase_order_lines_po
+        ON store_purchase_order_lines(purchase_order_id)
+    """)
+    po_line_cols = {
+        row["name"] for row in cursor.execute("PRAGMA table_info(store_purchase_order_lines)")
+    }
+    if "quantity_received" not in po_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_purchase_order_lines "
+            "ADD COLUMN quantity_received REAL NOT NULL DEFAULT 0"
+        )
+
+    # Allocate existing indent quantity_received across PO lines (oldest PO first)
+    # so fully received POs hide from Stock Inward even when indent qty remains.
+    recv_marker = cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='store_po_line_received_backfill'"
+    ).fetchone()
+    if not recv_marker:
+        cursor.execute(
+            "CREATE TABLE store_po_line_received_backfill (done INTEGER NOT NULL DEFAULT 1)"
+        )
+        indent_line_ids = [
+            int(row["line_id"])
+            for row in cursor.execute(
+                """
+                SELECT DISTINCT line_id
+                FROM store_purchase_order_lines
+                WHERE line_id IS NOT NULL
+                """
+            ).fetchall()
+            if row["line_id"] is not None
+        ]
+        for line_id in indent_line_ids:
+            indent_row = cursor.execute(
+                """
+                SELECT COALESCE(quantity_received, 0) AS quantity_received
+                FROM store_indent_lines WHERE id = ?
+                """,
+                (line_id,),
+            ).fetchone()
+            if not indent_row:
+                continue
+            try:
+                to_allocate = float(indent_row["quantity_received"] or 0)
+            except (TypeError, ValueError):
+                to_allocate = 0.0
+            if to_allocate <= 0.0001:
+                continue
+            po_lines = cursor.execute(
+                """
+                SELECT pol.id, COALESCE(pol.quantity, 0) AS quantity
+                FROM store_purchase_order_lines pol
+                JOIN store_purchase_orders po ON po.id = pol.purchase_order_id
+                WHERE pol.line_id = ?
+                ORDER BY po.created_at ASC, po.id ASC, pol.id ASC
+                """,
+                (line_id,),
+            ).fetchall()
+            for pol in po_lines:
+                if to_allocate <= 0.0001:
+                    break
+                try:
+                    po_qty = float(pol["quantity"] or 0)
+                except (TypeError, ValueError):
+                    po_qty = 0.0
+                if po_qty <= 0.0001:
+                    continue
+                take = po_qty if po_qty <= to_allocate else to_allocate
+                cursor.execute(
+                    """
+                    UPDATE store_purchase_order_lines
+                    SET quantity_received = ?
+                    WHERE id = ?
+                    """,
+                    (take, int(pol["id"])),
+                )
+                to_allocate -= take
+
+    # One-time backfill: issued PO draft qtys become quantity_ordered so remaining
+    # indent qty stays visible on Generate. Marker row prevents re-running.
+    marker = cursor.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='store_po_qty_ordered_backfill'"
+    ).fetchone()
+    if not marker:
+        cursor.execute(
+            "CREATE TABLE store_po_qty_ordered_backfill (done INTEGER NOT NULL DEFAULT 1)"
+        )
+        cursor.execute(
+            """
+            UPDATE store_indent_lines
+            SET quantity_ordered = COALESCE((
+                SELECT CASE
+                    WHEN pl.quantity IS NOT NULL AND pl.quantity > 0.0001
+                    THEN MIN(pl.quantity, store_indent_lines.quantity)
+                    ELSE store_indent_lines.quantity
+                END
+                FROM store_po_lines pl
+                WHERE pl.line_id = store_indent_lines.id
+                  AND pl.supplier_id IS NOT NULL
+                  AND EXISTS (
+                    SELECT 1 FROM store_purchase_orders po
+                    WHERE po.indent_id = pl.indent_id
+                      AND po.supplier_id = pl.supplier_id
+                  )
+            ), COALESCE(quantity_ordered, 0))
+            WHERE COALESCE(quantity_ordered, 0) <= 0.0001
+              AND EXISTS (
+                SELECT 1 FROM store_po_lines pl
+                WHERE pl.line_id = store_indent_lines.id
+                  AND pl.supplier_id IS NOT NULL
+                  AND EXISTS (
+                    SELECT 1 FROM store_purchase_orders po
+                    WHERE po.indent_id = pl.indent_id
+                      AND po.supplier_id = pl.supplier_id
+                  )
+              )
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE store_po_lines
+            SET quantity = (
+                SELECT MAX(
+                    0,
+                    COALESCE(l.quantity, 0) - COALESCE(l.quantity_ordered, 0)
+                )
+                FROM store_indent_lines l
+                WHERE l.id = store_po_lines.line_id
+            ),
+            updated_at = datetime('now','localtime')
+            WHERE EXISTS (
+                SELECT 1 FROM store_indent_lines l
+                WHERE l.id = store_po_lines.line_id
+                  AND COALESCE(l.quantity_ordered, 0) > 0.0001
+                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_ordered, 0) > 0.0001
+            )
+            """
+        )
+        cursor.execute(
+            """
+            UPDATE store_po_lines
+            SET quantity = NULL,
+                updated_at = datetime('now','localtime')
+            WHERE EXISTS (
+                SELECT 1 FROM store_indent_lines l
+                WHERE l.id = store_po_lines.line_id
+                  AND COALESCE(l.quantity_ordered, 0) > 0.0001
+                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_ordered, 0) <= 0.0001
+            )
+            """
+        )
+        cursor.execute("INSERT INTO store_po_qty_ordered_backfill (done) VALUES (1)")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_purchase_requests (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -5450,12 +5736,18 @@ def _seed_store_product_master(cursor):
                 ("Butter Scotch (4 Ltr)", "liter"),
                 ("Strawberry Ice Cream (4 Ltr)", "liter"),
                 ("Chocolate Ice Cream (4 Ltr)", "liter"),
-                ("Apple", "kg"),
-                ("Anar", "kg"),
-                ("Banana", "pcs"),
                 ("Curd", "kg"),
                 ("Coffee Powder 200 gm", "pcs"),
                 ("Besan Powder 1 Kg", "kg"),
+            ),
+        ),
+        (
+            "Fruits",
+            35,
+            (
+                ("Apple", "kg"),
+                ("Anar", "kg"),
+                ("Banana", "pcs"),
             ),
         ),
         (
@@ -5521,13 +5813,84 @@ def _seed_store_product_master(cursor):
             continue
         category_id = row["id"] if hasattr(row, "keys") else row[0]
         for idx, (product_name, unit) in enumerate(products, start=1):
+            # Prefer a global name match so re-seeds never create Dairy+Fruits twins.
+            existing = cursor.execute(
+                """
+                SELECT id FROM store_products
+                WHERE lower(name) = lower(?)
+                ORDER BY CASE WHEN is_active = 1 THEN 0 ELSE 1 END, id
+                LIMIT 1
+                """,
+                (product_name,),
+            ).fetchone()
+            if existing:
+                continue
             cursor.execute(
                 """
-                INSERT OR IGNORE INTO store_products
+                INSERT INTO store_products
                     (category_id, name, default_unit, outlet, is_active, sort_order)
                 VALUES (?, ?, ?, 'restaurant', 1, ?)
                 """,
                 (category_id, product_name, unit, idx * 10),
+            )
+
+    # Move Apple / Anar / Banana onto Fruits and drop duplicate rows.
+    fruits_row = cursor.execute(
+        "SELECT id FROM store_product_categories WHERE lower(name) = lower('Fruits')"
+    ).fetchone()
+    if fruits_row:
+        fruits_id = fruits_row["id"] if hasattr(fruits_row, "keys") else fruits_row[0]
+        for fruit_name in ("Apple", "Anar", "Banana"):
+            keep = cursor.execute(
+                """
+                SELECT id FROM store_products
+                WHERE lower(name) = lower(?)
+                ORDER BY CASE WHEN is_active = 1 THEN 0 ELSE 1 END, id
+                LIMIT 1
+                """,
+                (fruit_name,),
+            ).fetchone()
+            if not keep:
+                cursor.execute(
+                    """
+                    INSERT INTO store_products
+                        (category_id, name, default_unit, outlet, is_active, sort_order)
+                    VALUES (?, ?, ?, 'restaurant', 1, ?)
+                    """,
+                    (
+                        fruits_id,
+                        fruit_name,
+                        "pcs" if fruit_name == "Banana" else "kg",
+                        10,
+                    ),
+                )
+                continue
+            keep_id = keep["id"] if hasattr(keep, "keys") else keep[0]
+            # Unique(category_id, name) still applies to inactive rows — delete twins.
+            cursor.execute(
+                """
+                DELETE FROM store_product_variants
+                WHERE product_id IN (
+                    SELECT id FROM store_products
+                    WHERE lower(name) = lower(?) AND id != ?
+                )
+                """,
+                (fruit_name, keep_id),
+            )
+            cursor.execute(
+                """
+                DELETE FROM store_products
+                WHERE lower(name) = lower(?) AND id != ?
+                """,
+                (fruit_name, keep_id),
+            )
+            cursor.execute(
+                """
+                UPDATE store_products
+                SET category_id = ?, is_active = 1
+                WHERE id = ?
+                """,
+                (fruits_id, keep_id),
             )
 
 
@@ -5635,6 +5998,14 @@ def ensure_communication_hub_schema(conn):
         """
         CREATE INDEX IF NOT EXISTS idx_wa_conversations_last
         ON wa_conversations(last_message_at DESC, id DESC)
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wa_conversation_tombstones (
+            phone_e164  TEXT PRIMARY KEY,
+            deleted_at  TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
         """
     )
 

@@ -71,9 +71,12 @@
     if (msg) {
       el.textContent = msg;
       el.style.display = 'block';
+      el.hidden = false;
+      el.removeAttribute('hidden');
     } else {
       el.textContent = '';
       el.style.display = 'none';
+      el.hidden = true;
     }
   }
 
@@ -611,7 +614,20 @@
   var tableSelectTotalEl = document.getElementById('cp-table-select-total');
   var tableSelectSupplierEl = document.getElementById('cp-table-select-supplier');
   var clearSelectionBtn = document.getElementById('cp-clear-selection-btn');
+  var bulkBarCloseBtn = document.getElementById('cp-bulk-bar-close');
   var openSelectBtn = document.getElementById('cp-open-select-btn');
+  var openSelectLabel = document.getElementById('cp-open-select-label');
+  var headerVerifyBtn = document.getElementById('cp-header-verify-btn');
+  var actionLabelBase = (selectionBar && selectionBar.getAttribute('data-action-label')) || 'Verify';
+
+  function runSelectedVerification(){
+    var selections = collectSelectionsFromTable();
+    if (!selections.length) {
+      openSelectModal();
+      return;
+    }
+    beginPaymentFromSelections(selections, 'table');
+  }
 
   function expenseRows(){
     return Array.from(document.querySelectorAll('.cp-expense-row')).filter(function(row){
@@ -704,7 +720,9 @@
     }
 
     if (tableSelectCountEl) {
-      tableSelectCountEl.textContent = selected.length + ' selected';
+      tableSelectCountEl.textContent = selected.length === 1
+        ? '1 item selected'
+        : selected.length + ' items selected';
     }
     if (tableSelectTotalEl) {
       tableSelectTotalEl.setAttribute('data-amount', String(total));
@@ -715,6 +733,18 @@
     }
     if (selectionBar) selectionBar.hidden = selected.length === 0;
     if (openSelectBtn) openSelectBtn.disabled = selected.length === 0;
+    if (headerVerifyBtn) {
+      headerVerifyBtn.disabled = selected.length === 0;
+      headerVerifyBtn.hidden = selected.length > 0;
+    }
+    if (outstandingTable) {
+      outstandingTable.classList.toggle('is-multi-selecting', selected.length > 0);
+    }
+    if (openSelectLabel) {
+      openSelectLabel.textContent = selected.length
+        ? actionLabelBase + ' Selected (' + selected.length + ')'
+        : actionLabelBase + ' Selected';
+    }
   }
 
   function setAllExpenseChecks(checked){
@@ -747,6 +777,15 @@
     });
 
     outstandingTable.addEventListener('click', function(e){
+      var approveBtn = e.target.closest('[data-cp-row-approve]');
+      if (approveBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var row = approveBtn.closest('.cp-expense-row');
+        if (!row || row.hidden || approveBtn.disabled) return;
+        approveRowDirectly(row, approveBtn);
+        return;
+      }
       var row = e.target.closest('.cp-expense-row');
       if (!row || e.target.closest('a, button, label')) return;
       if (e.target.closest('input')) return;
@@ -759,6 +798,12 @@
 
   if (clearSelectionBtn) {
     clearSelectionBtn.addEventListener('click', function(e){
+      e.preventDefault();
+      clearTableSelection();
+    });
+  }
+  if (bulkBarCloseBtn) {
+    bulkBarCloseBtn.addEventListener('click', function(e){
       e.preventDefault();
       clearTableSelection();
     });
@@ -850,12 +895,12 @@
 
   if (openSelectBtn) {
     openSelectBtn.addEventListener('click', function(){
-      var selections = collectSelectionsFromTable();
-      if (!selections.length) {
-        openSelectModal();
-        return;
-      }
-      beginPaymentFromSelections(selections, 'table');
+      runSelectedVerification();
+    });
+  }
+  if (headerVerifyBtn) {
+    headerVerifyBtn.addEventListener('click', function(){
+      runSelectedVerification();
     });
   }
   var selectCancel = document.getElementById('cp-select-cancel');
@@ -1059,41 +1104,99 @@
     if (submitBtn) submitBtn.disabled = true;
     setError(clearanceError, '');
     try {
-      // Backend requires one supplier per payment — group mixed selections.
-      var groups = {};
-      allocations.forEach(function(allocation){
-        var pending = pendingByExpense[String(allocation.expense_id)];
-        var supplierId = pending ? Number(pending.supplier_id || 0) : 0;
-        if (!groups[supplierId]) groups[supplierId] = [];
-        groups[supplierId].push(allocation);
+      await postSettlementGroups(pendingSelections, allocations, {
+        payment_date: paymentDateEl ? paymentDateEl.value : todayIso,
+        payment_method: method,
+        transaction_id: transactionId,
+        notes: notesEl ? notesEl.value.trim() : ''
       });
-      var groupIds = Object.keys(groups);
-      for (var i = 0; i < groupIds.length; i++) {
-        var supplierId = Number(groupIds[i]);
-        var res = await fetch(createUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            supplier_id: supplierId,
-            payment_date: paymentDateEl ? paymentDateEl.value : todayIso,
-            payment_method: method,
-            transaction_id: transactionId,
-            notes: notesEl ? notesEl.value.trim() : '',
-            allocations: groups[groupIds[i]]
-          })
-        });
-        var data = await res.json();
-        if (!data.ok) {
-          setError(clearanceError, data.error || labels.submit_error_record || 'Unable to record payment.');
-          return;
-        }
-      }
       if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
       else window.location.reload();
     } catch (err) {
-      setError(clearanceError, labels.submit_error_network || 'Network error while recording payment.');
+      setError(
+        clearanceError,
+        (err && err.message) || labels.submit_error_network || 'Network error while recording payment.'
+      );
     } finally {
       if (submitBtn) submitBtn.disabled = false;
+    }
+  }
+
+  async function postSettlementGroups(selections, allocations, extras){
+    var pendingByExpense = {};
+    selections.forEach(function(item){
+      pendingByExpense[String(item.expense_id)] = item;
+    });
+    var groups = {};
+    allocations.forEach(function(allocation){
+      var pending = pendingByExpense[String(allocation.expense_id)];
+      var supplierId = pending ? Number(pending.supplier_id || 0) : 0;
+      if (!groups[supplierId]) groups[supplierId] = [];
+      groups[supplierId].push(allocation);
+    });
+    var groupIds = Object.keys(groups);
+    for (var i = 0; i < groupIds.length; i++) {
+      var supplierId = Number(groupIds[i]);
+      var res = await fetch(createUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          supplier_id: supplierId,
+          payment_date: extras.payment_date || todayIso,
+          payment_method: extras.payment_method || 'cash',
+          transaction_id: extras.transaction_id || '',
+          notes: extras.notes || '',
+          allocations: groups[groupIds[i]]
+        })
+      });
+      var data = await res.json();
+      if (!data.ok) {
+        var message = data.error || labels.submit_error_record || 'Unable to record payment.';
+        var err = new Error(message);
+        throw err;
+      }
+    }
+  }
+
+  var outstandingError = document.getElementById('cp-outstanding-error');
+
+  async function approveRowDirectly(row, triggerBtn){
+    if (!row) return;
+    var selection = selectionFromRow(row);
+    if (!selection.expense_id || !(selection.amount > 0)) {
+      setError(outstandingError, labels.select_error_none || 'Unable to approve this expense.');
+      return;
+    }
+    if (!selection.supplier_id) {
+      setError(outstandingError, 'Supplier is required before approval.');
+      return;
+    }
+    setError(outstandingError, '');
+    if (triggerBtn) {
+      triggerBtn.disabled = true;
+      triggerBtn.classList.add('is-busy');
+    }
+    try {
+      await postSettlementGroups([selection], [{
+        expense_id: selection.expense_id,
+        amount: selection.amount
+      }], {
+        payment_date: todayIso,
+        payment_method: 'cash',
+        transaction_id: '',
+        notes: ''
+      });
+      if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
+      else window.location.reload();
+    } catch (err) {
+      setError(
+        outstandingError,
+        (err && err.message) || labels.submit_error_network || 'Network error while recording payment.'
+      );
+      if (triggerBtn) {
+        triggerBtn.disabled = false;
+        triggerBtn.classList.remove('is-busy');
+      }
     }
   }
 

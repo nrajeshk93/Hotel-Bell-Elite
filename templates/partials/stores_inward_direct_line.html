@@ -96,7 +96,7 @@
   </div>
   <div class="st-field st-field--price" data-st-label="Price / qty">
     <label class="st-sr-only">Price / qty</label>
-    <input type="number" name="unit_price" min="0.01" step="0.01" inputmode="decimal" value="{% if line.approximate_price_display is defined %}{{ line.approximate_price_display }}{% elif line.approximate_price is not none %}{{ line.approximate_price }}{% endif %}" placeholder="₹ Price" aria-label="Price per quantity" data-st-approx-price data-st-direct-price>
+    <input type="number" name="unit_price" min="0.01" step="0.01" inputmode="decimal" value="" placeholder="₹ Price" aria-label="Price per quantity" data-st-approx-price data-st-direct-price>
   </div>
   <div class="st-field st-field--tax" data-st-label="Tax %">
     <label class="st-sr-only">Tax %</label>

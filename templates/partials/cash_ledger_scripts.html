@@ -295,8 +295,8 @@
     if (!tbody) return;
     var headers = Array.from(table.querySelectorAll('th.pl-sortable'));
     if (!headers.length) return;
-    var activeKey = '';
-    var ascending = true;
+    var activeKey = 'date';
+    var ascending = false;
 
     function cellSortValue(row, colIndex, type){
       var cell = row.cells[colIndex];
@@ -310,14 +310,21 @@
       return String(raw).toLowerCase();
     }
 
-    function sortBy(th){
+    function sortBy(th, forceAscending){
       var key = th.getAttribute('data-sort') || '';
       var type = th.getAttribute('data-sort-type') || 'text';
       var colIndex = Array.from(th.parentNode.children).indexOf(th);
       if (colIndex < 0) return;
 
-      if (activeKey === key) ascending = !ascending;
-      else {
+      if (forceAscending === true) {
+        activeKey = key;
+        ascending = true;
+      } else if (forceAscending === false) {
+        activeKey = key;
+        ascending = false;
+      } else if (activeKey === key) {
+        ascending = !ascending;
+      } else {
         activeKey = key;
         ascending = true;
       }
@@ -350,6 +357,9 @@
         }
       });
     });
+
+    var dateTh = table.querySelector('th.pl-sortable[data-sort="date"]');
+    if (dateTh) sortBy(dateTh, false);
   })();
 })();
 </script>

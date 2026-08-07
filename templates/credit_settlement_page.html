@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -235,19 +235,35 @@
         <div class="cp-panel-actions">
           <span class="pl-count" id="cp-entry-count">{{ outstanding_entries|length }} entries</span>
           {% if outstanding_entries %}
-          <div class="cp-selection-bar" id="cp-selection-bar" hidden>
-            <span id="cp-table-select-count">0 selected</span>
-            <span class="cp-action-bar-sep" aria-hidden="true">·</span>
-            <span>Balance <strong id="cp-table-select-total" data-amount="0">0</strong></span>
-            <span class="cp-select-supplier" id="cp-table-select-supplier"></span>
-            <button type="button" class="cp-link-btn" id="cp-clear-selection-btn">Clear selection</button>
-          </div>
-          <button type="button" class="btn btn-primary" id="cp-open-select-btn" disabled>{{ settlement_labels.action_button }}</button>
+          <button type="button" class="btn btn-primary" id="cp-header-verify-btn" disabled>{{ settlement_labels.action_button }}</button>
           {% endif %}
         </div>
       </div>
+      {% if outstanding_entries %}
+      <div class="cp-bulk-bar" id="cp-selection-bar" hidden data-action-label="{{ settlement_labels.action_button }}">
+        <div class="cp-bulk-bar-left">
+          <span class="cp-bulk-bar-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </span>
+          <span class="cp-bulk-bar-count" id="cp-table-select-count">0 items selected</span>
+          <button type="button" class="cp-link-btn" id="cp-clear-selection-btn">Clear selection</button>
+          <span class="cp-action-bar-sep" aria-hidden="true">·</span>
+          <span class="cp-bulk-bar-meta">Balance <strong id="cp-table-select-total" data-amount="0">0</strong></span>
+          <span class="cp-select-supplier" id="cp-table-select-supplier"></span>
+        </div>
+        <div class="cp-bulk-bar-right">
+          <button type="button" class="btn btn-primary" id="cp-open-select-btn" disabled>
+            <span id="cp-open-select-label">{{ settlement_labels.action_button }} Selected</span>
+          </button>
+          <button type="button" class="cp-bulk-bar-close" id="cp-bulk-bar-close" aria-label="Clear selection">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+          </button>
+        </div>
+      </div>
+      {% endif %}
       <div class="card-body pl-card-body--flush">
         {% if outstanding_entries %}
+        <div class="cp-outstanding-error staff-credit-error" id="cp-outstanding-error" hidden></div>
         <div class="pl-table-wrap" tabindex="0" aria-label="{{ settlement_labels.outstanding_table_aria }}, scroll for more">
           <table class="pl-table cp-outstanding-table" id="cp-outstanding-table" aria-label="{{ settlement_labels.outstanding_table_aria }}">
             <thead>
@@ -261,8 +277,8 @@
                 <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
                 <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
                 <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
-                <th class="pl-sortable pl-col-amount" data-sort="paid" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Paid</th>
                 <th class="pl-sortable pl-col-amount" data-sort="balance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Balance</th>
+                <th class="cp-col-actions" scope="col">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -304,8 +320,20 @@
                   {% endif %}
                 </td>
                 <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ entry.paid_amount }}" data-sort-value="{{ entry.paid_amount }}">{{ entry.paid_amount }}</td>
                 <td class="pl-col-amount pl-amount cp-balance" data-amount="{{ entry.balance }}" data-sort-value="{{ entry.balance }}">{{ entry.balance }}</td>
+                <td class="cp-col-actions">
+                  <button
+                    type="button"
+                    class="cp-row-approve-btn"
+                    data-cp-row-approve
+                    aria-label="{{ settlement_labels.row_action_button }} {{ entry.expense_code or entry.id }}"
+                  >
+                    <span class="cp-row-approve-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+                    </span>
+                    <span>{{ settlement_labels.row_action_button }}</span>
+                  </button>
+                </td>
               </tr>
               {% endfor %}
             </tbody>

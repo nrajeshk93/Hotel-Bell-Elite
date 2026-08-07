@@ -457,17 +457,44 @@ def _next_doc_no(conn, table: str, column: str, prefix: str, outlet: str) -> str
     return f"{prefix}-{outlet_code}-{day}-{seq:03d}"
 
 
+_OUTLET_INDENT_CODES = {
+    "bar": "BAR",
+    "restaurant": "RES",
+}
+
+# Legacy: IND/Restaurant/1/2026-27 — still counted so FY sequences do not reset mid-year.
 _IND_FY_NO_RE = re.compile(
     r"^IND/(Bar|Restaurant)/(\d+)/(\d{4}-\d{2})$",
     re.IGNORECASE,
 )
+# Current: IND/RES/26-27/1
+_IND_SHORT_FY_NO_RE = re.compile(
+    r"^IND/(BAR|RES)/(\d{2}-\d{2})/(\d+)$",
+    re.IGNORECASE,
+)
+
+
+def _indent_outlet_code(outlet: str) -> str:
+    key = _parse_outlet(outlet)
+    return _OUTLET_INDENT_CODES.get(key, str(key or "OUT").upper()[:3])
+
+
+def _short_fiscal_year_label(when=None) -> str:
+    """Short Indian FY label, e.g. 2026-27 → 26-27."""
+    fy = indian_fiscal_year_label(when)
+    parts = str(fy or "").split("-")
+    if len(parts) == 2 and len(parts[0]) >= 2:
+        return f"{parts[0][-2:]}-{parts[1][-2:]}"
+    return fy
 
 
 def _next_indent_no(conn, outlet: str, when=None) -> str:
-    """Allocate IND/{Bar|Restaurant}/{n}/{FY}, series per outlet + fiscal year from 1."""
+    """Allocate IND/{BAR|RES}/{YY-YY}/{n}, series per outlet + fiscal year from 1."""
     outlet_key = _parse_outlet(outlet)
+    outlet_code = _indent_outlet_code(outlet_key)
     outlet_label = _outlet_label(outlet_key)
     fy = indian_fiscal_year_label(when)
+    short_fy = _short_fiscal_year_label(when)
     rows = conn.execute(
         """
         SELECT indent_no
@@ -479,15 +506,24 @@ def _next_indent_no(conn, outlet: str, when=None) -> str:
     ).fetchall()
     max_n = 0
     for row in rows:
-        match = _IND_FY_NO_RE.match(str(row["indent_no"] or "").strip())
-        if not match:
+        text = str(row["indent_no"] or "").strip()
+        match_new = _IND_SHORT_FY_NO_RE.match(text)
+        if match_new:
+            if match_new.group(1).upper() != outlet_code:
+                continue
+            if match_new.group(2) != short_fy:
+                continue
+            max_n = max(max_n, int(match_new.group(3)))
             continue
-        if match.group(1).lower() != outlet_label.lower():
+        match_old = _IND_FY_NO_RE.match(text)
+        if not match_old:
             continue
-        if match.group(3) != fy:
+        if match_old.group(1).lower() != outlet_label.lower():
             continue
-        max_n = max(max_n, int(match.group(2)))
-    return f"IND/{outlet_label}/{max_n + 1}/{fy}"
+        if match_old.group(3) != fy:
+            continue
+        max_n = max(max_n, int(match_old.group(2)))
+    return f"IND/{outlet_code}/{short_fy}/{max_n + 1}"
 
 
 def _parse_lines_from_form(form) -> list[dict[str, Any]]:
@@ -620,7 +656,7 @@ def _update_product_master_price_from_inward(
         return
     product = conn.execute(
         """
-        SELECT id FROM store_products
+        SELECT id, default_unit FROM store_products
         WHERE lower(name) = lower(?) AND is_active = 1
         ORDER BY id
         LIMIT 1
@@ -632,7 +668,7 @@ def _update_product_master_price_from_inward(
     pid = int(product["id"])
     pack = (pack_label or "").strip()
     if pack:
-        conn.execute(
+        updated = conn.execute(
             """
             UPDATE store_product_variants
             SET approximate_price = ?
@@ -640,25 +676,379 @@ def _update_product_master_price_from_inward(
             """,
             (price, pid, pack),
         )
-        variants = _load_variants_by_product_ids(conn, [pid]).get(pid, [])
-        derived = _approximate_price_from_variants(variants)
+        if updated.rowcount:
+            variants = _load_variants_by_product_ids(conn, [pid]).get(pid, [])
+            derived = _approximate_price_from_variants(variants)
+            if derived is not None:
+                conn.execute(
+                    """
+                    UPDATE store_products
+                    SET approximate_price = ?, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (derived, _now(), pid),
+                )
+                return
+            # Pack row updated but no derivable unit rate — still stamp the product.
+    conn.execute(
+        """
+        UPDATE store_products
+        SET approximate_price = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (price, _now(), pid),
+    )
+    # Fill blank pack-variant ₹ prices from the base-unit inward rate.
+    _fill_blank_pack_prices_from_unit_rate(conn, pid, price)
+
+
+def _fill_blank_pack_prices_from_unit_rate(
+    conn, product_id: int, unit_price: float
+) -> None:
+    """Set missing pack prices to unit_price × qty_in_base (base-unit rate)."""
+    try:
+        rate = float(unit_price)
+    except (TypeError, ValueError):
+        return
+    if rate < 0 or rate != rate:
+        return
+    rows = conn.execute(
+        """
+        SELECT id, qty_in_base, approximate_price
+        FROM store_product_variants
+        WHERE product_id = ? AND is_active = 1
+        """,
+        (product_id,),
+    ).fetchall()
+    for row in rows:
+        if row["approximate_price"] is not None:
+            continue
+        try:
+            qty = float(row["qty_in_base"] or 0)
+        except (TypeError, ValueError):
+            continue
+        if qty <= 0:
+            continue
         conn.execute(
             """
-            UPDATE store_products
-            SET approximate_price = ?, updated_at = ?
+            UPDATE store_product_variants
+            SET approximate_price = ?
             WHERE id = ?
             """,
-            (derived, _now(), pid),
+            (round(rate * qty, 2), int(row["id"])),
         )
-    else:
-        conn.execute(
+
+
+def _last_inward_unit_price(conn, item_name: str) -> float | None:
+    """Latest stock-inward unit cost for a product name (movement / entered rate)."""
+    name = (item_name or "").strip()
+    if not name:
+        return None
+    row = conn.execute(
+        """
+        SELECT unit_cost
+        FROM store_stock_movements
+        WHERE lower(item_name) = lower(?)
+          AND ref_type IN ('stock_inward', 'stock_inward_direct')
+          AND unit_cost IS NOT NULL
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (name,),
+    ).fetchone()
+    if not row:
+        return None
+    try:
+        price = float(row["unit_cost"])
+    except (TypeError, ValueError):
+        return None
+    if price < 0 or price != price:
+        return None
+    return price
+
+
+def _heal_product_prices_from_last_inward(conn) -> int:
+    """Fill blank Product Master approx prices from the newest stock inward.
+
+    Covers inwards that ran before auto-update, or where the rate only landed
+    on the stock movement.
+    """
+    rows = conn.execute(
+        """
+        SELECT p.id, p.name, p.approximate_price
+        FROM store_products p
+        WHERE p.is_active = 1
+        """
+    ).fetchall()
+    healed = 0
+    for row in rows:
+        price = _last_inward_unit_price(conn, row["name"])
+        if price is None:
+            continue
+        needs_product = row["approximate_price"] is None
+        if needs_product:
+            conn.execute(
+                """
+                UPDATE store_products
+                SET approximate_price = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (price, _now(), int(row["id"])),
+            )
+            healed += 1
+        blank_packs = conn.execute(
             """
-            UPDATE store_products
-            SET approximate_price = ?, updated_at = ?
-            WHERE id = ?
+            SELECT COUNT(*) AS c FROM store_product_variants
+            WHERE product_id = ? AND is_active = 1 AND approximate_price IS NULL
             """,
-            (price, _now(), pid),
-        )
+            (int(row["id"]),),
+        ).fetchone()["c"]
+        if needs_product or int(blank_packs or 0):
+            unit_rate = price
+            if not needs_product:
+                try:
+                    unit_rate = float(row["approximate_price"])
+                except (TypeError, ValueError):
+                    unit_rate = price
+            before_blank = int(blank_packs or 0)
+            _fill_blank_pack_prices_from_unit_rate(conn, int(row["id"]), unit_rate)
+            if before_blank:
+                healed += 1
+    return healed
+
+
+def _product_supplier_best_prices(conn, item_name: str) -> dict[int, float]:
+    """Lowest known rate per supplier for a product (from issued PO lines)."""
+    name = (item_name or "").strip()
+    if not name:
+        return {}
+    rows = conn.execute(
+        """
+        SELECT pl.supplier_id AS supplier_id, MIN(pl.rate) AS best_rate
+        FROM store_po_lines pl
+        JOIN store_indent_lines il ON il.id = pl.line_id
+        WHERE lower(il.item_name) = lower(?)
+          AND pl.supplier_id IS NOT NULL
+          AND pl.supplier_id > 0
+          AND pl.rate IS NOT NULL
+        GROUP BY pl.supplier_id
+        """,
+        (name,),
+    ).fetchall()
+    out: dict[int, float] = {}
+    for row in rows:
+        try:
+            sid = int(row["supplier_id"] or 0)
+            rate = float(row["best_rate"])
+        except (TypeError, ValueError):
+            continue
+        if sid <= 0 or rate < 0 or rate != rate:
+            continue
+        out[sid] = rate
+    return out
+
+
+def _last_inward_supplier_and_price(
+    conn, item_name: str
+) -> tuple[int | None, float | None]:
+    """Resolve supplier + unit cost from the newest stock inward movement."""
+    name = (item_name or "").strip()
+    if not name:
+        return None, None
+    mov = conn.execute(
+        """
+        SELECT ref_type, ref_id, unit_cost
+        FROM store_stock_movements
+        WHERE lower(item_name) = lower(?)
+          AND ref_type IN ('stock_inward', 'stock_inward_direct')
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (name,),
+    ).fetchone()
+    if not mov:
+        return None, None
+    try:
+        unit_cost = float(mov["unit_cost"]) if mov["unit_cost"] is not None else None
+    except (TypeError, ValueError):
+        unit_cost = None
+    if unit_cost is not None and (unit_cost < 0 or unit_cost != unit_cost):
+        unit_cost = None
+
+    ref_type = str(mov["ref_type"] or "")
+    try:
+        ref_id = int(mov["ref_id"] or 0)
+    except (TypeError, ValueError):
+        ref_id = 0
+    supplier_id = None
+    if ref_type == "stock_inward_direct" and ref_id > 0:
+        exp = conn.execute(
+            "SELECT supplier_id FROM sales_update_expenses WHERE id = ?",
+            (ref_id,),
+        ).fetchone()
+        if exp:
+            try:
+                supplier_id = int(exp["supplier_id"] or 0) or None
+            except (TypeError, ValueError):
+                supplier_id = None
+    elif ref_type == "stock_inward" and ref_id > 0:
+        indent = conn.execute(
+            "SELECT indent_no FROM store_indents WHERE id = ?",
+            (ref_id,),
+        ).fetchone()
+        indent_no = str(indent["indent_no"] or "").strip() if indent else ""
+        if indent_no:
+            exp = conn.execute(
+                """
+                SELECT supplier_id
+                FROM sales_update_expenses
+                WHERE supplier_id IS NOT NULL
+                  AND supplier_id > 0
+                  AND instr(lower(coalesce(description, '')), lower(?)) > 0
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (indent_no,),
+            ).fetchone()
+            if exp:
+                try:
+                    supplier_id = int(exp["supplier_id"] or 0) or None
+                except (TypeError, ValueError):
+                    supplier_id = None
+    return supplier_id, unit_cost
+
+
+def _sync_product_preferred_suppliers_from_history(conn, *, item_name: str) -> bool:
+    """Backfill preferred suppliers from the latest inward for this product."""
+    supplier_id, unit_price = _last_inward_supplier_and_price(conn, item_name)
+    if not supplier_id:
+        return False
+    before = conn.execute(
+        """
+        SELECT preferred_supplier_1_id
+        FROM store_products
+        WHERE lower(name) = lower(?) AND is_active = 1
+        ORDER BY id LIMIT 1
+        """,
+        ((item_name or "").strip(),),
+    ).fetchone()
+    _update_product_preferred_suppliers_from_inward(
+        conn,
+        item_name=item_name,
+        supplier_id=supplier_id,
+        unit_price=unit_price,
+    )
+    after = conn.execute(
+        """
+        SELECT preferred_supplier_1_id
+        FROM store_products
+        WHERE lower(name) = lower(?) AND is_active = 1
+        ORDER BY id LIMIT 1
+        """,
+        ((item_name or "").strip(),),
+    ).fetchone()
+    before_id = int(before["preferred_supplier_1_id"] or 0) if before else 0
+    after_id = int(after["preferred_supplier_1_id"] or 0) if after else 0
+    return after_id > 0 and after_id != before_id
+
+
+def _update_product_preferred_suppliers_from_inward(
+    conn,
+    *,
+    item_name: str,
+    supplier_id: Any,
+    unit_price: float | None,
+) -> None:
+    """Refresh Product Master preferred suppliers after stock inward.
+
+    Supplier 1 = last inward supplier. Suppliers 2–3 = next-best known prices
+    for this product (PO history + this inward rate).
+    """
+    try:
+        sid = int(supplier_id or 0)
+    except (TypeError, ValueError):
+        sid = 0
+    if sid <= 0:
+        return
+    name = (item_name or "").strip()
+    if not name:
+        return
+    product = conn.execute(
+        """
+        SELECT id,
+               preferred_supplier_1_id,
+               preferred_supplier_2_id,
+               preferred_supplier_3_id
+        FROM store_products
+        WHERE lower(name) = lower(?) AND is_active = 1
+        ORDER BY id
+        LIMIT 1
+        """,
+        (name,),
+    ).fetchone()
+    if not product:
+        return
+    pid = int(product["id"])
+
+    prices = _product_supplier_best_prices(conn, name)
+    if unit_price is not None:
+        try:
+            price = float(unit_price)
+        except (TypeError, ValueError):
+            price = None
+        else:
+            if price >= 0 and price == price:
+                prev = prices.get(sid)
+                prices[sid] = price if prev is None else min(prev, price)
+
+    # Keep any existing preferred slots that have no price history yet so we
+    # don't wipe manual picks until a cheaper known rate appears.
+    for raw in (
+        product["preferred_supplier_1_id"],
+        product["preferred_supplier_2_id"],
+        product["preferred_supplier_3_id"],
+    ):
+        try:
+            existing_id = int(raw or 0)
+        except (TypeError, ValueError):
+            existing_id = 0
+        if existing_id > 0 and existing_id not in prices:
+            prices[existing_id] = float("inf")
+
+    ranked = sorted(
+        prices.items(),
+        key=lambda item: (item[1], item[0]),
+    )
+    chosen: list[int] = [sid]
+    for other_id, _rate in ranked:
+        if other_id == sid:
+            continue
+        if other_id in chosen:
+            continue
+        chosen.append(other_id)
+        if len(chosen) >= 3:
+            break
+
+    while len(chosen) < 3:
+        chosen.append(0)
+
+    conn.execute(
+        """
+        UPDATE store_products
+        SET preferred_supplier_1_id = ?,
+            preferred_supplier_2_id = ?,
+            preferred_supplier_3_id = ?,
+            updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            chosen[0] or None,
+            chosen[1] or None,
+            chosen[2] or None,
+            _now(),
+            pid,
+        ),
+    )
 
 
 def _load_variants_by_product_ids(conn, product_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
@@ -2073,11 +2463,6 @@ def _page_render(page_key: str, **kwargs):
     # List filters use All/Bar/Restaurant across Stores pages (including Product Master).
     outlet = _parse_outlet_filter(raw_outlet)
     outlets_for_ui = STORES_FILTER_OUTLETS
-    # Stock Inward requires a concrete outlet — no "All" option on this page.
-    if page_key == "purchase_requests":
-        outlets_for_ui = STORES_OUTLETS
-        if outlet not in OUTLET_KEYS:
-            outlet = "bar"
     meta = PAGE_META[page_key]
     cta_url = None
     if meta.get("cta_endpoint"):
@@ -2286,6 +2671,21 @@ def stores_product_master():
                     product_unit=form["default_unit"],
                 )
                 approx_price = _approximate_price_from_variants(variants)
+                # Pack variants are the only price UI — don't wipe an inward-backed
+                # product rate when the editor submits no pack rows.
+                if approx_price is None and product_id:
+                    keep = conn.execute(
+                        """
+                        SELECT approximate_price FROM store_products
+                        WHERE id = ? AND is_active = 1
+                        """,
+                        (product_id,),
+                    ).fetchone()
+                    if keep is not None and keep["approximate_price"] is not None:
+                        try:
+                            approx_price = float(keep["approximate_price"])
+                        except (TypeError, ValueError):
+                            approx_price = None
                 form["approximate_price"] = _format_optional_price(approx_price) if approx_price is not None else ""
                 form["variants"] = [
                     {
@@ -2407,6 +2807,60 @@ def stores_product_master():
                 (edit_id_int,),
             ).fetchone()
             if row:
+                # Heal preferred suppliers from the latest stock inward when missing
+                # or stale (covers inwards that ran before auto-update shipped).
+                try:
+                    current_pref = int(row["preferred_supplier_1_id"] or 0)
+                except (TypeError, ValueError):
+                    current_pref = 0
+                last_sid, last_price = _last_inward_supplier_and_price(conn, row["name"])
+                healed = False
+                if last_sid and last_sid != current_pref:
+                    _update_product_preferred_suppliers_from_inward(
+                        conn,
+                        item_name=row["name"],
+                        supplier_id=last_sid,
+                        unit_price=last_price,
+                    )
+                    healed = True
+                # Fill blank approx price from the same latest inward.
+                try:
+                    current_price = (
+                        float(row["approximate_price"])
+                        if row["approximate_price"] is not None
+                        else None
+                    )
+                except (TypeError, ValueError):
+                    current_price = None
+                if current_price is None and last_price is not None:
+                    _update_product_master_price_from_inward(
+                        conn,
+                        item_name=row["name"],
+                        pack_label="",
+                        unit_price=last_price,
+                    )
+                    healed = True
+                elif current_price is None:
+                    fallback_price = _last_inward_unit_price(conn, row["name"])
+                    if fallback_price is not None:
+                        _update_product_master_price_from_inward(
+                            conn,
+                            item_name=row["name"],
+                            pack_label="",
+                            unit_price=fallback_price,
+                        )
+                        healed = True
+                if healed:
+                    conn.commit()
+                    row = conn.execute(
+                        """
+                        SELECT id, category_id, name, default_unit, outlet, approximate_price,
+                               preferred_supplier_1_id, preferred_supplier_2_id, preferred_supplier_3_id
+                        FROM store_products
+                        WHERE id = ? AND is_active = 1
+                        """,
+                        (edit_id_int,),
+                    ).fetchone()
                 form["product_id"] = str(row["id"])
                 form["category_id"] = str(row["category_id"])
                 form["name"] = row["name"]
@@ -2422,11 +2876,30 @@ def stores_product_master():
                 form["variants"] = []
                 for v in _load_variants_by_product_ids(conn, [edit_id_int]).get(edit_id_int, []):
                     pack_qty, pack_unit = _split_variant_label(v["label"] or "")
+                    pack_price = v["approximate_price_display"] or ""
+                    # Derive blank pack ₹ from the product unit rate (latest inward).
+                    if not pack_price and form["approximate_price"]:
+                        try:
+                            unit_rate = float(form["approximate_price"])
+                            qty_base = float(v.get("qty_in_base") or 0)
+                        except (TypeError, ValueError):
+                            unit_rate = None
+                            qty_base = 0.0
+                        if unit_rate is not None and qty_base > 0:
+                            pack_price = _format_optional_price(round(unit_rate * qty_base, 2))
                     form["variants"].append({
                         "qty": pack_qty,
                         "unit": pack_unit,
-                        "approximate_price": v["approximate_price_display"] or "",
+                        "approximate_price": pack_price,
                     })
+                # No packs yet — show the inward/product rate on the placeholder row
+                # (qty 1 × default unit) so Pack variants isn't an empty ₹ Price.
+                if not form["variants"] and form["approximate_price"]:
+                    form["variants"] = [{
+                        "qty": "1",
+                        "unit": form["default_unit"] or "kg",
+                        "approximate_price": form["approximate_price"],
+                    }]
             else:
                 flash("Product not found.", "error")
                 return _pm_redirect()
@@ -2440,6 +2913,8 @@ def stores_product_master():
                 form["default_unit"] = preselect_unit
 
         catalog = _load_product_catalog(conn, stores_outlet=outlet)
+        if _heal_product_prices_from_last_inward(conn):
+            conn.commit()
         products = _load_flat_products(conn, stores_outlet=outlet)
         categories = conn.execute(
             """
@@ -3031,16 +3506,1345 @@ def _load_indent_list_for_view(conn, outlet: str, list_view: str) -> tuple[list[
     return indents, indent_view_data, stores_ledger_data
 
 
+def _supplier_initials(name: str) -> str:
+    parts = [p for p in re.split(r"\s+", str(name or "").strip()) if p]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        return parts[0][:2].upper()
+    return (parts[0][0] + parts[-1][0]).upper()
+
+
+def _po_line_display_unit(line: dict[str, Any]) -> str:
+    pack_label = (line.get("pack_label") or "").strip()
+    if pack_label:
+        return pack_label
+    return str(line.get("unit") or "").strip()
+
+
+def _po_line_total_display(line: dict[str, Any]) -> str:
+    """Base quantity with unit (pack qty × line qty when packed), matching the PO PDF."""
+    try:
+        qty = float(line.get("quantity") or 0)
+    except (TypeError, ValueError):
+        qty = 0.0
+    unit = str(line.get("unit") or "").strip()
+    pack_label = (line.get("pack_label") or "").strip()
+    pack_raw = line.get("pack_qty_in_base")
+    pack_qty = None
+    if pack_label and pack_raw not in (None, ""):
+        try:
+            pack_qty = float(pack_raw)
+        except (TypeError, ValueError):
+            pack_qty = None
+        if pack_qty is not None and pack_qty <= 0:
+            pack_qty = None
+    total = qty * pack_qty if pack_qty is not None else qty
+    qty_label = _format_ledger_qty(total)
+    return f"{qty_label} {unit}".strip() if unit else qty_label
+
+
+def _parse_selected_supplier_ids(*raw_values) -> list[int]:
+    """Parse selected supplier ids from form getlist values and/or a CSV query string."""
+    out: list[int] = []
+    seen: set[int] = set()
+    for raw in raw_values:
+        if raw is None:
+            continue
+        if isinstance(raw, (list, tuple)):
+            parts = raw
+        else:
+            parts = str(raw).split(",")
+        for part in parts:
+            text = str(part or "").strip()
+            if not text or text in ("0", "none", "null"):
+                continue
+            try:
+                sid = int(text)
+            except (TypeError, ValueError):
+                continue
+            if sid <= 0 or sid in seen:
+                continue
+            seen.add(sid)
+            out.append(sid)
+    return out
+
+
+_PO_FY_NO_RE = re.compile(r"^HBE/PO/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
+_PO_SHORT_FY_NO_RE = re.compile(
+    r"^PO/(BAR|RES)/(\d{2}-\d{2})/(\d+)$",
+    re.IGNORECASE,
+)
+
+
+def _next_po_no(conn, outlet: str, when=None) -> str:
+    """Allocate PO/{BAR|RES}/{YY-YY}/{n} — series per outlet + fiscal year."""
+    outlet_key = _parse_outlet(outlet)
+    outlet_code = _indent_outlet_code(outlet_key)
+    fy = indian_fiscal_year_label(when)
+    short_fy = _short_fiscal_year_label(when)
+    series_key = f"{outlet_code}/{short_fy}"
+    row = conn.execute(
+        "SELECT last_seq FROM store_po_seq WHERE fiscal_year = ?",
+        (series_key,),
+    ).fetchone()
+    current = int(row["last_seq"]) if row else 0
+    # Issued numbers win, so a missing/reset counter can never hand out a duplicate.
+    for issued in conn.execute(
+        """
+        SELECT po.po_no, i.outlet
+        FROM store_purchase_orders po
+        JOIN store_indents i ON i.id = po.indent_id
+        WHERE i.outlet = ?
+        """,
+        (outlet_key,),
+    ).fetchall():
+        text = str(issued["po_no"] or "").strip()
+        match_new = _PO_SHORT_FY_NO_RE.match(text)
+        if match_new:
+            if match_new.group(1).upper() != outlet_code:
+                continue
+            if match_new.group(2) != short_fy:
+                continue
+            current = max(current, int(match_new.group(3)))
+            continue
+        match_old = _PO_FY_NO_RE.match(text)
+        if match_old and match_old.group(2) == fy:
+            current = max(current, int(match_old.group(1)))
+    nxt = current + 1
+    conn.execute(
+        """
+        INSERT INTO store_po_seq (fiscal_year, last_seq)
+        VALUES (?, ?)
+        ON CONFLICT(fiscal_year) DO UPDATE SET last_seq = excluded.last_seq
+        """,
+        (series_key, nxt),
+    )
+    return f"PO/{outlet_code}/{short_fy}/{nxt}"
+
+
+def _find_po_no(conn, indent_id: int, supplier_id: int) -> str:
+    """Most recent PO number for indent × supplier (multiple batches allowed)."""
+    row = conn.execute(
+        """
+        SELECT po_no FROM store_purchase_orders
+        WHERE indent_id = ? AND supplier_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (indent_id, supplier_id),
+    ).fetchone()
+    return str(row["po_no"] or "").strip() if row else ""
+
+
+def _get_or_create_po_no(conn, indent_id: int, supplier_id: int, when=None) -> str:
+    """Return the latest PO for this supplier, or allocate one if none exist."""
+    if not indent_id or not supplier_id:
+        return ""
+    existing = _find_po_no(conn, indent_id, supplier_id)
+    if existing:
+        return existing
+    return _allocate_po_no(conn, indent_id, supplier_id, when=when)
+
+
+def _allocate_po_no(conn, indent_id: int, supplier_id: int, when=None) -> str:
+    """Always allocate a fresh PO number (partial re-orders need a new PO)."""
+    po_id, po_no = _allocate_po_row(conn, indent_id, supplier_id, when=when)
+    return po_no if po_id else ""
+
+
+def _allocate_po_row(conn, indent_id: int, supplier_id: int, when=None) -> tuple[int, str]:
+    """Allocate a fresh PO row; returns ``(purchase_order_id, po_no)`` or ``(0, "")``."""
+    if not indent_id or not supplier_id:
+        return 0, ""
+    indent = conn.execute(
+        "SELECT outlet FROM store_indents WHERE id = ?",
+        (indent_id,),
+    ).fetchone()
+    outlet = (indent["outlet"] if indent else "") or "restaurant"
+    for _ in range(5):
+        po_no = _next_po_no(conn, outlet, when)
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO store_purchase_orders (indent_id, supplier_id, po_no, created_at)
+                VALUES (?, ?, ?, datetime('now','localtime'))
+                """,
+                (indent_id, supplier_id, po_no),
+            )
+            conn.commit()
+            return int(cur.lastrowid), po_no
+        except sqlite3.IntegrityError:
+            conn.rollback()
+    return 0, ""
+
+
+def _save_purchase_order_lines(
+    conn, purchase_order_id: int, lines: list[dict[str, Any]]
+) -> None:
+    """Freeze the lines that were on a PO at generate time (for deferred send/PDF)."""
+    if not purchase_order_id:
+        return
+    conn.execute(
+        "DELETE FROM store_purchase_order_lines WHERE purchase_order_id = ?",
+        (purchase_order_id,),
+    )
+    for line in lines or []:
+        try:
+            qty = float(line.get("quantity") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if qty <= 0.0001:
+            continue
+        line_id = line.get("line_id")
+        try:
+            line_id_int = int(line_id) if line_id not in (None, "") else None
+        except (TypeError, ValueError):
+            line_id_int = None
+        rate = line.get("rate")
+        try:
+            rate_num = float(rate) if rate not in (None, "") else None
+        except (TypeError, ValueError):
+            rate_num = None
+        pack_raw = line.get("pack_qty_in_base")
+        try:
+            pack_qty = float(pack_raw) if pack_raw not in (None, "") else None
+        except (TypeError, ValueError):
+            pack_qty = None
+        conn.execute(
+            """
+            INSERT INTO store_purchase_order_lines (
+                purchase_order_id, line_id, item_name, display_name,
+                quantity, unit, pack_label, pack_qty_in_base, rate
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                purchase_order_id,
+                line_id_int,
+                str(line.get("item_name") or "").strip(),
+                str(line.get("display_name") or line.get("item_name") or "").strip(),
+                qty,
+                str(line.get("unit") or line.get("display_unit") or "").strip(),
+                str(line.get("pack_label") or "").strip(),
+                pack_qty,
+                rate_num,
+            ),
+        )
+    conn.commit()
+
+
+def _find_purchase_order(
+    conn, *, indent_id: int, supplier_id: int, po_no: str = ""
+) -> dict[str, Any] | None:
+    """Resolve a purchase order row by po_no, or the latest for indent×supplier."""
+    text = str(po_no or "").strip()
+    if text:
+        row = conn.execute(
+            """
+            SELECT id, indent_id, supplier_id, po_no, created_at
+            FROM store_purchase_orders
+            WHERE indent_id = ? AND supplier_id = ? AND po_no = ?
+            LIMIT 1
+            """,
+            (indent_id, supplier_id, text),
+        ).fetchone()
+        if row:
+            return dict(row)
+    row = conn.execute(
+        """
+        SELECT id, indent_id, supplier_id, po_no, created_at
+        FROM store_purchase_orders
+        WHERE indent_id = ? AND supplier_id = ?
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (indent_id, supplier_id),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def _load_purchase_order_lines(conn, purchase_order_id: int) -> list[dict[str, Any]]:
+    """Frozen lines for one issued PO (empty if none stored)."""
+    if not purchase_order_id:
+        return []
+    rows = conn.execute(
+        """
+        SELECT line_id, item_name, display_name, quantity, unit,
+               pack_label, pack_qty_in_base, rate,
+               COALESCE(quantity_received, 0) AS quantity_received
+        FROM store_purchase_order_lines
+        WHERE purchase_order_id = ?
+        ORDER BY id
+        """,
+        (purchase_order_id,),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["display_unit"] = _po_line_display_unit(item)
+        out.append(item)
+    return out
+
+
+def _po_inward_available_qty(
+    *, po_qty: float, po_received: float, indent_remaining: float
+) -> float:
+    """Qty still receivable on a PO line, capped by indent remaining."""
+    try:
+        ordered = float(po_qty or 0)
+    except (TypeError, ValueError):
+        ordered = 0.0
+    try:
+        already = float(po_received or 0)
+    except (TypeError, ValueError):
+        already = 0.0
+    try:
+        indent_left = float(indent_remaining or 0)
+    except (TypeError, ValueError):
+        indent_left = 0.0
+    if ordered <= 0.0001:
+        # Legacy / reconstructed lines without a frozen PO qty: fall back to indent.
+        return indent_left if indent_left > 0.0001 else 0.0
+    po_left = ordered - already
+    if po_left <= 0.0001 or indent_left <= 0.0001:
+        return 0.0
+    return po_left if po_left <= indent_left else indent_left
+
+
+def _apply_po_line_received(
+    conn, *, purchase_order_id: int, indent_line_id: int, received_qty: float
+) -> None:
+    """Increment quantity_received on the matching frozen PO line."""
+    if not purchase_order_id or not indent_line_id:
+        return
+    try:
+        qty = float(received_qty or 0)
+    except (TypeError, ValueError):
+        return
+    if qty <= 0.0001:
+        return
+    row = conn.execute(
+        """
+        SELECT id, COALESCE(quantity, 0) AS quantity,
+               COALESCE(quantity_received, 0) AS quantity_received
+        FROM store_purchase_order_lines
+        WHERE purchase_order_id = ? AND line_id = ?
+        ORDER BY id
+        LIMIT 1
+        """,
+        (int(purchase_order_id), int(indent_line_id)),
+    ).fetchone()
+    if not row:
+        return
+    try:
+        already = float(row["quantity_received"] or 0)
+        ordered = float(row["quantity"] or 0)
+    except (TypeError, ValueError):
+        already = 0.0
+        ordered = 0.0
+    new_received = already + qty
+    if ordered > 0.0001 and new_received > ordered + 0.0001:
+        new_received = ordered
+    conn.execute(
+        """
+        UPDATE store_purchase_order_lines
+        SET quantity_received = ?
+        WHERE id = ?
+        """,
+        (new_received, int(row["id"])),
+    )
+
+
+def _reconstruct_po_lines_from_assignment(
+    conn, indent_id: int, supplier_id: int
+) -> list[dict[str, Any]]:
+    """Build PO lines from indent + supplier assignment when frozen rows are missing.
+
+    Used for older purchase orders created before ``store_purchase_order_lines``
+    was populated. Prefers ``quantity_ordered``, then override qty, then indent qty.
+    """
+    try:
+        supplier_id_int = int(supplier_id)
+    except (TypeError, ValueError):
+        return []
+    if supplier_id_int <= 0:
+        return []
+    rows = conn.execute(
+        """
+        SELECT l.id AS line_id,
+               l.item_name,
+               l.quantity,
+               l.unit,
+               l.notes,
+               l.approximate_price,
+               l.pack_label,
+               l.pack_qty_in_base,
+               COALESCE(l.quantity_ordered, 0) AS quantity_ordered,
+               pl.rate AS override_rate,
+               pl.quantity AS override_qty
+        FROM store_indent_lines l
+        INNER JOIN store_po_lines pl
+          ON pl.indent_id = l.indent_id AND pl.line_id = l.id
+        WHERE l.indent_id = ?
+          AND pl.supplier_id = ?
+        ORDER BY l.id
+        """,
+        (indent_id, supplier_id_int),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        line = dict(row)
+        try:
+            ordered_qty = float(line.get("quantity_ordered") or 0)
+        except (TypeError, ValueError):
+            ordered_qty = 0.0
+        try:
+            indent_qty = float(line.get("quantity") or 0)
+        except (TypeError, ValueError):
+            indent_qty = 0.0
+        override_qty = line.get("override_qty")
+        try:
+            override_num = (
+                float(override_qty) if override_qty not in (None, "") else None
+            )
+        except (TypeError, ValueError):
+            override_num = None
+        if ordered_qty > 0.0001:
+            qty = ordered_qty
+        elif override_num is not None and override_num > 0.0001:
+            qty = override_num
+        else:
+            qty = indent_qty
+        if qty <= 0.0001:
+            continue
+        rate = line.get("override_rate")
+        if rate in (None, ""):
+            rate = line.get("approximate_price")
+        try:
+            rate_num = float(rate) if rate not in (None, "") else None
+        except (TypeError, ValueError):
+            rate_num = None
+        display_name = _format_indent_line_item(line)
+        line_for_display = dict(line)
+        line_for_display["quantity"] = qty
+        out.append(
+            {
+                "line_id": int(line["line_id"]),
+                "item_name": line.get("item_name") or "",
+                "display_name": display_name,
+                "quantity": qty,
+                "unit": line.get("unit") or "",
+                "display_unit": _po_line_display_unit(line),
+                "pack_label": (line.get("pack_label") or "").strip(),
+                "pack_qty_in_base": line.get("pack_qty_in_base"),
+                "total_display": _po_line_total_display(line_for_display),
+                "rate": rate_num,
+                "approximate_price": line.get("approximate_price"),
+                "notes": line.get("notes") or "",
+                "supplier_id": supplier_id_int,
+            }
+        )
+    return out
+
+
+def _po_lines_for_send_or_pdf(
+    conn, *, indent_id: int, supplier_id: int, po_row: dict | None, group_lines: list | None = None
+) -> list[dict[str, Any]]:
+    """Prefer frozen PO lines; otherwise reconstruct and backfill for older POs."""
+    frozen: list[dict[str, Any]] = []
+    if po_row and po_row.get("id"):
+        frozen = _load_purchase_order_lines(conn, int(po_row["id"]))
+    if frozen:
+        return frozen
+    reconstructed = _reconstruct_po_lines_from_assignment(conn, indent_id, supplier_id)
+    if reconstructed:
+        if po_row and po_row.get("id"):
+            _save_purchase_order_lines(conn, int(po_row["id"]), reconstructed)
+        return reconstructed
+    return list(group_lines or [])
+
+
+def _format_qty_display(value: float) -> str:
+    try:
+        num = float(value or 0)
+    except (TypeError, ValueError):
+        num = 0.0
+    if abs(num - round(num)) < 0.0001:
+        return str(int(round(num)))
+    return "%g" % num
+
+
+def _build_inward_lines_for_po(
+    conn, po: dict[str, Any], *, outlet: str
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Resolve indent + remaining inward rows for one generated purchase order."""
+    try:
+        indent_id = int(po.get("indent_id") or 0)
+        supplier_id = int(po.get("supplier_id") or 0)
+        po_id = int(po.get("po_id") or po.get("id") or 0)
+    except (TypeError, ValueError):
+        return None, []
+    if indent_id <= 0:
+        return None, []
+
+    indent = conn.execute(
+        """
+        SELECT i.*, u.full_name AS created_by_name,
+               d.full_name AS decided_by_name,
+               d.username AS decided_by_username
+        FROM store_indents i
+        LEFT JOIN users u ON u.id = i.created_by
+        LEFT JOIN users d ON d.id = i.decided_by
+        WHERE i.id = ? AND i.status = 'approved'
+        """,
+        (indent_id,),
+    ).fetchone()
+    if not indent:
+        return None, []
+
+    po_row = {
+        "id": po_id,
+        "indent_id": indent_id,
+        "supplier_id": supplier_id,
+        "po_no": po.get("po_no") or "",
+    }
+    po_lines = _po_lines_for_send_or_pdf(
+        conn,
+        indent_id=indent_id,
+        supplier_id=supplier_id,
+        po_row=po_row if po_id else None,
+        group_lines=[],
+    )
+    if not po_lines:
+        selected = dict(indent)
+        selected["outlet"] = _parse_outlet(selected.get("outlet"))
+        selected["outlet_label"] = _outlet_label(selected["outlet"])
+        selected["po_id"] = po_id
+        selected["po_no"] = po.get("po_no") or ""
+        selected["supplier_name"] = po.get("supplier_name") or ""
+        return selected, []
+
+    indent_line_ids: list[int] = []
+    for row in po_lines:
+        try:
+            lid = int(row.get("line_id") or 0)
+        except (TypeError, ValueError):
+            lid = 0
+        if lid > 0:
+            indent_line_ids.append(lid)
+    indent_lines_by_id: dict[int, dict[str, Any]] = {}
+    if indent_line_ids:
+        placeholders = ",".join("?" for _ in indent_line_ids)
+        for row in conn.execute(
+            f"""
+            SELECT id, item_name, quantity, quantity_received, unit, notes, approximate_price,
+                   pack_label, pack_qty_in_base
+            FROM store_indent_lines
+            WHERE indent_id = ? AND id IN ({placeholders})
+            """,
+            (indent_id, *indent_line_ids),
+        ).fetchall():
+            indent_lines_by_id[int(row["id"])] = dict(row)
+
+    product_cat_map = _product_category_by_item_name(
+        conn, stores_outlet=indent["outlet"] or outlet
+    )
+    selected_lines: list[dict[str, Any]] = []
+    for po_line in po_lines:
+        try:
+            line_id = int(po_line.get("line_id") or 0)
+        except (TypeError, ValueError):
+            line_id = 0
+        indent_line = indent_lines_by_id.get(line_id) if line_id else None
+        if not indent_line:
+            continue
+        try:
+            po_qty = float(po_line.get("quantity") or 0)
+        except (TypeError, ValueError):
+            po_qty = 0.0
+        try:
+            po_received = float(po_line.get("quantity_received") or 0)
+        except (TypeError, ValueError):
+            po_received = 0.0
+        try:
+            qty_val = float(indent_line.get("quantity") or 0)
+        except (TypeError, ValueError):
+            qty_val = 0.0
+        try:
+            received_val = float(indent_line.get("quantity_received") or 0)
+        except (TypeError, ValueError):
+            received_val = 0.0
+        remaining_val = qty_val - received_val
+        if remaining_val <= 0.0001:
+            continue
+        # Cap available inward to what THIS PO still has left to receive
+        # (not just indent remaining — a partial PO can be fully done while
+        # the indent still has qty for other POs).
+        available = _po_inward_available_qty(
+            po_qty=po_qty,
+            po_received=po_received,
+            indent_remaining=remaining_val,
+        )
+        if available <= 0.0001:
+            continue
+        approx = indent_line.get("approximate_price")
+        if po_line.get("rate") not in (None, ""):
+            approx = po_line.get("rate")
+        pack_label = (indent_line.get("pack_label") or po_line.get("pack_label") or "").strip()
+        pack_qty = _row_pack_qty_in_base(indent_line)
+        if pack_qty is None:
+            pack_qty = po_line.get("pack_qty_in_base")
+        base_unit = indent_line.get("unit") or po_line.get("unit") or ""
+        raw_item_name = (indent_line.get("item_name") or po_line.get("item_name") or "").strip()
+        display_name = (
+            (po_line.get("display_name") or "").strip()
+            or _format_indent_line_item(indent_line)
+            or raw_item_name
+        )
+        notes = indent_line.get("notes") or ""
+        line_pk = int(indent_line["id"])
+        try:
+            rate_val = float(approx) if approx is not None and approx != "" else 0.0
+        except (TypeError, ValueError):
+            rate_val = 0.0
+        if pack_label and pack_qty is not None:
+            try:
+                display_unit = f"{_format_ledger_qty(float(pack_qty))} {base_unit}".strip()
+            except (TypeError, ValueError):
+                display_unit = base_unit
+        else:
+            display_unit = base_unit
+        product_category = product_cat_map.get(raw_item_name.casefold(), "")
+        selected_lines.append(
+            {
+                "id": line_pk,
+                "item_name": display_name,
+                "product_category": product_category,
+                "quantity": qty_val,
+                "quantity_display": _format_qty_display(qty_val),
+                "quantity_received": received_val,
+                "quantity_received_display": _format_qty_display(received_val),
+                "remaining": available,
+                "remaining_display": _format_qty_display(available),
+                "unit": display_unit,
+                "notes": notes,
+                "approximate_price": approx,
+                "approximate_price_display": _format_optional_price(approx),
+                "rate_value": rate_val,
+                "initial": (raw_item_name or "?")[:1].upper(),
+                "pack_label": pack_label,
+                "pack_qty_in_base": pack_qty,
+            }
+        )
+
+    selected = dict(indent)
+    selected["outlet"] = _parse_outlet(selected.get("outlet"))
+    selected["outlet_label"] = _outlet_label(selected["outlet"])
+    selected["po_id"] = po_id
+    selected["po_no"] = po.get("po_no") or ""
+    selected["supplier_name"] = po.get("supplier_name") or ""
+    return selected, selected_lines
+
+
+def _po_line_remaining_qty(indent_qty: float, ordered_qty: float) -> float:
+    try:
+        remaining = float(indent_qty or 0) - float(ordered_qty or 0)
+    except (TypeError, ValueError):
+        remaining = float(indent_qty or 0)
+    return remaining if remaining > 0.0001 else 0.0
+
+
+def _commit_po_group_quantities(conn, indent_id: int, lines: list[dict[str, Any]]) -> None:
+    """Mark generated line quantities as ordered and leave remaining on the draft."""
+    for line in lines or []:
+        try:
+            line_id = int(line.get("line_id"))
+        except (TypeError, ValueError):
+            continue
+        try:
+            qty = float(line.get("quantity") or 0)
+        except (TypeError, ValueError):
+            qty = 0.0
+        if line_id <= 0 or qty <= 0.0001:
+            continue
+        conn.execute(
+            """
+            UPDATE store_indent_lines
+            SET quantity_ordered = MIN(
+                COALESCE(quantity, 0),
+                COALESCE(quantity_ordered, 0) + ?
+            )
+            WHERE id = ? AND indent_id = ?
+            """,
+            (qty, line_id, indent_id),
+        )
+        row = conn.execute(
+            """
+            SELECT quantity, COALESCE(quantity_ordered, 0) AS quantity_ordered
+            FROM store_indent_lines
+            WHERE id = ? AND indent_id = ?
+            """,
+            (line_id, indent_id),
+        ).fetchone()
+        if not row:
+            continue
+        remaining = _po_line_remaining_qty(row["quantity"], row["quantity_ordered"])
+        if remaining > 0.0001:
+            conn.execute(
+                """
+                UPDATE store_po_lines
+                SET quantity = ?, updated_at = datetime('now','localtime')
+                WHERE line_id = ? AND indent_id = ?
+                """,
+                (remaining, line_id, indent_id),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE store_po_lines
+                SET quantity = NULL, updated_at = datetime('now','localtime')
+                WHERE line_id = ? AND indent_id = ?
+                """,
+                (line_id, indent_id),
+            )
+    conn.commit()
+
+
+def _po_default_message(
+    supplier_name: str,
+    lines: list[dict[str, Any]],
+    indent_no: str,
+    po_no: str = "",
+) -> str:
+    name = (supplier_name or "Supplier").strip() or "Supplier"
+    bullets = []
+    for line in lines:
+        qty = line.get("quantity") or 0
+        try:
+            qty_num = float(qty)
+            qty_label = str(int(qty_num)) if abs(qty_num - round(qty_num)) < 0.0001 else f"{qty_num:g}"
+        except (TypeError, ValueError):
+            qty_label = str(qty)
+        unit = _po_line_display_unit(line)
+        item = line.get("display_name") or line.get("item_name") or "Item"
+        bullets.append(f"• {item} — {qty_label} {unit}".rstrip())
+    body = "\n".join(bullets) if bullets else "• (no items)"
+    reference = (po_no or "").strip() or (indent_no or "").strip()
+    return (
+        f"Hello {name},\n"
+        f"Please find our purchase order {reference} as below.\n\n"
+        f"{body}\n\n"
+        f"Please confirm:\n"
+        f"✓ Availability\n"
+        f"✓ Price\n"
+        f"✓ Expected delivery date\n\n"
+        f"Thank you,\n"
+        f"— Hotel Bell Elite\n"
+        f"({reference})"
+    )
+
+
+def _po_is_outside_session_error(err: str) -> bool:
+    text = str(err or "").lower()
+    return (
+        "131047" in text
+        or ("outside" in text and "window" in text)
+        or "24 hour" in text
+        or "24-hour" in text
+    )
+
+
+def _load_pending_inward_indents(conn, outlet: str) -> list[dict[str, Any]]:
+    """Approved indents that still have quantity left to stock inward."""
+    outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
+    rows = conn.execute(
+        f"""
+        SELECT i.id, i.indent_no, i.outlet, i.decided_at, i.created_at,
+               (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count
+        FROM store_indents i
+        WHERE {outlet_sql} AND i.status = 'approved'
+          AND EXISTS (
+            SELECT 1 FROM store_indent_lines l
+            WHERE l.indent_id = i.id
+              AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+          )
+        ORDER BY i.decided_at DESC, i.id DESC
+        """,
+        outlet_params,
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _indent_needs_po_generation(conn, indent_id: int) -> bool:
+    """True when the indent still has remaining qty to put on a purchase order."""
+    payload = _load_po_supplier_groups(conn, indent_id)
+    if not payload or payload.get("status") != "approved":
+        return False
+    return bool(_pending_po_groups(payload.get("groups") or []))
+
+
+def _load_pending_po_indents(conn, outlet: str) -> list[dict[str, Any]]:
+    """Approved indents that still need purchase orders generated.
+
+    Indents where every line is fully covered by generated PO quantities are
+    omitted from the Generate PO indent picker.
+    """
+    outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
+    rows = conn.execute(
+        f"""
+        SELECT i.id, i.indent_no, i.outlet, i.decided_at, i.created_at,
+               (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count
+        FROM store_indents i
+        WHERE {outlet_sql} AND i.status = 'approved'
+          AND EXISTS (
+            SELECT 1 FROM store_indent_lines l WHERE l.indent_id = i.id
+          )
+        ORDER BY i.decided_at DESC, i.id DESC
+        """,
+        outlet_params,
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        if _indent_needs_po_generation(conn, int(item["id"])):
+            out.append(item)
+    return out
+
+
+def _default_pack_from_product_variants(
+    variants: list[dict[str, Any]] | None,
+) -> tuple[str, float | None]:
+    """First active Product Master pack label + qty_in_base, or empty."""
+    for variant in variants or []:
+        label = str((variant or {}).get("label") or "").strip()
+        if not label:
+            continue
+        qty = (variant or {}).get("qty_in_base")
+        try:
+            qty_num = float(qty) if qty not in (None, "") else None
+        except (TypeError, ValueError):
+            qty_num = None
+        if qty_num is not None and qty_num <= 0:
+            qty_num = None
+        return label, qty_num
+    return "", None
+
+
+def _load_po_supplier_groups(conn, indent_id: int) -> dict[str, Any]:
+    """Group approved indent lines by preferred / overridden supplier."""
+    indent = conn.execute(
+        """
+        SELECT i.*, u.full_name AS created_by_name, d.full_name AS decided_by_name
+        FROM store_indents i
+        LEFT JOIN users u ON u.id = i.created_by
+        LEFT JOIN users d ON d.id = i.decided_by
+        WHERE i.id = ?
+        """,
+        (indent_id,),
+    ).fetchone()
+    if not indent:
+        return {}
+
+    lines = [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT id, item_name, quantity, unit, notes, approximate_price,
+                   pack_label, pack_qty_in_base, COALESCE(quantity_ordered, 0) AS quantity_ordered
+            FROM store_indent_lines
+            WHERE indent_id = ?
+            ORDER BY id
+            """,
+            (indent_id,),
+        ).fetchall()
+    ]
+    overrides = {
+        int(row["line_id"]): dict(row)
+        for row in conn.execute(
+            """
+            SELECT line_id, supplier_id, rate, quantity
+            FROM store_po_lines
+            WHERE indent_id = ?
+            """,
+            (indent_id,),
+        ).fetchall()
+    }
+    # Inactive products still carry the supplier mapping for already-approved indents.
+    product_rows = conn.execute(
+        """
+        SELECT id, name, preferred_supplier_1_id, preferred_supplier_2_id, preferred_supplier_3_id
+        FROM store_products
+        ORDER BY is_active DESC, id
+        """
+    ).fetchall()
+    product_by_name: dict[str, dict[str, Any]] = {}
+    for row in product_rows:
+        key = str(row["name"] or "").strip().lower()
+        if key:
+            product_by_name.setdefault(key, dict(row))
+    variants_by_product = _load_variants_by_product_ids(
+        conn, [int(row["id"]) for row in product_by_name.values()]
+    )
+    suppliers = {
+        int(row["id"]): dict(row)
+        for row in conn.execute(
+            """
+            SELECT id, name, gst, address, phone
+            FROM suppliers
+            ORDER BY LOWER(name), id
+            """
+        ).fetchall()
+    }
+
+    groups_map: dict[int | None, dict[str, Any]] = {}
+    healed_pack = False
+    for line in lines:
+        line_id = int(line["id"])
+        override = overrides.get(line_id) or {}
+        product = product_by_name.get(str(line.get("item_name") or "").strip().lower())
+        supplier_id = override.get("supplier_id")
+        if supplier_id is not None:
+            try:
+                supplier_id = int(supplier_id) if supplier_id else None
+            except (TypeError, ValueError):
+                supplier_id = None
+        if not supplier_id and product:
+            for key in (
+                "preferred_supplier_1_id",
+                "preferred_supplier_2_id",
+                "preferred_supplier_3_id",
+            ):
+                raw = product.get(key)
+                if raw:
+                    try:
+                        supplier_id = int(raw)
+                        break
+                    except (TypeError, ValueError):
+                        continue
+        if supplier_id and supplier_id not in suppliers:
+            supplier_id = None
+
+        rate = override.get("rate")
+        if rate is None or rate == "":
+            rate = line.get("approximate_price")
+        try:
+            rate_num = float(rate) if rate is not None and rate != "" else None
+        except (TypeError, ValueError):
+            rate_num = None
+        try:
+            indent_qty = float(line.get("quantity") or 0)
+        except (TypeError, ValueError):
+            indent_qty = 0.0
+        try:
+            ordered_qty = float(line.get("quantity_ordered") or 0)
+        except (TypeError, ValueError):
+            ordered_qty = 0.0
+        remaining_qty = _po_line_remaining_qty(indent_qty, ordered_qty)
+        if remaining_qty <= 0.0001:
+            continue
+        qty = remaining_qty
+        override_qty = override.get("quantity")
+        if override_qty not in (None, ""):
+            try:
+                qty = float(override_qty)
+            except (TypeError, ValueError):
+                qty = remaining_qty
+        if qty <= 0:
+            qty = remaining_qty
+        if remaining_qty > 0 and qty > remaining_qty:
+            qty = remaining_qty
+        amount = round(qty * rate_num, 2) if rate_num is not None else None
+        display_name = _format_indent_line_item(line)
+        line_for_display = dict(line)
+        line_for_display["quantity"] = qty
+        pack_label = (line.get("pack_label") or "").strip()
+        pack_qty = line.get("pack_qty_in_base")
+        if not pack_label and product:
+            pack_label, pack_qty = _default_pack_from_product_variants(
+                variants_by_product.get(int(product["id"]))
+            )
+            if pack_label:
+                # Persist so PO PDF / inward / later edits keep Product Master pack.
+                conn.execute(
+                    """
+                    UPDATE store_indent_lines
+                    SET pack_label = ?, pack_qty_in_base = ?
+                    WHERE id = ?
+                      AND (pack_label IS NULL OR TRIM(COALESCE(pack_label, '')) = '')
+                    """,
+                    (pack_label, pack_qty, line_id),
+                )
+                line["pack_label"] = pack_label
+                line["pack_qty_in_base"] = pack_qty
+                line_for_display["pack_label"] = pack_label
+                line_for_display["pack_qty_in_base"] = pack_qty
+                display_name = _format_indent_line_item(line)
+                healed_pack = True
+        item = {
+            "line_id": line_id,
+            "item_name": line.get("item_name") or "",
+            "display_name": display_name,
+            "quantity": qty,
+            "quantity_display": _format_ledger_qty(qty),
+            "indent_quantity": indent_qty,
+            "indent_quantity_display": _format_ledger_qty(indent_qty),
+            "remaining_quantity": remaining_qty,
+            "remaining_quantity_display": _format_ledger_qty(remaining_qty),
+            "ordered_quantity": ordered_qty,
+            "quantity_is_partial": remaining_qty > 0 and qty + 1e-9 < remaining_qty,
+            "unit": line.get("unit") or "",
+            "display_unit": _po_line_display_unit(line_for_display),
+            "pack_label": pack_label,
+            "pack_qty_in_base": pack_qty,
+            "total_display": _po_line_total_display(line_for_display),
+            "approximate_price": line.get("approximate_price"),
+            "rate": rate_num,
+            "amount": amount,
+            "supplier_id": supplier_id,
+            "notes": line.get("notes") or "",
+        }
+        if supplier_id not in groups_map:
+            supplier = suppliers.get(supplier_id) if supplier_id else None
+            groups_map[supplier_id] = {
+                "supplier_id": supplier_id,
+                "supplier_name": (supplier or {}).get("name") or "Unassigned",
+                "phone": (supplier or {}).get("phone") or "",
+                "gst": (supplier or {}).get("gst") or "",
+                "address": (supplier or {}).get("address") or "",
+                "initials": _supplier_initials((supplier or {}).get("name") or "Unassigned"),
+                "is_unassigned": supplier_id is None,
+                "lines": [],
+                "item_count": 0,
+                "estimated_value": 0.0,
+                "can_send": False,
+            }
+        groups_map[supplier_id]["lines"].append(item)
+        groups_map[supplier_id]["item_count"] += 1
+        if amount is not None:
+            groups_map[supplier_id]["estimated_value"] = round(
+                groups_map[supplier_id]["estimated_value"] + amount, 2
+            )
+
+    groups = []
+    unassigned = groups_map.pop(None, None)
+    if unassigned:
+        unassigned["can_send"] = False
+        unassigned["po_no"] = ""
+        groups.append(unassigned)
+    for supplier_id in sorted(
+        groups_map.keys(),
+        key=lambda sid: (str(groups_map[sid]["supplier_name"] or "").lower(), sid or 0),
+    ):
+        group = groups_map[supplier_id]
+        group["can_send"] = bool(group["supplier_id"] and (group["phone"] or "").strip())
+        # Remaining lines still need a (new) PO — don't stamp the previous batch number.
+        group["po_no"] = ""
+        groups.append(group)
+
+    grouped_counts = {
+        int(g["supplier_id"]): g["item_count"] for g in groups if g.get("supplier_id")
+    }
+    supplier_options = [
+        {
+            "id": int(row["id"]),
+            "name": row["name"] or "",
+            "phone": row.get("phone") or "",
+            "gst": row.get("gst") or "",
+            "address": row.get("address") or "",
+            "initials": _supplier_initials(row["name"] or ""),
+            "item_count": grouped_counts.get(int(row["id"]), 0),
+        }
+        for row in sorted(suppliers.values(), key=lambda s: (str(s.get("name") or "").lower(), s["id"]))
+    ]
+
+    indent_data = dict(indent)
+    if healed_pack:
+        conn.commit()
+    return {
+        "indent": indent_data,
+        "indent_id": int(indent_data["id"]),
+        "indent_no": indent_data.get("indent_no") or "",
+        "outlet": indent_data.get("outlet") or "",
+        "outlet_label": _outlet_label(_parse_outlet(indent_data.get("outlet"))),
+        "status": indent_data.get("status") or "",
+        "groups": groups,
+        "supplier_options": supplier_options,
+        "supplier_count": sum(1 for g in groups if not g.get("is_unassigned")),
+    }
+
+
+def _pending_po_groups(groups: list | None) -> list[dict[str, Any]]:
+    """Supplier groups that still need a PO (any lines with remaining indent qty)."""
+    return [group for group in (groups or []) if group.get("lines")]
+
+
+def _record_po_send(
+    conn,
+    *,
+    indent_id: int,
+    supplier_id: int | None,
+    phone: str,
+    message: str,
+    pdf_name: str,
+    include_pdf: bool,
+    conversation_id: int | None,
+    wa_message_id: str,
+    status: str,
+    error: str,
+    sent_by: int | None,
+    po_no: str = "",
+) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO store_po_sends (
+            indent_id, supplier_id, po_no, phone, message, pdf_name, include_pdf,
+            conversation_id, wa_message_id, status, error, sent_by, sent_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+        """,
+        (
+            indent_id,
+            supplier_id,
+            po_no or "",
+            phone or "",
+            message or "",
+            pdf_name or "",
+            1 if include_pdf else 0,
+            conversation_id,
+            wa_message_id or "",
+            status or "failed",
+            error or "",
+            sent_by,
+        ),
+    )
+    return int(cur.lastrowid)
+
+
+def _load_po_send_history(conn, *, limit: int = 100) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT s.*,
+               i.indent_no,
+               i.outlet,
+               sp.name AS supplier_name,
+               u.full_name AS sent_by_name,
+               COALESCE(NULLIF(s.po_no, ''), po.po_no, '') AS po_no_display
+        FROM store_po_sends s
+        LEFT JOIN store_indents i ON i.id = s.indent_id
+        LEFT JOIN suppliers sp ON sp.id = s.supplier_id
+        LEFT JOIN users u ON u.id = s.sent_by
+        LEFT JOIN store_purchase_orders po
+               ON po.indent_id = s.indent_id AND po.supplier_id = s.supplier_id
+        ORDER BY s.sent_at DESC, s.id DESC
+        LIMIT ?
+        """,
+        (max(1, int(limit or 100)),),
+    ).fetchall()
+    out = []
+    for row in rows:
+        item = dict(row)
+        item["outlet_label"] = _outlet_label(_parse_outlet(item.get("outlet")))
+        item["sent_at_display"] = _format_stores_dt(item.get("sent_at"))
+        item["supplier_name"] = item.get("supplier_name") or "—"
+        item["po_no"] = item.get("po_no_display") or item.get("po_no") or ""
+        out.append(item)
+    return out
+
+
+def _load_generated_purchase_orders(
+    conn, outlet: str, *, limit: int = 200, send_queue: bool = False, pending_inward: bool = False
+) -> list[dict[str, Any]]:
+    """Issued PO numbers, newest first.
+
+    When ``send_queue`` is True (Send to Supplier tab), only return POs that are
+    not successfully sent, still have stock-inward remaining on the indent, and
+    have sendable lines (frozen PO lines or a current supplier assignment).
+
+    When ``pending_inward`` is True (Stock Inward PO picker), only return POs
+    that still have at least one line with remaining qty to receive.
+    """
+    outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
+    # Prefer matching by po_no; fall back to indent×supplier for legacy send rows.
+    send_match = """
+               (
+                   SELECT s.status
+                   FROM store_po_sends s
+                   WHERE s.indent_id = po.indent_id
+                     AND s.supplier_id = po.supplier_id
+                     AND (
+                       s.po_no = po.po_no
+                       OR (
+                         COALESCE(TRIM(s.po_no), '') = ''
+                         AND NOT EXISTS (
+                           SELECT 1 FROM store_po_sends sx
+                           WHERE sx.indent_id = po.indent_id
+                             AND sx.supplier_id = po.supplier_id
+                             AND sx.po_no = po.po_no
+                         )
+                       )
+                     )
+                   ORDER BY
+                     CASE WHEN s.po_no = po.po_no THEN 0 ELSE 1 END,
+                     s.sent_at DESC, s.id DESC
+                   LIMIT 1
+               ) AS last_send_status,
+               (
+                   SELECT s.sent_at
+                   FROM store_po_sends s
+                   WHERE s.indent_id = po.indent_id
+                     AND s.supplier_id = po.supplier_id
+                     AND (
+                       s.po_no = po.po_no
+                       OR (
+                         COALESCE(TRIM(s.po_no), '') = ''
+                         AND NOT EXISTS (
+                           SELECT 1 FROM store_po_sends sx
+                           WHERE sx.indent_id = po.indent_id
+                             AND sx.supplier_id = po.supplier_id
+                             AND sx.po_no = po.po_no
+                         )
+                       )
+                     )
+                   ORDER BY
+                     CASE WHEN s.po_no = po.po_no THEN 0 ELSE 1 END,
+                     s.sent_at DESC, s.id DESC
+                   LIMIT 1
+               ) AS last_sent_at
+    """
+    queue_sql = ""
+    if send_queue:
+        queue_sql = """
+          AND i.status = 'approved'
+          AND EXISTS (
+            SELECT 1 FROM store_indent_lines l
+            WHERE l.indent_id = i.id
+              AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+          )
+          AND COALESCE((
+                   SELECT s.status
+                   FROM store_po_sends s
+                   WHERE s.indent_id = po.indent_id
+                     AND s.supplier_id = po.supplier_id
+                     AND (
+                       s.po_no = po.po_no
+                       OR (
+                         COALESCE(TRIM(s.po_no), '') = ''
+                         AND NOT EXISTS (
+                           SELECT 1 FROM store_po_sends sx
+                           WHERE sx.indent_id = po.indent_id
+                             AND sx.supplier_id = po.supplier_id
+                             AND sx.po_no = po.po_no
+                         )
+                       )
+                     )
+                   ORDER BY
+                     CASE WHEN s.po_no = po.po_no THEN 0 ELSE 1 END,
+                     s.sent_at DESC, s.id DESC
+                   LIMIT 1
+               ), '') != 'sent'
+          AND (
+            EXISTS (
+              SELECT 1 FROM store_purchase_order_lines pol
+              WHERE pol.purchase_order_id = po.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM store_po_lines pl
+              WHERE pl.indent_id = po.indent_id
+                AND pl.supplier_id = po.supplier_id
+            )
+          )
+        """
+    elif pending_inward:
+        # Match _build_inward_lines_for_po: remaining on this PO's lines only
+        # (PO qty − PO received), also requiring indent remaining.
+        queue_sql = """
+          AND i.status = 'approved'
+          AND (
+            EXISTS (
+              SELECT 1
+              FROM store_purchase_order_lines pol
+              JOIN store_indent_lines l
+                ON l.id = pol.line_id AND l.indent_id = po.indent_id
+              WHERE pol.purchase_order_id = po.id
+                AND COALESCE(pol.quantity, 0) - COALESCE(pol.quantity_received, 0) > 0.0001
+                AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+            )
+            OR (
+              NOT EXISTS (
+                SELECT 1 FROM store_purchase_order_lines pol
+                WHERE pol.purchase_order_id = po.id
+              )
+              AND EXISTS (
+                SELECT 1
+                FROM store_po_lines pl
+                JOIN store_indent_lines l
+                  ON l.id = pl.line_id AND l.indent_id = po.indent_id
+                WHERE pl.indent_id = po.indent_id
+                  AND pl.supplier_id = po.supplier_id
+                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+              )
+            )
+          )
+        """
+    rows = conn.execute(
+        f"""
+        SELECT po.id AS po_id,
+               po.po_no,
+               po.indent_id,
+               po.supplier_id,
+               po.created_at,
+               i.indent_no,
+               i.outlet,
+               i.status AS indent_status,
+               sp.name AS supplier_name,
+               sp.phone AS supplier_phone,
+               {send_match}
+        FROM store_purchase_orders po
+        JOIN store_indents i ON i.id = po.indent_id
+        LEFT JOIN suppliers sp ON sp.id = po.supplier_id
+        WHERE {outlet_sql}
+          {queue_sql}
+        ORDER BY po.created_at DESC, po.id DESC
+        LIMIT ?
+        """,
+        (*outlet_params, max(1, int(limit or 200))),
+    ).fetchall()
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["outlet_label"] = _outlet_label(_parse_outlet(item.get("outlet")))
+        item["supplier_name"] = item.get("supplier_name") or "—"
+        item["supplier_phone"] = item.get("supplier_phone") or ""
+        item["created_at_display"] = _format_stores_dt(item.get("created_at"))
+        item["last_sent_at_display"] = _format_stores_dt(item.get("last_sent_at"))
+        status = str(item.get("last_send_status") or "").strip().lower()
+        if status == "sent":
+            item["status"] = "sent"
+            item["status_label"] = "Sent"
+        elif status == "failed":
+            item["status"] = "failed"
+            item["status_label"] = "Failed"
+        elif status:
+            item["status"] = status
+            item["status_label"] = status.replace("_", " ").title()
+        else:
+            item["status"] = "created"
+            item["status_label"] = "Created"
+        out.append(item)
+    return out
+
+
 @stores_bp.route("/stores/orders", endpoint="stores_orders")
 def stores_orders():
-    """Purchase Order page — approved indents ready for PO download.
+    """Purchase Order page — register of generated POs (PO/RES|BAR/…).
 
     Path is /stores/orders (not …/purchase-order) so soft-nav does not treat it
-    as an Excel download.
+    as an Excel download. ``?tab=send`` opens the Send to Supplier view of the
+    same register.
     """
     _get_user()
     outlet = _parse_outlet_filter(request.args.get("outlet"))
     list_view = "approved"
+    po_tab = "send" if (request.args.get("tab") or "").strip().lower() == "send" else "orders"
 
     conn = get_db()
     try:
@@ -3048,6 +4852,10 @@ def stores_orders():
         indents, indent_view_data, stores_ledger_data = _load_indent_list_for_view(
             conn, outlet, list_view
         )
+        purchase_orders = _load_generated_purchase_orders(
+            conn, outlet, send_queue=(po_tab == "send")
+        )
+        pending_inward_indents = _load_pending_po_indents(conn, outlet)
         catalog = _load_product_catalog(conn, stores_outlet=outlet) if outlet != "both" else []
     finally:
         conn.close()
@@ -3083,7 +4891,880 @@ def stores_orders():
         indent_list_views=(),
         selected_indent_view=list_view,
         de_nav_stores_view="purchase_order",
+        po_tab=po_tab,
+        po_send_data=None,
+        po_history=[],
+        purchase_orders=purchase_orders,
+        pending_inward_indents=pending_inward_indents,
     )
+
+
+@stores_bp.route("/stores/orders/history", endpoint="stores_orders_history")
+def stores_orders_history():
+    """Purchase Order history of WhatsApp sends."""
+    _get_user()
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        history = _load_po_send_history(conn)
+        indents, indent_view_data, stores_ledger_data = _load_indent_list_for_view(
+            conn, outlet, "approved"
+        )
+        pending_inward_indents = _load_pending_po_indents(conn, outlet)
+    finally:
+        conn.close()
+
+    return _page_render(
+        "purchase_orders",
+        outlet=outlet,
+        indents=indents,
+        indent_view_data=indent_view_data,
+        stores_ledger_data=stores_ledger_data,
+        product_catalog=[],
+        show_form=False,
+        open_edit_id=0,
+        indent_form_unset=False,
+        form={
+            "indent_id": "",
+            "notes": "",
+            "submission_token": "",
+            "lines": [],
+        },
+        errors=[],
+        editing=False,
+        indent_list_views=(),
+        selected_indent_view="approved",
+        de_nav_stores_view="purchase_order",
+        po_tab="history",
+        po_send_data=None,
+        po_history=history,
+        pending_inward_indents=pending_inward_indents,
+    )
+
+
+@stores_bp.route("/stores/orders/<int:indent_id>", endpoint="stores_orders_send")
+def stores_orders_send(indent_id: int):
+    """Send-to-supplier workspace for one approved indent.
+
+    Reviews grouped lines and generates/sends purchase orders. The old compose
+    message-preview step is retired — WhatsApp goes out on Generate.
+    """
+    _get_user()
+    outlet = _parse_outlet_filter(request.args.get("outlet"))
+    # Legacy ?step=compose bookmarks / soft-nav must never show the message preview.
+    if request.args.get("step") == "compose":
+        return redirect(
+            url_for(
+                "stores_orders_send",
+                indent_id=indent_id,
+                outlet=outlet if outlet and outlet != "both" else None,
+            )
+        )
+    po_step = "items"
+    po_selected_supplier_id = None
+    po_selected_group = None
+    po_message = ""
+    po_pdf_name = "PO.pdf"
+    po_no = ""
+    po_selected_supplier_ids = _parse_selected_supplier_ids(request.args.get("suppliers"))
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        payload = _load_po_supplier_groups(conn, indent_id)
+        if not payload:
+            flash("Indent not found.", "error")
+            return redirect(url_for("stores_orders", outlet=outlet))
+        if payload.get("status") != "approved":
+            flash("Purchase orders can only be sent for approved indents.", "error")
+            return redirect(url_for("stores_orders", outlet=outlet or payload.get("outlet")))
+        if outlet == "both" or not outlet:
+            outlet = _parse_outlet(payload.get("outlet"))
+        # Hide supplier groups that already have a generated PO number.
+        pending = _pending_po_groups(payload.get("groups") or [])
+        payload = dict(payload)
+        payload["groups"] = pending
+        payload["supplier_count"] = sum(
+            1 for g in pending if not g.get("is_unassigned")
+        )
+        indents, indent_view_data, stores_ledger_data = _load_indent_list_for_view(
+            conn, outlet, "approved"
+        )
+        pending_inward_indents = _load_pending_po_indents(conn, outlet)
+        # Fully generated indents leave the Generate PO picker — bounce to the next
+        # pending indent or the Purchase Orders register.
+        if not pending:
+            if pending_inward_indents:
+                nxt = pending_inward_indents[0]
+                return redirect(
+                    url_for(
+                        "stores_orders_send",
+                        indent_id=int(nxt["id"]),
+                        outlet=outlet,
+                    )
+                )
+            flash("All purchase orders for this indent are already generated.", "ok")
+            return redirect(url_for("stores_orders", outlet=outlet))
+    finally:
+        conn.close()
+
+    return _page_render(
+        "purchase_orders",
+        outlet=outlet,
+        indents=indents,
+        indent_view_data=indent_view_data,
+        stores_ledger_data=stores_ledger_data,
+        product_catalog=[],
+        show_form=False,
+        open_edit_id=0,
+        indent_form_unset=False,
+        form={
+            "indent_id": "",
+            "notes": "",
+            "submission_token": "",
+            "lines": [],
+        },
+        errors=[],
+        editing=False,
+        indent_list_views=(),
+        selected_indent_view="approved",
+        de_nav_stores_view="purchase_order",
+        po_tab="generate",
+        po_step=po_step,
+        po_send_data=payload,
+        po_history=[],
+        pending_inward_indents=pending_inward_indents,
+        po_selected_supplier_id=po_selected_supplier_id,
+        po_selected_group=po_selected_group,
+        po_selected_supplier_ids=po_selected_supplier_ids,
+        po_message=po_message,
+        po_pdf_name=po_pdf_name,
+        po_no=po_no,
+    )
+
+
+
+def _save_po_line_overrides(conn, indent_id: int, rows: list) -> int:
+    """Persist supplier / rate / qty overrides for PO lines. Returns the row count saved."""
+    indent_lines = {
+        int(row["id"]): {
+            "quantity": float(row["quantity"] or 0),
+            "ordered": float(row["quantity_ordered"] or 0),
+        }
+        for row in conn.execute(
+            """
+            SELECT id, quantity, COALESCE(quantity_ordered, 0) AS quantity_ordered
+            FROM store_indent_lines
+            WHERE indent_id = ?
+            """,
+            (indent_id,),
+        ).fetchall()
+    }
+    valid_line_ids = set(indent_lines.keys())
+    supplier_ids = {
+        int(row["id"]) for row in conn.execute("SELECT id FROM suppliers").fetchall()
+    }
+
+    saved = 0
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        try:
+            line_id = int(row.get("line_id"))
+        except (TypeError, ValueError):
+            continue
+        if line_id not in valid_line_ids:
+            continue
+
+        supplier_raw = row.get("supplier_id")
+        supplier_id = None
+        if supplier_raw not in (None, "", 0, "0"):
+            try:
+                supplier_id = int(supplier_raw)
+            except (TypeError, ValueError):
+                supplier_id = None
+            if supplier_id not in supplier_ids:
+                supplier_id = None
+
+        rate_raw = row.get("rate")
+        rate = None
+        if rate_raw not in (None, ""):
+            try:
+                rate = float(rate_raw)
+                if rate < 0:
+                    rate = None
+            except (TypeError, ValueError):
+                rate = None
+
+        quantity = None
+        if "quantity" in row:
+            qty_raw = row.get("quantity")
+            if qty_raw not in (None, ""):
+                try:
+                    quantity = float(qty_raw)
+                except (TypeError, ValueError):
+                    quantity = None
+                if quantity is not None:
+                    if quantity <= 0:
+                        quantity = None
+                    else:
+                        meta = indent_lines.get(line_id) or {}
+                        max_qty = _po_line_remaining_qty(
+                            meta.get("quantity") or 0, meta.get("ordered") or 0
+                        )
+                        if max_qty > 0 and quantity > max_qty:
+                            quantity = max_qty
+
+        conn.execute(
+            """
+            INSERT INTO store_po_lines (indent_id, line_id, supplier_id, rate, quantity, updated_at)
+            VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+            ON CONFLICT(line_id) DO UPDATE SET
+                supplier_id = excluded.supplier_id,
+                rate = excluded.rate,
+                quantity = excluded.quantity,
+                updated_at = datetime('now','localtime')
+            """,
+            (indent_id, line_id, supplier_id, rate, quantity),
+        )
+        saved += 1
+    conn.commit()
+    return saved
+
+
+@stores_bp.route("/stores/orders/<int:indent_id>/lines", methods=["POST"], endpoint="stores_orders_lines")
+def stores_orders_lines(indent_id: int):
+    """Save supplier / rate overrides for PO lines (JSON, used by Edit items)."""
+    _get_user()
+    payload = request.get_json(silent=True) or {}
+    rows = payload.get("lines") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return jsonify({"ok": False, "error": "Expected lines array."}), 400
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        indent = conn.execute(
+            "SELECT id, status FROM store_indents WHERE id = ?",
+            (indent_id,),
+        ).fetchone()
+        if not indent:
+            return jsonify({"ok": False, "error": "Indent not found."}), 404
+        if indent["status"] != "approved":
+            return jsonify({"ok": False, "error": "Only approved indents can be edited for PO."}), 400
+
+        saved = _save_po_line_overrides(conn, indent_id, rows)
+        groups = _load_po_supplier_groups(conn, indent_id)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "saved": saved, "groups": groups.get("groups") if groups else []})
+
+
+@stores_bp.route(
+    "/stores/orders/<int:indent_id>/lines/next",
+    methods=["POST"],
+    endpoint="stores_orders_lines_next",
+)
+def stores_orders_lines_next(indent_id: int):
+    """Save line suppliers and generate PO numbers (WhatsApp send is user-controlled)."""
+    _get_user()
+    outlet = _parse_outlet_filter(request.form.get("outlet"))
+    issued: list[dict[str, Any]] = []
+    selected_ids: list[int] = []
+    wants_json = (
+        request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or "application/json" in (request.headers.get("Accept") or "").lower()
+    )
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        indent = conn.execute(
+            "SELECT id, status FROM store_indents WHERE id = ?",
+            (indent_id,),
+        ).fetchone()
+        if not indent:
+            if wants_json:
+                return jsonify({"ok": False, "error": "Indent not found."}), 404
+            flash("Indent not found.", "error")
+            return redirect(url_for("stores_orders", outlet=outlet))
+        if indent["status"] != "approved":
+            if wants_json:
+                return jsonify(
+                    {"ok": False, "error": "Purchase orders can only be sent for approved indents."}
+                ), 400
+            flash("Purchase orders can only be sent for approved indents.", "error")
+            return redirect(url_for("stores_orders", outlet=outlet))
+
+        rows = []
+        for key, value in request.form.items():
+            if not key.startswith("line_supplier_"):
+                continue
+            try:
+                line_id = int(key.rsplit("_", 1)[1])
+            except (IndexError, ValueError):
+                continue
+            rows.append(
+                {
+                    "line_id": line_id,
+                    "supplier_id": (value or "").strip() or None,
+                    "rate": (request.form.get(f"line_rate_{line_id}") or "").strip() or None,
+                    "quantity": (request.form.get(f"line_qty_{line_id}") or "").strip() or None,
+                }
+            )
+        _save_po_line_overrides(conn, indent_id, rows)
+        payload = _load_po_supplier_groups(conn, indent_id)
+
+        groups = (payload or {}).get("groups") or []
+        # Only suppliers that still need a PO can be generated from this page.
+        pending_ids = {
+            int(g["supplier_id"])
+            for g in groups
+            if not g.get("is_unassigned")
+            and g.get("supplier_id")
+            and not str(g.get("po_no") or "").strip()
+        }
+        if not pending_ids:
+            has_assigned = any(
+                not g.get("is_unassigned") and g.get("supplier_id") for g in groups
+            )
+            msg = (
+                "Every remaining item on this indent already has a purchase order."
+                if has_assigned
+                else "Assign a supplier to at least one item before generating."
+            )
+            if wants_json:
+                return jsonify({"ok": False, "error": msg}), 400
+            flash(msg, "ok" if has_assigned else "error")
+            return redirect(url_for("stores_orders_send", indent_id=indent_id, outlet=outlet))
+
+        selected_ids = _parse_selected_supplier_ids(request.form.getlist("selected_supplier"))
+        selected_ids = [sid for sid in selected_ids if sid in pending_ids]
+        # Suppliers that only became assigned during this save had no checkbox — include them.
+        selectable_ids = set(_parse_selected_supplier_ids(request.form.getlist("selectable_supplier")))
+        newly_assigned = sorted(pending_ids - selectable_ids)
+        for sid in newly_assigned:
+            if sid not in selected_ids:
+                selected_ids.append(sid)
+        if not selected_ids:
+            msg = "Select at least one supplier before generating."
+            if wants_json:
+                return jsonify({"ok": False, "error": msg}), 400
+            flash(msg, "error")
+            return redirect(url_for("stores_orders_send", indent_id=indent_id, outlet=outlet))
+
+        group_by_supplier = {
+            int(g["supplier_id"]): g
+            for g in groups
+            if g.get("supplier_id") and not g.get("is_unassigned")
+        }
+        for sid in selected_ids:
+            group = group_by_supplier.get(sid)
+            if not group:
+                continue
+            lines_snapshot = [dict(line) for line in (group.get("lines") or [])]
+            if not lines_snapshot:
+                continue
+            po_id, po_no = _allocate_po_row(conn, indent_id, sid)
+            if not po_id or not po_no:
+                continue
+            _save_purchase_order_lines(conn, po_id, lines_snapshot)
+            _commit_po_group_quantities(conn, indent_id, lines_snapshot)
+            phone = str(group.get("phone") or "").strip()
+            issued.append(
+                {
+                    "indent_id": indent_id,
+                    "purchase_order_id": po_id,
+                    "supplier_id": sid,
+                    "po_no": po_no,
+                    "supplier_name": group.get("supplier_name") or "Supplier",
+                    "phone": phone,
+                    "can_send": bool(phone),
+                    "item_count": len(lines_snapshot),
+                }
+            )
+    finally:
+        conn.close()
+
+    # Always land on Send to Supplier after generate so the new PO is ready to send.
+    # Remaining indent qty (if any) stays available on Generate PO for a later batch.
+    orders_url = url_for("stores_orders", outlet=outlet, tab="send")
+    redirect_url = orders_url
+
+    if wants_json:
+        return jsonify(
+            {
+                "ok": True,
+                "issued": issued,
+                "redirect": redirect_url,
+                "continue_url": redirect_url,
+            }
+        )
+
+    if issued:
+        flash(
+            f"{len(issued)} purchase order{'s' if len(issued) != 1 else ''} generated. "
+            "Send to suppliers from Send to Supplier when ready.",
+            "ok",
+        )
+    return redirect(redirect_url)
+
+@stores_bp.route(
+    "/stores/orders/<int:indent_id>/pdf/<int:supplier_id>",
+    endpoint="stores_orders_pdf",
+)
+def stores_orders_pdf(indent_id: int, supplier_id: int):
+    """Inline PDF purchase order for one supplier (frozen issued lines when available)."""
+    from purchase_order_pdf import build_purchase_order_pdf, po_pdf_filename
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        payload = _load_po_supplier_groups(conn, indent_id)
+        if not payload:
+            flash("Indent not found.", "error")
+            return redirect(url_for("stores_orders"))
+        if payload.get("status") != "approved":
+            flash("Purchase orders are available for approved indents only.", "error")
+            return redirect(url_for("stores_orders"))
+
+        po_no_q = str(request.args.get("po_no") or "").strip()
+        po_row = _find_purchase_order(
+            conn, indent_id=indent_id, supplier_id=supplier_id, po_no=po_no_q
+        )
+
+        group = next(
+            (g for g in payload.get("groups") or [] if g.get("supplier_id") == supplier_id),
+            None,
+        )
+        supplier_row = conn.execute(
+            "SELECT id, name, phone, gst, address FROM suppliers WHERE id = ?",
+            (supplier_id,),
+        ).fetchone()
+        supplier = {
+            "name": (group or {}).get("supplier_name")
+            or (supplier_row["name"] if supplier_row else "")
+            or "",
+            "phone": (group or {}).get("phone")
+            or (supplier_row["phone"] if supplier_row else "")
+            or "",
+            "gst": (group or {}).get("gst")
+            or (supplier_row["gst"] if supplier_row else "")
+            or "",
+            "address": (group or {}).get("address")
+            or (supplier_row["address"] if supplier_row else "")
+            or "",
+        }
+        lines = _po_lines_for_send_or_pdf(
+            conn,
+            indent_id=indent_id,
+            supplier_id=supplier_id,
+            po_row=po_row,
+            group_lines=list((group or {}).get("lines") or []),
+        )
+        if not lines:
+            flash("No purchase order lines found for this supplier.", "error")
+            return redirect(url_for("stores_orders", tab="orders"))
+        if po_row and po_row.get("id"):
+            conn.commit()
+        po_no = str((po_row or {}).get("po_no") or "").strip() or _get_or_create_po_no(
+            conn, indent_id, supplier_id
+        )
+        pdf_bytes = build_purchase_order_pdf(
+            payload.get("indent") or {},
+            supplier,
+            lines,
+            outlet_label=payload.get("outlet_label") or "",
+            po_no=po_no,
+        )
+        fname = po_pdf_filename(
+            supplier.get("name") or "Supplier",
+            po_no or payload.get("indent_no") or str(indent_id),
+        )
+    finally:
+        conn.close()
+
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=fname,
+    )
+
+
+def _send_po_whatsapp(
+    indent_id: int,
+    supplier_id: int,
+    *,
+    user=None,
+    include_pdf: bool = True,
+    custom_message: str = "",
+    po_no: str = "",
+    lines: list | None = None,
+    group_snapshot: dict | None = None,
+) -> dict[str, Any]:
+    """Send one supplier group's purchase order via WhatsApp.
+
+    Returns a dict with at least ``ok`` (bool). On failure also includes ``error``.
+    Does not raise for business failures — callers inspect ``ok``.
+
+    Prefers frozen ``store_purchase_order_lines`` for ``po_no`` so deferred sends
+    match what was generated (not remaining indent qty).
+    """
+    import os
+
+    import communication_hub as hub
+    import whatsapp_client as wa
+    from purchase_order_pdf import build_purchase_order_pdf, po_pdf_filename
+
+    include_pdf = bool(include_pdf)
+    custom_message = str(custom_message or "").strip()
+    snapshot = group_snapshot if isinstance(group_snapshot, dict) else {}
+
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        groups_payload = _load_po_supplier_groups(conn, indent_id)
+        if not groups_payload:
+            return {"ok": False, "error": "Indent not found.", "status": 404}
+        if groups_payload.get("status") != "approved":
+            return {"ok": False, "error": "Only approved indents can be sent.", "status": 400}
+
+        po_row = _find_purchase_order(
+            conn,
+            indent_id=indent_id,
+            supplier_id=supplier_id,
+            po_no=str(po_no or snapshot.get("po_no") or "").strip(),
+        )
+        frozen_lines = _po_lines_for_send_or_pdf(
+            conn,
+            indent_id=indent_id,
+            supplier_id=supplier_id,
+            po_row=po_row,
+            group_lines=[],
+        )
+
+        group = next(
+            (g for g in groups_payload.get("groups") or [] if g.get("supplier_id") == supplier_id),
+            None,
+        )
+        supplier_row = conn.execute(
+            "SELECT id, name, phone, gst, address FROM suppliers WHERE id = ?",
+            (supplier_id,),
+        ).fetchone()
+        if snapshot:
+            group = {
+                "supplier_id": supplier_id,
+                "supplier_name": snapshot.get("supplier_name")
+                or (group or {}).get("supplier_name")
+                or (supplier_row["name"] if supplier_row else "")
+                or "Supplier",
+                "phone": snapshot.get("phone")
+                or (group or {}).get("phone")
+                or (supplier_row["phone"] if supplier_row else "")
+                or "",
+                "gst": snapshot.get("gst")
+                or (group or {}).get("gst")
+                or (supplier_row["gst"] if supplier_row else "")
+                or "",
+                "address": snapshot.get("address")
+                or (group or {}).get("address")
+                or (supplier_row["address"] if supplier_row else "")
+                or "",
+                "lines": lines if lines is not None else snapshot.get("lines") or [],
+                "is_unassigned": False,
+            }
+        elif not group:
+            if not supplier_row and not frozen_lines:
+                return {"ok": False, "error": "Assign a supplier before sending.", "status": 400}
+            group = {
+                "supplier_id": supplier_id,
+                "supplier_name": (supplier_row["name"] if supplier_row else "") or "Supplier",
+                "phone": (supplier_row["phone"] if supplier_row else "") or "",
+                "gst": (supplier_row["gst"] if supplier_row else "") or "",
+                "address": (supplier_row["address"] if supplier_row else "") or "",
+                "lines": frozen_lines,
+                "is_unassigned": False,
+            }
+        if group.get("is_unassigned"):
+            return {"ok": False, "error": "Assign a supplier before sending.", "status": 400}
+        phone = wa.normalise_whatsapp_number(group.get("phone") or "")
+        if not phone:
+            return {"ok": False, "error": "Supplier phone number is missing or invalid.", "status": 400}
+
+        supplier_name = group.get("supplier_name") or "Supplier"
+        if lines is not None:
+            send_lines = list(lines)
+        elif frozen_lines:
+            send_lines = list(frozen_lines)
+        else:
+            send_lines = list(group.get("lines") or [])
+        if not send_lines:
+            return {
+                "ok": False,
+                "error": (
+                    "This purchase order has no items to send. "
+                    "The supplier assignment may have changed — "
+                    "generate a new PO from Generate PO."
+                ),
+                "status": 400,
+            }
+        indent_no = groups_payload.get("indent_no") or str(indent_id)
+        send_po_no = (
+            str(po_no or "").strip()
+            or str((po_row or {}).get("po_no") or "").strip()
+            or _get_or_create_po_no(conn, indent_id, supplier_id)
+        )
+        po_ref = send_po_no or indent_no
+        message = custom_message or _po_default_message(
+            supplier_name, send_lines, indent_no, send_po_no
+        )
+        pdf_name = po_pdf_filename(supplier_name, po_ref)
+        pdf_bytes = b""
+        if include_pdf:
+            pdf_bytes = build_purchase_order_pdf(
+                groups_payload.get("indent") or {},
+                {
+                    "name": supplier_name,
+                    "phone": group.get("phone") or "",
+                    "gst": group.get("gst") or "",
+                    "address": group.get("address") or "",
+                },
+                send_lines,
+                outlet_label=groups_payload.get("outlet_label") or "",
+                po_no=send_po_no,
+            )
+
+        conversation = hub.get_or_create_conversation(
+            conn, phone, supplier_name, revive=True
+        )
+        if not conversation:
+            return {"ok": False, "error": "Could not open WhatsApp conversation.", "status": 400}
+        conversation_id = int(conversation["id"])
+        user_id = int(user["id"]) if user and user.get("id") else None
+
+        live = wa.whatsapp_live_sends_allowed()
+        wa_message_id = ""
+        status = "sent"
+        error = ""
+
+        if not live:
+            # Dry-run / testing: still create Hub history + PO send row.
+            hub.append_message(
+                conn,
+                conversation_id,
+                direction="out",
+                body=message if not include_pdf else ((message[:180] + "…") if len(message) > 180 else message) or pdf_name,
+                message_type="document" if include_pdf else "text",
+                media_mime="application/pdf" if include_pdf else "",
+                media_filename=pdf_name if include_pdf else "",
+                media_size=len(pdf_bytes) if include_pdf else 0,
+                wa_message_id="",
+                status="sent",
+                created_by=user_id,
+            )
+            send_id = _record_po_send(
+                conn,
+                indent_id=indent_id,
+                supplier_id=supplier_id,
+                phone=phone,
+                message=message,
+                pdf_name=pdf_name if include_pdf else "",
+                include_pdf=include_pdf,
+                conversation_id=conversation_id,
+                wa_message_id="",
+                status="sent",
+                error="",
+                sent_by=user_id,
+                po_no=send_po_no,
+            )
+            conn.commit()
+            return {
+                "ok": True,
+                "dry_run": True,
+                "po_no": send_po_no,
+                "send_id": send_id,
+                "conversation_id": conversation_id,
+                "pdf_name": pdf_name if include_pdf else "",
+                "supplier_name": supplier_name,
+            }
+
+        if not wa.whatsapp_configured():
+            return {"ok": False, "error": "WhatsApp API is not configured.", "status": 400}
+
+        if include_pdf and pdf_bytes:
+            ok, err, result = hub.send_conversation_document_bytes(
+                conn,
+                conversation_id,
+                data=pdf_bytes,
+                filename=pdf_name,
+                mime="application/pdf",
+                caption=message,
+                user_id=user_id,
+            )
+            if not ok and _po_is_outside_session_error(err):
+                template_name = (os.environ.get("WHATSAPP_PO_TEMPLATE") or "").strip()
+                template_lang = (os.environ.get("WHATSAPP_PO_TEMPLATE_LANGUAGE") or "en").strip() or "en"
+                if template_name:
+                    # Upload media then send as template document header.
+                    import tempfile
+                    tmp_path = ""
+                    try:
+                        fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+                        with os.fdopen(fd, "wb") as handle:
+                            handle.write(pdf_bytes)
+                        ok_up, err_up, body_up = wa.upload_media_file(tmp_path, "application/pdf")
+                        media_id = ""
+                        if isinstance(body_up, dict):
+                            media_id = str(body_up.get("id") or "").strip()
+                        if ok_up and media_id:
+                            ok_tpl, err_tpl, payload_tpl = wa.send_template_message(
+                                phone,
+                                template_name,
+                                template_lang,
+                                body_parameters=[supplier_name, po_ref],
+                                header_document_id=media_id,
+                                header_document_filename=pdf_name,
+                            )
+                            if ok_tpl:
+                                wa_message_id = wa.first_message_id(payload_tpl)
+                                hub.append_message(
+                                    conn,
+                                    conversation_id,
+                                    direction="out",
+                                    body=message,
+                                    message_type="template",
+                                    media_mime="application/pdf",
+                                    media_filename=pdf_name,
+                                    media_size=len(pdf_bytes),
+                                    wa_message_id=wa_message_id,
+                                    status="sent",
+                                    created_by=user_id,
+                                )
+                                ok, err = True, ""
+                            else:
+                                ok, err = False, err_tpl or err
+                        else:
+                            ok, err = False, err_up or err
+                    finally:
+                        if tmp_path:
+                            try:
+                                os.unlink(tmp_path)
+                            except OSError:
+                                pass
+                else:
+                    err = (
+                        "WhatsApp session expired (outside 24-hour window). "
+                        "Ask the supplier to message first, or set WHATSAPP_PO_TEMPLATE."
+                    )
+            if ok:
+                msg = (result or {}).get("message") or {}
+                wa_message_id = str(msg.get("wa_message_id") or wa_message_id or "")
+            else:
+                status = "failed"
+                error = err or "Send failed"
+        else:
+            ok, err, result = hub.send_conversation_text(
+                conn, conversation_id, message, user_id=user_id
+            )
+            if not ok and _po_is_outside_session_error(err):
+                template_name = (os.environ.get("WHATSAPP_PO_TEMPLATE") or "").strip()
+                template_lang = (os.environ.get("WHATSAPP_PO_TEMPLATE_LANGUAGE") or "en").strip() or "en"
+                if template_name:
+                    ok_tpl, err_tpl, payload_tpl = wa.send_template_message(
+                        phone,
+                        template_name,
+                        template_lang,
+                        body_parameters=[supplier_name, po_ref],
+                    )
+                    if ok_tpl:
+                        wa_message_id = wa.first_message_id(payload_tpl)
+                        hub.append_message(
+                            conn,
+                            conversation_id,
+                            direction="out",
+                            body=message,
+                            message_type="template",
+                            wa_message_id=wa_message_id,
+                            status="sent",
+                            created_by=user_id,
+                        )
+                        ok, err = True, ""
+                    else:
+                        ok, err = False, err_tpl or err
+                else:
+                    err = (
+                        "WhatsApp session expired (outside 24-hour window). "
+                        "Ask the supplier to message first, or set WHATSAPP_PO_TEMPLATE."
+                    )
+            if ok:
+                msg = (result or {}).get("message") or {}
+                wa_message_id = str(msg.get("wa_message_id") or wa_message_id or "")
+            else:
+                status = "failed"
+                error = err or "Send failed"
+
+        send_id = _record_po_send(
+            conn,
+            indent_id=indent_id,
+            supplier_id=supplier_id,
+            phone=phone,
+            message=message,
+            pdf_name=pdf_name if include_pdf else "",
+            include_pdf=include_pdf,
+            conversation_id=conversation_id,
+            wa_message_id=wa_message_id,
+            status=status,
+            error=error,
+            sent_by=user_id,
+            po_no=send_po_no,
+        )
+        conn.commit()
+        if status != "sent":
+            return {
+                "ok": False,
+                "error": error or "Send failed",
+                "send_id": send_id,
+                "status": 400,
+                "supplier_name": supplier_name,
+                "po_no": send_po_no,
+            }
+        return {
+            "ok": True,
+            "send_id": send_id,
+            "po_no": send_po_no,
+            "conversation_id": conversation_id,
+            "pdf_name": pdf_name if include_pdf else "",
+            "wa_message_id": wa_message_id,
+            "supplier_name": supplier_name,
+        }
+    finally:
+        conn.close()
+
+
+@stores_bp.route("/stores/orders/<int:indent_id>/send", methods=["POST"], endpoint="stores_orders_send_wa")
+def stores_orders_send_wa(indent_id: int):
+    """Send a supplier group's purchase order via WhatsApp (Communication Hub)."""
+    user = _get_user() if _get_user else None
+    payload = request.get_json(silent=True) or {}
+    try:
+        supplier_id = int(payload.get("supplier_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Supplier is required."}), 400
+    include_pdf = bool(payload.get("include_pdf", True))
+    custom_message = str(payload.get("message") or "").strip()
+    po_no = str(payload.get("po_no") or "").strip()
+    result = _send_po_whatsapp(
+        indent_id,
+        supplier_id,
+        user=user,
+        include_pdf=include_pdf,
+        custom_message=custom_message,
+        po_no=po_no,
+    )
+    status = int(result.pop("status", 200 if result.get("ok") else 400))
+    return jsonify(result), status
+
 
 
 def _build_indent_purchase_order_xlsx(indent: dict[str, Any], lines: list[dict[str, Any]]) -> io.BytesIO:
@@ -3561,13 +6242,6 @@ def stores_purchase_requests():
     outlet = _parse_outlet_filter(request.args.get("outlet") or request.form.get("outlet"))
     inward_view = _parse_inward_view(request.args.get("view") or request.form.get("view"))
     user = _get_user()
-    # Stock Inward has no "All" outlet — coerce legacy ?outlet=both to Bar.
-    if outlet not in OUTLET_KEYS:
-        redirect_kwargs = {"outlet": "bar", "view": inward_view}
-        indent_arg = request.args.get("indent") or request.form.get("indent")
-        if indent_arg:
-            redirect_kwargs["indent"] = indent_arg
-        return redirect(url_for("stores_purchase_requests", **redirect_kwargs))
 
     if request.method == "POST" and request.form.get("action") == "create_from_indent":
         try:
@@ -3655,7 +6329,11 @@ def stores_purchase_requests():
     import app as app_module
 
     approved_indents: list[dict[str, Any]] = []
+    generated_purchase_orders: list[dict[str, Any]] = []
+    inward_supplier_options: list[dict[str, Any]] = []
+    selected_inward_supplier_id = 0
     selected_indent = None
+    selected_po = None
     selected_lines: list[dict[str, Any]] = []
     indent_view_data: list[dict[str, Any]] = []
     product_catalog: list[dict[str, Any]] = []
@@ -3681,120 +6359,123 @@ def stores_purchase_requests():
                 product_catalog = _load_product_catalog(conn, stores_outlet=write_outlet)
             inward_confirm_url = url_for("stores_confirm_direct_stock_inward_expense")
         else:
-            outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
-            approved_rows = conn.execute(
-                f"""
-                SELECT i.*, u.full_name AS created_by_name,
-                       d.full_name AS decided_by_name,
-                       d.username AS decided_by_username,
-                       (SELECT COUNT(*) FROM store_indent_lines l WHERE l.indent_id = i.id) AS line_count,
-                       (SELECT COALESCE(SUM(l.quantity), 0) FROM store_indent_lines l WHERE l.indent_id = i.id) AS total_qty
-                FROM store_indents i
-                LEFT JOIN users u ON u.id = i.created_by
-                LEFT JOIN users d ON d.id = i.decided_by
-                WHERE {outlet_sql} AND i.status = 'approved'
-                  AND EXISTS (
-                    SELECT 1 FROM store_indent_lines l
-                    WHERE l.indent_id = i.id
-                      AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
-                  )
-                ORDER BY i.decided_at DESC, i.id DESC
-                """,
-                outlet_params,
-            ).fetchall()
-            approved_indents = [dict(row) for row in approved_rows]
+            # Filter POs by outlet (All shows Bar + Restaurant).
+            # Hide fully received POs from the inward picker.
+            all_generated_pos = _load_generated_purchase_orders(
+                conn, outlet, limit=300, pending_inward=True
+            )
+            inward_supplier_options = []
+            seen_supplier_ids: set[int] = set()
+            for po in all_generated_pos:
+                try:
+                    sid = int(po.get("supplier_id") or 0)
+                except (TypeError, ValueError):
+                    sid = 0
+                if sid <= 0 or sid in seen_supplier_ids:
+                    continue
+                seen_supplier_ids.add(sid)
+                name = str(po.get("supplier_name") or "").strip() or f"Supplier #{sid}"
+                if name == "—":
+                    name = f"Supplier #{sid}"
+                inward_supplier_options.append({"id": sid, "name": name})
+            inward_supplier_options.sort(key=lambda row: str(row.get("name") or "").lower())
+
+            selected_inward_supplier_id = 0
             try:
-                selected_id = int(request.args.get("indent") or 0)
-            except (TypeError, ValueError):
-                selected_id = 0
-            if selected_id:
-                for row in approved_indents:
-                    if int(row["id"]) == selected_id:
-                        selected_indent = row
-                        break
-            if selected_indent is None and len(approved_indents) == 1:
-                selected_indent = approved_indents[0]
-            if selected_indent is not None:
-                product_cat_map = _product_category_by_item_name(
-                    conn, stores_outlet=selected_indent.get("outlet") or outlet
+                selected_inward_supplier_id = int(
+                    request.args.get("supplier_id")
+                    or request.form.get("supplier_id")
+                    or 0
                 )
-                line_rows = conn.execute(
-                    """
-                    SELECT id, item_name, quantity, quantity_received, unit, notes, approximate_price,
-                           pack_label, pack_qty_in_base
-                    FROM store_indent_lines
-                    WHERE indent_id = ?
-                    ORDER BY id
-                    """,
-                    (int(selected_indent["id"]),),
-                ).fetchall()
-                for line in line_rows:
-                    approx = line["approximate_price"]
-                    try:
-                        qty_val = float(line["quantity"] or 0)
-                    except (TypeError, ValueError):
-                        qty_val = 0.0
-                    try:
-                        received_val = float(line["quantity_received"] or 0)
-                    except (KeyError, TypeError, ValueError):
-                        received_val = 0.0
-                    remaining_val = qty_val - received_val
-                    if remaining_val <= 0.0001:
-                        continue
-                    if abs(qty_val - round(qty_val)) < 0.0001:
-                        qty_display = str(int(round(qty_val)))
-                    else:
-                        qty_display = ("%g" % qty_val)
-                    if abs(remaining_val - round(remaining_val)) < 0.0001:
-                        remaining_display = str(int(round(remaining_val)))
-                    else:
-                        remaining_display = ("%g" % remaining_val)
-                    if abs(received_val - round(received_val)) < 0.0001:
-                        received_display = str(int(round(received_val)))
-                    else:
-                        received_display = ("%g" % received_val)
-                    try:
-                        rate_val = float(approx) if approx is not None and approx != "" else 0.0
-                    except (TypeError, ValueError):
-                        rate_val = 0.0
-                    pack_label = ""
-                    try:
-                        pack_label = (line["pack_label"] or "").strip()
-                    except (KeyError, TypeError):
-                        pack_label = ""
-                    pack_qty = _row_pack_qty_in_base(line)
-                    base_unit = line["unit"] or ""
-                    if pack_label and pack_qty is not None:
-                        display_unit = f"{_format_ledger_qty(pack_qty)} {base_unit}".strip()
-                    else:
-                        display_unit = base_unit
-                    display_name = _format_indent_line_item(line)
-                    raw_item_name = (line["item_name"] or "").strip()
-                    product_category = product_cat_map.get(raw_item_name.casefold(), "")
-                    selected_lines.append({
-                        "id": int(line["id"]),
-                        "item_name": display_name,
-                        "product_category": product_category,
-                        "quantity": qty_val,
-                        "quantity_display": qty_display,
-                        "quantity_received": received_val,
-                        "quantity_received_display": received_display,
-                        "remaining": remaining_val,
-                        "remaining_display": remaining_display,
-                        "unit": display_unit,
-                        "notes": line["notes"] or "",
-                        "approximate_price": approx,
-                        "approximate_price_display": _format_optional_price(approx),
-                        "rate_value": rate_val,
-                        "initial": (raw_item_name or "?")[:1].upper(),
-                        "pack_label": pack_label,
-                        "pack_qty_in_base": _row_pack_qty_in_base(line),
-                    })
-                selected_indent = {
-                    **selected_indent,
-                    "outlet": _parse_outlet(selected_indent.get("outlet")),
-                    "outlet_label": _outlet_label(_parse_outlet(selected_indent.get("outlet"))),
-                }
+            except (TypeError, ValueError):
+                selected_inward_supplier_id = 0
+            if selected_inward_supplier_id and selected_inward_supplier_id not in seen_supplier_ids:
+                selected_inward_supplier_id = 0
+
+            if selected_inward_supplier_id:
+                generated_purchase_orders = [
+                    po
+                    for po in all_generated_pos
+                    if int(po.get("supplier_id") or 0) == selected_inward_supplier_id
+                ]
+            else:
+                generated_purchase_orders = list(all_generated_pos)
+            # Keep approved_indents for any legacy templates / view-indent helpers.
+            approved_indents = []
+            seen_indent_ids: set[int] = set()
+            for po in generated_purchase_orders:
+                try:
+                    iid = int(po.get("indent_id") or 0)
+                except (TypeError, ValueError):
+                    iid = 0
+                if iid <= 0 or iid in seen_indent_ids:
+                    continue
+                seen_indent_ids.add(iid)
+                approved_indents.append(
+                    {
+                        "id": iid,
+                        "indent_no": po.get("indent_no") or f"#{iid}",
+                        "outlet": po.get("outlet") or outlet,
+                    }
+                )
+
+            selected_po_id = 0
+            selected_po_no = str(request.args.get("po") or request.form.get("po") or "").strip()
+            try:
+                selected_po_id = int(
+                    request.args.get("po_id") or request.form.get("po_id") or 0
+                )
+            except (TypeError, ValueError):
+                selected_po_id = 0
+            # Legacy ?indent= still opens the newest PO for that indent.
+            legacy_indent_id = 0
+            try:
+                legacy_indent_id = int(request.args.get("indent") or 0)
+            except (TypeError, ValueError):
+                legacy_indent_id = 0
+
+            if selected_po_id:
+                for row in generated_purchase_orders:
+                    if int(row.get("po_id") or 0) == selected_po_id:
+                        selected_po = row
+                        break
+            if selected_po is None and selected_po_no:
+                for row in generated_purchase_orders:
+                    if str(row.get("po_no") or "") == selected_po_no:
+                        selected_po = row
+                        break
+            if selected_po is None and legacy_indent_id:
+                for row in generated_purchase_orders:
+                    if int(row.get("indent_id") or 0) == legacy_indent_id:
+                        selected_po = row
+                        break
+            if selected_po is None and len(generated_purchase_orders) == 1:
+                selected_po = generated_purchase_orders[0]
+
+            # Keep a concrete outlet filter aligned with the selected PO.
+            # When filter is All, leave it as All — the indent carries write outlet.
+            if selected_po is not None:
+                po_outlet = _parse_outlet(selected_po.get("outlet"))
+                if (
+                    outlet in OUTLET_KEYS
+                    and po_outlet in OUTLET_KEYS
+                    and po_outlet != outlet
+                ):
+                    redirect_kwargs = {
+                        "outlet": po_outlet,
+                        "view": inward_view,
+                        "po_id": int(selected_po.get("po_id") or 0),
+                    }
+                    if selected_inward_supplier_id:
+                        redirect_kwargs["supplier_id"] = selected_inward_supplier_id
+                    return redirect(
+                        url_for("stores_purchase_requests", **redirect_kwargs)
+                    )
+
+            if selected_po is not None:
+                selected_indent, selected_lines = _build_inward_lines_for_po(
+                    conn, selected_po, outlet=outlet
+                )
             indent_view_data = _indent_view_payload(
                 conn,
                 [selected_indent] if selected_indent else [],
@@ -3812,6 +6493,10 @@ def stores_purchase_requests():
             ("direct", "Without Indent Approval"),
         ],
         approved_indents=approved_indents,
+        generated_purchase_orders=generated_purchase_orders,
+        inward_supplier_options=inward_supplier_options,
+        selected_inward_supplier_id=selected_inward_supplier_id,
+        selected_po=selected_po,
         selected_indent=selected_indent,
         selected_lines=selected_lines,
         indent_view_data=indent_view_data,
@@ -3939,6 +6624,10 @@ def stores_confirm_stock_inward_expense():
         indent_id = int(data.get("indent_id") or 0)
     except (TypeError, ValueError):
         indent_id = 0
+    try:
+        purchase_order_id = int(data.get("po_id") or data.get("purchase_order_id") or 0)
+    except (TypeError, ValueError):
+        purchase_order_id = 0
     notes = (data.get("notes") or "").strip()[:500]
     raw_lines = data.get("lines") or []
     if not isinstance(raw_lines, list):
@@ -3994,6 +6683,26 @@ def stores_confirm_stock_inward_expense():
         if not lines:
             return jsonify({"ok": False, "error": "This indent has no items."}), 400
 
+        po_lines_by_indent_line: dict[int, dict[str, Any]] = {}
+        if purchase_order_id:
+            po_row = conn.execute(
+                """
+                SELECT id, indent_id, supplier_id, po_no
+                FROM store_purchase_orders
+                WHERE id = ? AND indent_id = ?
+                """,
+                (purchase_order_id, indent_id),
+            ).fetchone()
+            if not po_row:
+                return jsonify({"ok": False, "error": "Purchase order was not found for this indent."}), 400
+            for pol in _load_purchase_order_lines(conn, purchase_order_id):
+                try:
+                    lid = int(pol.get("line_id") or 0)
+                except (TypeError, ValueError):
+                    lid = 0
+                if lid > 0:
+                    po_lines_by_indent_line[lid] = pol
+
         lines_by_id = {int(row["id"]): row for row in lines}
         group_input: list[dict[str, Any]] = []
         for line_id, (received_qty, unit_price, tax_percent) in selected.items():
@@ -4011,7 +6720,38 @@ def stores_confirm_stock_inward_expense():
                     "ok": False,
                     "error": f"{line['item_name']} is already fully received.",
                 }), 400
-            if received_qty - remaining > 0.0001:
+            if purchase_order_id:
+                pol = po_lines_by_indent_line.get(line_id)
+                if not pol:
+                    return jsonify({
+                        "ok": False,
+                        "error": f"{line['item_name']} is not on this purchase order.",
+                    }), 400
+                try:
+                    po_qty = float(pol.get("quantity") or 0)
+                    po_received = float(pol.get("quantity_received") or 0)
+                except (TypeError, ValueError):
+                    po_qty = 0.0
+                    po_received = 0.0
+                po_available = _po_inward_available_qty(
+                    po_qty=po_qty,
+                    po_received=po_received,
+                    indent_remaining=remaining,
+                )
+                if po_available <= 0.0001:
+                    return jsonify({
+                        "ok": False,
+                        "error": f"{line['item_name']} is already fully received on this purchase order.",
+                    }), 400
+                if received_qty - po_available > 0.0001:
+                    return jsonify({
+                        "ok": False,
+                        "error": (
+                            f"Received quantity for {line['item_name']} cannot exceed "
+                            f"remaining PO qty ({po_available:g})."
+                        ),
+                    }), 400
+            elif received_qty - remaining > 0.0001:
                 return jsonify({
                     "ok": False,
                     "error": (
@@ -4141,10 +6881,21 @@ def stores_confirm_stock_inward_expense():
                             master_price = float(line["approximate_price"])
                     except (KeyError, TypeError, ValueError):
                         master_price = None
+                if master_price is None and unit_cost is not None:
+                    try:
+                        master_price = float(unit_cost)
+                    except (TypeError, ValueError):
+                        master_price = None
                 _update_product_master_price_from_inward(
                     conn,
                     item_name=line["item_name"],
                     pack_label=_row_pack_label(line),
+                    unit_price=master_price,
+                )
+                _update_product_preferred_suppliers_from_inward(
+                    conn,
+                    item_name=line["item_name"],
+                    supplier_id=expense_data.get("supplier_id"),
                     unit_price=master_price,
                 )
                 try:
@@ -4159,6 +6910,13 @@ def stores_confirm_stock_inward_expense():
                     """,
                     (already + float(received_qty), int(line["id"])),
                 )
+                if purchase_order_id:
+                    _apply_po_line_received(
+                        conn,
+                        purchase_order_id=purchase_order_id,
+                        indent_line_id=int(line["id"]),
+                        received_qty=received_qty,
+                    )
 
         # Refresh remaining after this confirm.
         remaining_rows = conn.execute(
@@ -4170,18 +6928,41 @@ def stores_confirm_stock_inward_expense():
             (indent_id,),
         ).fetchall()
         still_open = any(float(row["remaining"] or 0) > 0.0001 for row in remaining_rows)
+        po_still_open = False
+        if purchase_order_id:
+            po_left = conn.execute(
+                """
+                SELECT 1
+                FROM store_purchase_order_lines pol
+                JOIN store_indent_lines l
+                  ON l.id = pol.line_id AND l.indent_id = ?
+                WHERE pol.purchase_order_id = ?
+                  AND COALESCE(pol.quantity, 0) - COALESCE(pol.quantity_received, 0) > 0.0001
+                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+                LIMIT 1
+                """,
+                (indent_id, purchase_order_id),
+            ).fetchone()
+            po_still_open = bool(po_left)
         if still_open:
-            # Keep approved so the indent stays on Stock Inward.
+            # Keep approved so the indent stays on Stock Inward for other POs.
             conn.execute(
                 "UPDATE store_indents SET status = 'approved' WHERE id = ?",
                 (indent_id,),
             )
-            redirect_url = url_for(
-                "stores_purchase_requests",
-                outlet=write_outlet,
-                indent=indent_id,
-            )
-            message = "Partial stock inward recorded. Remaining items stay on Stock Inward."
+            redirect_kwargs: dict[str, Any] = {
+                "outlet": write_outlet,
+                "view": "approved",
+            }
+            if po_still_open:
+                redirect_kwargs["po_id"] = purchase_order_id
+                message = "Partial stock inward recorded. Remaining items stay on Stock Inward."
+            else:
+                message = (
+                    "Stock inward recorded for this purchase order. "
+                    "Remaining indent qty stays available for other POs."
+                )
+            redirect_url = url_for("stores_purchase_requests", **redirect_kwargs)
         else:
             conn.execute(
                 "UPDATE store_indents SET status = 'stocked' WHERE id = ?",
@@ -4369,6 +7150,12 @@ def stores_confirm_direct_stock_inward_expense():
                     conn,
                     item_name=line["item_name"],
                     pack_label=line["pack_label"],
+                    unit_price=line["unit_price"],
+                )
+                _update_product_preferred_suppliers_from_inward(
+                    conn,
+                    item_name=line["item_name"],
+                    supplier_id=expense_data.get("supplier_id"),
                     unit_price=line["unit_price"],
                 )
 
@@ -5183,6 +7970,128 @@ def _seed_audit_lines(conn, audit_id: int, outlet: str) -> None:
         )
 
 
+def _sync_audit_lines_from_stock(conn, audit_id: int, outlet: str) -> bool:
+    """Add stock items that appeared after the open audit was seeded (e.g. new inwards).
+
+    Also refreshes ``system_qty`` / category / unit cost for still-pending lines so
+    recent receives show the live on-hand figure before verification.
+    """
+    existing = conn.execute(
+        """
+        SELECT id, stock_item_id, item_name, unit, status, system_qty
+        FROM store_stock_audit_lines
+        WHERE audit_id = ?
+        """,
+        (audit_id,),
+    ).fetchall()
+    by_stock_id: dict[int, Any] = {}
+    by_name_unit: dict[tuple[str, str], Any] = {}
+    for row in existing:
+        try:
+            sid = int(row["stock_item_id"]) if row["stock_item_id"] is not None else 0
+        except (TypeError, ValueError):
+            sid = 0
+        if sid > 0:
+            by_stock_id[sid] = row
+        key = (
+            str(row["item_name"] or "").strip().lower(),
+            str(row["unit"] or "pcs").strip().lower(),
+        )
+        by_name_unit[key] = row
+
+    items = conn.execute(
+        """
+        SELECT * FROM store_stock_items
+        WHERE outlet = ?
+        ORDER BY lower(item_name), lower(unit)
+        """,
+        (outlet,),
+    ).fetchall()
+    stock_items = _enrich_stock_items(conn, [dict(row) for row in items])
+    changed = False
+    for item in stock_items:
+        try:
+            stock_id = int(item.get("id") or 0)
+        except (TypeError, ValueError):
+            stock_id = 0
+        name = str(item.get("item_name") or "").strip()
+        unit = str(item.get("unit") or "pcs").strip() or "pcs"
+        key = (name.lower(), unit.lower())
+        try:
+            system_qty = round(float(item.get("qty_on_hand") or 0), 3)
+        except (TypeError, ValueError):
+            system_qty = 0.0
+        unit_cost = item.get("approximate_price")
+        try:
+            unit_cost = float(unit_cost) if unit_cost is not None else None
+        except (TypeError, ValueError):
+            unit_cost = None
+        category_name = str(item.get("category_name") or "").strip()
+
+        match = by_stock_id.get(stock_id) if stock_id > 0 else None
+        if match is None:
+            match = by_name_unit.get(key)
+        if match is None:
+            conn.execute(
+                """
+                INSERT INTO store_stock_audit_lines (
+                    audit_id, stock_item_id, item_name, unit, category_name,
+                    system_qty, status, unit_cost
+                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                """,
+                (
+                    audit_id,
+                    stock_id or None,
+                    name,
+                    unit,
+                    category_name,
+                    system_qty,
+                    unit_cost,
+                ),
+            )
+            changed = True
+            continue
+
+        status = str(match["status"] or "").strip().lower()
+        if status not in ("pending", "skipped"):
+            continue
+        try:
+            prev_qty = float(match["system_qty"] or 0)
+        except (TypeError, ValueError):
+            prev_qty = 0.0
+        needs_qty = abs(prev_qty - system_qty) > STOCK_AUDIT_EPS
+        try:
+            prev_sid = int(match["stock_item_id"] or 0)
+        except (TypeError, ValueError):
+            prev_sid = 0
+        needs_link = stock_id > 0 and prev_sid != stock_id
+        if not needs_qty and not needs_link:
+            continue
+        conn.execute(
+            """
+            UPDATE store_stock_audit_lines
+            SET stock_item_id = COALESCE(?, stock_item_id),
+                category_name = CASE
+                    WHEN ? != '' THEN ?
+                    ELSE category_name
+                END,
+                system_qty = ?,
+                unit_cost = COALESCE(?, unit_cost)
+            WHERE id = ?
+            """,
+            (
+                stock_id or None,
+                category_name,
+                category_name,
+                system_qty,
+                unit_cost,
+                int(match["id"]),
+            ),
+        )
+        changed = True
+    return changed
+
+
 def _get_or_create_open_audit(conn, outlet: str, user_id: int | None) -> dict[str, Any]:
     row = conn.execute(
         """
@@ -5259,7 +8168,12 @@ def stores_stock_audit():
     try:
         ensure_stores_schema(conn)
         audit = _get_or_create_open_audit(conn, outlet, user_id)
+        changed = False
         if _audit_refresh_line_statuses(conn, int(audit["id"]), outlet):
+            changed = True
+        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet):
+            changed = True
+        if changed:
             conn.commit()
         lines = _load_audit_lines(conn, audit["id"])
         if not lines:
@@ -5631,6 +8545,8 @@ def stores_stock_audit_new():
                 (_now(), open_row["id"]),
             )
         audit = _get_or_create_open_audit(conn, outlet, user.get("id"))
+        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet):
+            conn.commit()
         lines = _load_audit_lines(conn, audit["id"])
         if not lines:
             _seed_audit_lines(conn, audit["id"], outlet)

@@ -20,6 +20,19 @@
     return score;
   }
 
+  function isPinnedAllOption(option){
+    var value = String(option.getAttribute('data-value') || '').trim().toLowerCase();
+    // Empty = "All …" / placeholder; "all" and "both" are the shared All keys.
+    if (!value || value === 'all' || value === 'both') return true;
+    var label = String(
+      option.getAttribute('data-label')
+      || option.getAttribute('data-name')
+      || option.textContent
+      || ''
+    ).trim().toLowerCase();
+    return label === 'all' || label.indexOf('all ') === 0;
+  }
+
   function filterSearchableOptions(root, query){
     var optionsWrap = optionsWrapFor(root);
     if (!optionsWrap) return;
@@ -28,8 +41,8 @@
 
     if (!needle) {
       options.sort(function(a, b){
-        var aAll = (a.getAttribute('data-value') || '') === 'all';
-        var bAll = (b.getAttribute('data-value') || '') === 'all';
+        var aAll = isPinnedAllOption(a);
+        var bAll = isPinnedAllOption(b);
         if (aAll && !bAll) return -1;
         if (bAll && !aAll) return 1;
         var aLabel = (a.getAttribute('data-label') || a.getAttribute('data-name') || a.textContent || '').trim();
@@ -170,6 +183,13 @@
 
   function shouldUseFixedListbox(root){
     if (!root) return false;
+    /* PO line supplier sits in overflow:auto group cards under a transformed
+       workspace — fixed + getBoundingClientRect misaligns the panel so options
+       cannot be chosen. Absolute under the chip (with overflow:visible when open)
+       matches Indent product pickers. */
+    if (root.classList.contains('st-po-line-supplier-listbox')) {
+      return false;
+    }
     /* POS invoice header table/order pills — fixed escapes sibling action-button overlap. */
     if (root.classList.contains('pos-inv-header-listbox')) {
       return true;
@@ -196,6 +216,13 @@
     ) {
       return true;
     }
+    /* Product / category / unit overlays sit under a transformed workspace.
+       Must run BEFORE the generic combobox+dialog rule — searchable Supplier
+       listboxes are ep-combobox-listbox inside role=dialog, and fixed coords
+       land nowhere near the chip. Absolute under the chip stays aligned. */
+    if (root.closest('#st-product-modal, #st-category-modal, #st-unit-modal')) {
+      return false;
+    }
     if (root.classList.contains('ep-combobox-listbox') && root.closest('.modal-backdrop, .modal-overlay, .staff-credit-box, .pos-inv-modal, [role="dialog"]')) {
       return true;
     }
@@ -209,13 +236,6 @@
       return false;
     }
     if (root.classList.contains('ep-toolbar-listbox')) return true;
-    /* Product / category / unit overlays sit under a transformed workspace +
-       overflow:hidden master shell. Fixed + getBoundingClientRect misaligns the
-       panel (and overflow clips it), so Outlet/Category look open but options
-       cannot be clicked. Absolute under the chip stays selectable. */
-    if (root.closest('#st-product-modal, #st-category-modal, #st-unit-modal')) {
-      return false;
-    }
     // Indent edit / similar modals clip absolute menus via overflow:auto/hidden.
     if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal, #st-stores-ledger-modal, #st-ledger-pending-modal')) {
       return true;
@@ -412,7 +432,16 @@
         }
         if (isCombobox(root)) {
           if (combo && opts.selectAll) {
-            try { combo.select(); } catch (err) {}
+            var hidden = root.querySelector('input[type="hidden"]');
+            var hasValue = !!(hidden && String(hidden.value || '').trim());
+            if (!hasValue) {
+              // Empty field: clear so the first click is ready to type-to-search
+              // (do not leave placeholder copy in the value for the user to delete).
+              combo.value = '';
+              combo.classList.add('is-placeholder');
+            } else {
+              try { combo.select(); } catch (err) {}
+            }
           }
         } else if (search) {
           search.value = '';
@@ -442,7 +471,8 @@
     var combo = comboboxInput(root);
     if (input) input.value = value;
     if (combo) {
-      combo.value = label || '';
+      // Keep real labels in the value; never copy placeholder text into the input.
+      combo.value = value ? (label || '') : '';
       combo.classList.toggle('is-placeholder', !value);
     }
     if (valueEl) {
@@ -745,7 +775,7 @@
     if (input) input.value = value;
     var combo = comboboxInput(root);
     if (combo) {
-      combo.value = label || '';
+      combo.value = value ? (label || '') : '';
       combo.classList.toggle('is-placeholder', !value);
     }
     var valueEl = root.querySelector('.se-filter-chip-value');

@@ -308,6 +308,7 @@ _COMMUNICATION_HUB_ENDPOINTS = {
     "communication_hub",
     "communication_hub_api_conversations",
     "communication_hub_api_conversation_create",
+    "communication_hub_api_conversation_delete",
     "communication_hub_api_messages",
     "communication_hub_api_message_send",
 }
@@ -323,6 +324,12 @@ _STORES_ENDPOINT_GROUPS = {
         "stores_indent_delete",
         "stores_indent_purchase_order",
         "stores_orders",
+        "stores_orders_history",
+        "stores_orders_send",
+        "stores_orders_lines",
+        "stores_orders_lines_next",
+        "stores_orders_pdf",
+        "stores_orders_send_wa",
     },
     "approvals": {
         "stores_approvals",

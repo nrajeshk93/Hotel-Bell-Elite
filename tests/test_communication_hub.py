@@ -65,6 +65,7 @@ class CommunicationHubTests(unittest.TestCase):
             "communication_hub",
             "communication_hub_api_conversations",
             "communication_hub_api_conversation_create",
+            "communication_hub_api_conversation_delete",
             "communication_hub_api_messages",
             "communication_hub_api_message_send",
         ):
@@ -116,6 +117,66 @@ class CommunicationHubTests(unittest.TestCase):
         messages = thread.get_json()["messages"]
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["wa_message_id"], "wamid.test.1")
+
+    def test_delete_conversation_removes_messages(self):
+        create = self.client.post(
+            "/communication-hub/api/conversations",
+            json={"phone": "9123456780", "display_name": "Delete Me"},
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        conv = create.get_json()["conversation"]
+        conv_id = conv["id"]
+
+        page_before = self.client.get("/communication-hub")
+        self.assertEqual(page_before.status_code, 200)
+        html_before = page_before.get_data(as_text=True)
+        self.assertIn("data-delete-url-template", html_before)
+        self.assertIn("ch-conv-delete", html_before)
+
+        with mock.patch(
+            "whatsapp_client.send_text_message",
+            return_value=(True, "", {"messages": [{"id": "wamid.delete.1"}]}),
+        ):
+            send = self.client.post(
+                f"/communication-hub/api/conversations/{conv_id}/messages",
+                json={"text": "Bye"},
+            )
+        self.assertEqual(send.status_code, 200, send.get_data(as_text=True))
+
+        deleted = self.client.delete(f"/communication-hub/api/conversations/{conv_id}")
+        self.assertEqual(deleted.status_code, 200, deleted.get_data(as_text=True))
+        body = deleted.get_json()
+        self.assertTrue(body.get("ok"))
+
+        missing = self.client.get(f"/communication-hub/api/conversations/{conv_id}/messages")
+        self.assertEqual(missing.status_code, 404)
+
+        again = self.client.delete(f"/communication-hub/api/conversations/{conv_id}")
+        self.assertEqual(again.status_code, 404)
+
+        # Mirror sync must not resurrect a deleted chat.
+        import communication_hub as hub
+
+        conn = db_mod.get_db()
+        try:
+            with mock.patch.object(
+                hub,
+                "pull_hub_mirror_into",
+                side_effect=lambda c: (
+                    hub.get_or_create_conversation(c, "9123456780", "Delete Me"),
+                    0,
+                )[1],
+            ):
+                # Direct mirror-style recreate path should respect tombstone.
+                revived = hub.get_or_create_conversation(conn, "9123456780", "Delete Me")
+                self.assertIsNone(revived)
+                intentional = hub.get_or_create_conversation(
+                    conn, "9123456780", "Delete Me", revive=True
+                )
+                self.assertIsNotNone(intentional)
+                self.assertEqual(intentional["phone"], "919123456780")
+        finally:
+            conn.close()
 
     def test_send_attachment_persists(self):
         create = self.client.post(

@@ -6,6 +6,8 @@ body.su-module.st-indent-shell .main-wrapper{
 
 body.su-module.st-indent-shell .se-content{
   max-width:1400px;
+  width:100%;
+  min-width:0;
   margin:0 auto;
   padding:8px 32px 120px;
   box-sizing:border-box;
@@ -104,10 +106,16 @@ body.su-module.st-indent-shell .su-header-tools .btn{
   flex:0 0 auto;
   white-space:nowrap;
 }
+/* Expense Ledger–style stroke icons on header tool buttons */
 body.su-module.st-indent-shell .su-header-tools .btn svg{
   width:14px;
   height:14px;
   flex-shrink:0;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
 }
 body.su-module.st-indent-shell .su-header-tools .de-fullscreen-btn{
   flex:0 0 auto;

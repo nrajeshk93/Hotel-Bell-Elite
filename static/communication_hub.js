@@ -166,8 +166,9 @@
           c.unread_count > 0
             ? '<span class="ch-unread">' + esc(c.unread_count) + '</span>'
             : '';
+        var label = c.label || c.phone || 'chat';
         return (
-          '<button type="button" class="ch-conv-item' +
+          '<div class="ch-conv-item' +
           active +
           '" role="listitem" data-id="' +
           esc(c.id) +
@@ -181,6 +182,9 @@
           esc(c.unread_count || 0) +
           '" data-at="' +
           esc(c.last_message_at || '') +
+          '">' +
+          '<button type="button" class="ch-conv-open" aria-label="Open chat with ' +
+          esc(label) +
           '">' +
           '<span class="ch-avatar" aria-hidden="true">' +
           esc(initials(c.label)) +
@@ -201,7 +205,13 @@
           unread +
           '</span>' +
           '</span>' +
-          '</button>'
+          '</button>' +
+          '<button type="button" class="ch-conv-delete" data-ch-delete aria-label="Delete chat with ' +
+          esc(label) +
+          '" title="Delete chat">' +
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' +
+          '</button>' +
+          '</div>'
         );
       })
       .join('');
@@ -313,6 +323,42 @@
       active.setAttribute('aria-hidden', 'true');
     }
     renderList(($('#ch-list-search') || {}).value || ($('#ch-global-search') || {}).value || '');
+  }
+
+  function deleteUrl(conversationId) {
+    var tpl = (page && page.getAttribute('data-delete-url-template')) || '';
+    if (!tpl) return '';
+    return String(tpl).replace(/\/0\/?$/, '/' + conversationId);
+  }
+
+  function deleteConversation(conversationId, label) {
+    var id = Number(conversationId || 0);
+    if (!id) return Promise.resolve();
+    var url = deleteUrl(id);
+    if (!url) {
+      window.alert('Delete is unavailable. Refresh the page and try again.');
+      return Promise.resolve();
+    }
+    var name = String(label || 'this chat').trim() || 'this chat';
+    var ok = window.confirm(
+      'Delete chat with ' + name + '?\n\nMessages will be removed from Communication Hub.'
+    );
+    if (!ok) return Promise.resolve();
+    return fetchJson(url, { method: 'DELETE' })
+      .then(function (res) {
+        if (!res.ok || !(res.data && res.data.ok)) {
+          window.alert((res.data && res.data.error) || 'Unable to delete chat.');
+          return;
+        }
+        state.conversations = state.conversations.filter(function (c) {
+          return Number(c.id) !== id;
+        });
+        if (Number(state.activeId) === id) hideThread();
+        else renderList(($('#ch-list-search') || {}).value || ($('#ch-global-search') || {}).value || '');
+      })
+      .catch(function () {
+        window.alert('Network error while deleting chat.');
+      });
   }
 
   function fetchJson(url, opts) {
@@ -661,9 +707,26 @@
     var list = $('#ch-conv-list');
     if (list) {
       list.addEventListener('click', function (e) {
+        var delBtn = e.target.closest('.ch-conv-delete, [data-ch-delete]');
+        if (delBtn) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+          var delItem = delBtn.closest('.ch-conv-item');
+          if (!delItem) return;
+          deleteConversation(
+            delItem.getAttribute('data-id'),
+            delItem.getAttribute('data-label') || delItem.getAttribute('data-phone')
+          );
+          return;
+        }
+        if (e.target.closest('.ch-conv-delete')) return;
+        var openBtn = e.target.closest('.ch-conv-open');
         var item = e.target.closest('.ch-conv-item');
         if (!item) return;
-        openConversation(item.getAttribute('data-id'));
+        if (openBtn || e.target === item) {
+          openConversation(item.getAttribute('data-id'));
+        }
       });
     }
     document.addEventListener('visibilitychange', onHubVisibility);

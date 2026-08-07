@@ -437,7 +437,10 @@
         return { html: html, url: finalUrl };
       });
     }).then(function(result){
-      if(!isCurrentSoftNav(nav.token)) return;
+      if(!isCurrentSoftNav(nav.token)){
+        unlockFormSubmit(form);
+        return;
+      }
       try{ history.pushState({ deSoftNav: true }, '', result.url); } catch(e){}
       if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
         window.deFullscreen.preserveForNavigation();
@@ -448,8 +451,18 @@
       unlockFormSubmit(form);
       applySoftSwap(doc, result.url, hideSoftNavProgress, sidebarScroll, nav.token);
     }).catch(function(err){
-      if(err && err.name === 'AbortError') return;
-      if(!isCurrentSoftNav(nav.token)) return;
+      if(err && err.name === 'AbortError'){
+        unlockFormSubmit(form);
+        markMainLoading(false);
+        hideSoftNavProgress();
+        return;
+      }
+      if(!isCurrentSoftNav(nav.token)){
+        unlockFormSubmit(form);
+        markMainLoading(false);
+        hideSoftNavProgress();
+        return;
+      }
       markMainLoading(false);
       setSoftNavFlag(false);
       document.documentElement.classList.remove('de-soft-navigating');
@@ -559,6 +572,12 @@
     } catch(e){
       return String(url || '');
     }
+  }
+
+  function invalidatePrefetch(url){
+    try{
+      prefetchCache.delete(navCacheKey(url));
+    } catch(e){}
   }
 
   /** Fetch URL for soft-nav: same page, but only .de-main-wrapper from the server. */
@@ -671,6 +690,12 @@
           prefetchCache.delete(key);
           return null;
         }
+        /* Generate PO mutates line suppliers then soft-reloads — never paint a
+           cached pre-save page that looks like the pick did not stick. */
+        if(/^\/stores\/orders\/\d+/.test(path)){
+          prefetchCache.delete(key);
+          return null;
+        }
         if(path === '/point-of-sale' && (
           entry.html.indexOf('pos-kot-tokens-modal') === -1 ||
           entry.html.indexOf('pos-today-invoices-modal') === -1
@@ -687,6 +712,9 @@
         try{
           var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
           if(path === '/communication-hub'){
+            return null;
+          }
+          if(/^\/stores\/orders\/\d+/.test(path)){
             return null;
           }
           if(path === '/point-of-sale' && (
@@ -2003,22 +2031,43 @@
       if(contentType.indexOf('text/html') === -1){
         throw new Error('non-html response');
       }
-      return response.text();
+      /* Follow redirects to the final document URL (e.g. finished Generate PO bounce). */
+      var finalUrl = stripPartialParam(response.url || url);
+      return response.text().then(function(html){
+        return { html: html, url: finalUrl };
+      });
     });
 
     Promise.all([htmlPromise, leavePromise, floorPromise]).then(function(results){
-      if(!isCurrentSoftNav(nav.token)) return;
-      var html = results[0];
+      if(!isCurrentSoftNav(nav.token)){
+        markMainLoading(false);
+        hideSoftNavProgress();
+        if(typeof done === 'function') done();
+        return;
+      }
+      var payload = results[0];
+      var html = typeof payload === 'string' ? payload : (payload && payload.html);
+      var swapUrl = (payload && typeof payload === 'object' && payload.url) ? payload.url : url;
       if(!html) throw new Error('empty soft nav html');
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
       if(!doc.querySelector('.de-main-wrapper')){
         throw new Error('missing main wrapper for soft nav');
       }
-      applySoftSwap(doc, url, done, sidebarScroll, nav.token);
+      applySoftSwap(doc, swapUrl, done, sidebarScroll, nav.token);
     }).catch(function(err){
-      if(err && err.name === 'AbortError') return;
-      if(!isCurrentSoftNav(nav.token)) return;
+      if(err && err.name === 'AbortError'){
+        markMainLoading(false);
+        hideSoftNavProgress();
+        if(typeof done === 'function') done();
+        return;
+      }
+      if(!isCurrentSoftNav(nav.token)){
+        markMainLoading(false);
+        hideSoftNavProgress();
+        if(typeof done === 'function') done();
+        return;
+      }
       // Keep captured rail scroll in sessionStorage for hard-nav boot restore.
       if(sidebarScroll){
         try{ sessionStorage.setItem(SIDEBAR_SCROLL_KEY, JSON.stringify(sidebarScroll)); } catch(e){}
@@ -2180,6 +2229,8 @@
     } catch(e){}
     if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1 || path.indexOf('/purchase-order') !== -1) return true;
     if(path.indexOf('/export/') !== -1) return true;
+    /* Purchase Order PDF binary endpoint — never soft-nav into the shell. */
+    if(/\/stores\/orders\/\d+\/pdf\/\d+(\/?$|\?)/.test(path)) return true;
     /* Accounts Excel downloads (not HTML report pages). */
     if(path === '/accounts/credit-payment/report' || path === '/accounts/purchase-verification/report') return true;
     if(path === '/accounts/purchase-ledger/report' || path === '/accounts/cash-ledger/report') return true;
@@ -2258,6 +2309,9 @@
   /** Soft-reload current (or given) URL without a hard navigation, so fullscreen can stay. */
   window.deSoftRefresh = function(url){
     url = withSalesScope(url || window.location.href);
+    /* Always fetch fresh HTML — callers soft-refresh after writes (PO supplier
+       picks, filters, etc.) and a warm prefetch would restore pre-mutation UI. */
+    invalidatePrefetch(url);
     rememberSidebarState();
     try{
       sessionStorage.setItem(NAV_FLAG, '1');
@@ -2290,6 +2344,7 @@
     showSoftNavProgress();
     softNavigate(url, hideSoftNavProgress);
   };
+  window.deInvalidateSoftNavCache = invalidatePrefetch;
   window.deWorkspaceReinit = function(){
     initDeSidebarPageTransitions();
     if(typeof window.initSuFilterListboxes === 'function'){
@@ -2300,6 +2355,9 @@
     }
     if(typeof window.initStoresPage === 'function'){
       window.initStoresPage();
+    }
+    if(typeof window.initStoresPoPage === 'function'){
+      window.initStoresPoPage();
     }
     if(typeof window.initEmployeePayrollPage === 'function'){
       window.initEmployeePayrollPage();
@@ -2413,7 +2471,7 @@
         '/static/pos_tables.css?v=35',
         '/static/pos_invoice.css?v=52',
         '/static/purchase_ledger.css?v=29',
-        '/static/communication_hub.css?v=6',
+        '/static/communication_hub.css?v=12',
         '/static/hotel_rooms.css?v=60',
         '/static/hotel_date_picker.css?v=9',
         '/static/access_management_premium.css?v=19',

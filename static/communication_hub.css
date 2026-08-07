@@ -195,12 +195,41 @@ body.su-module.communication-hub-module .su-title h1{
   flex:1 1 auto;min-height:0;overflow:auto;padding:0 12px 16px;box-sizing:border-box;
 }
 .ch-conv-item{
-  width:100%;display:flex;align-items:center;gap:12px;
-  border:0;background:transparent;text-align:left;cursor:pointer;
-  padding:12px;border-radius:14px;color:inherit;box-sizing:border-box;
+  width:100%;display:flex;align-items:center;gap:4px;
+  border:0;background:transparent;text-align:left;
+  padding:4px;border-radius:14px;color:inherit;box-sizing:border-box;
+  position:relative;
 }
-.ch-conv-item:hover{background:#F8FAFC}
+.ch-conv-item:hover,
+.ch-conv-item:focus-within{background:#F8FAFC}
 .ch-conv-item.is-active{background:#EFF6FF}
+.ch-conv-open{
+  flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:12px;
+  border:0;background:transparent;text-align:left;cursor:pointer;
+  padding:8px;border-radius:12px;color:inherit;box-sizing:border-box;
+}
+.ch-conv-delete{
+  flex:0 0 auto;
+  width:32px;height:32px;margin-right:4px;
+  display:inline-flex;align-items:center;justify-content:center;
+  border:0;border-radius:8px;background:transparent;color:#94A3B8;
+  cursor:pointer;opacity:0.55;pointer-events:auto;
+  transition:opacity .12s ease,background .12s ease,color .12s ease;
+}
+.ch-conv-item:hover .ch-conv-delete,
+.ch-conv-item:focus-within .ch-conv-delete,
+.ch-conv-item.is-active .ch-conv-delete{
+  opacity:1;
+}
+.ch-conv-delete:hover,
+.ch-conv-delete:focus-visible{
+  background:#FEE2E2;color:#DC2626;
+  outline:none;
+}
+.ch-conv-delete svg{
+  width:15px;height:15px;fill:none;stroke:currentColor;
+  stroke-width:2;stroke-linecap:round;stroke-linejoin:round;
+}
 .ch-avatar{
   flex:0 0 auto;width:42px;height:42px;border-radius:999px;
   display:inline-flex;align-items:center;justify-content:center;

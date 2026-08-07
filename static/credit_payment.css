@@ -154,6 +154,96 @@ body.su-module .cp-panel-actions .btn-primary:disabled{
   cursor:not-allowed;
 }
 
+/* Pattern B: full-width bulk selection strip (appears when rows are checked) */
+body.su-module .cp-bulk-bar{
+  display:flex;
+  flex:0 0 auto;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px 16px;
+  margin:0 16px 12px;
+  padding:10px 14px;
+  border-radius:12px;
+  background:#EFF6FF;
+  border:1px solid rgba(37,99,235,.2);
+  color:#1E3A8A;
+  font:600 12px Inter,system-ui,sans-serif;
+}
+body.su-module .cp-bulk-bar[hidden]{display:none !important}
+body.su-module .cp-bulk-bar-left,
+body.su-module .cp-bulk-bar-right{
+  display:inline-flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 10px;
+  min-width:0;
+}
+body.su-module .cp-bulk-bar-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  border-radius:8px;
+  background:#2563EB;
+  color:#fff;
+  flex:0 0 auto;
+}
+body.su-module .cp-bulk-bar-icon svg{
+  width:15px;
+  height:15px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2.2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+body.su-module .cp-bulk-bar-count{font-weight:800;color:#1E3A8A}
+body.su-module .cp-bulk-bar-meta{color:#334155;font-weight:600}
+body.su-module .cp-bulk-bar .cp-link-btn{
+  margin-left:0;
+  color:#2563EB;
+  padding:2px 4px;
+}
+body.su-module .cp-bulk-bar .btn-primary{
+  height:34px;
+  padding:0 14px;
+  font-size:12px;
+  font-weight:700;
+  white-space:nowrap;
+}
+body.su-module .cp-bulk-bar .btn-primary:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+body.su-module .cp-bulk-bar-close{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:30px;
+  height:30px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:#64748B;
+  cursor:pointer;
+}
+body.su-module .cp-bulk-bar-close:hover{
+  background:rgba(37,99,235,.1);
+  color:#1E3A8A;
+}
+body.su-module .cp-bulk-bar-close svg{
+  width:16px;
+  height:16px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+}
+body.su-module .cp-action-bar-sep{color:#94A3B8}
+
+/* Legacy alias if older markup remains */
 body.su-module .cp-selection-bar{
   display:inline-flex;
   flex-wrap:wrap;
@@ -167,11 +257,6 @@ body.su-module .cp-selection-bar{
   color:#1E3A8A;
 }
 body.su-module .cp-selection-bar[hidden]{display:none !important}
-body.su-module .cp-selection-bar .cp-link-btn{
-  margin-left:4px;
-  color:#2563EB;
-}
-body.su-module .cp-action-bar-sep{color:#94A3B8}
 
 body.su-module .cp-col-check{
   width:44px;
@@ -196,7 +281,66 @@ body.su-module .cp-select-row.is-locked-out{opacity:.55}
 
 body.su-module .cp-balance{color:#B45309;font-weight:800}
 
-body.su-module .cp-col-actions{white-space:nowrap;width:140px}
+body.su-module .cp-col-actions{
+  white-space:nowrap;
+  width:128px;
+  text-align:right;
+  padding-right:16px !important;
+}
+body.su-module .cp-row-approve-btn{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  height:32px;
+  padding:0 12px 0 6px;
+  border-radius:999px;
+  border:1.5px solid #93C5FD;
+  background:#fff;
+  color:#2563EB;
+  font:600 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,box-shadow .15s ease;
+}
+body.su-module .cp-row-approve-btn:hover{
+  background:#EFF6FF;
+  border-color:#60A5FA;
+}
+body.su-module .cp-row-approve-btn:disabled{
+  opacity:.55;
+  cursor:wait;
+}
+body.su-module .cp-row-approve-btn.is-busy{
+  pointer-events:none;
+}
+body.su-module .cp-outstanding-error{
+  margin:0 16px 10px;
+}
+body.su-module .cp-outstanding-error[hidden]{display:none !important}
+body.su-module .cp-row-approve-icon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:20px;
+  height:20px;
+  border-radius:50%;
+  background:#2563EB;
+  color:#fff;
+  flex:0 0 auto;
+}
+body.su-module .cp-row-approve-icon svg{
+  width:12px;
+  height:12px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2.6;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+/* Multi-select: hide per-row Approve; bulk bar owns the action */
+body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
+  display:none;
+}
+
 /* History: keep Total/Actions in view — long expense-code lists must wrap, not widen the table. */
 #credit-payment-page #cp-history-table .pl-col-count{
   width:88px;

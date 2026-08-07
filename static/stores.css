@@ -454,7 +454,7 @@ body.su-module .st-audit-filter-form .st-audit-category-listbox{
   }
 }
 
-body.su-module .st-outlet-filter-form:not(.st-product-filter-form):not(.st-stock-filter-form):not(.st-audit-filter-form) .st-outlet-listbox{
+body.su-module .st-outlet-filter-form:not(.st-product-filter-form):not(.st-stock-filter-form):not(.st-audit-filter-form):not(.st-inward-header-filters) .st-outlet-listbox{
   margin-left:auto;
 }
 
@@ -1146,12 +1146,43 @@ body.su-module .st-products-panel .card-title svg{
 }
 
 body.su-module .st-products-table{min-width:920px}
+/* Long catalogues: skip layout/paint for offscreen rows while scrolling. */
+body.su-module .st-products-table tbody tr[data-st-product-row]{
+  content-visibility:auto;
+  contain-intrinsic-size:auto 52px;
+}
 body.su-module .st-products-table .st-approx-price{
   text-align:center;
   font-variant-numeric:tabular-nums;
   white-space:nowrap;
 }
 body.su-module .st-products-table th[data-sort="approx-price"]{text-align:center}
+/* Expense Ledger dense scroll panel: sticky header, list scrolls in place. */
+body.su-module .st-products-panel.hbe-scroll-panel{
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  margin-bottom:0;
+}
+body.su-module .st-products-panel > .card-hdr{flex:0 0 auto}
+body.su-module .st-products-panel > .card-body{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+}
+body.su-module .st-products-panel .pl-table-wrap{
+  flex:1 1 auto;
+  min-height:min(280px,40vh);
+  max-height:calc(44px + 10 * 52px);
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+}
+/* Master overlay already scrolls its own body — let the list fill the panel. */
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .st-products-panel .pl-table-wrap{
+  max-height:none;
+  height:100%;
+}
 body.su-module .st-cat-pill,
 body.su-module .st-outlet-pill{
   display:inline-flex;

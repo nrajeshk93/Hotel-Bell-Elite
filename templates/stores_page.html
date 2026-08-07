@@ -16,16 +16,19 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=103">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=106">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
 {% if page_key in ('indent', 'purchase_orders') %}
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=49">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=69">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=71">
+{% if page_key == 'purchase_orders' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=40">
+{% endif %}
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=69">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=51">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=71">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=57">
 {% endif %}
 <script>
 (function(){
@@ -46,16 +49,19 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=103">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=106">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
 {% if page_key in ('indent', 'purchase_orders') %}
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=49">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=69">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=71">
+{% if page_key == 'purchase_orders' %}
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=40">
+{% endif %}
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=69">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=51">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=71">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=57">
 {% endif %}
 {% endif %}
 <div class="main-wrapper">
@@ -75,10 +81,19 @@
         </div>
       </div>
       <div class="su-header-tools">
-        {% if page_key in ('indent', 'purchase_orders') %}
-        <button type="button" class="btn" id="st-product-master-open" data-st-product-master-url="{{ url_for('stores_product_master', embed=1) }}">Product Master</button>
-        <button type="button" class="btn" id="st-approvals-open" data-st-approvals-url="{{ url_for('stores_approvals') }}">Approval</button>
-        <button type="button" class="btn" id="st-stores-ledger-open">Ledger</button>
+        {% if page_key == 'indent' %}
+        <button type="button" class="btn" id="st-product-master-open" data-st-product-master-url="{{ url_for('stores_product_master', embed=1) }}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg>
+          Product Master
+        </button>
+        <button type="button" class="btn" id="st-approvals-open" data-st-approvals-url="{{ url_for('stores_approvals') }}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          Approval
+        </button>
+        <button type="button" class="btn" id="st-stores-ledger-open">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+          Ledger
+        </button>
         {% endif %}
         {% if page_key in ('stock', 'stock_audit') %}
         {% if page_key == 'stock' %}
@@ -93,7 +108,7 @@
         {% elif page_key == 'stock_audit' %}
         <a class="btn btn-primary" href="{{ url_for('stores_stock', outlet=selected_outlet) }}" title="Export from Stock">Export</a>
         {% endif %}
-        <a class="btn btn-primary" href="{{ url_for('stores_purchase_requests', outlet=selected_outlet) }}">Stock Inward</a>
+        <a class="btn btn-primary" href="{{ url_for('stores_purchase_requests', outlet='both') }}">Stock Inward</a>
         {% elif page_key == 'stock_audit_report' and audit_report_export_url %}
         <a class="btn btn-primary" href="{{ audit_report_export_url }}">Export Excel</a>
         {% elif page_key == 'product_master' and page_cta %}
@@ -266,21 +281,94 @@
           </div>
           {% endif %}
           {% if page_key == 'purchase_requests' and not detail and (inward_view|default('approved')) == 'approved' %}
+          {% set selected_po = selected_po|default(none) %}
+          {% set selected_inward_supplier_id = selected_inward_supplier_id|default(0) %}
+          {% set inward_supplier_options = inward_supplier_options|default([]) %}
+          {% set generated_purchase_orders = generated_purchase_orders|default([]) %}
           <div
-            class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-inward-indent-listbox"
+            class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox ep-form-listbox ep-combobox-listbox st-inward-supplier-filter-listbox"
             data-se-listbox
-            data-se-listbox-change="stInwardIndentChanged"
+            data-se-listbox-searchable
+            data-se-listbox-combobox
+            data-se-listbox-change="stInwardSupplierChanged"
             data-st-inward-endpoint="{{ url_for('stores_purchase_requests') }}"
             data-st-inward-outlet="{{ selected_outlet }}"
             data-st-inward-view="approved"
+            id="st-inward-supplier-filter-listbox"
+          >
+            <span class="se-filter-chip-label" id="st-inward-supplier-filter-label">Supplier</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </span>
+              <input type="hidden" id="st-inward-supplier-filter" value="{{ selected_inward_supplier_id or '' }}">
+              {% set ns_sup = namespace(label='') %}
+              {% if selected_inward_supplier_id %}
+                {% for s in inward_supplier_options %}
+                  {% if s.id == selected_inward_supplier_id %}{% set ns_sup.label = s.name %}{% endif %}
+                {% endfor %}
+              {% endif %}
+              <input
+                type="search"
+                class="se-filter-chip-trigger se-filter-chip-combobox{% if not selected_inward_supplier_id %} is-placeholder{% endif %}"
+                id="st-inward-supplier-filter-trigger"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-haspopup="listbox"
+                aria-expanded="false"
+                aria-controls="st-inward-supplier-filter-list"
+                aria-labelledby="st-inward-supplier-filter-label"
+                value="{{ ns_sup.label }}"
+                placeholder="Search supplier…"
+                autocomplete="off"
+                spellcheck="false"
+              >
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-inward-supplier-filter-list" role="listbox" aria-labelledby="st-inward-supplier-filter-label" hidden>
+              <div class="ep-listbox-options">
+                <button
+                  type="button"
+                  class="se-filter-listbox-option{% if not selected_inward_supplier_id %} is-selected{% endif %}"
+                  role="option"
+                  data-value=""
+                  data-name="all suppliers"
+                  data-label="All suppliers"
+                  aria-selected="{{ 'true' if not selected_inward_supplier_id else 'false' }}"
+                >All suppliers</button>
+                {% for s in inward_supplier_options %}
+                <button
+                  type="button"
+                  class="se-filter-listbox-option{% if selected_inward_supplier_id == s.id %} is-selected{% endif %}"
+                  role="option"
+                  data-value="{{ s.id }}"
+                  data-name="{{ s.name|lower }}"
+                  data-label="{{ s.name }}"
+                  aria-selected="{{ 'true' if selected_inward_supplier_id == s.id else 'false' }}"
+                >{{ s.name }}</button>
+                {% endfor %}
+              </div>
+              <div class="se-filter-listbox-status" data-ep-empty hidden>No suppliers match your search.</div>
+            </div>
+          </div>
+          <div
+            class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-inward-indent-listbox st-inward-po-listbox"
+            data-se-listbox
+            data-se-listbox-change="stInwardPoChanged"
+            data-st-inward-endpoint="{{ url_for('stores_purchase_requests') }}"
+            data-st-inward-outlet="{{ selected_outlet }}"
+            data-st-inward-view="approved"
+            data-st-inward-supplier="{{ selected_inward_supplier_id or '' }}"
             id="st-inward-indent-listbox"
           >
-            <span class="se-filter-chip-label" id="st-inward-indent-label">Indent</span>
+            <span class="se-filter-chip-label" id="st-inward-indent-label">Purchase Order</span>
             <div class="se-filter-chip-control">
               <span class="se-filter-chip-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
               </span>
-              <input type="hidden" id="st-inward-indent" value="{{ selected_indent.id if selected_indent else '' }}">
+              <input type="hidden" id="st-inward-indent" value="{{ selected_po.po_id if selected_po else '' }}">
               <button
                 type="button"
                 class="se-filter-chip-trigger"
@@ -290,8 +378,8 @@
                 aria-controls="st-inward-indent-list"
                 aria-labelledby="st-inward-indent-label st-inward-indent-value"
               >
-                <span class="se-filter-chip-value{% if not selected_indent %} is-placeholder{% endif %}" id="st-inward-indent-value">
-                  {% if selected_indent %}{{ selected_indent.indent_no }}{% else %}Select indent{% endif %}
+                <span class="se-filter-chip-value{% if not selected_po %} is-placeholder{% endif %}" id="st-inward-indent-value">
+                  {% if selected_po %}{{ selected_po.po_no }}{% else %}Select purchase order{% endif %}
                 </span>
               </button>
               <span class="se-filter-chip-chev" aria-hidden="true">
@@ -299,20 +387,22 @@
               </span>
             </div>
             <div class="se-filter-listbox" id="st-inward-indent-list" role="listbox" aria-labelledby="st-inward-indent-label" hidden>
-              {% if approved_indents %}
-                {% for indent in approved_indents %}
+              {% if generated_purchase_orders %}
+                {% for po in generated_purchase_orders %}
                 <button
                   type="button"
-                  class="se-filter-listbox-option{% if selected_indent and selected_indent.id == indent.id %} is-selected{% endif %}"
+                  class="se-filter-listbox-option{% if selected_po and selected_po.po_id == po.po_id %} is-selected{% endif %}"
                   role="option"
-                  data-value="{{ indent.id }}"
-                  data-name="{{ indent.indent_no|lower }}"
-                  data-label="{{ indent.indent_no }}"
-                  aria-selected="{{ 'true' if selected_indent and selected_indent.id == indent.id else 'false' }}"
-                >{{ indent.indent_no }}</button>
+                  data-value="{{ po.po_id }}"
+                  data-outlet="{{ po.outlet or selected_outlet }}"
+                  data-supplier-id="{{ po.supplier_id or '' }}"
+                  data-name="{{ (po.po_no or '')|lower }}"
+                  data-label="{{ po.po_no }}"
+                  aria-selected="{{ 'true' if selected_po and selected_po.po_id == po.po_id else 'false' }}"
+                >{{ po.po_no }}</button>
                 {% endfor %}
               {% else %}
-                <div class="st-inward-listbox-empty">No approved indents waiting</div>
+                <div class="st-inward-listbox-empty">No purchase orders generated yet</div>
               {% endif %}
             </div>
           </div>
@@ -336,7 +426,9 @@
 
     {% if page_key == 'product_master' %}
       {% include 'partials/stores_product_master_body.html' %}
-    {% elif page_key in ('indent', 'purchase_orders') %}
+    {% elif page_key == 'purchase_orders' %}
+      {% include 'partials/stores_po_body.html' %}
+    {% elif page_key == 'indent' %}
       {% include 'partials/stores_indent_body.html' %}
     {% elif page_key == 'approvals' %}
       {% include 'partials/stores_approvals_body.html' %}
@@ -352,8 +444,11 @@
   </section>
 </div>
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=76"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=54"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=94"></script>
+{% if page_key == 'purchase_orders' %}
+<script src="{{ url_for('static', filename='stores_po.js') }}?v=31"></script>
+{% endif %}
 {% if page_key == 'stock_audit' %}
 <script src="{{ url_for('static', filename='stores_stock_audit.js') }}?v=28"></script>
 {% endif %}

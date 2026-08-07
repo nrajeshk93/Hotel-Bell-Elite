@@ -1,0 +1,612 @@
+{# Purchase Order workspace — Generate / Send / Orders / History #}
+{% set po_tab = po_tab|default('orders') %}
+{% set po_send = po_send_data|default(none) %}
+{% set history_rows = po_history|default([]) %}
+{% set indent_view = selected_indent_view|default('approved') %}
+{% set pending_indents = pending_inward_indents|default([]) %}
+{# Generate tab only links to indents that still need PO generation — never fall
+   back to a finished approved indent (that 302s back to the register and looks broken). #}
+{% set send_target_id = po_send.indent_id if po_send else (pending_indents[0].id if pending_indents else 0) %}
+{% set selected_pending_id = po_send.indent_id if po_send else 0 %}
+{% set selected_pending_no = po_send.indent_no if po_send else '' %}
+
+<section class="st-indent-page st-po-page" data-st-po-page data-po-tab="{{ po_tab }}"{% if po_send %} data-po-indent-id="{{ po_send.indent_id }}"{% endif %}>
+  <article class="st-intro-card st-intro-card--outlet-only st-intro-card--indent-filters st-po-toolbar" aria-label="Purchase Order filters">
+    <div class="st-indent-filter-bar">
+      <div class="st-indent-status-tabs st-po-tabs-wrap">
+        <div class="cp-view-tabs st-indent-view-tabs st-po-tabs" role="tablist" aria-label="Purchase Order views">
+          {% if send_target_id %}
+          <a class="cp-view-tab{% if po_tab == 'generate' %} is-active{% endif %}"
+             href="{{ url_for('stores_orders_send', indent_id=send_target_id, outlet=selected_outlet) }}"
+             role="tab"
+             aria-selected="{{ 'true' if po_tab == 'generate' else 'false' }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
+            Generate PO
+          </a>
+          {% else %}
+          <span class="cp-view-tab is-disabled"
+                role="tab"
+                aria-selected="false"
+                aria-disabled="true"
+                title="No indents left to generate purchase orders">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
+            Generate PO
+          </span>
+          {% endif %}
+          <a class="cp-view-tab{% if po_tab == 'send' %} is-active{% endif %}"
+             href="{{ url_for('stores_orders', outlet=selected_outlet, tab='send') }}"
+             role="tab"
+             aria-selected="{{ 'true' if po_tab == 'send' else 'false' }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+            Send to Supplier
+          </a>
+          <a class="cp-view-tab{% if po_tab == 'orders' %} is-active{% endif %}"
+             href="{{ url_for('stores_orders', outlet=selected_outlet) }}"
+             role="tab"
+             aria-selected="{{ 'true' if po_tab == 'orders' else 'false' }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 9h8"/><path d="M8 13h6"/></svg>
+            Purchase Orders
+          </a>
+          <a class="cp-view-tab{% if po_tab == 'history' %} is-active{% endif %}"
+             href="{{ url_for('stores_orders_history', outlet=selected_outlet) }}"
+             role="tab"
+             aria-selected="{{ 'true' if po_tab == 'history' else 'false' }}">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+            History
+          </a>
+        </div>
+      </div>
+      <div class="st-indent-filter-bar-end">
+        {% if po_tab in ('orders', 'send') %}
+        <div class="se-filter-chip se-filter-chip--search st-indent-search-chip" id="st-indent-search-chip">
+          <label class="se-filter-chip-label" for="st-indent-search">Search</label>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            </span>
+            <input type="search" id="st-indent-search" class="st-indent-search-input" placeholder="PO no, supplier, indent…" autocomplete="off" aria-label="Search purchase orders">
+          </div>
+        </div>
+        {% endif %}
+        <div class="st-intro-outlet">
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-po-indent-listbox"
+               data-se-listbox
+               data-se-listbox-change="stPoIndentChanged"
+               data-st-po-outlet="{{ selected_outlet }}"
+               id="st-po-indent-listbox">
+            <span class="se-filter-chip-label" id="st-po-indent-label">Indent</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+              </span>
+              <input type="hidden" id="st-po-indent" value="{{ selected_pending_id if selected_pending_id else '' }}">
+              <button type="button" class="se-filter-chip-trigger" id="st-po-indent-trigger"
+                      aria-haspopup="listbox" aria-expanded="false"
+                      aria-controls="st-po-indent-list"
+                      aria-labelledby="st-po-indent-label st-po-indent-value"
+                      {% if not pending_indents %}disabled{% endif %}>
+                <span class="se-filter-chip-value{% if not selected_pending_no %} is-placeholder{% endif %}" id="st-po-indent-value">
+                  {% if selected_pending_no %}{{ selected_pending_no }}{% elif pending_indents %}Select indent{% else %}No pending indent{% endif %}
+                </span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-po-indent-list" role="listbox" aria-labelledby="st-po-indent-label" hidden>
+              {% set pending_has_selected = selected_pending_id and (pending_indents|selectattr('id', 'equalto', selected_pending_id)|list) %}
+              {% for indent in pending_indents %}
+                <button type="button"
+                        class="se-filter-listbox-option{% if selected_pending_id == indent.id %} is-selected{% endif %}"
+                        role="option"
+                        data-value="{{ indent.id }}"
+                        data-name="{{ indent.indent_no|lower }}"
+                        data-label="{{ indent.indent_no }}"
+                        aria-selected="{{ 'true' if selected_pending_id == indent.id else 'false' }}">
+                  {{ indent.indent_no }}
+                </button>
+              {% endfor %}
+              {% if selected_pending_id and not pending_has_selected and selected_pending_no %}
+                <button type="button"
+                        class="se-filter-listbox-option is-selected"
+                        role="option"
+                        data-value="{{ selected_pending_id }}"
+                        data-name="{{ selected_pending_no|lower }}"
+                        data-label="{{ selected_pending_no }}"
+                        aria-selected="true">
+                  {{ selected_pending_no }}
+                </button>
+              {% endif %}
+              {% if not pending_indents and not selected_pending_id %}
+                <div class="se-filter-listbox-status" role="status">No indents left to generate purchase orders.</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="st-intro-outlet">
+          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox" data-se-listbox data-se-listbox-change="stOutletChanged" data-st-list-endpoint="{{ url_for(page_list_endpoint, **({'tab': 'send'} if po_tab == 'send' else {})) }}" data-st-indent-view="{{ indent_view }}" id="st-outlet-listbox">
+            <span class="se-filter-chip-label" id="st-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+              </span>
+              <input type="hidden" id="st-outlet" value="{{ selected_outlet }}">
+              <button type="button" class="se-filter-chip-trigger" id="st-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="st-outlet-list" aria-labelledby="st-outlet-label st-outlet-value">
+                <span class="se-filter-chip-value" id="st-outlet-value">{{ selected_outlet_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="st-outlet-list" role="listbox" aria-labelledby="st-outlet-label" hidden>
+              {% for outlet in stores_outlets %}
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}" role="option" data-value="{{ outlet.key }}" data-name="{{ outlet.label|lower }}" data-label="{{ outlet.label }}" aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </article>
+
+  {% if po_tab == 'generate' and po_send %}
+  {% set po_step = po_step|default('items') %}
+  {% set po_has_unassigned = po_send.groups and (po_send.groups | selectattr('is_unassigned') | list) %}
+  <div class="st-po-send-shell st-po-send-shell--{{ po_step }}{% if po_step == 'items' and po_has_unassigned %} is-editing{% endif %}" id="st-po-send-shell"
+       data-po-step="{{ po_step }}"
+       data-indent-id="{{ po_send.indent_id }}"
+       data-indent-no="{{ po_send.indent_no }}"
+       data-lines-url="{{ url_for('stores_orders_lines', indent_id=po_send.indent_id) }}"
+       data-send-url="{{ url_for('stores_orders_send_wa', indent_id=po_send.indent_id) }}"
+       data-orders-url="{{ url_for('stores_orders', outlet=selected_outlet, tab='send') }}"
+       data-pdf-url-base="{{ url_for('stores_orders_pdf', indent_id=po_send.indent_id, supplier_id=0) }}">
+    <script type="application/json" id="st-po-send-data">{{ po_send|tojson }}</script>
+
+    <form method="POST"
+          id="st-po-items-form"
+          data-de-no-soft-nav
+          action="{{ url_for('stores_orders_lines_next', indent_id=po_send.indent_id) }}">
+      <input type="hidden" name="outlet" value="{{ selected_outlet }}">
+    <article class="st-card st-po-groups-card" aria-label="Suppliers and items">
+      <div class="card-hdr st-po-groups-head">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+          <span>Suppliers &amp; Items (Grouped)</span>
+          <span class="st-po-count-pill" id="st-po-supplier-count">{{ po_send.supplier_count }} Supplier{% if po_send.supplier_count != 1 %}s{% endif %}</span>
+        </div>
+        <div class="st-po-groups-head-end">
+          {% if po_send.supplier_count|default(0) > 0 %}
+          <div class="st-po-select-actions" role="group" aria-label="Select suppliers">
+            <button type="button" class="st-btn st-btn--ghost st-po-select-all" id="st-po-select-all">Select all</button>
+            <button type="button" class="st-btn st-btn--ghost st-po-select-none" id="st-po-select-none">Clear</button>
+            <span class="st-po-selected-count" id="st-po-selected-count" aria-live="polite"></span>
+          </div>
+          {% endif %}
+          <div class="act-grp st-po-head-actions">
+            <button type="button" class="act-btn edit st-po-edit-btn" id="st-po-edit-items" data-tip="Edit" aria-label="Edit items">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="st-card-body st-po-groups-body" id="st-po-groups">
+        {% if po_send.groups %}
+          {% set preselected = po_selected_supplier_ids|default([]) %}
+          {% for group in po_send.groups %}
+          {% set sid = group.supplier_id if group.supplier_id is not none else 'unassigned' %}
+          {% set is_assigned = not group.is_unassigned and group.supplier_id %}
+          {% set is_checked = is_assigned and (not preselected or group.supplier_id in preselected) %}
+          <div class="st-po-group{% if loop.first %} is-expanded{% endif %}{% if group.is_unassigned %} is-unassigned{% endif %}{% if is_checked %} is-selected{% endif %}"
+               data-po-group
+               data-supplier-id="{{ group.supplier_id if group.supplier_id is not none else '' }}"
+               data-can-send="{{ '1' if group.can_send else '0' }}">
+            <div class="st-po-group-head-row">
+              {% if is_assigned %}
+              <input type="hidden" name="selectable_supplier" value="{{ group.supplier_id }}">
+              <label class="st-po-group-check" title="Select {{ group.supplier_name }}">
+                <input type="checkbox"
+                       class="st-po-group-checkbox"
+                       name="selected_supplier"
+                       value="{{ group.supplier_id }}"
+                       {% if is_checked %}checked{% endif %}
+                       aria-label="Select {{ group.supplier_name }}">
+              </label>
+              {% else %}
+              <span class="st-po-group-check st-po-group-check--disabled" aria-hidden="true"></span>
+              {% endif %}
+              <button type="button" class="st-po-group-head" data-po-toggle-group aria-expanded="{{ 'true' if loop.first else 'false' }}">
+                <span class="st-po-group-meta">
+                  <strong class="st-po-group-name">{{ group.supplier_name }}</strong>
+                  {% if group.phone %}
+                  <span class="st-po-group-phone">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h2.2a1 1 0 0 1 .96.73l1.1 3.3a1 1 0 0 1-.27 1.05L7.9 9.9a14 14 0 0 0 6.2 6.2l1.82-1.09a1 1 0 0 1 1.05-.27l3.3 1.1a1 1 0 0 1 .73.96V19a2 2 0 0 1-2 2A16 16 0 0 1 3 5z"/></svg>
+                    {{ group.phone }}
+                  </span>
+                  {% elif group.is_unassigned %}
+                  <span class="st-po-group-phone">Assign a supplier to send</span>
+                  {% else %}
+                  <span class="st-po-group-phone">No phone on file</span>
+                  {% endif %}
+                </span>
+                <span class="st-po-group-stats">
+                  {% if group.po_no %}<span class="st-po-no-pill">{{ group.po_no }}</span>{% endif %}
+                  <span class="st-po-items-pill">{{ group.item_count }} Item{% if group.item_count != 1 %}s{% endif %}</span>
+                </span>
+                <span class="st-po-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </button>
+            </div>
+            <div class="st-po-group-body" {% if not loop.first %}hidden{% endif %}>
+              <div class="st-po-table-wrap">
+                <table class="st-po-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>Pack</th>
+                      <th>Qty</th>
+                      <th>Unit</th>
+                      <th>Total</th>
+                      <th>Supplier</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for line in group.lines %}
+                    <tr data-po-line data-line-id="{{ line.line_id }}" data-supplier-id="{{ line.supplier_id or '' }}" data-rate="{{ line.rate if line.rate is not none else '' }}" data-indent-qty="{{ line.remaining_quantity_display if line.remaining_quantity_display is defined else (line.indent_quantity_display if line.indent_quantity_display is defined else line.quantity_display|default(line.quantity)) }}">
+                      <td>{{ line.item_name or line.display_name }}</td>
+                      <td>{{ line.pack_label or '—' }}</td>
+                      <td class="st-po-col-qty">
+                        <label class="st-po-qty-field">
+                          <span class="visually-hidden">Quantity</span>
+                          <input type="number"
+                                 class="st-po-line-qty"
+                                 name="line_qty_{{ line.line_id }}"
+                                 id="st-po-line-{{ line.line_id }}-qty"
+                                 value="{{ line.quantity_display|default(line.quantity) }}"
+                                 min="0.001"
+                                 max="{{ line.remaining_quantity_display if line.remaining_quantity_display is defined else (line.indent_quantity_display if line.indent_quantity_display is defined else line.quantity_display|default(line.quantity)) }}"
+                                 step="any"
+                                 inputmode="decimal"
+                                 required
+                                 aria-label="Order quantity for {{ line.item_name or line.display_name }} ({{ line.remaining_quantity_display if line.remaining_quantity_display is defined else line.quantity_display|default(line.quantity) }} available)">
+                          <span class="st-po-qty-hint" title="Available quantity from indent">of {{ line.remaining_quantity_display if line.remaining_quantity_display is defined else (line.indent_quantity_display if line.indent_quantity_display is defined else line.quantity_display|default(line.quantity)) }}</span>
+                        </label>
+                      </td>
+                      <td>{{ line.unit or line.display_unit }}</td>
+                      <td class="st-po-line-total" data-po-line-total>{{ line.total_display or ((line.quantity|string) ~ ' ' ~ (line.unit or '')) }}</td>
+                      <td class="st-po-col-supplier">
+                        {% set line_supplier_name = group.supplier_name if not group.is_unassigned else '' %}
+                        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox staff-expense-supplier-listbox st-po-line-supplier-listbox"
+                             data-se-listbox data-se-listbox-searchable data-se-listbox-combobox
+                             data-se-listbox-change="stPoLineSupplierPicked"
+                             id="st-po-line-{{ line.line_id }}-supplier-listbox">
+                          <span class="visually-hidden" id="st-po-line-{{ line.line_id }}-supplier-label">Supplier</span>
+                          <div class="se-filter-chip-control">
+                            <input type="hidden" class="st-po-line-supplier" name="line_supplier_{{ line.line_id }}" id="st-po-line-{{ line.line_id }}-supplier" value="{{ line.supplier_id or '' }}">
+                            <input type="hidden" name="line_rate_{{ line.line_id }}" value="{{ line.rate if line.rate is not none else '' }}">
+                            <input type="search"
+                                   class="se-filter-chip-trigger se-filter-chip-combobox{% if not line_supplier_name %} is-placeholder{% endif %}"
+                                   id="st-po-line-{{ line.line_id }}-supplier-trigger"
+                                   role="combobox"
+                                   aria-autocomplete="list"
+                                   aria-haspopup="listbox"
+                                   aria-expanded="false"
+                                   aria-controls="st-po-line-{{ line.line_id }}-supplier-list"
+                                   aria-labelledby="st-po-line-{{ line.line_id }}-supplier-label"
+                                   value="{{ line_supplier_name }}"
+                                   placeholder="Unassigned"
+                                   autocomplete="off"
+                                   spellcheck="false">
+                            <span class="se-filter-chip-chev" aria-hidden="true">
+                              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                            </span>
+                          </div>
+                          <div class="se-filter-listbox staff-expense-supplier-panel st-po-supplier-panel" id="st-po-line-{{ line.line_id }}-supplier-list" role="listbox" aria-labelledby="st-po-line-{{ line.line_id }}-supplier-label" hidden>
+                            <div class="ep-listbox-options staff-supplier-options">
+                              <button type="button" class="se-filter-listbox-option staff-supplier-option{% if not line.supplier_id %} is-selected{% endif %}" role="option"
+                                      data-value=""
+                                      data-name="unassigned"
+                                      data-label=""
+                                      aria-selected="{{ 'true' if not line.supplier_id else 'false' }}">
+                                <span class="staff-supplier-option-name">Unassigned</span>
+                              </button>
+                              {% for opt in po_send.supplier_options %}
+                              <button type="button" class="se-filter-listbox-option staff-supplier-option{% if line.supplier_id == opt.id %} is-selected{% endif %}" role="option"
+                                      data-value="{{ opt.id }}"
+                                      data-name="{{ opt.name|lower }} {{ (opt.gst or '')|lower }}"
+                                      data-label="{{ opt.name }}"
+                                      aria-selected="{{ 'true' if line.supplier_id == opt.id else 'false' }}">
+                                <span class="staff-supplier-option-name">{{ opt.name }}</span>
+                              </button>
+                              {% endfor %}
+                            </div>
+                          </div>
+                        </div>
+                        <span class="st-po-line-supplier-label">{{ group.supplier_name if not group.is_unassigned else 'Unassigned' }}</span>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              <div class="st-po-group-foot">
+                <span class="st-po-est-value">Est. Value ₹ {{ '%.2f'|format(group.estimated_value or 0) }}</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="st-empty">
+            <strong>No items left to generate</strong>
+            <p>Every supplier on this indent already has a purchase order, or the indent has no lines. Open Purchase Orders to view or send them.</p>
+          </div>
+        {% endif %}
+      </div>
+      {% set po_can_next = po_send.supplier_count|default(0) > 0 %}
+      <div class="st-po-step-actions">
+        <button type="submit"
+                class="st-btn st-btn--primary st-po-next-btn{% if not po_can_next %} is-disabled{% endif %}"
+                id="st-po-next-btn"
+                {% if not po_can_next %}disabled{% endif %}>
+          Generate purchase order
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+        </button>
+      </div>
+    </article>
+    </form>
+  </div>
+
+  {% elif po_tab == 'history' %}
+  <article class="st-card st-list-card" aria-label="Purchase Order history">
+    <div class="st-card-head">
+      <div class="st-card-title-wrap">
+        <span class="st-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        </span>
+        <h2 class="st-card-title">History · <span>{{ history_rows|length }}</span></h2>
+      </div>
+    </div>
+    <div class="st-card-body st-list-body">
+      {% if history_rows %}
+      <div class="st-detail-table-wrap">
+        <table class="st-detail-table pl-table" aria-label="PO send history">
+          <thead>
+            <tr>
+              <th scope="col">When</th>
+              <th scope="col">PO No.</th>
+              <th scope="col">Supplier</th>
+              <th scope="col">PDF</th>
+              <th scope="col">Status</th>
+              <th scope="col">Sent by</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in history_rows %}
+            <tr>
+              <td>{{ row.sent_at_display or row.sent_at or '—' }}</td>
+              <td>
+                <div class="st-list-name">{{ row.po_no or row.indent_no or ('#' ~ row.indent_id) }}</div>
+                <div class="st-card-sub">{{ row.outlet_label }}{% if row.po_no and row.indent_no %} · {{ row.indent_no }}{% endif %}</div>
+              </td>
+              <td>
+                <div>{{ row.supplier_name }}</div>
+                {% if row.phone %}<div class="st-card-sub">{{ row.phone }}</div>{% endif %}
+              </td>
+              <td>{{ row.pdf_name or '—' }}</td>
+              <td>
+                <span class="cp-status-pill cp-status-pill--{% if row.status == 'sent' %}approved{% else %}rejected{% endif %}">{{ row.status|upper }}</span>
+                {% if row.error %}<div class="st-card-sub">{{ row.error }}</div>{% endif %}
+              </td>
+              <td>{{ row.sent_by_name or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="st-empty">
+        <strong>No purchase orders sent yet</strong>
+        <p>Open Send to Supplier for an approved indent, then send it.</p>
+      </div>
+      {% endif %}
+    </div>
+  </article>
+
+  {% else %}
+  {# Purchase Orders list — generated PO/{BAR|RES}/… register #}
+  {% set purchase_orders = purchase_orders|default([]) %}
+  <article class="st-card st-list-card" aria-label="Purchase Order list">
+    <div class="st-card-head">
+      <div class="st-card-title-wrap">
+        <span class="st-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+        </span>
+        <h2 class="st-card-title">
+          {% if po_tab == 'send' %}Send to Supplier{% else %}Purchase Order{% endif %} · <span id="st-indent-list-count">{{ purchase_orders|length }}</span>
+        </h2>
+      </div>
+    </div>
+    <div class="st-card-body st-list-body">
+      {% if purchase_orders %}
+      <div class="st-detail-table-wrap">
+        <table id="st-indent-list-table" class="st-detail-table pl-table" aria-label="Generated purchase orders">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="po" scope="col" tabindex="0" aria-sort="none">PO No.</th>
+              <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
+              <th class="pl-sortable" data-sort="indent" scope="col" tabindex="0" aria-sort="none">Indent</th>
+              <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+              <th class="pl-sortable" data-sort="created" scope="col" tabindex="0" aria-sort="none">Created</th>
+              <th class="pl-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for po in purchase_orders %}
+            {% set po_outlet = po.outlet or selected_outlet %}
+            <tr data-sort-row
+                data-search="{{ [po.po_no or '', po.supplier_name or '', po.indent_no or '', po.status_label or '', po.outlet_label or '', selected_outlet_label or '']|join(' ')|lower }}">
+              <td data-sort-value="{{ po.po_no }}">
+                <div class="st-list-name">{{ po.po_no }}</div>
+                {% if po.outlet_label %}<div class="st-card-sub">{{ po.outlet_label }}</div>{% endif %}
+              </td>
+              <td data-sort-value="{{ po.supplier_name }}">
+                <div>{{ po.supplier_name }}</div>
+                {% if po.supplier_phone %}<div class="st-card-sub">{{ po.supplier_phone }}</div>{% endif %}
+              </td>
+              <td data-sort-value="{{ po.indent_no }}">
+                <div>{{ po.indent_no or ('#' ~ po.indent_id) }}</div>
+              </td>
+              <td data-sort-value="{{ po.status_label }}">
+                <span class="cp-status-pill cp-status-pill--{% if po.status == 'sent' %}approved{% elif po.status == 'failed' %}rejected{% else %}pending{% endif %}">
+                  {{ po.status_label }}
+                </span>
+                {% if po.last_sent_at_display and po.status in ('sent', 'failed') %}
+                <div class="st-card-sub">{{ po.last_sent_at_display }}</div>
+                {% endif %}
+              </td>
+              <td data-sort-value="{{ po.created_at or '' }}">
+                {{ po.created_at_display or '—' }}
+              </td>
+              <td class="pl-col-actions st-actions">
+                <div class="act-grp">
+                  <button type="button"
+                          class="act-btn send st-po-resend-btn"
+                          data-tip="Send via WhatsApp"
+                          data-st-po-resend
+                          data-send-url="{{ url_for('stores_orders_send_wa', indent_id=po.indent_id) }}"
+                          data-supplier-id="{{ po.supplier_id }}"
+                          data-supplier-name="{{ po.supplier_name or '' }}"
+                          data-po-no="{{ po.po_no or '' }}"
+                          aria-label="Send purchase order {{ po.po_no }} via WhatsApp">
+                    <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                  </button>
+                  <a href="{{ url_for('stores_orders_pdf', indent_id=po.indent_id, supplier_id=po.supplier_id, po_no=po.po_no) }}"
+                     class="act-btn view"
+                     data-tip="View PDF"
+                     data-st-po-pdf
+                     data-de-no-soft-nav
+                     data-po-title="{{ po.po_no }}"
+                     aria-label="View PDF for {{ po.po_no }}">
+                    <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </a>
+                  <a href="{{ url_for('stores_orders_pdf', indent_id=po.indent_id, supplier_id=po.supplier_id, po_no=po.po_no) }}"
+                     class="act-btn download" data-tip="Download PDF" download
+                     aria-label="Download PDF for {{ po.po_no }}">
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="pl-empty" id="st-indent-search-empty" hidden>
+        <strong>No matching purchase orders</strong>
+        <p>Try a different search term.</p>
+      </div>
+      {% else %}
+      <div class="st-empty">
+        {% if po_tab == 'send' %}
+        <strong>No purchase orders waiting to send</strong>
+        <p>Generated purchase orders appear here until they are sent to the supplier or the indent is fully stocked inward.</p>
+        {% else %}
+        <strong>No purchase orders yet</strong>
+        <p>Open Generate PO, assign a supplier, and generate a purchase order — each supplier gets a PO number here.</p>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </article>
+
+  {% if not po_send %}
+  <div class="st-po-send-empty-hint card" hidden></div>
+  {% endif %}
+  {% endif %}
+
+  {# Reuse indent view modal data for View action on the list tab #}
+  {% if po_tab in ('orders', 'send') %}
+  <script type="application/json" id="st-indent-view-data">{{ indent_view_data|default([])|tojson }}</script>
+  <div class="modal-backdrop" id="st-indent-view-modal" aria-hidden="true">
+    <div class="st-indent-view-box" role="dialog" aria-modal="true" aria-labelledby="st-indent-view-title">
+      <div class="st-indent-view-head">
+        <div class="st-indent-view-title-wrap">
+          <h2 class="st-indent-view-title" id="st-indent-view-title">Indent</h2>
+        </div>
+        <div class="st-indent-view-head-stats" aria-live="polite">
+          <div class="st-indent-view-stat">
+            <span class="st-indent-view-stat-label">Approved qty</span>
+            <strong class="st-indent-view-stat-value" id="st-indent-view-approved-qty">0</strong>
+          </div>
+          <div class="st-indent-view-stat">
+            <span class="st-indent-view-stat-label">Approved amount</span>
+            <strong class="st-indent-view-stat-value" id="st-indent-view-approved-amount">₹0</strong>
+          </div>
+        </div>
+        <button type="button" class="st-indent-view-close" id="st-indent-view-close" aria-label="Close">×</button>
+      </div>
+      <div class="st-indent-view-body">
+        <p class="st-indent-view-notes" id="st-indent-view-notes" hidden></p>
+        <div class="st-detail-table-wrap">
+          <table class="st-detail-table" id="st-indent-view-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Qty</th>
+                <th>Unit</th>
+                <th>Unit price</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="st-indent-view-lines"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="st-indent-view-actions">
+        <a class="st-btn st-btn--ghost" id="st-indent-view-po" href="#" hidden download>Download Excel</a>
+        <button type="button" class="st-btn st-btn--primary" id="st-indent-view-dismiss">Close</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="modal-backdrop" id="st-po-pdf-modal" aria-hidden="true">
+    <div class="st-po-pdf-box" role="dialog" aria-modal="true" aria-labelledby="st-po-pdf-title">
+      <div class="st-po-pdf-head">
+        <div class="st-po-pdf-title-wrap">
+          <h2 class="st-po-pdf-title" id="st-po-pdf-title">Purchase Order</h2>
+          <p class="st-po-pdf-sub" id="st-po-pdf-sub" hidden></p>
+        </div>
+        <div class="st-po-pdf-head-actions">
+          <a class="st-btn st-btn--ghost" id="st-po-pdf-download" href="#" download>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download
+          </a>
+          <button type="button" class="st-indent-view-close" id="st-po-pdf-close" aria-label="Close">×</button>
+        </div>
+      </div>
+      <div class="st-po-pdf-body">
+        <iframe id="st-po-pdf-frame" title="Purchase Order PDF" src="about:blank"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="st-po-send-confirm-modal" aria-hidden="true">
+    <div class="st-po-send-confirm-box" role="dialog" aria-modal="true" aria-labelledby="st-po-send-confirm-title">
+      <div class="st-po-send-confirm-head">
+        <div class="st-po-send-confirm-title-wrap">
+          <h2 class="st-po-send-confirm-title" id="st-po-send-confirm-title">Send purchase orders?</h2>
+          <p class="st-po-send-confirm-sub">Purchase orders are ready. Choose which suppliers to message on WhatsApp.</p>
+        </div>
+        <button type="button" class="st-indent-view-close" id="st-po-send-confirm-close" aria-label="Close">×</button>
+      </div>
+      <div class="st-po-send-confirm-body">
+        <ul class="st-po-send-confirm-list" id="st-po-send-confirm-list" role="list"></ul>
+      </div>
+      <div class="st-po-send-confirm-actions">
+        <button type="button" class="st-btn st-btn--ghost" id="st-po-send-confirm-skip">Not now</button>
+        <button type="button" class="st-btn st-btn--primary" id="st-po-send-confirm-send" disabled>Send selected</button>
+      </div>
+    </div>
+  </div>
+</section>

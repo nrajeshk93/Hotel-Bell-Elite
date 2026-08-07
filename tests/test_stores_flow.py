@@ -89,7 +89,7 @@ class StoresFlowTests(unittest.TestCase):
         conn = db_mod.get_db()
         try:
             bar1 = next_no(conn, "bar", when=date(2026, 7, 29))
-            self.assertEqual(bar1, "IND/Bar/1/2026-27")
+            self.assertEqual(bar1, "IND/BAR/26-27/1")
             conn.execute(
                 """
                 INSERT INTO store_indents
@@ -99,19 +99,29 @@ class StoresFlowTests(unittest.TestCase):
                 (bar1,),
             )
             bar2 = next_no(conn, "bar", when=date(2026, 7, 29))
-            self.assertEqual(bar2, "IND/Bar/2/2026-27")
+            self.assertEqual(bar2, "IND/BAR/26-27/2")
             rest1 = next_no(conn, "restaurant", when=date(2026, 7, 29))
-            self.assertEqual(rest1, "IND/Restaurant/1/2026-27")
+            self.assertEqual(rest1, "IND/RES/26-27/1")
             # Prior FY does not advance current-year series
             conn.execute(
                 """
                 INSERT INTO store_indents
                     (outlet, indent_no, status, notes, created_at)
-                VALUES ('bar', 'IND/Bar/9/2025-26', 'draft', '', datetime('now','localtime'))
+                VALUES ('bar', 'IND/BAR/25-26/9', 'draft', '', datetime('now','localtime'))
                 """,
             )
             bar_still_2 = next_no(conn, "bar", when=date(2026, 7, 29))
-            self.assertEqual(bar_still_2, "IND/Bar/2/2026-27")
+            self.assertEqual(bar_still_2, "IND/BAR/26-27/2")
+            # Legacy IND/Bar/n/YYYY-YY numbers still advance the same FY series.
+            conn.execute(
+                """
+                INSERT INTO store_indents
+                    (outlet, indent_no, status, notes, created_at)
+                VALUES ('restaurant', 'IND/Restaurant/3/2026-27', 'draft', '', datetime('now','localtime'))
+                """,
+            )
+            rest_next = next_no(conn, "restaurant", when=date(2026, 7, 29))
+            self.assertEqual(rest_next, "IND/RES/26-27/4")
         finally:
             conn.close()
 
@@ -153,8 +163,8 @@ class StoresFlowTests(unittest.TestCase):
             ).fetchone()
             self.assertIsNotNone(bar)
             self.assertIsNotNone(rest)
-            self.assertRegex(bar["indent_no"], r"^IND/Bar/\d+/2026-27$")
-            self.assertRegex(rest["indent_no"], r"^IND/Restaurant/\d+/2026-27$")
+            self.assertRegex(bar["indent_no"], r"^IND/BAR/\d{2}-\d{2}/\d+$")
+            self.assertRegex(rest["indent_no"], r"^IND/RES/\d{2}-\d{2}/\d+$")
         finally:
             conn.close()
 
@@ -167,7 +177,19 @@ class StoresFlowTests(unittest.TestCase):
             }
             self.assertIn("Non-Veg", cats)
             self.assertIn("Dairy Products", cats)
+            self.assertIn("Fruits", cats)
             self.assertIn("Vegetable", cats)
+            fruit_cat = conn.execute(
+                """
+                SELECT c.name
+                FROM store_products p
+                JOIN store_product_categories c ON c.id = p.category_id
+                WHERE lower(p.name) = lower('Anar') AND p.is_active = 1
+                LIMIT 1
+                """
+            ).fetchone()
+            self.assertIsNotNone(fruit_cat)
+            self.assertEqual(fruit_cat["name"], "Fruits")
             count = conn.execute("SELECT COUNT(*) AS c FROM store_products").fetchone()["c"]
             self.assertGreaterEqual(count, 60)
         finally:
@@ -176,6 +198,8 @@ class StoresFlowTests(unittest.TestCase):
         page = self.client.get("/stores/product-master")
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Products", page.data)
+        self.assertNotIn(b'id="st-products-pagination"', page.data)
+        self.assertNotIn(b"st-product-pack-row", page.data)
         self.assertIn(b"Non-Veg", page.data)
         self.assertIn(b"Outlet", page.data)
         self.assertIn(b'id="st-outlet-listbox"', page.data)
@@ -372,6 +396,285 @@ class StoresFlowTests(unittest.TestCase):
         self.assertIn(b"Supplier 3", edit_page.data)
         self.assertIn(b'id="st-product-supplier-1"', edit_page.data)
         self.assertIn(str(s1).encode(), edit_page.data)
+
+    def test_inward_auto_updates_product_preferred_suppliers(self):
+        """Last inward supplier becomes preferred #1; cheaper PO history fills #2/#3."""
+        from datetime import date
+
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(category)
+            category_id = int(category["id"])
+            for name in ("Cheap Co", "Mid Co", "Last Inward Co"):
+                conn.execute(
+                    "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', '')",
+                    (name,),
+                )
+            conn.commit()
+            ids = {
+                row["name"]: int(row["id"])
+                for row in conn.execute(
+                    """
+                    SELECT id, name FROM suppliers
+                    WHERE name IN ('Cheap Co', 'Mid Co', 'Last Inward Co')
+                    """
+                ).fetchall()
+            }
+            cheap_id = ids["Cheap Co"]
+            mid_id = ids["Mid Co"]
+            last_id = ids["Last Inward Co"]
+            cur = conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, is_active, sort_order, created_at,
+                     preferred_supplier_1_id)
+                VALUES (?, 'Auto Pref Tomato', 'kg', 'restaurant', 1, 0, datetime('now','localtime'), ?)
+                """,
+                (category_id, mid_id),
+            )
+            product_id = int(cur.lastrowid)
+            conn.execute(
+                """
+                INSERT INTO store_indents
+                    (outlet, indent_no, status, notes, created_by, created_at)
+                VALUES ('restaurant', 'IND/PREF/TEST', 'approved', '', ?, datetime('now','localtime'))
+                """,
+                (self.admin_id,),
+            )
+            indent_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+            for item_supplier, rate in ((cheap_id, 40), (mid_id, 55)):
+                conn.execute(
+                    """
+                    INSERT INTO store_indent_lines
+                        (indent_id, item_name, quantity, unit, notes, approximate_price)
+                    VALUES (?, 'Auto Pref Tomato', 1, 'kg', '', ?)
+                    """,
+                    (indent_id, rate),
+                )
+                line_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+                conn.execute(
+                    """
+                    INSERT INTO store_po_lines
+                        (indent_id, line_id, supplier_id, rate, quantity, updated_at)
+                    VALUES (?, ?, ?, ?, 1, datetime('now','localtime'))
+                    """,
+                    (indent_id, line_id, item_supplier, rate),
+                )
+            conn.commit()
+        finally:
+            conn.close()
+
+        confirm = self.client.post(
+            "/stores/purchase-requests/confirm-direct-with-expense",
+            json={
+                "outlet": "restaurant",
+                "notes": "",
+                "lines": [
+                    {
+                        "item_name": "Auto Pref Tomato",
+                        "qty": 2,
+                        "unit": "kg",
+                        "unit_price": 60,
+                        "tax_percent": 0,
+                    }
+                ],
+                "date": date.today().isoformat(),
+                "description": "Pref supplier inward",
+                "amount": 120,
+                "payment_type": "credit",
+                "category": "grocery",
+                "invoice_number": "INV-PREF-AUTO-1",
+                "supplier_id": last_id,
+            },
+        )
+        self.assertEqual(confirm.status_code, 200, confirm.data)
+        self.assertTrue(confirm.get_json().get("ok"), confirm.get_json())
+
+        conn = db_mod.get_db()
+        try:
+            product = conn.execute(
+                """
+                SELECT preferred_supplier_1_id, preferred_supplier_2_id, preferred_supplier_3_id
+                FROM store_products WHERE id = ?
+                """,
+                (product_id,),
+            ).fetchone()
+            self.assertIsNotNone(product)
+            self.assertEqual(int(product["preferred_supplier_1_id"]), last_id)
+            self.assertEqual(int(product["preferred_supplier_2_id"]), cheap_id)
+            self.assertEqual(int(product["preferred_supplier_3_id"]), mid_id)
+        finally:
+            conn.close()
+
+    def test_product_edit_heals_preferred_supplier_from_last_inward(self):
+        """Opening edit backfills Supplier 1 from the newest stock inward."""
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(category)
+            category_id = int(category["id"])
+            conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', '')",
+                ("Heal Pref Co",),
+            )
+            supplier_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+            cur = conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, is_active, sort_order, created_at)
+                VALUES (?, 'Heal Pref Item', 'kg', 'restaurant', 1, 0, datetime('now','localtime'))
+                """,
+                (category_id,),
+            )
+            product_id = int(cur.lastrowid)
+            conn.execute(
+                """
+                INSERT INTO store_indents
+                    (outlet, indent_no, status, notes, created_by, created_at)
+                VALUES ('restaurant', 'IND/HEAL/PREF', 'approved', '', ?, datetime('now','localtime'))
+                """,
+                (self.admin_id,),
+            )
+            indent_id = int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
+            conn.execute(
+                """
+                INSERT INTO store_stock_movements
+                    (outlet, item_name, unit, qty_delta, movement_type, ref_type, ref_id,
+                     notes, created_by, unit_cost, created_at)
+                VALUES (
+                    'restaurant', 'Heal Pref Item', 'kg', 1, 'receive', 'stock_inward', ?,
+                    'heal test', ?, 77, datetime('now','localtime')
+                )
+                """,
+                (indent_id, self.admin_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO sales_update_expenses
+                    (company, location, sales_date, category, description, amount, payment_type,
+                     supplier_id, invoice_number, created_at)
+                VALUES (
+                    'HBE', 'Hotel', date('now'), 'grocery',
+                    'Stock inward IND/HEAL/PREF', 77, 'credit', ?, 'INV-HEAL-PREF',
+                    datetime('now','localtime')
+                )
+                """,
+                (supplier_id,),
+            )
+            conn.commit()
+            before = conn.execute(
+                "SELECT preferred_supplier_1_id FROM store_products WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            self.assertIsNone(before["preferred_supplier_1_id"])
+        finally:
+            conn.close()
+
+        resp = self.client.get(f"/stores/product-master?edit={product_id}&outlet=restaurant")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        html = resp.get_data(as_text=True)
+        self.assertIn(f'id="st-product-supplier-1"', html)
+        self.assertIn(f'value="{supplier_id}"', html)
+        self.assertIn("Heal Pref Co", html)
+
+        conn = db_mod.get_db()
+        try:
+            after = conn.execute(
+                "SELECT preferred_supplier_1_id FROM store_products WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            self.assertEqual(int(after["preferred_supplier_1_id"]), supplier_id)
+        finally:
+            conn.close()
+
+    def test_product_master_heals_approx_price_from_last_inward(self):
+        """Blank Approx Price is filled from the newest stock inward unit cost."""
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(category)
+            category_id = int(category["id"])
+            cur = conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, is_active, sort_order, created_at)
+                VALUES (?, 'Heal Price Item', 'kg', 'restaurant', 1, 0, datetime('now','localtime'))
+                """,
+                (category_id,),
+            )
+            product_id = int(cur.lastrowid)
+            conn.execute(
+                """
+                INSERT INTO store_stock_movements
+                    (outlet, item_name, unit, qty_delta, movement_type, ref_type, ref_id,
+                     notes, created_by, unit_cost, created_at)
+                VALUES (
+                    'restaurant', 'Heal Price Item', 'kg', 2, 'receive', 'stock_inward_direct', 1,
+                    'heal price', ?, 88.5, datetime('now','localtime')
+                )
+                """,
+                (self.admin_id,),
+            )
+            conn.commit()
+            before = conn.execute(
+                "SELECT approximate_price FROM store_products WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            self.assertIsNone(before["approximate_price"])
+        finally:
+            conn.close()
+
+        page = self.client.get("/stores/product-master?outlet=restaurant")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Heal Price Item", page.data)
+
+        conn = db_mod.get_db()
+        try:
+            after = conn.execute(
+                "SELECT approximate_price FROM store_products WHERE id = ?",
+                (product_id,),
+            ).fetchone()
+            self.assertAlmostEqual(float(after["approximate_price"]), 88.5)
+        finally:
+            conn.close()
+
+    def test_product_edit_shows_inward_price_on_pack_row(self):
+        """Edit modal Pack variants ₹ field shows the latest inward / product rate."""
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            category_id = int(category["id"])
+            cur = conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, approximate_price,
+                     is_active, sort_order, created_at)
+                VALUES (?, 'Pack Price Show', 'kg', 'restaurant', 105, 1, 0,
+                        datetime('now','localtime'))
+                """,
+                (category_id,),
+            )
+            product_id = int(cur.lastrowid)
+            conn.commit()
+        finally:
+            conn.close()
+
+        resp = self.client.get(f"/stores/product-master?edit={product_id}&outlet=restaurant")
+        self.assertEqual(resp.status_code, 200, resp.data)
+        html = resp.get_data(as_text=True)
+        self.assertIn('name="variant_approximate_price"', html)
+        self.assertIn('value="105"', html)
+        self.assertIn('name="variant_qty"', html)
+        self.assertRegex(html, r'name="variant_qty"[^>]*value="1"|value="1"[^>]*name="variant_qty"')
 
     def test_product_pack_variants_save_and_reload(self):
         conn = db_mod.get_db()
@@ -1472,22 +1775,23 @@ class StoresFlowTests(unittest.TestCase):
         self.assertIn(b"Indent Approved", approved.data)
         self.assertIn(b"Without Indent Approval", approved.data)
         self.assertIn(b'id="st-inward-indent-listbox"', approved.data)
+        self.assertIn(b"Purchase Order", approved.data)
+        self.assertIn(b"Select purchase order", approved.data)
         self.assertIn(b'cp-view-tab is-active', approved.data)
-        # Stock Inward outlet filter is Bar / Restaurant only (no All).
-        self.assertNotRegex(
-            approved.data,
-            rb'id="st-outlet-list"[^>]*>[\s\S]*?data-value="both"',
-        )
+        # Stock Inward outlet filter includes All / Bar / Restaurant.
+        self.assertIn(b'data-value="both"', approved.data)
+        self.assertIn(b">All</button>", approved.data)
         self.assertIn(b'data-value="bar"', approved.data)
         self.assertIn(b'data-value="restaurant"', approved.data)
 
-        # Legacy ?outlet=both redirects to a concrete outlet (Bar).
-        both_redirect = self.client.get(
+        # ?outlet=both stays on All (no redirect to Bar).
+        both_page = self.client.get(
             "/stores/purchase-requests?outlet=both&view=direct",
             follow_redirects=False,
         )
-        self.assertEqual(both_redirect.status_code, 302)
-        self.assertIn("outlet=bar", both_redirect.headers.get("Location", ""))
+        self.assertEqual(both_page.status_code, 200)
+        self.assertIn(b'data-value="both"', both_page.data)
+        self.assertIn(b">All</button>", both_page.data)
 
         direct = self.client.get("/stores/purchase-requests?outlet=bar&view=direct")
         self.assertEqual(direct.status_code, 200)
@@ -1956,14 +2260,23 @@ class StoresFlowTests(unittest.TestCase):
             self.assertIn(b'data-value="both"', page.data, path)
             self.assertIn(b">All</button>", page.data, path)
 
-        # Stock Inward: Bar / Restaurant only (no All); bare URL redirects to Bar.
+        # Stock Inward: All / Bar / Restaurant; bare URL defaults to All.
         inward = self.client.get("/stores/purchase-requests", follow_redirects=False)
-        self.assertEqual(inward.status_code, 302)
-        self.assertIn("outlet=bar", inward.headers.get("Location", ""))
+        self.assertEqual(inward.status_code, 200)
+        self.assertIn(b'data-value="both"', inward.data)
+        self.assertIn(b">All</button>", inward.data)
+        self.assertRegex(
+            inward.data,
+            rb'id="st-outlet-value"[^>]*>\s*All\s*<',
+        )
+        self.assertRegex(
+            inward.data,
+            rb'id="st-outlet"[^>]*value="both"',
+        )
         inward_bar = self.client.get("/stores/purchase-requests?outlet=bar")
         self.assertEqual(inward_bar.status_code, 200)
-        self.assertNotIn(b'data-value="both"', inward_bar.data)
-        self.assertNotIn(b">All</button>", inward_bar.data)
+        self.assertIn(b'data-value="both"', inward_bar.data)
+        self.assertIn(b">All</button>", inward_bar.data)
         self.assertIn(b'data-value="bar"', inward_bar.data)
         self.assertIn(b'data-value="restaurant"', inward_bar.data)
 
@@ -2219,7 +2532,7 @@ class StoresFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
-        approved_page = self.client.get("/stores/orders?outlet=bar")
+        approved_page = self.client.get("/stores/indent?outlet=bar&view=approved")
         self.assertEqual(approved_page.status_code, 200)
         self.assertIn(indent_no.encode(), approved_page.data)
         self.assertIn(f"/stores/indent/{indent_id}/purchase-order".encode(), approved_page.data)
@@ -2613,7 +2926,7 @@ class StoresFlowTests(unittest.TestCase):
         self.assertEqual(stock_before[("Potato", "kg")], 10.0)
         self.assertNotIn(("Tomato", "kg"), stock_before)
 
-        approved_list = self.client.get("/stores/orders?outlet=bar")
+        approved_list = self.client.get("/stores/indent?outlet=bar&view=approved")
         self.assertEqual(approved_list.status_code, 200)
         self.assertIn(b'data-tip="Delete remaining"', approved_list.data)
         self.assertIn(b"Already inwarded stock will not be changed", approved_list.data)
@@ -2724,7 +3037,7 @@ class StoresFlowTests(unittest.TestCase):
         with mock.patch.object(self.app_mod, "get_current_user", return_value=clerk), mock.patch.object(
             self.stores_mod, "_get_user", return_value=clerk
         ):
-            listing = self.client.get("/stores/orders?outlet=bar")
+            listing = self.client.get("/stores/indent?outlet=bar&view=approved")
             self.assertEqual(listing.status_code, 200)
             self.assertIn(b'data-tip="Download PO"', listing.data)
             self.assertNotIn(b'data-tip="Delete remaining"', listing.data)
@@ -2830,6 +3143,48 @@ class StoresFlowTests(unittest.TestCase):
                 """
             ).fetchone()
             self.assertEqual(int(moves["c"]), 0)
+        finally:
+            conn.close()
+
+    def test_stock_audit_syncs_newly_inwarded_stock_items(self):
+        """Open audit queue picks up stock items created after the audit started."""
+        self._seed_stock_item(item_name="Tomato", qty=10.0)
+        page = self.client.get("/stores/stock-audit?outlet=restaurant")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Tomato", page.data)
+        self.assertNotIn(b"Anar", page.data)
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                INSERT INTO store_stock_items (outlet, item_name, unit, qty_on_hand, updated_at)
+                VALUES ('restaurant', 'Anar', 'kg', 10, datetime('now','localtime'))
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        page2 = self.client.get("/stores/stock-audit?outlet=restaurant")
+        self.assertEqual(page2.status_code, 200)
+        self.assertIn(b"Anar", page2.data)
+
+        conn = db_mod.get_db()
+        try:
+            line = conn.execute(
+                """
+                SELECT l.item_name, l.system_qty, l.status
+                FROM store_stock_audit_lines l
+                JOIN store_stock_audits a ON a.id = l.audit_id
+                WHERE a.outlet = 'restaurant' AND a.status = 'open'
+                  AND lower(l.item_name) = lower('Anar')
+                ORDER BY l.id DESC LIMIT 1
+                """
+            ).fetchone()
+            self.assertIsNotNone(line)
+            self.assertEqual(line["status"], "pending")
+            self.assertAlmostEqual(float(line["system_qty"]), 10.0)
         finally:
             conn.close()
 
@@ -3120,6 +3475,1225 @@ class StoresFlowTests(unittest.TestCase):
         if denied.status_code == 302:
             # Permission helper usually flashes and redirects away from the page.
             self.assertNotIn(b'id="st-audit-page"', denied.data)
+
+    def _create_approved_indent_for_po(self, *, notes="PO send indent"):
+        """Create product with preferred supplier, raise + approve an indent, return ids."""
+        conn = db_mod.get_db()
+        try:
+            category = conn.execute(
+                "SELECT id FROM store_product_categories WHERE is_active = 1 ORDER BY id LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(category)
+            category_id = int(category["id"])
+            conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', ?)",
+                ("PO Alpha Traders", "9876543210"),
+            )
+            supplier_id = int(
+                conn.execute(
+                    "SELECT id FROM suppliers WHERE name = 'PO Alpha Traders'"
+                ).fetchone()["id"]
+            )
+            conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, approximate_price, is_active,
+                     preferred_supplier_1_id)
+                VALUES (?, 'PO Rice Bag', 'kg', 'restaurant', 50, 1, ?)
+                """,
+                (category_id, supplier_id),
+            )
+            conn.execute(
+                """
+                INSERT INTO store_products
+                    (category_id, name, default_unit, outlet, approximate_price, is_active)
+                VALUES (?, 'Mystery Unmapped Item', 'pcs', 'restaurant', 20, 1)
+                """,
+                (category_id,),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        create = self.client.post(
+            "/stores/indent?outlet=restaurant",
+            data={
+                "outlet": "restaurant",
+                "action": "submit",
+                "notes": notes,
+                "item_name": ["PO Rice Bag", "Mystery Unmapped Item"],
+                "quantity": ["10", "2"],
+                "unit": ["kg", "pcs"],
+                "approximate_price": ["50", "20"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            indent = conn.execute(
+                "SELECT id, indent_no, status FROM store_indents WHERE notes = ? ORDER BY id DESC LIMIT 1",
+                (notes,),
+            ).fetchone()
+            self.assertIsNotNone(indent)
+            indent_id = int(indent["id"])
+            lines = {
+                row["item_name"]: int(row["id"])
+                for row in conn.execute(
+                    "SELECT id, item_name FROM store_indent_lines WHERE indent_id = ?",
+                    (indent_id,),
+                ).fetchall()
+            }
+        finally:
+            conn.close()
+
+        decide = self.client.post(
+            f"/stores/indent/{indent_id}/decide",
+            data={"outlet": "restaurant", "decision": "approved", "decision_note": ""},
+            follow_redirects=False,
+        )
+        self.assertEqual(decide.status_code, 302)
+        return {
+            "indent_id": indent_id,
+            "supplier_id": supplier_id,
+            "lines": lines,
+        }
+
+    def test_po_groups_by_preferred_supplier(self):
+        ids = self._create_approved_indent_for_po(notes="PO group test")
+        page = self.client.get(f"/stores/orders/{ids['indent_id']}")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Suppliers &amp; Items (Grouped)", page.data)
+        self.assertIn(b"PO Alpha Traders", page.data)
+        self.assertIn(b"Unassigned", page.data)
+        self.assertIn(b"<th>Total</th>", page.data)
+        self.assertIn(b"st-po-tabs", page.data)
+        self.assertIn(b"Generate PO", page.data)
+        self.assertIn(b"Send to Supplier", page.data)
+        self.assertIn(b'data-po-tab="generate"', page.data)
+        # Step 1 reviews items; Generate purchase order issues numbers and leaves them off this page.
+        self.assertIn(b"st-po-next-btn", page.data)
+        self.assertIn(b"Generate purchase order", page.data)
+        self.assertNotIn(b"Send via WhatsApp", page.data)
+        # Mixed indent (assigned + unassigned) can proceed — generate stays enabled.
+        self.assertNotIn(b"st-po-next-btn is-disabled", page.data)
+        # Assigned suppliers are selectable; unassigned groups are not.
+        self.assertIn(b"st-po-group-checkbox", page.data)
+        self.assertIn(b'name="selected_supplier"', page.data)
+        self.assertIn(f'value="{ids["supplier_id"]}"'.encode(), page.data)
+        self.assertIn(b"Select all", page.data)
+
+        # Compose preview retired — ?step=compose redirects to the items step.
+        compose = self.client.get(
+            f"/stores/orders/{ids['indent_id']}?step=compose",
+            follow_redirects=False,
+        )
+        self.assertEqual(compose.status_code, 302)
+        self.assertNotIn("step=compose", (compose.headers.get("Location") or ""))
+
+        items = self.client.get(f"/stores/orders/{ids['indent_id']}")
+        self.assertEqual(items.status_code, 200)
+        self.assertIn(b"Generate purchase order", items.data)
+        self.assertNotIn(b"st-po-message-preview", items.data)
+        self.assertNotIn(b"Send Purchase Order to Supplier", items.data)
+        self.assertNotIn(b"Send via WhatsApp", items.data)
+
+        conn = db_mod.get_db()
+        try:
+            payload = self.stores_mod._load_po_supplier_groups(conn, ids["indent_id"])
+        finally:
+            conn.close()
+        self.assertTrue(payload)
+        names = [g["supplier_name"] for g in payload["groups"]]
+        self.assertIn("Unassigned", names)
+        self.assertIn("PO Alpha Traders", names)
+        assigned = next(g for g in payload["groups"] if g["supplier_name"] == "PO Alpha Traders")
+        self.assertEqual(assigned["item_count"], 1)
+        self.assertAlmostEqual(assigned["estimated_value"], 500.0)
+        self.assertTrue(assigned["can_send"])
+        unassigned = next(g for g in payload["groups"] if g.get("is_unassigned"))
+        self.assertEqual(unassigned["item_count"], 1)
+        self.assertFalse(unassigned["can_send"])
+
+    def test_po_next_respects_selected_suppliers(self):
+        ids = self._create_approved_indent_for_po(notes="PO select suppliers")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        mystery_line = ids["lines"]["Mystery Unmapped Item"]
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', ?)",
+                ("PO Beta Foods", "9123456780"),
+            )
+            beta_id = int(
+                conn.execute(
+                    "SELECT id FROM suppliers WHERE name = 'PO Beta Foods'"
+                ).fetchone()["id"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        # Assign both lines so two supplier groups exist.
+        save = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines",
+            json={
+                "lines": [
+                    {"line_id": rice_line, "supplier_id": ids["supplier_id"], "rate": 50},
+                    {"line_id": mystery_line, "supplier_id": beta_id, "rate": 25},
+                ]
+            },
+        )
+        self.assertEqual(save.status_code, 200)
+
+        # Generate with only Alpha selected — issues PO, does not auto-send WhatsApp.
+        nxt = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(ids["supplier_id"]),
+                f"line_rate_{rice_line}": "50",
+                f"line_supplier_{mystery_line}": str(beta_id),
+                f"line_rate_{mystery_line}": "25",
+                "selectable_supplier": [str(ids["supplier_id"]), str(beta_id)],
+                "selected_supplier": [str(ids["supplier_id"])],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(nxt.status_code, 302)
+        loc = nxt.headers.get("Location") or ""
+        self.assertNotIn("step=compose", loc)
+        # After generate, land on Send to Supplier (not back on Generate).
+        self.assertIn("/stores/orders", loc)
+        self.assertIn("tab=send", loc)
+        self.assertNotIn(f"/stores/orders/{ids['indent_id']}", loc.split("?")[0])
+
+        items = self.client.get(f"/stores/orders/{ids['indent_id']}")
+        self.assertEqual(items.status_code, 200)
+        self.assertIn(b"Generate purchase order", items.data)
+        self.assertNotIn(b"Send Purchase Order to Supplier", items.data)
+        self.assertNotIn(b"st-po-message-preview", items.data)
+        # Generated Alpha group leaves the Send list; Beta remains pending.
+        self.assertNotIn(b'<strong class="st-po-group-name">PO Alpha Traders</strong>', items.data)
+        self.assertIn(b'<strong class="st-po-group-name">PO Beta Foods</strong>', items.data)
+        self.assertIn(b'>1 Supplier</span>', items.data)
+
+        send_tab = self.client.get("/stores/orders?outlet=restaurant&tab=send")
+        self.assertEqual(send_tab.status_code, 200)
+        self.assertIn(b"Send to Supplier", send_tab.data)
+
+        conn = db_mod.get_db()
+        try:
+            po_row = conn.execute(
+                "SELECT id, po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (ids["indent_id"], ids["supplier_id"]),
+            ).fetchone()
+            frozen = conn.execute(
+                "SELECT COUNT(*) AS n FROM store_purchase_order_lines WHERE purchase_order_id = ?",
+                (int(po_row["id"]),),
+            ).fetchone()
+            send_row = conn.execute(
+                """
+                SELECT status, supplier_id, po_no FROM store_po_sends
+                WHERE indent_id = ? AND supplier_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (ids["indent_id"], ids["supplier_id"]),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(po_row)
+        self.assertRegex(str(po_row["po_no"]), r"^PO/RES/\d{2}-\d{2}/\d+$")
+        self.assertGreaterEqual(int(frozen["n"]), 1)
+        # WhatsApp is deferred to the send-confirm popup / Purchase Orders action.
+        self.assertIsNone(send_row)
+
+        # Clearing every supplier is rejected.
+        refused = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{mystery_line}": str(beta_id),
+                f"line_rate_{mystery_line}": "25",
+                "selectable_supplier": [str(beta_id)],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(refused.status_code, 302)
+        self.assertNotIn("step=compose", refused.headers.get("Location") or "")
+        # Beta is still pending until generated.
+        still = self.client.get(f"/stores/orders/{ids['indent_id']}")
+        self.assertIn(b"PO Beta Foods", still.data)
+        # Indent stays in the Generate PO picker while any supplier is pending.
+        self.assertIn(f'id="st-po-indent" value="{ids["indent_id"]}"'.encode(), still.data)
+        self.assertIn(b'st-po-indent-list', still.data)
+
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            done = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/lines/next",
+                data={
+                    "outlet": "restaurant",
+                    f"line_supplier_{mystery_line}": str(beta_id),
+                    f"line_rate_{mystery_line}": "25",
+                    "selectable_supplier": [str(beta_id)],
+                    "selected_supplier": [str(beta_id)],
+                },
+                follow_redirects=False,
+            )
+        self.assertEqual(done.status_code, 302)
+        # Opening the finished indent bounces away — it is no longer in Generate PO.
+        bounced = self.client.get(
+            f"/stores/orders/{ids['indent_id']}",
+            follow_redirects=False,
+        )
+        self.assertEqual(bounced.status_code, 302)
+        bounce_path = (bounced.headers.get("Location") or "").split("?")[0]
+        self.assertNotEqual(bounce_path.rstrip("/"), f"/stores/orders/{ids['indent_id']}")
+
+        listing = self.client.get("/stores/orders?outlet=restaurant&tab=send")
+        self.assertEqual(listing.status_code, 200)
+        # Finished indent is absent from the Generate PO indent options.
+        self.assertNotIn(
+            f'data-value="{ids["indent_id"]}"'.encode(),
+            listing.data,
+        )
+        # Generate PO must not deep-link a finished indent (server 302s back → looks broken).
+        self.assertNotRegex(
+            listing.data,
+            rf'<a class="cp-view-tab[^"]*"[^>]*href="/stores/orders/{ids["indent_id"]}(\?|")'.encode(),
+        )
+
+    def test_po_line_overrides_persist(self):
+        ids = self._create_approved_indent_for_po(notes="PO override test")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        mystery_line = ids["lines"]["Mystery Unmapped Item"]
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', ?)",
+                ("PO Beta Foods", "9123456780"),
+            )
+            beta_id = int(
+                conn.execute(
+                    "SELECT id FROM suppliers WHERE name = 'PO Beta Foods'"
+                ).fetchone()["id"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        save = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines",
+            json={
+                "lines": [
+                    {"line_id": rice_line, "supplier_id": beta_id, "rate": 55},
+                    {"line_id": mystery_line, "supplier_id": beta_id, "rate": 25},
+                ]
+            },
+        )
+        self.assertEqual(save.status_code, 200)
+        payload = save.get_json()
+        self.assertTrue(payload.get("ok"))
+
+        conn = db_mod.get_db()
+        try:
+            rows = {
+                int(row["line_id"]): dict(row)
+                for row in conn.execute(
+                    "SELECT line_id, supplier_id, rate FROM store_po_lines WHERE indent_id = ?",
+                    (ids["indent_id"],),
+                ).fetchall()
+            }
+            grouped = self.stores_mod._load_po_supplier_groups(conn, ids["indent_id"])
+        finally:
+            conn.close()
+
+        self.assertEqual(int(rows[rice_line]["supplier_id"]), beta_id)
+        self.assertAlmostEqual(float(rows[rice_line]["rate"]), 55.0)
+        self.assertEqual(int(rows[mystery_line]["supplier_id"]), beta_id)
+        beta_group = next(g for g in grouped["groups"] if g["supplier_id"] == beta_id)
+        self.assertEqual(beta_group["item_count"], 2)
+        self.assertAlmostEqual(beta_group["estimated_value"], 10 * 55 + 2 * 25)
+
+    def test_po_partial_quantity_override(self):
+        ids = self._create_approved_indent_for_po(notes="PO partial qty")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        mystery_line = ids["lines"]["Mystery Unmapped Item"]
+
+        page = self.client.get(f"/stores/orders/{ids['indent_id']}")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'st-po-line-qty', page.data)
+        self.assertIn(f'name="line_qty_{rice_line}"'.encode(), page.data)
+
+        save = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines",
+            json={
+                "lines": [
+                    {
+                        "line_id": rice_line,
+                        "supplier_id": ids["supplier_id"],
+                        "rate": 50,
+                        "quantity": 4,
+                    },
+                    {
+                        "line_id": mystery_line,
+                        "supplier_id": ids["supplier_id"],
+                        "rate": 25,
+                        "quantity": 1,
+                    },
+                ]
+            },
+        )
+        self.assertEqual(save.status_code, 200)
+        self.assertTrue(save.get_json().get("ok"))
+
+        conn = db_mod.get_db()
+        try:
+            rows = {
+                int(row["line_id"]): dict(row)
+                for row in conn.execute(
+                    "SELECT line_id, supplier_id, rate, quantity FROM store_po_lines WHERE indent_id = ?",
+                    (ids["indent_id"],),
+                ).fetchall()
+            }
+            grouped = self.stores_mod._load_po_supplier_groups(conn, ids["indent_id"])
+            # Over-indent qty is capped to the indent line quantity (10).
+            over = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/lines",
+                json={
+                    "lines": [
+                        {
+                            "line_id": rice_line,
+                            "supplier_id": ids["supplier_id"],
+                            "rate": 50,
+                            "quantity": 99,
+                        }
+                    ]
+                },
+            )
+            self.assertEqual(over.status_code, 200)
+            capped = conn.execute(
+                "SELECT quantity FROM store_po_lines WHERE line_id = ?",
+                (rice_line,),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertAlmostEqual(float(rows[rice_line]["quantity"]), 4.0)
+        self.assertAlmostEqual(float(rows[mystery_line]["quantity"]), 1.0)
+        alpha = next(g for g in grouped["groups"] if g["supplier_id"] == ids["supplier_id"])
+        rice = next(l for l in alpha["lines"] if l["line_id"] == rice_line)
+        self.assertAlmostEqual(float(rice["quantity"]), 4.0)
+        self.assertAlmostEqual(float(rice["indent_quantity"]), 10.0)
+        self.assertTrue(rice["quantity_is_partial"])
+        self.assertAlmostEqual(float(capped["quantity"]), 10.0)
+
+    def test_po_partial_generate_keeps_remaining_qty(self):
+        """After generating a partial PO, remaining indent qty stays on Generate."""
+        ids = self._create_approved_indent_for_po(notes="PO remaining after partial")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        mystery_line = ids["lines"]["Mystery Unmapped Item"]
+
+        self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines",
+            json={
+                "lines": [
+                    {
+                        "line_id": rice_line,
+                        "supplier_id": ids["supplier_id"],
+                        "rate": 50,
+                        "quantity": 4,
+                    },
+                    {
+                        "line_id": mystery_line,
+                        "supplier_id": ids["supplier_id"],
+                        "rate": 25,
+                        "quantity": 1,
+                    },
+                ]
+            },
+        )
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            gen = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/lines/next",
+                data={
+                    "outlet": "restaurant",
+                    f"line_supplier_{rice_line}": str(ids["supplier_id"]),
+                    f"line_rate_{rice_line}": "50",
+                    f"line_qty_{rice_line}": "4",
+                    f"line_supplier_{mystery_line}": str(ids["supplier_id"]),
+                    f"line_rate_{mystery_line}": "25",
+                    f"line_qty_{mystery_line}": "1",
+                    "selectable_supplier": [str(ids["supplier_id"])],
+                    "selected_supplier": [str(ids["supplier_id"])],
+                },
+                follow_redirects=False,
+            )
+        self.assertEqual(gen.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            rice = conn.execute(
+                "SELECT quantity, quantity_ordered FROM store_indent_lines WHERE id = ?",
+                (rice_line,),
+            ).fetchone()
+            mystery = conn.execute(
+                "SELECT quantity, quantity_ordered FROM store_indent_lines WHERE id = ?",
+                (mystery_line,),
+            ).fetchone()
+            grouped = self.stores_mod._load_po_supplier_groups(conn, ids["indent_id"])
+            pending = self.stores_mod._pending_po_groups(grouped.get("groups") or [])
+        finally:
+            conn.close()
+
+        self.assertAlmostEqual(float(rice["quantity_ordered"]), 4.0)
+        self.assertAlmostEqual(float(mystery["quantity_ordered"]), 1.0)
+        self.assertTrue(pending)
+        alpha = next(g for g in pending if g["supplier_id"] == ids["supplier_id"])
+        rice_row = next(l for l in alpha["lines"] if l["line_id"] == rice_line)
+        self.assertAlmostEqual(float(rice_row["remaining_quantity"]), 6.0)
+        self.assertAlmostEqual(float(rice_row["quantity"]), 6.0)
+        self.assertAlmostEqual(float(rice_row["indent_quantity"]), 10.0)
+
+        page = self.client.get(f"/stores/orders/{ids['indent_id']}")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"PO Rice Bag", page.data)
+        self.assertIn(b'value="6"', page.data)
+        # Hint shows available remaining, not the original approved indent qty.
+        self.assertIn(b"of 6", page.data)
+        self.assertNotIn(b"of 10", page.data)
+
+    def test_po_pack_filled_from_product_master_when_indent_missing(self):
+        """Generate PO Pack column uses Product Master variant when indent pack is blank."""
+        ids = self._create_approved_indent_for_po(notes="PO pack from product master")
+        indent_id = int(ids["indent_id"])
+        rice_line = int(ids["lines"]["PO Rice Bag"])
+        product_id = None
+
+        conn = db_mod.get_db()
+        try:
+            product = conn.execute(
+                "SELECT id FROM store_products WHERE name = 'PO Rice Bag' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+            self.assertIsNotNone(product)
+            product_id = int(product["id"])
+            conn.execute(
+                """
+                INSERT INTO store_product_variants
+                    (product_id, label, qty_in_base, approximate_price, sort_order, is_active)
+                VALUES (?, '1 kg', 1, 50, 10, 1)
+                """,
+                (product_id,),
+            )
+            conn.execute(
+                """
+                UPDATE store_indent_lines
+                SET pack_label = '', pack_qty_in_base = NULL
+                WHERE id = ?
+                """,
+                (rice_line,),
+            )
+            conn.commit()
+            grouped = self.stores_mod._load_po_supplier_groups(conn, indent_id)
+            healed = conn.execute(
+                "SELECT pack_label, pack_qty_in_base FROM store_indent_lines WHERE id = ?",
+                (rice_line,),
+            ).fetchone()
+        finally:
+            conn.close()
+
+        alpha = next(
+            g for g in (grouped.get("groups") or []) if g.get("supplier_id") == ids["supplier_id"]
+        )
+        rice_row = next(l for l in alpha["lines"] if l["line_id"] == rice_line)
+        self.assertEqual(rice_row["pack_label"], "1 kg")
+        self.assertAlmostEqual(float(rice_row["pack_qty_in_base"]), 1.0)
+        self.assertEqual(healed["pack_label"], "1 kg")
+        self.assertAlmostEqual(float(healed["pack_qty_in_base"]), 1.0)
+
+        page = self.client.get(f"/stores/orders/{indent_id}")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"1 kg", page.data)
+
+    def test_po_number_series_is_stable_per_supplier(self):
+        ids = self._create_approved_indent_for_po(notes="PO number test")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            first = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/lines/next",
+                data={
+                    "outlet": "restaurant",
+                    f"line_supplier_{rice_line}": str(ids["supplier_id"]),
+                    f"line_rate_{rice_line}": "50",
+                    "selectable_supplier": [str(ids["supplier_id"])],
+                    "selected_supplier": [str(ids["supplier_id"])],
+                },
+                follow_redirects=False,
+            )
+        self.assertEqual(first.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            row = conn.execute(
+                "SELECT po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (ids["indent_id"], ids["supplier_id"]),
+            ).fetchone()
+            self.assertIsNotNone(row)
+            po_no = str(row["po_no"])
+            short_fy = self.stores_mod._short_fiscal_year_label()
+        finally:
+            conn.close()
+        self.assertRegex(po_no, r"^PO/RES/\d{2}-\d{2}/\d+$")
+        self.assertIn(f"/{short_fy}/", po_no)
+
+        # Generating again for the same supplier reuses the issued number.
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            again = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/lines/next",
+                data={
+                    "outlet": "restaurant",
+                    f"line_supplier_{rice_line}": str(ids["supplier_id"]),
+                    f"line_rate_{rice_line}": "50",
+                    "selectable_supplier": [str(ids["supplier_id"])],
+                    "selected_supplier": [str(ids["supplier_id"])],
+                },
+                follow_redirects=False,
+            )
+        self.assertEqual(again.status_code, 302)
+
+        # A second supplier group on the same indent takes the next number in the series.
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', ?)",
+                ("PO Gamma Supplies", "9000000001"),
+            )
+            gamma_id = int(
+                conn.execute(
+                    "SELECT id FROM suppliers WHERE name = 'PO Gamma Supplies'"
+                ).fetchone()["id"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        assign = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines",
+            json={"lines": [{"line_id": ids["lines"]["Mystery Unmapped Item"], "supplier_id": gamma_id}]},
+        )
+        self.assertEqual(assign.status_code, 200)
+        mystery_line = ids["lines"]["Mystery Unmapped Item"]
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            gamma_gen = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/lines/next",
+                data={
+                    "outlet": "restaurant",
+                    f"line_supplier_{mystery_line}": str(gamma_id),
+                    f"line_rate_{mystery_line}": "25",
+                    "selectable_supplier": [str(gamma_id)],
+                    "selected_supplier": [str(gamma_id)],
+                },
+                follow_redirects=False,
+            )
+        self.assertEqual(gamma_gen.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            numbers = {
+                int(r["supplier_id"]): str(r["po_no"])
+                for r in conn.execute(
+                    "SELECT supplier_id, po_no FROM store_purchase_orders WHERE indent_id = ?",
+                    (ids["indent_id"],),
+                ).fetchall()
+            }
+            # Alpha still has the original number after the no-op second generate attempt.
+            alpha_count = conn.execute(
+                "SELECT COUNT(*) AS c FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (ids["indent_id"], ids["supplier_id"]),
+            ).fetchone()["c"]
+        finally:
+            conn.close()
+        self.assertEqual(int(alpha_count), 1)
+        self.assertEqual(len(numbers), 2)
+        self.assertEqual(numbers[ids["supplier_id"]], po_no)
+        self.assertNotEqual(numbers[gamma_id], po_no)
+        seq_of = lambda value: int(value.rstrip("/").split("/")[-1])
+        self.assertEqual(seq_of(numbers[gamma_id]), seq_of(po_no) + 1)
+
+        # Purchase Orders tab lists every generated PO number.
+        listing = self.client.get("/stores/orders?outlet=restaurant")
+        self.assertEqual(listing.status_code, 200)
+        self.assertIn(b"Generated purchase orders", listing.data)
+        self.assertIn(po_no.encode(), listing.data)
+        self.assertIn(numbers[gamma_id].encode(), listing.data)
+        self.assertIn(b"PO Alpha Traders", listing.data)
+        self.assertIn(b"PO Gamma Supplies", listing.data)
+        self.assertIn(b"View PDF", listing.data)
+        self.assertIn(b'data-st-po-pdf', listing.data)
+        self.assertIn(b'id="st-po-pdf-modal"', listing.data)
+
+    def test_po_pdf_endpoint(self):
+        ids = self._create_approved_indent_for_po(notes="PO pdf test")
+        ok = self.client.get(
+            f"/stores/orders/{ids['indent_id']}/pdf/{ids['supplier_id']}"
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertEqual(ok.mimetype, "application/pdf")
+        self.assertTrue(ok.data.startswith(b"%PDF"))
+        # The document is filed under its PO number, not the indent number.
+        self.assertIn("PO_RES_", ok.headers.get("Content-Disposition", ""))
+        conn = db_mod.get_db()
+        try:
+            po_no = str(
+                conn.execute(
+                    "SELECT po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                    (ids["indent_id"], ids["supplier_id"]),
+                ).fetchone()["po_no"]
+            )
+        finally:
+            conn.close()
+        self.assertIn(po_no.replace("/", "_"), ok.headers.get("Content-Disposition", ""))
+
+        # Pending indent must be refused.
+        create = self.client.post(
+            "/stores/indent?outlet=restaurant",
+            data={
+                "outlet": "restaurant",
+                "action": "submit",
+                "notes": "PO pending pdf",
+                "item_name": ["PO Rice Bag"],
+                "quantity": ["1"],
+                "unit": ["kg"],
+                "approximate_price": ["50"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            pending_id = int(
+                conn.execute(
+                    "SELECT id FROM store_indents WHERE notes = 'PO pending pdf' ORDER BY id DESC LIMIT 1"
+                ).fetchone()["id"]
+            )
+        finally:
+            conn.close()
+        refused = self.client.get(
+            f"/stores/orders/{pending_id}/pdf/{ids['supplier_id']}",
+            follow_redirects=False,
+        )
+        self.assertIn(refused.status_code, (302, 400))
+
+    def test_po_send_dry_run_records_history(self):
+        ids = self._create_approved_indent_for_po(notes="PO dry run send")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        gen = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(ids["supplier_id"]),
+                f"line_rate_{rice_line}": "50",
+                "selectable_supplier": [str(ids["supplier_id"])],
+                "selected_supplier": [str(ids["supplier_id"])],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(gen.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            po_row = conn.execute(
+                "SELECT po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (ids["indent_id"], ids["supplier_id"]),
+            ).fetchone()
+            send_before = conn.execute(
+                "SELECT COUNT(*) AS n FROM store_po_sends WHERE indent_id = ?",
+                (ids["indent_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(po_row)
+        self.assertEqual(int(send_before["n"]), 0)
+
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            send = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/send",
+                json={
+                    "supplier_id": ids["supplier_id"],
+                    "po_no": str(po_row["po_no"]),
+                    "include_pdf": True,
+                    "message": "Hello PO Alpha Traders, please supply rice.",
+                },
+            )
+        self.assertEqual(send.status_code, 200)
+        payload = send.get_json()
+        self.assertTrue(payload.get("ok"))
+        self.assertTrue(payload.get("dry_run"))
+        self.assertTrue(payload.get("conversation_id"))
+        self.assertEqual(str(payload.get("po_no") or ""), str(po_row["po_no"]))
+
+        conn = db_mod.get_db()
+        try:
+            row = conn.execute(
+                """
+                SELECT status, supplier_id, phone, pdf_name, conversation_id, include_pdf, po_no
+                FROM store_po_sends
+                WHERE indent_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (ids["indent_id"],),
+            ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(row["status"], "sent")
+            self.assertEqual(int(row["supplier_id"]), ids["supplier_id"])
+            self.assertTrue(row["pdf_name"])
+            self.assertEqual(int(row["include_pdf"]), 1)
+            self.assertEqual(str(row["po_no"]), payload.get("po_no"))
+            self.assertIn(str(row["po_no"]).replace("/", "_"), str(row["pdf_name"]))
+            conv = conn.execute(
+                "SELECT id, phone_e164 FROM wa_conversations WHERE id = ?",
+                (int(row["conversation_id"]),),
+            ).fetchone()
+            self.assertIsNotNone(conv)
+            self.assertTrue(str(conv["phone_e164"]).endswith("9876543210") or "9876543210" in str(conv["phone_e164"]))
+        finally:
+            conn.close()
+
+        history = self.client.get("/stores/orders/history")
+        self.assertEqual(history.status_code, 200)
+        self.assertIn(b"PO Alpha Traders", history.data)
+        self.assertIn(b"History", history.data)
+        self.assertIn(b"PO No.", history.data)
+        self.assertIn((payload.get("po_no") or "").encode(), history.data)
+
+    def test_po_send_reconstructs_missing_frozen_lines(self):
+        """Older POs without store_purchase_order_lines rows can still be sent."""
+        ids = self._create_approved_indent_for_po(notes="PO send reconstruct")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        gen = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(ids["supplier_id"]),
+                f"line_rate_{rice_line}": "50",
+                "selectable_supplier": [str(ids["supplier_id"])],
+                "selected_supplier": [str(ids["supplier_id"])],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(gen.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            po_row = conn.execute(
+                "SELECT id, po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (ids["indent_id"], ids["supplier_id"]),
+            ).fetchone()
+            self.assertIsNotNone(po_row)
+            conn.execute(
+                "DELETE FROM store_purchase_order_lines WHERE purchase_order_id = ?",
+                (int(po_row["id"]),),
+            )
+            conn.commit()
+            left = conn.execute(
+                "SELECT COUNT(*) AS n FROM store_purchase_order_lines WHERE purchase_order_id = ?",
+                (int(po_row["id"]),),
+            ).fetchone()
+            self.assertEqual(int(left["n"]), 0)
+        finally:
+            conn.close()
+
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            send = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/send",
+                json={
+                    "supplier_id": ids["supplier_id"],
+                    "po_no": str(po_row["po_no"]),
+                    "include_pdf": True,
+                },
+            )
+        self.assertEqual(send.status_code, 200)
+        payload = send.get_json()
+        self.assertTrue(payload.get("ok"))
+        self.assertEqual(str(payload.get("supplier_name") or ""), "PO Alpha Traders")
+
+        conn = db_mod.get_db()
+        try:
+            backfilled = conn.execute(
+                "SELECT COUNT(*) AS n FROM store_purchase_order_lines WHERE purchase_order_id = ?",
+                (int(po_row["id"]),),
+            ).fetchone()
+            self.assertGreaterEqual(int(backfilled["n"]), 1)
+            sent = conn.execute(
+                "SELECT status FROM store_po_sends WHERE indent_id = ? ORDER BY id DESC LIMIT 1",
+                (ids["indent_id"],),
+            ).fetchone()
+            self.assertEqual(sent["status"], "sent")
+        finally:
+            conn.close()
+
+    def test_po_generate_json_returns_issued_without_sending(self):
+        ids = self._create_approved_indent_for_po(notes="PO generate JSON")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        mystery_line = ids["lines"]["Mystery Unmapped Item"]
+        self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines",
+            json={
+                "lines": [
+                    {"line_id": rice_line, "supplier_id": ids["supplier_id"], "rate": 50},
+                    {"line_id": mystery_line, "supplier_id": ids["supplier_id"], "rate": 25},
+                ]
+            },
+        )
+        gen = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(ids["supplier_id"]),
+                f"line_rate_{rice_line}": "50",
+                f"line_supplier_{mystery_line}": str(ids["supplier_id"]),
+                f"line_rate_{mystery_line}": "25",
+                "selectable_supplier": [str(ids["supplier_id"])],
+                "selected_supplier": [str(ids["supplier_id"])],
+            },
+            headers={
+                "Accept": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+            },
+        )
+        self.assertEqual(gen.status_code, 200)
+        payload = gen.get_json()
+        self.assertTrue(payload.get("ok"))
+        issued = payload.get("issued") or []
+        self.assertEqual(len(issued), 1)
+        self.assertEqual(int(issued[0]["supplier_id"]), ids["supplier_id"])
+        self.assertTrue(issued[0].get("can_send"))
+        self.assertRegex(str(issued[0].get("po_no") or ""), r"^PO/RES/\d{2}-\d{2}/\d+$")
+        self.assertIn("tab=send", str(payload.get("redirect") or ""))
+
+        conn = db_mod.get_db()
+        try:
+            sends = conn.execute(
+                "SELECT COUNT(*) AS n FROM store_po_sends WHERE indent_id = ?",
+                (ids["indent_id"],),
+            ).fetchone()
+            frozen = conn.execute(
+                """
+                SELECT COUNT(*) AS n
+                FROM store_purchase_order_lines pol
+                JOIN store_purchase_orders po ON po.id = pol.purchase_order_id
+                WHERE po.indent_id = ?
+                """,
+                (ids["indent_id"],),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(int(sends["n"]), 0)
+        self.assertEqual(int(frozen["n"]), 2)
+
+    def test_po_send_tab_shows_unsent_pending_inward_only(self):
+        ids = self._create_approved_indent_for_po(notes="PO send queue filter")
+        rice_line = ids["lines"]["PO Rice Bag"]
+        gen = self.client.post(
+            f"/stores/orders/{ids['indent_id']}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(ids["supplier_id"]),
+                f"line_rate_{rice_line}": "50",
+                "selectable_supplier": [str(ids["supplier_id"])],
+                "selected_supplier": [str(ids["supplier_id"])],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(gen.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            po_row = conn.execute(
+                "SELECT po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (ids["indent_id"], ids["supplier_id"]),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(po_row)
+        po_no = str(po_row["po_no"])
+
+        send_tab = self.client.get("/stores/orders?tab=send&outlet=restaurant")
+        self.assertEqual(send_tab.status_code, 200)
+        self.assertIn(b"Send to Supplier", send_tab.data)
+        self.assertIn(po_no.encode(), send_tab.data)
+
+        orders_tab = self.client.get("/stores/orders?outlet=restaurant")
+        self.assertEqual(orders_tab.status_code, 200)
+        self.assertIn(po_no.encode(), orders_tab.data)
+
+        with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
+            send = self.client.post(
+                f"/stores/orders/{ids['indent_id']}/send",
+                json={
+                    "supplier_id": ids["supplier_id"],
+                    "po_no": po_no,
+                    "include_pdf": True,
+                },
+            )
+        self.assertEqual(send.status_code, 200)
+        self.assertTrue(send.get_json().get("ok"))
+
+        send_tab_after = self.client.get("/stores/orders?tab=send&outlet=restaurant")
+        self.assertEqual(send_tab_after.status_code, 200)
+        self.assertNotIn(po_no.encode(), send_tab_after.data)
+
+        orders_after = self.client.get("/stores/orders?outlet=restaurant")
+        self.assertIn(po_no.encode(), orders_after.data)
+
+        # Orphan PO (no frozen lines + no current supplier assignment) stays off Send queue.
+        conn = db_mod.get_db()
+        try:
+            cur = conn.execute(
+                "INSERT INTO suppliers (name, gst, address, phone) VALUES (?, '', '', ?)",
+                ("PO Orphan Supplier", "9000000000"),
+            )
+            orphan_supplier_id = int(cur.lastrowid)
+            conn.execute(
+                """
+                INSERT INTO store_purchase_orders (indent_id, supplier_id, po_no, created_at)
+                VALUES (?, ?, ?, datetime('now'))
+                """,
+                (ids["indent_id"], orphan_supplier_id, "PO/ORPHAN/TEST/1"),
+            )
+            conn.commit()
+            queue = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", send_queue=True
+            )
+            self.assertFalse(
+                any(str(row.get("po_no")) == "PO/ORPHAN/TEST/1" for row in queue)
+            )
+        finally:
+            conn.close()
+
+        # Unsent PO whose indent is fully inwarded must leave the Send queue.
+        # Create a second indent reusing products already seeded by the helper.
+        conn = db_mod.get_db()
+        try:
+            supplier_id = int(ids["supplier_id"])
+            user_id = int(
+                conn.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()["id"]
+            )
+            cur = conn.execute(
+                """
+                INSERT INTO store_indents
+                    (outlet, indent_no, status, notes, created_by, created_at, submitted_at, decided_at, decided_by)
+                VALUES (
+                    'restaurant', 'IND/RES/26-27/TEST-INWARD', 'approved',
+                    'PO send queue inwarded', ?, datetime('now','localtime'),
+                    datetime('now','localtime'), datetime('now','localtime'), ?
+                )
+                """,
+                (user_id, user_id),
+            )
+            indent2_id = int(cur.lastrowid)
+            conn.execute(
+                """
+                INSERT INTO store_indent_lines
+                    (indent_id, item_name, quantity, unit, approximate_price, quantity_received)
+                VALUES (?, 'PO Rice Bag', 10, 'kg', 50, 0)
+                """,
+                (indent2_id,),
+            )
+            line2 = conn.execute(
+                "SELECT id FROM store_indent_lines WHERE indent_id = ? ORDER BY id DESC LIMIT 1",
+                (indent2_id,),
+            ).fetchone()
+            line2_id = int(line2["id"])
+            conn.execute(
+                """
+                INSERT INTO store_po_lines (indent_id, line_id, supplier_id, rate, quantity, updated_at)
+                VALUES (?, ?, ?, 50, 10, datetime('now','localtime'))
+                """,
+                (indent2_id, line2_id, supplier_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        gen2 = self.client.post(
+            f"/stores/orders/{indent2_id}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{line2_id}": str(supplier_id),
+                f"line_rate_{line2_id}": "50",
+                f"line_qty_{line2_id}": "10",
+                "selectable_supplier": [str(supplier_id)],
+                "selected_supplier": [str(supplier_id)],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(gen2.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            po2 = conn.execute(
+                "SELECT po_no FROM store_purchase_orders WHERE indent_id = ?",
+                (indent2_id,),
+            ).fetchone()
+            self.assertIsNotNone(po2)
+            po2_no = str(po2["po_no"])
+            before = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", send_queue=True
+            )
+            self.assertTrue(any(str(row.get("po_no")) == po2_no for row in before))
+            conn.execute(
+                "UPDATE store_indent_lines SET quantity_received = quantity WHERE indent_id = ?",
+                (indent2_id,),
+            )
+            conn.commit()
+            after = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", send_queue=True
+            )
+        finally:
+            conn.close()
+        self.assertFalse(any(str(row.get("po_no")) == po2_no for row in after))
+
+    def test_stock_inward_po_picker_hides_fully_received_pos(self):
+        """Purchase Order dropdown only lists POs that still have pending inward qty."""
+        ids = self._create_approved_indent_for_po(notes="PO inward picker filter")
+        indent_id = int(ids["indent_id"])
+        supplier_id = int(ids["supplier_id"])
+        rice_line = int(ids["lines"]["PO Rice Bag"])
+
+        gen = self.client.post(
+            f"/stores/orders/{indent_id}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(supplier_id),
+                f"line_rate_{rice_line}": "50",
+                f"line_qty_{rice_line}": "10",
+                "selectable_supplier": [str(supplier_id)],
+                "selected_supplier": [str(supplier_id)],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(gen.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            po = conn.execute(
+                "SELECT id, po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (indent_id, supplier_id),
+            ).fetchone()
+            self.assertIsNotNone(po)
+            po_no = str(po["po_no"])
+            before = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", pending_inward=True
+            )
+            self.assertTrue(any(str(row.get("po_no")) == po_no for row in before))
+
+            page_before = self.client.get(
+                "/stores/purchase-requests?outlet=restaurant&view=approved"
+            )
+            self.assertEqual(page_before.status_code, 200)
+            self.assertIn(po_no.encode(), page_before.data)
+
+            conn.execute(
+                "UPDATE store_indent_lines SET quantity_received = quantity WHERE indent_id = ?",
+                (indent_id,),
+            )
+            conn.execute(
+                """
+                UPDATE store_purchase_order_lines
+                SET quantity_received = quantity
+                WHERE purchase_order_id = ?
+                """,
+                (int(po["id"]),),
+            )
+            conn.commit()
+
+            after = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", pending_inward=True
+            )
+        finally:
+            conn.close()
+
+        self.assertFalse(any(str(row.get("po_no")) == po_no for row in after))
+        page_after = self.client.get(
+            "/stores/purchase-requests?outlet=restaurant&view=approved"
+        )
+        self.assertEqual(page_after.status_code, 200)
+        self.assertNotIn(po_no.encode(), page_after.data)
+
+    def test_stock_inward_hides_po_when_po_qty_received_but_indent_open(self):
+        """A fully received PO must leave Stock Inward even if indent qty remains."""
+        ids = self._create_approved_indent_for_po(notes="PO partial inward remaining indent")
+        indent_id = int(ids["indent_id"])
+        supplier_id = int(ids["supplier_id"])
+        rice_line = int(ids["lines"]["PO Rice Bag"])
+
+        # Indent line qty is 10; generate a PO for only 3.
+        gen = self.client.post(
+            f"/stores/orders/{indent_id}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(supplier_id),
+                f"line_rate_{rice_line}": "50",
+                f"line_qty_{rice_line}": "3",
+                "selectable_supplier": [str(supplier_id)],
+                "selected_supplier": [str(supplier_id)],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(gen.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            po = conn.execute(
+                "SELECT id, po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (indent_id, supplier_id),
+            ).fetchone()
+            self.assertIsNotNone(po)
+            po_id = int(po["id"])
+            po_no = str(po["po_no"])
+
+            # Simulate inward of the full PO qty while indent still has remaining.
+            conn.execute(
+                "UPDATE store_indent_lines SET quantity_received = 3 WHERE id = ?",
+                (rice_line,),
+            )
+            conn.execute(
+                """
+                UPDATE store_purchase_order_lines
+                SET quantity_received = quantity
+                WHERE purchase_order_id = ?
+                """,
+                (po_id,),
+            )
+            conn.commit()
+
+            pending = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", pending_inward=True
+            )
+            self.assertFalse(any(str(row.get("po_no")) == po_no for row in pending))
+
+            po_row = {
+                "po_id": po_id,
+                "id": po_id,
+                "indent_id": indent_id,
+                "supplier_id": supplier_id,
+                "po_no": po_no,
+                "supplier_name": "Test",
+            }
+            _indent, lines = self.stores_mod._build_inward_lines_for_po(
+                conn, po_row, outlet="restaurant"
+            )
+            self.assertEqual(lines, [])
+        finally:
+            conn.close()
+
+        page = self.client.get(
+            f"/stores/purchase-requests?outlet=restaurant&view=approved&po_id={po_id}"
+        )
+        self.assertEqual(page.status_code, 200)
+        self.assertNotIn(po_no.encode(), page.data)
+        self.assertNotIn(b"Purchase Order Items", page.data)
 
 
 if __name__ == "__main__":

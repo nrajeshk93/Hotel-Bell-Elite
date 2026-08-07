@@ -1774,6 +1774,7 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "history_date_column": "Payment date",
         "history_empty": "No credit payments found for the selected filters.",
         "action_button": "Clear Payment",
+        "row_action_button": "Pay",
         "select_modal_title": "Select Credit Items",
         "select_modal_copy": "Choose outstanding credit expenses to combine into payment clearances. Mixed suppliers are recorded as separate payments.",
         "select_table_aria": "Select credit line items",
@@ -1820,6 +1821,7 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "history_date_column": "Verification date",
         "history_empty": "No verified purchases found for the selected filters.",
         "action_button": "Verify",
+        "row_action_button": "Approve",
         "select_modal_title": "Select Items to Verify",
         "select_modal_copy": "Choose pending purchases to verify. Mixed suppliers are recorded as separate verifications.",
         "select_table_aria": "Select purchases to verify",
@@ -7108,6 +7110,8 @@ def cash_ledger():
         clear_kwargs["location"] = selected_location
 
     totals = _cash_ledger_totals(entries)
+    # Chronological order is required for running balance; show newest first in the UI.
+    display_entries = list(reversed(entries))
     return render_template(
         "cash_ledger.html",
         page_title="Cash Ledger",
@@ -7118,7 +7122,7 @@ def cash_ledger():
         date_filter_active=date_filter_active,
         selected_location=selected_location,
         cash_ledger_filter_locations=CASH_LEDGER_FILTER_LOCATIONS,
-        ledger_entries=entries,
+        ledger_entries=display_entries,
         sales_total=totals["sales_total"],
         sales_count=totals["sales_count"],
         load_total=totals["load_total"],
