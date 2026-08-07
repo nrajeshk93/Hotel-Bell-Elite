@@ -14,6 +14,7 @@
     '/accounts/cash-ledger',
     '/master',
     '/stores/indent',
+    '/stores/orders',
     '/point-of-sale',
     '/point-of-sale/invoice',
     '/hotel/rooms',
@@ -876,8 +877,13 @@
         return !!main.querySelector('#report-month-form, #emp-salary-breakdown-table');
       }
 
-      /* Stores */
-      if(path === '/stores/indent') return !!main.querySelector('#st-indent-search, #st-indent-list-count');
+      /* Stores — Indent and Purchase Order share search/count IDs; distinguish by PO marker. */
+      if(path === '/stores/indent' || /^\/stores\/indent\/\d+/.test(path)){
+        return !!main.querySelector('.st-indent-page') && !main.querySelector('[data-st-po-page], .st-po-page');
+      }
+      if(path === '/stores/orders' || path === '/stores/orders/history' || /^\/stores\/orders\/\d+/.test(path)){
+        return !!main.querySelector('[data-st-po-page], .st-po-page');
+      }
       if(path === '/stores/purchase-requests') return !!main.querySelector('#st-inward-page, #st-inward-indent, #st-inward-indent-listbox, #st-inward-direct-lines');
       if(path === '/stores/stock') return !!main.querySelector('#st-stock-search, #st-stock-out-filter');
       if(path === '/stores/stock-audit') return !!main.querySelector('#st-audit-page, #st-audit-queue, #st-audit-search');
