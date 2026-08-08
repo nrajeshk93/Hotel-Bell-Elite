@@ -1117,10 +1117,12 @@ html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room
 #hr-extend-modal .hr-dialog{
   max-width:420px;
 }
-#hr-extend-modal .hr-dialog-head{
+#hr-extend-modal .hr-dialog-head,
+#hr-quick-reserve-modal .hr-dialog-head{
   border-radius:14px 14px 0 0;
 }
-#hr-extend-modal .hr-dialog-foot{
+#hr-extend-modal .hr-dialog-foot,
+#hr-quick-reserve-modal .hr-dialog-foot{
   border-radius:0 0 14px 14px;
 }
 .hr-extend-dates{

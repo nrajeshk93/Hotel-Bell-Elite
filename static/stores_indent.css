@@ -846,7 +846,19 @@ body.su-module .st-btn--primary{
   color:#fff;
   box-shadow:0 8px 20px rgba(37,99,235,.18);
 }
-body.su-module .st-btn--primary:hover{background:#1D4ED8}
+body.su-module .st-btn--primary:hover:not(:disabled){background:#1D4ED8}
+body.su-module .st-btn--primary:disabled,
+body.su-module .st-btn--primary[aria-disabled="true"]{
+  opacity:.45;
+  cursor:not-allowed;
+  transform:none;
+  box-shadow:none;
+  background:#2563EB;
+}
+body.su-module .st-line.is-qty-missing .st-field--qty input{
+  border-color:#F59E0B;
+  box-shadow:0 0 0 3px rgba(245,158,11,.18);
+}
 
 /* List / detail */
 body.su-module .st-detail-table-wrap{overflow:auto;border:1px solid #E8EDF5;border-radius:14px}
@@ -945,9 +957,12 @@ body.su-module .st-list-card .act-btn:disabled{
 body.su-module .st-list-card .act-btn[data-tip]::after{
   content:attr(data-tip);
   position:absolute;
-  top:calc(100% + 8px);
-  left:50%;
-  transform:translateX(-50%);
+  /* Sit above the icon so .st-detail-table-wrap overflow:auto does not clip the tip. */
+  top:auto;
+  bottom:calc(100% + 8px);
+  left:auto;
+  right:0;
+  transform:none;
   background:#1A202C;
   color:#fff;
   font-size:10px;
@@ -958,7 +973,7 @@ body.su-module .st-list-card .act-btn[data-tip]::after{
   pointer-events:none;
   opacity:0;
   visibility:hidden;
-  z-index:30;
+  z-index:40;
   box-shadow:0 4px 12px rgba(15,23,42,.18);
   transition:opacity .12s,visibility .12s;
 }
@@ -1140,10 +1155,12 @@ body.su-module #st-approvals-modal .st-approvals-filter-listbox .se-filter-chip-
 body.su-module #st-approvals-modal .st-approvals-modal-body{
   flex:1 1 auto;
   min-height:0;
-  overflow:auto;
-  display:grid;
+  /* Panels own vertical scroll; body must not clip without a scrollport. */
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
   gap:16px;
-  align-content:start;
+  align-items:stretch;
   padding:16px 18px 8px;
 }
 body.su-module #st-approvals-modal .st-approvals-modal-loading,
@@ -1155,9 +1172,47 @@ body.su-module #st-approvals-modal .st-approvals-modal-error{
   font-weight:600;
 }
 body.su-module #st-approvals-modal .st-approvals-modal-error{color:#B91C1C}
+/* Flex scroll chain: card → body → .pl-table-wrap (cash-ledger pattern). */
 body.su-module #st-approvals-modal .st-panel,
 body.su-module #st-approvals-modal .st-appr-card{
   margin:0;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  overflow:hidden;
+}
+body.su-module #st-approvals-modal .st-appr-card{
+  flex:0 1 auto;
+  max-height:44%;
+}
+body.su-module #st-approvals-modal .st-panel:not(.st-appr-card){
+  flex:1 1 auto;
+}
+body.su-module #st-approvals-modal .st-panel > .card-hdr,
+body.su-module #st-approvals-modal .st-appr-card > .st-appr-head{
+  flex:0 0 auto;
+}
+body.su-module #st-approvals-modal .st-panel > .card-body,
+body.su-module #st-approvals-modal .st-appr-card > .st-appr-body{
+  flex:1 1 auto;
+  min-height:0;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+body.su-module #st-approvals-modal .st-appr-card .st-appr-foot,
+body.su-module #st-approvals-modal .st-appr-card .st-appr-empty{
+  flex:0 0 auto;
+}
+body.su-module #st-approvals-modal .st-panel .pl-table-wrap,
+body.su-module #st-approvals-modal .st-appr-card .pl-table-wrap{
+  flex:1 1 auto;
+  min-height:120px;
+  max-height:none;
+  height:auto;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
 }
 body.su-module #st-approvals-modal .st-reject-modal{
   /* Reject dialog is remounted on #de-fs-app; keep markup inert while nested. */

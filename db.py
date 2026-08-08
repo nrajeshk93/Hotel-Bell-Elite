@@ -10405,6 +10405,24 @@ def update_hotel_room_status(conn, room_id, status, extras=None):
                     stay["checkInDate"] = check_in
                     if check_out:
                         stay["checkOutDate"] = check_out
+                    guest_name = _hotel_str(
+                        extras.get("guestName") or extras.get("guest_name"), 160
+                    )
+                    first_name = _hotel_str(
+                        extras.get("firstName") or extras.get("first_name"), 80
+                    )
+                    last_name = _hotel_str(
+                        extras.get("lastName") or extras.get("last_name"), 80
+                    )
+                    if guest_name:
+                        stay["guestName"] = guest_name
+                        if first_name or last_name:
+                            stay["firstName"] = first_name
+                            stay["lastName"] = last_name
+                        elif not (stay.get("firstName") or stay.get("lastName")):
+                            parts = guest_name.split()
+                            stay["firstName"] = parts[0] if parts else ""
+                            stay["lastName"] = " ".join(parts[1:]) if len(parts) > 1 else ""
                     room["stay"] = _normalize_hotel_room_stay(stay)
             found = True
             break

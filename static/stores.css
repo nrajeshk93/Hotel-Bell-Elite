@@ -838,13 +838,24 @@ body.su-module .st-appr-count{
 body.su-module .st-appr-body{padding:0;min-width:0}
 /* Match Expense Ledger dense scroll panel (sticky header + capped rows). */
 body.su-module .st-appr-table-wrap,
-body.su-module .st-appr-card .pl-table-wrap,
-body.su-module #st-approvals-modal .st-panel .pl-table-wrap{
+body.su-module .st-appr-card .pl-table-wrap{
   margin:0;
   border:0;
   border-radius:0;
   max-width:100%;
   max-height:calc(48px + 8 * 76px);
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  position:relative;
+}
+/* Approvals modal: height comes from the flex chain in stores_indent.css — do not cap here. */
+body.su-module #st-approvals-modal .st-panel .pl-table-wrap,
+body.su-module #st-approvals-modal .st-appr-card .pl-table-wrap{
+  margin:0;
+  border:0;
+  border-radius:0;
+  max-width:100%;
+  max-height:none;
   overflow:auto;
   -webkit-overflow-scrolling:touch;
   position:relative;

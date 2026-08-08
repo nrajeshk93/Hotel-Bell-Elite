@@ -1041,9 +1041,15 @@
 
     if (reservedBtn) {
       reservedBtn.hidden = false;
-      reservedBtn.textContent = 'Reserved';
-      reservedBtn.setAttribute('data-set-status', 'reserved');
-      reservedBtn.classList.toggle('is-current', s === 'reserved');
+      if (s === 'reserved') {
+        reservedBtn.textContent = 'Un Reserved';
+        reservedBtn.setAttribute('data-set-status', 'vacant');
+        reservedBtn.classList.remove('is-current');
+      } else {
+        reservedBtn.textContent = 'Reserve';
+        reservedBtn.setAttribute('data-set-status', 'reserved');
+        reservedBtn.classList.remove('is-current');
+      }
     }
     if (oooBtn) {
       oooBtn.hidden = false;
@@ -1055,17 +1061,18 @@
     if (vacantBtn) {
       vacantBtn.textContent = 'Vacant';
       vacantBtn.setAttribute('data-set-status', 'vacant');
-      vacantBtn.classList.toggle('is-current', s === 'vacant');
-      vacantBtn.hidden = s === 'occupied' || s === 'dirty';
+      vacantBtn.classList.toggle('is-current', false);
+      vacantBtn.hidden = s === 'occupied' || s === 'dirty' || s === 'vacant';
+      if (vacantBtn.hidden) vacantBtn.setAttribute('hidden', '');
+      else vacantBtn.removeAttribute('hidden');
     }
     if (occupiedBtn) {
       occupiedBtn.textContent = 'Occupied';
       occupiedBtn.setAttribute('data-set-status', 'occupied');
       occupiedBtn.classList.toggle('is-current', false);
-      /* Only vacant rooms can be marked Occupied from the menu. */
-      occupiedBtn.hidden = s !== 'vacant';
-      if (occupiedBtn.hidden) occupiedBtn.setAttribute('hidden', '');
-      else occupiedBtn.removeAttribute('hidden');
+      /* Occupied is set via check-in, not the status menu. */
+      occupiedBtn.hidden = true;
+      occupiedBtn.setAttribute('hidden', '');
     }
     if (dirtyBtn) {
       if (s === 'dirty') {

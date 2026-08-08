@@ -678,6 +678,12 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   flex-wrap: wrap;
 }
 
+/* Indent Product Master popup already has close — hide embed back (keep it on Master → Product). */
+#st-product-master-modal .md-master-embed-header .su-page-back,
+#st-product-master-modal .md-master-embed-header .su-header-nav{
+  display:none !important;
+}
+
 #md-master-modal #pos-menu-page .pos-menu-embed-close,
 :is(#md-master-modal, #st-product-master-modal) .md-master-embed-header-actions .pos-menu-embed-close,
 :is(#md-master-modal, #st-product-master-modal) .md-master-embed-header-actions .md-master-modal-close,
@@ -858,12 +864,43 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   color: #2563EB;
 }
 
-:is(#md-master-modal, #st-product-master-modal) .md-master-embed-outlet-chips {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-bottom: 2px;
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-outlet{
+  flex:0 0 auto;
+  width:auto;
+  max-width:none;
+  display:flex;
+  align-items:flex-end;
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-outlet .st-outlet-listbox{
+  width:160px;
+  min-width:140px;
+  max-width:180px;
+  flex:0 0 auto;
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-outlet .se-filter-chip-label{
+  display:block;
+  width:100%;
+  color:#64748B;
+  margin-bottom:8px;
+  font-size:11px;
+  font-weight:700;
+  text-align:left;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  line-height:1;
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-outlet .se-filter-chip-control{
+  min-height:48px;
+  height:48px;
+  border-radius:12px;
+  background:#FFFFFF;
+  border:1px solid #E5E7EB;
+  box-shadow:none;
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-outlet .ep-toolbar-listbox.is-open .se-filter-chip-control,
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed-outlet .se-filter-chip-control:focus-within{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.1);
 }
 
 :is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-list-panel,

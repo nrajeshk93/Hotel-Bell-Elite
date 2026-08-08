@@ -6,14 +6,14 @@
     const pettyToggle = pettyCard.querySelector('.petty-cash-toggle');
     const pettyBody = document.getElementById(`petty-cash-card-body-${outletSlug}`);
     if (!pettyToggle || !pettyBody) return;
-    const storageKey = `sales-petty-cash-collapsed-${outletSlug}`;
+    const storageKey = `sales-petty-cash-collapsed-v2-${outletSlug}`;
     function setPettyCollapsed(collapsed){
       pettyCard.classList.toggle('petty-cash-collapsed', collapsed);
       pettyToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       pettyToggle.title = collapsed ? 'Expand Petty Cash' : 'Collapse Petty Cash';
       localStorage.setItem(storageKey, collapsed ? '1' : '0');
     }
-    setPettyCollapsed(localStorage.getItem(storageKey) === '1');
+    setPettyCollapsed(localStorage.getItem(storageKey) !== '0');
     pettyToggle.addEventListener('click', function(){
       setPettyCollapsed(pettyCard.classList.contains('petty-cash-collapsed') ? false : true);
     });

@@ -195,7 +195,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
         {{ 'Save changes' if editing else 'Draft' }}
       </button>
-      <button type="submit" class="st-btn st-btn--primary" name="action" value="submit">
+      <button type="submit" class="st-btn st-btn--primary" name="action" value="submit" data-st-indent-send disabled aria-disabled="true" title="Enter a quantity for each item before sending for approval.">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
         Send for Approval
       </button>
@@ -222,11 +222,13 @@
         <div class="st-indent-status-tabs">
           <span class="se-filter-chip-label" aria-hidden="true">Status</span>
           <div class="cp-view-tabs st-indent-view-tabs" role="tablist" aria-label="Indent status">
-            {% for view_key, view_label in indent_list_views|default([('pending', 'Pending Approval'), ('approved', 'Approved'), ('rejected', 'Rejected')]) %}
+            {% for view_key, view_label in indent_list_views|default([('draft', 'Draft'), ('pending', 'Pending Approval'), ('approved', 'Approved'), ('rejected', 'Rejected')]) %}
+            {% if view_key != 'draft' or has_draft_indents|default(false) %}
             <a class="cp-view-tab{% if indent_view == view_key %} is-active{% endif %}"
                href="{{ url_for('stores_indent', outlet=selected_outlet, view=view_key) }}"
                role="tab"
                aria-selected="{{ 'true' if indent_view == view_key else 'false' }}">{{ view_label }}</a>
+            {% endif %}
             {% endfor %}
           </div>
         </div>
@@ -264,7 +266,7 @@
           <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
         </span>
         <h2 class="st-card-title">
-          {% if page_key == 'purchase_orders' %}Purchase Order{% elif indent_view == 'approved' %}Approved{% elif indent_view == 'rejected' %}Rejected{% else %}Pending Approval{% endif %}
+          {% if page_key == 'purchase_orders' %}Purchase Order{% elif indent_view == 'draft' %}Draft{% elif indent_view == 'approved' %}Approved{% elif indent_view == 'rejected' %}Rejected{% else %}Pending Approval{% endif %}
           · <span id="st-indent-list-count">{{ indents|length }}</span>
         </h2>
       </div>
@@ -503,7 +505,7 @@
           </article>
         </div>
         <div class="st-indent-view-actions st-indent-edit-actions">
-          <button type="submit" class="st-btn st-btn--primary" name="action" value="save">
+          <button type="submit" class="st-btn st-btn--primary" name="action" value="save" data-st-indent-send disabled aria-disabled="true" title="Enter a quantity for each item before sending for approval.">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
             Send for Approval
           </button>
@@ -651,7 +653,6 @@
     <div class="st-indent-view-head">
       <div class="st-indent-view-title-wrap">
         <h2 class="st-indent-view-title" id="st-approvals-modal-title">Approvals</h2>
-        <p class="st-indent-view-sub">Review waiting indents. Approve to buy, or reject.</p>
       </div>
       <div class="st-approvals-modal-filters" aria-label="Approvals filters">
         <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox st-approvals-filter-listbox" data-se-listbox data-se-listbox-change="stApprovalsOutletChanged" id="st-approvals-outlet-listbox">
@@ -682,6 +683,23 @@
     </div>
     <div class="st-indent-view-actions">
       <button type="button" class="st-btn st-btn--ghost" id="st-approvals-dismiss">Close</button>
+    </div>
+  </div>
+</div>
+
+{# Product Master overlay — opened from Indent header tools. #}
+<div class="modal-backdrop" id="st-product-master-modal" aria-hidden="true">
+  <div class="st-indent-view-box st-product-master-modal-box" role="dialog" aria-modal="true" aria-labelledby="st-product-master-modal-title">
+    <div class="st-indent-view-head st-product-master-modal-head">
+      <div class="st-indent-view-title-wrap">
+        <h2 class="st-indent-view-title" id="st-product-master-modal-title">Product Master</h2>
+        <p class="st-indent-view-sub">Add and manage products for Indent.</p>
+      </div>
+      <button type="button" class="st-indent-view-close" id="st-product-master-close" aria-label="Close">×</button>
+    </div>
+    <div class="st-indent-view-body st-product-master-modal-body" id="st-product-master-modal-body">
+      <div class="st-product-master-modal-loading" id="st-product-master-modal-loading">Loading Product Master…</div>
+      <div class="st-product-master-modal-inject" id="st-product-master-modal-inject" hidden></div>
     </div>
   </div>
 </div>

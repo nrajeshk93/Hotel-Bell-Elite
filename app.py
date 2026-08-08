@@ -209,6 +209,7 @@ SALES_ENTRY_FIELDS = (
     ("card", "Card"),
     ("upi", "UPI"),
     ("room_credit", "Room Transfer"),
+    ("online_order", "Online Order"),
     ("tips", "Tips"),
     ("actual_cash", "Actual Cash"),
 )
@@ -218,6 +219,7 @@ SALES_ENTRY_TOTAL_KEYS = (
     "card",
     "upi",
     "room_credit",
+    "online_order",
 )
 
 MANUAL_SALES_ENTRY_KEYS = ("tips", "actual_cash")
@@ -387,7 +389,7 @@ CREDIT_OUTLET_LOCATIONS = (OUTLET_HOTEL,)
 PURCHASE_LEDGER_FILTER_ALL = "all"
 EXPENSE_PAYMENT_LABELS = dict(EXPENSE_PAYMENT_TYPES)
 
-IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit")
+IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit", "online_order")
 
 
 def round_half_up(value, dec=0):
@@ -8566,6 +8568,19 @@ def save_sales_update():
     })
 
 
+def _pick_report_fallback_date(available_dates, requested):
+    """Choose the report date closest to the page selection when that day has no rows."""
+    parsed_dates = []
+    for item in available_dates or []:
+        try:
+            parsed_dates.append(date.fromisoformat(str(item).strip()))
+        except (TypeError, ValueError):
+            continue
+    if not parsed_dates:
+        return None
+    return min(parsed_dates, key=lambda d: (abs((d - requested).days), -d.toordinal()))
+
+
 @app.route("/sales_update/upload_report", methods=["POST"])
 def upload_sales_report():
     user = get_current_user()
@@ -8573,28 +8588,49 @@ def upload_sales_report():
         return jsonify({"ok": False, "error": "Not authenticated"}), 401
 
     sales_date_str = (request.form.get("date") or date.today().isoformat()).strip()
-    sales_date = _parse_sales_date(sales_date_str)
+    requested_date = _parse_sales_date(sales_date_str)
+    sales_date = requested_date
     active_location = (request.form.get("location") or DEFAULT_LOCATION).strip()
     upload = request.files.get("report_file")
 
     if not upload or not upload.filename:
         return jsonify({"ok": False, "error": "Please choose an Excel report file."}), 400
 
+    file_bytes = upload.read()
+    if not file_bytes:
+        return jsonify({"ok": False, "error": "Please choose an Excel report file."}), 400
+
+    def _parse_for(target_date):
+        return parse_sales_report(io.BytesIO(file_bytes), target_date)
+
     try:
-        parsed = parse_sales_report(upload.stream, sales_date)
+        parsed = _parse_for(sales_date)
     except Exception as exc:
         return jsonify({"ok": False, "error": f"Could not read report: {exc}"}), 400
 
     meta = parsed.get("meta", {})
     imported_rows = int(meta.get("rows_bar") or 0) + int(meta.get("rows_restaurant") or 0)
+    date_adjusted = False
     if imported_rows == 0:
         available = meta.get("available_dates") or []
-        error = f"No sales rows found in the report for {sales_date.isoformat()}."
-        if available:
-            error += f" Report contains data for: {', '.join(available)}."
-        else:
+        fallback = _pick_report_fallback_date(available, requested_date)
+        if fallback is None:
+            error = f"No sales rows found in the report for {requested_date.isoformat()}."
             error += " Check that the file is a Collections report with invoice lines."
-        return jsonify({"ok": False, "error": error, "meta": meta}), 400
+            return jsonify({"ok": False, "error": error, "meta": meta}), 400
+        sales_date = fallback
+        date_adjusted = sales_date != requested_date
+        try:
+            parsed = _parse_for(sales_date)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"Could not read report: {exc}"}), 400
+        meta = parsed.get("meta", {})
+        imported_rows = int(meta.get("rows_bar") or 0) + int(meta.get("rows_restaurant") or 0)
+        if imported_rows == 0:
+            error = f"No sales rows found in the report for {sales_date.isoformat()}."
+            if available:
+                error += f" Report contains data for: {', '.join(available)}."
+            return jsonify({"ok": False, "error": error, "meta": meta}), 400
 
     company = DEFAULT_COMPANY
     results = {}
@@ -8625,14 +8661,24 @@ def upload_sales_report():
         finally:
             conn.close()
 
+    if date_adjusted:
+        message = (
+            f"Report is for {sales_date.isoformat()} — "
+            f"Bar and Restaurant updated for that day (page was on {requested_date.isoformat()})."
+        )
+    else:
+        message = f"Report imported — Bar and Restaurant updated for {sales_date.isoformat()}"
+
     return jsonify({
         "ok": True,
         "date": sales_date.isoformat(),
+        "requested_date": requested_date.isoformat(),
+        "date_adjusted": date_adjusted,
         "bar": results.get("bar", {}),
         "restaurant": results.get("restaurant", {}),
         "active_location": active_location,
         "meta": parsed.get("meta", {}),
-        "message": f"Report imported — Bar and Restaurant updated for {sales_date.isoformat()}",
+        "message": message,
     })
 
 
@@ -9679,8 +9725,8 @@ def sales_update_send_whatsapp_report():
 
 def _supplier_page_render(template, **kwargs):
     kwargs.setdefault("auth_notice", _pop_auth_notice())
-    kwargs.setdefault("de_nav_section", "accounts")
-    kwargs.setdefault("de_nav_accounts_view", "supplier_master")
+    kwargs.setdefault("de_nav_section", "master")
+    kwargs.setdefault("de_nav_master_view", "home")
     return render_template(template, **kwargs)
 
 

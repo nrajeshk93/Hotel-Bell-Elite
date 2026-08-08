@@ -39,7 +39,7 @@ body.su-module .st-po-tabs .cp-view-tab svg{
   stroke-linejoin:round;
 }
 
-/* Toolbar reflows from available width (sidebar open/closed), not viewport alone */
+/* Toolbar reflows from available width (sidebar open/closed / fullscreen), not viewport alone */
 body.su-module .st-po-toolbar{
   container-type:inline-size;
   container-name:st-po-toolbar;
@@ -48,14 +48,21 @@ body.su-module .st-po-toolbar{
   min-width:0;
   overflow:visible;
   box-sizing:border-box;
+  align-items:stretch;
+  justify-content:stretch;
 }
 body.su-module .st-po-toolbar .st-indent-filter-bar{
-  flex-wrap:wrap;
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:flex-end;
+  justify-content:flex-start;
+  gap:12px;
+  width:100%;
   row-gap:12px;
 }
 body.su-module .st-po-toolbar .st-indent-status-tabs,
 body.su-module .st-po-toolbar .st-po-tabs-wrap{
-  flex:1 1 auto;
+  flex:0 1 auto;
   min-width:0;
   max-width:100%;
 }
@@ -68,23 +75,50 @@ body.su-module .st-po-toolbar .st-po-tabs{
 body.su-module .st-po-toolbar .st-indent-filter-bar-end{
   display:flex;
   align-items:flex-end;
+  justify-content:flex-end;
   gap:12px;
-  flex:1 1 280px;
-  flex-wrap:wrap;
+  flex:1 1 auto;
+  flex-wrap:nowrap;
   min-width:0;
   max-width:100%;
   margin-left:auto;
 }
-body.su-module .st-po-toolbar .st-indent-search-chip{
-  flex:1 1 160px;
-  min-width:min(100%,140px);
-  max-width:100%;
+/* Match Search / Indent / Outlet label alignment */
+body.su-module .st-po-toolbar .se-filter-chip-label{
+  display:block;
+  width:100%;
+  margin-bottom:8px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  line-height:1;
+  text-align:left;
+  color:#64748B;
 }
-/* Indent numbers run ~20 chars; allow shrink so Outlet is never clipped */
-body.su-module .st-po-indent-listbox{
+body.su-module .st-po-toolbar .st-indent-search-chip{
   flex:1 1 180px;
-  min-width:min(100%,160px);
-  max-width:280px;
+  min-width:0;
+  max-width:none;
+}
+/* Indent + Outlet share the same chip chrome; keep them equal and left-labelled */
+body.su-module .st-po-toolbar .st-intro-outlet{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  justify-content:flex-end;
+  align-self:flex-end;
+  flex:0 1 200px;
+  width:auto;
+  min-width:0;
+  max-width:240px;
+}
+body.su-module .st-po-indent-listbox,
+body.su-module .st-po-toolbar .st-intro-outlet .st-outlet-listbox{
+  width:100%;
+  min-width:0;
+  max-width:none;
+  flex:1 1 auto;
 }
 body.su-module .st-po-indent-listbox .se-filter-chip-trigger{
   padding-right:48px;
@@ -95,18 +129,12 @@ body.su-module .st-po-indent-listbox .se-filter-chip-value{
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-body.su-module .st-po-toolbar .st-intro-outlet{
-  flex:0 1 auto;
-  min-width:0;
-  max-width:100%;
-}
-body.su-module .st-po-toolbar .st-intro-outlet .st-outlet-listbox{
-  width:min(160px,100%);
-  min-width:120px;
-  max-width:180px;
-}
 
-@container st-po-toolbar (max-width:920px){
+/* Tabs on their own row; filters stay one aligned strip underneath */
+@container st-po-toolbar (max-width:1100px){
+  body.su-module .st-po-toolbar .st-indent-filter-bar{
+    flex-wrap:wrap;
+  }
   body.su-module .st-po-toolbar .st-indent-status-tabs,
   body.su-module .st-po-toolbar .st-po-tabs-wrap{
     flex:1 1 100%;
@@ -117,22 +145,20 @@ body.su-module .st-po-toolbar .st-intro-outlet .st-outlet-listbox{
     justify-content:stretch;
   }
   body.su-module .st-po-toolbar .st-indent-search-chip,
-  body.su-module .st-po-indent-listbox,
   body.su-module .st-po-toolbar .st-intro-outlet{
-    flex:1 1 calc(50% - 6px);
-    max-width:none;
-  }
-  body.su-module .st-po-toolbar .st-intro-outlet .st-outlet-listbox{
-    width:100%;
+    flex:1 1 0;
     max-width:none;
   }
 }
 
 @container st-po-toolbar (max-width:560px){
+  body.su-module .st-po-toolbar .st-indent-filter-bar-end{
+    flex-wrap:wrap;
+  }
   body.su-module .st-po-toolbar .st-indent-search-chip,
-  body.su-module .st-po-indent-listbox,
   body.su-module .st-po-toolbar .st-intro-outlet{
     flex:1 1 100%;
+    max-width:none;
   }
 }
 

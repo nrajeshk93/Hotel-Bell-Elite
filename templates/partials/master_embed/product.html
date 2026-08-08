@@ -4,7 +4,7 @@
     <div class="su-header-top">
       <div class="su-header-left">
         <div class="su-header-nav">
-          <button type="button" class="su-page-back" onclick="if (typeof closeProductMasterModal === 'function') closeProductMasterModal(); else if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back">
+          <button type="button" class="su-page-back" onclick="if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
           </button>
         </div>
@@ -34,11 +34,40 @@
               </button>
             </div>
           </div>
-          <div class="md-master-embed-outlet-chips" role="group" aria-label="Outlet filter">
-            {% for outlet in stores_outlets %}
-            <a class="md-master-embed-pill{% if selected_outlet == outlet.key %} is-active{% endif %}"
-               href="{{ url_for('stores_product_master', outlet=outlet.key, embed=1) }}">{{ outlet.label }}</a>
-            {% endfor %}
+          <div class="st-intro-outlet md-master-embed-outlet">
+            <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-outlet-listbox"
+                 data-se-listbox
+                 data-se-listbox-change="stProductMasterOutletChanged"
+                 data-st-list-endpoint="{{ url_for('stores_product_master') }}"
+                 id="st-pm-outlet-listbox">
+              <span class="se-filter-chip-label" id="st-pm-outlet-label">Outlet</span>
+              <div class="se-filter-chip-control">
+                <span class="se-filter-chip-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
+                </span>
+                <input type="hidden" id="st-pm-outlet" value="{{ selected_outlet }}">
+                <button type="button" class="se-filter-chip-trigger" id="st-pm-outlet-trigger"
+                        aria-haspopup="listbox" aria-expanded="false"
+                        aria-controls="st-pm-outlet-list"
+                        aria-labelledby="st-pm-outlet-label st-pm-outlet-value">
+                  <span class="se-filter-chip-value" id="st-pm-outlet-value">{{ selected_outlet_label }}</span>
+                </button>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+              <div class="se-filter-listbox" id="st-pm-outlet-list" role="listbox" aria-labelledby="st-pm-outlet-label" hidden>
+                {% for outlet in stores_outlets %}
+                <button type="button"
+                        class="se-filter-listbox-option{% if selected_outlet == outlet.key %} is-selected{% endif %}"
+                        role="option"
+                        data-value="{{ outlet.key }}"
+                        data-name="{{ outlet.label|lower }}"
+                        data-label="{{ outlet.label }}"
+                        aria-selected="{{ 'true' if selected_outlet == outlet.key else 'false' }}">{{ outlet.label }}</button>
+                {% endfor %}
+              </div>
+            </div>
           </div>
         </div>
       </div>

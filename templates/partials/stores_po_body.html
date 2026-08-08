@@ -1,7 +1,6 @@
-{# Purchase Order workspace — Generate / Send / Orders / History #}
+{# Purchase Order workspace — Generate / Send / Orders #}
 {% set po_tab = po_tab|default('orders') %}
 {% set po_send = po_send_data|default(none) %}
-{% set history_rows = po_history|default([]) %}
 {% set indent_view = selected_indent_view|default('approved') %}
 {% set pending_indents = pending_inward_indents|default([]) %}
 {# Generate tab only links to indents that still need PO generation — never fall
@@ -46,13 +45,6 @@
              aria-selected="{{ 'true' if po_tab == 'orders' else 'false' }}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 9h8"/><path d="M8 13h6"/></svg>
             Purchase Orders
-          </a>
-          <a class="cp-view-tab{% if po_tab == 'history' %} is-active{% endif %}"
-             href="{{ url_for('stores_orders_history', outlet=selected_outlet) }}"
-             role="tab"
-             aria-selected="{{ 'true' if po_tab == 'history' else 'false' }}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-            History
           </a>
         </div>
       </div>
@@ -356,80 +348,24 @@
     </form>
   </div>
 
-  {% elif po_tab == 'history' %}
-  <article class="st-card st-list-card" aria-label="Purchase Order history">
-    <div class="st-card-head">
-      <div class="st-card-title-wrap">
-        <span class="st-card-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-        </span>
-        <h2 class="st-card-title">History · <span>{{ history_rows|length }}</span></h2>
-      </div>
-    </div>
-    <div class="st-card-body st-list-body">
-      {% if history_rows %}
-      <div class="st-detail-table-wrap">
-        <table class="st-detail-table pl-table" aria-label="PO send history">
-          <thead>
-            <tr>
-              <th scope="col">When</th>
-              <th scope="col">PO No.</th>
-              <th scope="col">Supplier</th>
-              <th scope="col">PDF</th>
-              <th scope="col">Status</th>
-              <th scope="col">Sent by</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in history_rows %}
-            <tr>
-              <td>{{ row.sent_at_display or row.sent_at or '—' }}</td>
-              <td>
-                <div class="st-list-name">{{ row.po_no or row.indent_no or ('#' ~ row.indent_id) }}</div>
-                <div class="st-card-sub">{{ row.outlet_label }}{% if row.po_no and row.indent_no %} · {{ row.indent_no }}{% endif %}</div>
-              </td>
-              <td>
-                <div>{{ row.supplier_name }}</div>
-                {% if row.phone %}<div class="st-card-sub">{{ row.phone }}</div>{% endif %}
-              </td>
-              <td>{{ row.pdf_name or '—' }}</td>
-              <td>
-                <span class="cp-status-pill cp-status-pill--{% if row.status == 'sent' %}approved{% else %}rejected{% endif %}">{{ row.status|upper }}</span>
-                {% if row.error %}<div class="st-card-sub">{{ row.error }}</div>{% endif %}
-              </td>
-              <td>{{ row.sent_by_name or '—' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <div class="st-empty">
-        <strong>No purchase orders sent yet</strong>
-        <p>Open Send to Supplier for an approved indent, then send it.</p>
-      </div>
-      {% endif %}
-    </div>
-  </article>
-
-  {% else %}
-  {# Purchase Orders list — generated PO/{BAR|RES}/… register #}
+  {% elif po_tab == 'send' %}
+  {# Send to Supplier queue — unsent POs still pending inward #}
   {% set purchase_orders = purchase_orders|default([]) %}
-  <article class="st-card st-list-card" aria-label="Purchase Order list">
+  <article class="st-card st-list-card" aria-label="Purchase orders waiting to send">
     <div class="st-card-head">
       <div class="st-card-title-wrap">
         <span class="st-card-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
         </span>
         <h2 class="st-card-title">
-          {% if po_tab == 'send' %}Send to Supplier{% else %}Purchase Order{% endif %} · <span id="st-indent-list-count">{{ purchase_orders|length }}</span>
+          Send to Supplier · <span id="st-indent-list-count">{{ purchase_orders|length }}</span>
         </h2>
       </div>
     </div>
     <div class="st-card-body st-list-body">
       {% if purchase_orders %}
       <div class="st-detail-table-wrap">
-        <table id="st-indent-list-table" class="st-detail-table pl-table" aria-label="Generated purchase orders">
+        <table id="st-indent-list-table" class="st-detail-table pl-table st-po-search-table" aria-label="Purchase orders waiting to send">
           <thead>
             <tr>
               <th class="pl-sortable" data-sort="po" scope="col" tabindex="0" aria-sort="none">PO No.</th>
@@ -469,6 +405,13 @@
               </td>
               <td class="pl-col-actions st-actions">
                 <div class="act-grp">
+                  <a href="{{ url_for('stores_purchase_requests', outlet=po_outlet if po_outlet in ('bar', 'restaurant') else selected_outlet, view='approved', po_id=po.po_id) }}"
+                     class="act-btn edit"
+                     data-tip="Stock Inward"
+                     aria-label="Open stock inward for {{ po.po_no }}">
+                    <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                  </a>
+                  {% if po.can_send %}
                   <button type="button"
                           class="act-btn send st-po-resend-btn"
                           data-tip="Send via WhatsApp"
@@ -480,6 +423,15 @@
                           aria-label="Send purchase order {{ po.po_no }} via WhatsApp">
                     <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                   </button>
+                  {% else %}
+                  <button type="button"
+                          class="act-btn send is-disabled"
+                          data-tip="Add supplier phone to send"
+                          disabled
+                          aria-label="Cannot send {{ po.po_no }} — supplier phone missing">
+                    <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                  </button>
+                  {% endif %}
                   <a href="{{ url_for('stores_orders_pdf', indent_id=po.indent_id, supplier_id=po.supplier_id, po_no=po.po_no) }}"
                      class="act-btn view"
                      data-tip="View PDF"
@@ -507,13 +459,8 @@
       </div>
       {% else %}
       <div class="st-empty">
-        {% if po_tab == 'send' %}
         <strong>No purchase orders waiting to send</strong>
-        <p>Generated purchase orders appear here until they are sent to the supplier or the indent is fully stocked inward.</p>
-        {% else %}
-        <strong>No purchase orders yet</strong>
-        <p>Open Generate PO, assign a supplier, and generate a purchase order — each supplier gets a PO number here.</p>
-        {% endif %}
+        <p>Generated purchase orders appear here until they are sent on WhatsApp or stock inwarded. After either, they move to Purchase Orders.</p>
       </div>
       {% endif %}
     </div>
@@ -522,6 +469,214 @@
   {% if not po_send %}
   <div class="st-po-send-empty-hint card" hidden></div>
   {% endif %}
+
+  {% else %}
+  {# Purchase Orders tab — Pending / Completed stock inward blocks #}
+  {% set purchase_orders_pending = purchase_orders_pending|default([]) %}
+  {% set purchase_orders_completed = purchase_orders_completed|default([]) %}
+
+  <article class="st-card st-list-card" aria-label="Stock Inward pending purchase orders" data-st-po-inward-block="pending">
+    <div class="st-card-head">
+      <div class="st-card-title-wrap">
+        <span class="st-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+        </span>
+        <h2 class="st-card-title">
+          Stock Inward - Pending · <span class="st-po-block-count" data-st-po-block-count="pending">{{ purchase_orders_pending|length }}</span>
+        </h2>
+      </div>
+    </div>
+    <div class="st-card-body st-list-body">
+      {% if purchase_orders_pending %}
+      <div class="st-detail-table-wrap">
+        <table id="st-po-pending-table" class="st-detail-table pl-table st-po-search-table" data-st-po-block="pending" aria-label="Purchase orders pending stock inward">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="po" scope="col" tabindex="0" aria-sort="none">PO No.</th>
+              <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
+              <th class="pl-sortable" data-sort="indent" scope="col" tabindex="0" aria-sort="none">Indent</th>
+              <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+              <th class="pl-sortable" data-sort="created" scope="col" tabindex="0" aria-sort="none">Created</th>
+              <th class="pl-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for po in purchase_orders_pending %}
+            {% set po_outlet = po.outlet or selected_outlet %}
+            <tr data-sort-row
+                data-search="{{ [po.po_no or '', po.supplier_name or '', po.indent_no or '', po.status_label or '', po.outlet_label or '', selected_outlet_label or '']|join(' ')|lower }}">
+              <td data-sort-value="{{ po.po_no }}">
+                <div class="st-list-name">{{ po.po_no }}</div>
+                {% if po.outlet_label %}<div class="st-card-sub">{{ po.outlet_label }}</div>{% endif %}
+              </td>
+              <td data-sort-value="{{ po.supplier_name }}">
+                <div>{{ po.supplier_name }}</div>
+                {% if po.supplier_phone %}<div class="st-card-sub">{{ po.supplier_phone }}</div>{% endif %}
+              </td>
+              <td data-sort-value="{{ po.indent_no }}">
+                <div>{{ po.indent_no or ('#' ~ po.indent_id) }}</div>
+              </td>
+              <td data-sort-value="{{ po.status_label }}">
+                <span class="cp-status-pill cp-status-pill--{% if po.status == 'sent' %}approved{% elif po.status == 'failed' %}rejected{% else %}pending{% endif %}">
+                  {{ po.status_label }}
+                </span>
+                {% if po.last_sent_at_display and po.status in ('sent', 'failed') %}
+                <div class="st-card-sub">{{ po.last_sent_at_display }}</div>
+                {% endif %}
+              </td>
+              <td data-sort-value="{{ po.created_at or '' }}">
+                {{ po.created_at_display or '—' }}
+              </td>
+              <td class="pl-col-actions st-actions">
+                <div class="act-grp">
+                  <a href="{{ url_for('stores_purchase_requests', outlet=po_outlet if po_outlet in ('bar', 'restaurant') else selected_outlet, view='approved', po_id=po.po_id) }}"
+                     class="act-btn edit"
+                     data-tip="Stock Inward"
+                     aria-label="Open stock inward for {{ po.po_no }}">
+                    <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                  </a>
+                  {% if po.can_send %}
+                  <button type="button"
+                          class="act-btn send st-po-resend-btn"
+                          data-tip="Send via WhatsApp"
+                          data-st-po-resend
+                          data-send-url="{{ url_for('stores_orders_send_wa', indent_id=po.indent_id) }}"
+                          data-supplier-id="{{ po.supplier_id }}"
+                          data-supplier-name="{{ po.supplier_name or '' }}"
+                          data-po-no="{{ po.po_no or '' }}"
+                          aria-label="Send purchase order {{ po.po_no }} via WhatsApp">
+                    <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                  </button>
+                  {% else %}
+                  <button type="button"
+                          class="act-btn send is-disabled"
+                          data-tip="Add supplier phone to send"
+                          disabled
+                          aria-label="Cannot send {{ po.po_no }} — supplier phone missing">
+                    <svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                  </button>
+                  {% endif %}
+                  <a href="{{ url_for('stores_orders_pdf', indent_id=po.indent_id, supplier_id=po.supplier_id, po_no=po.po_no) }}"
+                     class="act-btn view"
+                     data-tip="View PDF"
+                     data-st-po-pdf
+                     data-de-no-soft-nav
+                     data-po-title="{{ po.po_no }}"
+                     aria-label="View PDF for {{ po.po_no }}">
+                    <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </a>
+                  <a href="{{ url_for('stores_orders_pdf', indent_id=po.indent_id, supplier_id=po.supplier_id, po_no=po.po_no) }}"
+                     class="act-btn download" data-tip="Download PDF" download
+                     aria-label="Download PDF for {{ po.po_no }}">
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="pl-empty st-po-search-empty" data-st-po-search-empty="pending" hidden>
+        <strong>No matching purchase orders</strong>
+        <p>Try a different search term.</p>
+      </div>
+      {% else %}
+      <div class="st-empty">
+        <strong>No POs pending stock inward</strong>
+        <p>Generated purchase orders with remaining quantity to receive will show here.</p>
+      </div>
+      {% endif %}
+    </div>
+  </article>
+
+  <article class="st-card st-list-card" aria-label="Stock Inward completed purchase orders" data-st-po-inward-block="completed">
+    <div class="st-card-head">
+      <div class="st-card-title-wrap">
+        <span class="st-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </span>
+        <h2 class="st-card-title">
+          Stock Inward - Completed · <span class="st-po-block-count" data-st-po-block-count="completed">{{ purchase_orders_completed|length }}</span>
+        </h2>
+      </div>
+    </div>
+    <div class="st-card-body st-list-body">
+      {% if purchase_orders_completed %}
+      <div class="st-detail-table-wrap">
+        <table id="st-po-completed-table" class="st-detail-table pl-table st-po-search-table" data-st-po-block="completed" aria-label="Purchase orders with completed stock inward">
+          <thead>
+            <tr>
+              <th class="pl-sortable" data-sort="po" scope="col" tabindex="0" aria-sort="none">PO No.</th>
+              <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
+              <th class="pl-sortable" data-sort="indent" scope="col" tabindex="0" aria-sort="none">Indent</th>
+              <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+              <th class="pl-sortable" data-sort="created" scope="col" tabindex="0" aria-sort="none">Created</th>
+              <th class="pl-col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for po in purchase_orders_completed %}
+            {% set po_outlet = po.outlet or selected_outlet %}
+            <tr data-sort-row
+                data-search="{{ [po.po_no or '', po.supplier_name or '', po.indent_no or '', po.status_label or '', po.outlet_label or '', selected_outlet_label or '']|join(' ')|lower }}">
+              <td data-sort-value="{{ po.po_no }}">
+                <div class="st-list-name">{{ po.po_no }}</div>
+                {% if po.outlet_label %}<div class="st-card-sub">{{ po.outlet_label }}</div>{% endif %}
+              </td>
+              <td data-sort-value="{{ po.supplier_name }}">
+                <div>{{ po.supplier_name }}</div>
+                {% if po.supplier_phone %}<div class="st-card-sub">{{ po.supplier_phone }}</div>{% endif %}
+              </td>
+              <td data-sort-value="{{ po.indent_no }}">
+                <div>{{ po.indent_no or ('#' ~ po.indent_id) }}</div>
+              </td>
+              <td data-sort-value="{{ po.status_label }}">
+                <span class="cp-status-pill cp-status-pill--{% if po.status == 'sent' %}approved{% elif po.status == 'failed' %}rejected{% else %}pending{% endif %}">
+                  {{ po.status_label }}
+                </span>
+                {% if po.last_sent_at_display and po.status in ('sent', 'failed') %}
+                <div class="st-card-sub">{{ po.last_sent_at_display }}</div>
+                {% endif %}
+              </td>
+              <td data-sort-value="{{ po.created_at or '' }}">
+                {{ po.created_at_display or '—' }}
+              </td>
+              <td class="pl-col-actions st-actions">
+                <div class="act-grp">
+                  <a href="{{ url_for('stores_orders_pdf', indent_id=po.indent_id, supplier_id=po.supplier_id, po_no=po.po_no) }}"
+                     class="act-btn view"
+                     data-tip="View PDF"
+                     data-st-po-pdf
+                     data-de-no-soft-nav
+                     data-po-title="{{ po.po_no }}"
+                     aria-label="View PDF for {{ po.po_no }}">
+                    <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </a>
+                  <a href="{{ url_for('stores_orders_pdf', indent_id=po.indent_id, supplier_id=po.supplier_id, po_no=po.po_no) }}"
+                     class="act-btn download" data-tip="Download PDF" download
+                     aria-label="Download PDF for {{ po.po_no }}">
+                    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="pl-empty st-po-search-empty" data-st-po-search-empty="completed" hidden>
+        <strong>No matching purchase orders</strong>
+        <p>Try a different search term.</p>
+      </div>
+      {% else %}
+      <div class="st-empty">
+        <strong>No completed stock inward POs</strong>
+        <p>Purchase orders that are fully received will show here.</p>
+      </div>
+      {% endif %}
+    </div>
+  </article>
   {% endif %}
 
   {# Reuse indent view modal data for View action on the list tab #}

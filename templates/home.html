@@ -87,33 +87,8 @@
       </div>
     </header>
 
+    {# Card order matches left sidebar: Accounts → … → User & Access → Settings #}
     <div class="db-home-grid" id="dashboard-grid" role="list" aria-label="Applications">
-      {% if has_dashboard_access('sales_analytics') %}
-      <a class="db-home-card db-home-card--indigo" role="listitem" href="{{ url_for('dashboard') }}" data-search="sales analytics dashboard hotel bar restaurant room transfer sales update" aria-label="Open Sales Analytics">
-        <div class="db-home-card-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
-        </div>
-        <h2>Sales Analytics</h2>
-        <div class="db-home-card-foot">
-          <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
-        </div>
-        <p class="db-home-card-desc">Sales updates, room transfers, and analytics for Hotel Bell Elite.</p>
-      </a>
-      {% endif %}
-
-      {% if has_dashboard_access('access_management') %}
-      <a class="db-home-card db-home-card--cyan" role="listitem" href="{{ url_for('access_management') }}" data-search="users access management permissions roles admin accounts" aria-label="Open User and Access">
-        <div class="db-home-card-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 2.5-5 6-5s6 2 6 5"/><path d="M18 8h3"/><path d="M19.5 6.5v3"/></svg>
-        </div>
-        <h2>User &amp; Access</h2>
-        <div class="db-home-card-foot">
-          <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
-        </div>
-        <p class="db-home-card-desc">Manage user accounts, roles, and module permissions.</p>
-      </a>
-      {% endif %}
-
       {% if has_dashboard_access('accounts') %}
       <a class="db-home-card db-home-card--emerald" role="listitem" href="{{ url_for('purchase_ledger') }}" data-search="accounts ledger payments finance accounting purchase" aria-label="Open Accounts">
         <div class="db-home-card-icon" aria-hidden="true">
@@ -124,6 +99,19 @@
           <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         </div>
         <p class="db-home-card-desc">Ledger, payments, and financial records.</p>
+      </a>
+      {% endif %}
+
+      {% if has_dashboard_access('sales_analytics') %}
+      <a class="db-home-card db-home-card--indigo" role="listitem" href="{{ url_for('dashboard') }}" data-search="sales analytics dashboard hotel bar restaurant room transfer sales update" aria-label="Open Sales Analytics">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 15 3-3 3 2 5-7"/></svg>
+        </div>
+        <h2>Sales Analytics</h2>
+        <div class="db-home-card-foot">
+          <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
+        </div>
+        <p class="db-home-card-desc">Sales updates, room transfers, and analytics for Hotel Bell Elite.</p>
       </a>
       {% endif %}
 
@@ -193,7 +181,7 @@
       {% endif %}
 
       {% if has_dashboard_access('stores') %}
-      <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('stores') }}" data-search="procurement inventory purchase stores stock warehouse materials indent bar restaurant" aria-label="Open Purchase & Inventory">
+      <a class="db-home-card db-home-card--blue" role="listitem" href="{{ url_for('stores_indent') }}" data-search="procurement inventory purchase stores stock warehouse materials indent bar restaurant" aria-label="Open Purchase & Inventory">
         <div class="db-home-card-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h18l-1.5 11h-15L3 9z"/><path d="M3 9l2-6h14l2 6"/><path d="M10 13h4v7h-4z"/></svg>
         </div>
@@ -228,6 +216,19 @@
           <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
         </div>
         <p class="db-home-card-desc">View and download reports across all modules.</p>
+      </a>
+      {% endif %}
+
+      {% if has_dashboard_access('access_management') %}
+      <a class="db-home-card db-home-card--cyan" role="listitem" href="{{ url_for('access_management') }}" data-search="users access management permissions roles admin accounts" aria-label="Open User and Access">
+        <div class="db-home-card-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 19c0-3 2.5-5 6-5s6 2 6 5"/><path d="M18 8h3"/><path d="M19.5 6.5v3"/></svg>
+        </div>
+        <h2>User &amp; Access</h2>
+        <div class="db-home-card-foot">
+          <span class="db-home-card-arrow" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 5 7 7-7 7"/></svg></span>
+        </div>
+        <p class="db-home-card-desc">Manage user accounts, roles, and module permissions.</p>
       </a>
       {% endif %}
 

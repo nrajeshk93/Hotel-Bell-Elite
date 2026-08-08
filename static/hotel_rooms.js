@@ -893,21 +893,29 @@
         /* Dirty rooms: offer Cleaned (→ vacant) instead of Dirty / Vacant. */
         if (status === 'dirty' && key === 'vacant') return '';
         if (status === 'occupied' && (key === 'occupied' || key === 'vacant')) return '';
-        /* Occupied is only offered from Vacant — already-occupied is redundant. */
-        if (key === 'occupied' && status !== 'vacant') return '';
+        /* Already vacant — redundant to show Vacant as a status action. */
+        if (key === 'vacant' && status === 'vacant') return '';
+        /* Occupied is set via check-in, not the status menu. */
+        if (key === 'occupied') return '';
         if (key === 'dirty' && status === 'dirty') {
           return (
             '<button type="button" class="hotel-room-menu-item" role="menuitem" data-room-action="vacant">Cleaned</button>'
           );
         }
+        if (key === 'reserved' && status === 'reserved') {
+          return (
+            '<button type="button" class="hotel-room-menu-item" role="menuitem" data-room-action="vacant">Un Reserved</button>'
+          );
+        }
         var selected = key === status ? ' is-current' : '';
+        var label = key === 'reserved' ? 'Reserve' : STATUS_LABELS[key];
         return (
           '<button type="button" class="hotel-room-menu-item' +
           selected +
           '" role="menuitem" data-room-action="' +
           key +
           '">' +
-          escapeHtml(STATUS_LABELS[key]) +
+          escapeHtml(label) +
           '</button>'
         );
       }).filter(Boolean)
@@ -3130,6 +3138,10 @@
   function handleRoomMenuAction(page, tile, action) {
     var roomId = tile && tile.getAttribute('data-id');
     if (!roomId || !action) return;
+    if (action === 'reserved') {
+      openQuickReserveModal(roomId);
+      return;
+    }
     if (STATUS_KEYS.indexOf(action) !== -1) {
       setRoomStatus(page, roomId, action);
       return;
@@ -3192,7 +3204,7 @@
     }
   }
 
-  function setRoomStatus(root, roomId, nextStatus) {
+  function setRoomStatus(root, roomId, nextStatus, opts) {
     if (!roomId || !nextStatus) return;
     resolveApi();
     var status = mapStatus(nextStatus);
@@ -3210,9 +3222,19 @@
     var body = { roomId: roomId, status: status };
     if (status === 'reserved') {
       var asOf = dateFilterValue(root);
-      body.checkInDate = asOf;
-      body.checkOutDate = addDaysISO(asOf, 1);
+      var checkIn =
+        (opts && opts.checkInDate && toDateISO(opts.checkInDate)) || asOf;
+      var checkOut =
+        (opts && opts.checkOutDate && toDateISO(opts.checkOutDate)) ||
+        addDaysISO(checkIn, 1);
+      body.checkInDate = checkIn;
+      body.checkOutDate = checkOut;
       body.asOf = asOf;
+      if (opts && opts.guestName) {
+        body.guestName = opts.guestName;
+        if (opts.firstName) body.firstName = opts.firstName;
+        if (opts.lastName) body.lastName = opts.lastName;
+      }
     }
     fetch(ROOMS_API, {
       method: 'PUT',
@@ -3235,6 +3257,159 @@
       .catch(function (err) {
         showToast(err.message || 'Failed to update room.', true);
       });
+  }
+
+  function syncQuickReserveNightsLabel() {
+    var nightsEl = document.getElementById('hr-quick-reserve-nights');
+    var fromInput = document.getElementById('hr-quick-reserve-from');
+    var toInput = document.getElementById('hr-quick-reserve-to');
+    if (!nightsEl) return;
+    var from = toDateISO(fromInput && fromInput.value);
+    var to = toDateISO(toInput && toInput.value);
+    var nights = nightsBetweenISO(from, to);
+    nightsEl.textContent = nights + (nights === 1 ? ' night' : ' nights');
+  }
+
+  function syncQuickReserveToMinDate() {
+    var fromInput = document.getElementById('hr-quick-reserve-from');
+    var toInput = document.getElementById('hr-quick-reserve-to');
+    if (!fromInput || !toInput) return;
+    var from = toDateISO(fromInput.value);
+    if (!from) return;
+    var minTo = addDaysISO(from, 1);
+    toInput.setAttribute('min', minTo);
+    var to = toDateISO(toInput.value);
+    if (!to || to <= from) {
+      if (typeof global.setHotelDateValue === 'function') {
+        global.setHotelDateValue(toInput, minTo);
+      } else {
+        toInput.value = minTo;
+      }
+      if (typeof global.syncHotelDateChip === 'function') {
+        global.syncHotelDateChip(toInput);
+      }
+    }
+    syncQuickReserveNightsLabel();
+  }
+
+  function closeQuickReserveModal() {
+    var modal = document.getElementById('hr-quick-reserve-modal');
+    if (!modal) return;
+    if (typeof global.closeHotelDatePickers === 'function') {
+      global.closeHotelDatePickers();
+    }
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('hr-quick-reserve-open');
+  }
+
+  function openQuickReserveModal(roomId) {
+    var page = document.getElementById('hotel-rooms-page');
+    var modal = document.getElementById('hr-quick-reserve-modal');
+    var form = document.getElementById('hr-quick-reserve-form');
+    var roomIdInput = document.getElementById('hr-quick-reserve-room-id');
+    var guestInput = document.getElementById('hr-quick-reserve-guest-name');
+    var titleEl = document.getElementById('hr-quick-reserve-title');
+    var fromInput = document.getElementById('hr-quick-reserve-from');
+    var toInput = document.getElementById('hr-quick-reserve-to');
+    if (!modal || !form || !fromInput || !toInput) {
+      showToast('Reserve form unavailable.', true);
+      return;
+    }
+    var room = findRoomInLayout(roomId);
+    if (!room) {
+      showToast('Room not found.', true);
+      return;
+    }
+    var current = mapStatus(room.status);
+    if (current === 'occupied') {
+      showToast('Occupied rooms cannot be reserved from the board.', true);
+      return;
+    }
+    var fromDate = dateFilterValue(page) || todayISO();
+    var today = todayISO();
+    if (fromDate < today) fromDate = today;
+    var toDate = addDaysISO(fromDate, 1);
+    if (roomIdInput) roomIdInput.value = room.id || roomId;
+    if (titleEl) {
+      titleEl.textContent = room.number
+        ? 'Reserve Room ' + room.number
+        : 'Reserve Room';
+    }
+    if (guestInput) {
+      guestInput.value = guestDisplayName(room.stay) || '';
+    }
+    if (typeof global.setHotelDateValue === 'function') {
+      global.setHotelDateValue(fromInput, fromDate);
+      global.setHotelDateValue(toInput, toDate);
+    } else {
+      fromInput.value = fromDate;
+      toInput.value = toDate;
+    }
+    if (typeof global.initHotelDatePickers === 'function') {
+      global.initHotelDatePickers(modal);
+    }
+    if (typeof global.syncHotelDateChip === 'function') {
+      global.syncHotelDateChip(fromInput);
+      global.syncHotelDateChip(toInput);
+    }
+    syncQuickReserveToMinDate();
+    if (form.getAttribute('data-hr-quick-reserve-dates-bound') !== '1') {
+      form.setAttribute('data-hr-quick-reserve-dates-bound', '1');
+      fromInput.addEventListener('change', syncQuickReserveToMinDate);
+      toInput.addEventListener('change', syncQuickReserveNightsLabel);
+    }
+    modal.hidden = false;
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('hr-quick-reserve-open');
+    setTimeout(function () {
+      try {
+        if (guestInput && typeof guestInput.focus === 'function') guestInput.focus();
+      } catch (err) {}
+    }, 40);
+  }
+
+  function submitQuickReserveForm() {
+    var page = document.getElementById('hotel-rooms-page');
+    var roomId = (document.getElementById('hr-quick-reserve-room-id') || {}).value || '';
+    var guestInput = document.getElementById('hr-quick-reserve-guest-name');
+    var fromInput = document.getElementById('hr-quick-reserve-from');
+    var toInput = document.getElementById('hr-quick-reserve-to');
+    var guestRaw = guestInput ? String(guestInput.value || '').trim() : '';
+    var checkInDate = toDateISO(fromInput && fromInput.value);
+    var checkOutDate = toDateISO(toInput && toInput.value);
+    if (!roomId) {
+      showToast('Room is missing.', true);
+      return;
+    }
+    if (!guestRaw) {
+      showToast('Guest name is required.', true);
+      if (guestInput) guestInput.focus();
+      return;
+    }
+    if (!checkInDate) {
+      showToast('From date is required.', true);
+      return;
+    }
+    if (!checkOutDate) checkOutDate = addDaysISO(checkInDate, 1);
+    if (checkOutDate <= checkInDate) {
+      showToast('To date must be after the From date.', true);
+      return;
+    }
+    var names = splitGuestName(guestRaw);
+    var saveBtn = document.getElementById('hr-quick-reserve-save');
+    if (saveBtn) saveBtn.disabled = true;
+    closeQuickReserveModal();
+    setRoomStatus(page, roomId, 'reserved', {
+      checkInDate: checkInDate,
+      checkOutDate: checkOutDate,
+      guestName: names.guestName,
+      firstName: names.firstName,
+      lastName: names.lastName
+    });
+    if (saveBtn) saveBtn.disabled = false;
   }
 
   function bindEvents(root) {
@@ -3424,6 +3599,15 @@
       });
     }
 
+    var quickReserveForm = document.getElementById('hr-quick-reserve-form');
+    if (quickReserveForm && quickReserveForm.getAttribute('data-hr-quick-reserve-bound') !== '1') {
+      quickReserveForm.setAttribute('data-hr-quick-reserve-bound', '1');
+      quickReserveForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        submitQuickReserveForm();
+      });
+    }
+
     var boardReserveForm = document.getElementById('hr-board-reserve-form');
     if (boardReserveForm && boardReserveForm.getAttribute('data-hr-board-reserve-bound') !== '1') {
       boardReserveForm.setAttribute('data-hr-board-reserve-bound', '1');
@@ -3498,6 +3682,12 @@
       closeExtendModal();
       return;
     }
+    var quickReserveClose = event.target.closest('[data-hr-quick-reserve-close]');
+    if (quickReserveClose) {
+      event.preventDefault();
+      closeQuickReserveModal();
+      return;
+    }
     var boardReserveClose = event.target.closest('[data-hr-board-reserve-close]');
     if (boardReserveClose) {
       event.preventDefault();
@@ -3528,6 +3718,11 @@
     var extendModal = document.getElementById('hr-extend-modal');
     if (extendModal && !extendModal.hidden && event.target === extendModal) {
       closeExtendModal();
+      return;
+    }
+    var quickReserveModal = document.getElementById('hr-quick-reserve-modal');
+    if (quickReserveModal && !quickReserveModal.hidden && event.target === quickReserveModal) {
+      closeQuickReserveModal();
       return;
     }
     var boardReserveModal = document.getElementById('hr-board-reserve-modal');
@@ -3578,6 +3773,14 @@
         global.closeHotelDatePickers();
       }
       closeExtendModal();
+      return;
+    }
+    var quickReserveModal = document.getElementById('hr-quick-reserve-modal');
+    if (quickReserveModal && !quickReserveModal.hidden) {
+      if (typeof global.closeHotelDatePickers === 'function') {
+        global.closeHotelDatePickers();
+      }
+      closeQuickReserveModal();
       return;
     }
     var mergeModal = document.getElementById('hr-merge-modal');

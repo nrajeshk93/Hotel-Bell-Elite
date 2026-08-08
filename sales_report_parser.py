@@ -11,7 +11,7 @@ import openpyxl
 OUTLET_BAR = "Bar"
 OUTLET_RESTAURANT = "Restaurant"
 
-PAYMENT_FIELDS = ("cash", "card", "upi", "room_credit")
+PAYMENT_FIELDS = ("cash", "card", "upi", "room_credit", "online_order")
 
 
 def parse_amount(value) -> float:
@@ -63,6 +63,16 @@ def classify_outlet(invoice_number: str) -> str | None:
     return None
 
 
+def classify_outlet_from_username(value: str) -> str | None:
+    """Map Collections column K (Username) values BAR / RESTAURANT to outlet."""
+    text = (value or "").strip().upper()
+    if text == "BAR":
+        return OUTLET_BAR
+    if text == "RESTAURANT":
+        return OUTLET_RESTAURANT
+    return None
+
+
 def map_payment_mode(pay_mode: str) -> str | None:
     mode = (pay_mode or "").strip()
     if not mode or mode.lower() == "grand total":
@@ -83,6 +93,9 @@ def map_ledger(ledger: str) -> str | None:
     text = (ledger or "").strip()
     if not text:
         return None
+    lowered = text.lower()
+    if "swiggy" in lowered or "zomato" in lowered:
+        return "online_order"
     if text == "Cash":
         return "cash"
     if text.startswith("Room Credit"):
@@ -150,6 +163,7 @@ def empty_outlet_totals() -> dict[str, float]:
         "card": 0.0,
         "upi": 0.0,
         "room_credit": 0.0,
+        "online_order": 0.0,
     }
 
 
@@ -219,8 +233,9 @@ def parse_collections_report(file_stream: BinaryIO, sales_date: date) -> dict:
     Parse Report - Collections Excel export.
 
     Column B = Invoice # (INV = Bar, SPC = Restaurant)
-    Column G = Ledger (payment mode)
+    Column G = Ledger (payment mode; Swiggy/Zomato → online_order)
     Column H = Amount
+    Column K = Username (BAR / RESTAURANT) — preferred outlet for online orders
     """
     wb = openpyxl.load_workbook(file_stream, read_only=True, data_only=True)
     try:
@@ -233,6 +248,7 @@ def parse_collections_report(file_stream: BinaryIO, sales_date: date) -> dict:
             "rows_bar": 0,
             "rows_restaurant": 0,
             "rows_room_transfer": 0,
+            "rows_online_order": 0,
             "skipped": 0,
             "sales_date": sales_date.isoformat(),
             "sheet": ws.title,
@@ -251,13 +267,18 @@ def parse_collections_report(file_stream: BinaryIO, sales_date: date) -> dict:
                 meta["skipped"] += 1
                 continue
 
-            outlet = classify_outlet(str(row[1] or ""))
-            if outlet is None:
+            pay_field = map_ledger(str(row[6] or ""))
+            if pay_field is None:
                 meta["skipped"] += 1
                 continue
 
-            pay_field = map_ledger(str(row[6] or ""))
-            if pay_field is None:
+            invoice_outlet = classify_outlet(str(row[1] or ""))
+            if pay_field == "online_order":
+                username = str(row[10] or "").strip() if len(row) > 10 else ""
+                outlet = classify_outlet_from_username(username) or invoice_outlet
+            else:
+                outlet = invoice_outlet
+            if outlet is None:
                 meta["skipped"] += 1
                 continue
 
@@ -270,6 +291,9 @@ def parse_collections_report(file_stream: BinaryIO, sales_date: date) -> dict:
                 meta["rows_bar"] += 1
             else:
                 meta["rows_restaurant"] += 1
+
+            if pay_field == "online_order":
+                meta["rows_online_order"] += 1
 
             if pay_field == "room_credit":
                 room_sort_order += 1

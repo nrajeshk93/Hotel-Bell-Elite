@@ -581,6 +581,19 @@
     } catch(e){}
   }
 
+  /** Drop every soft-nav prefetch whose pathname matches (with or without trailing slash). */
+  function invalidatePrefetchByPath(pathname){
+    try{
+      var want = String(pathname || '').replace(/\/$/, '') || '/';
+      Array.from(prefetchCache.keys()).forEach(function(key){
+        var path = String(key || '').split('?')[0].replace(/\/$/, '') || '/';
+        if(path === want || path.indexOf(want + '/') === 0){
+          prefetchCache.delete(key);
+        }
+      });
+    } catch(e){}
+  }
+
   /** Fetch URL for soft-nav: same page, but only .de-main-wrapper from the server. */
   function withPartialMain(url){
     try{
@@ -691,6 +704,20 @@
           prefetchCache.delete(key);
           return null;
         }
+        /* Indent / inward forms embed Product Master packs — stale prefetch
+           leaves Pack stuck on "Base unit" after variants are edited. */
+        if(path === '/stores/indent' || path === '/stores/inward'){
+          try{
+            var focus = new URL(url, window.location.href).searchParams.get('focus') || '';
+            if(focus === 'form' || path === '/stores/inward'){
+              prefetchCache.delete(key);
+              return null;
+            }
+          } catch(eFocus){
+            prefetchCache.delete(key);
+            return null;
+          }
+        }
         /* Generate PO mutates line suppliers then soft-reloads — never paint a
            cached pre-save page that looks like the pick did not stick. */
         if(/^\/stores\/orders\/\d+/.test(path)){
@@ -714,6 +741,14 @@
           var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
           if(path === '/communication-hub'){
             return null;
+          }
+          if(path === '/stores/indent' || path === '/stores/inward'){
+            try{
+              var focusPending = new URL(url, window.location.href).searchParams.get('focus') || '';
+              if(focusPending === 'form' || path === '/stores/inward') return null;
+            } catch(eFocusPending){
+              return null;
+            }
           }
           if(/^\/stores\/orders\/\d+/.test(path)){
             return null;
@@ -2351,6 +2386,7 @@
     softNavigate(url, hideSoftNavProgress);
   };
   window.deInvalidateSoftNavCache = invalidatePrefetch;
+  window.deInvalidateSoftNavCacheByPath = invalidatePrefetchByPath;
   window.deWorkspaceReinit = function(){
     initDeSidebarPageTransitions();
     if(typeof window.initSuFilterListboxes === 'function'){

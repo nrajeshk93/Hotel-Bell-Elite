@@ -64,9 +64,6 @@
         {% if has_accounts_access('credit_payment') %}
         <a class="de-nav-subitem{% if accounts_view == 'credit_payment' %} is-active{% endif %}" id="de-nav-credit-payment" href="{{ url_for('credit_payment') }}"{% if accounts_view == 'credit_payment' %} aria-current="page"{% endif %}>Credit Payment</a>
         {% endif %}
-        {% if has_accounts_access('supplier_master') %}
-        <a class="de-nav-subitem{% if accounts_view == 'supplier_master' %} is-active{% endif %}" id="de-nav-supplier-master" href="{{ url_for('supplier_master') }}"{% if accounts_view == 'supplier_master' %} aria-current="page"{% endif %}>Supplier Master</a>
-        {% endif %}
       </div>
     </div>
     {% endif %}

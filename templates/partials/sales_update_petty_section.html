@@ -3,7 +3,7 @@
   {% for outlet in selected_locations %}
   {% set outlet_record = outlet_records[outlet] %}
   {% set outlet_slug = outlet|lower|replace(' ', '-') %}
-  <article class="card se-panel se-petty-outlet-panel" id="petty-cash-card-{{ outlet_slug }}" data-petty-outlet="{{ outlet }}">
+  <article class="card se-panel se-petty-outlet-panel petty-cash-collapsed" id="petty-cash-card-{{ outlet_slug }}" data-petty-outlet="{{ outlet }}">
     <div class="card-hdr petty-cash-hdr">
       <div class="petty-cash-hdr-left">
         <div class="petty-cash-title-icon" aria-hidden="true">
@@ -21,7 +21,7 @@
           </span>
           <div class="save-state petty-save-state{% if loop.first %} ok{% endif %}"{% if loop.first %} id="petty-save-state"{% endif %}>Saved for {{ selected_date }}</div>
         </div>
-        <button type="button" class="petty-cash-toggle" aria-expanded="true" aria-controls="petty-cash-card-body-{{ outlet_slug }}" title="Collapse Petty Cash" data-petty-toggle="{{ outlet_slug }}">
+        <button type="button" class="petty-cash-toggle" aria-expanded="false" aria-controls="petty-cash-card-body-{{ outlet_slug }}" title="Expand Petty Cash" data-petty-toggle="{{ outlet_slug }}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         </button>
       </div>

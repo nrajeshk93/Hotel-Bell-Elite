@@ -48,6 +48,38 @@
     }
   };
 
+  /* Product Master embed (Indent popup / Masters modal) — keep outlet changes inside the embed. */
+  window.stProductMasterOutletChanged = function (root, value) {
+    if (!root || !value) return;
+    var endpoint = root.getAttribute('data-st-list-endpoint') || '/stores/product-master';
+    var next = '';
+    try {
+      var url = new URL(endpoint, window.location.origin);
+      url.searchParams.set('outlet', value);
+      url.searchParams.set('embed', '1');
+      next = url.pathname + url.search + url.hash;
+    } catch (err) {
+      next = endpoint + (endpoint.indexOf('?') >= 0 ? '&' : '?') +
+        'outlet=' + encodeURIComponent(value) + '&embed=1';
+    }
+    var indentPm = document.getElementById('st-product-master-modal');
+    if (indentPm && indentPm.classList.contains('open')) {
+      loadProductMasterModal(true, next);
+      return;
+    }
+    var masterModal = document.getElementById('md-master-modal');
+    var masterInject = document.getElementById('md-master-modal-inject');
+    if (masterModal && masterModal.classList.contains('open') && masterInject) {
+      var link = document.createElement('a');
+      link.setAttribute('href', next);
+      masterInject.appendChild(link);
+      link.click();
+      if (link.parentNode) link.parentNode.removeChild(link);
+      return;
+    }
+    stSoftNavigate(next);
+  };
+
   function setUnitListbox(line, unit) {
     if (!line || !unit) return;
     var unitRoot = line.querySelector('[data-st-unit-listbox]');
@@ -115,6 +147,60 @@
     if (!line) return false;
     var hidden = line.querySelector('input[name="item_name"]');
     return !!(hidden && String(hidden.value || '').trim());
+  }
+
+  function lineHasValidQty(line) {
+    if (!line) return false;
+    var qtyEl = line.querySelector('input[name="quantity"]');
+    var qty = qtyEl ? parseFloat(qtyEl.value) : NaN;
+    return isFinite(qty) && qty > 0;
+  }
+
+  function indentFormCanSendForApproval(form) {
+    if (!form) return false;
+    var lines = form.querySelectorAll('.st-line');
+    var productCount = 0;
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (!lineHasProduct(line)) continue;
+      productCount += 1;
+      if (!lineHasValidQty(line)) return false;
+    }
+    return productCount > 0;
+  }
+
+  function syncIndentSendButtons(scope) {
+    var forms = [];
+    if (scope) {
+      var form = (scope.id === 'st-indent-form' || scope.id === 'st-indent-edit-form')
+        ? scope
+        : (scope.closest && scope.closest('#st-indent-form, #st-indent-edit-form'));
+      if (form) forms.push(form);
+    } else {
+      var mainForm = document.getElementById('st-indent-form');
+      var editForm = document.getElementById('st-indent-edit-form');
+      if (mainForm) forms.push(mainForm);
+      if (editForm) forms.push(editForm);
+    }
+    forms.forEach(function (form) {
+      var canSend = indentFormCanSendForApproval(form);
+      form.querySelectorAll('[data-st-indent-send]').forEach(function (btn) {
+        btn.disabled = !canSend;
+        btn.setAttribute('aria-disabled', canSend ? 'false' : 'true');
+        if (!canSend) {
+          btn.title = 'Enter a quantity for each item before sending for approval.';
+        } else {
+          btn.removeAttribute('title');
+        }
+      });
+      form.querySelectorAll('.st-line').forEach(function (line) {
+        var qtyEl = line.querySelector('input[name="quantity"]');
+        if (!qtyEl) return;
+        var needsQty = lineHasProduct(line);
+        qtyEl.setAttribute('aria-required', needsQty ? 'true' : 'false');
+        line.classList.toggle('is-qty-missing', needsQty && !lineHasValidQty(line));
+      });
+    });
   }
 
   function syncUnitVisibility(line) {
@@ -230,6 +316,9 @@
         }
       }
     } catch (err) { /* ignore */ }
+    try {
+      syncIndentSendButtons(root);
+    } catch (err2) { /* ignore */ }
   }
 
   window.stProductPicked = function (root) {
@@ -244,6 +333,7 @@
     syncPackOptions(line, selected, '');
     syncUnitVisibility(line);
     syncIndentLineTotals(line.closest('.st-lines-wrap'));
+    syncIndentSendButtons(line.closest('form') || line.closest('.st-lines-wrap'));
 
     if (!lineHasProduct(line)) return;
     var list = line.closest('.st-lines');
@@ -290,8 +380,9 @@
     }
   }
 
-  function syncPackOptions(line, productOption, preferredLabel) {
+  function syncPackOptions(line, productOption, preferredLabel, opts) {
     if (!line) return;
+    opts = opts || {};
     var variants = parseVariantsAttr(productOption && productOption.getAttribute('data-variants'));
     var packRoot = line.querySelector('[data-st-pack-listbox]');
     var optionsWrap = packRoot && packRoot.querySelector('[data-st-pack-options]');
@@ -326,7 +417,7 @@
       });
       if (!hasPreferred) choose = '';
     }
-    if (!choose && variants.length) {
+    if (!choose && variants.length && !opts.keepBaseWhenEmpty) {
       // Default to first pack when product has variants.
       choose = String(variants[0].label || '');
     }
@@ -652,11 +743,110 @@
     );
   }
 
+  var productMasterCatalogDirty = false;
+
+  function invalidateStoresProductCatalogCaches() {
+    try {
+      if (typeof window.deInvalidateSoftNavCacheByPath === 'function') {
+        window.deInvalidateSoftNavCacheByPath('/stores/indent');
+        window.deInvalidateSoftNavCacheByPath('/stores/inward');
+        window.deInvalidateSoftNavCacheByPath('/stores/orders');
+      }
+    } catch (err) { /* ignore */ }
+  }
+
+  function buildProductCatalogRefreshUrl() {
+    var outlet = '';
+    try {
+      var outletHidden = document.querySelector('#st-outlet-listbox input[type="hidden"]')
+        || document.querySelector('.st-outlet-listbox input[type="hidden"]');
+      if (outletHidden) outlet = String(outletHidden.value || '').trim();
+    } catch (err) { /* ignore */ }
+    if (!outlet) {
+      try { outlet = new URL(window.location.href).searchParams.get('outlet') || ''; } catch (e2) {}
+    }
+    if (!outlet || outlet === 'both') return '';
+    try {
+      var cur = new URL(window.location.href);
+      if (cur.pathname.indexOf('/stores/') === 0) {
+        cur.searchParams.set('outlet', outlet);
+        if (document.getElementById('st-indent-form')) cur.searchParams.set('focus', 'form');
+        cur.searchParams.delete('partial');
+        return cur.pathname + cur.search;
+      }
+    } catch (e3) { /* ignore */ }
+    return '/stores/indent?outlet=' + encodeURIComponent(outlet) + '&focus=form';
+  }
+
+  function applyFreshProductOptions(srcHtml, dest) {
+    if (!dest || !srcHtml) return;
+    var selected = dest.querySelector('.is-selected');
+    var selVal = selected ? (selected.getAttribute('data-value') || '') : '';
+    dest.innerHTML = srcHtml;
+    dest.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
+      var on = !!selVal && (opt.getAttribute('data-value') || '') === selVal;
+      opt.classList.toggle('is-selected', on);
+      opt.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function refreshStoresProductPickers() {
+    var url = buildProductCatalogRefreshUrl();
+    if (!url) return;
+    invalidateStoresProductCatalogCaches();
+    var fetchUrl = url;
+    try {
+      var parsed = new URL(url, window.location.origin);
+      parsed.searchParams.set('partial', 'main');
+      fetchUrl = parsed.pathname + parsed.search;
+    } catch (err) {
+      fetchUrl = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'partial=main';
+    }
+    fetch(fetchUrl, {
+      credentials: 'same-origin',
+      headers: { Accept: 'text/html', 'X-De-Partial': 'main' },
+      cache: 'no-store'
+    }).then(function (response) {
+      if (!response.ok) throw new Error('catalog refresh failed');
+      return response.text();
+    }).then(function (html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var src = doc.querySelector('.st-product-listbox .ep-listbox-options');
+      if (!src) return;
+      var srcHtml = src.innerHTML;
+      document.querySelectorAll('.st-product-listbox .ep-listbox-options').forEach(function (dest) {
+        // Skip Product Master / other embeds that are not indent/inward lines.
+        if (dest.closest('#st-product-master-modal, #md-master-modal')) return;
+        applyFreshProductOptions(srcHtml, dest);
+      });
+      document.querySelectorAll('template').forEach(function (tpl) {
+        applyFreshProductOptions(
+          srcHtml,
+          tpl.content.querySelector('.st-product-listbox .ep-listbox-options')
+        );
+      });
+      document.querySelectorAll('.st-line').forEach(function (line) {
+        if (line.closest('#st-product-master-modal, #md-master-modal')) return;
+        var productSelected = line.querySelector('.st-product-listbox .se-filter-listbox-option.is-selected');
+        if (!productSelected) return;
+        var packLabel = line.querySelector('[data-st-pack-label]');
+        var preferred = packLabel ? String(packLabel.value || '') : '';
+        syncPackOptions(line, productSelected, preferred, { keepBaseWhenEmpty: true });
+        syncUnitVisibility(line);
+      });
+    }).catch(function () { /* ignore */ });
+  }
+  window.refreshStoresProductPickers = refreshStoresProductPickers;
+
   function closeProductMasterModal() {
     var modal = document.getElementById('st-product-master-modal');
     if (!modal) return;
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
+    if (productMasterCatalogDirty) {
+      productMasterCatalogDirty = false;
+      refreshStoresProductPickers();
+    }
   }
   window.closeProductMasterModal = closeProductMasterModal;
 
@@ -831,6 +1021,7 @@
       return response.text();
     }).then(function (html) {
       paintProductMasterModal(html);
+      productMasterCatalogDirty = true;
       var modalBody = document.getElementById('st-product-master-modal-body');
       if (modalBody) modalBody.setAttribute('data-st-loaded', productMasterOpenUrl());
     }).catch(function () {
@@ -1675,6 +1866,7 @@
     ) {
       var wrap = target.closest('.st-lines-wrap');
       if (wrap) syncIndentLineTotals(wrap);
+      else syncIndentSendButtons(target.closest('form'));
     }
   }
 
@@ -4107,25 +4299,48 @@
     searchInput.setAttribute('data-st-search-bound', '1');
     var searchChip = searchInput.closest('.st-indent-search-chip');
     var countEl = document.getElementById('st-indent-list-count');
-    var table = document.getElementById('st-indent-list-table');
-    var tableWrap = table && table.closest('.st-detail-table-wrap');
+    var poPage = document.querySelector('[data-st-po-page]');
+    var tables = Array.from(document.querySelectorAll('.st-po-search-table'));
+    if (!tables.length) {
+      var single = document.getElementById('st-indent-list-table');
+      if (single) tables = [single];
+    }
     var emptyEl = document.getElementById('st-indent-search-empty');
 
     function applyIndentSearch() {
       var needle = String(searchInput.value || '').trim().toLowerCase();
       if (searchChip) searchChip.classList.toggle('is-active', !!needle);
-      if (!table) return;
-      var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
-      var visible = 0;
-      rows.forEach(function (row) {
-        var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
-        row.hidden = !match;
-        if (match) visible += 1;
+      if (!tables.length) return;
+      var totalVisible = 0;
+      tables.forEach(function (table) {
+        var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
+        var visible = 0;
+        rows.forEach(function (row) {
+          var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
+          var match = !needle || hay.indexOf(needle) !== -1;
+          row.hidden = !match;
+          if (match) visible += 1;
+        });
+        totalVisible += visible;
+        var block = table.getAttribute('data-st-po-block') || '';
+        var blockCount = block
+          ? document.querySelector('[data-st-po-block-count="' + block + '"]')
+          : null;
+        if (blockCount) blockCount.textContent = String(visible);
+        else if (countEl && tables.length === 1) countEl.textContent = String(visible);
+        var tableWrap = table.closest('.st-detail-table-wrap');
+        var blockEmpty = block
+          ? document.querySelector('[data-st-po-search-empty="' + block + '"]')
+          : emptyEl;
+        if (blockEmpty) blockEmpty.hidden = !(needle && visible === 0);
+        if (tableWrap) tableWrap.hidden = !!(needle && visible === 0 && rows.length);
       });
-      if (countEl) countEl.textContent = String(visible);
-      if (emptyEl) emptyEl.hidden = !(needle && visible === 0);
-      if (tableWrap) tableWrap.hidden = !!(needle && visible === 0);
+      if (countEl && tables.length === 1 && !poPage) {
+        countEl.textContent = String(totalVisible);
+      }
+      if (emptyEl && tables.length === 1) {
+        emptyEl.hidden = !(needle && totalVisible === 0);
+      }
     }
 
     searchInput.addEventListener('input', applyIndentSearch);
@@ -4353,6 +4568,7 @@
     initStockSearch();
     if (typeof window.initStockAudit === 'function') window.initStockAudit();
     syncIndentLineTotals(document.getElementById('st-indent-form'));
+    syncIndentSendButtons();
     document.querySelectorAll('.st-line.has-packs').forEach(function (line) {
       syncUnitForPack(line);
     });

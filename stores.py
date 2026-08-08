@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import re
 import sqlite3
 import uuid
@@ -59,12 +60,14 @@ STATUS_LABELS = {
 }
 
 INDENT_LIST_VIEWS = (
+    ("draft", "Draft"),
     ("pending", "Pending Approval"),
     ("approved", "Approved"),
     ("rejected", "Rejected"),
 )
 INDENT_LIST_VIEW_STATUSES = {
-    "pending": ("draft", "pending"),
+    "draft": ("draft",),
+    "pending": ("pending",),
     "approved": ("approved",),
     "rejected": ("rejected",),
 }
@@ -76,6 +79,30 @@ def _parse_indent_list_view(raw: str | None) -> str:
     if key in INDENT_LIST_VIEW_STATUSES:
         return key
     return "pending"
+
+
+def _has_draft_indents(conn, outlet: str) -> bool:
+    """True when at least one draft exists for the current outlet filter."""
+    if outlet == "both":
+        row = conn.execute(
+            """
+            SELECT 1 AS ok
+            FROM store_indents
+            WHERE outlet IN ('bar', 'restaurant') AND status = 'draft'
+            LIMIT 1
+            """
+        ).fetchone()
+    else:
+        row = conn.execute(
+            """
+            SELECT 1 AS ok
+            FROM store_indents
+            WHERE outlet = ? AND status = 'draft'
+            LIMIT 1
+            """,
+            (outlet,),
+        ).fetchone()
+    return bool(row)
 
 
 PAGE_META = {
@@ -107,7 +134,7 @@ PAGE_META = {
     },
     "approvals": {
         "title": "Approvals",
-        "subtitle": "Review waiting indents. Approve to buy, or reject.",
+        "subtitle": "",
         "step": "2 · Approvals",
         "list_endpoint": "stores_approvals",
         "cta": None,
@@ -570,6 +597,24 @@ def _parse_lines_from_form(form) -> list[dict[str, Any]]:
             "pack_qty_in_base": pack_qty_in_base,
         })
     return lines
+
+
+def _indent_form_missing_quantities(form) -> list[str]:
+    """Product rows that were added without a qty > 0 (would be dropped by parse)."""
+    names = form.getlist("item_name")
+    qtys = form.getlist("quantity")
+    missing: list[str] = []
+    for idx, name in enumerate(names):
+        item_name = (name or "").strip()
+        if not item_name:
+            continue
+        try:
+            qty = float(qtys[idx] if idx < len(qtys) else 0)
+        except (TypeError, ValueError, IndexError):
+            qty = 0
+        if qty <= 0:
+            missing.append(item_name)
+    return missing
 
 
 def _row_pack_qty_in_base(row: Any) -> float | None:
@@ -2471,6 +2516,8 @@ def _page_render(page_key: str, **kwargs):
             # Create forms need a concrete outlet — only carry Bar/Restaurant.
             if outlet in OUTLET_KEYS:
                 args["outlet"] = outlet
+            elif page_key == "indent":
+                args["outlet"] = "restaurant"
         else:
             args["outlet"] = outlet
         cta_url = url_for(meta["cta_endpoint"], **args)
@@ -2480,6 +2527,16 @@ def _page_render(page_key: str, **kwargs):
     indent_form_unset = bool(kwargs.pop("indent_form_unset", False))
     selected_outlet = "" if indent_form_unset else outlet
     selected_outlet_label = "Select outlet" if indent_form_unset else _outlet_label(outlet)
+    show_form = bool(kwargs.get("show_form"))
+    page_title = kwargs.pop("page_title", None) or meta["title"]
+    if page_key == "indent" and show_form and not kwargs.get("editing") and not kwargs.get("detail"):
+        page_title = "Create Indent"
+        list_outlet = outlet if outlet in ("bar", "restaurant", "both") else "both"
+        kwargs.setdefault(
+            "back_href",
+            url_for("stores_indent", outlet=list_outlet),
+        )
+        kwargs.setdefault("back_label", "Back to Indent")
     if page_key == "purchase_requests":
         kwargs.setdefault(
             "back_href",
@@ -2496,7 +2553,7 @@ def _page_render(page_key: str, **kwargs):
         selected_outlet_label=selected_outlet_label,
         indent_form_unset=indent_form_unset,
         page_key=page_key,
-        page_title=meta["title"],
+        page_title=page_title,
         page_subtitle=meta["subtitle"],
         page_list_endpoint=meta["list_endpoint"],
         page_cta=meta.get("cta"),
@@ -3067,6 +3124,14 @@ def stores_indent():
         request.args.get("focus") == "form"
         or request.method == "POST"
     )
+    # New Indent with All / no outlet → default the form to Restaurant.
+    if (
+        request.method == "GET"
+        and focus
+        and not edit_id
+        and outlet == "both"
+    ):
+        return redirect(url_for("stores_indent", outlet="restaurant", focus="form"))
     open_edit_id = 0
     errors: list[str] = []
     form = {
@@ -3137,7 +3202,10 @@ def stores_indent():
                 else:
                     write_outlet = _parse_outlet(existing["outlet"])
                     outlet = write_outlet
-            if not lines:
+            missing_qty = _indent_form_missing_quantities(request.form)
+            if missing_qty:
+                errors.append("Enter a quantity greater than 0 for each item.")
+            elif not lines:
                 errors.append("Add at least one item with a quantity.")
             else:
                 missing_price = [
@@ -3275,7 +3343,7 @@ def stores_indent():
                         url_for(
                             "stores_indent",
                             outlet=dup_indent["outlet"] or write_outlet,
-                            view="pending" if dup_indent["status"] == "pending" else list_view,
+                            view="pending" if dup_indent["status"] == "pending" else "draft",
                         )
                     )
 
@@ -3313,7 +3381,11 @@ def stores_indent():
                         url_for(
                             "stores_indent",
                             outlet=(dup_indent["outlet"] if dup_indent else write_outlet),
-                            view="pending" if (dup_indent and dup_indent["status"] == "pending") else list_view,
+                            view=(
+                                "pending"
+                                if (dup_indent and dup_indent["status"] == "pending")
+                                else "draft"
+                            ),
                         )
                     )
                 new_id = cur.lastrowid
@@ -3347,7 +3419,7 @@ def stores_indent():
                     url_for(
                         "stores_indent",
                         outlet=write_outlet,
-                        view="pending" if status == "pending" else list_view,
+                        view="pending" if status == "pending" else "draft",
                     )
                 )
 
@@ -3370,9 +3442,14 @@ def stores_indent():
                 return redirect(url_for("stores_indent", outlet=row["outlet"]))
             outlet = _parse_outlet(row["outlet"])
             open_edit_id = edit_id
-            list_view = "rejected" if row["status"] == "rejected" else "pending"
+            if row["status"] == "rejected":
+                list_view = "rejected"
+            elif row["status"] == "draft":
+                list_view = "draft"
+            else:
+                list_view = "pending"
 
-        # Create form: no default outlet — user must pick Bar or Restaurant.
+        # Create form GET with All redirects to Restaurant; this only remains for odd POSTs.
         indent_form_unset = bool(
             ((focus and not open_edit_id) or request.method == "POST")
             and outlet == "both"
@@ -3382,6 +3459,16 @@ def stores_indent():
             catalog = []
         else:
             catalog = _load_product_catalog(conn, stores_outlet=outlet)
+        has_draft_indents = _has_draft_indents(conn, outlet)
+        showing_create_form = bool((focus and not open_edit_id) or errors)
+        if (
+            list_view == "draft"
+            and not has_draft_indents
+            and not open_edit_id
+            and not showing_create_form
+            and request.method == "GET"
+        ):
+            return redirect(url_for("stores_indent", outlet=outlet, view="pending"))
         status_keys = INDENT_LIST_VIEW_STATUSES[list_view]
         status_placeholders = ",".join("?" for _ in status_keys)
         stores_ledger_data = {
@@ -3458,6 +3545,7 @@ def stores_indent():
         editing=bool(form.get("indent_id")),
         indent_list_views=INDENT_LIST_VIEWS,
         selected_indent_view=list_view,
+        has_draft_indents=has_draft_indents,
         de_nav_stores_view="indent",
     )
 
@@ -4210,6 +4298,91 @@ def _commit_po_group_quantities(conn, indent_id: int, lines: list[dict[str, Any]
     conn.commit()
 
 
+def _po_line_qty_label(line: dict[str, Any]) -> str:
+    qty = line.get("quantity") or 0
+    try:
+        qty_num = float(qty)
+        return str(int(qty_num)) if abs(qty_num - round(qty_num)) < 0.0001 else f"{qty_num:g}"
+    except (TypeError, ValueError):
+        return str(qty)
+
+
+def _po_line_name_and_pack(line: dict[str, Any]) -> tuple[str, str]:
+    """Base item name + pack size (avoid duplicating pack in the name)."""
+    name = str(line.get("item_name") or "").strip()
+    pack = str(line.get("pack_label") or "").strip()
+    if not pack:
+        pack = str(line.get("unit") or line.get("display_unit") or "").strip()
+    if not name:
+        display = str(line.get("display_name") or "Item").strip() or "Item"
+        if " — " in display:
+            left, right = display.split(" — ", 1)
+            name = left.strip() or "Item"
+            if not pack:
+                pack = right.strip()
+        else:
+            name = display
+    return name, pack or "—"
+
+
+def _po_line_bullet(line: dict[str, Any]) -> str:
+    """Compact one-line summary (Meta template params / overflow)."""
+    name, pack = _po_line_name_and_pack(line)
+    qty_label = _po_line_qty_label(line)
+    return f"{name} ({pack}) × {qty_label}"
+
+
+def _po_items_body(lines: list[dict[str, Any]], *, for_template: bool = False) -> str:
+    """Format PO lines for WhatsApp text or template {{3}}.
+
+    Free-form / interactive messages use a numbered Item / Pack / Qty block.
+    Meta template body parameters cannot contain newlines, so the template
+    form stays a compact single-line list.
+    """
+    rows = list(lines or [])
+    if for_template:
+        bullets = [_po_line_bullet(line) for line in rows] or ["(no items)"]
+        text = " | ".join(bullets)
+        if rows:
+            text = f"{text} · Total Items : {len(rows)}"
+        return text
+
+    rule = "----------------------------------------------------"
+    if not rows:
+        return (
+            f"Items\n{rule}\n(no items)\n{rule}\n\nTotal Items : 0"
+        )
+
+    item_blocks: list[str] = []
+    for idx, line in enumerate(rows, start=1):
+        name, pack = _po_line_name_and_pack(line)
+        qty_label = _po_line_qty_label(line)
+        item_blocks.append(
+            f"{idx}. Item Name : {name}\n"
+            f"   Pack Size : {pack}\n"
+            f"   Quantity  : {qty_label}"
+        )
+    return (
+        f"Items\n{rule}\n"
+        + "\n\n".join(item_blocks)
+        + f"\n{rule}\n\nTotal Items : {len(rows)}"
+    )
+
+
+def _po_template_item_slots() -> int:
+    """Extra body vars after name+PO for one-product-per-line templates.
+
+    Set ``WHATSAPP_PO_TEMPLATE_ITEM_SLOTS`` (e.g. 10) when the Meta template
+    has {{3}}…{{N+2}} each on its own line. ``0`` = single {{3}} blob (legacy).
+    """
+    raw = (os.environ.get("WHATSAPP_PO_TEMPLATE_ITEM_SLOTS") or "0").strip()
+    try:
+        slots = int(raw)
+    except (TypeError, ValueError):
+        slots = 0
+    return max(0, min(slots, 20))
+
+
 def _po_default_message(
     supplier_name: str,
     lines: list[dict[str, Any]],
@@ -4217,31 +4390,61 @@ def _po_default_message(
     po_no: str = "",
 ) -> str:
     name = (supplier_name or "Supplier").strip() or "Supplier"
-    bullets = []
-    for line in lines:
-        qty = line.get("quantity") or 0
-        try:
-            qty_num = float(qty)
-            qty_label = str(int(qty_num)) if abs(qty_num - round(qty_num)) < 0.0001 else f"{qty_num:g}"
-        except (TypeError, ValueError):
-            qty_label = str(qty)
-        unit = _po_line_display_unit(line)
-        item = line.get("display_name") or line.get("item_name") or "Item"
-        bullets.append(f"• {item} — {qty_label} {unit}".rstrip())
-    body = "\n".join(bullets) if bullets else "• (no items)"
+    body = _po_items_body(lines, for_template=False)
     reference = (po_no or "").strip() or (indent_no or "").strip()
     return (
-        f"Hello {name},\n"
-        f"Please find our purchase order {reference} as below.\n\n"
+        f"Hello {name},\n\n"
+        f"Please find our Purchase Order *{reference}* as below:\n\n"
         f"{body}\n\n"
-        f"Please confirm:\n"
-        f"✓ Availability\n"
-        f"✓ Price\n"
-        f"✓ Expected delivery date\n\n"
+        f"Kindly confirm the availability and expected delivery time.\n\n"
         f"Thank you,\n"
-        f"— Hotel Bell Elite\n"
-        f"({reference})"
+        f"*Hotel Bell Elite*"
     )
+
+
+def _po_whatsapp_template_params(
+    supplier_name: str,
+    po_no: str,
+    lines: list[dict[str, Any]],
+) -> list[str]:
+    """Body vars for the PO Meta template.
+
+    Legacy (slots=0): {{1}} name, {{2}} PO, {{3}} items (one line).
+    Multi-line (slots=N): {{1}} name, {{2}} PO, {{3}}…{{N+2}} one product each
+    (empty slots use a zero-width space so Meta accepts the parameter).
+    """
+    name = (supplier_name or "Supplier").strip() or "Supplier"
+    reference = (po_no or "").strip() or "PO"
+    slots = _po_template_item_slots()
+    bullets = [_po_line_bullet(line) for line in (lines or [])]
+    if not bullets:
+        bullets = ["• (no items)"]
+
+    if slots <= 0:
+        items = " ".join(bullets)
+        if len(items) > 1000:
+            items = items[:997].rstrip() + "…"
+        return [name, reference, items]
+
+    # One product per template variable; overflow summarised in the last slot.
+    empty = "\u200b"  # Meta rejects blank parameters
+    values = [name, reference]
+    if len(bullets) <= slots:
+        for i in range(slots):
+            values.append(bullets[i] if i < len(bullets) else empty)
+    else:
+        keep = slots - 1
+        for i in range(keep):
+            values.append(bullets[i])
+        rest = len(bullets) - keep
+        values.append(f"…and {rest} more (see PDF)")
+    return values
+
+
+def _po_template_config() -> tuple[str, str]:
+    name = (os.environ.get("WHATSAPP_PO_TEMPLATE") or "").strip()
+    lang = (os.environ.get("WHATSAPP_PO_TEMPLATE_LANGUAGE") or "en").strip() or "en"
+    return name, lang
 
 
 def _po_is_outside_session_error(err: str) -> bool:
@@ -4651,17 +4854,26 @@ def _load_po_send_history(conn, *, limit: int = 100) -> list[dict[str, Any]]:
 
 
 def _load_generated_purchase_orders(
-    conn, outlet: str, *, limit: int = 200, send_queue: bool = False, pending_inward: bool = False
+    conn, outlet: str, *, limit: int = 200, send_queue: bool = False,
+    pending_inward: bool = False, completed_inward: bool = False,
 ) -> list[dict[str, Any]]:
     """Issued PO numbers, newest first.
 
     When ``send_queue`` is True (Send to Supplier tab), only return POs that are
-    not successfully sent, still have stock-inward remaining on the indent, and
-    have sendable lines (frozen PO lines or a current supplier assignment).
+    still waiting to be WhatsApp'd: not successfully sent, still have remaining
+    qty to stock inward on this PO, and have never been stock-inwarded yet.
+    A PO that has been stock inwarded (any qty received) is treated like sent
+    and leaves this queue. Each row includes ``can_send`` (supplier phone present).
+    Missing phone does not remove the PO — Stock Inward remains available.
 
-    When ``pending_inward`` is True (Stock Inward PO picker), only return POs
-    that still have at least one line with remaining qty to receive.
+    When ``pending_inward`` is True (Stock Inward PO picker / Pending block),
+    only return POs that still have at least one line with remaining qty to receive.
+
+    When ``completed_inward`` is True, return POs with no remaining inward qty
+    (inverse of the pending_inward predicate).
     """
+    if pending_inward and completed_inward:
+        raise ValueError("pending_inward and completed_inward are mutually exclusive")
     outlet_sql, outlet_params = _outlet_match_sql("i.outlet", outlet)
     # Prefer matching by po_no; fall back to indent×supplier for legacy send rows.
     send_match = """
@@ -4682,9 +4894,7 @@ def _load_generated_purchase_orders(
                          )
                        )
                      )
-                   ORDER BY
-                     CASE WHEN s.po_no = po.po_no THEN 0 ELSE 1 END,
-                     s.sent_at DESC, s.id DESC
+                   ORDER BY s.sent_at DESC, s.id DESC
                    LIMIT 1
                ) AS last_send_status,
                (
@@ -4704,21 +4914,46 @@ def _load_generated_purchase_orders(
                          )
                        )
                      )
-                   ORDER BY
-                     CASE WHEN s.po_no = po.po_no THEN 0 ELSE 1 END,
-                     s.sent_at DESC, s.id DESC
+                   ORDER BY s.sent_at DESC, s.id DESC
                    LIMIT 1
                ) AS last_sent_at
     """
+    # Shared remaining-inward predicate (frozen PO lines or legacy supplier assignment).
+    pending_inward_predicate = """
+            (
+              EXISTS (
+                SELECT 1
+                FROM store_purchase_order_lines pol
+                JOIN store_indent_lines l
+                  ON l.id = pol.line_id AND l.indent_id = po.indent_id
+                WHERE pol.purchase_order_id = po.id
+                  AND COALESCE(pol.quantity, 0) - COALESCE(pol.quantity_received, 0) > 0.0001
+                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+              )
+              OR (
+                NOT EXISTS (
+                  SELECT 1 FROM store_purchase_order_lines pol
+                  WHERE pol.purchase_order_id = po.id
+                )
+                AND EXISTS (
+                  SELECT 1
+                  FROM store_po_lines pl
+                  JOIN store_indent_lines l
+                    ON l.id = pl.line_id AND l.indent_id = po.indent_id
+                  WHERE pl.indent_id = po.indent_id
+                    AND pl.supplier_id = po.supplier_id
+                    AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
+                )
+              )
+            )
+    """
     queue_sql = ""
     if send_queue:
-        queue_sql = """
+        # Waiting to WhatsApp: still receivable on this PO, never WhatsApp-sent,
+        # and not yet stock-inwarded (any receipt counts as "done" for send).
+        queue_sql = f"""
           AND i.status = 'approved'
-          AND EXISTS (
-            SELECT 1 FROM store_indent_lines l
-            WHERE l.indent_id = i.id
-              AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
-          )
+          AND {pending_inward_predicate}
           AND COALESCE((
                    SELECT s.status
                    FROM store_po_sends s
@@ -4736,11 +4971,27 @@ def _load_generated_purchase_orders(
                          )
                        )
                      )
-                   ORDER BY
-                     CASE WHEN s.po_no = po.po_no THEN 0 ELSE 1 END,
-                     s.sent_at DESC, s.id DESC
+                   ORDER BY s.sent_at DESC, s.id DESC
                    LIMIT 1
                ), '') != 'sent'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM store_purchase_order_lines pol
+            WHERE pol.purchase_order_id = po.id
+              AND COALESCE(pol.quantity_received, 0) > 0.0001
+          )
+        """
+    elif pending_inward:
+        # Match _build_inward_lines_for_po: remaining on this PO's lines only
+        # (PO qty − PO received), also requiring indent remaining.
+        queue_sql = f"""
+          AND i.status = 'approved'
+          AND {pending_inward_predicate}
+        """
+    elif completed_inward:
+        queue_sql = f"""
+          AND i.status = 'approved'
+          AND NOT {pending_inward_predicate}
           AND (
             EXISTS (
               SELECT 1 FROM store_purchase_order_lines pol
@@ -4750,38 +5001,6 @@ def _load_generated_purchase_orders(
               SELECT 1 FROM store_po_lines pl
               WHERE pl.indent_id = po.indent_id
                 AND pl.supplier_id = po.supplier_id
-            )
-          )
-        """
-    elif pending_inward:
-        # Match _build_inward_lines_for_po: remaining on this PO's lines only
-        # (PO qty − PO received), also requiring indent remaining.
-        queue_sql = """
-          AND i.status = 'approved'
-          AND (
-            EXISTS (
-              SELECT 1
-              FROM store_purchase_order_lines pol
-              JOIN store_indent_lines l
-                ON l.id = pol.line_id AND l.indent_id = po.indent_id
-              WHERE pol.purchase_order_id = po.id
-                AND COALESCE(pol.quantity, 0) - COALESCE(pol.quantity_received, 0) > 0.0001
-                AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
-            )
-            OR (
-              NOT EXISTS (
-                SELECT 1 FROM store_purchase_order_lines pol
-                WHERE pol.purchase_order_id = po.id
-              )
-              AND EXISTS (
-                SELECT 1
-                FROM store_po_lines pl
-                JOIN store_indent_lines l
-                  ON l.id = pl.line_id AND l.indent_id = po.indent_id
-                WHERE pl.indent_id = po.indent_id
-                  AND pl.supplier_id = po.supplier_id
-                  AND COALESCE(l.quantity, 0) - COALESCE(l.quantity_received, 0) > 0.0001
-              )
             )
           )
         """
@@ -4829,6 +5048,8 @@ def _load_generated_purchase_orders(
         else:
             item["status"] = "created"
             item["status_label"] = "Created"
+        # WhatsApp send needs a phone; inward does not.
+        item["can_send"] = bool(str(item.get("supplier_phone") or "").strip())
         out.append(item)
     return out
 
@@ -4852,9 +5073,21 @@ def stores_orders():
         indents, indent_view_data, stores_ledger_data = _load_indent_list_for_view(
             conn, outlet, list_view
         )
-        purchase_orders = _load_generated_purchase_orders(
-            conn, outlet, send_queue=(po_tab == "send")
-        )
+        purchase_orders_pending: list[dict[str, Any]] = []
+        purchase_orders_completed: list[dict[str, Any]] = []
+        if po_tab == "send":
+            purchase_orders = _load_generated_purchase_orders(
+                conn, outlet, send_queue=True
+            )
+        else:
+            purchase_orders_pending = _load_generated_purchase_orders(
+                conn, outlet, pending_inward=True
+            )
+            purchase_orders_completed = _load_generated_purchase_orders(
+                conn, outlet, completed_inward=True
+            )
+            # Compatibility for templates/JS that still read purchase_orders.
+            purchase_orders = purchase_orders_pending + purchase_orders_completed
         pending_inward_indents = _load_pending_po_indents(conn, outlet)
         catalog = _load_product_catalog(conn, stores_outlet=outlet) if outlet != "both" else []
     finally:
@@ -4895,52 +5128,17 @@ def stores_orders():
         po_send_data=None,
         po_history=[],
         purchase_orders=purchase_orders,
+        purchase_orders_pending=purchase_orders_pending,
+        purchase_orders_completed=purchase_orders_completed,
         pending_inward_indents=pending_inward_indents,
     )
 
 
 @stores_bp.route("/stores/orders/history", endpoint="stores_orders_history")
 def stores_orders_history():
-    """Purchase Order history of WhatsApp sends."""
-    _get_user()
+    """History tab removed — keep URL for old bookmarks."""
     outlet = _parse_outlet_filter(request.args.get("outlet"))
-    conn = get_db()
-    try:
-        ensure_stores_schema(conn)
-        history = _load_po_send_history(conn)
-        indents, indent_view_data, stores_ledger_data = _load_indent_list_for_view(
-            conn, outlet, "approved"
-        )
-        pending_inward_indents = _load_pending_po_indents(conn, outlet)
-    finally:
-        conn.close()
-
-    return _page_render(
-        "purchase_orders",
-        outlet=outlet,
-        indents=indents,
-        indent_view_data=indent_view_data,
-        stores_ledger_data=stores_ledger_data,
-        product_catalog=[],
-        show_form=False,
-        open_edit_id=0,
-        indent_form_unset=False,
-        form={
-            "indent_id": "",
-            "notes": "",
-            "submission_token": "",
-            "lines": [],
-        },
-        errors=[],
-        editing=False,
-        indent_list_views=(),
-        selected_indent_view="approved",
-        de_nav_stores_view="purchase_order",
-        po_tab="history",
-        po_send_data=None,
-        po_history=history,
-        pending_inward_indents=pending_inward_indents,
-    )
+    return redirect(url_for("stores_orders", outlet=outlet))
 
 
 @stores_bp.route("/stores/orders/<int:indent_id>", endpoint="stores_orders_send")
@@ -5519,6 +5717,8 @@ def _send_po_whatsapp(
         message = custom_message or _po_default_message(
             supplier_name, send_lines, indent_no, send_po_no
         )
+        template_params = _po_whatsapp_template_params(supplier_name, po_ref, send_lines)
+        template_name, template_lang = _po_template_config()
         pdf_name = po_pdf_filename(supplier_name, po_ref)
         pdf_bytes = b""
         if include_pdf:
@@ -5587,122 +5787,177 @@ def _send_po_whatsapp(
                 "conversation_id": conversation_id,
                 "pdf_name": pdf_name if include_pdf else "",
                 "supplier_name": supplier_name,
+                "template_name": template_name,
+                "template_params": template_params,
             }
 
         if not wa.whatsapp_configured():
             return {"ok": False, "error": "WhatsApp API is not configured.", "status": 400}
 
-        if include_pdf and pdf_bytes:
-            ok, err, result = hub.send_conversation_document_bytes(
-                conn,
-                conversation_id,
-                data=pdf_bytes,
-                filename=pdf_name,
-                mime="application/pdf",
-                caption=message,
-                user_id=user_id,
-            )
-            if not ok and _po_is_outside_session_error(err):
-                template_name = (os.environ.get("WHATSAPP_PO_TEMPLATE") or "").strip()
-                template_lang = (os.environ.get("WHATSAPP_PO_TEMPLATE_LANGUAGE") or "en").strip() or "en"
-                if template_name:
-                    # Upload media then send as template document header.
-                    import tempfile
-                    tmp_path = ""
+        ok = False
+        err = ""
+        result: dict[str, Any] = {}
+        used_template = False
+
+        # Prefer one session bubble when the 24h window is open: PDF header +
+        # multiline body (with WhatsApp *bold*) + Accept / Reject buttons.
+        # Fall back to the Meta template for cold outreach.
+        session_ok = False
+        session_err = ""
+        import tempfile
+
+        media_id = ""
+        header_name = pdf_name
+        header_pdf = pdf_bytes
+        if include_pdf:
+            if not header_pdf:
+                header_pdf = build_purchase_order_pdf(
+                    groups_payload.get("indent") or {},
+                    {
+                        "name": supplier_name,
+                        "phone": group.get("phone") or "",
+                        "gst": group.get("gst") or "",
+                        "address": group.get("address") or "",
+                    },
+                    send_lines,
+                    outlet_label=groups_payload.get("outlet_label") or "",
+                    po_no=send_po_no,
+                )
+                header_name = po_pdf_filename(supplier_name, po_ref)
+            tmp_path = ""
+            try:
+                fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+                with os.fdopen(fd, "wb") as handle:
+                    handle.write(header_pdf)
+                ok_up, err_up, body_up = wa.upload_media_file(tmp_path, "application/pdf")
+                if isinstance(body_up, dict):
+                    media_id = str(body_up.get("id") or "").strip()
+                if not (ok_up and media_id):
+                    session_err = err_up or "Could not upload purchase order PDF."
+            finally:
+                if tmp_path:
                     try:
-                        fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
-                        with os.fdopen(fd, "wb") as handle:
-                            handle.write(pdf_bytes)
-                        ok_up, err_up, body_up = wa.upload_media_file(tmp_path, "application/pdf")
-                        media_id = ""
-                        if isinstance(body_up, dict):
-                            media_id = str(body_up.get("id") or "").strip()
-                        if ok_up and media_id:
-                            ok_tpl, err_tpl, payload_tpl = wa.send_template_message(
-                                phone,
-                                template_name,
-                                template_lang,
-                                body_parameters=[supplier_name, po_ref],
-                                header_document_id=media_id,
-                                header_document_filename=pdf_name,
-                            )
-                            if ok_tpl:
-                                wa_message_id = wa.first_message_id(payload_tpl)
-                                hub.append_message(
-                                    conn,
-                                    conversation_id,
-                                    direction="out",
-                                    body=message,
-                                    message_type="template",
-                                    media_mime="application/pdf",
-                                    media_filename=pdf_name,
-                                    media_size=len(pdf_bytes),
-                                    wa_message_id=wa_message_id,
-                                    status="sent",
-                                    created_by=user_id,
-                                )
-                                ok, err = True, ""
-                            else:
-                                ok, err = False, err_tpl or err
-                        else:
-                            ok, err = False, err_up or err
-                    finally:
-                        if tmp_path:
-                            try:
-                                os.unlink(tmp_path)
-                            except OSError:
-                                pass
-                else:
-                    err = (
-                        "WhatsApp session expired (outside 24-hour window). "
-                        "Ask the supplier to message first, or set WHATSAPP_PO_TEMPLATE."
-                    )
-            if ok:
-                msg = (result or {}).get("message") or {}
-                wa_message_id = str(msg.get("wa_message_id") or wa_message_id or "")
-            else:
-                status = "failed"
-                error = err or "Send failed"
-        else:
-            ok, err, result = hub.send_conversation_text(
-                conn, conversation_id, message, user_id=user_id
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+
+        if not include_pdf or media_id:
+            ok_btn, err_btn, payload_btn = wa.send_interactive_buttons(
+                phone,
+                message[:1024],
+                [("po_accept", "Accept"), ("po_reject", "Reject")],
+                header_document_id=media_id,
+                header_document_filename=header_name if media_id else "",
             )
-            if not ok and _po_is_outside_session_error(err):
-                template_name = (os.environ.get("WHATSAPP_PO_TEMPLATE") or "").strip()
-                template_lang = (os.environ.get("WHATSAPP_PO_TEMPLATE_LANGUAGE") or "en").strip() or "en"
-                if template_name:
-                    ok_tpl, err_tpl, payload_tpl = wa.send_template_message(
-                        phone,
-                        template_name,
-                        template_lang,
-                        body_parameters=[supplier_name, po_ref],
+            if ok_btn:
+                wa_message_id = wa.first_message_id(payload_btn)
+                hub.append_message(
+                    conn,
+                    conversation_id,
+                    direction="out",
+                    body=message,
+                    message_type="interactive",
+                    media_mime="application/pdf" if media_id else "",
+                    media_filename=header_name if media_id else "",
+                    media_size=len(header_pdf) if media_id else 0,
+                    wa_message_id=wa_message_id,
+                    status="sent",
+                    created_by=user_id,
+                )
+                session_ok = True
+                ok, err = True, ""
+            else:
+                session_err = err_btn or session_err or "Interactive send failed"
+                if not include_pdf:
+                    ok_txt, err_txt, result_txt = hub.send_conversation_text(
+                        conn, conversation_id, message, user_id=user_id
                     )
-                    if ok_tpl:
-                        wa_message_id = wa.first_message_id(payload_tpl)
-                        hub.append_message(
-                            conn,
-                            conversation_id,
-                            direction="out",
-                            body=message,
-                            message_type="template",
-                            wa_message_id=wa_message_id,
-                            status="sent",
-                            created_by=user_id,
-                        )
+                    if ok_txt:
+                        msg = (result_txt or {}).get("message") or {}
+                        wa_message_id = str(msg.get("wa_message_id") or "")
+                        session_ok = True
                         ok, err = True, ""
                     else:
-                        ok, err = False, err_tpl or err
-                else:
-                    err = (
-                        "WhatsApp session expired (outside 24-hour window). "
-                        "Ask the supplier to message first, or set WHATSAPP_PO_TEMPLATE."
+                        session_err = err_txt or session_err
+
+        # Meta template fallback (cold outreach / closed session).
+        if not session_ok and template_name:
+            used_template = True
+            if not header_pdf:
+                header_pdf = build_purchase_order_pdf(
+                    groups_payload.get("indent") or {},
+                    {
+                        "name": supplier_name,
+                        "phone": group.get("phone") or "",
+                        "gst": group.get("gst") or "",
+                        "address": group.get("address") or "",
+                    },
+                    send_lines,
+                    outlet_label=groups_payload.get("outlet_label") or "",
+                    po_no=send_po_no,
+                )
+                header_name = po_pdf_filename(supplier_name, po_ref)
+            if not media_id and header_pdf:
+                tmp_path = ""
+                try:
+                    fd, tmp_path = tempfile.mkstemp(suffix=".pdf")
+                    with os.fdopen(fd, "wb") as handle:
+                        handle.write(header_pdf)
+                    ok_up, err_up, body_up = wa.upload_media_file(tmp_path, "application/pdf")
+                    if isinstance(body_up, dict):
+                        media_id = str(body_up.get("id") or "").strip()
+                    if not (ok_up and media_id):
+                        ok, err = False, err_up or "Could not upload purchase order PDF."
+                        media_id = ""
+                finally:
+                    if tmp_path:
+                        try:
+                            os.unlink(tmp_path)
+                        except OSError:
+                            pass
+            if media_id:
+                ok_tpl, err_tpl, payload_tpl = wa.send_template_message(
+                    phone,
+                    template_name,
+                    template_lang,
+                    body_parameters=template_params,
+                    header_document_id=media_id,
+                    header_document_filename=header_name,
+                )
+                if ok_tpl:
+                    wa_message_id = wa.first_message_id(payload_tpl)
+                    hub.append_message(
+                        conn,
+                        conversation_id,
+                        direction="out",
+                        body=message,
+                        message_type="template",
+                        media_mime="application/pdf",
+                        media_filename=header_name,
+                        media_size=len(header_pdf),
+                        wa_message_id=wa_message_id,
+                        status="sent",
+                        created_by=user_id,
                     )
-            if ok:
-                msg = (result or {}).get("message") or {}
-                wa_message_id = str(msg.get("wa_message_id") or wa_message_id or "")
-            else:
-                status = "failed"
-                error = err or "Send failed"
+                    ok, err = True, ""
+                else:
+                    ok, err = False, err_tpl or "Template send failed"
+            elif not err:
+                ok, err = False, session_err or "Could not upload purchase order PDF."
+        elif not session_ok:
+            ok, err = False, session_err or "Send failed"
+
+        if ok:
+            status = "sent"
+            error = ""
+        else:
+            status = "failed"
+            error = err or "Send failed"
+            if not used_template and _po_is_outside_session_error(error):
+                error = (
+                    "WhatsApp session expired (outside 24-hour window). "
+                    "Ask the supplier to message first, or set WHATSAPP_PO_TEMPLATE."
+                )
 
         send_id = _record_po_send(
             conn,
@@ -5737,6 +5992,7 @@ def _send_po_whatsapp(
             "pdf_name": pdf_name if include_pdf else "",
             "wa_message_id": wa_message_id,
             "supplier_name": supplier_name,
+            "template_name": template_name,
         }
     finally:
         conn.close()
@@ -6392,14 +6648,10 @@ def stores_purchase_requests():
             if selected_inward_supplier_id and selected_inward_supplier_id not in seen_supplier_ids:
                 selected_inward_supplier_id = 0
 
-            if selected_inward_supplier_id:
-                generated_purchase_orders = [
-                    po
-                    for po in all_generated_pos
-                    if int(po.get("supplier_id") or 0) == selected_inward_supplier_id
-                ]
-            else:
-                generated_purchase_orders = list(all_generated_pos)
+            # Always list every generated PO that still has inward remaining —
+            # including unsent ones. Do not hide POs when a supplier chip is
+            # selected; choosing a PO sets the supplier (see stInwardPoChanged).
+            generated_purchase_orders = list(all_generated_pos)
             # Keep approved_indents for any legacy templates / view-indent helpers.
             approved_indents = []
             seen_indent_ids: set[int] = set()
@@ -6447,6 +6699,12 @@ def stores_purchase_requests():
             if selected_po is None and legacy_indent_id:
                 for row in generated_purchase_orders:
                     if int(row.get("indent_id") or 0) == legacy_indent_id:
+                        selected_po = row
+                        break
+            # Supplier chip: prefer that supplier's newest pending PO when none chosen.
+            if selected_po is None and selected_inward_supplier_id:
+                for row in generated_purchase_orders:
+                    if int(row.get("supplier_id") or 0) == selected_inward_supplier_id:
                         selected_po = row
                         break
             if selected_po is None and len(generated_purchase_orders) == 1:

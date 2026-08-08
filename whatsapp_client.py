@@ -336,11 +336,17 @@ def send_interactive_buttons(
     phone: str,
     body_text: str,
     buttons: list[tuple[str, str]],
+    *,
+    header_document_id: str = "",
+    header_document_filename: str = "",
 ) -> tuple[bool, str, dict]:
     """Send an interactive reply-button message.
 
     ``buttons`` is a list of ``(button_id, title)`` pairs (max 3). Button ids are
     opaque payloads returned as ``button_reply.id`` on webhook clicks.
+
+    Optional ``header_document_id`` attaches a PDF/document in the same message
+    (WhatsApp interactive header), so body + buttons + file are one bubble.
     """
     reply_buttons = []
     for button_id, title in (buttons or [])[:3]:
@@ -354,15 +360,23 @@ def send_interactive_buttons(
         })
     if not reply_buttons:
         return False, "No interactive buttons provided.", {}
+    interactive: dict = {
+        "type": "button",
+        "body": {"text": str(body_text or "")[:1024]},
+        "action": {"buttons": reply_buttons},
+    }
+    media_id = str(header_document_id or "").strip()
+    if media_id:
+        document = {"id": media_id}
+        fname = str(header_document_filename or "").strip()
+        if fname:
+            document["filename"] = fname[:240]
+        interactive["header"] = {"type": "document", "document": document}
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
         "to": phone,
         "type": "interactive",
-        "interactive": {
-            "type": "button",
-            "body": {"text": str(body_text or "")[:1024]},
-            "action": {"buttons": reply_buttons},
-        },
+        "interactive": interactive,
     }
     return send_payload(payload)

@@ -23,7 +23,7 @@
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=19">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=15">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
@@ -76,7 +76,7 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=19">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=15">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
@@ -296,37 +296,21 @@
   {% elif mode is defined and mode == 'attendance' %}
   <div class="su-header-top ep-att-header">
     <div class="su-header-left">
-      <div class="topbar-breadcrumb">
-        <a href="{{ url_for('attendance_overview', year=sel_year, month=sel_month) }}">Attendance</a>
-        <span class="bc-sep">›</span>
-        <a href="{{ url_for('edit_employee', emp_id=emp.id) }}">{{ emp.name }}</a>
-        <span class="bc-sep">›</span>
-        <span class="bc-cur">Attendance</span>
+      <div class="su-header-nav">
+        {% set back_href = url_for('attendance_overview', year=sel_year, month=sel_month) %}
+        {% set back_label = 'Back to Attendance' %}
+        {% include 'partials/su_page_back.html' with context %}
+        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+      </div>
+      <div class="su-title">
+        <div class="su-title-row">
+          <h1>Attendance</h1>
+        </div>
       </div>
     </div>
-    <div class="su-header-tools">
-      <div class="month-nav">
-        <a class="mnav-btn" href="{{ url_for('attendance', emp_id=emp.id, year=prev_y, month=prev_m) }}" title="Previous month">‹</a>
-        <span class="mnav-lbl">{{ month_name }} {{ sel_year }}</span>
-        <a class="mnav-btn" href="{{ url_for('attendance', emp_id=emp.id, year=next_y, month=next_m) }}" title="Next month">›</a>
-      </div>
-      {% if current_user and current_user.is_admin and not (payroll_state.locked if payroll_state is defined else false) %}
-      <form method="POST" action="{{ url_for('bulk_attendance', emp_id=emp.id) }}" style="display:inline;">
-        <input type="hidden" name="year" value="{{ sel_year }}">
-        <input type="hidden" name="month" value="{{ sel_month }}">
-        <input type="hidden" name="action" value="mark_all_present">
-        <button type="submit" class="btn btn-success btn-sm">✓ All Present</button>
-      </form>
-      <form method="POST" action="{{ url_for('bulk_attendance', emp_id=emp.id) }}" style="display:inline;" onsubmit="return confirm('Clear all attendance for this month?')">
-        <input type="hidden" name="year" value="{{ sel_year }}">
-        <input type="hidden" name="month" value="{{ sel_month }}">
-        <input type="hidden" name="action" value="clear_all">
-        <button type="submit" class="btn btn-danger btn-sm">✕ Clear All</button>
-      </form>
-      {% elif payroll_state is defined and payroll_state.locked %}
-      <button type="button" class="btn btn-secondary btn-sm" disabled title="{{ payroll_state.message }}">Month Locked</button>
-      {% endif %}
-    </div>
+    <div class="su-header-tools"></div>
   </div>
 
   {% elif mode is defined and mode == 'credits' %}
@@ -829,7 +813,7 @@
               <th class="pl-sortable pl-col-attend" data-sort="half" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Half Day</th>
               <th class="pl-sortable pl-col-attend" data-sort="absent" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Absent</th>
               <th class="pl-sortable pl-col-attend" data-sort="paid" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Paid Days</th>
-              <th class="pl-sortable" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
+              <th class="pl-sortable pl-col-attend" data-sort="status" scope="col" tabindex="0" aria-sort="none">Status</th>
               <th class="pl-col-actions">Actions</th>
             </tr>
           </thead>
@@ -863,7 +847,7 @@
                 <span class="badge bg-gray">Not tracked</span>
                 {% endif %}
               </td>
-              <td data-sort-value="{{ 'tracked' if att.tracked else 'pending' }}">
+              <td data-sort-value="{{ 'tracked' if att.tracked else 'pending' }}" class="pl-col-attend">
                 {% if att.tracked %}
                 <span class="badge bg-green">Tracked</span>
                 {% else %}
@@ -1200,53 +1184,85 @@
 ══════════════════════════════════════════════════════ #}
 {% elif mode is defined and mode == 'attendance' %}
 
-  <!-- Employee context strip -->
-  <div class="card">
-    <div class="emp-ctx">
-      <div class="emp-ctx-name">{{ emp.name }}</div>
-      <div class="emp-ctx-meta">#{{ emp.id }} · {{ emp.location }}</div>
-      <div style="flex:1;"></div>
-      {% if has_payroll_access('credit') %}
-      <a href="{{ url_for('employee_credits', emp_id=emp.id, year=sel_year, month=sel_month) }}" class="btn btn-purple btn-sm">Credits</a>
-      {% endif %}
-      {% if has_payroll_access('employee') %}
-      <a href="{{ url_for('edit_employee', emp_id=emp.id) }}" class="btn btn-secondary btn-sm">Edit Employee</a>
-      {% endif %}
-    </div>
-
-    <!-- Attendance summary strip -->
-    <div class="att-strip">
-      <div class="att-si">
-        <div class="att-slbl">Present</div>
-        <div class="att-sval" style="color:var(--ok);">{{ emp.att.present }}</div>
+  <!-- Employee attendance toolbar (above KPIs) -->
+  <div class="card emp-att-toolbar-card">
+    <div class="emp-ctx emp-att-toolbar" role="group" aria-label="Employee attendance controls">
+      <div class="emp-ctx-identity">
+        <div class="emp-ctx-name">{{ emp.name }}</div>
+        <div class="emp-ctx-meta">#{{ emp.id }} · {{ emp.location }}</div>
       </div>
-      <div class="att-si">
-        <div class="att-slbl">Half Day</div>
-        <div class="att-sval" style="color:var(--warn);">{{ emp.att.half_day }}</div>
-      </div>
-      <div class="att-si">
-        <div class="att-slbl">Absent</div>
-        <div class="att-sval" style="color:var(--err);"{% if emp.att.leave_covered_by_off|default(0) %} title="{{ emp.att.absent_marked|default(emp.att.absent) }} marked · {{ emp.att.leave_covered_by_off }} covered by Total Off ({{ emp.att.total_off }})"{% endif %}>{{ emp.att.absent }}</div>
-      </div>
-      <div class="att-si">
-        <div class="att-slbl">Attendance</div>
-        <div class="att-sval" style="color:#3B82F6;">{{ emp.att.display_badge_num|default(emp.att.badge_num) }}/{{ emp.att.badge_den }}
-          {% if emp.lop_days|default(0) > 0 %}
-          <span style="display:block;font-size:9px;color:var(--err);font-weight:600;margin-top:1px;">{{ '%g'|format(emp.lop_days) }} LOP day{{ 's' if emp.lop_days != 1 else '' }}</span>
-          {% endif %}
+      <div class="emp-att-toolbar-tools">
+        <div class="month-nav" aria-label="Month navigation">
+          <a class="mnav-btn" href="{{ url_for('attendance', emp_id=emp.id, year=prev_y, month=prev_m) }}" title="Previous month">‹</a>
+          <span class="mnav-lbl">{{ month_name }} {{ sel_year }}</span>
+          <a class="mnav-btn" href="{{ url_for('attendance', emp_id=emp.id, year=next_y, month=next_m) }}" title="Next month">›</a>
         </div>
-      </div>
-      <div class="att-si">
-        <div class="att-slbl">Gross (Monthly)</div>
-        <div class="att-sval" style="color:var(--warn);">{{ emp.gross_salary | inr }}</div>
-      </div>
-      <div class="att-si">
-        <div class="att-slbl">Net Salary</div>
-        <div class="att-sval" style="color:var(--ok);">{{ emp.net | inr }}</div>
+        {% if current_user and current_user.is_admin and not (payroll_state.locked if payroll_state is defined else false) %}
+        <form method="POST" action="{{ url_for('bulk_attendance', emp_id=emp.id) }}" class="emp-att-bulk-form">
+          <input type="hidden" name="year" value="{{ sel_year }}">
+          <input type="hidden" name="month" value="{{ sel_month }}">
+          <input type="hidden" name="action" value="mark_all_present">
+          <button type="submit" class="btn btn-success btn-sm">✓ All Present</button>
+        </form>
+        <form method="POST" action="{{ url_for('bulk_attendance', emp_id=emp.id) }}" class="emp-att-bulk-form" onsubmit="return confirm('Clear all attendance for this month?')">
+          <input type="hidden" name="year" value="{{ sel_year }}">
+          <input type="hidden" name="month" value="{{ sel_month }}">
+          <input type="hidden" name="action" value="clear_all">
+          <button type="submit" class="btn btn-danger btn-sm">✕ Clear All</button>
+        </form>
+        {% elif payroll_state is defined and payroll_state.locked %}
+        <button type="button" class="btn btn-secondary btn-sm" disabled title="{{ payroll_state.message }}">Month Locked</button>
+        {% endif %}
       </div>
     </div>
+  </div>
 
-    <!-- Calendar -->
+  <!-- Attendance KPIs (same pattern as Attendance overview) -->
+  <div class="kpi-grid" aria-label="Attendance summary">
+    <div class="kpi-card">
+      <div class="kpi-icon green" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Present</div>
+        <div class="kpi-val">{{ emp.att.present }}</div>
+        <div class="kpi-meta">{{ month_name }} {{ sel_year }}</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon orange" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/><line x1="12" y1="2" x2="12" y2="22"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Half Day</div>
+        <div class="kpi-val">{{ emp.att.half_day }}</div>
+        <div class="kpi-meta">Partial days marked</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon red" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Absent</div>
+        <div class="kpi-val"{% if emp.att.leave_covered_by_off|default(0) %} title="{{ emp.att.absent_marked|default(emp.att.absent) }} marked · {{ emp.att.leave_covered_by_off }} covered by Total Off ({{ emp.att.total_off }})"{% endif %}>{{ emp.att.absent }}</div>
+        <div class="kpi-meta">{% if emp.att.leave_covered_by_off|default(0) %}After Total Off cover{% else %}After Total Off{% endif %}</div>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-icon blue" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </div>
+      <div class="kpi-body">
+        <div class="kpi-lbl">Attendance</div>
+        <div class="kpi-val">{{ emp.att.display_badge_num|default(emp.att.badge_num) }}/{{ emp.att.badge_den }}</div>
+        <div class="kpi-meta">{% if emp.lop_days|default(0) > 0 %}{{ '%g'|format(emp.lop_days) }} LOP day{{ 's' if emp.lop_days != 1 else '' }}{% else %}Badge days counted{% endif %}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Calendar -->
+  <div class="card">
     <div class="cal-grid">
       <div class="cal-hdr">Mon</div>
       <div class="cal-hdr">Tue</div>
@@ -1276,68 +1292,107 @@
     </div>
   </div>
 
-  <!-- Salary breakdown card -->
-  <div class="card">
-    <div class="card-hdr">
-      <div class="card-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12M6 9h12M9 4a5 5 0 0 1 0 10M9 9l9 11"/></svg>
-        Salary Breakdown — {{ month_name }} {{ sel_year }}
-      </div>
+  <!-- Salary breakdown (KPI cards, same pattern as attendance summary) -->
+  <div class="emp-sal-kpi-section">
+    <div class="emp-sal-kpi-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h12M6 9h12M9 4a5 5 0 0 1 0 10M9 9l9 11"/></svg>
+      Salary Breakdown — {{ month_name }} {{ sel_year }}
     </div>
-    <div class="sal-strip" style="{% if emp.sunday_incentive|default(0) > 0 or emp.credit_repayment|default(0) > 0 or emp.lop_deduction|default(0) > 0 %}grid-template-columns:repeat(6,1fr){% else %}grid-template-columns:repeat(4,1fr){% endif %}">
-      <div class="sal-item">
-        <div class="sal-lbl">Actual Gross</div>
-        <div class="sal-val">{{ emp.gross_actual | inr }}</div>
+    <div class="kpi-grid emp-sal-kpi-grid" aria-label="Salary breakdown">
+      <div class="kpi-card">
+        <div class="kpi-icon orange emp-sal-kpi-rupee" aria-hidden="true">₹</div>
+        <div class="kpi-body">
+          <div class="kpi-lbl">Actual Gross</div>
+          <div class="kpi-val">{{ emp.gross_actual | inr }}</div>
+          <div class="kpi-meta">{{ month_name }} {{ sel_year }}</div>
+        </div>
       </div>
-      <div class="sal-item">
-        <div class="sal-lbl">Basic Pay</div>
-        <div class="sal-val blue">{{ emp.basic | inr }}</div>
+      <div class="kpi-card">
+        <div class="kpi-icon blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-lbl">Basic Pay</div>
+          <div class="kpi-val">{{ emp.basic | inr }}</div>
+          <div class="kpi-meta">From gross split</div>
+        </div>
       </div>
-      <div class="sal-item">
-        <div class="sal-lbl">EPF</div>
-        <div class="sal-val orange">{{ emp.epf | inr }}</div>
+      <div class="kpi-card">
+        <div class="kpi-icon orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-6h6v6"/></svg>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-lbl">EPF</div>
+          <div class="kpi-val">{{ emp.epf | inr }}</div>
+          <div class="kpi-meta">Employee contribution</div>
+        </div>
       </div>
-      <div class="sal-item">
-        <div class="sal-lbl">ESIC</div>
-        {% if emp.esic_exempt|default(0) %}
-        <div class="sal-val" style="color:var(--txt3);font-size:12px;font-weight:600;">Exempt</div>
-        {% else %}
-        <div class="sal-val purple">{{ emp.esic | inr }}</div>
-        {% if emp.gross_actual|default(emp.gross)|default(0) > 21000 %}
-        <div style="font-size:9px;color:var(--txt3);margin-top:4px;line-height:1.35;">Fixed ₹158 (Actual Gross above ₹21,000)</div>
-        {% endif %}
-        {% endif %}
+      <div class="kpi-card">
+        <div class="kpi-icon purple" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-lbl">ESIC</div>
+          {% if emp.esic_exempt|default(0) %}
+          <div class="kpi-val" style="color:var(--txt3);">Exempt</div>
+          <div class="kpi-meta">Not applicable</div>
+          {% else %}
+          <div class="kpi-val">{{ emp.esic | inr }}</div>
+          <div class="kpi-meta">{% if emp.gross_actual|default(emp.gross)|default(0) > 21000 %}Fixed ₹158 (gross &gt; ₹21,000){% else %}Employee contribution{% endif %}</div>
+          {% endif %}
+        </div>
       </div>
       {% if emp.sunday_incentive|default(0) > 0 %}
-      <div class="sal-item">
-        <div class="sal-lbl">Overtime</div>
-        <div class="sal-val green">+{{ emp.sunday_incentive | inr }}</div>
+      <div class="kpi-card">
+        <div class="kpi-icon green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-lbl">Overtime</div>
+          <div class="kpi-val">+{{ emp.sunday_incentive | inr }}</div>
+          <div class="kpi-meta">Sunday / OT incentive</div>
+        </div>
       </div>
       {% endif %}
       {% if emp.credit_repayment|default(0) > 0 %}
-      <div class="sal-item">
-        <div class="sal-lbl">Credit Repayment</div>
-        <div class="sal-val red">−{{ emp.credit_repayment | inr }}</div>
+      <div class="kpi-card">
+        <div class="kpi-icon red" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-lbl">Credit Repayment</div>
+          <div class="kpi-val">−{{ emp.credit_repayment | inr }}</div>
+          <div class="kpi-meta">Deducted this month</div>
+        </div>
       </div>
       {% endif %}
       {% if emp.lop_deduction|default(0) > 0 %}
-      <div class="sal-item">
-        <div class="sal-lbl">
-          LOP Deduction
-          <span style="display:block;font-size:8px;color:var(--err);font-weight:600;margin-top:1px;">{{ '%g'|format(emp.weekday_leave_days|default(emp.att.weekday_leave_days)) }} leave − {{ emp.total_off }} allowed = {{ '%g'|format(emp.lop_days) }} LOP</span>
+      <div class="kpi-card">
+        <div class="kpi-icon red" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
         </div>
-        <div class="sal-val red">−{{ emp.lop_deduction | inr }}</div>
+        <div class="kpi-body">
+          <div class="kpi-lbl">LOP Deduction</div>
+          <div class="kpi-val">−{{ emp.lop_deduction | inr }}</div>
+          <div class="kpi-meta">{{ '%g'|format(emp.weekday_leave_days|default(emp.att.weekday_leave_days)) }} leave − {{ emp.total_off }} allowed = {{ '%g'|format(emp.lop_days) }} LOP</div>
+        </div>
       </div>
       {% endif %}
-      <div class="sal-item">
-        <div class="sal-lbl">Net Salary</div>
-        <div class="sal-val green">{{ emp.net | inr }}</div>
+      <div class="kpi-card">
+        <div class="kpi-icon green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="kpi-body">
+          <div class="kpi-lbl">Net Salary</div>
+          <div class="kpi-val">{{ emp.net | inr }}</div>
+          <div class="kpi-meta">Payable this month</div>
+        </div>
       </div>
     </div>
-    <div style="padding:10px 18px 14px;font-size:11px;color:var(--txt3);">
+    <div class="emp-sal-kpi-note">
       Up to {{ emp.total_off|default(0) }} weekday leave day{{ 's' if emp.total_off|default(0) != 1 else '' }} are paid each month. Extra leave is Loss of Pay at gross ÷ days in month. Half day = 0.5 leave.
       {% if emp.lop_days|default(0) > 0 %}
-      <strong style="color:var(--err);"> {{ '%g'|format(emp.weekday_leave_days|default(emp.att.weekday_leave_days)) }} weekday leave this month — {{ '%g'|format(emp.lop_days) }} LOP day{{ 's' if emp.lop_days != 1 else '' }} (₹{{ emp.lop_deduction | inr }} deducted).</strong>
+      <strong class="emp-sal-kpi-note-warn"> {{ '%g'|format(emp.weekday_leave_days|default(emp.att.weekday_leave_days)) }} weekday leave this month — {{ '%g'|format(emp.lop_days) }} LOP day{{ 's' if emp.lop_days != 1 else '' }} (₹{{ emp.lop_deduction | inr }} deducted).</strong>
       {% endif %}
     </div>
   </div>

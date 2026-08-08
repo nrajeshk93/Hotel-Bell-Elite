@@ -1271,8 +1271,8 @@ body.pos-module .de-main-inner.pos-tables-page{
 }
 .pos-floor-grid{
   display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(168px,1fr));
-  gap:14px;
+  grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
+  gap:16px;
   overflow:visible;
 }
 .pos-floor[data-view="list"] .pos-floor-grid{
@@ -1331,18 +1331,18 @@ body.pos-module .de-main-inner.pos-tables-page{
   padding:0;
 }
 
-/* Table tiles */
+/* Table tiles — match Hotel Rooms tile footprint */
 .pos-table-tile{
   position:relative;
   display:flex;
   flex-direction:column;
   align-items:center;
   text-align:center;
-  min-height:168px;
-  padding:16px;
+  min-height:176px;
+  padding:14px;
   background:var(--pos-card);
   border:1px solid var(--pos-border);
-  border-radius:22px;
+  border-radius:18px;
   box-shadow:var(--pos-shadow);
   cursor:pointer;
   transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;

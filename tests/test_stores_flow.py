@@ -1083,6 +1083,31 @@ class StoresFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_indent_submit_requires_quantity_for_each_item(self):
+        resp = self.client.post(
+            "/stores/indent?outlet=bar&focus=form",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "Missing qty",
+                "item_name": ["Onion", "Potato"],
+                "quantity": ["10", ""],
+                "unit": ["kg", "kg"],
+                "approximate_price": ["30", "20"],
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"Enter a quantity greater than 0 for each item.", resp.data)
+        conn = db_mod.get_db()
+        try:
+            row = conn.execute(
+                "SELECT id FROM store_indents WHERE notes = 'Missing qty'"
+            ).fetchone()
+            self.assertIsNone(row)
+        finally:
+            conn.close()
+
     def test_indent_to_stock_happy_path(self):
         # Create + submit indent
         resp = self.client.post(
@@ -2147,6 +2172,8 @@ class StoresFlowTests(unittest.TestCase):
         self.assertIn(b'id="st-outlet-value">All</span>', page.data)
         self.assertIn(b'data-value="both"', page.data)
         self.assertIn(b"Pending Approval", page.data)
+        self.assertNotIn(b'href="/stores/indent?outlet=both&amp;view=draft"', page.data)
+        self.assertNotIn(b'href="/stores/indent?view=draft"', page.data)
         self.assertIn(b"Approved", page.data)
         self.assertIn(b"Rejected", page.data)
         self.assertIn(b"cp-view-tabs", page.data)
@@ -2459,6 +2486,7 @@ class StoresFlowTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(draft.status_code, 302)
+        self.assertIn("view=draft", draft.headers.get("Location", ""))
         pending = self.client.post(
             "/stores/indent?outlet=bar",
             data={
@@ -2488,9 +2516,15 @@ class StoresFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
+        draft_page = self.client.get("/stores/indent?outlet=bar&view=draft")
+        self.assertEqual(draft_page.status_code, 200)
+        self.assertIn(b"Draft only", draft_page.data)
+        self.assertNotIn(b"Waiting", draft_page.data)
+        self.assertIn(b'href="/stores/indent?outlet=bar&amp;view=draft"', draft_page.data)
+
         pending_page = self.client.get("/stores/indent?outlet=bar&view=pending")
         self.assertEqual(pending_page.status_code, 200)
-        self.assertIn(b"Draft only", pending_page.data)
+        self.assertNotIn(b"Draft only", pending_page.data)
         self.assertNotIn(b"Waiting", pending_page.data)
 
         approved_page = self.client.get("/stores/indent?outlet=bar&view=approved")
@@ -2499,6 +2533,41 @@ class StoresFlowTests(unittest.TestCase):
         self.assertNotIn(b"Draft only", approved_page.data)
         self.assertIn(b"Download PO", approved_page.data)
         self.assertIn(b"/purchase-order", approved_page.data)
+
+    def test_indent_draft_tab_hidden_until_draft_exists(self):
+        empty = self.client.get("/stores/indent?outlet=bar&view=pending")
+        self.assertEqual(empty.status_code, 200)
+        self.assertNotIn(b">Draft</a>", empty.data)
+        self.assertNotIn(b">Draft</span>", empty.data)
+        self.assertNotIn(b'href="/stores/indent?outlet=bar&amp;view=draft"', empty.data)
+        self.assertNotIn(b"cp-view-tab is-disabled", empty.data)
+
+        redirect = self.client.get("/stores/indent?outlet=bar&view=draft", follow_redirects=False)
+        self.assertEqual(redirect.status_code, 302)
+        self.assertIn("view=pending", redirect.headers.get("Location", ""))
+
+        create = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "save",
+                "notes": "Enable draft tab",
+                "item_name": ["Onion"],
+                "quantity": ["1"],
+                "unit": ["kg"],
+                "approximate_price": ["10"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+        self.assertIn("view=draft", create.headers.get("Location", ""))
+
+        with_draft = self.client.get("/stores/indent?outlet=bar&view=draft")
+        self.assertEqual(with_draft.status_code, 200)
+        self.assertIn(b"Enable draft tab", with_draft.data)
+        self.assertIn(b'href="/stores/indent?outlet=bar&amp;view=draft"', with_draft.data)
+        self.assertIn(b">Draft</a>", with_draft.data)
+        self.assertNotIn(b"cp-view-tab is-disabled", with_draft.data)
 
     def test_indent_purchase_order_download(self):
         create = self.client.post(
@@ -2613,35 +2682,56 @@ class StoresFlowTests(unittest.TestCase):
 
         bar_form = self.client.get("/stores/indent?outlet=bar&focus=form")
         self.assertEqual(bar_form.status_code, 200)
+        self.assertIn(b"<h1>Create Indent</h1>", bar_form.data)
+        self.assertIn(b'class="su-page-back"', bar_form.data)
+        self.assertIn(b'href="/stores/indent?outlet=bar"', bar_form.data)
+        self.assertIn(b'aria-label="Back to Indent"', bar_form.data)
         self.assertIn(b"Bar Only Mixer", bar_form.data)
         self.assertIn(b"Shared Oil", bar_form.data)
         self.assertNotIn(b"Restaurant Only Herb", bar_form.data)
         # Create form: Bar/Restaurant only — All is list/view filter.
-        self.assertNotIn(b'data-value="both"', bar_form.data)
-        self.assertIn(b'data-value="bar"', bar_form.data)
-        self.assertIn(b'data-value="restaurant"', bar_form.data)
+        form_outlet = bar_form.data.split(b'id="st-outlet-listbox"', 1)[1].split(b"</article>", 1)[0]
+        self.assertNotIn(b'data-value="both"', form_outlet)
+        self.assertIn(b'data-value="bar"', form_outlet)
+        self.assertIn(b'data-value="restaurant"', form_outlet)
 
         rest_form = self.client.get("/stores/indent?outlet=restaurant&focus=form")
         self.assertEqual(rest_form.status_code, 200)
         self.assertIn(b"Restaurant Only Herb", rest_form.data)
         self.assertIn(b"Shared Oil", rest_form.data)
         self.assertNotIn(b"Bar Only Mixer", rest_form.data)
-        self.assertNotIn(b'data-value="both"', rest_form.data)
+        rest_outlet = rest_form.data.split(b'id="st-outlet-listbox"', 1)[1].split(b"</article>", 1)[0]
+        self.assertNotIn(b'data-value="both"', rest_outlet)
 
-        # No default outlet — user must select Bar or Restaurant.
-        unset_form = self.client.get("/stores/indent?focus=form")
-        self.assertEqual(unset_form.status_code, 200)
-        self.assertIn(b"Select outlet", unset_form.data)
-        self.assertIn(b"is-placeholder", unset_form.data)
-        self.assertNotIn(b"Bar Only Mixer", unset_form.data)
-        self.assertNotIn(b"Restaurant Only Herb", unset_form.data)
-        self.assertNotIn(b'data-value="both"', unset_form.data)
+        # New Indent with All / no outlet defaults to Restaurant.
+        unset_form = self.client.get("/stores/indent?focus=form", follow_redirects=False)
+        self.assertEqual(unset_form.status_code, 302)
+        self.assertIn("outlet=restaurant", unset_form.headers.get("Location", ""))
+        self.assertIn("focus=form", unset_form.headers.get("Location", ""))
 
-        both_form = self.client.get("/stores/indent?outlet=both&focus=form")
-        self.assertEqual(both_form.status_code, 200)
-        self.assertIn(b"Select outlet", both_form.data)
-        self.assertNotIn(b"Bar Only Mixer", both_form.data)
-        self.assertNotIn(b"Restaurant Only Herb", both_form.data)
+        unset_landed = self.client.get("/stores/indent?focus=form", follow_redirects=True)
+        self.assertEqual(unset_landed.status_code, 200)
+        self.assertIn(b"<h1>Create Indent</h1>", unset_landed.data)
+        self.assertIn(b'id="st-outlet-value">Restaurant</span>', unset_landed.data)
+        self.assertNotIn(b"Select outlet", unset_landed.data)
+        self.assertNotIn(b'id="st-outlet-value" class="se-filter-chip-value is-placeholder"', unset_landed.data)
+        self.assertNotRegex(unset_landed.data, rb'id="st-outlet-value"[^>]*is-placeholder')
+        self.assertIn(b"Restaurant Only Herb", unset_landed.data)
+        self.assertIn(b"Shared Oil", unset_landed.data)
+        self.assertNotIn(b"Bar Only Mixer", unset_landed.data)
+        unset_outlet = unset_landed.data.split(b'id="st-outlet-listbox"', 1)[1].split(b"</article>", 1)[0]
+        self.assertNotIn(b'data-value="both"', unset_outlet)
+
+        both_form = self.client.get("/stores/indent?outlet=both&focus=form", follow_redirects=False)
+        self.assertEqual(both_form.status_code, 302)
+        self.assertIn("outlet=restaurant", both_form.headers.get("Location", ""))
+
+        both_landed = self.client.get("/stores/indent?outlet=both&focus=form", follow_redirects=True)
+        self.assertEqual(both_landed.status_code, 200)
+        self.assertIn(b'id="st-outlet-value">Restaurant</span>', both_landed.data)
+        self.assertNotIn(b"Select outlet", both_landed.data)
+        self.assertIn(b"Restaurant Only Herb", both_landed.data)
+        self.assertNotIn(b"Bar Only Mixer", both_landed.data)
 
     def test_indent_list_view_edit_delete_actions(self):
         create = self.client.post(
@@ -2674,8 +2764,9 @@ class StoresFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
-        listing = self.client.get("/stores/indent?outlet=bar")
+        listing = self.client.get("/stores/indent?outlet=bar&view=draft")
         self.assertEqual(listing.status_code, 200)
+        self.assertIn(b"Editable draft", listing.data)
         self.assertIn(b'data-st-view-indent=', listing.data)
         self.assertIn(b'id="st-indent-view-modal"', listing.data)
         self.assertIn(b'data-st-edit-indent=', listing.data)
@@ -4260,12 +4351,27 @@ class StoresFlowTests(unittest.TestCase):
         finally:
             conn.close()
 
-        history = self.client.get("/stores/orders/history")
-        self.assertEqual(history.status_code, 200)
-        self.assertIn(b"PO Alpha Traders", history.data)
-        self.assertIn(b"History", history.data)
-        self.assertIn(b"PO No.", history.data)
-        self.assertIn((payload.get("po_no") or "").encode(), history.data)
+        history = self.client.get("/stores/orders/history", follow_redirects=False)
+        self.assertEqual(history.status_code, 302)
+        self.assertIn("/stores/orders", history.headers.get("Location", ""))
+
+        # Send still records history rows even though the History tab is gone.
+        conn = db_mod.get_db()
+        try:
+            hist = conn.execute(
+                """
+                SELECT s.po_no, sp.name AS supplier_name
+                FROM store_po_sends s
+                LEFT JOIN suppliers sp ON sp.id = s.supplier_id
+                WHERE s.po_no = ?
+                ORDER BY s.id DESC LIMIT 1
+                """,
+                (payload.get("po_no"),),
+            ).fetchone()
+            self.assertIsNotNone(hist)
+            self.assertIn("PO Alpha Traders", hist["supplier_name"] or "")
+        finally:
+            conn.close()
 
     def test_po_send_reconstructs_missing_frozen_lines(self):
         """Older POs without store_purchase_order_lines rows can still be sent."""
@@ -4422,10 +4528,23 @@ class StoresFlowTests(unittest.TestCase):
         self.assertEqual(send_tab.status_code, 200)
         self.assertIn(b"Send to Supplier", send_tab.data)
         self.assertIn(po_no.encode(), send_tab.data)
+        # Unsent POs stay eligible for Stock Inward from the Send tab.
+        self.assertIn(
+            f"/stores/purchase-requests?outlet=restaurant&amp;view=approved&amp;po_id=".encode(),
+            send_tab.data,
+        )
+        self.assertIn(b"Open stock inward for", send_tab.data)
 
         orders_tab = self.client.get("/stores/orders?outlet=restaurant")
         self.assertEqual(orders_tab.status_code, 200)
         self.assertIn(po_no.encode(), orders_tab.data)
+        self.assertIn(b"Stock Inward - Pending", orders_tab.data)
+        self.assertIn(b"Stock Inward - Completed", orders_tab.data)
+        self.assertIn(b'id="st-po-pending-table"', orders_tab.data)
+        self.assertIn(
+            f"/stores/purchase-requests?outlet=restaurant&amp;view=approved&amp;po_id=".encode(),
+            orders_tab.data,
+        )
 
         with mock.patch.dict(os.environ, {"WHATSAPP_DRY_RUN": "1"}, clear=False):
             send = self.client.post(
@@ -4554,6 +4673,73 @@ class StoresFlowTests(unittest.TestCase):
             conn.close()
         self.assertFalse(any(str(row.get("po_no")) == po2_no for row in after))
 
+    def test_stock_inward_removes_po_from_send_queue(self):
+        """Any stock inward on a PO treats it as sent — it leaves Send to Supplier."""
+        ids = self._create_approved_indent_for_po(notes="PO inward clears send queue")
+        indent_id = int(ids["indent_id"])
+        supplier_id = int(ids["supplier_id"])
+        rice_line = int(ids["lines"]["PO Rice Bag"])
+
+        gen = self.client.post(
+            f"/stores/orders/{indent_id}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(supplier_id),
+                f"line_rate_{rice_line}": "50",
+                f"line_qty_{rice_line}": "10",
+                "selectable_supplier": [str(supplier_id)],
+                "selected_supplier": [str(supplier_id)],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(gen.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            po = conn.execute(
+                "SELECT id, po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (indent_id, supplier_id),
+            ).fetchone()
+            self.assertIsNotNone(po)
+            po_id = int(po["id"])
+            po_no = str(po["po_no"])
+            before = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", send_queue=True
+            )
+            self.assertTrue(any(str(row.get("po_no")) == po_no for row in before))
+
+            # Partial stock inward on the PO (indent still has remaining).
+            conn.execute(
+                """
+                UPDATE store_purchase_order_lines
+                SET quantity_received = 1
+                WHERE purchase_order_id = ?
+                """,
+                (po_id,),
+            )
+            conn.execute(
+                """
+                UPDATE store_indent_lines
+                SET quantity_received = 1
+                WHERE id = ?
+                """,
+                (rice_line,),
+            )
+            conn.commit()
+
+            after = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", send_queue=True
+            )
+            self.assertFalse(any(str(row.get("po_no")) == po_no for row in after))
+
+            # Still eligible for further stock inward while qty remains.
+            pending = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", pending_inward=True
+            )
+            self.assertTrue(any(str(row.get("po_no")) == po_no for row in pending))
+        finally:
+            conn.close()
+
     def test_stock_inward_po_picker_hides_fully_received_pos(self):
         """Purchase Order dropdown only lists POs that still have pending inward qty."""
         ids = self._create_approved_indent_for_po(notes="PO inward picker filter")
@@ -4593,6 +4779,16 @@ class StoresFlowTests(unittest.TestCase):
             )
             self.assertEqual(page_before.status_code, 200)
             self.assertIn(po_no.encode(), page_before.data)
+            # Unsent generated POs must appear in the Stock Inward PO dropdown.
+            row = next(r for r in before if str(r.get("po_no")) == po_no)
+            self.assertNotEqual(str(row.get("status") or "").lower(), "sent")
+
+            # Supplier chip must not hide other suppliers' generated POs from the list.
+            other = self.client.get(
+                "/stores/purchase-requests?outlet=restaurant&view=approved&supplier_id=999999"
+            )
+            self.assertEqual(other.status_code, 200)
+            self.assertIn(po_no.encode(), other.data)
 
             conn.execute(
                 "UPDATE store_indent_lines SET quantity_received = quantity WHERE indent_id = ?",
@@ -4694,6 +4890,103 @@ class StoresFlowTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertNotIn(po_no.encode(), page.data)
         self.assertNotIn(b"Purchase Order Items", page.data)
+
+    def test_po_orders_tab_splits_pending_and_completed_inward(self):
+        """Purchase Orders tab shows pending vs completed stock-inward blocks."""
+        ids = self._create_approved_indent_for_po(notes="PO orders inward blocks")
+        indent_id = int(ids["indent_id"])
+        supplier_id = int(ids["supplier_id"])
+        rice_line = int(ids["lines"]["PO Rice Bag"])
+
+        gen = self.client.post(
+            f"/stores/orders/{indent_id}/lines/next",
+            data={
+                "outlet": "restaurant",
+                f"line_supplier_{rice_line}": str(supplier_id),
+                f"line_rate_{rice_line}": "50",
+                f"line_qty_{rice_line}": "10",
+                "selectable_supplier": [str(supplier_id)],
+                "selected_supplier": [str(supplier_id)],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(gen.status_code, 302)
+
+        conn = db_mod.get_db()
+        try:
+            po = conn.execute(
+                "SELECT id, po_no FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (indent_id, supplier_id),
+            ).fetchone()
+            self.assertIsNotNone(po)
+            po_id = int(po["id"])
+            po_no = str(po["po_no"])
+
+            pending = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", pending_inward=True
+            )
+            completed = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", completed_inward=True
+            )
+            self.assertTrue(any(str(row.get("po_no")) == po_no for row in pending))
+            self.assertFalse(any(str(row.get("po_no")) == po_no for row in completed))
+        finally:
+            conn.close()
+
+        before = self.client.get("/stores/orders?outlet=restaurant")
+        self.assertEqual(before.status_code, 200)
+        self.assertIn(b"Stock Inward - Pending", before.data)
+        self.assertIn(b"Stock Inward - Completed", before.data)
+        self.assertIn(b'data-st-po-inward-block="pending"', before.data)
+        self.assertIn(b'data-st-po-inward-block="completed"', before.data)
+        self.assertIn(b'id="st-po-pending-table"', before.data)
+        pending_html = before.data.split(b'data-st-po-inward-block="pending"', 1)[1].split(
+            b'data-st-po-inward-block="completed"', 1
+        )[0]
+        completed_html = before.data.split(b'data-st-po-inward-block="completed"', 1)[1]
+        self.assertIn(po_no.encode(), pending_html)
+        self.assertNotIn(po_no.encode(), completed_html)
+        self.assertIn(f"po_id={po_id}".encode(), pending_html)
+        self.assertIn(b'data-tip="Stock Inward"', pending_html)
+        self.assertIn(b"No completed stock inward POs", completed_html)
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "UPDATE store_indent_lines SET quantity_received = quantity WHERE indent_id = ?",
+                (indent_id,),
+            )
+            conn.execute(
+                """
+                UPDATE store_purchase_order_lines
+                SET quantity_received = quantity
+                WHERE purchase_order_id = ?
+                """,
+                (po_id,),
+            )
+            conn.commit()
+            pending_after = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", pending_inward=True
+            )
+            completed_after = self.stores_mod._load_generated_purchase_orders(
+                conn, "restaurant", completed_inward=True
+            )
+        finally:
+            conn.close()
+
+        self.assertFalse(any(str(row.get("po_no")) == po_no for row in pending_after))
+        self.assertTrue(any(str(row.get("po_no")) == po_no for row in completed_after))
+
+        after = self.client.get("/stores/orders?outlet=restaurant")
+        self.assertEqual(after.status_code, 200)
+        pending_after_html = after.data.split(b'data-st-po-inward-block="pending"', 1)[1].split(
+            b'data-st-po-inward-block="completed"', 1
+        )[0]
+        completed_after_html = after.data.split(b'data-st-po-inward-block="completed"', 1)[1]
+        self.assertNotIn(po_no.encode(), pending_after_html)
+        self.assertIn(b'id="st-po-completed-table"', completed_after_html)
+        self.assertIn(po_no.encode(), completed_after_html)
+        self.assertIn(b"No POs pending stock inward", pending_after_html)
 
 
 if __name__ == "__main__":
