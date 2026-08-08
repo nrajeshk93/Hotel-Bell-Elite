@@ -1,72 +1,5 @@
-/* Sales Report filters — match Expense Ledger / Hotel Invoice Ledger chrome. */
-
-/* Invoices panel fills remaining viewport height (Expense Ledger pattern). */
-#ep-workspace.de-module .de-main-wrapper:has(#sales-report-page),
-#main-app.de-module .de-main-wrapper:has(#sales-report-page),
-#de-fs-app .de-main-wrapper:has(#sales-report-page){
-  display:flex;
-  flex-direction:column;
-  overflow:hidden;
-}
-#sales-report-page{
-  flex:1 1 auto;
-  display:flex;
-  flex-direction:column;
-  min-height:0;
-  height:100%;
-  box-sizing:border-box;
-}
-#sales-report-page > header.se-sales-header{flex:0 0 auto}
-#sales-report-page .content.se-content{
-  flex:1 1 auto;
-  display:flex;
-  flex-direction:column;
-  min-height:0;
-  padding-bottom:18px;
-}
-#sales-report-page .pl-summary-row{flex:0 0 auto}
-#sales-report-page .pl-list-panel.hbe-scroll-panel{
-  flex:1 1 auto;
-  display:flex;
-  flex-direction:column;
-  min-height:0;
-  margin-bottom:0;
-}
-#sales-report-page .pl-list-panel > .card-hdr{flex:0 0 auto}
-#sales-report-page .pl-list-panel > .card-body{
-  flex:1 1 auto;
-  min-height:0;
-  display:flex;
-  flex-direction:column;
-}
-#sales-report-page .hbe-scroll-panel .pl-table-wrap,
-#sales-report-page .pl-list-panel--scroll .pl-table-wrap{
-  flex:1 1 auto;
-  max-height:none;
-  min-height:min(240px,35vh);
-  height:auto;
-  overflow:auto;
-}
-@media (max-width:760px){
-  #ep-workspace.de-module .de-main-wrapper:has(#sales-report-page),
-  #main-app.de-module .de-main-wrapper:has(#sales-report-page),
-  #de-fs-app .de-main-wrapper:has(#sales-report-page){
-    overflow:auto;
-  }
-  #sales-report-page{
-    height:auto;
-    min-height:0;
-  }
-  #sales-report-page .content.se-content{display:block}
-  #sales-report-page .pl-list-panel.hbe-scroll-panel{display:block}
-  #sales-report-page .pl-list-panel > .card-body{display:block}
-  #sales-report-page .hbe-scroll-panel .pl-table-wrap,
-  #sales-report-page .pl-list-panel--scroll .pl-table-wrap{
-    max-height:min(70vh, calc(44px + 12 * 52px));
-    height:auto;
-    min-height:0;
-  }
-}
+/* Sales Report filters — match Expense Ledger / Hotel Invoice Ledger chrome.
+ * Page scroll (header/KPI scroll away) lives in reports_page_scroll.css. */
 
 body.sales-report-module .se-sales-header-filters:has(#sr-filter-form){
   justify-content:stretch;
@@ -203,7 +136,8 @@ body.sales-report-module #sr-filter-form .pl-search-chip .pl-search-input{
 body.sales-report-module #sr-filter-form .pl-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
 body.sales-report-module #sr-filter-form .pl-search-input::placeholder{color:#94A3B8;font-weight:500}
 
-body.sales-report-module #sr-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+body.sales-report-module #sr-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip),
+body.sales-report-module #msr-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
   flex:0 1 auto;
   width:clamp(120px,12vw,180px);
   min-width:112px;
@@ -213,7 +147,10 @@ body.sales-report-module #sr-filter-form .pl-header-field-listbox.se-filter-chip
 /* Override global date-range flex:1 1 280px that forces wrap/stack. */
 body.sales-report-module #sr-filter-form .pl-date-range-host.pl-header-field,
 body.sales-report-module #sr-filter-form .se-filter-chip-date-host.pl-header-field,
-body.sales-report-module #sr-filter-form .se-filter-chip-date-host:has(.se-filter-chip--date-range){
+body.sales-report-module #sr-filter-form .se-filter-chip-date-host:has(.se-filter-chip--date-range),
+body.sales-report-module #msr-filter-form .pl-date-range-host.pl-header-field,
+body.sales-report-module #msr-filter-form .se-filter-chip-date-host.pl-header-field,
+body.sales-report-module #msr-filter-form .se-filter-chip-date-host:has(.se-filter-chip--date-range){
   flex:0 0 auto;
   width:auto;
   min-width:168px;
@@ -222,19 +159,23 @@ body.sales-report-module #sr-filter-form .se-filter-chip-date-host:has(.se-filte
   margin-left:0;
   overflow:visible;
 }
-body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip--date-range{
+body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip--date-range,
+body.sales-report-module #msr-filter-form .pl-date-range-host .se-filter-chip--date-range{
   flex:none;
   min-width:0;
   width:auto;
   max-width:none;
 }
-body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip--date-range .se-filter-chip-control{
+body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip--date-range .se-filter-chip-control,
+body.sales-report-module #msr-filter-form .pl-date-range-host .se-filter-chip--date-range .se-filter-chip-control{
   overflow:visible;
   min-height:52px;
   height:52px;
 }
 body.sales-report-module #sr-filter-form .pl-date-range-host .an-range-trigger,
-body.sales-report-module #sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+body.sales-report-module #sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
+body.sales-report-module #msr-filter-form .pl-date-range-host .an-range-trigger,
+body.sales-report-module #menu-sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
   min-width:168px;
   width:auto;
   max-width:min(300px,42vw);
@@ -244,7 +185,8 @@ body.sales-report-module #sales-report-page .pl-date-range-host .an-range-wrap .
   font-size:14px;
   font-weight:600;
 }
-body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
+body.sales-report-module #sr-filter-form .pl-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control,
+body.sales-report-module #msr-filter-form .pl-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
   border-color:#93C5FD !important;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
   background:#fff !important;
@@ -264,6 +206,66 @@ body.sales-report-module #sr-table .cp-status-pill{
   pointer-events:none;
   white-space:nowrap;
   flex-shrink:0;
+}
+
+/* Menu Sales — even column rhythm; numeric cols right-aligned. */
+body.sales-report-module #msr-table{
+  table-layout:fixed;
+  width:100%;
+  min-width:880px;
+}
+body.sales-report-module #msr-table col.msr-col-item{width:32%;}
+body.sales-report-module #msr-table col.msr-col-category{width:18%;}
+body.sales-report-module #msr-table col.msr-col-outlet{width:12%;}
+body.sales-report-module #msr-table col.msr-col-orders{width:12%;}
+body.sales-report-module #msr-table col.msr-col-qty{width:12%;}
+body.sales-report-module #msr-table col.msr-col-sale{width:14%;}
+body.sales-report-module #msr-table th,
+body.sales-report-module #msr-table td{
+  padding:12px 14px;
+  vertical-align:middle;
+}
+body.sales-report-module #msr-table .msr-col-item{
+  text-align:left;
+}
+body.sales-report-module #msr-table .msr-col-item .pl-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.sales-report-module #msr-table .msr-col-category,
+body.sales-report-module #msr-table .msr-col-outlet{
+  text-align:left;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.sales-report-module #msr-table th.msr-col-orders,
+body.sales-report-module #msr-table td.msr-col-orders,
+body.sales-report-module #msr-table th.msr-col-qty,
+body.sales-report-module #msr-table td.msr-col-qty,
+body.sales-report-module #msr-table th.msr-col-sale,
+body.sales-report-module #msr-table td.msr-col-sale{
+  text-align:right !important;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+/* Reserve caret gutter so header labels line up with values. */
+body.sales-report-module #msr-table th.pl-sortable.msr-col-orders,
+body.sales-report-module #msr-table th.pl-sortable.msr-col-qty,
+body.sales-report-module #msr-table th.pl-sortable.msr-col-sale{
+  padding-right:14px;
+}
+body.sales-report-module #msr-table th.pl-sortable.msr-col-orders::after,
+body.sales-report-module #msr-table th.pl-sortable.msr-col-qty::after,
+body.sales-report-module #msr-table th.pl-sortable.msr-col-sale::after{
+  margin-left:4px;
+  min-width:0.7em;
+}
+body.sales-report-module #msr-table td.msr-col-orders,
+body.sales-report-module #msr-table td.msr-col-qty,
+body.sales-report-module #msr-table td.msr-col-sale{
+  padding-right:calc(14px + 0.7em + 4px);
 }
 
 @media (max-width:1100px){

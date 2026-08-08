@@ -4799,6 +4799,178 @@ def list_pos_invoices(
     return _enrich_pos_invoices_payment_modes(conn, invoices)
 
 
+def _pos_outlet_display_label(outlet) -> str:
+    key = normalize_pos_outlet(outlet)
+    if key == POS_OUTLET_BAR:
+        return "Bar"
+    return "Restaurant"
+
+
+def _pos_menu_sales_invoice_clauses(
+    *,
+    date_from=None,
+    date_to=None,
+    outlet=None,
+    settlement=None,
+    category_id=None,
+):
+    """Shared WHERE clauses/params for menu sales aggregations."""
+    clauses = ["i.is_active = 1"]
+    params = []
+    outlet_key = str(outlet or "").strip().lower()
+    if outlet_key in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        clauses.append("i.outlet = ?")
+        params.append(normalize_pos_outlet(outlet_key))
+    elif outlet_key not in ("", "all"):
+        clauses.append("i.outlet = ?")
+        params.append(normalize_pos_outlet(outlet_key))
+    if date_from:
+        clauses.append("i.order_date >= ?")
+        params.append(str(date_from))
+    if date_to:
+        clauses.append("i.order_date <= ?")
+        params.append(str(date_to))
+    settlement_key = str(settlement or "").strip().lower()
+    if settlement_key == "settled":
+        clauses.append(
+            """
+            (
+                EXISTS (
+                    SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
+                )
+                OR TRIM(COALESCE(i.settled_at, '')) != ''
+            )
+            """
+        )
+    elif settlement_key == "unsettled":
+        clauses.append(
+            """
+            NOT EXISTS (
+                SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
+            )
+            AND TRIM(COALESCE(i.settled_at, '')) = ''
+            """
+        )
+    try:
+        cat_id = int(category_id) if category_id not in (None, "", 0, "0") else 0
+    except (TypeError, ValueError):
+        cat_id = 0
+    if cat_id > 0:
+        clauses.append("m.category_id = ?")
+        params.append(cat_id)
+    return clauses, params
+
+
+def list_pos_menu_sales(
+    conn,
+    *,
+    date_from=None,
+    date_to=None,
+    outlet=None,
+    settlement=None,
+    category_id=None,
+):
+    """Item-wise POS sales: order count, qty sold, and sale value per menu item."""
+    ensure_pos_schema(conn)
+    clauses, params = _pos_menu_sales_invoice_clauses(
+        date_from=date_from,
+        date_to=date_to,
+        outlet=outlet,
+        settlement=settlement,
+        category_id=category_id,
+    )
+    where = " AND ".join(clauses)
+    rows = conn.execute(
+        f"""
+        SELECT
+            COALESCE(l.menu_item_id, 0) AS menu_item_id,
+            COALESCE(
+                NULLIF(TRIM(m.name), ''),
+                NULLIF(TRIM(l.name), ''),
+                'Item'
+            ) AS item_name,
+            COALESCE(c.id, 0) AS category_id,
+            COALESCE(c.name, '') AS category_name,
+            i.outlet AS outlet,
+            COUNT(DISTINCT i.id) AS order_count,
+            COALESCE(SUM(l.qty), 0) AS qty_sold,
+            COALESCE(SUM(l.line_total), 0) AS sale_value
+        FROM pos_invoice_lines l
+        JOIN pos_invoices i ON i.id = l.invoice_id
+        LEFT JOIN pos_menu_items m ON m.id = l.menu_item_id
+        LEFT JOIN pos_menu_categories c ON c.id = m.category_id
+        WHERE {where}
+        GROUP BY
+            COALESCE(l.menu_item_id, 0),
+            COALESCE(
+                NULLIF(TRIM(m.name), ''),
+                NULLIF(TRIM(l.name), ''),
+                'Item'
+            ),
+            COALESCE(c.id, 0),
+            COALESCE(c.name, ''),
+            i.outlet
+        ORDER BY sale_value DESC, item_name COLLATE NOCASE ASC, i.outlet ASC
+        """,
+        params,
+    ).fetchall()
+    results = []
+    for row in rows:
+        outlet_key = normalize_pos_outlet(row["outlet"])
+        results.append(
+            {
+                "menu_item_id": int(row["menu_item_id"] or 0),
+                "item_name": str(row["item_name"] or "Item").strip() or "Item",
+                "category_id": int(row["category_id"] or 0),
+                "category_name": str(row["category_name"] or "").strip(),
+                "outlet": outlet_key,
+                "outlet_label": _pos_outlet_display_label(outlet_key),
+                "order_count": int(row["order_count"] or 0),
+                "qty_sold": float(row["qty_sold"] or 0),
+                "sale_value": round(float(row["sale_value"] or 0), 2),
+            }
+        )
+    return results
+
+
+def pos_menu_sales_kpis(rows, conn=None, *, date_from=None, date_to=None, outlet=None, settlement=None, category_id=None):
+    """KPIs for menu sales: items, qty, sale value, contributing invoices."""
+    item_rows = list(rows or [])
+    qty_sum = 0.0
+    sale_sum = 0.0
+    for row in item_rows:
+        qty_sum += float(row.get("qty_sold") or 0)
+        sale_sum += float(row.get("sale_value") or 0)
+    invoice_count = 0
+    if conn is not None:
+        clauses, params = _pos_menu_sales_invoice_clauses(
+            date_from=date_from,
+            date_to=date_to,
+            outlet=outlet,
+            settlement=settlement,
+            category_id=category_id,
+        )
+        where = " AND ".join(clauses)
+        # Only count invoices that actually have lines matching the filters.
+        count_row = conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT i.id) AS n
+            FROM pos_invoices i
+            JOIN pos_invoice_lines l ON l.invoice_id = i.id
+            LEFT JOIN pos_menu_items m ON m.id = l.menu_item_id
+            WHERE {where}
+            """,
+            params,
+        ).fetchone()
+        invoice_count = int((count_row["n"] if count_row else 0) or 0)
+    return {
+        "item_count": len(item_rows),
+        "qty_sum": round(qty_sum, 3) if abs(qty_sum - round(qty_sum)) > 0.0001 else int(round(qty_sum)),
+        "sale_value_sum": round(sale_sum, 2),
+        "invoice_count": invoice_count,
+    }
+
+
 def list_pos_today_invoices(conn, *, today=None, outlet=POS_OUTLET_RESTAURANT):
     """Active POS invoices for the business day — Tables Invoice hub.
 

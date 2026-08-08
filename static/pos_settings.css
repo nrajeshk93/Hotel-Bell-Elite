@@ -1015,53 +1015,67 @@ body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-
   min-width:110px;
 }
 .pos-menu-recipe-block{margin-top:4px;display:flex;flex-direction:column;gap:10px}
-.pos-menu-recipe-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.pos-menu-recipe-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .pos-menu-recipe-row{
   display:grid;
-  grid-template-columns:minmax(0,1fr) auto auto;
-  gap:10px;align-items:center;
-  padding:10px 12px;
+  grid-template-columns:minmax(0,1.5fr) minmax(88px,110px) minmax(100px,120px) 40px;
+  gap:10px;
+  align-items:center;
+  padding:8px 10px;
   border:1px solid var(--pos-border,#E2E8F0);
-  border-radius:10px;
+  border-radius:12px;
   background:#F8FAFC;
+  box-sizing:border-box;
 }
-.pos-menu-recipe-row-main{min-width:0}
+.pos-menu-recipe-field{min-width:0;position:relative}
+.pos-menu-recipe-product-name,
 .pos-menu-recipe-row-main strong{
   display:block;font-size:13px;font-weight:650;color:var(--pos-text,#0F172A);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
+.pos-menu-recipe-row-main{min-width:0}
 .pos-menu-recipe-row-main small{display:block;font-size:11px;color:var(--pos-muted,#64748B);margin-top:2px}
 .pos-menu-recipe-row-qty{display:flex;align-items:center;gap:6px}
 .pos-menu-recipe-qty-label{margin:0}
+.pos-menu-recipe-field--qty input[type="number"],
 .pos-menu-recipe-row-qty input[type="number"]{
-  width:88px;height:36px;padding:0 10px;
-  border:1px solid var(--pos-border,#E2E8F0);border-radius:8px;
-  font-size:13px;background:#fff;color:var(--pos-text,#0F172A);
+  width:100%;height:40px;min-height:40px;padding:0 10px;
+  border:1px solid var(--pos-border,#E2E8F0);border-radius:10px;
+  font:600 13px Inter,system-ui,sans-serif;background:#fff;color:var(--pos-text,#0F172A);
+  box-sizing:border-box;
 }
-body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox{
-  width:auto;
-  min-width:78px;
+.pos-menu-recipe-field--unit .pos-menu-unit-listbox{
+  width:100%;min-width:0;max-width:100%;margin:0;
+}
+body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox,
+body.pos-settings-module #pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox{
+  width:100%;
+  min-width:0;
   flex:0 0 auto;
 }
 body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-chip-label{
   display:none;
 }
 body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-chip-control{
-  min-height:36px;
-  border-radius:8px;
+  min-height:40px;
+  height:40px;
+  max-height:40px;
+  border-radius:10px;
   background:#fff;
 }
 body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-chip-icon{
   display:none;
 }
 body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-chip-trigger{
-  padding:6px 2px 6px 10px;
+  padding:0;
   font-size:12px;
   font-weight:600;
-  text-align:center;
+  text-align:left;
+  height:100%;
+  min-height:0;
 }
 body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-chip-value{
-  text-align:center;
+  text-align:left;
   width:100%;
 }
 body.pos-settings-module #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-chip-chev{

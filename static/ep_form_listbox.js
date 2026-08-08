@@ -181,6 +181,29 @@
     });
   }
 
+  /* transform/filter/perspective (and will-change:transform) make position:fixed
+     relative to that ancestor while getBoundingClientRect stays viewport-based. */
+  function hasFixedContainingBlockAncestor(el){
+    var node = el && el.parentElement;
+    while (node && node !== document.documentElement) {
+      var style = window.getComputedStyle(node);
+      if (!style) break;
+      if (style.transform && style.transform !== 'none') return true;
+      if (style.perspective && style.perspective !== 'none') return true;
+      if (style.filter && style.filter !== 'none') return true;
+      if (style.backdropFilter && style.backdropFilter !== 'none') return true;
+      if ((style.willChange || '').indexOf('transform') !== -1) return true;
+      if ((style.contain || '').indexOf('paint') !== -1 ||
+          (style.contain || '').indexOf('layout') !== -1 ||
+          (style.contain || '').indexOf('strict') !== -1 ||
+          (style.contain || '').indexOf('content') !== -1) {
+        return true;
+      }
+      node = node.parentElement;
+    }
+    return false;
+  }
+
   function shouldUseFixedListbox(root){
     if (!root) return false;
     /* PO line supplier sits in overflow:auto group cards under a transformed
@@ -203,7 +226,10 @@
       return false;
     }
     /* Menu item modal listboxes sit in a scrollable body — absolute menus get clipped.
-       Fixed positioning escapes overflow so product/unit panels stay visible. */
+       Fixed positioning escapes overflow so product/unit panels stay visible.
+       Skip fixed when nested under Masters / transformed shells: fixed then uses
+       that ancestor as containing block while getBoundingClientRect is viewport,
+       so the panel lands far from the chip. */
     if (
       root.closest('#pos-menu-item-modal') &&
       (root.id === 'pos-menu-item-product-listbox' ||
@@ -214,6 +240,8 @@
         root.classList.contains('pos-menu-field-listbox') ||
         root.classList.contains('ep-combobox-listbox'))
     ) {
+      if (root.closest('#md-master-modal, #st-product-master-modal')) return false;
+      if (hasFixedContainingBlockAncestor(root)) return false;
       return true;
     }
     /* Product / category / unit overlays sit under a transformed workspace.

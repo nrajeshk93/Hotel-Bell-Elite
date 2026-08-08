@@ -237,9 +237,9 @@
       })
     }).then(function (res) {
       return res.json().then(function (payload) {
-        return { ok: res.ok && payload && payload.ok, payload: payload || {} };
+        return { ok: res.ok && payload && payload.ok, httpStatus: res.status, payload: payload || {} };
       }).catch(function () {
-        return { ok: false, payload: { error: 'Could not send purchase order.' } };
+        return { ok: false, httpStatus: res.status, payload: { error: 'Could not send purchase order.' } };
       });
     }).then(function (res) {
       if (abortTimer) window.clearTimeout(abortTimer);
@@ -251,9 +251,26 @@
       var supplierName = String(
         (res.payload && res.payload.supplier_name) || fallbackName || 'Supplier'
       ).trim() || 'Supplier';
+      var phone = String((res.payload && res.payload.phone) || '').trim();
       var note = res.payload && res.payload.dry_run ? ' (dry run)' : '';
-      toast('Purchase Order has been sent to ' + supplierName + note + '.', 'ok');
+      var meta = String((res.payload && res.payload.meta_status) || '').trim();
+      var phoneNote = phone ? ' (+' + phone + ')' : '';
+      var metaNote = meta && !note ? ' — Meta: ' + meta : '';
+      toast(
+        'Purchase Order has been sent to ' + supplierName + phoneNote + note + metaNote + '.',
+        'ok'
+      );
+      // Update status pill on Purchase Orders tab (row is not removed there).
+      var row = btn.closest('tr');
+      if (row) {
+        var pill = row.querySelector('.cp-status-pill');
+        if (pill) {
+          pill.className = 'cp-status-pill cp-status-pill--approved';
+          pill.textContent = res.payload && res.payload.dry_run ? 'Sent (dry run)' : 'Sent';
+        }
+      }
       removeSentPoRow(btn);
+      btn.disabled = false;
       if (typeof window.deInvalidateSoftNavCache === 'function') {
         try { window.deInvalidateSoftNavCache(window.location.href); } catch (e) {}
       }

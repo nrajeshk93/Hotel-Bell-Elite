@@ -132,13 +132,11 @@
 
     var valueEl = unitRoot.querySelector('.se-filter-chip-value');
     if (!valueEl) return;
+    valueEl.textContent = baseUnit;
+    valueEl.classList.remove('is-placeholder');
     if (packLabel && packQty !== '') {
-      valueEl.textContent = packQty + ' ' + baseUnit;
-      valueEl.classList.remove('is-placeholder');
       unitRoot.classList.add('is-pack-locked');
     } else {
-      valueEl.textContent = baseUnit;
-      valueEl.classList.remove('is-placeholder');
       unitRoot.classList.remove('is-pack-locked');
     }
   }
@@ -1579,7 +1577,7 @@
             : ('₹' + lineTotal.toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 })))
           : '—';
         var itemName = line.display_name || line.item_name || '';
-        var unit = line.display_unit || line.pack_label || line.unit || '';
+        var unit = line.unit || line.display_unit || '';
         return '<tr data-sort-row>'
           + '<td class="pl-name" data-sort-value="' + escapeHtml(itemName) + '">' + escapeHtml(itemName) + '</td>'
           + '<td class="pl-col-amount" data-sort-value="' + escapeHtml(String(qty)) + '">' + escapeHtml(line.quantity) + '</td>'

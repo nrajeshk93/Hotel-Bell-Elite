@@ -104,6 +104,14 @@ def first_message_id(response_body: dict) -> str:
     return str(first.get("id") or "").strip()
 
 
+def first_message_status(response_body: dict) -> str:
+    """Meta Cloud API immediate status (usually ``accepted``) from a send response."""
+    messages = (response_body or {}).get("messages") or []
+    if not messages or not isinstance(messages[0], dict):
+        return ""
+    return str(messages[0].get("message_status") or "").strip().lower()
+
+
 def _hub_preview_from_payload(payload: dict) -> tuple[str, str]:
     """Return (message_type, body preview) for Communication Hub mirroring."""
     msg_type = str((payload or {}).get("type") or "text").strip().lower() or "text"
@@ -163,6 +171,9 @@ def _mirror_outbound_to_hub(payload: dict, response_body: dict) -> None:
 
         conn = get_db()
         try:
+            # Fail fast if another request still holds the DB (e.g. caller forgot
+            # to commit before Meta HTTP). Callers also write hub rows themselves.
+            conn.execute("PRAGMA busy_timeout=3000")
             record_outbound_hub_message(
                 conn,
                 phone,

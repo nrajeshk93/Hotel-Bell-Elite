@@ -2392,10 +2392,7 @@ def _indent_view_payload(conn, indents: list[dict[str, Any]]) -> list[dict[str, 
                 pack_label = ""
             pack_qty = _row_pack_qty_in_base(line)
             base_unit = line["unit"] or ""
-            if pack_label and pack_qty is not None:
-                display_unit = f"{_format_ledger_qty(pack_qty)} {base_unit}".strip()
-            else:
-                display_unit = base_unit
+            display_unit = base_unit
             lines_by_id.setdefault(int(line["indent_id"]), []).append({
                 "item_name": line["item_name"],
                 "display_name": _format_indent_line_item(line),
@@ -3604,9 +3601,7 @@ def _supplier_initials(name: str) -> str:
 
 
 def _po_line_display_unit(line: dict[str, Any]) -> str:
-    pack_label = (line.get("pack_label") or "").strip()
-    if pack_label:
-        return pack_label
+    """PO / indent Unit column: base unit only (never pack qty + unit)."""
     return str(line.get("unit") or "").strip()
 
 
@@ -4195,13 +4190,7 @@ def _build_inward_lines_for_po(
             rate_val = float(approx) if approx is not None and approx != "" else 0.0
         except (TypeError, ValueError):
             rate_val = 0.0
-        if pack_label and pack_qty is not None:
-            try:
-                display_unit = f"{_format_ledger_qty(float(pack_qty))} {base_unit}".strip()
-            except (TypeError, ValueError):
-                display_unit = base_unit
-        else:
-            display_unit = base_unit
+        display_unit = base_unit
         product_category = product_cat_map.get(raw_item_name.casefold(), "")
         selected_lines.append(
             {
@@ -4214,7 +4203,8 @@ def _build_inward_lines_for_po(
                 "quantity_received_display": _format_qty_display(received_val),
                 "remaining": available,
                 "remaining_display": _format_qty_display(available),
-                "unit": display_unit,
+                "unit": base_unit,
+                "display_unit": display_unit,
                 "notes": notes,
                 "approximate_price": approx,
                 "approximate_price_display": _format_optional_price(approx),
@@ -4325,47 +4315,52 @@ def _po_line_name_and_pack(line: dict[str, Any]) -> tuple[str, str]:
     return name, pack or "—"
 
 
-def _po_line_bullet(line: dict[str, Any]) -> str:
-    """Compact one-line summary (Meta template params / overflow)."""
-    name, pack = _po_line_name_and_pack(line)
-    qty_label = _po_line_qty_label(line)
-    return f"{name} ({pack}) × {qty_label}"
-
-
 def _po_items_body(lines: list[dict[str, Any]], *, for_template: bool = False) -> str:
     """Format PO lines for WhatsApp text or template {{3}}.
 
     Free-form / interactive messages use a numbered Item / Pack / Qty block.
-    Meta template body parameters cannot contain newlines, so the template
-    form stays a compact single-line list.
+    When ``for_template=True``, the same labels are kept but newlines are
+    replaced so Meta body parameters stay valid (no newline characters).
     """
     rows = list(lines or [])
-    if for_template:
-        bullets = [_po_line_bullet(line) for line in rows] or ["(no items)"]
-        text = " | ".join(bullets)
-        if rows:
-            text = f"{text} · Total Items : {len(rows)}"
-        return text
-
     rule = "----------------------------------------------------"
     if not rows:
-        return (
+        block = (
             f"Items\n{rule}\n(no items)\n{rule}\n\nTotal Items : 0"
         )
-
-    item_blocks: list[str] = []
-    for idx, line in enumerate(rows, start=1):
-        name, pack = _po_line_name_and_pack(line)
-        qty_label = _po_line_qty_label(line)
-        item_blocks.append(
-            f"{idx}. Item Name : {name}\n"
-            f"   Pack Size : {pack}\n"
-            f"   Quantity  : {qty_label}"
+    else:
+        item_blocks: list[str] = []
+        for idx, line in enumerate(rows, start=1):
+            name, pack = _po_line_name_and_pack(line)
+            qty_label = _po_line_qty_label(line)
+            item_blocks.append(
+                f"{idx}. Item Name : {name}\n"
+                f"   Pack Size : {pack}\n"
+                f"   Quantity  : {qty_label}"
+            )
+        block = (
+            f"Items\n{rule}\n"
+            + "\n\n".join(item_blocks)
+            + f"\n{rule}\n\nTotal Items : {len(rows)}"
         )
+    if for_template:
+        # Meta rejects newlines/tabs in template body parameters.
+        return (
+            block.replace("\r\n", "\n")
+            .replace("\r", "\n")
+            .replace("\n\n", " | ")
+            .replace("\n", " | ")
+            .replace("   ", " ")
+        )
+    return block
+
+
+def _po_template_item_slot_line(idx: int, line: dict[str, Any]) -> str:
+    """One product for a multi-slot Meta template variable (no newlines)."""
+    name, pack = _po_line_name_and_pack(line)
+    qty_label = _po_line_qty_label(line)
     return (
-        f"Items\n{rule}\n"
-        + "\n\n".join(item_blocks)
-        + f"\n{rule}\n\nTotal Items : {len(rows)}"
+        f"{idx}. Item Name : {name} | Pack Size : {pack} | Quantity : {qty_label}"
     )
 
 
@@ -4406,37 +4401,42 @@ def _po_whatsapp_template_params(
     supplier_name: str,
     po_no: str,
     lines: list[dict[str, Any]],
+    *,
+    allow_newlines: bool = True,
 ) -> list[str]:
     """Body vars for the PO Meta template.
 
-    Legacy (slots=0): {{1}} name, {{2}} PO, {{3}} items (one line).
+    Legacy (slots=0): {{1}} name, {{2}} PO, {{3}} items block (Item/Pack/Qty).
     Multi-line (slots=N): {{1}} name, {{2}} PO, {{3}}…{{N+2}} one product each
     (empty slots use a zero-width space so Meta accepts the parameter).
     """
     name = (supplier_name or "Supplier").strip() or "Supplier"
     reference = (po_no or "").strip() or "PO"
     slots = _po_template_item_slots()
-    bullets = [_po_line_bullet(line) for line in (lines or [])]
-    if not bullets:
-        bullets = ["• (no items)"]
+    rows = list(lines or [])
 
     if slots <= 0:
-        items = " ".join(bullets)
-        if len(items) > 1000:
-            items = items[:997].rstrip() + "…"
+        # Prefer the exact Item/Pack/Qty layout; Meta may reject newlines — caller
+        # can retry with allow_newlines=False (flat labeled string).
+        items = _po_items_body(rows, for_template=not allow_newlines)
+        if len(items) > 1024:
+            items = items[:1021].rstrip() + "…"
         return [name, reference, items]
 
     # One product per template variable; overflow summarised in the last slot.
     empty = "\u200b"  # Meta rejects blank parameters
+    slot_lines = [
+        _po_template_item_slot_line(idx, line) for idx, line in enumerate(rows, start=1)
+    ] or ["(no items)"]
     values = [name, reference]
-    if len(bullets) <= slots:
+    if len(slot_lines) <= slots:
         for i in range(slots):
-            values.append(bullets[i] if i < len(bullets) else empty)
+            values.append(slot_lines[i] if i < len(slot_lines) else empty)
     else:
         keep = slots - 1
         for i in range(keep):
-            values.append(bullets[i])
-        rest = len(bullets) - keep
+            values.append(slot_lines[i])
+        rest = len(slot_lines) - keep
         values.append(f"…and {rest} more (see PDF)")
     return values
 
@@ -5747,6 +5747,7 @@ def _send_po_whatsapp(
         wa_message_id = ""
         status = "sent"
         error = ""
+        send_path = "unknown"
 
         if not live:
             # Dry-run / testing: still create Hub history + PO send row.
@@ -5787,6 +5788,8 @@ def _send_po_whatsapp(
                 "conversation_id": conversation_id,
                 "pdf_name": pdf_name if include_pdf else "",
                 "supplier_name": supplier_name,
+                "phone": phone,
+                "send_path": "dry_run",
                 "template_name": template_name,
                 "template_params": template_params,
             }
@@ -5794,14 +5797,22 @@ def _send_po_whatsapp(
         if not wa.whatsapp_configured():
             return {"ok": False, "error": "WhatsApp API is not configured.", "status": 400}
 
+        # Commit before Meta HTTP. upload/send open a second hub-mirror connection;
+        # holding an open write txn here deadlocks SQLite ("database is locked")
+        # and the UI stays on "Sending…" until the 60s abort.
+        try:
+            conn.commit()
+        except Exception:
+            pass
+
         ok = False
         err = ""
         result: dict[str, Any] = {}
         used_template = False
+        meta_status = ""
 
-        # Prefer one session bubble when the 24h window is open: PDF header +
-        # multiline body (with WhatsApp *bold*) + Accept / Reject buttons.
-        # Fall back to the Meta template for cold outreach.
+        # Always prefer session interactive so Item Name / Pack Size / Quantity
+        # newlines render. Utility template is only for outside the 24h window.
         session_ok = False
         session_err = ""
         import tempfile
@@ -5841,6 +5852,16 @@ def _send_po_whatsapp(
                     except OSError:
                         pass
 
+        def _template_newline_error(err_text: str) -> bool:
+            t = str(err_text or "").lower()
+            return (
+                "new-line" in t
+                or "newline" in t
+                or "new line" in t
+                or ("132018" in t)
+            )
+
+        # 1) Session interactive first — preserves Item/Pack/Qty newlines.
         if not include_pdf or media_id:
             ok_btn, err_btn, payload_btn = wa.send_interactive_buttons(
                 phone,
@@ -5851,6 +5872,8 @@ def _send_po_whatsapp(
             )
             if ok_btn:
                 wa_message_id = wa.first_message_id(payload_btn)
+                meta_status = wa.first_message_status(payload_btn) or "accepted"
+                send_path = "interactive"
                 hub.append_message(
                     conn,
                     conversation_id,
@@ -5867,36 +5890,12 @@ def _send_po_whatsapp(
                 session_ok = True
                 ok, err = True, ""
             else:
-                session_err = err_btn or session_err or "Interactive send failed"
-                if not include_pdf:
-                    ok_txt, err_txt, result_txt = hub.send_conversation_text(
-                        conn, conversation_id, message, user_id=user_id
-                    )
-                    if ok_txt:
-                        msg = (result_txt or {}).get("message") or {}
-                        wa_message_id = str(msg.get("wa_message_id") or "")
-                        session_ok = True
-                        ok, err = True, ""
-                    else:
-                        session_err = err_txt or session_err
+                session_err = err_btn or "Interactive send failed"
+                ok, err = False, session_err
 
-        # Meta template fallback (cold outreach / closed session).
-        if not session_ok and template_name:
+        # 2) Utility template fallback (cold outreach / outside 24h window).
+        if not session_ok and template_name and (not include_pdf or media_id):
             used_template = True
-            if not header_pdf:
-                header_pdf = build_purchase_order_pdf(
-                    groups_payload.get("indent") or {},
-                    {
-                        "name": supplier_name,
-                        "phone": group.get("phone") or "",
-                        "gst": group.get("gst") or "",
-                        "address": group.get("address") or "",
-                    },
-                    send_lines,
-                    outlet_label=groups_payload.get("outlet_label") or "",
-                    po_no=send_po_no,
-                )
-                header_name = po_pdf_filename(supplier_name, po_ref)
             if not media_id and header_pdf:
                 tmp_path = ""
                 try:
@@ -5915,35 +5914,63 @@ def _send_po_whatsapp(
                             os.unlink(tmp_path)
                         except OSError:
                             pass
-            if media_id:
-                ok_tpl, err_tpl, payload_tpl = wa.send_template_message(
-                    phone,
-                    template_name,
-                    template_lang,
-                    body_parameters=template_params,
-                    header_document_id=media_id,
-                    header_document_filename=header_name,
-                )
-                if ok_tpl:
-                    wa_message_id = wa.first_message_id(payload_tpl)
-                    hub.append_message(
-                        conn,
-                        conversation_id,
-                        direction="out",
-                        body=message,
-                        message_type="template",
-                        media_mime="application/pdf",
-                        media_filename=header_name,
-                        media_size=len(header_pdf),
-                        wa_message_id=wa_message_id,
-                        status="sent",
-                        created_by=user_id,
+            if media_id or not include_pdf:
+                attempts = [
+                    template_params,
+                    _po_whatsapp_template_params(
+                        supplier_name, po_ref, send_lines, allow_newlines=False
+                    ),
+                ]
+                err_tpl = ""
+                for attempt_params in attempts:
+                    ok_tpl, err_tpl, payload_tpl = wa.send_template_message(
+                        phone,
+                        template_name,
+                        template_lang,
+                        body_parameters=attempt_params,
+                        header_document_id=media_id if include_pdf else "",
+                        header_document_filename=header_name if (include_pdf and media_id) else "",
                     )
-                    ok, err = True, ""
-                else:
-                    ok, err = False, err_tpl or "Template send failed"
-            elif not err:
-                ok, err = False, session_err or "Could not upload purchase order PDF."
+                    if ok_tpl:
+                        wa_message_id = wa.first_message_id(payload_tpl)
+                        meta_status = wa.first_message_status(payload_tpl) or "accepted"
+                        send_path = "template_fallback"
+                        hub.append_message(
+                            conn,
+                            conversation_id,
+                            direction="out",
+                            body=message,
+                            message_type="template",
+                            media_mime="application/pdf" if media_id else "",
+                            media_filename=header_name if media_id else "",
+                            media_size=len(header_pdf) if media_id else 0,
+                            wa_message_id=wa_message_id,
+                            status="sent",
+                            created_by=user_id,
+                        )
+                        session_ok = True
+                        ok, err = True, ""
+                        break
+                    if not _template_newline_error(err_tpl):
+                        break
+                if not session_ok:
+                    session_err = err_tpl or session_err or "Template send failed"
+                    ok, err = False, session_err
+
+        # 3) Plain text fallback when interactive failed and no PDF header.
+        if not session_ok and not include_pdf:
+            ok_txt, err_txt, result_txt = hub.send_conversation_text(
+                conn, conversation_id, message, user_id=user_id
+            )
+            if ok_txt:
+                msg = (result_txt or {}).get("message") or {}
+                wa_message_id = str(msg.get("wa_message_id") or "")
+                send_path = "text_fallback"
+                session_ok = True
+                ok, err = True, ""
+            else:
+                session_err = err_txt or session_err
+                ok, err = False, session_err
         elif not session_ok:
             ok, err = False, session_err or "Send failed"
 
@@ -5953,7 +5980,7 @@ def _send_po_whatsapp(
         else:
             status = "failed"
             error = err or "Send failed"
-            if not used_template and _po_is_outside_session_error(error):
+            if _po_is_outside_session_error(error):
                 error = (
                     "WhatsApp session expired (outside 24-hour window). "
                     "Ask the supplier to message first, or set WHATSAPP_PO_TEMPLATE."
@@ -5983,6 +6010,7 @@ def _send_po_whatsapp(
                 "status": 400,
                 "supplier_name": supplier_name,
                 "po_no": send_po_no,
+                "send_path": send_path,
             }
         return {
             "ok": True,
@@ -5992,6 +6020,9 @@ def _send_po_whatsapp(
             "pdf_name": pdf_name if include_pdf else "",
             "wa_message_id": wa_message_id,
             "supplier_name": supplier_name,
+            "phone": phone,
+            "meta_status": meta_status or "accepted",
+            "send_path": send_path,
             "template_name": template_name,
         }
     finally:

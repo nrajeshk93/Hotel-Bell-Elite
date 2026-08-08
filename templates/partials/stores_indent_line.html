@@ -75,7 +75,7 @@
     <input type="number" name="quantity" min="0.01" step="0.01" inputmode="decimal" value="{{ line.quantity }}" placeholder="0" aria-label="Qty">
   </div>
   <div class="st-field st-field--unit" data-st-label="Unit">
-    {% set unit_display = (pack_qty|string ~ ' ' ~ line_unit) if (pack_label and pack_qty != '' and pack_qty is not none) else line_unit %}
+    {% set unit_display = line_unit %}
     <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox st-unit-listbox{% if pack_label %} is-pack-locked{% endif %}" data-se-listbox data-st-unit-listbox id="{{ ufid }}-listbox">
       <label class="se-filter-chip-label st-sr-only" id="{{ ufid }}-label" for="{{ ufid }}-trigger">Unit</label>
       <div class="se-filter-chip-control">

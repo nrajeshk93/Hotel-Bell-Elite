@@ -21,25 +21,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
 <style>
-#bank-report-page{
-  display:flex;flex-direction:column;min-height:100vh;box-sizing:border-box;
-}
-#bank-report-page > header.se-sales-header{flex:0 0 auto}
-#bank-report-page .content.se-content{
-  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;padding-bottom:24px;
-}
-#bank-report-page .pl-summary-row{flex:0 0 auto}
-#bank-report-page .pl-list-panel.hbe-scroll-panel{
-  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;margin-bottom:0;
-}
-#bank-report-page .pl-list-panel > .card-hdr{flex:0 0 auto}
-#bank-report-page .pl-list-panel > .card-body{
-  flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
-}
-#bank-report-page .hbe-scroll-panel .pl-table-wrap,
-#bank-report-page .emp-list-panel--scroll .emp-table-wrap{
-  flex:1 1 auto;max-height:none;min-height:min(280px,40vh);height:100%;overflow:auto;
-}
+#bank-report-page{box-sizing:border-box;}
 #bank-report-page .ep-header-filters.sr-topbar-filters{
   display:flex;flex-wrap:nowrap;align-items:flex-end;justify-content:stretch;
   gap:12px;width:100%;min-width:0;
@@ -67,16 +49,6 @@
   #bank-report-page #br-month-form.ep-topbar-filter-form{flex:1 1 100%;width:100%}
   #bank-report-page #br-month-form .ep-toolbar-listbox{
     flex:1 1 calc(50% - 6px);width:auto;max-width:none;min-width:0;
-  }
-}
-@media(max-width:760px){
-  #bank-report-page{min-height:0}
-  #bank-report-page .content.se-content{display:block}
-  #bank-report-page .pl-list-panel.hbe-scroll-panel{display:block}
-  #bank-report-page .pl-list-panel > .card-body{display:block}
-  #bank-report-page .hbe-scroll-panel .pl-table-wrap,
-  #bank-report-page .emp-list-panel--scroll .emp-table-wrap{
-    max-height:calc(44px + 10 * 52px);height:auto;min-height:0;
   }
 }
 </style>
@@ -101,25 +73,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
 <style>
-#bank-report-page{
-  display:flex;flex-direction:column;min-height:100vh;box-sizing:border-box;
-}
-#bank-report-page > header.se-sales-header{flex:0 0 auto}
-#bank-report-page .content.se-content{
-  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;padding-bottom:24px;
-}
-#bank-report-page .pl-summary-row{flex:0 0 auto}
-#bank-report-page .pl-list-panel.hbe-scroll-panel{
-  flex:1 1 auto;display:flex;flex-direction:column;min-height:0;margin-bottom:0;
-}
-#bank-report-page .pl-list-panel > .card-hdr{flex:0 0 auto}
-#bank-report-page .pl-list-panel > .card-body{
-  flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
-}
-#bank-report-page .hbe-scroll-panel .pl-table-wrap,
-#bank-report-page .emp-list-panel--scroll .emp-table-wrap{
-  flex:1 1 auto;max-height:none;min-height:min(280px,40vh);height:100%;overflow:auto;
-}
+#bank-report-page{box-sizing:border-box;}
 #bank-report-page .ep-header-filters.sr-topbar-filters{
   display:flex;flex-wrap:nowrap;align-items:flex-end;justify-content:stretch;
   gap:12px;width:100%;min-width:0;
@@ -147,16 +101,6 @@
   #bank-report-page #br-month-form.ep-topbar-filter-form{flex:1 1 100%;width:100%}
   #bank-report-page #br-month-form .ep-toolbar-listbox{
     flex:1 1 calc(50% - 6px);width:auto;max-width:none;min-width:0;
-  }
-}
-@media(max-width:760px){
-  #bank-report-page{min-height:0}
-  #bank-report-page .content.se-content{display:block}
-  #bank-report-page .pl-list-panel.hbe-scroll-panel{display:block}
-  #bank-report-page .pl-list-panel > .card-body{display:block}
-  #bank-report-page .hbe-scroll-panel .pl-table-wrap,
-  #bank-report-page .emp-list-panel--scroll .emp-table-wrap{
-    max-height:calc(44px + 10 * 52px);height:auto;min-height:0;
   }
 }
 </style>

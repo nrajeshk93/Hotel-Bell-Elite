@@ -111,11 +111,12 @@ class SalesReportsTests(unittest.TestCase):
         sales = [r for r in REPORT_DEFINITIONS if r.get("category") == "sales"]
         self.assertEqual(
             [r["id"] for r in sales],
-            ["hotel_sales", "restaurant_sales", "bar_sales"],
+            ["hotel_sales", "restaurant_sales", "bar_sales", "menu_sales"],
         )
         self.assertEqual(sales[0]["view_route"], "sales_report_hotel")
         self.assertEqual(sales[1]["view_route"], "sales_report_restaurant")
         self.assertEqual(sales[2]["view_route"], "sales_report_bar")
+        self.assertEqual(sales[3]["view_route"], "sales_report_menu")
 
         with self.app.test_request_context():
             from flask import url_for
@@ -125,9 +126,11 @@ class SalesReportsTests(unittest.TestCase):
             (s for s in payload["report_sections"] if s["key"] == "sales"), None
         )
         self.assertIsNotNone(sales_section)
-        self.assertEqual(sales_section["count"], 3)
+        self.assertEqual(sales_section["count"], 4)
         names = [r["name"] for r in sales_section["reports"]]
-        self.assertEqual(names, ["Hotel Sales", "Restaurant Sales", "Bar Sales"])
+        self.assertEqual(
+            names, ["Hotel Sales", "Restaurant Sales", "Bar Sales", "Menu Sales"]
+        )
 
         hub = self.client.get("/reports")
         self.assertEqual(hub.status_code, 200)
@@ -135,10 +138,12 @@ class SalesReportsTests(unittest.TestCase):
         self.assertIn("Hotel Sales", html)
         self.assertIn("Restaurant Sales", html)
         self.assertIn("Bar Sales", html)
+        self.assertIn("Menu Sales", html)
         self.assertIn('data-report-category="sales"', html)
         self.assertIn("/reports/sales/hotel", html)
         self.assertIn("/reports/sales/restaurant", html)
         self.assertIn("/reports/sales/bar", html)
+        self.assertIn("/reports/sales/menu", html)
 
     def test_sales_report_pages_and_export(self):
         # Seed one restaurant + one bar invoice so POS pages have rows.
@@ -223,6 +228,8 @@ class SalesReportsTests(unittest.TestCase):
             "sales_report_restaurant_export",
             "sales_report_bar",
             "sales_report_bar_export",
+            "sales_report_menu",
+            "sales_report_menu_export",
         ):
             self.assertEqual(get_endpoint_dashboard_module(endpoint), "reports")
 
@@ -246,12 +253,15 @@ class SalesReportsTests(unittest.TestCase):
                 "/reports/sales/hotel",
                 "/reports/sales/restaurant",
                 "/reports/sales/bar",
+                "/reports/sales/menu",
                 "/reports/sales/hotel/export",
+                "/reports/sales/menu/export",
             ):
                 denied = self.client.get(path)
                 self.assertIn(denied.status_code, (302, 403), path)
                 if denied.status_code == 302:
                     self.assertNotIn(b'id="sales-report-page"', denied.data)
+                    self.assertNotIn(b'id="menu-sales-report-page"', denied.data)
 
 
 if __name__ == "__main__":

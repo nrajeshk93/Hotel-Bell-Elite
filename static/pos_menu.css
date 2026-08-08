@@ -1691,6 +1691,149 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   color:#94A3B8;
   line-height:1.5;
 }
+/* Recipe lines — indent-style horizontal grid: Item | Qty | Unit | Remove */
+#pos-menu-item-modal .pos-menu-recipe-list{
+  list-style:none;
+  margin:0;
+  padding:0;
+  display:grid;
+  gap:10px;
+}
+#pos-menu-item-modal .pos-menu-recipe-row{
+  display:grid;
+  grid-template-columns:
+    minmax(0,1.5fr)
+    minmax(88px,110px)
+    minmax(100px,120px)
+    40px;
+  gap:10px;
+  align-items:center;
+  padding:8px 10px;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+  background:#F8FAFC;
+  box-sizing:border-box;
+}
+#pos-menu-item-modal .pos-menu-recipe-field{
+  min-width:0;
+  position:relative;
+}
+#pos-menu-item-modal .pos-menu-recipe-product-name{
+  display:block;
+  font-size:13px;
+  font-weight:650;
+  color:#0F172A;
+  line-height:1.35;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#pos-menu-item-modal .pos-menu-recipe-field--qty input[type="number"]{
+  width:100%;
+  height:40px;
+  min-height:40px;
+  padding:0 10px;
+  border:1px solid #E2E8F0;
+  border-radius:10px;
+  background:#fff;
+  color:#0F172A;
+  font:600 13px Inter,system-ui,sans-serif;
+  box-sizing:border-box;
+}
+#pos-menu-item-modal .pos-menu-recipe-field--qty input[type="number"]:focus{
+  outline:none;
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+#pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox{
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  margin:0;
+}
+#pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox .se-filter-chip-label{
+  display:none;
+}
+#pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:40px;
+  height:40px;
+  max-height:40px;
+  padding:0 4px 0 10px;
+  border-radius:10px;
+  background:#fff;
+  box-sizing:border-box;
+}
+#pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox .se-filter-chip-trigger{
+  padding:0;
+  min-height:0;
+  height:100%;
+  font-size:12px;
+  font-weight:600;
+}
+#pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox .se-filter-chip-value{
+  width:100%;
+  text-align:left;
+}
+#pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox .se-filter-chip-chev{
+  width:28px;
+}
+#pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox .se-filter-chip-chev svg{
+  width:14px;
+  height:14px;
+}
+#pos-menu-item-modal .pos-menu-recipe-remove.pos-menu-icon-btn,
+#pos-menu-item-modal .pos-menu-icon-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:40px;
+  height:40px;
+  padding:0;
+  border:1px solid #E2E8F0;
+  border-radius:10px;
+  background:#fff;
+  color:#94A3B8;
+  cursor:pointer;
+  flex-shrink:0;
+  box-sizing:border-box;
+}
+#pos-menu-item-modal .pos-menu-icon-btn svg{
+  width:15px;
+  height:15px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.75;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+#pos-menu-item-modal .pos-menu-icon-btn:hover{
+  background:#EEF2FF;
+  color:#2563EB;
+  border-color:#BFDBFE;
+}
+#pos-menu-item-modal .pos-menu-icon-btn--danger:hover{
+  background:#FFF1F2;
+  color:#DC2626;
+  border-color:#FECACA;
+}
+@media (max-width:560px){
+  #pos-menu-item-modal .pos-menu-recipe-row{
+    grid-template-columns:minmax(0,1fr) minmax(72px,96px) minmax(88px,108px) 36px;
+    gap:8px;
+    padding:8px;
+  }
+  #pos-menu-item-modal .pos-menu-recipe-remove.pos-menu-icon-btn{
+    width:36px;
+    height:36px;
+  }
+  #pos-menu-item-modal .pos-menu-recipe-field--qty input[type="number"],
+  #pos-menu-item-modal .pos-menu-recipe-field--unit .pos-menu-unit-listbox .se-filter-chip-control{
+    height:36px;
+    min-height:36px;
+    max-height:36px;
+  }
+}
 #pos-menu-item-modal .staff-credit-actions,
 #pos-menu-item-modal .pos-floor-props-actions{
   display:flex;
@@ -1802,6 +1945,26 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
 #pos-menu-item-modal .pos-menu-item-modal-body:has(.pos-menu-listbox.is-open),
 #pos-menu-item-modal .pos-menu-item-modal-body:has(.pos-menu-unit-listbox.is-open){
   overflow:visible;
+}
+/* Masters embed: absolute under the chip (fixed + transformed shell misplaces the panel). */
+#md-master-modal #pos-menu-item-modal .pos-menu-listbox.is-open,
+#md-master-modal #pos-menu-item-modal .pos-menu-unit-listbox.is-open,
+#st-product-master-modal #pos-menu-item-modal .pos-menu-listbox.is-open,
+#st-product-master-modal #pos-menu-item-modal .pos-menu-unit-listbox.is-open{
+  z-index:85;
+}
+#md-master-modal #pos-menu-item-modal .pos-menu-listbox .se-filter-listbox,
+#md-master-modal #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox,
+#st-product-master-modal #pos-menu-item-modal .pos-menu-listbox .se-filter-listbox,
+#st-product-master-modal #pos-menu-item-modal .pos-menu-unit-listbox .se-filter-listbox{
+  position:absolute;
+  left:0;
+  right:auto;
+  top:calc(100% + 6px);
+  bottom:auto;
+  width:auto;
+  min-width:100%;
+  z-index:90;
 }
 #pos-menu-item-modal .pos-menu-unit-listbox{
   position:relative;

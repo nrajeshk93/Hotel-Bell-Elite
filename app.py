@@ -93,6 +93,7 @@ from db import (
     list_pos_invoices,
     list_pos_kot_pending_summary,
     list_pos_kot_tokens,
+    list_pos_menu_sales,
     list_pos_today_invoices,
     get_pos_menu_item_details,
     list_pos_menu_categories,
@@ -100,6 +101,7 @@ from db import (
     list_store_products_lite,
     normalize_pos_outlet,
     pos_invoice_kpis,
+    pos_menu_sales_kpis,
     pos_today_sales_summary,
     save_customer_record,
     save_agency_record,
@@ -3566,14 +3568,14 @@ def save_category_master():
             form = dict(payload)
             form["id"] = category_id or ""
             return _category_master_page_render(
-                "partials/master_embed/category.html" if is_embed_request() else "category_master.html",
+                "partials/master_embed/category.html" if embed else "category_master.html",
                 categories=categories,
                 form=form,
                 errors=[str(exc)],
                 success_message="",
                 form_focus=True,
                 show_form=True,
-                embed_mode=is_embed_request(),
+                embed_mode=embed,
             ), 400
     finally:
         conn.close()
@@ -3986,6 +3988,282 @@ def sales_report_bar():
 def sales_report_bar_export():
     """Excel export for Bar Sales report."""
     return _sales_report_export("bar")
+
+
+def _menu_sales_filters(args):
+    """Parse Menu Sales GET filters (page + export)."""
+    base = _sales_report_filters(args)
+    outlet = (args.get("outlet") or "all").strip().lower()
+    if outlet not in ("all", POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        outlet = "all"
+    raw_cat = (args.get("category_id") or args.get("category") or "").strip()
+    try:
+        category_id = int(raw_cat) if raw_cat else 0
+    except (TypeError, ValueError):
+        category_id = 0
+    if category_id < 0:
+        category_id = 0
+    base["selected_outlet"] = outlet
+    base["selected_category_id"] = category_id
+    return base
+
+
+def _menu_sales_outlet_labels():
+    return {
+        "all": "All outlets",
+        POS_OUTLET_RESTAURANT: "Restaurant",
+        POS_OUTLET_BAR: "Bar",
+    }
+
+
+def _menu_sales_load(filters):
+    date_from = (
+        filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else None
+    )
+    date_to = (
+        filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else None
+    )
+    status = filters["selected_status"]
+    settlement = None if status == "all" else status
+    query_from = date_from or "2000-01-01"
+    query_to = date_to or filters["today"].isoformat()
+    outlet = filters["selected_outlet"]
+    category_id = filters["selected_category_id"] or None
+
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        rows = list_pos_menu_sales(
+            conn,
+            date_from=query_from,
+            date_to=query_to,
+            outlet=None if outlet == "all" else outlet,
+            settlement=settlement,
+            category_id=category_id,
+        )
+        kpis = pos_menu_sales_kpis(
+            rows,
+            conn,
+            date_from=query_from,
+            date_to=query_to,
+            outlet=None if outlet == "all" else outlet,
+            settlement=settlement,
+            category_id=category_id,
+        )
+        cat_outlets = (
+            [POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
+            if outlet == "all"
+            else [outlet]
+        )
+        categories = list_pos_menu_categories(
+            conn, outlets=cat_outlets, include_inactive=False
+        )
+        return rows, kpis, categories
+    finally:
+        conn.close()
+
+
+def _menu_sales_filter_kwargs(filters, *, include_dates=True, include_from_hub=True):
+    kwargs = {}
+    if filters["selected_status"] != "all":
+        kwargs["status"] = filters["selected_status"]
+    if filters["selected_outlet"] != "all":
+        kwargs["outlet"] = filters["selected_outlet"]
+    if filters["selected_category_id"]:
+        kwargs["category_id"] = filters["selected_category_id"]
+    if include_dates and filters["date_filter_active"]:
+        if filters["date_from"]:
+            kwargs["date_from"] = filters["date_from"].isoformat()
+        if filters["date_to"]:
+            kwargs["date_to"] = filters["date_to"].isoformat()
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    if include_from_hub and from_hub == "reports":
+        kwargs["from_hub"] = "reports"
+    return kwargs
+
+
+@app.route("/reports/sales/menu", endpoint="sales_report_menu")
+def sales_report_menu():
+    """Menu Sales report — item-wise order count, qty, and sale value."""
+    filters = _menu_sales_filters(request.args)
+    rows, kpis, categories = _menu_sales_load(filters)
+    status_labels = _sales_report_status_labels()
+    outlet_labels = _menu_sales_outlet_labels()
+
+    selected_category_label = "All categories"
+    for cat in categories:
+        if int(cat.get("id") or 0) == filters["selected_category_id"]:
+            selected_category_label = cat.get("name") or "All categories"
+            break
+
+    clear_kwargs = _menu_sales_filter_kwargs(
+        filters, include_dates=False, include_from_hub=True
+    )
+    export_kwargs = _menu_sales_filter_kwargs(
+        filters, include_dates=True, include_from_hub=True
+    )
+    # Always keep hub deep-link so filters/export preserve Back to Reports.
+    filter_kwargs = {"from_hub": "reports"}
+    clear_kwargs.setdefault("from_hub", "reports")
+    export_kwargs.setdefault("from_hub", "reports")
+
+    return render_template(
+        "menu_sales_report.html",
+        de_nav_section="report",
+        de_nav_report_view="sales",
+        page_title="Menu Sales",
+        rows=rows,
+        kpis=kpis,
+        categories=categories,
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else "",
+        date_to=filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else "",
+        active_date_filter=filters["date_filter_active"],
+        selected_status=filters["selected_status"],
+        selected_status_label=status_labels.get(
+            filters["selected_status"], "All statuses"
+        ),
+        selected_outlet=filters["selected_outlet"],
+        selected_outlet_label=outlet_labels.get(
+            filters["selected_outlet"], "All outlets"
+        ),
+        selected_category_id=filters["selected_category_id"],
+        selected_category_label=selected_category_label,
+        filter_form_action=url_for("sales_report_menu", **filter_kwargs),
+        sales_report_clear_url=url_for("sales_report_menu", **clear_kwargs),
+        sales_report_export_url=url_for("sales_report_menu_export", **export_kwargs),
+        preserve_from_hub=True,
+        back_href=url_for("reports"),
+        back_label="Back to Reports",
+    )
+
+
+@app.route("/reports/sales/menu/export", endpoint="sales_report_menu_export")
+def sales_report_menu_export():
+    """Excel export for Menu Sales report (item-wise)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+
+    filters = _menu_sales_filters(request.args)
+    rows, _kpis, _categories = _menu_sales_load(filters)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Menu Sales"
+
+    # All header rows use #315A78 with white text; data rows stay white.
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    title_font = Font(bold=True, size=14, color="FFFFFFFF")
+    header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    headers = (
+        "Item",
+        "Category",
+        "Outlet",
+        "Order Count",
+        "Qty Sold",
+        "Sale Value",
+    )
+
+    # Write values first, then style (merge-safe fill application).
+    ws["A1"] = "Hotel Bell Elite — Menu Sales"
+    for col, title in enumerate(headers, start=1):
+        ws.cell(row=2, column=col, value=title)
+
+    for idx, row in enumerate(rows, start=3):
+        item = (row.get("item_name") or "").strip().upper()
+        category = (row.get("category_name") or "").strip().upper()
+        outlet = row.get("outlet_label") or ""
+        order_count = int(row.get("order_count") or 0)
+        qty = _whole_or_float(row.get("qty_sold"))
+        sale = _whole_or_float(round_half_up(row.get("sale_value"), 2))
+        values = (item, category, outlet, order_count, qty, sale)
+        for col, value in enumerate(values, start=1):
+            ws.cell(row=idx, column=col, value=value)
+
+    ws.merge_cells("A1:F1")
+    last_row = max(2, ws.max_row)
+
+    for col in range(1, 7):
+        title_cell = ws.cell(row=1, column=col)
+        title_cell.fill = header_fill
+        title_cell.font = title_font
+        title_cell.alignment = center
+        title_cell.border = grid
+
+        header_cell = ws.cell(row=2, column=col)
+        header_cell.fill = header_fill
+        header_cell.font = header_font
+        header_cell.alignment = center
+        header_cell.border = grid
+
+    for row_idx in range(3, last_row + 1):
+        for col in range(1, 7):
+            cell = ws.cell(row=row_idx, column=col)
+            cell.font = body_font
+            cell.border = grid
+            cell.alignment = left if col == 1 else center
+
+    ws.row_dimensions[1].height = 24
+    ws.row_dimensions[2].height = 20
+    col_widths = (36, 16, 12, 14, 12, 12)
+    for col, width in enumerate(col_widths, start=1):
+        max_len = width
+        for row in range(2, last_row + 1):
+            value = ws.cell(row=row, column=col).value
+            if value is None:
+                continue
+            max_len = max(max_len, min(len(str(value)) + 2, 42))
+        ws.column_dimensions[get_column_letter(col)].width = max_len
+
+    if filters["date_filter_active"]:
+        stamp = (
+            f"{filters['date_from'].isoformat()}_to_{filters['date_to'].isoformat()}"
+        )
+        fname = f"menu_sales_{stamp}.xlsx"
+    else:
+        fname = "menu_sales_all.xlsx"
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    # Avoid browsers reusing a previous unstyled download of the same name.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.route("/settings")
@@ -9859,7 +10137,7 @@ def save_supplier():
             form = dict(payload)
             form["id"] = supplier_id or ""
             return _supplier_page_render(
-                "partials/master_embed/supplier.html" if is_embed_request() else "supplier_master.html",
+                "partials/master_embed/supplier.html" if embed else "supplier_master.html",
                 suppliers=suppliers,
                 form=form,
                 selected_supplier=selected_supplier,
@@ -9868,7 +10146,7 @@ def save_supplier():
                 form_focus=True,
                 show_form=True,
                 supplier_report_url=url_for("export_supplier_report"),
-                embed_mode=is_embed_request(),
+                embed_mode=embed,
             ), 400
         conn.commit()
     finally:

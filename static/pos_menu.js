@@ -330,9 +330,11 @@
       '<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-menu-unit-listbox" data-se-listbox data-se-listbox-change="onPosMenuRecipeUnitChanged" id="' +
       escapeHtml(fid) +
       '-listbox">' +
-      '<span class="se-filter-chip-label visually-hidden" id="' +
+      '<label class="se-filter-chip-label visually-hidden" id="' +
       escapeHtml(fid) +
-      '-label">Unit</span>' +
+      '-label" for="' +
+      escapeHtml(fid) +
+      '-trigger">Unit</label>' +
       '<div class="se-filter-chip-control">' +
       '<input type="hidden" id="' +
       escapeHtml(fid) +
@@ -413,22 +415,29 @@
           '" data-product-unit="' +
           escapeHtml(hint) +
           '">' +
-          '<div class="pos-menu-recipe-row-main">' +
-          '<strong>' +
+          '<div class="pos-menu-recipe-field pos-menu-recipe-field--product" data-pos-recipe-label="Item">' +
+          '<strong class="pos-menu-recipe-product-name" title="' +
+          escapeHtml(name) +
+          '">' +
           escapeHtml(name) +
           '</strong>' +
-          (hint ? '<small>' + escapeHtml(hint) + '</small>' : '') +
           '</div>' +
-          '<div class="pos-menu-recipe-row-qty">' +
-          '<label class="pos-menu-recipe-qty-label"><span class="visually-hidden">Quantity</span>' +
-          '<input type="number" min="0.001" step="any" data-recipe-qty placeholder="' +
+          '<div class="pos-menu-recipe-field pos-menu-recipe-field--qty" data-pos-recipe-label="Qty">' +
+          '<label class="visually-hidden" for="pos-menu-recipe-qty-' +
+          escapeHtml(line.product_id) +
+          '">Qty</label>' +
+          '<input type="number" id="pos-menu-recipe-qty-' +
+          escapeHtml(line.product_id) +
+          '" min="0.001" step="any" inputmode="decimal" data-recipe-qty placeholder="' +
           escapeHtml(qtyPh) +
           '" value="' +
           escapeHtml(qty) +
-          '"></label>' +
+          '" aria-label="Qty">' +
+          '</div>' +
+          '<div class="pos-menu-recipe-field pos-menu-recipe-field--unit" data-pos-recipe-label="Unit">' +
           unitListboxHtml(line.product_id, hint, unit) +
           '</div>' +
-          '<button type="button" class="pos-menu-icon-btn pos-menu-icon-btn--danger" data-pos-menu-action="remove-recipe" title="Remove ingredient" aria-label="Remove ingredient">' +
+          '<button type="button" class="pos-menu-icon-btn pos-menu-icon-btn--danger pos-menu-recipe-remove" data-pos-menu-action="remove-recipe" title="Remove ingredient" aria-label="Remove ingredient">' +
           '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
           '</button>' +
           '</li>'

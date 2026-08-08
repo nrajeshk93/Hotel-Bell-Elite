@@ -22,12 +22,12 @@
 {% endif %}
 {% if page_key in ('indent', 'purchase_orders') %}
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=51">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=77">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
 {% if page_key == 'purchase_orders' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=41">
 {% endif %}
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=77">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=57">
 {% endif %}
 <script>
@@ -55,12 +55,12 @@
 {% endif %}
 {% if page_key in ('indent', 'purchase_orders') %}
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=51">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=77">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
 {% if page_key == 'purchase_orders' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=41">
 {% endif %}
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=77">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=57">
 {% endif %}
 {% endif %}
@@ -440,10 +440,10 @@
   </section>
 </div>
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=54"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=98"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=55"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=100"></script>
 {% if page_key == 'purchase_orders' %}
-<script src="{{ url_for('static', filename='stores_po.js') }}?v=31"></script>
+<script src="{{ url_for('static', filename='stores_po.js') }}?v=35"></script>
 {% endif %}
 {% if page_key == 'stock_audit' %}
 <script src="{{ url_for('static', filename='stores_stock_audit.js') }}?v=28"></script>

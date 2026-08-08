@@ -386,6 +386,8 @@ _REPORTS_ENDPOINTS = {
     "sales_report_restaurant_export",
     "sales_report_bar",
     "sales_report_bar_export",
+    "sales_report_menu",
+    "sales_report_menu_export",
 }
 
 _SETTINGS_ENDPOINTS = {

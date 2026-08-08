@@ -235,6 +235,17 @@ REPORT_DEFINITIONS = [
         "download_route": "sales_report_bar_export",
         "downloadable": True,
     },
+    {
+        "id": "menu_sales",
+        "name": "Menu Sales",
+        "description": "Item-wise menu sales — order count, qty sold, sale value, and Excel export.",
+        "icon": "invoice",
+        "icon_tone": "amber",
+        "category": "sales",
+        "view_route": "sales_report_menu",
+        "download_route": "sales_report_menu_export",
+        "downloadable": True,
+    },
 ]
 
 

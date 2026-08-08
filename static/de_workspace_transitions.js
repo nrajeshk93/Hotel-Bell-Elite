@@ -2458,6 +2458,9 @@
     if(typeof window.initSalesReportPage === 'function'){
       window.initSalesReportPage();
     }
+    if(typeof window.initMenuSalesReportPage === 'function'){
+      window.initMenuSalesReportPage();
+    }
     if(typeof window.initStockAuditReportPage === 'function'){
       window.initStockAuditReportPage();
     }

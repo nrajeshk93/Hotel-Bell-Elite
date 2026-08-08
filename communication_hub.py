@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime
 
@@ -317,6 +318,83 @@ def append_message(
         (cur.lastrowid,),
     ).fetchone()
     return _message_dict(row) if row else None
+
+
+def apply_outbound_status_updates(conn, payload: dict) -> list[str]:
+    """Apply Meta delivery receipts (sent/delivered/read/failed) to hub + PO send rows.
+
+    Cloud API does not allow GET-by-wamid; status arrives only via webhook
+    ``value.statuses``. Without this, the app keeps showing ``sent`` forever.
+    """
+    ensure_communication_hub_schema(conn)
+    results: list[str] = []
+    # Rank so we never downgrade (e.g. delivered → sent).
+    rank = {"pending": 0, "sent": 1, "delivered": 2, "read": 3, "failed": 4}
+    for entry in (payload or {}).get("entry") or []:
+        for change in (entry or {}).get("changes") or []:
+            value = (change or {}).get("value") or {}
+            for status in value.get("statuses") or []:
+                if not isinstance(status, dict):
+                    continue
+                wa_id = str(status.get("id") or "").strip()
+                new_status = str(status.get("status") or "").strip().lower()
+                if not wa_id or not new_status:
+                    continue
+                errors = status.get("errors") or []
+                err_text = ""
+                if errors and isinstance(errors[0], dict):
+                    details = ""
+                    err_data = errors[0].get("error_data")
+                    if isinstance(err_data, dict):
+                        details = str(err_data.get("details") or "").strip()
+                    err_text = str(
+                        errors[0].get("message")
+                        or errors[0].get("title")
+                        or details
+                        or ""
+                    ).strip()
+                    if not err_text:
+                        err_text = json.dumps(errors[0], default=str)[:400]
+
+                row = conn.execute(
+                    "SELECT id, status FROM wa_messages WHERE wa_message_id = ?",
+                    (wa_id,),
+                ).fetchone()
+                if row:
+                    old = str(row["status"] or "").strip().lower() or "sent"
+                    if rank.get(new_status, 0) >= rank.get(old, 0) or new_status == "failed":
+                        conn.execute(
+                            """UPDATE wa_messages
+                               SET status = ?, error = CASE
+                                 WHEN ? != '' THEN ?
+                                 ELSE error
+                               END
+                               WHERE id = ?""",
+                            (new_status, err_text, err_text, row["id"]),
+                        )
+                        results.append(f"hub_status={new_status} id={wa_id[:36]}")
+
+                po = conn.execute(
+                    "SELECT id, status FROM store_po_sends WHERE wa_message_id = ?",
+                    (wa_id,),
+                ).fetchone()
+                if po:
+                    po_status = "failed" if new_status == "failed" else "sent"
+                    conn.execute(
+                        """UPDATE store_po_sends
+                           SET status = ?, error = CASE
+                             WHEN ? != '' THEN ?
+                             ELSE error
+                           END
+                           WHERE id = ?""",
+                        (po_status, err_text, err_text, po["id"]),
+                    )
+                    results.append(
+                        f"po_status={po_status} meta={new_status} id={wa_id[:36]}"
+                    )
+                if not row and not po:
+                    results.append(f"status={new_status} id={wa_id[:36]} (no local row)")
+    return results
 
 
 def ingest_inbound_whatsapp_message(

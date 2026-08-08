@@ -213,6 +213,149 @@
     return false;
   }
 
+  function preserveFullscreenForEmbedNav() {
+    if (!global.deFullscreen) return;
+    if (typeof global.deFullscreen.armForSoftNav === 'function') {
+      global.deFullscreen.armForSoftNav();
+    }
+    if (typeof global.deFullscreen.preserveForNavigation === 'function') {
+      global.deFullscreen.preserveForNavigation();
+    }
+  }
+
+  function prepareEmbedForms(inject) {
+    if (!inject) return;
+    /* Keep supplier/category POSTs inside the Masters modal (hard nav exits fullscreen). */
+    inject.querySelectorAll('form[data-md-full-nav]').forEach(function (form) {
+      form.removeAttribute('data-md-full-nav');
+      form.setAttribute('data-md-embed-form', '1');
+    });
+  }
+
+  function paintMasterEmbedHtml(html, loading, empty) {
+    var inject = getInjectHost();
+    if (!inject) throw new Error('missing inject host');
+
+    var doc = new DOMParser().parseFromString(html, 'text/html');
+    var fragment = doc.querySelector('.md-master-embed') ||
+      doc.querySelector('.main-wrapper') ||
+      doc.body;
+
+    inject.innerHTML = fragment === doc.body ? fragment.innerHTML : fragment.outerHTML;
+    prepareEmbedForms(inject);
+    executeEmbedScripts(inject);
+    try {
+      if (typeof global.initEpListboxes === 'function') {
+        global.initEpListboxes();
+      }
+    } catch (err) {
+      if (typeof global.console !== 'undefined' && global.console.error) {
+        global.console.error('Masters listbox init failed', err);
+      }
+    }
+    var afterScripts = function () {
+      if (!inject.querySelector('#pos-menu-page')) return;
+      setTimeout(bootPosMenuAfterEmbed, 0);
+    };
+    if (inject.querySelector('#pos-menu-page')) {
+      loadMissingPageScripts(doc).then(afterScripts).catch(afterScripts);
+    } else if (inject.querySelector('.md-master-embed--page-shell')) {
+      ensureEmbedClose();
+      try {
+        if (inject.querySelector('#st-product-modal') && typeof global.initStoresPage === 'function') {
+          global.initStoresPage();
+        }
+        if (inject.querySelector('#sm-supplier-modal') && typeof global.initSupplierMasterPage === 'function') {
+          global.initSupplierMasterPage();
+        }
+        if (inject.querySelector('#cm-category-modal') && typeof global.initCategoryMasterPage === 'function') {
+          global.initCategoryMasterPage();
+        }
+      } catch (err) {
+        if (typeof global.console !== 'undefined' && global.console.error) {
+          global.console.error('Stores product embed init failed', err);
+        }
+      }
+    }
+
+    var titleEl = document.getElementById('md-master-modal-title');
+    var embedRoot = inject.querySelector('[data-md-modal-title]');
+    if (titleEl && embedRoot) {
+      var nextTitle = String(embedRoot.getAttribute('data-md-modal-title') || '').trim();
+      if (nextTitle) titleEl.textContent = nextTitle;
+    }
+
+    showPanel(loading, false);
+    showPanel(empty, false);
+    showPanel(inject, true);
+  }
+
+  function submitMasterEmbedForm(form, submitter) {
+    if (!form || !reloadMasterEmbed) return false;
+    var loading = document.getElementById('md-master-modal-loading');
+    var empty = document.getElementById('md-master-modal-empty');
+    var inject = getInjectHost();
+    var action = form.getAttribute('action') || window.location.href;
+    var method = String(form.getAttribute('method') || form.method || 'get').toLowerCase() || 'get';
+
+    preserveFullscreenForEmbedNav();
+
+    if (method === 'get') {
+      try {
+        var getUrl = new URL(action, window.location.origin);
+        new FormData(form).forEach(function (value, key) {
+          if (value != null && String(value) !== '') getUrl.searchParams.set(key, value);
+        });
+        reloadMasterEmbed(getUrl.pathname + getUrl.search);
+      } catch (err) {
+        reloadMasterEmbed(action);
+      }
+      return true;
+    }
+
+    var body;
+    try {
+      body = submitter ? new FormData(form, submitter) : new FormData(form);
+    } catch (err) {
+      body = new FormData(form);
+    }
+    if (submitter && submitter.name) {
+      body.set(submitter.name, submitter.value != null ? String(submitter.value) : '');
+    }
+    if (!body.get('embed')) body.set('embed', '1');
+
+    showPanel(empty, false);
+    showPanel(inject, false);
+    showPanel(loading, true);
+
+    abortMasterLoad();
+    masterLoadAbort = new AbortController();
+    var signal = masterLoadAbort.signal;
+    var postUrl = buildEmbedUrl(action);
+
+    fetch(postUrl, {
+      method: 'POST',
+      body: body,
+      credentials: 'same-origin',
+      headers: { Accept: 'text/html' },
+      redirect: 'follow',
+      signal: signal
+    }).then(function (response) {
+      /* Validation errors return 400 with embed HTML — still paint them. */
+      if (!response.ok && response.status !== 400) throw new Error('embed post failed');
+      return response.text();
+    }).then(function (html) {
+      preserveFullscreenForEmbedNav();
+      paintMasterEmbedHtml(html, loading, empty);
+    }).catch(function (err) {
+      if (err && err.name === 'AbortError') return;
+      showPanel(loading, false);
+      showPanel(empty, true);
+      showPanel(inject, false);
+    });
+    return true;
+  }
+
   function bindInjectNavigation(inject, getReloadFn) {
     if (!inject || inject.__mdEmbedNavBound) return;
     inject.__mdEmbedNavBound = true;
@@ -227,6 +370,7 @@
       var href = link.getAttribute('href');
       if (!href || href.charAt(0) === '#') return;
       e.preventDefault();
+      preserveFullscreenForEmbedNav();
       reloadFn(href);
     });
 
@@ -235,20 +379,8 @@
       if (!reloadFn) return;
       var form = e.target;
       if (!form || form.tagName !== 'FORM') return;
-      if (form.hasAttribute('data-md-full-nav') || form.closest('[data-md-full-nav]')) return;
-      var method = String(form.getAttribute('method') || 'get').toLowerCase();
-      if (method !== 'get') return;
       e.preventDefault();
-      try {
-        var action = form.getAttribute('action') || window.location.pathname;
-        var url = new URL(action, window.location.origin);
-        new FormData(form).forEach(function (value, key) {
-          if (value != null && String(value) !== '') url.searchParams.set(key, value);
-        });
-        reloadFn(url.pathname + url.search);
-      } catch (err) {
-        /* allow native submit on parse failure */
-      }
+      submitMasterEmbedForm(form, e.submitter || null);
     });
   }
 
@@ -260,6 +392,8 @@
     var signal = masterLoadAbort.signal;
     var fetchUrl = buildEmbedUrl(url);
 
+    preserveFullscreenForEmbedNav();
+
     return fetch(fetchUrl, {
       credentials: 'same-origin',
       headers: { Accept: 'text/html' },
@@ -268,62 +402,8 @@
       if (!response.ok) throw new Error('fetch failed');
       return response.text();
     }).then(function (html) {
-      var inject = getInjectHost();
-      if (!inject) throw new Error('missing inject host');
-
-      var doc = new DOMParser().parseFromString(html, 'text/html');
-      var fragment = doc.querySelector('.md-master-embed') ||
-        doc.querySelector('.main-wrapper') ||
-        doc.body;
-
-      inject.innerHTML = fragment === doc.body ? fragment.innerHTML : fragment.outerHTML;
-      executeEmbedScripts(inject);
-      // Re-bind EP listboxes after HTML inject (DOMContentLoaded already ran).
-      try {
-        if (typeof global.initEpListboxes === 'function') {
-          global.initEpListboxes();
-        }
-      } catch (err) {
-        if (typeof console !== 'undefined' && console.error) {
-          console.error('Masters listbox init failed', err);
-        }
-      }
-      var afterScripts = function () {
-        if (!inject.querySelector('#pos-menu-page')) return;
-        /* Defer so injected DOM + listboxes settle before fetch. */
-        setTimeout(bootPosMenuAfterEmbed, 0);
-      };
-      if (inject.querySelector('#pos-menu-page')) {
-        loadMissingPageScripts(doc).then(afterScripts).catch(afterScripts);
-      } else if (inject.querySelector('.md-master-embed--page-shell')) {
-        ensureEmbedClose();
-        try {
-          if (inject.querySelector('#st-product-modal') && typeof global.initStoresPage === 'function') {
-            global.initStoresPage();
-          }
-          if (inject.querySelector('#sm-supplier-modal') && typeof global.initSupplierMasterPage === 'function') {
-            global.initSupplierMasterPage();
-          }
-          if (inject.querySelector('#cm-category-modal') && typeof global.initCategoryMasterPage === 'function') {
-            global.initCategoryMasterPage();
-          }
-        } catch (err) {
-          if (typeof console !== 'undefined' && console.error) {
-            console.error('Stores product embed init failed', err);
-          }
-        }
-      }
-
-      var titleEl = document.getElementById('md-master-modal-title');
-      var embedRoot = inject.querySelector('[data-md-modal-title]');
-      if (titleEl && embedRoot) {
-        var nextTitle = String(embedRoot.getAttribute('data-md-modal-title') || '').trim();
-        if (nextTitle) titleEl.textContent = nextTitle;
-      }
-
-      showPanel(loading, false);
-      showPanel(empty, false);
-      showPanel(inject, true);
+      preserveFullscreenForEmbedNav();
+      paintMasterEmbedHtml(html, loading, empty);
     });
   }
 

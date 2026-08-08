@@ -1,0 +1,315 @@
+{% set de_soft_body_class = 'de-open su-module sales-report-module menu-sales-report-module' %}
+{% set de_soft_page_title = page_title ~ ' | Reports | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ page_title }} | Reports | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=9">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module sales-report-module menu-sales-report-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=9">
+{% endif %}
+
+<div class="main-wrapper" id="menu-sales-report-page"
+     data-menu-sales-report
+     data-report-kind="menu">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn de-sidebar-pin-btn" type="button" onclick="toggleDeSidebarExpandedPin()" title="Pin sidebar expanded" aria-label="Pin sidebar expanded" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>{{ page_title }}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download>Export Excel</a>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="msr-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Menu sales filters"
+              data-clear-url="{{ sales_report_clear_url }}">
+          {% if preserve_from_hub %}
+          <input type="hidden" name="from_hub" value="reports">
+          {% endif %}
+          <input type="hidden" id="msr-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="msr-date-to" name="date_to" value="{{ date_to }}">
+
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="msr-search-chip">
+            <label class="se-filter-chip-label" for="msr-search">Search</label>
+            <div class="se-filter-chip-control">
+              <input type="search" id="msr-search" class="pl-search-input pl-header-search" value="" placeholder="Item, category…" autocomplete="off" aria-label="Search menu items">
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="msrOutletChanged" id="msr-outlet-listbox">
+            <span class="se-filter-chip-label" id="msr-outlet-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="msr-outlet" name="outlet" value="{{ selected_outlet }}">
+              <button type="button" class="se-filter-chip-trigger" id="msr-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="msr-outlet-list" aria-labelledby="msr-outlet-label msr-outlet-value">
+                <span class="se-filter-chip-value" id="msr-outlet-value">{{ selected_outlet_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="msr-outlet-list" role="listbox" aria-labelledby="msr-outlet-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All outlets" aria-selected="{{ 'true' if selected_outlet == 'all' else 'false' }}">All outlets</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'restaurant' %} is-selected{% endif %}" role="option" data-value="restaurant" data-label="Restaurant" aria-selected="{{ 'true' if selected_outlet == 'restaurant' else 'false' }}">Restaurant</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'bar' %} is-selected{% endif %}" role="option" data-value="bar" data-label="Bar" aria-selected="{{ 'true' if selected_outlet == 'bar' else 'false' }}">Bar</button>
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="msrCategoryChanged" id="msr-category-listbox">
+            <span class="se-filter-chip-label" id="msr-category-label">Category</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="msr-category" name="category_id" value="{{ selected_category_id if selected_category_id else '' }}">
+              <button type="button" class="se-filter-chip-trigger" id="msr-category-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="msr-category-list" aria-labelledby="msr-category-label msr-category-value">
+                <span class="se-filter-chip-value" id="msr-category-value">{{ selected_category_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="msr-category-list" role="listbox" aria-labelledby="msr-category-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if not selected_category_id %} is-selected{% endif %}" role="option" data-value="" data-label="All categories" aria-selected="{{ 'true' if not selected_category_id else 'false' }}">All categories</button>
+              {% for cat in categories %}
+              {% set cat_label = cat.name if selected_outlet != 'all' else (cat.name ~ ' (' ~ ('Bar' if cat.outlet == 'bar' else 'Restaurant') ~ ')') %}
+              <button type="button" class="se-filter-listbox-option{% if selected_category_id == cat.id %} is-selected{% endif %}" role="option" data-value="{{ cat.id }}" data-label="{{ cat_label }}" aria-selected="{{ 'true' if selected_category_id == cat.id else 'false' }}">{{ cat_label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="msrStatusChanged" id="msr-status-listbox">
+            <span class="se-filter-chip-label" id="msr-status-label">Status</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="msr-status" name="status" value="{{ selected_status }}">
+              <button type="button" class="se-filter-chip-trigger" id="msr-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="msr-status-list" aria-labelledby="msr-status-label msr-status-value">
+                <span class="se-filter-chip-value" id="msr-status-value">{{ selected_status_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="msr-status-list" role="listbox" aria-labelledby="msr-status-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All statuses" aria-selected="{{ 'true' if selected_status == 'all' else 'false' }}">All statuses</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'unsettled' %} is-selected{% endif %}" role="option" data-value="unsettled" data-label="Un Settled" aria-selected="{{ 'true' if selected_status == 'unsettled' else 'false' }}">Un Settled</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'settled' %} is-selected{% endif %}" role="option" data-value="settled" data-label="Settled" aria-selected="{{ 'true' if selected_status == 'settled' else 'false' }}">Settled</button>
+            </div>
+          </div>
+
+          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="msr-date-range-host">
+            <span class="se-filter-chip-label" id="msr-date-range-label">Date</span>
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <div class="an-range-wrap an-range-wrap--sales" id="msr-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="msr-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="msr-date-range-panel" aria-labelledby="msr-date-range-label msr-date-range-display">
+                    <span class="an-range-trigger-label">
+                      <span id="msr-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Select date…{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="msr-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="msr-date-range-panel" role="dialog" aria-labelledby="msr-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="msr-date-range-panel-title">Date range</div>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="msr-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="msr-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="msr-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="msr-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="msr-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="msr-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="msr-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="msr-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <div class="pl-summary-row" aria-label="Menu sales summary">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total sale value">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Sale value</div>
+            <div class="pl-summary-value pl-amount" id="msr-kpi-sale" data-amount="{{ kpis.sale_value_sum }}">{{ kpis.sale_value_sum }}</div>
+            <div class="pl-summary-meta">{{ kpis.item_count }} item{{ '' if kpis.item_count == 1 else 's' }}</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Qty sold">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Qty sold</div>
+            <div class="pl-summary-value" id="msr-kpi-qty">{{ kpis.qty_sum }}</div>
+            <div class="pl-summary-meta">Units sold</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Menu items">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Items</div>
+            <div class="pl-summary-value" id="msr-kpi-items">{{ kpis.item_count }}</div>
+            <div class="pl-summary-meta">Unique menu items</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Contributing bills">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Bills</div>
+            <div class="pl-summary-value" id="msr-kpi-bills">{{ kpis.invoice_count }}</div>
+            <div class="pl-summary-meta">Invoices with items</div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="{{ page_title }} items">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span>Menu items</span>
+        </div>
+        <span class="pl-count" id="msr-entry-count">{{ rows|length }} item{{ '' if rows|length == 1 else 's' }}</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if rows %}
+        <div class="pl-table-wrap" tabindex="0" aria-label="{{ page_title }}, scroll for more">
+          <table class="pl-table" id="msr-table" aria-label="{{ page_title }} entries">
+            <colgroup>
+              <col class="msr-col-item">
+              <col class="msr-col-category">
+              <col class="msr-col-outlet">
+              <col class="msr-col-orders">
+              <col class="msr-col-qty">
+              <col class="msr-col-sale">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="pl-sortable msr-col-item" data-sort="item" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Item</th>
+                <th class="pl-sortable msr-col-category" data-sort="category" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Category</th>
+                <th class="pl-sortable msr-col-outlet" data-sort="outlet" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Outlet</th>
+                <th class="pl-sortable msr-col-orders" data-sort="orders" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Orders</th>
+                <th class="pl-sortable msr-col-qty" data-sort="qty" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Qty</th>
+                <th class="pl-sortable msr-col-sale" data-sort="sale" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Sale</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr class="msr-row pl-expense-row"
+                  data-sort-row
+                  data-search="{{ [row.item_name or '', row.category_name or '', row.outlet_label or '']|join(' ')|lower }}">
+                <td class="msr-col-item" data-sort-value="{{ row.item_name or '' }}">
+                  <div class="pl-name">{{ row.item_name or '—' }}</div>
+                </td>
+                <td class="msr-col-category" data-sort-value="{{ row.category_name or '' }}">{{ row.category_name or '—' }}</td>
+                <td class="msr-col-outlet" data-sort-value="{{ row.outlet_label or '' }}">{{ row.outlet_label or '—' }}</td>
+                <td class="msr-col-orders" data-sort-value="{{ row.order_count }}">{{ row.order_count }}</td>
+                <td class="msr-col-qty" data-sort-value="{{ row.qty_sold }}">{% if row.qty_sold == (row.qty_sold|int) %}{{ row.qty_sold|int }}{% else %}{{ row.qty_sold }}{% endif %}</td>
+                <td class="msr-col-sale pl-amount" data-amount="{{ row.sale_value }}" data-sort-value="{{ row.sale_value }}">{{ row.sale_value }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">No menu sales match these filters.</div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='menu_sales_report.js') }}?v=2"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

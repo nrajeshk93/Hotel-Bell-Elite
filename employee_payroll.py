@@ -2093,12 +2093,33 @@ def attendance_date_view():
     day_name  = day_names[sel_dt.weekday()]
 
     location = request.args.get('location', '').strip()
+    q = request.args.get('q', '').strip()
 
     conn = get_db()
-    _conds, _params = ["status='active'"], []
-    _append_attendance_scope_conditions(_conds, _params, user)
+    base_conds, base_params = ["status='active'"], []
+    _append_attendance_scope_conditions(base_conds, base_params, user)
     if location:
-        _conds.append("location=?"); _params.append(location)
+        base_conds.append("location=?")
+        base_params.append(location)
+
+    autocomplete_rows = conn.execute(
+        f"SELECT name, emp_code, location FROM employees WHERE {' AND '.join(base_conds)} ORDER BY {_EMPLOYEE_DISPLAY_ORDER}",
+        tuple(base_params),
+    ).fetchall()
+    attendance_autocomplete_emps = [
+        {
+            'name': r['name'],
+            'emp_code': r['emp_code'] or '',
+            'location': r['location'] or '',
+        }
+        for r in autocomplete_rows
+    ]
+
+    _conds = list(base_conds)
+    _params = list(base_params)
+    if q:
+        _conds.append("(name LIKE ? OR emp_code LIKE ?)")
+        _params.extend([f'%{q}%', f'%{q}%'])
     rows = conn.execute(
         f"SELECT * FROM employees WHERE {' AND '.join(_conds)} ORDER BY {_EMPLOYEE_DISPLAY_ORDER}",
         _params
@@ -2136,6 +2157,8 @@ def attendance_date_view():
     conn.close()
     return _emp_render('employees.html', mode='attendance_date',
                        employees=emps,
+                       search=q,
+                       attendance_autocomplete_emps=attendance_autocomplete_emps,
                        sel_date=date_str,
                        sel_year=sel_dt.year, sel_month=sel_dt.month,
                        month_name=calendar.month_name[sel_dt.month],

@@ -504,10 +504,18 @@ def handle_events_post(request, get_db, ensure_stores_schema, ensure_communicati
             ensure_communication_hub_schema(conn)
         results = process_indent_button_replies(conn, payload)
         hub_results = process_hub_inbound_messages(conn, payload)
-        if results or hub_results:
+        status_results = []
+        try:
+            from communication_hub import apply_outbound_status_updates
+
+            status_results = apply_outbound_status_updates(conn, payload)
+        except Exception:
+            log.exception("WhatsApp status webhook apply failed")
+        if results or hub_results or status_results:
             conn.commit()
             summary_bits.extend(results)
             summary_bits.extend(hub_results)
+            summary_bits.extend(status_results)
         else:
             for entry in payload.get("entry") or []:
                 for change in entry.get("changes") or []:

@@ -74,13 +74,8 @@ def _line_base_unit(line: dict[str, Any]) -> str:
 
 
 def _line_unit_display(line: dict[str, Any]) -> str:
-    """Match indent: pack lines show \"{pack_qty} {unit}\", else the base unit."""
-    unit = _line_base_unit(line)
-    pack = _line_pack_label(line)
-    pack_qty = _pack_qty_in_base(line)
-    if pack and pack_qty is not None:
-        return f"{_qty(pack_qty)} {unit}".strip() if unit else _qty(pack_qty)
-    return unit or "—"
+    """PO Unit column: product base unit only (pack size belongs in Pack)."""
+    return _line_base_unit(line) or "—"
 
 
 def _line_total_display(line: dict[str, Any]) -> str:
