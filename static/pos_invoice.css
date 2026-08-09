@@ -72,6 +72,57 @@ body.pos-invoice-module .de-main-inner.pos-invoice-page{
   gap:12px;
   min-width:0;
 }
+.pos-inv-back{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+  width:0;
+  min-width:0;
+  height:36px;
+  overflow:hidden;
+  border:0;
+  border-radius:10px;
+  background:transparent;
+  color:var(--pos-text-muted, #64748B);
+  text-decoration:none;
+  opacity:0;
+  pointer-events:none;
+  transition:width .15s ease,opacity .15s ease,background .15s ease,border-color .15s ease,color .15s ease;
+}
+.pos-inv-header-title-row:hover .pos-inv-back,
+.pos-inv-header-title-row:focus-within .pos-inv-back{
+  width:36px;
+  opacity:1;
+  pointer-events:auto;
+  border:1px solid var(--pos-border, #E2E8F0);
+  background:#fff;
+}
+.pos-inv-back svg{
+  width:18px;
+  height:18px;
+  flex-shrink:0;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.pos-inv-back:hover,
+.pos-inv-back:focus-visible{
+  background:var(--pos-primary-soft, #EFF6FF);
+  border-color:#BFDBFE;
+  color:var(--pos-primary, #2563EB);
+}
+@media (hover:none){
+  .pos-inv-back{
+    width:36px;
+    opacity:1;
+    pointer-events:auto;
+    border:1px solid var(--pos-border, #E2E8F0);
+    background:#fff;
+  }
+}
 .pos-inv-header-icon{
   display:inline-flex;
   align-items:center;
@@ -1381,6 +1432,19 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   border-color:#CBD5E1;
   color:var(--pos-primary);
 }
+.pos-inv-tool:disabled,
+.pos-inv-tool[aria-disabled="true"]{
+  opacity:.45;
+  cursor:not-allowed;
+  color:#94A3B8;
+  pointer-events:none;
+}
+.pos-inv-tool:disabled:hover,
+.pos-inv-tool[aria-disabled="true"]:hover{
+  background:#fff;
+  border-color:var(--pos-border);
+  color:#94A3B8;
+}
 .pos-inv-tool svg{
   width:15px;height:15px;
   stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;
@@ -1789,7 +1853,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   display:block;
 }
 
-/* Generated invoice — cart locked until settle; print + pending KOT stay active */
+/* Generated invoice — cart locked until settle; print/PDF + pending KOT stay active */
 .pos-invoice-page.is-invoice-generated .pos-inv-search-card,
 .pos-invoice-page.is-invoice-generated .pos-inv-lines-card,
 .pos-invoice-page.is-invoice-generated .pos-inv-toolbar{
@@ -1799,15 +1863,22 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 .pos-invoice-page.is-invoice-generated .pos-inv-qty button,
 .pos-invoice-page.is-invoice-generated .pos-inv-del,
 .pos-invoice-page.is-invoice-generated .pos-inv-note-btn,
-.pos-invoice-page.is-invoice-generated .pos-inv-tool:not([data-inv-action="print"]),
+.pos-invoice-page.is-invoice-generated .pos-inv-tool:not([data-inv-action="print"]):not([data-inv-action="pdf"]),
 .pos-invoice-page.is-invoice-generated #pos-inv-more-btn{
   pointer-events:none;
   cursor:not-allowed;
+}
+.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="print"],
+.pos-invoice-page.is-invoice-generated .pos-inv-tool[data-inv-action="pdf"]{
+  pointer-events:auto;
+  cursor:pointer;
+  opacity:1;
 }
 .pos-invoice-page.is-invoice-generated #pos-inv-send-kot:not(.is-pending){
   pointer-events:none;
   cursor:not-allowed;
 }
-.pos-invoice-page.is-invoice-generated #pos-inv-send-customer[hidden]{
+.pos-invoice-page #pos-inv-send-customer[hidden],
+.pos-invoice-page.is-invoice-generated #pos-inv-send-customer{
   display:none !important;
 }

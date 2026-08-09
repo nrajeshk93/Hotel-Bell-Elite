@@ -61,8 +61,10 @@ from db import (
     get_hotel_tax_rates,
     get_hotel_tariff_rates,
     hotel_room_invoice_kpis,
+    indian_fiscal_year_bounds,
     is_valid_agency_gst,
     list_hotel_room_invoices,
+    aggregate_settled_invoice_totals,
     save_hotel_room_checkin,
     save_hotel_room_reservation,
     generate_hotel_room_invoice,
@@ -93,7 +95,9 @@ from db import (
     list_pos_invoices,
     list_pos_kot_pending_summary,
     list_pos_kot_tokens,
+    apply_pos_kot_token_reductions,
     list_pos_menu_sales,
+    list_customer_insights,
     list_pos_today_invoices,
     get_pos_menu_item_details,
     list_pos_menu_categories,
@@ -102,6 +106,7 @@ from db import (
     normalize_pos_outlet,
     pos_invoice_kpis,
     pos_menu_sales_kpis,
+    customer_insights_kpis,
     pos_today_sales_summary,
     save_customer_record,
     save_agency_record,
@@ -121,6 +126,9 @@ from db import (
     save_pos_restaurant_settings,
     search_customers,
     soft_delete_pos_invoice,
+    cancel_pos_invoice,
+    is_provisional_pos_order_no,
+    reopen_pos_invoice_for_edit,
     soft_delete_pos_menu_category,
     soft_delete_pos_menu_item,
 )
@@ -140,16 +148,24 @@ from workspace_access import (
     accounts_access_list,
     build_user_context,
     dashboard_access_list,
+    delete_access_role,
     fetch_access_management_users,
+    get_access_role,
     get_endpoint_accounts_submodule,
     get_endpoint_dashboard_module,
     get_endpoint_payroll_submodule,
     get_endpoint_stores_submodule,
     get_endpoint_user_access_submodule,
+    SUPER_ADMINISTRATOR_ROLE_NAME,
+    is_built_in_administrator_role,
     is_system_administrator,
+    list_access_roles,
     normalize_username,
     payroll_access_list,
+    reconcile_super_admin_only_dashboard_modules,
+    role_summary_for_ui,
     sales_analytics_access_list,
+    save_access_role_record,
     save_access_user_record,
     stores_access_list,
     user_access_submodule_list,
@@ -165,15 +181,34 @@ from workspace_access import (
     user_can_access_customer_master,
     user_can_access_agency_master,
     user_can_access_user_access_submodule,
+    user_can_edit_kot_sent_lines,
+    user_can_approve_transactions,
+    validate_access_role_form,
     validate_access_user_form,
 )
 from employee_payroll import register_employee_payroll
 from embed_helpers import is_embed_request, is_partial_main_request
 from hotel_id_documents import process_uploaded_id_document, resolve_stored_id_document
+from user_photos import (
+    delete_stored_user_photo,
+    process_uploaded_user_photo,
+    resolve_stored_user_photo,
+)
 from masters import build_masters_dashboard
 from reports import build_reports_dashboard
 from stores import register_stores
 from communication_hub import register_communication_hub
+from main_dashboard_data import (
+    build_dow_avg,
+    build_outlet_boards,
+    build_sales_heatmap,
+    build_sales_trend,
+    build_top_selling_items,
+    date_range_days,
+    inr_compact,
+    payment_mode_pct,
+    sparkline_series_from_values,
+)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "hotel-bell-elite-dev-key-change-in-production")
@@ -474,6 +509,8 @@ def _access_nav_view():
         return "users"
     if user_can_access_user_access_submodule(user, "add"):
         return "add"
+    if user_can_access_user_access_submodule(user, "roles"):
+        return "roles"
     return "users"
 
 
@@ -484,7 +521,23 @@ def _am_page_render(template, **kwargs):
         kwargs["de_nav_access_view"] = (
             "add" if kwargs.get("form_focus") else _access_nav_view()
         )
+    # Edit / Add User: show < back to the Users list.
+    if kwargs.get("form_focus") and kwargs.get("de_nav_access_view") != "roles":
+        kwargs.setdefault("back_href", url_for("access_management"))
+        kwargs.setdefault("back_label", "Back to Users")
     return render_template(template, **kwargs)
+
+
+def _am_roles_page_render(template, **kwargs):
+    kwargs.setdefault("de_nav_access_view", "roles")
+    if kwargs.get("form_focus"):
+        kwargs.setdefault("back_href", url_for("access_roles"))
+        kwargs.setdefault("back_label", "Back to Roles")
+    else:
+        # Roles list → Users (parent User & Access page).
+        kwargs.setdefault("back_href", url_for("access_management"))
+        kwargs.setdefault("back_label", "Back to Users")
+    return _am_page_render(template, **kwargs)
 
 
 def _user_display_name(user):
@@ -632,6 +685,8 @@ def inject_auth_context():
         "has_customer_master_access": lambda: user_can_access_customer_master(user),
         "has_agency_master_access": lambda: user_can_access_agency_master(user),
         "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
+        "user_can_edit_kot_sent_lines": user_can_edit_kot_sent_lines,
+        "user_can_approve_transactions": user_can_approve_transactions,
         "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
         "sales_analytics_submodule_labels": _SALES_ANALYTICS_SUBMODULE_LABELS,
         "payroll_module_labels": _PAYROLL_SUBMODULE_LABELS,
@@ -1777,6 +1832,8 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "history_table_aria": "Credit payment history",
         "history_date_column": "Payment date",
         "history_empty": "No credit payments found for the selected filters.",
+        "history_revert_button": "Revert",
+        "history_revert_tip": "Revert to Outstanding Credit",
         "action_button": "Clear Payment",
         "row_action_button": "Pay",
         "select_modal_title": "Select Credit Items",
@@ -1784,7 +1841,6 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "select_table_aria": "Select credit line items",
         "select_continue": "Clear Payment",
         "clearance_modal_title": "Payment Details",
-        "clearance_modal_copy": "Enter how this supplier credit payment was made.",
         "clearance_date_label": "Payment date *",
         "clearance_mode_label": "Payment mode *",
         "show_payment_mode": True,
@@ -1798,9 +1854,9 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "select_error_none": "Select at least one credit expense.",
         "submit_error_record": "Unable to record payment.",
         "submit_error_network": "Network error while recording payment.",
-        "delete_confirm": "Delete this credit payment? Outstanding balances will be restored.",
-        "delete_error": "Unable to delete payment.",
-        "delete_error_network": "Network error while deleting payment.",
+        "delete_confirm": "Revert this payment to Outstanding Credit?",
+        "delete_error": "Unable to revert payment.",
+        "delete_error_network": "Network error while reverting payment.",
         "detail_error_load": "Unable to load payment.",
         "detail_error_network": "Network error while loading payment.",
     },
@@ -1824,6 +1880,8 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "history_table_aria": "Verified purchase history",
         "history_date_column": "Verification date",
         "history_empty": "No verified purchases found for the selected filters.",
+        "history_revert_button": "Revert",
+        "history_revert_tip": "Revert to Pending Verification",
         "action_button": "Verify",
         "row_action_button": "Approve",
         "select_modal_title": "Select Items to Verify",
@@ -1831,7 +1889,6 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "select_table_aria": "Select purchases to verify",
         "select_continue": "Verify",
         "clearance_modal_title": "Verification Details",
-        "clearance_modal_copy": "Confirm the purchases you are verifying.",
         "clearance_date_label": "Verification date *",
         "clearance_mode_label": "Verification mode *",
         "show_payment_mode": False,
@@ -1846,9 +1903,9 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "select_error_none": "Select at least one purchase to verify.",
         "submit_error_record": "Unable to record verification.",
         "submit_error_network": "Network error while recording verification.",
-        "delete_confirm": "Delete this verification? Outstanding balances will be restored.",
-        "delete_error": "Unable to delete verification.",
-        "delete_error_network": "Network error while deleting verification.",
+        "delete_confirm": "Revert this verification to Pending Verification?",
+        "delete_error": "Unable to revert verification.",
+        "delete_error_network": "Network error while reverting verification.",
         "detail_error_load": "Unable to load verification.",
         "detail_error_network": "Network error while loading verification.",
     },
@@ -1866,7 +1923,7 @@ def _render_credit_settlement_page(mode):
     today = date.today()
     selected_view = _normalize_credit_payment_view(request.args.get("view"))
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        request.args, "date_from", "date_to"
+        request.args, "date_from", "date_to", default_fy=True
     )
     payment_date_from, payment_date_to, payment_date_filter_active = _resolve_optional_filter_date_range(
         request.args, "payment_date_from", "payment_date_to"
@@ -1984,6 +2041,10 @@ def _render_credit_settlement_page(mode):
         purchase_report_kwargs["payment_date_from"] = filter_payment_date_from
         purchase_report_kwargs["payment_date_to"] = filter_payment_date_to
 
+    actor = get_current_user()
+    # Clear Payment / Verify / Approve / Revert require Approval module; Accounts alone is view-only.
+    can_mutate_settlement = user_can_approve_transactions(actor)
+
     return render_template(
         "credit_settlement_page.html",
         settlement_labels=labels,
@@ -2018,6 +2079,7 @@ def _render_credit_settlement_page(mode):
         create_credit_payment_url=create_url,
         delete_credit_payment_url=delete_url,
         settlement_detail_url_template=detail_url_template,
+        can_mutate_settlement=can_mutate_settlement,
         credit_payment_report_url=(
             url_for("export_credit_payment_report", **credit_report_kwargs)
             if page_mode == CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT
@@ -2034,12 +2096,20 @@ def _render_credit_settlement_page(mode):
     )
 
 
-def _resolve_optional_filter_date_range(args, from_key, to_key):
-    """Return (date_from, date_to, active). Missing both keys => no date filter."""
+def _resolve_optional_filter_date_range(args, from_key, to_key, *, default_fy=False):
+    """Return (date_from, date_to, active).
+
+    Missing both keys:
+    - default_fy=False => no date filter (None, None, False)
+    - default_fy=True  => current Indian FY start → today (active)
+    """
     today = date.today()
     raw_from = (args.get(from_key) or "").strip()
     raw_to = (args.get(to_key) or "").strip()
     if not raw_from and not raw_to:
+        if default_fy:
+            fy_start, ref = indian_fiscal_year_bounds(today)
+            return fy_start, ref, True
         return None, None, False
     date_from = _parse_sales_date(raw_from or today.replace(day=1).isoformat())
     date_to = _parse_sales_date(raw_to or today.isoformat())
@@ -3434,6 +3504,489 @@ def home():
     )
 
 
+DASHBOARD_PERIODS = (
+    ("today", "Today"),
+    ("yesterday", "Yesterday"),
+    ("7d", "7 Days"),
+    ("30d", "30 Days"),
+    ("mtd", "MTD"),
+    ("qtd", "QTD"),
+    ("ytd", "YTD"),
+)
+DASHBOARD_PERIOD_KEYS = {key for key, _label in DASHBOARD_PERIODS}
+DASHBOARD_FILTER_LOCATION_ALL = CASH_LEDGER_FILTER_ALL
+DASHBOARD_FILTER_LOCATIONS = (
+    (CASH_LEDGER_FILTER_ALL, "All"),
+    (OUTLET_HOTEL, OUTLET_HOTEL),
+    (OUTLET_RESTAURANT, OUTLET_RESTAURANT),
+    (OUTLET_BAR, OUTLET_BAR),
+)
+
+
+def _dashboard_period_range(period, today=None):
+    """Return (date_from, date_to) for a named dashboard period (inclusive)."""
+    today = today or date.today()
+    key = (period or "").strip().lower()
+    if key == "today":
+        return today, today
+    if key == "yesterday":
+        day = today - timedelta(days=1)
+        return day, day
+    if key == "7d":
+        return today - timedelta(days=6), today
+    if key == "30d":
+        return today - timedelta(days=29), today
+    if key == "mtd":
+        return today.replace(day=1), today
+    if key == "qtd":
+        quarter_month = ((today.month - 1) // 3) * 3 + 1
+        return today.replace(month=quarter_month, day=1), today
+    if key == "ytd":
+        return today.replace(month=1, day=1), today
+    return today - timedelta(days=29), today
+
+
+def _format_dashboard_date_range_label(date_from, date_to):
+    months = (
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    )
+    if not date_from or not date_to:
+        return "Select date range"
+    if date_from == date_to:
+        return f"{date_from.day} {months[date_from.month - 1]}, {date_from.year}"
+    if date_from.year == date_to.year and date_from.month == date_to.month:
+        return (
+            f"{date_from.day} – {date_to.day} "
+            f"{months[date_from.month - 1]}, {date_from.year}"
+        )
+    if date_from.year == date_to.year:
+        return (
+            f"{date_from.day} {months[date_from.month - 1]} – "
+            f"{date_to.day} {months[date_to.month - 1]}, {date_to.year}"
+        )
+    return (
+        f"{date_from.day} {months[date_from.month - 1]}, {date_from.year} – "
+        f"{date_to.day} {months[date_to.month - 1]}, {date_to.year}"
+    )
+
+
+def _resolve_main_dashboard_filters(args):
+    today = date.today()
+    period = (args.get("period") or "30d").strip().lower()
+    if period not in DASHBOARD_PERIOD_KEYS and period != "custom":
+        period = "30d"
+
+    location = (args.get("location") or DASHBOARD_FILTER_LOCATION_ALL).strip()
+    if location not in CASH_LEDGER_FILTER_LOCATIONS:
+        location = DASHBOARD_FILTER_LOCATION_ALL
+    location_label = (
+        "All" if location == DASHBOARD_FILTER_LOCATION_ALL else location
+    )
+
+    raw_from = (args.get("date_from") or "").strip()
+    raw_to = (args.get("date_to") or "").strip()
+    parsed_from = _parse_sales_date(raw_from) if raw_from else None
+    parsed_to = _parse_sales_date(raw_to) if raw_to else None
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        parsed_from, parsed_to = parsed_to, parsed_from
+
+    if period in DASHBOARD_PERIOD_KEYS:
+        expected_from, expected_to = _dashboard_period_range(period, today)
+        if parsed_from and parsed_to:
+            if (parsed_from, parsed_to) == (expected_from, expected_to):
+                date_from, date_to = expected_from, expected_to
+            else:
+                date_from, date_to = parsed_from, parsed_to
+                period = "custom"
+        else:
+            date_from, date_to = expected_from, expected_to
+    elif parsed_from and parsed_to:
+        date_from, date_to = parsed_from, parsed_to
+        period = "custom"
+    else:
+        period = "30d"
+        date_from, date_to = _dashboard_period_range(period, today)
+
+    return {
+        "selected_period": period,
+        "selected_period_label": (
+            dict(DASHBOARD_PERIODS).get(period, "Custom")
+            if period != "custom"
+            else "Custom"
+        ),
+        "selected_location": location,
+        "selected_location_label": location_label,
+        "date_from": date_from.isoformat(),
+        "date_to": date_to.isoformat(),
+        "date_range_label": _format_dashboard_date_range_label(date_from, date_to),
+        "today_iso": today.isoformat(),
+        "dashboard_periods": DASHBOARD_PERIODS,
+        "dashboard_locations": DASHBOARD_FILTER_LOCATIONS,
+        "_date_from": date_from,
+        "_date_to": date_to,
+    }
+
+
+DASHBOARD_KPI_CARDS = (
+    ("actual_sales", "Total Sales"),
+    ("digital_transactions", "Digital Collection"),
+    ("cash", "Cash Collection"),
+    ("expense", "Expense"),
+    ("difference", "Difference"),
+)
+DASHBOARD_KPI_KEYS = tuple(key for key, _label in DASHBOARD_KPI_CARDS)
+
+
+def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location=None, difference_mode=None):
+    """Daily KPI values for sparklines over the selected range (or last 14 days if single-day)."""
+    spark_from = date_from
+    spark_to = date_to
+    if spark_from == spark_to:
+        spark_from = spark_to - timedelta(days=13)
+
+    by_day = {}
+    sql = "SELECT sales_date, sales_entry_values FROM sales_updates WHERE sales_date >= ? AND sales_date <= ?"
+    params = [spark_from.isoformat(), spark_to.isoformat()]
+    if company:
+        sql += " AND company = ?"
+        params.append(company)
+    if location:
+        sql += " AND location = ?"
+        params.append(location)
+    for row in conn.execute(sql, params).fetchall():
+        day_key = str(row["sales_date"] or "")[:10]
+        if not day_key:
+            continue
+        bucket = by_day.setdefault(
+            day_key,
+            {
+                "actual_sales": 0.0,
+                "digital_transactions": 0.0,
+                "cash": 0.0,
+                "actual_cash": 0.0,
+                "difference": 0.0,
+                "expense": 0.0,
+            },
+        )
+        vals = json.loads(row["sales_entry_values"] or "{}")
+        bucket["actual_sales"] += parse_money(vals.get("total_sales"))
+        bucket["digital_transactions"] += get_digital_transactions(vals)
+        bucket["cash"] += parse_money(vals.get("cash"))
+        bucket["actual_cash"] += parse_money(vals.get("actual_cash"))
+        if difference_mode != "cash_actual":
+            bucket["difference"] += get_difference(vals)
+
+    expense_sql = """SELECT sales_date, COALESCE(SUM(amount), 0) AS total
+                     FROM sales_update_expenses
+                     WHERE sales_date >= ? AND sales_date <= ?"""
+    expense_params = [spark_from.isoformat(), spark_to.isoformat()]
+    if company:
+        expense_sql += " AND company = ?"
+        expense_params.append(company)
+    if location:
+        expense_sql += " AND location = ?"
+        expense_params.append(location)
+    expense_sql += " GROUP BY sales_date"
+    for row in conn.execute(expense_sql, expense_params).fetchall():
+        day_key = str(row["sales_date"] or "")[:10]
+        if not day_key:
+            continue
+        bucket = by_day.setdefault(
+            day_key,
+            {
+                "actual_sales": 0.0,
+                "digital_transactions": 0.0,
+                "cash": 0.0,
+                "actual_cash": 0.0,
+                "difference": 0.0,
+                "expense": 0.0,
+            },
+        )
+        bucket["expense"] += float(row["total"] or 0)
+
+    series = {key: [] for key in DASHBOARD_KPI_KEYS}
+    cursor = spark_from
+    while cursor <= spark_to:
+        bucket = by_day.get(cursor.isoformat()) or {}
+        if difference_mode == "cash_actual":
+            day_difference = round_half_up(
+                float(bucket.get("cash") or 0) - float(bucket.get("actual_cash") or 0),
+                2,
+            )
+        else:
+            day_difference = round_half_up(float(bucket.get("difference") or 0), 2)
+        series["actual_sales"].append(round_half_up(float(bucket.get("actual_sales") or 0), 2))
+        series["digital_transactions"].append(
+            round_half_up(float(bucket.get("digital_transactions") or 0), 2)
+        )
+        series["cash"].append(round_half_up(float(bucket.get("cash") or 0), 2))
+        series["expense"].append(round_half_up(float(bucket.get("expense") or 0), 2))
+        series["difference"].append(day_difference)
+        cursor += timedelta(days=1)
+    return series
+
+
+def _sparkline_polyline(values, width=140, height=32, pad=2):
+    """Build an SVG path for a compact sparkline."""
+    if not values:
+        mid = height / 2.0
+        return f"M{pad},{mid:.1f} L{width - pad},{mid:.1f}"
+    lo = min(values)
+    hi = max(values)
+    span = (hi - lo) if hi != lo else 1.0
+    n = len(values)
+    if n == 1:
+        y = pad + (height - 2 * pad) * (1 - (values[0] - lo) / span)
+        return f"M{pad},{y:.1f} L{width - pad},{y:.1f}"
+    parts = []
+    for i, value in enumerate(values):
+        x = pad + (width - 2 * pad) * (i / (n - 1))
+        y = pad + (height - 2 * pad) * (1 - (value - lo) / span)
+        parts.append(f"{x:.1f},{y:.1f}")
+    return "M" + " L".join(parts)
+
+
+def _dashboard_outlet_names(location=None):
+    if location in (OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR):
+        return [location]
+    return [OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR]
+
+
+def _dashboard_pos_menu_outlet(location=None):
+    """Map dashboard outlet filter to POS menu sales outlet (Restaurant/Bar only)."""
+    if location == OUTLET_HOTEL:
+        return False  # no POS menu items
+    if location == OUTLET_RESTAURANT:
+        return POS_OUTLET_RESTAURANT
+    if location == OUTLET_BAR:
+        return POS_OUTLET_BAR
+    return None  # All
+
+
+def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
+    """Retail Intelligence–style dashboard: KPIs + trend + outlets + payment + heatmap."""
+    bundle = _sales_report_kpi_bundle(conn, date_from, date_to, company=None, location=location)
+    sparks = _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location=location)
+
+    if date_from == date_to:
+        prev_to = date_from - timedelta(days=1)
+        prev_from = prev_to
+        spark_from = date_to - timedelta(days=13)
+    else:
+        span_days = (date_to - date_from).days + 1
+        prev_to = date_from - timedelta(days=1)
+        prev_from = prev_to - timedelta(days=span_days - 1)
+        spark_from = date_from
+    spark_to = date_to
+
+    settled_current = aggregate_settled_invoice_totals(
+        conn, date_from, date_to, location=location
+    )
+    settled_previous = aggregate_settled_invoice_totals(
+        conn, prev_from, prev_to, location=location
+    )
+    settled_range = aggregate_settled_invoice_totals(
+        conn, date_from, date_to, location=location
+    )
+    settled_spark = aggregate_settled_invoice_totals(
+        conn, spark_from, spark_to, location=location
+    )
+    settled_by_day = settled_spark.get("by_day") or {}
+    range_by_day = settled_range.get("by_day") or {}
+
+    spark_dates = date_range_days(spark_from, spark_to)
+    settled_series = [float(settled_by_day.get(d) or 0) for d in spark_dates]
+    sparks["actual_sales"] = settled_series
+
+    bundle["current"]["actual_sales"] = settled_current["total"]
+    bundle["trends"]["actual_sales"] = _pct_change_vs_previous(
+        settled_current["total"], settled_previous["total"]
+    )
+
+    daily_series = []
+    su_days = date_range_days(date_from, date_to)
+    if date_from == date_to:
+        day_kpi = _aggregate_sales_kpis(
+            conn, date_from, date_to, company=None, location=location
+        )
+        d = date_from.isoformat()
+        daily_series.append(
+            {
+                "date": d,
+                "actual_sales": float(range_by_day.get(d) or 0),
+                "digital_transactions": float(day_kpi.get("digital_transactions") or 0),
+                "cash": float(day_kpi.get("cash") or 0),
+                "expense": float(day_kpi.get("expense") or 0),
+                "difference": float(day_kpi.get("difference") or 0),
+                "transaction_count": 0,
+            }
+        )
+    else:
+        su_sparks = _dashboard_kpi_spark_series(
+            conn, date_from, date_to, company=None, location=location
+        )
+        for i, d in enumerate(su_days):
+            daily_series.append(
+                {
+                    "date": d,
+                    "actual_sales": float(range_by_day.get(d) or 0),
+                    "digital_transactions": float(
+                        (su_sparks.get("digital_transactions") or [0] * len(su_days))[i]
+                    ),
+                    "cash": float((su_sparks.get("cash") or [0] * len(su_days))[i]),
+                    "expense": float((su_sparks.get("expense") or [0] * len(su_days))[i]),
+                    "difference": float(
+                        (su_sparks.get("difference") or [0] * len(su_days))[i]
+                    ),
+                    "transaction_count": 0,
+                }
+            )
+
+    kpis = []
+    for key, label in DASHBOARD_KPI_CARDS:
+        values = sparks.get(key) or []
+        kpis.append(
+            {
+                "key": key,
+                "label": label,
+                "value": bundle["current"][key],
+                "value_compact": inr_compact(bundle["current"][key]),
+                "change_pct": bundle["trends"].get(key),
+                "sparkline_series": sparkline_series_from_values(spark_dates, values),
+            }
+        )
+
+    outlet_names = _dashboard_outlet_names(location)
+    outlet_totals = {}
+    prev_outlet_totals = {}
+    for name in outlet_names:
+        outlet_totals[name] = aggregate_settled_invoice_totals(
+            conn, date_from, date_to, location=name
+        )["total"]
+        prev_outlet_totals[name] = aggregate_settled_invoice_totals(
+            conn, prev_from, prev_to, location=name
+        )["total"]
+
+    grand_sales = float(settled_current["total"] or 0)
+    company_leaderboard, sales_contribution = build_outlet_boards(
+        outlet_totals, prev_outlet_totals, grand_sales
+    )
+
+    digital_cash_stack = []
+    for item in daily_series:
+        total = item["digital_transactions"] + item["cash"]
+        if total > 0:
+            dig_pct = round(item["digital_transactions"] / total * 100, 1)
+            digital_cash_stack.append(
+                {
+                    "date": item["date"],
+                    "digital_pct": dig_pct,
+                    "cash_pct": round(100.0 - dig_pct, 1),
+                }
+            )
+
+    dig_pct, cash_pct = payment_mode_pct(
+        bundle["current"]["digital_transactions"], bundle["current"]["cash"]
+    )
+    prev_kpis = _aggregate_sales_kpis(
+        conn, prev_from, prev_to, company=None, location=location
+    )
+    prev_dig_pct, prev_cash_pct = payment_mode_pct(
+        prev_kpis["digital_transactions"], prev_kpis["cash"]
+    )
+
+    pos_outlet = _dashboard_pos_menu_outlet(location)
+    if pos_outlet is False:
+        menu_sales_rows = []
+    else:
+        menu_sales_rows = list_pos_menu_sales(
+            conn,
+            date_from=date_from.isoformat(),
+            date_to=date_to.isoformat(),
+            outlet=pos_outlet,
+            settlement="settled",
+        )
+
+    dashboard = {
+        "kpis": kpis,
+        "daily_series": daily_series,
+        "sales_trend": build_sales_trend(daily_series, grand_sales),
+        "company_leaderboard": company_leaderboard,
+        "sales_contribution": sales_contribution,
+        "digital_cash_stack": digital_cash_stack,
+        "payment_mode": {
+            "digital_pct": dig_pct,
+            "cash_pct": cash_pct,
+            "digital_trend": round(dig_pct - prev_dig_pct, 1),
+            "cash_trend": round(cash_pct - prev_cash_pct, 1),
+        },
+        "dow_avg": build_dow_avg(daily_series),
+        "heatmap": build_sales_heatmap(daily_series, date_from, date_to),
+        "top_selling_items": build_top_selling_items(menu_sales_rows, limit=5, sort_by="qty"),
+        "top_selling_items_by_revenue": build_top_selling_items(
+            menu_sales_rows, limit=5, sort_by="revenue"
+        ),
+    }
+
+    # Keep legacy keys for any partial consumers / fitters.
+    kpi_cards = [
+        {
+            "key": k["key"],
+            "label": k["label"],
+            "amount": k["value"],
+            "trend": k["change_pct"],
+            "spark_path": _sparkline_polyline(
+                [pt["value"] for pt in (k.get("sparkline_series") or [])]
+            ),
+        }
+        for k in kpis
+    ]
+
+    return {
+        "dashboard": dashboard,
+        "kpi_cards": kpi_cards,
+        "kpi_vs_label": bundle["vs_label"],
+    }
+
+
+@app.route("/main-dashboard", endpoint="main_dashboard")
+def main_dashboard():
+    """Top-level Dashboard — Retail Intelligence layout for Hotel / Restaurant / Bar."""
+    filters = _resolve_main_dashboard_filters(request.args)
+    date_from = filters.pop("_date_from")
+    date_to = filters.pop("_date_to")
+    location = filters["selected_location"]
+    location_filter = None if location == DASHBOARD_FILTER_LOCATION_ALL else location
+
+    conn = get_db()
+    try:
+        payload = _build_main_dashboard_payload(
+            conn, date_from, date_to, location=location_filter
+        )
+    finally:
+        conn.close()
+
+    return render_template(
+        "main_dashboard.html",
+        de_nav_section="main_dashboard",
+        filter_form_action=url_for("main_dashboard"),
+        main_dashboard_clear_url=url_for("main_dashboard"),
+        **filters,
+        **payload,
+    )
+
+
 @app.route("/master")
 def master():
     """Master data workspace hub."""
@@ -3670,7 +4223,7 @@ def _sales_report_filters(args):
     """Parse shared Sales Report GET filters (page + export)."""
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        args, "date_from", "date_to"
+        args, "date_from", "date_to", default_fy=True
     )
     selected_status = (args.get("status") or "all").strip().lower()
     if selected_status not in ("all", "unsettled", "settled"):
@@ -4115,7 +4668,7 @@ def sales_report_menu():
         "menu_sales_report.html",
         de_nav_section="report",
         de_nav_report_view="sales",
-        page_title="Menu Sales",
+        page_title="Menu Insights",
         rows=rows,
         kpis=kpis,
         categories=categories,
@@ -4159,7 +4712,7 @@ def sales_report_menu_export():
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Menu Sales"
+    ws.title = "Menu Insights"
 
     # All header rows use #315A78 with white text; data rows stay white.
     header_fill = PatternFill(
@@ -4194,7 +4747,7 @@ def sales_report_menu_export():
     )
 
     # Write values first, then style (merge-safe fill application).
-    ws["A1"] = "Hotel Bell Elite — Menu Sales"
+    ws["A1"] = "Hotel Bell Elite — Menu Insights"
     for col, title in enumerate(headers, start=1):
         ws.cell(row=2, column=col, value=title)
 
@@ -4261,6 +4814,254 @@ def sales_report_menu_export():
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
     # Avoid browsers reusing a previous unstyled download of the same name.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+def _customer_insights_filters(args):
+    """Parse Customer Insights GET filters (page + export)."""
+    base = _sales_report_filters(args)
+    channel = (args.get("channel") or args.get("outlet") or "all").strip().lower()
+    if channel not in ("all", "restaurant", "bar", "hotel"):
+        channel = "all"
+    base["selected_channel"] = channel
+    return base
+
+
+def _customer_insights_channel_labels():
+    return {
+        "all": "All channels",
+        "restaurant": "Restaurant",
+        "bar": "Bar",
+        "hotel": "Hotel",
+    }
+
+
+def _customer_insights_load(filters):
+    date_from = (
+        filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else None
+    )
+    date_to = (
+        filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else None
+    )
+    status = filters["selected_status"]
+    settlement = None if status == "all" else status
+    query_from = date_from or "2000-01-01"
+    query_to = date_to or filters["today"].isoformat()
+    channel = filters["selected_channel"]
+
+    conn = get_db()
+    try:
+        rows = list_customer_insights(
+            conn,
+            date_from=query_from,
+            date_to=query_to,
+            channel=channel,
+            settlement=settlement,
+        )
+        kpis = customer_insights_kpis(rows)
+        return rows, kpis
+    finally:
+        conn.close()
+
+
+def _customer_insights_filter_kwargs(filters, *, include_dates=True, include_from_hub=True):
+    kwargs = {}
+    if filters["selected_status"] != "all":
+        kwargs["status"] = filters["selected_status"]
+    if filters["selected_channel"] != "all":
+        kwargs["channel"] = filters["selected_channel"]
+    if include_dates and filters["date_filter_active"]:
+        if filters["date_from"]:
+            kwargs["date_from"] = filters["date_from"].isoformat()
+        if filters["date_to"]:
+            kwargs["date_to"] = filters["date_to"].isoformat()
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    if include_from_hub and from_hub == "reports":
+        kwargs["from_hub"] = "reports"
+    return kwargs
+
+
+@app.route(
+    "/reports/sales/customer-insights",
+    endpoint="sales_report_customer_insights",
+)
+def sales_report_customer_insights():
+    """Customer Insights — spend and top item across Hotel, Restaurant, and Bar."""
+    filters = _customer_insights_filters(request.args)
+    rows, kpis = _customer_insights_load(filters)
+    status_labels = _sales_report_status_labels()
+    channel_labels = _customer_insights_channel_labels()
+
+    clear_kwargs = _customer_insights_filter_kwargs(
+        filters, include_dates=False, include_from_hub=True
+    )
+    export_kwargs = _customer_insights_filter_kwargs(
+        filters, include_dates=True, include_from_hub=True
+    )
+    filter_kwargs = {"from_hub": "reports"}
+    clear_kwargs.setdefault("from_hub", "reports")
+    export_kwargs.setdefault("from_hub", "reports")
+
+    return render_template(
+        "customer_insights_report.html",
+        de_nav_section="report",
+        de_nav_report_view="sales",
+        page_title="Customer Insights",
+        rows=rows,
+        kpis=kpis,
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else "",
+        date_to=filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else "",
+        active_date_filter=filters["date_filter_active"],
+        selected_status=filters["selected_status"],
+        selected_status_label=status_labels.get(
+            filters["selected_status"], "All statuses"
+        ),
+        selected_channel=filters["selected_channel"],
+        selected_channel_label=channel_labels.get(
+            filters["selected_channel"], "All channels"
+        ),
+        filter_form_action=url_for("sales_report_customer_insights", **filter_kwargs),
+        sales_report_clear_url=url_for("sales_report_customer_insights", **clear_kwargs),
+        sales_report_export_url=url_for(
+            "sales_report_customer_insights_export", **export_kwargs
+        ),
+        preserve_from_hub=True,
+        back_href=url_for("reports"),
+        back_label="Back to Reports",
+    )
+
+
+@app.route(
+    "/reports/sales/customer-insights/export",
+    endpoint="sales_report_customer_insights_export",
+)
+def sales_report_customer_insights_export():
+    """Excel export for Customer Insights report."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+
+    filters = _customer_insights_filters(request.args)
+    rows, _kpis = _customer_insights_load(filters)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Customer Insights"
+
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    title_font = Font(bold=True, size=14, color="FFFFFFFF")
+    header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    headers = (
+        "Customer",
+        "Mobile",
+        "Orders",
+        "Top Item",
+        "Restaurant",
+        "Bar",
+        "Hotel",
+        "Total",
+    )
+
+    ws["A1"] = "Hotel Bell Elite — Customer Insights"
+    for col, title in enumerate(headers, start=1):
+        ws.cell(row=2, column=col, value=title)
+
+    for idx, row in enumerate(rows, start=3):
+        values = (
+            (row.get("customer_name") or "").strip(),
+            row.get("mobile") or "",
+            int(row.get("order_count") or 0),
+            (row.get("top_item") or "").strip(),
+            _whole_or_float(round_half_up(row.get("restaurant_value"), 2)),
+            _whole_or_float(round_half_up(row.get("bar_value"), 2)),
+            _whole_or_float(round_half_up(row.get("hotel_value"), 2)),
+            _whole_or_float(round_half_up(row.get("total_value"), 2)),
+        )
+        for col, value in enumerate(values, start=1):
+            ws.cell(row=idx, column=col, value=value)
+
+    ws.merge_cells("A1:H1")
+    last_row = max(2, ws.max_row)
+
+    for col in range(1, 9):
+        title_cell = ws.cell(row=1, column=col)
+        title_cell.fill = header_fill
+        title_cell.font = title_font
+        title_cell.alignment = center
+        title_cell.border = grid
+
+        header_cell = ws.cell(row=2, column=col)
+        header_cell.fill = header_fill
+        header_cell.font = header_font
+        header_cell.alignment = center
+        header_cell.border = grid
+
+    for row_idx in range(3, last_row + 1):
+        for col in range(1, 9):
+            cell = ws.cell(row=row_idx, column=col)
+            cell.font = body_font
+            cell.border = grid
+            cell.alignment = left if col in (1, 4) else center
+
+    ws.row_dimensions[1].height = 24
+    ws.row_dimensions[2].height = 20
+    col_widths = (22, 14, 10, 28, 12, 12, 12, 12)
+    for col, width in enumerate(col_widths, start=1):
+        max_len = width
+        for row in range(2, last_row + 1):
+            value = ws.cell(row=row, column=col).value
+            if value is None:
+                continue
+            max_len = max(max_len, min(len(str(value)) + 2, 42))
+        ws.column_dimensions[get_column_letter(col)].width = max_len
+
+    if filters["date_filter_active"]:
+        stamp = (
+            f"{filters['date_from'].isoformat()}_to_{filters['date_to'].isoformat()}"
+        )
+        fname = f"customer_insights_{stamp}.xlsx"
+    else:
+        fname = "customer_insights_all.xlsx"
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
@@ -4395,11 +5196,24 @@ POS_BAR_RECEIPT_CONFIG = {
 }
 
 
-def _pos_receipt_config(outlet):
-    """Thermal bill branding for restaurant vs bar outlets."""
-    if normalize_pos_outlet(outlet) == POS_OUTLET_BAR:
-        return POS_BAR_RECEIPT_CONFIG
-    return POS_RESTAURANT_RECEIPT_CONFIG
+def _pos_receipt_config(outlet, user=None):
+    """Thermal bill branding for restaurant vs bar outlets.
+
+    ``user_label`` is the logged-in cashier name printed on the bill footer.
+    """
+    base = (
+        POS_BAR_RECEIPT_CONFIG
+        if normalize_pos_outlet(outlet) == POS_OUTLET_BAR
+        else POS_RESTAURANT_RECEIPT_CONFIG
+    )
+    cfg = dict(base)
+    actor = user if user is not None else get_current_user()
+    label = _user_display_name(actor) if actor else ""
+    if label and label != "User":
+        cfg["user_label"] = label
+    elif actor and (actor.get("username") or "").strip():
+        cfg["user_label"] = str(actor.get("username")).strip()
+    return cfg
 
 
 def _pos_page_context(outlet, pos_view, **extra):
@@ -4546,7 +5360,7 @@ def _hotel_invoice_ledger_filters(args):
     """Parse hotel invoice ledger GET filters (shared by page + export)."""
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        args, "date_from", "date_to"
+        args, "date_from", "date_to", default_fy=True
     )
     selected_status = (args.get("status") or "all").strip().lower()
     if selected_status not in ("all", "open", "settled"):
@@ -5456,7 +6270,7 @@ def _pos_invoice_ledger_filters(args):
     """Parse invoice ledger GET filters (shared by page + export)."""
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        args, "date_from", "date_to"
+        args, "date_from", "date_to", default_fy=True
     )
     query_date_from = date_from if date_filter_active else date(2000, 1, 1)
     query_date_to = date_to if date_filter_active else today
@@ -5492,6 +6306,9 @@ def point_of_sale_invoice_ledger():
     outlet = _pos_outlet_from_request()
     filters = _pos_invoice_ledger_filters(request.args)
 
+    user = get_current_user()
+    can_cancel = user_can_edit_kot_sent_lines(user)
+
     conn = get_db()
     try:
         ensure_pos_schema(conn)
@@ -5506,6 +6323,27 @@ def point_of_sale_invoice_ledger():
         kpis = pos_invoice_kpis(conn, invoices, today=filters["today"].isoformat())
     finally:
         conn.close()
+
+    for inv in invoices:
+        status_key = str(inv.get("status") or "open").strip().lower() or "open"
+        is_settled = (
+            status_key == "closed"
+            or bool(inv.get("payment_modes"))
+            or bool(str(inv.get("settled_at") or "").strip())
+        )
+        is_cancelled = status_key == "cancelled"
+        is_generated = bool(inv.get("customer_bill_sent")) or not is_provisional_pos_order_no(
+            inv.get("order_no"), outlet
+        )
+        inv["ledger_is_settled"] = is_settled
+        inv["ledger_is_cancelled"] = is_cancelled
+        inv["ledger_is_generated"] = is_generated
+        inv["ledger_can_delete"] = (
+            can_cancel and (not is_settled) and (not is_cancelled) and (not is_generated)
+        )
+        inv["ledger_can_cancel"] = (
+            can_cancel and (not is_settled) and (not is_cancelled) and is_generated
+        )
 
     selected_order_type = filters["selected_order_type"]
     selected_order_type_label = "All"
@@ -5544,6 +6382,7 @@ def point_of_sale_invoice_ledger():
         page_title="Invoice Ledger",
         invoices=invoices,
         kpis=kpis,
+        can_cancel_invoices=can_cancel,
         order_types=POS_INVOICE_ORDER_TYPES,
         selected_order_type=selected_order_type,
         selected_order_type_label=selected_order_type_label,
@@ -5680,7 +6519,7 @@ def point_of_sale_api_invoices_save():
                 conn,
                 data,
                 created_by=created_by,
-                actor_is_admin=bool(user and user.get("is_admin")),
+                allow_kot_cancel=user_can_edit_kot_sent_lines(user),
             )
             sync_pos_floor_occupancy_from_open_orders(conn, outlet)
             conn.commit()
@@ -5923,6 +6762,70 @@ def point_of_sale_api_kot_tokens():
         conn.close()
 
 
+@app.route(
+    "/point-of-sale/api/kot-tokens/reduce",
+    methods=["POST"],
+    endpoint="point_of_sale_api_kot_tokens_reduce",
+)
+@app.route(
+    "/bar-point-of-sale/api/kot-tokens/reduce",
+    methods=["POST"],
+    endpoint="bar_point_of_sale_api_kot_tokens_reduce",
+)
+def point_of_sale_api_kot_tokens_reduce():
+    """Persist kitchen-sent qty reductions from the Tables KOT hub (Cancellation Access)."""
+    outlet = _pos_outlet_from_request()
+    user = get_current_user()
+    if not user_can_edit_kot_sent_lines(user):
+        return jsonify(
+            {"ok": False, "error": "Cancellation Access is required to reduce kitchen-sent items."}
+        ), 403
+    data = request.get_json(silent=True) or {}
+    changes = data.get("changes") if isinstance(data, dict) else None
+    created_by = ""
+    if user:
+        created_by = str(
+            user.get("full_name") or user.get("username") or user.get("id") or ""
+        ).strip()
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            result = apply_pos_kot_token_reductions(
+                conn,
+                changes or [],
+                allow_kot_cancel=True,
+                created_by=created_by,
+            )
+            # Drop any invoice that no longer belongs to this outlet from the response.
+            invoices = [
+                inv
+                for inv in (result.get("invoices") or [])
+                if _pos_invoice_belongs_to_outlet(inv, outlet)
+            ]
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": f"Could not save KOT changes: {exc}"}), 500
+        tokens = list_pos_kot_tokens(conn, outlet)
+        cancelled_count = sum(1 for inv in invoices if inv.get("cancelled"))
+        return jsonify(
+            {
+                "ok": True,
+                "updated_count": len(invoices),
+                "cancelled_count": cancelled_count,
+                "invoices": invoices,
+                **tokens,
+            }
+        )
+    finally:
+        conn.close()
+
+
 @app.route("/point-of-sale/api/today-invoices", methods=["GET"], endpoint="point_of_sale_api_today_invoices")
 @app.route("/bar-point-of-sale/api/today-invoices", methods=["GET"], endpoint="bar_point_of_sale_api_today_invoices")
 def point_of_sale_api_today_invoices():
@@ -5938,11 +6841,16 @@ def point_of_sale_api_today_invoices():
         conn.close()
 
 
-@app.route("/point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"], endpoint="point_of_sale_api_invoice_delete")
-@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"], endpoint="bar_point_of_sale_api_invoice_delete")
-def point_of_sale_api_invoice_delete(invoice_id):
-    """Soft-delete a saved POS invoice."""
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/reopen-edit", methods=["POST"], endpoint="point_of_sale_api_invoice_reopen_edit")
+@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/reopen-edit", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_reopen_edit")
+def point_of_sale_api_invoice_reopen_edit(invoice_id):
+    """Unlock an unsettled generated invoice for editing (Cancellation Access)."""
     outlet = _pos_outlet_from_request()
+    user = get_current_user()
+    if not user_can_edit_kot_sent_lines(user):
+        return jsonify(
+            {"ok": False, "error": "Cancellation Access is required to edit unsettled invoices."}
+        ), 403
     conn = get_db()
     try:
         ensure_pos_schema(conn)
@@ -5950,13 +6858,57 @@ def point_of_sale_api_invoice_delete(invoice_id):
             existing = get_pos_invoice(conn, invoice_id)
             if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
                 return jsonify({"ok": False, "error": "Invoice not found."}), 404
-            soft_delete_pos_invoice(conn, invoice_id)
+            invoice = reopen_pos_invoice_for_edit(conn, invoice_id)
             sync_pos_floor_occupancy_from_open_orders(conn, outlet)
             conn.commit()
         except ValueError as exc:
             conn.rollback()
-            return jsonify({"ok": False, "error": str(exc)}), 404
-        return jsonify({"ok": True})
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "invoice": invoice})
+    finally:
+        conn.close()
+
+
+@app.route("/point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"], endpoint="point_of_sale_api_invoice_delete")
+@app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"], endpoint="bar_point_of_sale_api_invoice_delete")
+def point_of_sale_api_invoice_delete(invoice_id):
+    """Cancel an unsettled POS invoice (Cancellation Access).
+
+    Issued official numbers are kept as status=cancelled; provisional drafts
+    are soft-deleted. Requires a cancellation reason.
+    """
+    outlet = _pos_outlet_from_request()
+    user = get_current_user()
+    if not user_can_edit_kot_sent_lines(user):
+        return jsonify(
+            {"ok": False, "error": "Cancellation Access is required to cancel invoices."}
+        ), 403
+    data = request.get_json(silent=True) or {}
+    reason = ""
+    if isinstance(data, dict):
+        reason = data.get("reason") or data.get("cancelReason") or data.get("cancel_reason") or ""
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            existing = get_pos_invoice(conn, invoice_id)
+            if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
+                return jsonify({"ok": False, "error": "Invoice not found."}), 404
+            result = cancel_pos_invoice(conn, invoice_id, reason=reason)
+            sync_pos_floor_occupancy_from_open_orders(conn, outlet)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            msg = str(exc)
+            code = 404 if "not found" in msg.lower() else 400
+            return jsonify({"ok": False, "error": msg}), code
+        return jsonify(
+            {
+                "ok": True,
+                "mode": result.get("mode"),
+                "invoice": result.get("invoice"),
+            }
+        )
     finally:
         conn.close()
 
@@ -6428,18 +7380,11 @@ def dashboard():
 def _resolve_cash_ledger_date_range(args):
     """Return (date_from, date_to, date_filter_active).
 
-    With no date query params, return the full ledger window (all entries).
+    With no date query params, default to the current Indian FY → today.
     """
-    today = date.today()
-    raw_from = (args.get("date_from") or "").strip()
-    raw_to = (args.get("date_to") or "").strip()
-    if not raw_from and not raw_to:
-        return CASH_LEDGER_ALL_ENTRIES_FROM, today, False
-    date_from = _parse_sales_date(raw_from or today.replace(day=1).isoformat())
-    date_to = _parse_sales_date(raw_to or today.isoformat())
-    if date_from > date_to:
-        date_from, date_to = date_to, date_from
-    return date_from, date_to, True
+    return _resolve_optional_filter_date_range(
+        args, "date_from", "date_to", default_fy=True
+    )
 
 
 def _normalize_cash_ledger_location(location):
@@ -6864,7 +7809,7 @@ def accounts():
 def purchase_ledger():
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        request.args, "date_from", "date_to"
+        request.args, "date_from", "date_to", default_fy=True
     )
     query_date_from = date_from if date_filter_active else date(2000, 1, 1)
     query_date_to = date_to if date_filter_active else today
@@ -7007,7 +7952,7 @@ def export_purchase_ledger_report():
 
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        request.args, "date_from", "date_to"
+        request.args, "date_from", "date_to", default_fy=True
     )
     query_date_from = date_from if date_filter_active else date(2000, 1, 1)
     query_date_to = date_to if date_filter_active else today
@@ -7737,7 +8682,7 @@ def export_credit_payment_report():
 
     today = date.today()
     date_from, date_to, _date_filter_active = _resolve_optional_filter_date_range(
-        request.args, "date_from", "date_to"
+        request.args, "date_from", "date_to", default_fy=True
     )
     _, supplier_id = _parse_purchase_ledger_supplier(request.args.get("supplier"))
 
@@ -7813,7 +8758,7 @@ def export_purchase_verification_report():
     today = date.today()
     selected_view = _normalize_credit_payment_view(request.args.get("view"))
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        request.args, "date_from", "date_to"
+        request.args, "date_from", "date_to", default_fy=True
     )
     payment_date_from, payment_date_to, payment_date_filter_active = _resolve_optional_filter_date_range(
         request.args, "payment_date_from", "payment_date_to"
@@ -7931,6 +8876,11 @@ def create_purchase_verification():
     user = get_current_user()
     if not user:
         return jsonify({"ok": False, "error": "You must be logged in to record a verification."}), 401
+    if not user_can_approve_transactions(user):
+        return jsonify({
+            "ok": False,
+            "error": "You do not have Approval access to verify purchases.",
+        }), 403
     data = request.get_json(silent=True) or {}
     conn = get_db()
     try:
@@ -7971,6 +8921,14 @@ def create_purchase_verification():
 
 @app.route("/accounts/purchase-verification/delete", methods=["POST"])
 def delete_purchase_verification():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in to revert a verification."}), 401
+    if not user_can_approve_transactions(user):
+        return jsonify({
+            "ok": False,
+            "error": "You do not have Approval access to revert verifications.",
+        }), 403
     data = request.get_json(silent=True) or {}
     try:
         verification_id = int(data.get("payment_id"))
@@ -8011,6 +8969,14 @@ def purchase_verification_detail(verification_id):
 
 @app.route("/accounts/credit-payment/create", methods=["POST"])
 def create_credit_payment():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in to record a payment."}), 401
+    if not user_can_approve_transactions(user):
+        return jsonify({
+            "ok": False,
+            "error": "You do not have Approval access to clear payments.",
+        }), 403
     data = request.get_json(silent=True) or {}
     conn = get_db()
     try:
@@ -8052,6 +9018,14 @@ def create_credit_payment():
 
 @app.route("/accounts/credit-payment/delete", methods=["POST"])
 def delete_credit_payment():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in to revert a payment."}), 401
+    if not user_can_approve_transactions(user):
+        return jsonify({
+            "ok": False,
+            "error": "You do not have Approval access to revert payments.",
+        }), 403
     data = request.get_json(silent=True) or {}
     try:
         payment_id = int(data.get("payment_id"))
@@ -8475,7 +9449,7 @@ def _render_room_transfer_receivables_page(
         else request.args.get("location", ROOM_TRANSFER_FILTER_ALL)
     )
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        request.args, "date_from", "date_to"
+        request.args, "date_from", "date_to", default_fy=True
     )
 
     if selected_company not in SALES_COMPANY_LOCATIONS:
@@ -9476,7 +10450,7 @@ def sales_update_tips_page():
 
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        request.args, "date_from", "date_to"
+        request.args, "date_from", "date_to", default_fy=True
     )
 
     location_filter = (request.args.get("location") or TIPS_FILTER_ALL).strip()
@@ -9567,7 +10541,7 @@ def export_tips_report():
         selected_company = DEFAULT_COMPANY
 
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
-        request.args, "date_from", "date_to"
+        request.args, "date_from", "date_to", default_fy=True
     )
     location_filter = (request.args.get("location") or TIPS_FILTER_ALL).strip()
     if location_filter not in TIPS_FILTER_LOCATIONS:
@@ -10675,11 +11649,14 @@ def access_management():
     elif not can_users:
         if can_add:
             return redirect(url_for("access_management", focus="form"))
+        if user_can_access_user_access_submodule(user, "roles"):
+            return redirect(url_for("access_roles"))
         return _permission_denied_response("You do not have access to Users.")
 
     conn = get_db()
     try:
         users, selected_user = fetch_access_management_users(conn, selected_user_id or None)
+        roles = list_access_roles(conn, active_only=True)
     finally:
         conn.close()
 
@@ -10688,13 +11665,10 @@ def access_management():
         "username": selected_user["username"] if selected_user else "",
         "full_name": selected_user.get("full_name", "") if selected_user else "",
         "email": selected_user.get("email", "") if selected_user else "",
+        "role_id": selected_user.get("role_id") if selected_user else "",
         "is_admin": bool(selected_user["is_admin"]) if selected_user else False,
-        "dashboard_modules": dashboard_access_list(selected_user) if selected_user else [],
-        "sales_analytics_modules": sales_analytics_access_list(selected_user) if selected_user else [],
-        "user_access_modules": user_access_submodule_list(selected_user) if selected_user else [],
-        "payroll_modules": payroll_access_list(selected_user) if selected_user else [],
-        "accounts_modules": accounts_access_list(selected_user) if selected_user else [],
-        "stores_modules": stores_access_list(selected_user) if selected_user else [],
+        "photo_path": selected_user.get("photo_path", "") if selected_user else "",
+        "avatar_tone": selected_user.get("avatar_tone", 0) if selected_user else 0,
     }
     success_message = ""
     if saved_flag == "created":
@@ -10705,12 +11679,23 @@ def access_management():
     return _am_page_render(
         "access_management.html",
         users=users,
+        roles=roles,
+        roles_summary=[role_summary_for_ui(role) for role in roles],
         form=form,
         selected_user=selected_user,
         errors=[],
         success_message=success_message,
         form_focus=form_focus,
     )
+
+
+@app.route("/access-management/photos/<path:stored_name>", endpoint="access_user_photo")
+def access_user_photo(stored_name):
+    """Serve a compressed user profile photo for authenticated users."""
+    path = resolve_stored_user_photo(stored_name)
+    if not path:
+        abort(404)
+    return send_file(path, mimetype="image/webp", as_attachment=False, download_name=path.name)
 
 
 @app.route("/access-management/save", methods=["POST"])
@@ -10721,7 +11706,185 @@ def save_access_user():
     full_name = (request.form.get("full_name") or "").strip()
     email = (request.form.get("email") or "").strip()
     password = request.form.get("password", "")
+    role_id_raw = request.form.get("role_id", "").strip()
+    remove_photo = bool(request.form.get("remove_photo"))
+    photo_upload = request.files.get("photo")
+
+    try:
+        user_id = int(user_id_raw) if user_id_raw else None
+    except (TypeError, ValueError):
+        user_id = None
+    try:
+        role_id = int(role_id_raw) if role_id_raw else None
+    except (TypeError, ValueError):
+        role_id = None
+
+    conn = get_db()
+    try:
+        errors, original, _role = validate_access_user_form(
+            conn,
+            actor=actor,
+            user_id=user_id,
+            username=username,
+            password=password,
+            role_id=role_id,
+            email=email,
+        )
+        new_photo_path = None
+        clear_photo = False
+        previous_photo = ""
+        if original is not None:
+            try:
+                previous_photo = str(original["photo_path"] or "").strip()
+            except (KeyError, IndexError, TypeError):
+                previous_photo = ""
+
+        if photo_upload and photo_upload.filename:
+            try:
+                new_photo_path = process_uploaded_user_photo(photo_upload, photo_upload.filename)
+            except ValueError as exc:
+                errors.append(str(exc))
+            except RuntimeError as exc:
+                errors.append(str(exc))
+        elif remove_photo:
+            clear_photo = True
+
+        if errors:
+            users, selected_user = fetch_access_management_users(conn, user_id)
+            roles = list_access_roles(conn, active_only=True)
+            form = {
+                "id": user_id or "",
+                "username": username,
+                "full_name": full_name,
+                "email": email,
+                "role_id": role_id or "",
+                "is_admin": bool(_role and _role.get("is_admin")),
+                "photo_path": "" if clear_photo else (previous_photo if not new_photo_path else new_photo_path),
+                "avatar_tone": selected_user.get("avatar_tone", 0) if selected_user else 0,
+            }
+            if new_photo_path:
+                delete_stored_user_photo(new_photo_path)
+            return _am_page_render(
+                "access_management.html",
+                users=users,
+                roles=roles,
+                roles_summary=[role_summary_for_ui(role) for role in roles],
+                form=form,
+                selected_user=selected_user,
+                errors=errors,
+                success_message="",
+                form_focus=True,
+            ), 400
+
+        photo_arg = None
+        if new_photo_path is not None:
+            photo_arg = new_photo_path
+        elif clear_photo:
+            photo_arg = ""
+
+        saved_user_id, result_flag = save_access_user_record(
+            conn,
+            user_id=user_id,
+            username=username,
+            full_name=full_name,
+            email=email,
+            password=password,
+            role_id=role_id,
+            photo_path=photo_arg,
+            sql_now=SQL_NOW,
+        )
+        if (new_photo_path or clear_photo) and previous_photo and previous_photo != new_photo_path:
+            delete_stored_user_photo(previous_photo)
+        conn.commit()
+    finally:
+        conn.close()
+
+    if user_id and actor and int(actor["id"]) == int(saved_user_id):
+        g._auth_loaded = False
+        get_current_user()
+
+    return redirect(
+        url_for("access_management", user_id=saved_user_id, saved=result_flag),
+        code=303,
+    )
+
+
+@app.route("/access-management/roles", methods=["GET", "POST"])
+def access_roles():
+    # Soft-nav / some clients re-POST the redirect target; accept POST here too.
+    if request.method == "POST":
+        return save_access_role()
+
+    user = get_current_user()
+    if not user_can_access_user_access_submodule(user, "roles"):
+        return _permission_denied_response("You do not have access to Roles.")
+
+    selected_role_id = request.args.get("role_id", "").strip()
+    saved_flag = request.args.get("saved", "").strip()
+    form_focus = request.args.get("focus", "").strip() == "form"
+
+    conn = get_db()
+    try:
+        roles = list_access_roles(conn)
+        selected_role = None
+        if selected_role_id:
+            try:
+                selected_role = get_access_role(conn, int(selected_role_id))
+            except (TypeError, ValueError):
+                selected_role = None
+    finally:
+        conn.close()
+
+    form = {
+        "id": selected_role["id"] if selected_role else "",
+        "name": selected_role["name"] if selected_role else "",
+        "description": selected_role.get("description", "") if selected_role else "",
+        "is_admin": bool(selected_role["is_admin"]) if selected_role else False,
+        "is_super_admin_role": is_built_in_administrator_role(selected_role),
+        "is_active": bool(selected_role["is_active"]) if selected_role else True,
+        "dashboard_modules": dashboard_access_list(selected_role) if selected_role else [],
+        "sales_analytics_modules": sales_analytics_access_list(selected_role) if selected_role else [],
+        "user_access_modules": user_access_submodule_list(selected_role) if selected_role else [],
+        "payroll_modules": payroll_access_list(selected_role) if selected_role else [],
+        "accounts_modules": accounts_access_list(selected_role) if selected_role else [],
+        "stores_modules": stores_access_list(selected_role) if selected_role else [],
+    }
+    success_message = ""
+    if saved_flag == "created":
+        success_message = "Role created successfully."
+    elif saved_flag == "updated":
+        success_message = "Role updated successfully."
+
+    return _am_roles_page_render(
+        "access_roles.html",
+        roles=roles,
+        form=form,
+        selected_role=selected_role,
+        errors=[],
+        success_message=success_message,
+        form_focus=form_focus,
+    )
+
+
+@app.route("/access-management/roles/save", methods=["GET", "POST"])
+def save_access_role():
+    # Stale soft-nav fallbacks sometimes GET this URL after a failed fetch.
+    if request.method == "GET":
+        return redirect(url_for("access_roles"), code=303)
+    actor = get_current_user()
+    if not user_can_access_user_access_submodule(actor, "roles"):
+        return _permission_denied_response("You do not have access to Roles.")
+
+    role_id_raw = request.form.get("role_id", "").strip()
+    name = (request.form.get("name") or "").strip()
+    description = (request.form.get("description") or "").strip()
     is_admin = bool(request.form.get("is_admin"))
+    try:
+        role_id = int(role_id_raw) if role_id_raw else None
+    except (TypeError, ValueError):
+        role_id = None
+    # Active by default for new roles; checkbox posts when checked on edit.
+    is_active = True if role_id is None else bool(request.form.get("is_active"))
     dashboard_modules = request.form.getlist("dashboard_modules")
     sales_analytics_modules = request.form.getlist("sales_analytics_modules")
     user_access_modules = request.form.getlist("user_access_modules")
@@ -10740,19 +11903,28 @@ def save_access_user():
     if stores_modules and not is_admin and "stores" not in dashboard_modules:
         dashboard_modules = list(dashboard_modules) + ["stores"]
 
-    try:
-        user_id = int(user_id_raw) if user_id_raw else None
-    except (TypeError, ValueError):
-        user_id = None
-
     conn = get_db()
     try:
-        errors, _original = validate_access_user_form(
+        existing_role = get_access_role(conn, role_id) if role_id else None
+        # Full authority may only be toggled on the built-in Super Administrator row.
+        # Do not rewrite other roles' names to "Super Administrator" (causes name clashes).
+        if existing_role and is_built_in_administrator_role(existing_role):
+            name = SUPER_ADMINISTRATOR_ROLE_NAME
+            is_admin = bool(request.form.get("is_admin"))
+        else:
+            is_admin = False
+
+        dashboard_modules = reconcile_super_admin_only_dashboard_modules(
+            actor,
+            dashboard_modules,
+            dashboard_access_list(existing_role) if existing_role else [],
+        )
+
+        errors, _original = validate_access_role_form(
             conn,
             actor=actor,
-            user_id=user_id,
-            username=username,
-            password=password,
+            role_id=role_id,
+            name=name,
             is_admin=is_admin,
             dashboard_modules=dashboard_modules,
             sales_analytics_modules=sales_analytics_modules,
@@ -10760,16 +11932,19 @@ def save_access_user():
             payroll_modules=payroll_modules,
             accounts_modules=accounts_modules,
             stores_modules=stores_modules,
-            email=email,
         )
         if errors:
-            users, selected_user = fetch_access_management_users(conn, user_id)
+            roles = list_access_roles(conn)
+            selected_role = get_access_role(conn, role_id) if role_id else None
             form = {
-                "id": user_id or "",
-                "username": username,
-                "full_name": full_name,
-                "email": email,
+                "id": role_id or "",
+                "name": name,
+                "description": description,
                 "is_admin": is_admin,
+                "is_super_admin_role": is_built_in_administrator_role(
+                    selected_role, name=name, role_id=role_id
+                ),
+                "is_active": is_active,
                 "dashboard_modules": dashboard_modules,
                 "sales_analytics_modules": sales_analytics_modules,
                 "user_access_modules": user_access_modules,
@@ -10777,24 +11952,23 @@ def save_access_user():
                 "accounts_modules": accounts_modules,
                 "stores_modules": stores_modules,
             }
-            return _am_page_render(
-                "access_management.html",
-                users=users,
+            return _am_roles_page_render(
+                "access_roles.html",
+                roles=roles,
                 form=form,
-                selected_user=selected_user,
+                selected_role=selected_role,
                 errors=errors,
                 success_message="",
                 form_focus=True,
             ), 400
 
-        saved_user_id, result_flag = save_access_user_record(
+        saved_role_id, result_flag = save_access_role_record(
             conn,
-            user_id=user_id,
-            username=username,
-            full_name=full_name,
-            email=email,
-            password=password,
+            role_id=role_id,
+            name=name,
+            description=description,
             is_admin=is_admin,
+            is_active=is_active,
             dashboard_modules=dashboard_modules,
             sales_analytics_modules=sales_analytics_modules,
             user_access_modules=user_access_modules,
@@ -10807,11 +11981,34 @@ def save_access_user():
     finally:
         conn.close()
 
-    if user_id and actor and int(actor["id"]) == int(saved_user_id):
+    if actor and actor.get("role_id") and int(actor["role_id"]) == int(saved_role_id):
         g._auth_loaded = False
         get_current_user()
 
-    return redirect(url_for("access_management", user_id=saved_user_id, saved=result_flag))
+    # 303 so soft-nav / browsers follow with GET (POST→302→re-POST hit Method Not Allowed).
+    return redirect(
+        url_for("access_roles", role_id=saved_role_id, saved=result_flag),
+        code=303,
+    )
+
+
+@app.route("/access-management/roles/delete/<int:role_id>", methods=["POST"], endpoint="delete_access_role")
+def delete_access_role_view(role_id):
+    actor = get_current_user()
+    if not user_can_access_user_access_submodule(actor, "roles"):
+        return _permission_denied_response("You do not have access to Roles.")
+
+    conn = get_db()
+    try:
+        ok, message = delete_access_role(conn, role_id)
+        if not ok:
+            _queue_auth_notice(message)
+            return redirect(url_for("access_roles"), code=303)
+        conn.commit()
+        _queue_auth_notice("Role deleted.")
+    finally:
+        conn.close()
+    return redirect(url_for("access_roles"), code=303)
 
 
 @app.route("/access-management/unlock/<int:user_id>", methods=["POST"])
@@ -10832,6 +12029,53 @@ def unlock_access_user(user_id):
     finally:
         conn.close()
     return redirect(url_for("access_management"))
+
+
+@app.route("/access-management/active/<int:user_id>", methods=["POST"], endpoint="toggle_access_user_active")
+def toggle_access_user_active(user_id):
+    actor = get_current_user()
+    if not user_can_access_user_access_submodule(actor, "users"):
+        return _permission_denied_response("You do not have access to update users.")
+
+    conn = get_db()
+    try:
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row:
+            _queue_auth_notice("User not found.")
+            return redirect(url_for("access_management"), code=303)
+
+        user = build_user_context(conn, row)
+        if actor and int(actor["id"]) == int(user_id):
+            _queue_auth_notice("You cannot change active status for the account you are currently using.")
+            return redirect(url_for("access_management"), code=303)
+
+        currently_active = bool(user.get("is_active"))
+        if currently_active and user.get("is_admin"):
+            active_admin_count = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE is_admin = 1 AND is_active = 1"
+                ).fetchone()[0]
+            )
+            if active_admin_count <= 1:
+                _queue_auth_notice("At least one active administrator must remain in the system.")
+                return redirect(url_for("access_management"), code=303)
+
+        new_active = 0 if currently_active else 1
+        conn.execute(
+            f"""UPDATE users
+                   SET is_active = ?, updated_at = {SQL_NOW}
+                 WHERE id = ?""",
+            (new_active, user_id),
+        )
+        conn.commit()
+        label = user.get("display_name") or user.get("username") or "User"
+        if new_active:
+            _queue_auth_notice(f"Activated {label}.")
+        else:
+            _queue_auth_notice(f"Marked {label} inactive.")
+    finally:
+        conn.close()
+    return redirect(url_for("access_management"), code=303)
 
 
 @app.route("/access-management/delete/<int:user_id>", methods=["POST"])
@@ -10865,9 +12109,12 @@ def delete_access_user(user_id):
             _queue_auth_notice("At least one active administrator must remain in the system.")
             return redirect(url_for("access_management"))
 
+        photo_path = (user.get("photo_path") or "").strip()
         conn.execute("DELETE FROM user_permissions WHERE user_id = ?", (user_id,))
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
         conn.commit()
+        if photo_path:
+            delete_stored_user_photo(photo_path)
     finally:
         conn.close()
 

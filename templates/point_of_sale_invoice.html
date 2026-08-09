@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=58">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 <script>
 (function(){
@@ -27,19 +27,23 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=58">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 {% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox, ep_listbox %}
 
-<div class="de-main-inner pos-invoice-page" id="pos-invoice-page" data-pos-invoice data-pos-is-admin="{{ '1' if current_user and current_user.is_admin else '0' }}"
+<div class="de-main-inner pos-invoice-page" id="pos-invoice-page" data-pos-invoice data-pos-is-admin="{{ '1' if current_user and current_user.is_admin else '0' }}" data-pos-can-cancel-kot="{{ '1' if current_user and user_can_edit_kot_sent_lines(current_user) else '0' }}"
      data-tip-company="{{ tip_company }}"
      data-tip-location="{{ tip_location }}"
      data-tip-add-url="{{ tip_add_url }}"
      data-tip-edit-url="{{ tip_edit_url }}"
      data-tip-delete-url="{{ tip_delete_url }}" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
+  {% set pos_tables_endpoint = 'bar_point_of_sale' if (pos_outlet|default('restaurant')) == 'bar' else 'point_of_sale' %}
   <header class="pos-inv-header">
     <div class="pos-inv-header-title-row">
+      <a class="pos-inv-back" href="{{ url_for(pos_tables_endpoint) }}" aria-label="Back to Tables" title="Back to Tables">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+      </a>
       <span class="pos-inv-header-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
       </span>
@@ -75,7 +79,7 @@
         </button>
         <button type="button" class="pos-inv-btn pos-inv-btn--kitchen pos-inv-kot-btn" id="pos-inv-send-kot" data-inv-action="send-kot" title="Confirm order and send new items to the kitchen" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 4-1.5 5.5-1.5 6.5h15C18.5 13.5 18 11 18 8z"/><path d="M10.5 17a1.5 1.5 0 0 0 3 0"/></svg>
-          <span>Send to Kitchen</span>
+          <span>Send KOT</span>
           <span class="pos-inv-kot-count" id="pos-inv-send-kot-count" hidden>0</span>
         </button>
         <span class="pos-sr-only" id="pos-inv-kot-status" aria-live="polite"></span>
@@ -274,7 +278,7 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>
         <span>Print</span>
       </button>
-      <button type="button" class="pos-inv-tool" data-inv-action="pdf" title="PDF">
+      <button type="button" class="pos-inv-tool" data-inv-action="pdf" title="Save bill as PDF">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9l-5-6Z"/><path d="M14 3v6h6"/><path d="M8 13h8M8 17h5"/></svg>
         <span>PDF</span>
       </button>
@@ -428,11 +432,11 @@
 {% endif %}
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='pos_offline.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=11"></script>
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=18"></script>
 <script src="{{ url_for('static', filename='pos_settle.js') }}?v=2"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=115"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=123"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

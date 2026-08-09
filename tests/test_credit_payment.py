@@ -5,6 +5,7 @@ import unittest
 from datetime import date
 
 import app as app_module
+import db as db_mod
 
 
 def _memory_conn():
@@ -134,6 +135,23 @@ class CreditPaymentBalanceTests(unittest.TestCase):
 
     def test_optional_filter_date_range_inactive_when_missing(self):
         date_from, date_to, active = app_module._resolve_optional_filter_date_range({}, "date_from", "date_to")
+        self.assertIsNone(date_from)
+        self.assertIsNone(date_to)
+        self.assertFalse(active)
+
+    def test_optional_filter_date_range_default_fy_when_requested(self):
+        date_from, date_to, active = app_module._resolve_optional_filter_date_range(
+            {}, "date_from", "date_to", default_fy=True
+        )
+        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        self.assertTrue(active)
+        self.assertEqual(date_from, fy_start)
+        self.assertEqual(date_to, today)
+
+    def test_payment_date_filter_stays_inactive_when_missing(self):
+        date_from, date_to, active = app_module._resolve_optional_filter_date_range(
+            {}, "payment_date_from", "payment_date_to"
+        )
         self.assertIsNone(date_from)
         self.assertIsNone(date_to)
         self.assertFalse(active)
@@ -620,6 +638,337 @@ class CreditPaymentAccessTests(unittest.TestCase):
             "export_purchase_verification_report",
         ):
             self.assertEqual(get_endpoint_dashboard_module(endpoint), "accounts")
+
+
+class PurchaseVerificationApprovalGateTests(unittest.TestCase):
+    """Verify/Approve/Revert require Approval module; Accounts alone is view-only."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        from unittest import mock
+
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+
+        self.app = app_module.app
+        self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
+
+        conn = db_mod.get_db()
+        try:
+            admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+            self.admin_id = admin["id"]
+            cur = conn.execute(
+                """INSERT INTO suppliers
+                   (name, gst, bank_account_number, ifsc_code)
+                   VALUES (?, ?, ?, ?)""",
+                ("Gate Vendor", "29BBBBB0000B1Z5", "987654321098", "HDFC0001234"),
+            )
+            self.supplier_id = cur.lastrowid
+            cur = conn.execute(
+                """INSERT INTO sales_update_expenses
+                   (company, location, sales_date, description, amount, payment_type,
+                    expense_code, supplier_id, category)
+                   VALUES ('HBE', 'Hotel', '2026-07-10', 'Gate expense', 500, 'credit',
+                           'HBE-EX-GATE', ?, 'vegetables')""",
+                (self.supplier_id,),
+            )
+            self.expense_id = cur.lastrowid
+            cur = conn.execute(
+                """INSERT INTO sales_update_expenses
+                   (company, location, sales_date, description, amount, payment_type,
+                    expense_code, supplier_id, category)
+                   VALUES ('HBE', 'Hotel', '2026-07-12', 'Open expense', 300, 'credit',
+                           'HBE-EX-OPEN', ?, 'vegetables')""",
+                (self.supplier_id,),
+            )
+            self.open_expense_id = cur.lastrowid
+            cur = conn.execute(
+                """INSERT INTO purchase_verifications
+                   (company, supplier_id, verification_date, verification_method,
+                    verification_account, total_amount)
+                   VALUES ('HBE', ?, '2026-07-11', 'cash', 'administrator', 500)""",
+                (self.supplier_id,),
+            )
+            self.verification_id = cur.lastrowid
+            conn.execute(
+                """INSERT INTO purchase_verification_allocations
+                   (purchase_verification_id, expense_id, amount)
+                   VALUES (?, ?, ?)""",
+                (self.verification_id, self.expense_id, 500),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self._mock = mock
+        self._os = os
+        self.viewer = {
+            "id": self.admin_id,
+            "username": "accounts_viewer",
+            "full_name": "Accounts Viewer",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"accounts"},
+            "stores_access": set(),
+        }
+        self.approver = {
+            "id": self.admin_id,
+            "username": "approver",
+            "full_name": "Approver",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"accounts", "approval"},
+            "stores_access": set(),
+        }
+
+    def tearDown(self):
+        db_mod.DATABASE_PATH = self._orig_path
+        try:
+            self._os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def test_page_hides_verify_without_approval(self):
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.viewer):
+            page = self.client.get("/accounts/purchase-verification")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('data-can-mutate="0"', html)
+        self.assertNotIn('id="cp-header-verify-btn"', html)
+        self.assertNotIn('class="cp-row-approve-btn"', html)
+
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.viewer):
+            history = self.client.get("/accounts/purchase-verification?view=history")
+        self.assertEqual(history.status_code, 200)
+        history_html = history.get_data(as_text=True)
+        self.assertIn('data-can-mutate="0"', history_html)
+        self.assertIn("cp-view-payment", history_html)
+        self.assertNotIn('class="act-btn del cp-delete-payment"', history_html)
+
+    def test_page_shows_verify_with_approval(self):
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.approver):
+            page = self.client.get("/accounts/purchase-verification")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('data-can-mutate="1"', html)
+        self.assertIn('id="cp-header-verify-btn"', html)
+
+    def test_create_requires_approval(self):
+        payload = {
+            "supplier_id": self.supplier_id,
+            "verification_date": "2026-07-12",
+            "verification_method": "cash",
+            "allocations": [{"expense_id": self.expense_id, "amount": 500}],
+        }
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.viewer):
+            denied = self.client.post(
+                "/accounts/purchase-verification/create",
+                json=payload,
+            )
+        self.assertEqual(denied.status_code, 403)
+        body = denied.get_json()
+        self.assertFalse(body.get("ok"))
+        self.assertIn("Approval", body.get("error") or "")
+
+    def test_delete_requires_approval(self):
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.viewer):
+            denied = self.client.post(
+                "/accounts/purchase-verification/delete",
+                json={"payment_id": self.verification_id},
+            )
+        self.assertEqual(denied.status_code, 403)
+        body = denied.get_json()
+        self.assertFalse(body.get("ok"))
+        self.assertIn("Approval", body.get("error") or "")
+
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.approver):
+            allowed = self.client.post(
+                "/accounts/purchase-verification/delete",
+                json={"payment_id": self.verification_id},
+            )
+        self.assertEqual(allowed.status_code, 200, allowed.get_data(as_text=True))
+        self.assertTrue(allowed.get_json().get("ok"))
+
+
+class CreditPaymentApprovalGateTests(unittest.TestCase):
+    """Clear Payment / Pay / Revert require Approval module; Accounts alone is view-only."""
+
+    def setUp(self):
+        import os
+        import tempfile
+        from unittest import mock
+
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+
+        self.app = app_module.app
+        self.app.config["TESTING"] = True
+        self.client = self.app.test_client()
+
+        conn = db_mod.get_db()
+        try:
+            admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
+            self.admin_id = admin["id"]
+            cur = conn.execute(
+                """INSERT INTO suppliers
+                   (name, gst, bank_account_number, ifsc_code)
+                   VALUES (?, ?, ?, ?)""",
+                ("Clear Vendor", "29CCCCC0000C1Z5", "111122223333", "SBIN0001234"),
+            )
+            self.supplier_id = cur.lastrowid
+            cur = conn.execute(
+                """INSERT INTO sales_update_expenses
+                   (company, location, sales_date, description, amount, payment_type,
+                    expense_code, supplier_id, category)
+                   VALUES ('HBE', 'Hotel', '2026-07-10', 'Cleared expense', 400, 'credit',
+                           'HBE-EX-CLR', ?, 'vegetables')""",
+                (self.supplier_id,),
+            )
+            self.paid_expense_id = cur.lastrowid
+            cur = conn.execute(
+                """INSERT INTO sales_update_expenses
+                   (company, location, sales_date, description, amount, payment_type,
+                    expense_code, supplier_id, category)
+                   VALUES ('HBE', 'Hotel', '2026-07-12', 'Open credit', 250, 'credit',
+                           'HBE-EX-OPENCP', ?, 'vegetables')""",
+                (self.supplier_id,),
+            )
+            self.open_expense_id = cur.lastrowid
+            # Both expenses fully verified so they appear on Credit Payment.
+            for expense_id, amount in (
+                (self.paid_expense_id, 400),
+                (self.open_expense_id, 250),
+            ):
+                cur = conn.execute(
+                    """INSERT INTO purchase_verifications
+                       (company, supplier_id, verification_date, verification_method,
+                        verification_account, total_amount)
+                       VALUES ('HBE', ?, '2026-07-13', 'cash', 'administrator', ?)""",
+                    (self.supplier_id, amount),
+                )
+                verification_id = cur.lastrowid
+                conn.execute(
+                    """INSERT INTO purchase_verification_allocations
+                       (purchase_verification_id, expense_id, amount)
+                       VALUES (?, ?, ?)""",
+                    (verification_id, expense_id, amount),
+                )
+            cur = conn.execute(
+                """INSERT INTO credit_payments
+                   (company, supplier_id, payment_date, payment_method, total_amount)
+                   VALUES ('HBE', ?, '2026-07-14', 'cash', 400)""",
+                (self.supplier_id,),
+            )
+            self.payment_id = cur.lastrowid
+            conn.execute(
+                """INSERT INTO credit_payment_allocations
+                   (credit_payment_id, expense_id, amount)
+                   VALUES (?, ?, ?)""",
+                (self.payment_id, self.paid_expense_id, 400),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self._mock = mock
+        self._os = os
+        self.viewer = {
+            "id": self.admin_id,
+            "username": "accounts_viewer",
+            "full_name": "Accounts Viewer",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"accounts"},
+            "stores_access": set(),
+        }
+        self.approver = {
+            "id": self.admin_id,
+            "username": "approver",
+            "full_name": "Approver",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"accounts", "approval"},
+            "stores_access": set(),
+        }
+
+    def tearDown(self):
+        db_mod.DATABASE_PATH = self._orig_path
+        try:
+            self._os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def test_page_hides_clear_payment_without_approval(self):
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.viewer):
+            page = self.client.get("/accounts/credit-payment")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('data-can-mutate="0"', html)
+        self.assertNotIn('id="cp-header-verify-btn"', html)
+        self.assertNotIn('class="cp-row-approve-btn"', html)
+
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.viewer):
+            history = self.client.get("/accounts/credit-payment?view=history")
+        self.assertEqual(history.status_code, 200)
+        history_html = history.get_data(as_text=True)
+        self.assertIn('data-can-mutate="0"', history_html)
+        self.assertIn("cp-view-payment", history_html)
+        self.assertNotIn('class="act-btn del cp-delete-payment"', history_html)
+
+    def test_page_shows_clear_payment_with_approval(self):
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.approver):
+            page = self.client.get("/accounts/credit-payment")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('data-can-mutate="1"', html)
+        self.assertIn('id="cp-header-verify-btn"', html)
+        self.assertIn("Clear Payment", html)
+
+    def test_create_requires_approval(self):
+        payload = {
+            "supplier_id": self.supplier_id,
+            "payment_date": "2026-07-15",
+            "payment_method": "cash",
+            "allocations": [{"expense_id": self.open_expense_id, "amount": 250}],
+        }
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.viewer):
+            denied = self.client.post(
+                "/accounts/credit-payment/create",
+                json=payload,
+            )
+        self.assertEqual(denied.status_code, 403)
+        body = denied.get_json()
+        self.assertFalse(body.get("ok"))
+        self.assertIn("Approval", body.get("error") or "")
+
+    def test_delete_requires_approval(self):
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.viewer):
+            denied = self.client.post(
+                "/accounts/credit-payment/delete",
+                json={"payment_id": self.payment_id},
+            )
+        self.assertEqual(denied.status_code, 403)
+        body = denied.get_json()
+        self.assertFalse(body.get("ok"))
+        self.assertIn("Approval", body.get("error") or "")
+
+        with self._mock.patch.object(app_module, "get_current_user", return_value=self.approver):
+            allowed = self.client.post(
+                "/accounts/credit-payment/delete",
+                json={"payment_id": self.payment_id},
+            )
+        self.assertEqual(allowed.status_code, 200, allowed.get_data(as_text=True))
+        self.assertTrue(allowed.get_json().get("ok"))
 
 
 class CreditPaymentReportExportTests(unittest.TestCase):

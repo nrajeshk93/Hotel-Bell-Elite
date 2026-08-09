@@ -1,13 +1,23 @@
+import os
+import tempfile
 import unittest
 
+import db as db_mod
 from workspace_access import (
     access_module_tree_ui,
     accounts_access_list,
     build_user_context,
     dashboard_access_list,
+    delete_access_role,
+    ensure_access_roles_schema,
     get_endpoint_accounts_submodule,
     get_endpoint_dashboard_module,
     get_endpoint_sales_analytics_submodules,
+    get_endpoint_user_access_submodule,
+    is_built_in_administrator_role,
+    reconcile_super_admin_only_dashboard_modules,
+    save_access_role_record,
+    save_access_user_record,
     sales_analytics_access_list,
     set_user_permissions,
     user_can_access_accounts_submodule,
@@ -16,6 +26,10 @@ from workspace_access import (
     user_can_access_endpoint_sales_analytics,
     user_can_access_sales_analytics_submodule,
     user_can_access_supplier_master,
+    user_can_access_user_access_submodule,
+    user_can_approve_transactions,
+    user_can_edit_kot_sent_lines,
+    validate_access_role_form,
 )
 
 
@@ -49,6 +63,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(
             labels,
             [
+                "Dashboard",
                 "Sales Analytics",
                 "User & Access",
                 "Accounts",
@@ -61,6 +76,8 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Master",
                 "Report",
                 "Settings",
+                "Approval",
+                "Cancellation Access",
             ],
         )
         stores = next(node for node in tree if node["label"] == "Purchase & Inventory")
@@ -82,7 +99,11 @@ class WorkspaceAccessTests(unittest.TestCase):
         )
         self.assertEqual(indent_node["children"][0]["id"], "stores.product_master")
         self.assertEqual(indent_node["children"][0]["fieldValue"], "product_master")
-        sales_children = [child["label"] for child in tree[0]["children"]]
+        main_dashboard = next(node for node in tree if node["label"] == "Dashboard")
+        self.assertEqual(main_dashboard["id"], "main_dashboard")
+        self.assertEqual(main_dashboard["children"], [])
+        sales = next(node for node in tree if node["label"] == "Sales Analytics")
+        sales_children = [child["label"] for child in sales["children"]]
         self.assertEqual(
             sales_children,
             [
@@ -94,11 +115,30 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Credit",
             ],
         )
+        user_access = next(node for node in tree if node["label"] == "User & Access")
+        self.assertEqual(
+            [child["label"] for child in user_access["children"]],
+            ["Users", "Add User", "Roles"],
+        )
         settings = next(node for node in tree if node["label"] == "Settings")
         self.assertEqual(settings["id"], "settings")
         self.assertEqual(settings["icon"], "settings")
         self.assertEqual(settings["children"], [])
-        accounts_children = [child["label"] for child in tree[2]["children"]]
+        approval = next(node for node in tree if node["label"] == "Approval")
+        self.assertEqual(approval["id"], "approval")
+        self.assertEqual(approval["icon"], "badge-check")
+        self.assertEqual(approval["children"], [])
+        self.assertTrue(approval.get("superAdminOnly"))
+        self.assertIn("Super Administrator", approval.get("description") or "")
+        cancellation = next(node for node in tree if node["label"] == "Cancellation Access")
+        self.assertEqual(cancellation["id"], "cancellation_access")
+        self.assertEqual(cancellation["icon"], "ban")
+        self.assertEqual(cancellation["children"], [])
+        self.assertTrue(cancellation.get("superAdminOnly"))
+        self.assertIn("Kitchen Order", cancellation.get("description") or "")
+        self.assertIn("Super Administrator", cancellation.get("description") or "")
+        accounts = next(node for node in tree if node["label"] == "Accounts")
+        accounts_children = [child["label"] for child in accounts["children"]]
         self.assertEqual(
             accounts_children,
             [
@@ -121,6 +161,38 @@ class WorkspaceAccessTests(unittest.TestCase):
         report = next(node for node in tree if node["label"] == "Report")
         self.assertEqual(report["dashboardKey"], "reports")
         self.assertEqual(report["children"], [])
+
+    def test_cancellation_access_unlocks_kot_sent_line_edits(self):
+        locked = {
+            "id": 11,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale"},
+        }
+        unlocked = {
+            "id": 12,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale", "cancellation_access"},
+        }
+        admin = {"id": 1, "is_admin": True, "dashboard_access": set()}
+        self.assertFalse(user_can_edit_kot_sent_lines(locked))
+        self.assertTrue(user_can_edit_kot_sent_lines(unlocked))
+        self.assertTrue(user_can_edit_kot_sent_lines(admin))
+
+    def test_approval_access_unlocks_purchase_verification_actions(self):
+        locked = {
+            "id": 21,
+            "is_admin": False,
+            "dashboard_access": {"accounts"},
+        }
+        unlocked = {
+            "id": 22,
+            "is_admin": False,
+            "dashboard_access": {"accounts", "approval"},
+        }
+        admin = {"id": 1, "is_admin": True, "dashboard_access": set()}
+        self.assertFalse(user_can_approve_transactions(locked))
+        self.assertTrue(user_can_approve_transactions(unlocked))
+        self.assertTrue(user_can_approve_transactions(admin))
 
     def test_supplier_master_uses_accounts_access(self):
         user = {
@@ -251,6 +323,353 @@ class WorkspaceAccessTests(unittest.TestCase):
             get_endpoint_sales_analytics_submodules("save_sales_update"),
             ["hotel", "bar", "restaurant"],
         )
+        self.assertEqual(get_endpoint_dashboard_module("access_roles"), "access_management")
+        self.assertEqual(get_endpoint_dashboard_module("save_access_role"), "access_management")
+        self.assertEqual(get_endpoint_dashboard_module("delete_access_role"), "access_management")
+        self.assertEqual(get_endpoint_user_access_submodule("access_roles"), "roles")
+        self.assertEqual(get_endpoint_user_access_submodule("save_access_role"), "roles")
+        self.assertEqual(get_endpoint_user_access_submodule("delete_access_role"), "roles")
+        self.assertEqual(get_endpoint_user_access_submodule("toggle_access_user_active"), "users")
+        self.assertEqual(
+            get_endpoint_dashboard_module("toggle_access_user_active"),
+            "access_management",
+        )
+
+
+class RoleBasedAccessTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        self.tmp.close()
+        self.db_path = self.tmp.name
+        self._orig_path = db_mod.DATABASE_PATH
+        db_mod.DATABASE_PATH = self.db_path
+        db_mod.init_db()
+        self.conn = db_mod.get_db()
+
+    def tearDown(self):
+        self.conn.close()
+        db_mod.DATABASE_PATH = self._orig_path
+        try:
+            os.unlink(self.db_path)
+        except OSError:
+            pass
+
+    def test_migration_assigns_administrator_to_seeded_admin(self):
+        row = self.conn.execute(
+            "SELECT * FROM users WHERE username = ?",
+            ("admin",),
+        ).fetchone()
+        user = build_user_context(self.conn, row)
+        self.assertTrue(user["is_admin"])
+        self.assertEqual(user["role_name"], "Super Administrator")
+        self.assertTrue(user_can_access_dashboard(user, "settings"))
+        self.assertTrue(user_can_access_user_access_submodule(user, "roles"))
+
+    def test_only_super_administrator_role_can_have_full_authority(self):
+        actor = {"id": 1, "is_admin": True, "user_access": {"roles"}}
+        errors, _ = validate_access_role_form(
+            self.conn,
+            actor=actor,
+            role_id=None,
+            name="Night Manager",
+            is_admin=True,
+            dashboard_modules=[],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+        )
+        self.assertTrue(any("full authority" in e.lower() for e in errors))
+
+        admin_role = self.conn.execute(
+            "SELECT * FROM access_roles WHERE LOWER(name) = LOWER(?)",
+            ("Super Administrator",),
+        ).fetchone()
+        self.assertIsNotNone(admin_role)
+        ok_errors, _ = validate_access_role_form(
+            self.conn,
+            actor=actor,
+            role_id=int(admin_role["id"]),
+            name="Super Administrator",
+            is_admin=True,
+            dashboard_modules=[],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+        )
+        self.assertFalse(any("full authority" in e.lower() for e in ok_errors))
+
+        # Demoting Super Administrator is allowed when another active admin exists.
+        other_role_id, _ = save_access_role_record(
+            self.conn,
+            role_id=None,
+            name="Backup Admin",
+            description="",
+            is_admin=True,
+            is_active=True,
+            dashboard_modules=[],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        save_access_user_record(
+            self.conn,
+            user_id=None,
+            username="backup_admin",
+            full_name="Backup Admin",
+            email="backup@example.com",
+            password="Password1!",
+            role_id=other_role_id,
+            sql_now="datetime('now','localtime')",
+        )
+        demote_errors, _ = validate_access_role_form(
+            self.conn,
+            actor=actor,
+            role_id=int(admin_role["id"]),
+            name="Super Administrator",
+            is_admin=False,
+            dashboard_modules=["reports"],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+        )
+        self.assertFalse(any("active administrator must remain" in e for e in demote_errors))
+        self.assertFalse(any("full authority" in e.lower() for e in demote_errors))
+
+    def test_legacy_administrator_role_renames_to_super_administrator(self):
+        self.conn.execute(
+            """UPDATE access_roles
+               SET name = 'Administrator'
+               WHERE LOWER(name) = LOWER('Super Administrator')"""
+        )
+        ensure_access_roles_schema(self.conn)
+        row = self.conn.execute(
+            "SELECT name, is_admin FROM access_roles WHERE is_admin = 1 LIMIT 1"
+        ).fetchone()
+        self.assertEqual(row["name"], "Super Administrator")
+        self.assertTrue(bool(row["is_admin"]))
+
+    def test_custom_administrator_role_survives_schema_ensure(self):
+        """Custom role named Administrator must not be deleted when Super Admin exists."""
+        role_id, _ = save_access_role_record(
+            self.conn,
+            role_id=None,
+            name="Administrator",
+            description="Desk admin",
+            is_admin=False,
+            is_active=True,
+            dashboard_modules=["reports"],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        ensure_access_roles_schema(self.conn)
+        row = self.conn.execute(
+            "SELECT id, name, is_admin FROM access_roles WHERE id = ?",
+            (role_id,),
+        ).fetchone()
+        self.assertIsNotNone(row)
+        self.assertEqual(row["name"], "Administrator")
+        self.assertFalse(bool(row["is_admin"]))
+        self.assertFalse(is_built_in_administrator_role(dict(row)))
+
+    def test_approval_module_only_super_admin_can_grant(self):
+        non_admin = {"id": 9, "is_admin": False, "user_access": {"roles"}}
+        admin = {"id": 1, "is_admin": True, "user_access": {"roles"}}
+
+        stripped = reconcile_super_admin_only_dashboard_modules(
+            non_admin, ["reports", "approval", "cancellation_access"], []
+        )
+        self.assertEqual(stripped, ["reports"])
+
+        preserved = reconcile_super_admin_only_dashboard_modules(
+            non_admin,
+            ["reports"],
+            ["reports", "approval", "cancellation_access"],
+        )
+        self.assertEqual(preserved, ["reports", "approval", "cancellation_access"])
+
+        granted = reconcile_super_admin_only_dashboard_modules(
+            admin, ["reports", "approval", "cancellation_access"], []
+        )
+        self.assertEqual(granted, ["reports", "approval", "cancellation_access"])
+        revoked = reconcile_super_admin_only_dashboard_modules(
+            admin,
+            ["reports"],
+            ["reports", "approval", "cancellation_access"],
+        )
+        self.assertEqual(revoked, ["reports"])
+
+    def test_editing_role_keeps_its_own_name(self):
+        actor = {"id": 1, "is_admin": True, "user_access": {"roles"}}
+        role_id, _ = save_access_role_record(
+            self.conn,
+            role_id=None,
+            name="Night Auditor",
+            description="First pass",
+            is_admin=False,
+            is_active=True,
+            dashboard_modules=["reports"],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        errors, _ = validate_access_role_form(
+            self.conn,
+            actor=actor,
+            role_id=role_id,
+            name="Night Auditor",
+            is_admin=False,
+            dashboard_modules=["reports"],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+        )
+        self.assertFalse(any("already in use" in e.lower() for e in errors))
+
+        # Saving an update with the same name must succeed.
+        saved_id, flag = save_access_role_record(
+            self.conn,
+            role_id=role_id,
+            name="Night Auditor",
+            description="Updated",
+            is_admin=False,
+            is_active=True,
+            dashboard_modules=["reports"],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        self.assertEqual(saved_id, role_id)
+        self.assertEqual(flag, "updated")
+
+    def test_admin_role_grants_full_access(self):
+        role_id, _ = save_access_role_record(
+            self.conn,
+            role_id=None,
+            name="Ops Admin",
+            description="",
+            is_admin=True,
+            is_active=True,
+            dashboard_modules=[],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        user_id, _ = save_access_user_record(
+            self.conn,
+            user_id=None,
+            username="ops_admin",
+            full_name="Ops Admin",
+            password="Secret123!",
+            role_id=role_id,
+            sql_now="datetime('now','localtime')",
+            email="ops@example.com",
+        )
+        row = self.conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        user = build_user_context(self.conn, row)
+        self.assertTrue(user["is_admin"])
+        self.assertTrue(user_can_access_dashboard(user, "accounts"))
+        self.assertTrue(user_can_access_dashboard(user, "point_of_sale"))
+
+    def test_named_role_permissions_grant_dashboard_and_submodules(self):
+        role_id, _ = save_access_role_record(
+            self.conn,
+            role_id=None,
+            name="Cashier",
+            description="",
+            is_admin=False,
+            is_active=True,
+            dashboard_modules=["sales_analytics"],
+            sales_analytics_modules=["hotel", "bar"],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        user_id, _ = save_access_user_record(
+            self.conn,
+            user_id=None,
+            username="cashier1",
+            full_name="Cashier One",
+            password="Secret123!",
+            role_id=role_id,
+            sql_now="datetime('now','localtime')",
+            email="cashier@example.com",
+        )
+        row = self.conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        user = build_user_context(self.conn, row)
+        self.assertFalse(user["is_admin"])
+        self.assertEqual(user["role_name"], "Cashier")
+        self.assertTrue(user_can_access_dashboard(user, "sales_analytics"))
+        self.assertTrue(user_can_access_sales_analytics_submodule(user, "hotel"))
+        self.assertFalse(user_can_access_sales_analytics_submodule(user, "credit"))
+        self.assertFalse(user_can_access_dashboard(user, "settings"))
+
+    def test_user_without_role_is_denied(self):
+        self.conn.execute(
+            """INSERT INTO users
+               (username, full_name, email, password_hash, is_admin, role_id, is_active, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 0, NULL, 1, datetime('now','localtime'), datetime('now','localtime'))""",
+            ("norole", "No Role", "norole@example.com", "x"),
+        )
+        row = self.conn.execute(
+            "SELECT * FROM users WHERE username = ?",
+            ("norole",),
+        ).fetchone()
+        user = build_user_context(self.conn, row)
+        self.assertIsNone(user["role_id"])
+        self.assertFalse(user_can_access_dashboard(user, "sales_analytics"))
+        self.assertFalse(user_can_access_dashboard(user, "access_management"))
+
+    def test_delete_role_blocked_when_assigned(self):
+        role_id, _ = save_access_role_record(
+            self.conn,
+            role_id=None,
+            name="Assigned Role",
+            description="",
+            is_admin=False,
+            is_active=True,
+            dashboard_modules=["reports"],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        save_access_user_record(
+            self.conn,
+            user_id=None,
+            username="assigned_user",
+            full_name="Assigned",
+            password="Secret123!",
+            role_id=role_id,
+            sql_now="datetime('now','localtime')",
+            email="assigned@example.com",
+        )
+        ok, message = delete_access_role(self.conn, role_id)
+        self.assertFalse(ok)
+        self.assertIn("Reassign", message)
+
+    def test_legacy_permissions_migrate_into_imported_role(self):
+        self.conn.execute(
+            """INSERT INTO users
+               (username, full_name, email, password_hash, is_admin, role_id, is_active, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 0, NULL, 1, datetime('now','localtime'), datetime('now','localtime'))""",
+            ("legacy", "Legacy User", "legacy@example.com", "x"),
+        )
+        user_id = self.conn.execute(
+            "SELECT id FROM users WHERE username = ?",
+            ("legacy",),
+        ).fetchone()["id"]
+        set_user_permissions(
+            self.conn,
+            user_id,
+            ["accounts"],
+            [],
+            [],
+            [],
+            ["cash_ledger"],
+            [],
+        )
+        ensure_access_roles_schema(self.conn)
+        row = self.conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        user = build_user_context(self.conn, row)
+        self.assertEqual(user["role_name"], "Imported — legacy")
+        self.assertTrue(user_can_access_dashboard(user, "accounts"))
+        self.assertTrue(user_can_access_accounts_submodule(user, "cash_ledger"))
+        self.assertFalse(user_can_access_accounts_submodule(user, "purchase_ledger"))
 
 
 if __name__ == "__main__":

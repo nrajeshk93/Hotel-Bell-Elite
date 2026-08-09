@@ -833,12 +833,8 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertTrue(all(isinstance(line.get("id"), int) for line in t3["lines"]))
         self.assertFalse(t3.get("customer_bill_sent"))
 
-    def test_kot_tokens_mark_customer_bill_sent_after_send_to_customer(self):
-        """After Send to Customer (customerBill), token stays listed but flagged.
-
-        UI uses customer_bill_sent to disable Resend all / Resend selected.
-        Tokens are still returned so the modal can show “Bill sent — resend disabled”.
-        """
+    def test_kot_tokens_hidden_after_invoice_generated(self):
+        """After Generate Invoice (customerBill), token leaves the KOT hub list."""
         self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload("ORD-2607-0090", "T1", kot_send=True),
@@ -872,13 +868,8 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertTrue(invoice.get("customer_bill_sent"))
 
         after = self.client.get("/point-of-sale/api/kot-tokens").get_json()
-        self.assertEqual(after["token_count"], 1)
-        row = after["tables"][0]
-        self.assertEqual(row["name"], "T1")
-        self.assertTrue(row["customer_bill_sent"])
-        self.assertTrue(row.get("customer_bill_at"))
-        self.assertEqual(row["sent_qty"], 2)
-        self.assertTrue(row["lines"])
+        self.assertEqual(after["token_count"], 0)
+        self.assertEqual(after.get("tables") or [], [])
 
         # Flag is sticky and cart is locked: a later plain save must be rejected.
         again = self.client.post(
@@ -903,7 +894,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         again_body = again.get_json() or {}
         self.assertIn("already generated", (again_body.get("error") or "").lower())
         sticky = self.client.get("/point-of-sale/api/kot-tokens").get_json()
-        self.assertTrue(sticky["tables"][0]["customer_bill_sent"])
+        self.assertEqual(sticky["token_count"], 0)
 
     def test_generated_invoice_rejects_line_edits(self):
         """After Generate Invoice (customerBill), changing lines is blocked."""
@@ -974,7 +965,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(len(inv.get("lines") or []), 1)
         self.assertEqual(int((inv["lines"][0].get("qty") or 0)), 2)
 
-    def test_non_admin_cannot_reduce_or_remove_kitchen_sent_lines(self):
+    def test_kitchen_sent_lines_locked_without_cancellation_access(self):
         save = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload("ORD-2607-0080", "T1", kot_send=True),
@@ -983,7 +974,7 @@ class PosTableOccupancyTests(unittest.TestCase):
 
         conn = db_mod.get_db()
         try:
-            # Non-admin cannot drop qty below kitchen-sent amount.
+            # Cannot drop qty below kitchen-sent amount.
             with self.assertRaises(ValueError) as cut:
                 db_mod.save_pos_invoice(
                     conn,
@@ -1002,12 +993,12 @@ class PosTableOccupancyTests(unittest.TestCase):
                             }
                         ],
                     ),
-                    actor_is_admin=False,
+                    allow_kot_cancel=False,
                 )
-            self.assertIn("administrator", str(cut.exception).lower())
+            self.assertIn("kitchen-sent", str(cut.exception).lower())
             conn.rollback()
 
-            # Non-admin cannot remove the kitchen-sent line.
+            # Cannot remove the kitchen-sent line.
             with self.assertRaises(ValueError) as removed:
                 db_mod.save_pos_invoice(
                     conn,
@@ -1026,16 +1017,253 @@ class PosTableOccupancyTests(unittest.TestCase):
                             }
                         ],
                     ),
-                    actor_is_admin=False,
+                    allow_kot_cancel=False,
                 )
-            self.assertIn("administrator", str(removed.exception).lower())
+            self.assertIn("kitchen-sent", str(removed.exception).lower())
             conn.rollback()
 
-            # Administrator can reduce after KOT.
-            saved = db_mod.save_pos_invoice(
+            # Admin flag alone (legacy kw) does not bypass — needs Cancellation Access.
+            with self.assertRaises(ValueError) as admin_cut:
+                db_mod.save_pos_invoice(
+                    conn,
+                    self._payload(
+                        "ORD-2607-0080",
+                        "T1",
+                        lines=[
+                            {
+                                "uid": "1",
+                                "menuId": None,
+                                "name": "Filter Coffee",
+                                "variant": "",
+                                "rate": 100,
+                                "qty": 1,
+                                "kotSentQty": 1,
+                            }
+                        ],
+                    ),
+                    actor_is_admin=True,
+                    allow_kot_cancel=False,
+                )
+            self.assertIn("kitchen-sent", str(admin_cut.exception).lower())
+            conn.rollback()
+        finally:
+            conn.close()
+
+    def test_kot_tokens_reduce_api_updates_invoice_and_token(self):
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0082",
+                "T1",
+                kot_send=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    },
+                    {
+                        "uid": "2",
+                        "menuId": None,
+                        "name": "Sandwich",
+                        "variant": "",
+                        "rate": 150,
+                        "qty": 1,
+                        "kotSentQty": 1,
+                    },
+                ],
+            ),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+        invoice_id = save.get_json()["invoice"]["id"]
+
+        tokens = self.client.get("/point-of-sale/api/kot-tokens").get_json()
+        token = next(t for t in (tokens.get("tables") or []) if t.get("name") == "T1")
+        coffee = next(ln for ln in token["lines"] if ln["name"] == "Filter Coffee")
+        self.assertEqual(int(coffee["sent_qty"]), 2)
+
+        reduce = self.client.post(
+            "/point-of-sale/api/kot-tokens/reduce",
+            json={
+                "changes": [
+                    {
+                        "invoice_id": invoice_id,
+                        "line_id": coffee["id"],
+                        "sent_qty": 1,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(reduce.status_code, 200, reduce.get_data(as_text=True))
+        body = reduce.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(int(body.get("updated_count") or 0), 1)
+
+        detail = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}").get_json()
+        inv_lines = {ln["name"]: ln for ln in (detail.get("invoice") or {}).get("lines") or []}
+        self.assertEqual(int(inv_lines["Filter Coffee"]["qty"]), 1)
+        self.assertEqual(int(inv_lines["Filter Coffee"]["sent_qty"]), 1)
+        self.assertEqual(int(inv_lines["Sandwich"]["qty"]), 1)
+
+        refreshed = {t["name"]: t for t in (body.get("tables") or [])}
+        self.assertIn("T1", refreshed)
+        self.assertEqual(int(refreshed["T1"]["sent_qty"]), 2)
+
+    def test_kot_tokens_reduce_api_requires_cancellation_access(self):
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0083", "T1", kot_send=True),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+        invoice = save.get_json()["invoice"]
+        line_id = invoice["lines"][0]["id"]
+
+        locked = {
+            "id": self.admin_id,
+            "username": "cashier",
+            "full_name": "Cashier",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"point_of_sale"},
+            "stores_access": set(),
+        }
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=locked):
+            denied = self.client.post(
+                "/point-of-sale/api/kot-tokens/reduce",
+                json={
+                    "changes": [
+                        {
+                            "invoice_id": invoice["id"],
+                            "line_id": line_id,
+                            "sent_qty": 1,
+                        }
+                    ]
+                },
+            )
+        self.assertEqual(denied.status_code, 403)
+        self.assertFalse(denied.get_json().get("ok"))
+
+    def test_kot_tokens_reduce_all_to_zero_cancels_order_and_frees_table(self):
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0084", "T1", kot_send=True),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+        invoice = save.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        line_id = invoice["lines"][0]["id"]
+        self.assertEqual(self._floor_status("T1"), "occupied")
+
+        reduce = self.client.post(
+            "/point-of-sale/api/kot-tokens/reduce",
+            json={
+                "changes": [
+                    {
+                        "invoice_id": invoice_id,
+                        "line_id": line_id,
+                        "sent_qty": 0,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(reduce.status_code, 200, reduce.get_data(as_text=True))
+        body = reduce.get_json()
+        self.assertTrue(body.get("ok"))
+        self.assertEqual(int(body.get("cancelled_count") or 0), 1)
+        self.assertTrue(any(inv.get("cancelled") for inv in (body.get("invoices") or [])))
+
+        detail = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
+        self.assertIn(detail.status_code, (404, 400))
+        if detail.is_json:
+            detail_body = detail.get_json() or {}
+            self.assertFalse(detail_body.get("ok", True) and detail_body.get("invoice"))
+
+        tokens = self.client.get("/point-of-sale/api/kot-tokens").get_json()
+        names = [t.get("name") for t in (tokens.get("tables") or [])]
+        self.assertNotIn("T1", names)
+        self.assertEqual(self._floor_status("T1"), "available")
+
+    def test_cancellation_access_can_edit_kitchen_sent_and_updates_kot_token(self):
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-0081",
+                "T1",
+                kot_send=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    },
+                    {
+                        "uid": "2",
+                        "menuId": None,
+                        "name": "Sandwich",
+                        "variant": "",
+                        "rate": 150,
+                        "qty": 1,
+                        "kotSentQty": 1,
+                    },
+                ],
+            ),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+
+        tokens = self.client.get("/point-of-sale/api/kot-tokens").get_json()
+        self.assertTrue(tokens.get("ok"))
+        token_tables = {t["name"]: t for t in (tokens.get("tables") or [])}
+        self.assertIn("T1", token_tables)
+        self.assertEqual(int(token_tables["T1"]["sent_qty"]), 3)
+
+        conn = db_mod.get_db()
+        try:
+            # Reduce sent qty — Kitchen Order Token should drop to match.
+            updated = db_mod.save_pos_invoice(
                 conn,
                 self._payload(
-                    "ORD-2607-0080",
+                    "ORD-2607-0081",
+                    "T1",
+                    lines=[
+                        {
+                            "uid": "1",
+                            "menuId": None,
+                            "name": "Filter Coffee",
+                            "variant": "",
+                            "rate": 100,
+                            "qty": 1,
+                            "kotSentQty": 1,
+                        },
+                        {
+                            "uid": "2",
+                            "menuId": None,
+                            "name": "Sandwich",
+                            "variant": "",
+                            "rate": 150,
+                            "qty": 1,
+                            "kotSentQty": 1,
+                        },
+                    ],
+                ),
+                allow_kot_cancel=True,
+            )
+            conn.commit()
+            self.assertEqual(int(updated["lines"][0]["sent_qty"]), 1)
+            self.assertEqual(int(updated["lines"][0]["qty"]), 1)
+
+            # Remove the remaining sandwich line entirely.
+            updated = db_mod.save_pos_invoice(
+                conn,
+                self._payload(
+                    "ORD-2607-0081",
                     "T1",
                     lines=[
                         {
@@ -1049,12 +1277,20 @@ class PosTableOccupancyTests(unittest.TestCase):
                         }
                     ],
                 ),
-                actor_is_admin=True,
+                allow_kot_cancel=True,
             )
             conn.commit()
-            self.assertEqual(saved["lines"][0]["qty"], 1)
+            self.assertEqual(len(updated["lines"]), 1)
+            self.assertEqual(updated["lines"][0]["name"], "Filter Coffee")
         finally:
             conn.close()
+
+        tokens = self.client.get("/point-of-sale/api/kot-tokens").get_json()
+        token_tables = {t["name"]: t for t in (tokens.get("tables") or [])}
+        self.assertIn("T1", token_tables)
+        self.assertEqual(int(token_tables["T1"]["sent_qty"]), 1)
+        line_names = [ln["name"] for ln in (token_tables["T1"].get("lines") or [])]
+        self.assertEqual(line_names, ["Filter Coffee"])
 
     def test_invoice_line_notes_round_trip(self):
         note = "No onion, extra spicy"
@@ -1466,7 +1702,9 @@ class PosTableOccupancyTests(unittest.TestCase):
         tables = {t["name"]: t for t in body["tables"]}
         self.assertTrue(tables["T2"].get("mergePrimary"))
         self.assertEqual(tables["T2"].get("mergeGroupId"), tables["T1"].get("mergeGroupId"))
-        self.assertTrue(tables["T1"].get("hiddenInMerge"))
+        self.assertFalse(tables["T1"].get("hiddenInMerge"))
+        self.assertEqual(tables["T1"].get("mergeLabel"), "Bill: T2")
+        self.assertEqual(tables["T2"].get("mergeLabel"), "Merged bill")
         self.assertEqual(self._floor_status("T2"), "occupied")
 
     def test_merge_tables_visual_join_when_neither_has_open_bill(self):
@@ -1481,8 +1719,10 @@ class PosTableOccupancyTests(unittest.TestCase):
         tables = {t["name"]: t for t in body["tables"]}
         self.assertTrue(tables["T2"].get("mergePrimary"))
         self.assertEqual(tables["T2"].get("mergeGroupId"), tables["T1"].get("mergeGroupId"))
-        self.assertTrue(tables["T1"].get("hiddenInMerge"))
-        self.assertIn("and", (tables["T2"].get("displayName") or "").lower())
+        self.assertFalse(tables["T1"].get("hiddenInMerge"))
+        self.assertEqual(tables["T2"].get("displayName"), "T2")
+        self.assertIn("T1", tables["T2"].get("mergedNames") or [])
+        self.assertIn("T2", tables["T2"].get("mergedNames") or [])
         self.assertEqual(self._floor_status("T1"), "available")
         self.assertEqual(self._floor_status("T2"), "available")
 
@@ -1498,7 +1738,7 @@ class PosTableOccupancyTests(unittest.TestCase):
         tables = {t["name"]: t for t in body["tables"]}
         self.assertTrue(tables["T3"].get("mergePrimary"))
         self.assertEqual(tables["T3"].get("mergeGroupId"), tables["T1"].get("mergeGroupId"))
-        self.assertTrue(tables["T1"].get("hiddenInMerge"))
+        self.assertFalse(tables["T1"].get("hiddenInMerge"))
 
     def test_merge_tables_onto_empty_available_destination(self):
         src = self.client.post(
@@ -1566,11 +1806,16 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertTrue(tables["T2"].get("mergeGroupId"))
         self.assertEqual(tables["T2"].get("mergeGroupId"), tables["T1"].get("mergeGroupId"))
         self.assertFalse(tables["T1"].get("mergePrimary"))
-        self.assertTrue(tables["T1"].get("hiddenInMerge"))
+        self.assertFalse(tables["T1"].get("hiddenInMerge"))
         self.assertFalse(tables["T2"].get("hiddenInMerge"))
-        self.assertIn("and", (tables["T2"].get("displayName") or "").lower())
-        self.assertIn("t1", (tables["T2"].get("displayName") or "").lower())
-        self.assertIn("t2", (tables["T2"].get("displayName") or "").lower())
+        self.assertEqual(tables["T1"].get("displayName"), "T1")
+        self.assertEqual(tables["T2"].get("displayName"), "T2")
+        self.assertEqual(tables["T2"].get("mergeLabel"), "Merged bill")
+        self.assertEqual(tables["T1"].get("mergeLabel"), "Bill: T2")
+        self.assertEqual(tables["T1"].get("billingTableName"), "T2")
+        names = [n.lower() for n in (tables["T2"].get("mergedNames") or [])]
+        self.assertIn("t1", names)
+        self.assertIn("t2", names)
         self.assertEqual(tables["T2"].get("mergedSeats"), 8)
 
     def test_unmerge_tables_splits_visual_group(self):
@@ -1604,6 +1849,260 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(self._floor_status("T2"), "occupied")
         inv = self.client.get("/point-of-sale/api/invoices/by-table?table=T2")
         self.assertIsNotNone(inv.get_json()["invoice"])
+
+    # -- Unsettled invoice Edit / Cancel (Cancellation Access) ---------------
+
+    def test_reopen_edit_requires_cancellation_access(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-Reopen-01",
+                "T1",
+                kot_send=True,
+                customerBill=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+        self.assertTrue(saved.get_json()["invoice"].get("customer_bill_sent"))
+
+        locked = dict(self.user)
+        locked["is_admin"] = False
+        locked["dashboard_access"] = {"point_of_sale"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=locked):
+            denied = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/reopen-edit")
+        self.assertEqual(denied.status_code, 403)
+        self.assertIn("Cancellation Access", denied.get_json()["error"])
+
+        unlocked = dict(self.user)
+        unlocked["is_admin"] = False
+        unlocked["dashboard_access"] = {"point_of_sale", "cancellation_access"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=unlocked):
+            ok = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/reopen-edit")
+        self.assertEqual(ok.status_code, 200, ok.get_data(as_text=True))
+        body = ok.get_json()
+        self.assertTrue(body["ok"])
+        self.assertFalse(body["invoice"].get("customer_bill_sent"))
+
+    def test_cancel_unsettled_requires_cancellation_access(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Cancel-01", "T1", kot_send=True),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+
+        locked = dict(self.user)
+        locked["is_admin"] = False
+        locked["dashboard_access"] = {"point_of_sale"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=locked):
+            denied = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/delete")
+        self.assertEqual(denied.status_code, 403)
+
+        unlocked = dict(self.user)
+        unlocked["is_admin"] = False
+        unlocked["dashboard_access"] = {"point_of_sale", "cancellation_access"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=unlocked):
+            missing_reason = self.client.post(
+                f"/point-of-sale/api/invoices/{invoice_id}/delete",
+                json={},
+            )
+            self.assertEqual(missing_reason.status_code, 400)
+            ok = self.client.post(
+                f"/point-of-sale/api/invoices/{invoice_id}/delete",
+                json={"reason": "Guest left"},
+            )
+        self.assertEqual(ok.status_code, 200, ok.get_data(as_text=True))
+        body = ok.get_json()
+        self.assertTrue(body["ok"])
+        # Non-provisional ORD-* numbers are kept as cancelled (not soft-deleted).
+        self.assertEqual(body.get("mode"), "cancelled")
+        got = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
+        self.assertEqual(got.status_code, 200)
+        self.assertEqual(got.get_json()["invoice"]["status"], "cancelled")
+        self.assertEqual(got.get_json()["invoice"]["cancel_reason"], "Guest left")
+        self.assertEqual(got.get_json()["invoice"]["payment_mode_label"], "Cancelled")
+
+    def test_cancel_issued_number_is_reserved_and_excluded_from_sales(self):
+        from datetime import date
+
+        today = date.today().isoformat()
+        draft = "SPC/AAAAAA/26-27"
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                draft,
+                "",
+                order_type="takeaway",
+                customerBill=True,
+                orderDate=today,
+                savedAt=today + " 12:00:00",
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 0,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        invoice = bill.get_json()["invoice"]
+        order_no = invoice["order_no"]
+        invoice_id = invoice["id"]
+        self.assertTrue(order_no.startswith("SPC/"))
+        self.assertTrue(invoice.get("customer_bill_sent"))
+
+        cancel = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/delete",
+            json={"reason": "Duplicate bill"},
+        )
+        self.assertEqual(cancel.status_code, 200, cancel.get_data(as_text=True))
+        cancel_body = cancel.get_json()
+        self.assertEqual(cancel_body.get("mode"), "cancelled")
+        self.assertEqual(cancel_body["invoice"]["status"], "cancelled")
+        self.assertEqual(cancel_body["invoice"]["order_no"], order_no)
+
+        today_res = self.client.get("/point-of-sale/api/today-invoices")
+        self.assertEqual(today_res.status_code, 200)
+        payload = today_res.get_json()
+        cancelled_rows = [
+            inv
+            for inv in (payload.get("invoices") or [])
+            if str(inv.get("id")) == str(invoice_id)
+        ]
+        self.assertEqual(len(cancelled_rows), 1)
+        self.assertEqual(cancelled_rows[0]["status"], "cancelled")
+        self.assertEqual(payload.get("sales_total"), 0)
+        self.assertEqual(payload.get("sales_count"), 0)
+        self.assertEqual(payload.get("unsettled_count"), 0)
+
+        next_bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "SPC/BBBBBB/26-27",
+                "",
+                order_type="takeaway",
+                customerBill=True,
+                orderDate=today,
+                savedAt=today + " 13:00:00",
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Tea",
+                        "variant": "",
+                        "rate": 50,
+                        "qty": 1,
+                        "kotSentQty": 0,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(next_bill.status_code, 200, next_bill.get_data(as_text=True))
+        next_no = next_bill.get_json()["invoice"]["order_no"]
+        self.assertNotEqual(next_no, order_no)
+        self.assertRegex(next_no, r"^SPC/\d{2}-\d{2}/\d+$")
+        first_n = int(order_no.rsplit("/", 1)[-1])
+        second_n = int(next_no.rsplit("/", 1)[-1])
+        self.assertEqual(second_n, first_n + 1)
+
+    def test_cancel_provisional_draft_is_soft_deleted(self):
+        draft = "SPC/CCCCCC/26-27"
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(draft, "", order_type="takeaway"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice = saved.get_json()["invoice"]
+        self.assertEqual(invoice["order_no"], draft)
+        invoice_id = invoice["id"]
+
+        cancel = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/delete",
+            json={"reason": "Duplicate bill"},
+        )
+        self.assertEqual(cancel.status_code, 200, cancel.get_data(as_text=True))
+        self.assertEqual(cancel.get_json().get("mode"), "deleted")
+        missing = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
+        self.assertEqual(missing.status_code, 404)
+
+    def test_cancel_settled_invoice_rejected(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-Cancel-02", "T1", kot_send=True),
+        )
+        invoice_id = saved.get_json()["invoice"]["id"]
+        close = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/close")
+        self.assertEqual(close.status_code, 200, close.get_data(as_text=True))
+
+        res = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/delete",
+            json={"reason": "Should fail"},
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Settled", res.get_json()["error"])
+
+    def test_generated_provisional_shaped_number_never_soft_deleted(self):
+        """customer_bill_sent forces cancel (keep row) even if order_no looks draft-like."""
+        from datetime import date
+
+        today = date.today().isoformat()
+        draft = "SPC/BILL01/26-27"
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                draft,
+                "",
+                order_type="takeaway",
+                customerBill=True,
+                orderDate=today,
+                savedAt=today + " 12:00:00",
+            ),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        invoice = bill.get_json()["invoice"]
+        self.assertTrue(invoice.get("customer_bill_sent"))
+        invoice_id = invoice["id"]
+        # Force a provisional-shaped number while leaving the generate flag on.
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                "UPDATE pos_invoices SET order_no = ? WHERE id = ?",
+                (draft, invoice_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        cancel = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/delete",
+            json={"reason": "Guest cancelled"},
+        )
+        self.assertEqual(cancel.status_code, 200, cancel.get_data(as_text=True))
+        body = cancel.get_json()
+        self.assertEqual(body.get("mode"), "cancelled")
+        got = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
+        self.assertEqual(got.status_code, 200)
+        inv = got.get_json()["invoice"]
+        self.assertEqual(inv["status"], "cancelled")
+        self.assertEqual(inv["order_no"], draft)
+        self.assertEqual(inv["cancel_reason"], "Guest cancelled")
 
 
 if __name__ == "__main__":

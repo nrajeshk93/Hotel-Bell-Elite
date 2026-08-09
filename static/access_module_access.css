@@ -109,6 +109,15 @@
   flex-shrink:0;
   cursor:pointer;
 }
+.ma-tree-row.is-locked{
+  opacity:.72;
+}
+.ma-tree-row.is-locked .ma-tree-checkbox{
+  cursor:not-allowed;
+}
+.ma-tree-row.is-locked .ma-tree-label{
+  color:#64748B;
+}
 .ma-tree-node-icon{
   width:18px;
   height:18px;

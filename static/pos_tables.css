@@ -323,6 +323,14 @@ body.pos-module .de-main-inner.pos-tables-page{
   gap:14px;
   min-width:0;
 }
+/* Title-only header (no subtitle) — vertically center icon, title, and close */
+#pos-kot-tokens-modal .pos-kot-modal-header,
+#pos-kot-tokens-modal .pos-kot-modal-heading{
+  align-items:center;
+}
+#pos-kot-tokens-modal .pos-kot-modal-heading-copy h2{
+  line-height:1.2;
+}
 .pos-kot-modal-icon{
   flex:0 0 auto;
   width:44px;
@@ -420,20 +428,26 @@ body.pos-module .de-main-inner.pos-tables-page{
   font-size:13.5px;
   color:#0F172A;
 }
+.pos-kot-token-summary td{
+  vertical-align:middle;
+}
 .pos-kot-modal-table tbody tr:last-child td{border-bottom:0}
 .pos-kot-table-cell-name{
   font-weight:720;
   color:#0F172A;
+  line-height:1.25;
 }
 .pos-kot-table-cell-meta{
   margin-top:2px;
   font-size:12px;
   font-weight:500;
+  line-height:1.25;
   color:#64748B;
 }
 .pos-kot-table-status{
   display:inline-flex;
-  margin-top:8px;
+  align-items:center;
+  margin-top:6px;
   min-height:22px;
   padding:0 8px;
   border-radius:999px;
@@ -466,20 +480,33 @@ body.pos-module .de-main-inner.pos-tables-page{
   font-weight:500;
   color:#64748B;
 }
+/* Kitchen Order Tokens — keep sent time + date on one line */
+#pos-kot-tokens-modal .pos-kot-table-time{
+  display:inline-flex;
+  align-items:baseline;
+  flex-wrap:nowrap;
+  gap:6px;
+  white-space:nowrap;
+}
+#pos-kot-tokens-modal .pos-kot-table-time small{
+  display:inline;
+  margin-top:0;
+}
 .pos-kot-row-send{
   display:inline-flex;
   align-items:center;
+  justify-content:center;
   gap:8px;
   height:36px;
-  padding:0 12px;
+  padding:0 14px;
+  border:0;
   border-radius:10px;
-  border:1px solid #FDBA74;
-  background:#fff;
-  color:#EA580C;
+  background:#2563EB;
+  color:#fff;
   font:650 12.5px Inter,system-ui,sans-serif;
   cursor:pointer;
   white-space:nowrap;
-  transition:background .15s ease,border-color .15s ease,color .15s ease;
+  transition:background .15s ease;
 }
 .pos-kot-row-send svg{
   width:15px;
@@ -490,13 +517,12 @@ body.pos-module .de-main-inner.pos-tables-page{
   stroke-linecap:round;
   stroke-linejoin:round;
 }
-.pos-kot-row-send:hover{
-  background:#FFF7ED;
-  border-color:#FB923C;
+.pos-kot-row-send:hover:not(:disabled){
+  background:#1D4ED8;
 }
 .pos-kot-row-send:disabled{
-  opacity:.55;
-  cursor:wait;
+  opacity:.45;
+  cursor:not-allowed;
 }
 .pos-kot-modal-empty{
   margin:28px 16px;
@@ -552,6 +578,35 @@ body.pos-module .de-main-inner.pos-tables-page{
   box-shadow:none;
 }
 .pos-kot-modal-send-all:active{transform:translateY(1px)}
+.pos-kot-modal-footer-actions{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  margin-left:auto;
+}
+.pos-kot-modal-footer-save{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:42px;
+  padding:0 18px;
+  border:0;
+  border-radius:12px;
+  background:#2563EB;
+  color:#fff;
+  font:650 13.5px Inter,system-ui,sans-serif;
+  cursor:pointer;
+}
+.pos-kot-modal-footer-save[hidden]{
+  display:none !important;
+}
+.pos-kot-modal-footer-save:hover:not(:disabled){
+  background:#1D4ED8;
+}
+.pos-kot-modal-footer-save:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
 .pos-kot-modal-footer-close{
   display:inline-flex;
   align-items:center;
@@ -575,8 +630,44 @@ body.pos-module .de-main-inner.pos-tables-page{
   border-color:#BFDBFE;
   color:#1D4ED8;
 }
+/* Title-only header — center icon + title; don’t shrink/clip the label */
+#pos-today-invoices-modal .pos-kot-modal-header,
+#pos-today-invoices-modal .pos-kot-modal-heading{
+  align-items:center;
+}
+#pos-today-invoices-modal .pos-kot-modal-heading{
+  flex:1 1 auto;
+  min-width:auto;
+}
+#pos-today-invoices-modal .pos-kot-modal-heading-copy{
+  min-width:auto;
+  flex:0 1 auto;
+}
+#pos-today-invoices-modal .pos-kot-modal-heading-copy h2{
+  line-height:1.2;
+  white-space:nowrap;
+}
 .pos-today-invoices-dialog{
   width:min(960px,100%);
+}
+.pos-today-invoices-dialog .pos-kot-modal-table th:nth-child(5),
+.pos-today-invoices-dialog .pos-kot-modal-table td:nth-child(5){
+  text-align:center;
+  vertical-align:middle;
+  white-space:nowrap;
+  width:1%;
+}
+#pos-today-invoices-modal .pos-kot-table-time{
+  display:inline-flex;
+  align-items:baseline;
+  justify-content:center;
+  flex-wrap:nowrap;
+  gap:6px;
+  white-space:nowrap;
+}
+#pos-today-invoices-modal .pos-kot-table-time small{
+  display:inline;
+  margin-top:0;
 }
 .pos-today-invoices-dialog .pos-kot-modal-table th:nth-child(6),
 .pos-today-invoices-dialog .pos-kot-modal-table td:nth-child(6){
@@ -614,6 +705,11 @@ body.pos-module .de-main-inner.pos-tables-page{
   background:#ECFDF5;
   color:#047857;
   box-shadow:inset 0 0 0 1px #A7F3D0;
+}
+.pos-today-invoice-status.is-cancelled{
+  background:#F1F5F9;
+  color:#475569;
+  box-shadow:inset 0 0 0 1px #CBD5E1;
 }
 .pos-today-invoice-actions-cell{
   white-space:nowrap;
@@ -663,7 +759,8 @@ body.pos-module .de-main-inner.pos-tables-page{
 }
 .pos-today-invoice-actions .act-btn:hover{color:#1A202C}
 .pos-today-invoice-actions .act-btn.edit:hover,
-.pos-today-invoice-actions .pos-today-invoice-btn--view:hover{
+.pos-today-invoice-actions .pos-today-invoice-btn--view:hover,
+.pos-today-invoice-actions .pos-today-invoice-btn--edit:hover{
   background:#EBF5FF;
   color:#1877F2;
 }
@@ -671,6 +768,11 @@ body.pos-module .de-main-inner.pos-tables-page{
 .pos-today-invoice-actions .pos-today-invoice-btn--print:hover{
   background:#EEF2FF;
   color:#4F46E5;
+}
+.pos-today-invoice-actions .act-btn.cancel:hover,
+.pos-today-invoice-actions .pos-today-invoice-btn--cancel:hover{
+  background:#FEF2F2;
+  color:#DC2626;
 }
 .pos-today-invoice-actions .act-btn:disabled,
 .pos-today-invoice-actions .act-btn.is-disabled{
@@ -733,71 +835,126 @@ body.pos-module .de-main-inner.pos-tables-page{
   cursor:default;
 }
 
-.pos-kot-token-actions{
-  display:flex;
-  flex-direction:column;
-  align-items:stretch;
-  gap:6px;
-  min-width:132px;
+.pos-kot-token-actions-cell{
+  white-space:nowrap;
+  width:1%;
+  position:relative;
+  overflow:visible;
+  z-index:1;
 }
-.pos-kot-token-toggle,
-.pos-kot-token-resend-all{
+.pos-kot-token-summary:hover .pos-kot-token-actions-cell,
+.pos-kot-token-actions-cell:focus-within{
+  z-index:6;
+}
+/* Compact icon actions — same pattern as employee payroll / today's invoices */
+.pos-kot-token-actions.act-grp{
+  display:inline-flex;
+  align-items:center;
+  gap:2px;
+  background:#F8FAFD;
+  border:1px solid #E2E8F0;
+  border-radius:8px;
+  padding:3px;
+  position:relative;
+  overflow:visible;
+  min-width:0;
+  flex-direction:row;
+}
+.pos-kot-token-actions .act-btn{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  gap:6px;
-  height:34px;
-  padding:0 10px;
-  border-radius:10px;
-  font:650 12px Inter,system-ui,sans-serif;
+  width:28px;
+  height:28px;
+  padding:0;
+  border-radius:6px;
+  border:none;
   cursor:pointer;
-  white-space:nowrap;
+  background:transparent;
+  color:#94A3B8;
+  text-decoration:none;
+  transition:background .12s,color .12s;
+  position:relative;
+  flex-shrink:0;
+  font:inherit;
 }
-.pos-kot-token-toggle{
-  border:1px solid #E2E8F0;
-  background:#fff;
-  color:#334155;
-}
-.pos-kot-token-toggle svg{
+.pos-kot-token-actions .act-btn svg{
   width:14px;
   height:14px;
   stroke:currentColor;
   fill:none;
-  stroke-width:2;
+  stroke-width:1.9;
   stroke-linecap:round;
   stroke-linejoin:round;
-  transition:transform .15s ease;
+  pointer-events:none;
 }
-.pos-kot-token-toggle.is-open svg{transform:rotate(180deg)}
-.pos-kot-token-toggle:hover{
-  background:#F8FAFC;
-  border-color:#CBD5E1;
+.pos-kot-token-actions .act-btn:hover{color:#1A202C}
+.pos-kot-token-actions .pos-kot-token-toggle:hover,
+.pos-kot-token-actions .pos-kot-token-toggle.is-open{
+  background:#EBF5FF;
+  color:#1877F2;
 }
-.pos-kot-token-resend-all{
-  border:1px solid #FDBA74;
-  background:#fff;
-  color:#EA580C;
+.pos-kot-token-actions .pos-kot-token-toggle svg{
+  transition:none;
 }
-.pos-kot-token-resend-all svg{
-  width:14px;
-  height:14px;
-  stroke:currentColor;
-  fill:none;
-  stroke-width:2;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.pos-kot-token-resend-all:hover{
+.pos-kot-token-actions .pos-kot-token-resend-all:hover{
   background:#FFF7ED;
-  border-color:#FB923C;
-}
-.pos-kot-token-resend-all:disabled,
-.pos-kot-token-resend-all:disabled:hover{
-  opacity:.55;
-  cursor:not-allowed;
-  background:#fff;
-  border-color:#FDBA74;
   color:#EA580C;
+}
+.pos-kot-token-actions .act-btn:disabled,
+.pos-kot-token-actions .act-btn.is-disabled{
+  opacity:.42;
+  cursor:not-allowed;
+}
+.pos-kot-token-actions .act-btn:disabled:hover,
+.pos-kot-token-actions .act-btn.is-disabled:hover{
+  background:transparent;
+  color:#94A3B8;
+}
+/* Tip to the left (ACTION is the last column) so modal overflow does not clip it.
+   Invisible bridge keeps :hover stable while the cursor moves across the gap. */
+.pos-kot-token-actions .act-btn[data-tip]::before{
+  content:'';
+  position:absolute;
+  top:-4px;
+  bottom:-4px;
+  right:100%;
+  width:10px;
+}
+.pos-kot-token-actions .act-btn[data-tip]::after{
+  content:attr(data-tip);
+  position:absolute;
+  top:50%;
+  right:calc(100% + 8px);
+  left:auto;
+  transform:translateY(-50%);
+  background:#1A202C;
+  color:#fff;
+  font-size:10px;
+  font-weight:600;
+  white-space:nowrap;
+  padding:4px 8px;
+  border-radius:4px;
+  pointer-events:none;
+  opacity:0;
+  visibility:hidden;
+  z-index:40;
+  box-shadow:0 4px 12px rgba(15,23,42,.18);
+  transition:opacity .12s ease,visibility .12s ease;
+  transition-delay:.1s;
+}
+.pos-kot-token-actions .act-btn[data-tip]:hover::after,
+.pos-kot-token-actions .act-btn[data-tip]:focus-visible::after{
+  opacity:1;
+  visibility:visible;
+  transition-delay:0s;
+}
+#pos-kot-tokens-modal .pos-kot-modal-table-wrap{
+  overflow:visible;
+}
+#pos-kot-tokens-modal .pos-kot-modal-body{
+  overflow-x:auto;
+  overflow-y:auto;
 }
 .pos-kot-token-link:disabled{
   opacity:.45;
@@ -824,6 +981,11 @@ body.pos-module .de-main-inner.pos-tables-page{
   color:#92400E;
   font-size:12.5px;
   font-weight:650;
+}
+.pos-kot-token-bill-lock.is-soft{
+  background:#EFF6FF;
+  border-color:#BFDBFE;
+  color:#1D4ED8;
 }
 .pos-kot-token-summary.is-expanded td{
   border-bottom-color:transparent;
@@ -1269,6 +1431,24 @@ body.pos-module .de-main-inner.pos-tables-page{
   text-transform:uppercase;
   color:#94A3B8;
 }
+.pos-merge-section .pos-merge-section-title{
+  text-transform:none;
+  letter-spacing:-.01em;
+  font-size:15px;
+  color:var(--pos-text,#0F172A);
+}
+/* Toolbar-like shell grouping merged tables (Room page pattern). */
+.pos-merge-box{
+  background:var(--pos-card,#fff);
+  border:1px solid var(--pos-border,#E2E8F0);
+  border-radius:18px;
+  box-shadow:var(--pos-shadow,0 8px 24px rgba(15,23,42,.06));
+  padding:14px;
+  min-width:0;
+}
+.pos-merge-box .pos-floor-grid{
+  margin:0;
+}
 .pos-floor-grid{
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
@@ -1315,12 +1495,9 @@ body.pos-module .de-main-inner.pos-tables-page{
   margin:0;
   align-self:center;
 }
-.pos-floor[data-view="list"] .pos-table-badge-row{
-  grid-column:3;
+.pos-floor[data-view="list"] .pos-table-merge-tag{
+  grid-column:4;
   grid-row:1 / span 2;
-  margin:0;
-  width:auto;
-  justify-content:flex-end;
   align-self:center;
 }
 .pos-floor[data-view="list"] .pos-table-meta{
@@ -1360,44 +1537,34 @@ body.pos-module .de-main-inner.pos-tables-page{
   outline:2px solid var(--pos-primary);
   outline-offset:2px;
 }
+/* Merged chrome matches Room page: same status border, blue text tag. */
 .pos-table-tile--merged{
-  min-width:min(100%, 280px);
-  border-style:dashed;
-  border-width:1.5px;
+  min-width:0;
 }
-.pos-table-tile--merged .pos-table-tile-name{
-  font-size:17px;
-  line-height:1.25;
-}
-.pos-table-tile-merged-meta{
-  margin-top:4px;
-  font-size:11px;
-  font-weight:600;
-  letter-spacing:.02em;
-  color:var(--pos-muted);
-  text-align:center;
-  width:100%;
-}
-.pos-table-badge-row{
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px;
-  margin-top:auto;
+.pos-table-merge-tag{
+  position:absolute;
+  right:14px;
+  bottom:14px;
+  margin:0;
+  height:26px;
+  display:inline-flex;
   align-items:center;
-  justify-content:center;
-  align-self:center;
-  width:100%;
+  font-size:11px;
+  font-weight:700;
+  color:#1D4ED8;
+  letter-spacing:.01em;
+  pointer-events:none;
+  white-space:nowrap;
 }
-.pos-table-badge-row .pos-table-badge{
-  margin-top:0;
+.pos-table-tile--merged .pos-table-badge{
+  align-self:flex-start;
+  margin-top:auto;
 }
-.pos-table-badge--merged{
-  background:#EEF2FF;
-  color:#3730A3;
-}
-.pos-table-tile--merged .pos-table-shape-icon{
-  background:#EEF2FF;
-  color:#4338CA;
+.pos-floor[data-view="list"] .pos-table-merge-tag{
+  position:static;
+  right:auto;
+  bottom:auto;
+  justify-self:end;
 }
 .pos-table-tile--occupied{background:linear-gradient(180deg,#FFFFFF 0%,#FFF8F1 100%);border-color:#FED7AA}
 .pos-table-tile--reserved{background:linear-gradient(180deg,#FFFFFF 0%,#F8F5FF 100%);border-color:#DDD6FE}
@@ -1783,6 +1950,17 @@ body.pos-module .de-main-inner.pos-tables-page{
   cursor:pointer;
   transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;
 }
+.pos-inv-btn svg{
+  width:16px;
+  height:16px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.75;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  flex-shrink:0;
+  pointer-events:none;
+}
 .pos-inv-btn--primary{
   background:var(--pos-primary);
   color:#fff;
@@ -1790,6 +1968,18 @@ body.pos-module .de-main-inner.pos-tables-page{
 }
 .pos-inv-btn--primary:hover{background:#1D4ED8}
 .pos-inv-btn--primary:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+.pos-inv-btn--danger{
+  background:#DC2626;
+  color:#fff;
+  border-color:#DC2626;
+  box-shadow:0 4px 12px rgba(220,38,38,.22);
+}
+.pos-inv-btn--danger:hover{background:#B91C1C}
+.pos-inv-btn--danger:disabled{
   opacity:.55;
   cursor:not-allowed;
   box-shadow:none;
@@ -1802,6 +1992,87 @@ body.pos-module .de-main-inner.pos-tables-page{
 .pos-inv-btn--ghost:hover{
   background:#F8FAFC;
   border-color:#CBD5E1;
+}
+#pos-cancel-invoice-modal{
+  /* Above Today's Invoices (.pos-kot-modal z-index:120) and table chrome. */
+  z-index:5200;
+}
+#pos-cancel-invoice-modal .pos-inv-field textarea{
+  width:100%;
+  min-height:84px;
+  resize:vertical;
+  box-sizing:border-box;
+  border:1px solid #E2E8F0;
+  border-radius:10px;
+  padding:10px 12px;
+  font:inherit;
+  color:#0F172A;
+  background:#fff;
+}
+#pos-cancel-invoice-modal .pos-inv-field textarea:focus{
+  outline:none;
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.15);
+}
+/* Expense-ledger style footer (staff-credit-actions + .btn). */
+#pos-cancel-invoice-modal .pos-cancel-invoice-actions{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:8px;
+  margin-top:20px;
+  padding-top:16px;
+  border-top:1px solid #EEF2F7;
+}
+#pos-cancel-invoice-modal .pos-cancel-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  box-sizing:border-box;
+  min-height:44px;
+  padding:10px 18px;
+  border-radius:10px;
+  border:1px solid #E5E7EB;
+  background:#fff;
+  color:#475569;
+  font:600 13px Inter,system-ui,sans-serif;
+  line-height:1.2;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:background .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease;
+}
+#pos-cancel-invoice-modal .pos-cancel-btn svg{
+  width:16px;
+  height:16px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+  flex-shrink:0;
+  pointer-events:none;
+}
+#pos-cancel-invoice-modal .pos-cancel-btn--secondary:hover{
+  background:#F1F5F9;
+  color:#0F172A;
+  border-color:#CBD5E1;
+}
+#pos-cancel-invoice-modal .pos-cancel-btn--danger{
+  background:#DC2626;
+  border-color:#DC2626;
+  color:#fff;
+  box-shadow:0 4px 12px rgba(220,38,38,.22);
+}
+#pos-cancel-invoice-modal .pos-cancel-btn--danger:hover{
+  background:#B91C1C;
+  border-color:#B91C1C;
+  color:#fff;
+}
+#pos-cancel-invoice-modal .pos-cancel-btn--danger:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  box-shadow:none;
 }
 
 @media (max-width:1180px){

@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=25">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice_ledger.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice_ledger.css') }}?v=12">
 <script>
 (function(){
   try{
@@ -24,7 +24,7 @@
 </head>
 <body class="de-open su-module pos-invoice-ledger-module">
 {% include 'partials/de_workspace_shell_open.html' %}
-<div class="main-wrapper" id="pos-invoice-ledger-page" data-pos-invoice-ledger>
+<div class="main-wrapper" id="pos-invoice-ledger-page" data-pos-invoice-ledger data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-pos-can-cancel="{{ '1' if can_cancel_invoices else '0' }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -241,11 +241,15 @@
             </thead>
             <tbody>
               {% for inv in invoices %}
-              {% set is_settled = (inv.payment_modes and inv.payment_modes|length) or ((inv.settled_at or '')|trim) %}
-              <tr class="pos-il-row{% if not is_settled %} is-unsettled{% endif %}"
+              {% set is_settled = inv.ledger_is_settled if inv.ledger_is_settled is defined else ((inv.payment_modes and inv.payment_modes|length) or ((inv.settled_at or '')|trim) or ((inv.status or '')|lower == 'closed')) %}
+              {% set is_cancelled = inv.ledger_is_cancelled if inv.ledger_is_cancelled is defined else ((inv.status or '')|lower == 'cancelled') %}
+              {% set can_delete = inv.ledger_can_delete if inv.ledger_can_delete is defined else false %}
+              {% set can_cancel = inv.ledger_can_cancel if inv.ledger_can_cancel is defined else false %}
+              <tr class="pos-il-row{% if not is_settled and not is_cancelled %} is-unsettled{% endif %}{% if is_cancelled %} is-cancelled{% endif %}{% if is_settled %} is-settled{% endif %}"
                   data-invoice-id="{{ inv.id }}"
-                  data-settlement="{{ 'settled' if is_settled else 'unsettled' }}"
-                  {% if not is_settled %}tabindex="0" role="link" aria-label="Open invoice {{ inv.order_no }} on POS"{% endif %}
+                  data-settlement="{{ 'settled' if is_settled else ('cancelled' if is_cancelled else 'unsettled') }}"
+                  data-generated="{{ '1' if inv.ledger_is_generated else '0' }}"
+                  {% if not is_settled and not is_cancelled %}tabindex="0" role="link" aria-label="Open invoice {{ inv.order_no }} on POS"{% endif %}
                   data-search="{{ [inv.order_no or '', inv.order_date or '', inv.saved_at or '', inv.customer_name or '', inv.customer_mobile or '', inv.order_type_label or '', inv.payment_mode_label or '', inv.table_label or '', inv.captain or '', inv.grand_total|string]|join(' ')|lower }}">
                 <td class="pl-col-code" data-sort-value="{{ inv.order_no or '' }}"><span class="pl-expense-code">{{ inv.order_no or '—' }}</span></td>
                 <td class="pl-col-date" data-sort-value="{{ inv.saved_at or inv.order_date or '' }}">
@@ -274,9 +278,15 @@
                     <button type="button" class="act-btn edit pos-il-view-btn" data-tip="View" aria-label="View invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
-                    <button type="button" class="act-btn del pos-il-delete-btn" data-tip="Delete" aria-label="Delete invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}" data-order-no="{{ inv.order_no }}">
+                    {% if can_delete %}
+                    <button type="button" class="act-btn del pos-il-delete-btn" data-tip="Delete" aria-label="Delete invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}" data-order-no="{{ inv.order_no }}" data-void-mode="delete">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
                     </button>
+                    {% elif can_cancel %}
+                    <button type="button" class="act-btn cancel pos-il-cancel-btn" data-tip="Cancel" aria-label="Cancel invoice {{ inv.order_no }}" data-invoice-id="{{ inv.id }}" data-order-no="{{ inv.order_no }}" data-void-mode="cancel">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+                    </button>
+                    {% endif %}
                   </div>
                 </td>
               </tr>
@@ -310,14 +320,34 @@
   </div>
 </div>
 
+<div class="pos-il-void-modal" id="pos-il-void-modal" hidden>
+  <div class="pos-il-void-modal-backdrop" data-pos-il-void-close tabindex="-1" aria-hidden="true"></div>
+  <div class="pos-il-void-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-il-void-title">
+    <h3 id="pos-il-void-title">Cancel Invoice</h3>
+    <p class="pos-il-void-lead" id="pos-il-void-lead">This cannot be undone.</p>
+    <label class="pos-il-void-field">
+      <span id="pos-il-void-reason-label">Reason for cancellation</span>
+      <textarea id="pos-il-void-reason" rows="3" maxlength="500" placeholder="Why is this invoice being cancelled?" autocomplete="off"></textarea>
+    </label>
+    <p class="pos-il-void-error" id="pos-il-void-error" hidden></p>
+    <div class="pos-il-void-actions">
+      <button type="button" class="btn pos-il-void-btn pos-il-void-btn--secondary" data-pos-il-void-close>Keep Invoice</button>
+      <button type="button" class="btn pos-il-void-btn pos-il-void-btn--danger" id="pos-il-void-confirm">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+        <span id="pos-il-void-confirm-label">Cancel Invoice</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 {% if pos_receipt_config %}
 <script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
 {% endif %}
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=8"></script>
-<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=16"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

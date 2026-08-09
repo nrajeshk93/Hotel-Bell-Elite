@@ -6,6 +6,7 @@ import unittest
 from datetime import date
 
 import app as app_module
+import db as db_mod
 
 
 def _memory_conn():
@@ -297,11 +298,12 @@ class CashLedgerHelperTests(unittest.TestCase):
         rules = [rule.rule for rule in app_module.app.url_map.iter_rules()]
         self.assertIn("/accounts/cash-ledger/report", rules)
 
-    def test_resolve_cash_ledger_date_range_defaults_to_all(self):
+    def test_resolve_cash_ledger_date_range_defaults_to_fy(self):
         date_from, date_to, active = app_module._resolve_cash_ledger_date_range({})
-        self.assertFalse(active)
-        self.assertEqual(date_from, app_module.CASH_LEDGER_ALL_ENTRIES_FROM)
-        self.assertEqual(date_to, date.today())
+        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        self.assertTrue(active)
+        self.assertEqual(date_from, fy_start)
+        self.assertEqual(date_to, today)
 
     def test_resolve_cash_ledger_date_range_with_params(self):
         date_from, date_to, active = app_module._resolve_cash_ledger_date_range({
@@ -312,7 +314,7 @@ class CashLedgerHelperTests(unittest.TestCase):
         self.assertEqual(date_from, date(2026, 7, 1))
         self.assertEqual(date_to, date(2026, 7, 10))
 
-    def test_unfiltered_range_includes_older_entries(self):
+    def test_wide_explicit_range_includes_older_entries(self):
         conn = _memory_conn()
         conn.execute(
             "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
@@ -323,8 +325,9 @@ class CashLedgerHelperTests(unittest.TestCase):
             ("HBE", "Hotel", "2026-07-01", json.dumps({"actual_cash": 100})),
         )
         conn.commit()
-        all_from, all_to, _ = app_module._resolve_cash_ledger_date_range({})
-        all_entries = app_module._build_cash_ledger_entries(conn, "HBE", all_from, all_to)
+        all_entries = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2000, 1, 1), date.today()
+        )
         filtered = app_module._build_cash_ledger_entries(
             conn, "HBE", date(2026, 7, 1), date(2026, 7, 31)
         )

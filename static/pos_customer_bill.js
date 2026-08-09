@@ -264,16 +264,20 @@
           formatLegacyMoney(totals.discount) +
           '</span></div>'
         : '') +
-      '<div><span>CGST (' +
-      activeTaxRates().cgst * 100 +
-      '%)</span><span>' +
-      formatLegacyMoney(totals.cgst) +
-      '</span></div>' +
-      '<div><span>UGST (' +
-      activeTaxRates().ugst * 100 +
-      '%)</span><span>' +
-      formatLegacyMoney(totals.ugst) +
-      '</span></div>' +
+      (Number(totals.cgst) > 0
+        ? '<div><span>CGST (' +
+          activeTaxRates().cgst * 100 +
+          '%)</span><span>' +
+          formatLegacyMoney(totals.cgst) +
+          '</span></div>'
+        : '') +
+      (Number(totals.ugst) > 0
+        ? '<div><span>UGST (' +
+          activeTaxRates().ugst * 100 +
+          '%)</span><span>' +
+          formatLegacyMoney(totals.ugst) +
+          '</span></div>'
+        : '') +
       (Number(totals.vat) > 0
         ? '<div><span>VAT (' +
           activeTaxRates().vat * 100 +
@@ -291,9 +295,11 @@
       (Number(totals.tip) > 0
         ? '<div><span>Tip</span><span>' + formatLegacyMoney(totals.tip) + '</span></div>'
         : '') +
-      '<div><span>Round Off</span><span>' +
-      formatLegacyMoney(totals.roundOff) +
-      '</span></div>' +
+      (Number(totals.roundOff) !== 0
+        ? '<div><span>Round Off</span><span>' +
+          formatLegacyMoney(totals.roundOff) +
+          '</span></div>'
+        : '') +
       '<div class="grand"><span>Total</span><span>' +
       formatLegacyMoney(totals.total) +
       '</span></div>' +
@@ -347,6 +353,28 @@
     var totals = normalizeTotals(invoice);
     var rows = buildItemRows(lines, formatThermalAmount);
     var logoUrl = escapeHtml(cfg.logo_url || DEFAULT_RECEIPT_CONFIG.logo_url);
+    var isCancelled =
+      String((invoice && invoice.status) || '')
+        .trim()
+        .toLowerCase() === 'cancelled';
+    var cancelReason = String((invoice && invoice.cancel_reason) || '').trim();
+    var cancelledCss = isCancelled
+      ? 'body.is-cancelled .bill-sheet{position:relative}' +
+        '.cancelled-watermark{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:20;overflow:hidden}' +
+        '.cancelled-watermark span{display:inline-block;font-family:Arial,Helvetica,sans-serif;font-size:46px;font-weight:800;letter-spacing:.14em;line-height:1;color:rgba(185,28,28,.34);border:3px solid rgba(185,28,28,.4);padding:8px 16px;transform:rotate(-34deg);text-transform:uppercase;white-space:nowrap}' +
+        '@media print{.cancelled-watermark span{color:rgba(185,28,28,.42);border-color:rgba(185,28,28,.48)}}'
+      : '';
+    var cancelledMark = isCancelled
+      ? '<div class="cancelled-watermark" aria-hidden="true"><span>Cancelled</span></div>'
+      : '';
+    var cancelledMeta = isCancelled
+      ? '<div><span>Status</span><span>Cancelled</span></div>' +
+        (cancelReason
+          ? '<div><span>Reason</span><span>' +
+            escapeHtml(cancelReason) +
+            '</span></div>'
+          : '')
+      : '';
 
     return (
       '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ' +
@@ -378,8 +406,12 @@
       'table.receipts-table .pay-amt,table.receipts-table th.pay-amt{text-align:right;width:80px}' +
       '.receipts-total{text-align:right;font-weight:700;margin-top:4px;font-size:13px}' +
       '.user{margin-top:10px;font-size:11px}' +
+      cancelledCss +
       '@media print{body{width:auto;margin:0;padding:8px 6px}}' +
-      '</style></head><body>' +
+      '</style></head><body' +
+      (isCancelled ? ' class="is-cancelled"' : '') +
+      '><div class="bill-sheet">' +
+      cancelledMark +
       '<img class="logo" src="' +
       logoUrl +
       '" alt="' +
@@ -410,6 +442,7 @@
       '<div><span>Table</span><span>' +
       escapeHtml(table) +
       '</span></div>' +
+      cancelledMeta +
       '</div>' +
       '<hr class="rule">' +
       '<table class="items"><thead><tr><th>Items</th><th class="qty">Qty</th><th class="rate">Rate</th><th class="amt">Amount</th></tr></thead>' +
@@ -426,16 +459,20 @@
           formatThermalAmount(totals.discount) +
           '</span></div>'
         : '') +
-      '<div><span>CGST @ ' +
-      activeTaxRates().cgst * 100 +
-      '%</span><span>' +
-      formatThermalAmount(totals.cgst) +
-      '</span></div>' +
-      '<div><span>UGST @ ' +
-      activeTaxRates().ugst * 100 +
-      '%</span><span>' +
-      formatThermalAmount(totals.ugst) +
-      '</span></div>' +
+      (Number(totals.cgst) > 0
+        ? '<div><span>CGST @ ' +
+          activeTaxRates().cgst * 100 +
+          '%</span><span>' +
+          formatThermalAmount(totals.cgst) +
+          '</span></div>'
+        : '') +
+      (Number(totals.ugst) > 0
+        ? '<div><span>UGST @ ' +
+          activeTaxRates().ugst * 100 +
+          '%</span><span>' +
+          formatThermalAmount(totals.ugst) +
+          '</span></div>'
+        : '') +
       (Number(totals.vat) > 0
         ? '<div><span>VAT @ ' +
           activeTaxRates().vat * 100 +
@@ -451,18 +488,20 @@
       (Number(totals.tip) > 0
         ? '<div><span>Tip</span><span>' + formatThermalAmount(totals.tip) + '</span></div>'
         : '') +
-      '<div><span>Round-Off</span><span>' +
-      formatThermalAmount(totals.roundOff) +
-      '</span></div>' +
+      (Number(totals.roundOff) !== 0
+        ? '<div><span>Round-Off</span><span>' +
+          formatThermalAmount(totals.roundOff) +
+          '</span></div>'
+        : '') +
       '<div class="grand"><span>Total</span><span>' +
       formatThermalAmount(totals.total) +
       '</span></div>' +
       '</div>' +
       buildReceiptsSection(invoice, totals) +
       '<div class="user">User : ' +
-      escapeHtml(cfg.user_label || 'RESTAURANT') +
+      escapeHtml(resolveBillUserLabel(invoice, opts, cfg)) +
       '</div>' +
-      '</body></html>'
+      '</div></body></html>'
     );
   }
 
@@ -470,6 +509,19 @@
     if (opts && opts.outlet) return String(opts.outlet).toLowerCase();
     if (invoice && invoice.outlet) return String(invoice.outlet).toLowerCase();
     return 'restaurant';
+  }
+
+  function resolveBillUserLabel(invoice, opts, cfg) {
+    opts = opts || {};
+    var fromOpts = String(opts.userLabel || opts.user_label || '').trim();
+    if (fromOpts) return fromOpts;
+    var fromCfg = String((cfg && cfg.user_label) || '').trim();
+    // Ignore legacy outlet placeholders (RESTAURANT / BAR) from older configs.
+    if (fromCfg && !/^(restaurant|bar)$/i.test(fromCfg)) return fromCfg;
+    var fromInvoice = String((invoice && invoice.created_by) || '').trim();
+    if (fromInvoice) return fromInvoice;
+    if (fromCfg) return fromCfg;
+    return 'User';
   }
 
   function buildPosCustomerBillHtml(invoice, opts) {

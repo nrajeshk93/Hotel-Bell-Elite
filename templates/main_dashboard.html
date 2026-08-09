@@ -1,0 +1,387 @@
+{% set de_soft_body_class = 'de-open su-module main-dashboard-module' %}
+{% set de_soft_page_title = 'Dashboard | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dashboard | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard_analytics.css') }}?v=10">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module main-dashboard-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard_analytics.css') }}?v=10">
+{% endif %}
+<div class="main-wrapper" id="main-dashboard-page" data-main-dashboard>
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <div class="su-title-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M5.5 18.2a8.5 8.5 0 1 1 13 0"/><path d="M12 14v3"/><path d="m12 14 4.2-4.2"/><circle cx="12" cy="14" r="1.25"/></svg>
+            </div>
+            <h1>Dashboard</h1>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="se-sales-header-card md-filter-card">
+      <div class="se-sales-header-filters">
+        <form id="md-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Dashboard filters"
+              data-clear-url="{{ main_dashboard_clear_url }}"
+              data-today="{{ today_iso }}"
+              data-selected-period="{{ selected_period }}">
+          <input type="hidden" id="md-period" name="period" value="{{ selected_period }}">
+          <input type="hidden" id="md-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="md-date-to" name="date_to" value="{{ date_to }}">
+
+          <div class="md-period-field pl-header-field" id="md-period-field">
+            <span class="se-filter-chip-label md-period-label" id="md-period-label">Period</span>
+            <div class="md-period-pills" role="group" aria-labelledby="md-period-label">
+              {% for period_key, period_label in dashboard_periods %}
+              <button type="button"
+                      class="md-period-pill{% if selected_period == period_key %} is-active{% endif %}"
+                      data-md-period="{{ period_key }}"
+                      aria-pressed="{{ 'true' if selected_period == period_key else 'false' }}">{{ period_label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-submit="md-filter-form" id="md-location-listbox">
+            <span class="se-filter-chip-label" id="md-location-label">Outlet</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="md-location" name="location" value="{{ selected_location }}">
+              <button type="button" class="se-filter-chip-trigger" id="md-location-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="md-location-list" aria-labelledby="md-location-label md-location-value">
+                <span class="se-filter-chip-value" id="md-location-value">{{ selected_location_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="md-location-list" role="listbox" aria-labelledby="md-location-label" hidden>
+              <div class="ep-listbox-options">
+                {% for location_key, location_label in dashboard_locations %}
+                <button type="button" class="se-filter-listbox-option{% if selected_location == location_key %} is-selected{% endif %}" role="option" data-value="{{ location_key }}" data-label="{{ location_label }}" aria-selected="{{ 'true' if selected_location == location_key else 'false' }}">{{ location_label }}</button>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <div class="se-filter-chip-date-host md-date-range-host pl-date-range-host pl-header-field" id="md-date-range-host">
+            <span class="se-filter-chip-label" id="md-date-range-label">Date</span>
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox is-filtered">
+              <div class="se-filter-chip-control">
+                <div class="an-range-wrap an-range-wrap--sales" id="md-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="md-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="md-date-range-panel" aria-labelledby="md-date-range-label md-date-range-display">
+                    <span class="an-range-trigger-label">
+                      <span id="md-date-range-display">{{ date_range_label }}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="md-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="md-date-range-panel" role="dialog" aria-labelledby="md-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="md-date-range-panel-title">Date range</div>
+                      <p class="an-range-hint">Click a start date, then an end date. Use arrows to change months.</p>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="md-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="md-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="md-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="md-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="md-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="md-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="md-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="md-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content rdx-content" aria-label="Dashboard analytics">
+    <section class="rdx-kpi-grid" aria-label="Executive KPIs">
+      {% for kpi in dashboard.kpis %}
+      <article class="rdx-kpi" data-md-kpi="{{ kpi.key }}">
+        <div class="rdx-kpi-body">
+          <div class="rdx-kpi-label">{{ kpi.label }}</div>
+          <div class="rdx-kpi-value" data-value="{{ kpi.value }}">{{ kpi.value_compact }}</div>
+          {% if kpi.change_pct is not none %}
+          <div class="rdx-kpi-change {% if kpi.change_pct > 0 %}up{% elif kpi.change_pct < 0 %}down{% else %}flat{% endif %}">
+            <span class="rdx-kpi-arrow">{% if kpi.change_pct > 0 %}▲{% elif kpi.change_pct < 0 %}▼{% else %}—{% endif %}</span>
+            <span class="rdx-kpi-pct">{{ kpi.change_pct | abs }}%</span>
+          </div>
+          {% endif %}
+        </div>
+        <div class="rdx-spark" id="rdx-spark-{{ loop.index0 }}" aria-hidden="true"></div>
+      </article>
+      {% endfor %}
+    </section>
+
+    <article class="rdx-card rdx-card-full rdx-sales-trend">
+      <div class="rdx-st-head">
+        <div class="rdx-st-title-wrap">
+          <h2 class="rdx-st-title">Sales trend</h2>
+          <p class="rdx-st-subtitle">Settled invoice sales over time</p>
+        </div>
+      </div>
+      <div class="rdx-st-stats">
+        <div class="rdx-st-stat">
+          <div class="rdx-st-stat-label">Average daily sales</div>
+          <div class="rdx-st-stat-value">{{ dashboard.sales_trend.avg_daily_compact }}</div>
+        </div>
+        <div class="rdx-st-stat">
+          <div class="rdx-st-stat-label">Best day</div>
+          {% if dashboard.sales_trend.best_day %}
+          <div class="rdx-st-stat-value">{{ dashboard.sales_trend.best_day.value_compact }}</div>
+          <div class="rdx-st-stat-meta">{{ dashboard.sales_trend.best_day.label }}</div>
+          {% else %}
+          <div class="rdx-st-stat-value">—</div>
+          {% endif %}
+        </div>
+        <div class="rdx-st-stat">
+          <div class="rdx-st-stat-label">Lowest day</div>
+          {% if dashboard.sales_trend.lowest_day %}
+          <div class="rdx-st-stat-value">{{ dashboard.sales_trend.lowest_day.value_compact }}</div>
+          <div class="rdx-st-stat-meta">{{ dashboard.sales_trend.lowest_day.label }}</div>
+          {% else %}
+          <div class="rdx-st-stat-value">—</div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="rdx-chart rdx-chart-sales" id="rdx-chart-trend"></div>
+    </article>
+
+    <div class="rdx-grid-2">
+      <article class="rdx-card rdx-co-leaderboard">
+        <div class="rdx-co-head">
+          <div class="rdx-co-title-wrap">
+            <h2 class="rdx-co-title">
+              Top outlets by sales
+              <span class="rdx-co-info" title="Outlets ranked by settled invoice sales in the selected period" aria-label="About this widget">ⓘ</span>
+            </h2>
+          </div>
+        </div>
+        <div class="rdx-co-list">
+          {% for row in dashboard.company_leaderboard %}
+          <div class="rdx-co-row">
+            <div class="rdx-co-row-top">
+              <span class="rdx-co-rank">{{ row.rank }}</span>
+              <span class="rdx-co-name">{{ row.label }}</span>
+              <span class="rdx-co-sales">{{ row.sales_compact }}</span>
+            </div>
+            <div class="rdx-co-bar" aria-hidden="true">
+              <div class="rdx-co-bar-fill" style="width: {{ row.share_pct }}%"></div>
+            </div>
+            <div class="rdx-co-row-meta">
+              <span class="rdx-co-share">{{ row.share_pct }}%</span>
+              {% if row.growth_pct is not none %}
+              <span class="rdx-co-growth {% if row.growth_pct >= 0 %}up{% else %}down{% endif %}">
+                {% if row.growth_pct >= 0 %}▲{% else %}▼{% endif %} {{ row.growth_pct | abs }}%
+              </span>
+              {% endif %}
+            </div>
+          </div>
+          {% else %}
+          <p class="rdx-co-empty">No settled outlet sales in this period.</p>
+          {% endfor %}
+        </div>
+        <div class="rdx-co-foot">
+          <span>% = Contribution</span>
+          <span>▲▼ = Growth vs previous period</span>
+        </div>
+      </article>
+      <article class="rdx-card rdx-sales-contrib">
+        <div class="rdx-sc-head">
+          <h2 class="rdx-sc-title">Sales contribution</h2>
+          <p class="rdx-sc-subtitle">Contribution by sales</p>
+        </div>
+        <div class="rdx-sc-body">
+          <div class="rdx-sc-chart-wrap">
+            <div class="rdx-sc-chart" id="rdx-chart-donut"></div>
+            <div class="rdx-sc-center" aria-hidden="true">
+              <div class="rdx-sc-center-label">Total</div>
+              <div class="rdx-sc-center-value">{{ dashboard.sales_contribution.total_sales_compact }}</div>
+            </div>
+          </div>
+          <div class="rdx-sc-list">
+            {% for item in dashboard.sales_contribution.entries %}
+            <div class="rdx-sc-row">
+              <div class="rdx-sc-row-top">
+                <span class="rdx-sc-dot" style="background: {{ item.color }}"></span>
+                <span class="rdx-sc-name">{{ item.name }}</span>
+                <span class="rdx-sc-pct">{{ item.share_pct }}%</span>
+              </div>
+              <div class="rdx-sc-amount">{{ item.sales_compact }}</div>
+            </div>
+            {% else %}
+            <p class="rdx-sc-empty">No outlet sales in this period.</p>
+            {% endfor %}
+          </div>
+        </div>
+        {% if dashboard.sales_contribution.top_contributor %}
+        <div class="rdx-sc-insight">
+          <strong>Top contributor</strong>
+          {{ dashboard.sales_contribution.top_contributor.name }} contributes {{ dashboard.sales_contribution.top_contributor.share_pct }}% of total sales.
+        </div>
+        {% endif %}
+      </article>
+    </div>
+
+    <article class="rdx-card rdx-card-full rdx-payment-mode">
+      <h2 class="rdx-pm-title">Payment mode analysis</h2>
+      <div class="rdx-pm-body">
+        <div class="rdx-pm-chart-col">
+          <div class="rdx-pm-legend" aria-hidden="true">
+            <span class="rdx-pm-legend-item rdx-pm-legend-digital"><span class="rdx-pm-swatch"></span>Digital (%)</span>
+            <span class="rdx-pm-legend-item rdx-pm-legend-cash"><span class="rdx-pm-swatch"></span>Cash (%)</span>
+          </div>
+          <div class="rdx-pm-chart" id="rdx-chart-digital-cash"></div>
+        </div>
+        <div class="rdx-pm-kpis">
+          <div class="rdx-pm-kpi rdx-pm-kpi-digital">
+            <div class="rdx-pm-kpi-label">Digital</div>
+            <div class="rdx-pm-kpi-value">{{ dashboard.payment_mode.digital_pct }}%</div>
+            {% if dashboard.payment_mode.digital_trend != 0 %}
+            <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.digital_trend > 0 %}up{% else %}down{% endif %}">
+              {% if dashboard.payment_mode.digital_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.digital_trend | abs }}%
+            </div>
+            {% endif %}
+          </div>
+          <div class="rdx-pm-kpi rdx-pm-kpi-cash">
+            <div class="rdx-pm-kpi-label">Cash</div>
+            <div class="rdx-pm-kpi-value">{{ dashboard.payment_mode.cash_pct }}%</div>
+            {% if dashboard.payment_mode.cash_trend != 0 %}
+            <div class="rdx-pm-kpi-trend {% if dashboard.payment_mode.cash_trend > 0 %}up{% else %}down{% endif %}">
+              {% if dashboard.payment_mode.cash_trend > 0 %}▲{% else %}▼{% endif %} {{ dashboard.payment_mode.cash_trend | abs }}%
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <div class="rdx-grid-2 rdx-grid-dow-top">
+      <div class="rdx-dow-heat-stack">
+        <article class="rdx-card rdx-dow-card">
+          <div class="rdx-card-head"><div><h2>Day of week</h2><p>Average settled sales by weekday</p></div></div>
+          <div class="rdx-chart rdx-chart-sm" id="rdx-chart-dow"></div>
+        </article>
+        <article class="rdx-card rdx-sales-heatmap-card">
+          <div class="rdx-card-head"><div><h2>Sales heatmap (daily)</h2><p>Daily intensity across weeks</p></div></div>
+          <div class="rdx-heatmap-scroll">
+            <div class="rdx-heatmap" id="rdx-sales-heatmap" aria-label="Daily sales heatmap"></div>
+          </div>
+          <div class="rdx-heatmap-legend" aria-hidden="true">
+            <span class="rdx-heatmap-legend-label">Low sales</span>
+            <span class="rdx-heatmap-legend-bar"></span>
+            <span class="rdx-heatmap-legend-label">High sales</span>
+          </div>
+          <div class="rdx-heatmap-tooltip" id="rdx-heatmap-tooltip" role="tooltip" hidden></div>
+        </article>
+      </div>
+      <article class="rdx-card rdx-top-items" data-md-top-items>
+        <div class="rdx-card-head">
+          <div>
+            <h2>Top Selling Items</h2>
+            <p data-md-ti-subtitle>By quantity sold</p>
+          </div>
+          <div class="rdx-ti-sort" role="group" aria-label="Rank top items by">
+            <button type="button" class="rdx-ti-sort-btn is-active" data-md-ti-sort="qty" aria-pressed="true">Quantity</button>
+            <button type="button" class="rdx-ti-sort-btn" data-md-ti-sort="revenue" aria-pressed="false">Revenue</button>
+          </div>
+        </div>
+        <div class="rdx-ti-list" data-md-ti-list>
+          {% for row in dashboard.top_selling_items %}
+          <div class="rdx-ti-row">
+            <span class="rdx-ti-rank">{{ row.rank }}</span>
+            <div class="rdx-ti-main">
+              <span class="rdx-ti-name">{{ row.name }}</span>
+            </div>
+            <div class="rdx-ti-values" title="Total sales {{ row.sale_value_compact }}">
+              <span class="rdx-ti-sale">{{ row.sale_value_compact }}</span>
+              <span class="rdx-ti-qty">{{ row.qty_display }}</span>
+            </div>
+          </div>
+          {% else %}
+          <p class="rdx-ti-empty">No menu sales in this period.</p>
+          {% endfor %}
+        </div>
+      </article>
+    </div>
+  </section>
+</div>
+<script id="md-dashboard-data" type="application/json">{{ dashboard | tojson }}</script>
+<script src="{{ url_for('static', filename='format_inr.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='main_dashboard.js') }}?v=9" data-de-rerun="1"></script>
+<script src="{{ url_for('static', filename='main_dashboard_charts.js') }}?v=7" data-de-rerun="1"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

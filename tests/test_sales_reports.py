@@ -111,12 +111,19 @@ class SalesReportsTests(unittest.TestCase):
         sales = [r for r in REPORT_DEFINITIONS if r.get("category") == "sales"]
         self.assertEqual(
             [r["id"] for r in sales],
-            ["hotel_sales", "restaurant_sales", "bar_sales", "menu_sales"],
+            [
+                "hotel_sales",
+                "restaurant_sales",
+                "bar_sales",
+                "menu_sales",
+                "customer_insights",
+            ],
         )
         self.assertEqual(sales[0]["view_route"], "sales_report_hotel")
         self.assertEqual(sales[1]["view_route"], "sales_report_restaurant")
         self.assertEqual(sales[2]["view_route"], "sales_report_bar")
         self.assertEqual(sales[3]["view_route"], "sales_report_menu")
+        self.assertEqual(sales[4]["view_route"], "sales_report_customer_insights")
 
         with self.app.test_request_context():
             from flask import url_for
@@ -126,10 +133,17 @@ class SalesReportsTests(unittest.TestCase):
             (s for s in payload["report_sections"] if s["key"] == "sales"), None
         )
         self.assertIsNotNone(sales_section)
-        self.assertEqual(sales_section["count"], 4)
+        self.assertEqual(sales_section["count"], 5)
         names = [r["name"] for r in sales_section["reports"]]
         self.assertEqual(
-            names, ["Hotel Sales", "Restaurant Sales", "Bar Sales", "Menu Sales"]
+            names,
+            [
+                "Hotel Sales",
+                "Restaurant Sales",
+                "Bar Sales",
+                "Menu Insights",
+                "Customer Insights",
+            ],
         )
 
         hub = self.client.get("/reports")
@@ -138,12 +152,14 @@ class SalesReportsTests(unittest.TestCase):
         self.assertIn("Hotel Sales", html)
         self.assertIn("Restaurant Sales", html)
         self.assertIn("Bar Sales", html)
-        self.assertIn("Menu Sales", html)
+        self.assertIn("Menu Insights", html)
+        self.assertIn("Customer Insights", html)
         self.assertIn('data-report-category="sales"', html)
         self.assertIn("/reports/sales/hotel", html)
         self.assertIn("/reports/sales/restaurant", html)
         self.assertIn("/reports/sales/bar", html)
         self.assertIn("/reports/sales/menu", html)
+        self.assertIn("/reports/sales/customer-insights", html)
 
     def test_sales_report_pages_and_export(self):
         # Seed one restaurant + one bar invoice so POS pages have rows.
@@ -213,6 +229,9 @@ class SalesReportsTests(unittest.TestCase):
         self.assertIn("Order No", rest_html)
         self.assertIn("ORD-SR-REST", rest_html)
         self.assertIn("Sales Guest", rest_html)
+        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        self.assertIn(f'value="{fy_start.isoformat()}"', rest_html)
+        self.assertIn(f'value="{today.isoformat()}"', rest_html)
 
         bar_page = self.client.get("/reports/sales/bar")
         bar_html = bar_page.get_data(as_text=True)
@@ -230,6 +249,8 @@ class SalesReportsTests(unittest.TestCase):
             "sales_report_bar_export",
             "sales_report_menu",
             "sales_report_menu_export",
+            "sales_report_customer_insights",
+            "sales_report_customer_insights_export",
         ):
             self.assertEqual(get_endpoint_dashboard_module(endpoint), "reports")
 
@@ -254,6 +275,7 @@ class SalesReportsTests(unittest.TestCase):
                 "/reports/sales/restaurant",
                 "/reports/sales/bar",
                 "/reports/sales/menu",
+                "/reports/sales/customer-insights",
                 "/reports/sales/hotel/export",
                 "/reports/sales/menu/export",
             ):

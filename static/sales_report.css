@@ -175,7 +175,8 @@ body.sales-report-module #msr-filter-form .pl-date-range-host .se-filter-chip--d
 body.sales-report-module #sr-filter-form .pl-date-range-host .an-range-trigger,
 body.sales-report-module #sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
 body.sales-report-module #msr-filter-form .pl-date-range-host .an-range-trigger,
-body.sales-report-module #menu-sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+body.sales-report-module #menu-sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
+body.sales-report-module #customer-insights-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
   min-width:168px;
   width:auto;
   max-width:min(300px,42vw);
@@ -266,6 +267,95 @@ body.sales-report-module #msr-table td.msr-col-orders,
 body.sales-report-module #msr-table td.msr-col-qty,
 body.sales-report-module #msr-table td.msr-col-sale{
   padding-right:calc(14px + 0.7em + 4px);
+}
+
+/* Customer Insights — text left, orders centered, money right-aligned. */
+body.sales-report-module #cir-table{
+  table-layout:fixed;
+  width:100%;
+  min-width:1120px;
+}
+body.sales-report-module #cir-table col.cir-col-customer{width:15%;}
+body.sales-report-module #cir-table col.cir-col-mobile{width:12%;}
+body.sales-report-module #cir-table col.cir-col-orders{width:8%;}
+body.sales-report-module #cir-table col.cir-col-top{width:23%;}
+body.sales-report-module #cir-table col.cir-col-restaurant{width:11%;}
+body.sales-report-module #cir-table col.cir-col-bar{width:10%;}
+body.sales-report-module #cir-table col.cir-col-hotel{width:10%;}
+body.sales-report-module #cir-table col.cir-col-total{width:11%;}
+body.sales-report-module #cir-table th,
+body.sales-report-module #cir-table td{
+  padding:12px 12px;
+  vertical-align:middle;
+}
+body.sales-report-module #cir-table th.pl-sortable{
+  position:relative;
+}
+body.sales-report-module #cir-table th.cir-col-customer,
+body.sales-report-module #cir-table td.cir-col-customer,
+body.sales-report-module #cir-table th.cir-col-mobile,
+body.sales-report-module #cir-table td.cir-col-mobile,
+body.sales-report-module #cir-table th.cir-col-top,
+body.sales-report-module #cir-table td.cir-col-top{
+  text-align:left !important;
+}
+body.sales-report-module #cir-table td.cir-col-mobile{
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+body.sales-report-module #cir-table .cir-col-customer .pl-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+/* Top item names wrap so long dish titles stay fully readable. */
+body.sales-report-module #cir-table th.cir-col-top,
+body.sales-report-module #cir-table td.cir-col-top{
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;
+  word-break:break-word;
+  line-height:1.35;
+}
+body.sales-report-module #cir-table th.cir-col-top{
+  white-space:nowrap;
+}
+body.sales-report-module #cir-table th.cir-col-orders,
+body.sales-report-module #cir-table td.cir-col-orders{
+  text-align:center !important;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+  padding-left:8px;
+  padding-right:8px;
+}
+body.sales-report-module #cir-table th.pl-sortable.cir-col-orders::after{
+  margin-left:4px;
+  min-width:0;
+}
+body.sales-report-module #cir-table th.cir-col-restaurant,
+body.sales-report-module #cir-table td.cir-col-restaurant,
+body.sales-report-module #cir-table th.cir-col-bar,
+body.sales-report-module #cir-table td.cir-col-bar,
+body.sales-report-module #cir-table th.cir-col-hotel,
+body.sales-report-module #cir-table td.cir-col-hotel,
+body.sales-report-module #cir-table th.cir-col-total,
+body.sales-report-module #cir-table td.cir-col-total{
+  text-align:right !important;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+  padding-right:22px;
+}
+/* Park sort caret in the shared right gutter so labels match amount edges. */
+body.sales-report-module #cir-table th.pl-sortable.cir-col-restaurant::after,
+body.sales-report-module #cir-table th.pl-sortable.cir-col-bar::after,
+body.sales-report-module #cir-table th.pl-sortable.cir-col-hotel::after,
+body.sales-report-module #cir-table th.pl-sortable.cir-col-total::after{
+  position:absolute;
+  right:6px;
+  top:50%;
+  transform:translateY(-50%);
+  margin-left:0;
+  min-width:0;
 }
 
 @media (max-width:1100px){

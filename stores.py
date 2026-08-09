@@ -19,6 +19,7 @@ from db import (
     ensure_pos_schema,
     ensure_stores_schema,
     get_db,
+    indian_fiscal_year_bounds,
     indian_fiscal_year_label,
     list_pos_menu_recipe_lines,
 )
@@ -9030,10 +9031,19 @@ def _stock_audit_adjustment_kpis(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _parse_stock_audit_report_filters() -> dict[str, Any]:
     outlet = _parse_outlet_filter(request.args.get("outlet"))
-    date_from = _parse_report_date(request.args.get("date_from"))
-    date_to = _parse_report_date(request.args.get("date_to"))
-    if date_from and date_to and date_from > date_to:
-        date_from, date_to = date_to, date_from
+    raw_from = str(request.args.get("date_from") or "").strip()
+    raw_to = str(request.args.get("date_to") or "").strip()
+    if not raw_from and not raw_to:
+        date_from, date_to = indian_fiscal_year_bounds()
+    else:
+        date_from = _parse_report_date(raw_from)
+        date_to = _parse_report_date(raw_to)
+        if date_from is None and date_to is not None:
+            date_from, _ = indian_fiscal_year_bounds(date_to)
+        if date_to is None and date_from is not None:
+            date_to = date.today()
+        if date_from and date_to and date_from > date_to:
+            date_from, date_to = date_to, date_from
     reason = str(request.args.get("reason") or "").strip().lower()
     if reason == "all":
         reason = ""

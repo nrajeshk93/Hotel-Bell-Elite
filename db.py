@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import secrets
 import sqlite3
 from datetime import date, datetime, timedelta
 
@@ -44,29 +45,34 @@ def normalize_pos_outlet(value):
     return POS_OUTLET_RESTAURANT
 
 
-_SPC_FY_ORDER_RE = re.compile(r"^SPC/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
+_SPC_FY_ORDER_RE = re.compile(r"^SPC/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
+_SPC_LEGACY_LONG_FY_ORDER_RE = re.compile(r"^SPC/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
 _SPC_LEGACY_ORDER_RE = re.compile(r"^SPC/(\d+)$", re.IGNORECASE)
-_INV_FY_ORDER_RE = re.compile(r"^INV/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
+_INV_FY_ORDER_RE = re.compile(r"^INV/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
+_INV_LEGACY_LONG_FY_ORDER_RE = re.compile(r"^INV/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE)
 _INV_LEGACY_ORDER_RE = re.compile(r"^INV/(\d+)$", re.IGNORECASE)
+
+
+def _coerce_calendar_date(value=None):
+    """Normalize value to a date (default: local today)."""
+    if value is None:
+        return datetime.now().date()
+    if isinstance(value, datetime):
+        return value.date()
+    if hasattr(value, "year") and hasattr(value, "month") and not isinstance(value, str):
+        return value
+    text = str(value or "").strip()
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        try:
+            return datetime.strptime(text[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return datetime.now().date()
+    return datetime.now().date()
 
 
 def indian_fiscal_year_label(value=None):
     """Indian FY label (Apr–Mar), e.g. 2026-07-29 → '2026-27'."""
-    if value is None:
-        d = datetime.now().date()
-    elif isinstance(value, datetime):
-        d = value.date()
-    elif hasattr(value, "year") and hasattr(value, "month") and not isinstance(value, str):
-        d = value
-    else:
-        text = str(value or "").strip()
-        if len(text) >= 10 and text[4] == "-" and text[7] == "-":
-            try:
-                d = datetime.strptime(text[:10], "%Y-%m-%d").date()
-            except ValueError:
-                d = datetime.now().date()
-        else:
-            d = datetime.now().date()
+    d = _coerce_calendar_date(value)
     if d.month >= 4:
         start_year = d.year
     else:
@@ -74,54 +80,110 @@ def indian_fiscal_year_label(value=None):
     return f"{start_year}-{str(start_year + 1)[-2:]}"
 
 
+def indian_fiscal_year_short_label(value=None):
+    """Short Indian FY label, e.g. 2026-07-29 → '26-27' (or '2026-27' → '26-27')."""
+    text = str(value or "").strip()
+    if re.match(r"^\d{4}-\d{2}$", text):
+        start, end = text.split("-", 1)
+        return f"{start[-2:]}-{end[-2:]}"
+    if re.match(r"^\d{2}-\d{2}$", text):
+        return text
+    fy = indian_fiscal_year_label(value)
+    parts = fy.split("-")
+    if len(parts) == 2:
+        return f"{parts[0][-2:]}-{parts[1][-2:]}"
+    return fy
+
+
+def indian_fiscal_year_bounds(value=None):
+    """Return (fy_start, reference_date) for Indian FY Apr–Mar.
+
+    fy_start is 1 Apr of the FY containing the reference day. The second value
+    is that reference day (typically today for filter chip defaults).
+    """
+    d = _coerce_calendar_date(value)
+    if d.month >= 4:
+        start_year = d.year
+    else:
+        start_year = d.year - 1
+    return date(start_year, 4, 1), d
+
+
 def is_restaurant_spc_order_no(order_no, fiscal_year=None):
-    """True when order_no is SPC/{n}/{fy} (optionally matching a specific FY)."""
+    """True when order_no is SPC/{yy-yy}/{n} (optionally matching a specific FY)."""
     match = _SPC_FY_ORDER_RE.match(str(order_no or "").strip())
     if not match:
         return False
-    if fiscal_year and match.group(2) != str(fiscal_year):
+    if fiscal_year and match.group(1) != indian_fiscal_year_short_label(fiscal_year):
         return False
     return True
 
 
 def is_bar_inv_order_no(order_no, fiscal_year=None):
-    """True when order_no is INV/{n}/{fy} (optionally matching a specific FY)."""
+    """True when order_no is INV/{yy-yy}/{n} (optionally matching a specific FY)."""
     match = _INV_FY_ORDER_RE.match(str(order_no or "").strip())
     if not match:
         return False
-    if fiscal_year and match.group(2) != str(fiscal_year):
+    if fiscal_year and match.group(1) != indian_fiscal_year_short_label(fiscal_year):
         return False
     return True
 
 
 def is_provisional_pos_order_no(order_no, outlet=None):
-    """Client placeholders that should be replaced on first outlet save."""
+    """Client placeholders replaced only when Generate Invoice (customerBill) runs."""
     text = str(order_no or "").strip()
     if not text:
         return True
     outlet_key = normalize_pos_outlet(outlet) if outlet is not None else None
     upper = text.upper()
-    # Offline-local drafts (ORD-L-…) become SPC|INV/{n}/{fy} on first sync.
+    # Offline-local drafts (ORD-L-…) become SPC|INV/{yy-yy}/{n} on Generate Invoice.
     if upper.startswith("ORD-L-"):
         return True
-    # Offline drafts: PREFIX/{hex}/{fy}; numeric PREFIX/{n}/{fy} is final.
+    # Offline drafts: PREFIX/{token}/{fy}; numeric PREFIX/{yy-yy}/{n} is final.
+    # Also treat legacy PREFIX/{n}/{YYYY-YY} client drafts / wrong series as provisional
+    # so they are re-minted into the new PREFIX/{yy-yy}/{n} format.
     if upper.startswith("SPC/") and not is_restaurant_spc_order_no(text):
         if outlet_key in (None, POS_OUTLET_RESTAURANT):
-            return bool(re.match(r"^SPC/[^/]+/\d{4}-\d{2}$", text, re.IGNORECASE))
+            return bool(
+                re.match(r"^SPC/[^/]+/\d{2}-\d{2}$", text, re.IGNORECASE)
+                or re.match(r"^SPC/[^/]+/\d{4}-\d{2}$", text, re.IGNORECASE)
+                or _SPC_LEGACY_LONG_FY_ORDER_RE.match(text)
+                or _SPC_LEGACY_ORDER_RE.match(text)
+            )
     if upper.startswith("INV/") and not is_bar_inv_order_no(text):
         if outlet_key in (None, POS_OUTLET_BAR):
-            return bool(re.match(r"^INV/[^/]+/\d{4}-\d{2}$", text, re.IGNORECASE))
+            return bool(
+                re.match(r"^INV/[^/]+/\d{2}-\d{2}$", text, re.IGNORECASE)
+                or re.match(r"^INV/[^/]+/\d{4}-\d{2}$", text, re.IGNORECASE)
+                or _INV_LEGACY_LONG_FY_ORDER_RE.match(text)
+                or _INV_LEGACY_ORDER_RE.match(text)
+            )
     return False
 
 
-def _next_prefixed_invoice_seq(conn, outlet, prefix, fy_re, legacy_re, fiscal_year):
-    """Next numeric sequence for PREFIX/{n}/{fy} within an outlet + FY."""
-    fy = str(fiscal_year or "").strip()
+def mint_provisional_pos_order_no(outlet=None, order_date=None):
+    """Server-side draft order number: PREFIX/{hex}/{yy-yy} until Generate Invoice."""
+    short_fy = indian_fiscal_year_short_label(order_date)
+    suffix = secrets.token_hex(3).upper()
+    if normalize_pos_outlet(outlet) == POS_OUTLET_BAR:
+        return f"INV/{suffix}/{short_fy}"
+    return f"SPC/{suffix}/{short_fy}"
+
+
+def _next_prefixed_invoice_seq(conn, outlet, prefix, fy_re, legacy_long_fy_re, legacy_re, fiscal_year):
+    """Next numeric sequence for PREFIX/{yy-yy}/{n} within an outlet + FY.
+
+    Only the new PREFIX/{yy-yy}/{n} series is counted. Legacy PREFIX/{n}/{YYYY-YY}
+    numbers must not advance this series (otherwise seq jumps to 100000+).
+    Returns the smallest unused positive integer so the series can start at 1
+    even if a bad high number was minted earlier.
+    """
+    short_fy = indian_fiscal_year_short_label(fiscal_year)
     prefix = str(prefix or "").strip().upper()
-    max_n = 0
+    used = set()
     rows = conn.execute(
         """
-        SELECT order_no, order_date
+        SELECT order_no
         FROM pos_invoices
         WHERE outlet = ?
           AND upper(order_no) LIKE ?
@@ -131,18 +193,15 @@ def _next_prefixed_invoice_seq(conn, outlet, prefix, fy_re, legacy_re, fiscal_ye
     for row in rows:
         order_no = str(row["order_no"] or "").strip()
         match = fy_re.match(order_no)
-        if match and match.group(2) == fy:
-            max_n = max(max_n, int(match.group(1)))
-            continue
-        legacy = legacy_re.match(order_no)
-        if legacy:
+        if match and match.group(1) == short_fy:
             try:
-                row_fy = indian_fiscal_year_label(row["order_date"] if "order_date" in row.keys() else None)
-            except Exception:
-                row_fy = ""
-            if row_fy == fy:
-                max_n = max(max_n, int(legacy.group(1)))
-    return max_n + 1
+                used.add(int(match.group(2)))
+            except (TypeError, ValueError):
+                pass
+    n = 1
+    while n in used:
+        n += 1
+    return n
 
 
 def next_restaurant_invoice_seq(conn, fiscal_year):
@@ -152,6 +211,7 @@ def next_restaurant_invoice_seq(conn, fiscal_year):
         POS_OUTLET_RESTAURANT,
         "SPC",
         _SPC_FY_ORDER_RE,
+        _SPC_LEGACY_LONG_FY_ORDER_RE,
         _SPC_LEGACY_ORDER_RE,
         fiscal_year,
     )
@@ -164,23 +224,26 @@ def next_bar_invoice_seq(conn, fiscal_year):
         POS_OUTLET_BAR,
         "INV",
         _INV_FY_ORDER_RE,
+        _INV_LEGACY_LONG_FY_ORDER_RE,
         _INV_LEGACY_ORDER_RE,
         fiscal_year,
     )
 
 
 def allocate_pos_restaurant_order_no(conn, order_date=None):
-    """Allocate SPC/{n}/{fy} for a new Restaurant invoice."""
+    """Allocate SPC/{yy-yy}/{n} for a new Restaurant invoice."""
     fy = indian_fiscal_year_label(order_date)
+    short_fy = indian_fiscal_year_short_label(fy)
     seq = next_restaurant_invoice_seq(conn, fy)
-    return f"SPC/{seq}/{fy}"
+    return f"SPC/{short_fy}/{seq}"
 
 
 def allocate_pos_bar_order_no(conn, order_date=None):
-    """Allocate INV/{n}/{fy} for a new Bar invoice."""
+    """Allocate INV/{yy-yy}/{n} for a new Bar invoice."""
     fy = indian_fiscal_year_label(order_date)
+    short_fy = indian_fiscal_year_short_label(fy)
     seq = next_bar_invoice_seq(conn, fy)
-    return f"INV/{seq}/{fy}"
+    return f"INV/{short_fy}/{seq}"
 
 
 def resolve_pos_outlets(outlet=None, outlets=None):
@@ -566,6 +629,14 @@ def ensure_pos_schema(conn):
     if "discount_reason" not in invoice_cols:
         cursor.execute(
             "ALTER TABLE pos_invoices ADD COLUMN discount_reason TEXT NOT NULL DEFAULT ''"
+        )
+    if "cancel_reason" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN cancel_reason TEXT NOT NULL DEFAULT ''"
+        )
+    if "cancelled_at" not in invoice_cols:
+        cursor.execute(
+            "ALTER TABLE pos_invoices ADD COLUMN cancelled_at TEXT NOT NULL DEFAULT ''"
         )
     cursor.execute(
         """
@@ -2765,20 +2836,26 @@ def unmerge_pos_floor_tables(conn, table_label, outlet=POS_OUTLET_RESTAURANT):
 def enrich_pos_floor_tables_for_display(tables):
     """Attach display helpers for merged groups (does not mutate storage shape).
 
-    Returns a new list of table dicts with:
-    - ``displayName`` — \"Table 1 and Table 2\" for primaries
-    - ``mergedNames`` — list of names in the group
+    Room-page pattern: every physical table stays visible. Helpers:
+
+    - ``displayName`` — own table name (group title uses ``mergedNames``)
+    - ``mergedNames`` — ordered names in the group
     - ``mergedSeats`` — sum of seats in the group
-    - ``hiddenInMerge`` — True for non-primary members (skip in floor grid)
+    - ``billingTableName`` — primary / billing table name
+    - ``mergeLabel`` — \"Merged bill\" (primary) or \"Bill: {primary}\" (member)
+    - ``hiddenInMerge`` — always False (members are not collapsed away)
     """
     tables = [dict(t) for t in (tables or []) if isinstance(t, dict)]
     by_group = {}
     for t in tables:
         gid = str(t.get("mergeGroupId") or "").strip()
         if not gid:
-            t["displayName"] = str(t.get("name") or "").strip()
-            t["mergedNames"] = [t["displayName"]] if t["displayName"] else []
+            own = str(t.get("name") or "").strip()
+            t["displayName"] = own
+            t["mergedNames"] = [own] if own else []
             t["mergedSeats"] = int(t.get("seats") or 0) or None
+            t["billingTableName"] = own
+            t["mergeLabel"] = ""
             t["hiddenInMerge"] = False
             continue
         by_group.setdefault(gid, []).append(t)
@@ -2806,13 +2883,17 @@ def enrich_pos_floor_tables_for_display(tables):
             key=lambda s: s.lower(),
         )
         ordered = ([primary_name] if primary_name else []) + others
-        label = format_pos_merged_table_label(ordered)
         for t in group:
             is_primary = bool(t.get("mergePrimary"))
-            t["displayName"] = label if is_primary else str(t.get("name") or "").strip()
+            own = str(t.get("name") or "").strip()
+            t["displayName"] = own
             t["mergedNames"] = ordered
             t["mergedSeats"] = seats_total or None
-            t["hiddenInMerge"] = not is_primary
+            t["billingTableName"] = primary_name or own
+            t["mergeLabel"] = "Merged bill" if is_primary else (
+                f"Bill: {primary_name}" if primary_name else "Merged"
+            )
+            t["hiddenInMerge"] = False
 
     return tables
 
@@ -3092,11 +3173,15 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "first_kot_at": row["first_kot_at"] or "",
         "customer_bill_sent": bool(row["customer_bill_sent"]) if "customer_bill_sent" in row.keys() else False,
         "customer_bill_at": (row["customer_bill_at"] or "") if "customer_bill_at" in row.keys() else "",
+        "cancel_reason": (row["cancel_reason"] or "") if "cancel_reason" in row.keys() else "",
+        "cancelled_at": (row["cancelled_at"] or "") if "cancelled_at" in row.keys() else "",
         "stock_deducted_at": (row["stock_deducted_at"] or "") if "stock_deducted_at" in row.keys() else "",
         "outlet": normalize_pos_outlet(row["outlet"]) if "outlet" in row.keys() else POS_OUTLET_RESTAURANT,
         "item_count": int(row["item_count"]) if "item_count" in row.keys() else 0,
         "payment_modes": [],
-        "payment_mode_label": "Unsettled",
+        "payment_mode_label": _pos_invoice_payment_mode_label(
+            {"status": row["status"] or "open"}
+        ),
     }
     if include_lines:
         item["lines"] = _pos_invoice_line_dicts(conn, invoice_id)
@@ -3118,6 +3203,19 @@ def _pos_payment_mode_labels_from_methods(methods):
     return labels
 
 
+def _pos_invoice_payment_mode_label(invoice, labels=None):
+    """Ledger Payment Mode column: payments, else Cancelled / Unsettled from status."""
+    labels = list(labels or [])
+    if labels:
+        return " + ".join(labels)
+    status = str((invoice or {}).get("status") or "open").strip().lower() or "open"
+    if status == "cancelled":
+        return "Cancelled"
+    if status == "closed":
+        return "Settled"
+    return "Unsettled"
+
+
 def _apply_pos_invoice_payment_modes(conn, invoice):
     """Attach payment_modes / payment_mode_label from pos_invoice_payments."""
     if not invoice or not invoice.get("id"):
@@ -3134,7 +3232,7 @@ def _apply_pos_invoice_payment_modes(conn, invoice):
         seen.add(key)
         unique_modes.append(key)
     invoice["payment_modes"] = unique_modes
-    invoice["payment_mode_label"] = " + ".join(labels) if labels else "Unsettled"
+    invoice["payment_mode_label"] = _pos_invoice_payment_mode_label(invoice, labels)
     return invoice
 
 
@@ -3172,7 +3270,7 @@ def _enrich_pos_invoices_payment_modes(conn, invoices):
             seen.add(key)
             unique_modes.append(key)
         inv["payment_modes"] = unique_modes
-        inv["payment_mode_label"] = " + ".join(labels) if labels else "Unsettled"
+        inv["payment_mode_label"] = _pos_invoice_payment_mode_label(inv, labels)
     return rows
 
 
@@ -3786,6 +3884,8 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
 
     Used to resend / reprint a token when kitchen missed the slip. Only lines with
     sent_qty > 0 are included (the last confirmed kitchen copy).
+    Once the customer invoice is generated (customer_bill_sent), the token is
+    removed from this list.
     """
     ensure_pos_schema(conn)
     outlet = normalize_pos_outlet(outlet)
@@ -3819,6 +3919,7 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
           AND i.order_type = 'dine_in'
           AND i.outlet = ?
           AND TRIM(COALESCE(i.table_label, '')) != ''
+          AND COALESCE(i.customer_bill_sent, 0) = 0
         GROUP BY
             i.id, i.order_no, i.table_label, i.order_type,
             i.first_kot_at, i.saved_at, i.updated_at,
@@ -3902,6 +4003,175 @@ def list_pos_kot_tokens(conn, outlet=POS_OUTLET_RESTAURANT):
     return {
         "token_count": len(tables),
         "tables": tables,
+    }
+
+
+def apply_pos_kot_token_reductions(conn, changes, *, allow_kot_cancel=False, created_by=""):
+    """Reduce kitchen-sent quantities from the Tables KOT hub and sync the bill.
+
+    ``changes`` is a list of {invoice_id, line_id, sent_qty} where sent_qty is the
+    new kitchen-sent amount (0 removes that sent portion / line when qty hits 0).
+    Requires Cancellation Access (allow_kot_cancel=True).
+    """
+    ensure_pos_schema(conn)
+    if not allow_kot_cancel:
+        raise ValueError("Cancellation Access is required to reduce kitchen-sent items.")
+    if not isinstance(changes, list) or not changes:
+        raise ValueError("No quantity changes to save.")
+
+    by_invoice = {}
+    for raw in changes:
+        if not isinstance(raw, dict):
+            continue
+        try:
+            invoice_id = int(raw.get("invoice_id") or raw.get("invoiceId"))
+            line_id = int(raw.get("line_id") or raw.get("lineId"))
+        except (TypeError, ValueError):
+            continue
+        try:
+            new_sent = float(raw.get("sent_qty", raw.get("sentQty")))
+        except (TypeError, ValueError):
+            continue
+        if new_sent < 0:
+            new_sent = 0.0
+        by_invoice.setdefault(invoice_id, {})[line_id] = new_sent
+
+    if not by_invoice:
+        raise ValueError("No quantity changes to save.")
+
+    updated = []
+    for invoice_id, line_map in by_invoice.items():
+        invoice = get_pos_invoice(conn, invoice_id)
+        if not invoice:
+            raise ValueError(f"Invoice #{invoice_id} not found.")
+        if invoice.get("customer_bill_sent"):
+            raise ValueError(
+                f'Invoice for {invoice.get("table") or "table"} is already generated.'
+            )
+        if str(invoice.get("status") or "").strip().lower() != "open":
+            raise ValueError("Only open invoices can be updated from Kitchen Order Tokens.")
+
+        next_lines = []
+        changed = False
+        for line in invoice.get("lines") or []:
+            lid = int(line.get("id") or 0)
+            old_sent = _pos_money(line.get("sent_qty"))
+            old_qty = _pos_money(line.get("qty"))
+            if lid not in line_map:
+                next_lines.append(
+                    {
+                        "uid": line.get("uid") or line.get("line_uid"),
+                        "menuId": line.get("menu_item_id"),
+                        "name": line.get("name"),
+                        "variant": line.get("variant") or "",
+                        "rate": line.get("rate"),
+                        "qty": old_qty,
+                        "kotSentQty": old_sent,
+                        "notes": line.get("notes") or "",
+                    }
+                )
+                continue
+            new_sent = _pos_money(line_map[lid])
+            if new_sent > old_sent:
+                new_sent = old_sent
+            if new_sent + 1e-9 >= old_sent:
+                next_lines.append(
+                    {
+                        "uid": line.get("uid") or line.get("line_uid"),
+                        "menuId": line.get("menu_item_id"),
+                        "name": line.get("name"),
+                        "variant": line.get("variant") or "",
+                        "rate": line.get("rate"),
+                        "qty": old_qty,
+                        "kotSentQty": old_sent,
+                        "notes": line.get("notes") or "",
+                    }
+                )
+                continue
+            delta = old_sent - new_sent
+            new_qty = old_qty - delta
+            if new_qty <= 1e-9:
+                changed = True
+                continue
+            changed = True
+            next_lines.append(
+                {
+                    "uid": line.get("uid") or line.get("line_uid"),
+                    "menuId": line.get("menu_item_id"),
+                    "name": line.get("name"),
+                    "variant": line.get("variant") or "",
+                    "rate": line.get("rate"),
+                    "qty": new_qty,
+                    "kotSentQty": new_sent,
+                    "notes": line.get("notes") or "",
+                }
+            )
+
+        if not changed:
+            continue
+        table_label = invoice.get("table") or invoice.get("table_label") or ""
+        if not next_lines:
+            # Full kitchen cancel — drop the open pre-invoice bill so the table
+            # can return to available (do not Close & Free; that deducts stock).
+            soft_delete_pos_invoice(conn, invoice_id)
+            updated.append(
+                {
+                    "id": invoice_id,
+                    "cancelled": True,
+                    "table": table_label,
+                    "table_label": table_label,
+                    "outlet": invoice.get("outlet"),
+                    "order_no": invoice.get("order_no"),
+                }
+            )
+            continue
+
+        subtotal = _pos_money(sum(_pos_money(l["rate"]) * _pos_money(l["qty"]) for l in next_lines))
+        # Preserve discount/service/tip structure; totals recomputed in save_pos_invoice.
+        payload = {
+            "orderNo": invoice.get("order_no"),
+            "outlet": invoice.get("outlet"),
+            "orderType": invoice.get("order_type"),
+            "table": table_label,
+            "captain": invoice.get("captain") or "",
+            "customerName": invoice.get("customer_name") or "Guest",
+            "customerMobile": invoice.get("customer_mobile") or "",
+            "notes": invoice.get("notes") or "",
+            "discountType": invoice.get("discount_type") or "pct",
+            "discountValue": invoice.get("discount_value") or 0,
+            "discountLineUids": invoice.get("discount_line_uids") or [],
+            "discountReason": invoice.get("discount_reason") or "",
+            "serviceType": invoice.get("service_type") or "pct",
+            "serviceValue": invoice.get("service_value") or 0,
+            "tipAmount": invoice.get("tip_amount") or 0,
+            "couponCode": invoice.get("coupon_code") or "",
+            "lines": next_lines,
+            "totals": {
+                "subtotal": subtotal,
+                "discount": invoice.get("discount") or 0,
+                "gst": invoice.get("gst") or 0,
+                "vat": invoice.get("vat") or 0,
+                "service": invoice.get("service") or 0,
+                "tip": invoice.get("tip") or 0,
+                "roundOff": invoice.get("round_off") or 0,
+                "total": invoice.get("grand_total") or subtotal,
+            },
+        }
+        saved = save_pos_invoice(
+            conn,
+            payload,
+            created_by=created_by,
+            allow_kot_cancel=True,
+        )
+        updated.append(saved)
+
+    if not updated:
+        raise ValueError("No kitchen quantities were reduced.")
+    cancelled_count = sum(1 for inv in updated if inv.get("cancelled"))
+    return {
+        "updated_count": len(updated),
+        "cancelled_count": cancelled_count,
+        "invoices": updated,
     }
 
 
@@ -4242,9 +4512,14 @@ def _pos_invoice_line_kitchen_key(menu_item_id, name, variant):
     )
 
 
-def _enforce_pos_kot_line_protections(conn, invoice_id, normalized_lines, *, actor_is_admin):
-    """Block non-admins from cutting kitchen-sent qty or removing sent lines."""
-    if actor_is_admin or not invoice_id:
+def _enforce_pos_kot_line_protections(conn, invoice_id, normalized_lines, *, allow_kot_cancel=False):
+    """Protect kitchen-sent quantities unless Cancellation Access is granted.
+
+    Without cancel rights: block qty below prior sent_qty / removing those lines,
+    and re-apply prior sent_qty so clients cannot clear kitchen state silently.
+    With cancel rights: accept client qty/sent_qty (already capped to qty).
+    """
+    if not invoice_id:
         return
     old_rows = conn.execute(
         """
@@ -4263,6 +4538,9 @@ def _enforce_pos_kot_line_protections(conn, invoice_id, normalized_lines, *, act
         key = _pos_invoice_line_kitchen_key(row["menu_item_id"], row["name"], row["variant"])
         required[key] = required.get(key, 0.0) + float(row["sent_qty"] or 0)
 
+    if allow_kot_cancel:
+        return
+
     available = {}
     for line in normalized_lines:
         key = _pos_invoice_line_kitchen_key(line.get("menu_item_id"), line.get("name"), line.get("variant"))
@@ -4272,16 +4550,32 @@ def _enforce_pos_kot_line_protections(conn, invoice_id, normalized_lines, *, act
         have = available.get(key, 0.0)
         if have + 1e-9 < need:
             raise ValueError(
-                "Only an administrator can reduce or remove items after they were sent to the kitchen."
+                "Kitchen-sent items cannot be reduced or removed without Cancellation Access."
             )
 
+    # Preserve kitchen-sent amounts on matching lines (ignore client zeroing).
+    remaining = dict(required)
+    for line in normalized_lines:
+        key = _pos_invoice_line_kitchen_key(
+            line.get("menu_item_id"), line.get("name"), line.get("variant")
+        )
+        need = remaining.get(key, 0.0)
+        if need <= 0:
+            continue
+        qty = float(line.get("qty") or 0)
+        take = min(qty, need)
+        line["sent_qty"] = _pos_money(take)
+        remaining[key] = need - take
 
-def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
+
+def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, actor_is_admin=False):
     """Create or update a POS invoice by order_no. Returns the saved invoice dict.
 
-    Non-administrators cannot reduce qty below kitchen-sent amounts or remove
-    lines that already have sent_qty > 0 (post-KOT protection).
+    Kitchen-sent quantities cannot be reduced below sent_qty and those lines
+    cannot be removed unless allow_kot_cancel (Cancellation Access) is true.
+    actor_is_admin is accepted for call-site compatibility and does not bypass.
     """
+    del actor_is_admin
     ensure_pos_schema(conn)
     if not isinstance(payload, dict):
         raise ValueError("Invalid invoice payload.")
@@ -4313,26 +4607,10 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
     if "T" in order_date:
         order_date = order_date.split("T", 1)[0]
 
-    # Restaurant: SPC/{n}/{FY}. Bar: INV/{n}/{FY}.
-    # Mint when empty or offline hex draft; keep client PREFIX/{n}/{fy} and legacy ORD-*.
-    if outlet in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
-        existing_probe = None
-        if order_no:
-            existing_probe = conn.execute(
-                """
-                SELECT id FROM pos_invoices
-                WHERE order_no = ? AND is_active = 1
-                LIMIT 1
-                """,
-                (order_no,),
-            ).fetchone()
-        if not existing_probe and (
-            not order_no or is_provisional_pos_order_no(order_no, outlet)
-        ):
-            if outlet == POS_OUTLET_BAR:
-                order_no = allocate_pos_bar_order_no(conn, order_date)
-            else:
-                order_no = allocate_pos_restaurant_order_no(conn, order_date)
+    # Restaurant/Bar keep provisional PREFIX/{hex}/{yy-yy} through Save/KOT.
+    # Official PREFIX/{yy-yy}/{n} is minted only on Generate Invoice (below).
+    if outlet in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR) and not order_no:
+        order_no = mint_provisional_pos_order_no(outlet, order_date)
 
     customer_mobile = "".join(
         ch for ch in str(payload.get("customerMobile") or payload.get("customer_mobile") or "") if ch.isdigit()
@@ -4498,12 +4776,21 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
     if customer_bill and not customer_bill_at:
         customer_bill_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    # Official series only when Generate Invoice runs; lookup already used the
+    # provisional order_no so the same row is updated with the new number.
+    if outlet in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR) and customer_bill:
+        if not order_no or is_provisional_pos_order_no(order_no, outlet):
+            if outlet == POS_OUTLET_BAR:
+                order_no = allocate_pos_bar_order_no(conn, order_date)
+            else:
+                order_no = allocate_pos_restaurant_order_no(conn, order_date)
+
     if existing:
         _enforce_pos_kot_line_protections(
             conn,
             int(existing["id"]),
             normalized_lines,
-            actor_is_admin=bool(actor_is_admin),
+            allow_kot_cancel=bool(allow_kot_cancel),
         )
 
     creator = str(created_by or "").strip()
@@ -4512,6 +4799,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
         conn.execute(
             f"""
             UPDATE pos_invoices SET
+                order_no = ?,
                 saved_at = ?,
                 order_date = ?,
                 order_type = ?,
@@ -4544,6 +4832,7 @@ def save_pos_invoice(conn, payload, *, created_by="", actor_is_admin=False):
             WHERE id = ?
             """,
             (
+                order_no,
                 saved_at,
                 order_date,
                 order_type,
@@ -4719,6 +5008,113 @@ def soft_delete_pos_invoice(conn, invoice_id):
     return True
 
 
+def cancel_pos_invoice(conn, invoice_id, reason=""):
+    """Cancel an unsettled invoice.
+
+    Issued official numbers (SPC|INV/{yy-yy}/{n}) stay on an active row with
+    status='cancelled' so the series is never reused and sales can audit the
+    void. Provisional drafts are soft-deleted (no series to protect).
+    Returns a dict: {\"mode\": \"cancelled\"|\"deleted\", \"invoice\": ...|None}.
+    """
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+    invoice = get_pos_invoice(conn, invoice_id)
+    if not invoice:
+        raise ValueError("Invoice not found.")
+    status = str(invoice.get("status") or "open").strip().lower() or "open"
+    if status == "closed":
+        raise ValueError("Settled invoices cannot be cancelled.")
+    if status == "cancelled":
+        return {"mode": "cancelled", "invoice": invoice}
+    reason_text = " ".join(str(reason or "").split()).strip()[:500]
+    if not reason_text:
+        raise ValueError("Enter a reason for cancellation.")
+
+    order_no = str(invoice.get("order_no") or "").strip()
+    outlet = normalize_pos_outlet(invoice.get("outlet"))
+    cancelled_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # Generated bills (Generate Invoice) must keep an audit row — never soft-delete,
+    # even if the order_no still looks provisional-shaped.
+    bill_generated = bool(invoice.get("customer_bill_sent"))
+    soft_delete_ok = (not bill_generated) and is_provisional_pos_order_no(
+        order_no, outlet
+    )
+    if soft_delete_ok:
+        # Persist reason briefly so audit tools can read it if needed, then drop.
+        conn.execute(
+            f"""
+            UPDATE pos_invoices
+            SET cancel_reason = ?,
+                cancelled_at = ?,
+                updated_at = {SQL_NOW}
+            WHERE id = ?
+            """,
+            (reason_text, cancelled_at, invoice_id),
+        )
+        soft_delete_pos_invoice(conn, invoice_id)
+        return {"mode": "deleted", "invoice": None}
+
+    conn.execute(
+        f"""
+        UPDATE pos_invoices
+        SET status = 'cancelled',
+            cancel_reason = ?,
+            cancelled_at = ?,
+            table_label = CASE
+                WHEN order_type = 'dine_in' THEN ''
+                ELSE table_label
+            END,
+            updated_at = {SQL_NOW}
+        WHERE id = ?
+        """,
+        (reason_text, cancelled_at, invoice_id),
+    )
+    return {"mode": "cancelled", "invoice": get_pos_invoice(conn, invoice_id)}
+
+
+def reopen_pos_invoice_for_edit(conn, invoice_id):
+    """Clear Generate Invoice lock so an unsettled bill can be edited again.
+
+    Refuses settled (closed) and cancelled invoices. Idempotent when
+    customer_bill_sent is already 0.
+    """
+    ensure_pos_schema(conn)
+    try:
+        invoice_id = int(invoice_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Invalid invoice id.") from exc
+    row = conn.execute(
+        """
+        SELECT id, status, COALESCE(customer_bill_sent, 0) AS customer_bill_sent
+        FROM pos_invoices
+        WHERE id = ? AND is_active = 1
+        """,
+        (invoice_id,),
+    ).fetchone()
+    if not row:
+        raise ValueError("Invoice not found.")
+    status = str(row["status"] or "open").strip().lower() or "open"
+    if status == "closed":
+        raise ValueError("Settled invoices cannot be edited. Create a new order instead.")
+    if status == "cancelled":
+        raise ValueError("Cancelled invoices cannot be edited.")
+    if int(row["customer_bill_sent"] or 0):
+        conn.execute(
+            f"""
+            UPDATE pos_invoices
+            SET customer_bill_sent = 0,
+                customer_bill_at = '',
+                updated_at = {SQL_NOW}
+            WHERE id = ?
+            """,
+            (invoice_id,),
+        )
+    return get_pos_invoice(conn, invoice_id)
+
+
 def list_pos_invoices(
     conn,
     *,
@@ -4764,6 +5160,7 @@ def list_pos_invoices(
                 SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
             )
             AND TRIM(COALESCE(i.settled_at, '')) = ''
+            AND lower(COALESCE(i.status, 'open')) = 'open'
             """
         )
     needle = " ".join(str(q or "").split()).strip().lower()
@@ -4815,7 +5212,10 @@ def _pos_menu_sales_invoice_clauses(
     category_id=None,
 ):
     """Shared WHERE clauses/params for menu sales aggregations."""
-    clauses = ["i.is_active = 1"]
+    clauses = [
+        "i.is_active = 1",
+        "lower(COALESCE(i.status, 'open')) != 'cancelled'",
+    ]
     params = []
     outlet_key = str(outlet or "").strip().lower()
     if outlet_key in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
@@ -4849,6 +5249,7 @@ def _pos_menu_sales_invoice_clauses(
                 SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
             )
             AND TRIM(COALESCE(i.settled_at, '')) = ''
+            AND lower(COALESCE(i.status, 'open')) = 'open'
             """
         )
     try:
@@ -4971,6 +5372,281 @@ def pos_menu_sales_kpis(rows, conn=None, *, date_from=None, date_to=None, outlet
     }
 
 
+def _customer_insights_empty_row(mobile, name=""):
+    return {
+        "mobile": mobile,
+        "customer_name": str(name or "").strip() or "Guest",
+        "order_count": 0,
+        "top_item": "",
+        "restaurant_value": 0.0,
+        "bar_value": 0.0,
+        "hotel_value": 0.0,
+        "total_value": 0.0,
+        "_top_item": "",
+    }
+
+
+def list_customer_insights(
+    conn,
+    *,
+    date_from=None,
+    date_to=None,
+    channel=None,
+    settlement=None,
+):
+    """Per-customer spend + top POS item across Restaurant, Bar, and Hotel.
+
+    Identity is a normalized 10-digit mobile. Incomplete mobiles are skipped.
+    """
+    ensure_pos_schema(conn)
+    ensure_customers_schema(conn)
+    ensure_hotel_room_invoices_schema(conn)
+
+    channel_key = str(channel or "all").strip().lower()
+    if channel_key not in ("all", "restaurant", "bar", "hotel"):
+        channel_key = "all"
+    include_pos = channel_key in ("all", "restaurant", "bar")
+    include_hotel = channel_key in ("all", "hotel")
+    pos_outlet = None
+    if channel_key in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        pos_outlet = channel_key
+
+    by_mobile = {}
+
+    def _ensure(mobile, name=""):
+        key = _normalize_customer_mobile(mobile)
+        if len(key) != 10:
+            return None
+        row = by_mobile.get(key)
+        if row is None:
+            row = _customer_insights_empty_row(key, name)
+            by_mobile[key] = row
+        elif name and (not row["customer_name"] or row["customer_name"] == "Guest"):
+            row["customer_name"] = str(name).strip() or row["customer_name"]
+        return row
+
+    if include_pos:
+        clauses, params = _pos_menu_sales_invoice_clauses(
+            date_from=date_from,
+            date_to=date_to,
+            outlet=pos_outlet,
+            settlement=settlement,
+            category_id=None,
+        )
+        clauses.append("LENGTH(TRIM(COALESCE(i.customer_mobile, ''))) >= 10")
+        where = " AND ".join(clauses)
+
+        inv_rows = conn.execute(
+            f"""
+            SELECT
+                i.outlet AS outlet,
+                i.customer_mobile AS customer_mobile,
+                MAX(NULLIF(TRIM(i.customer_name), '')) AS customer_name,
+                COUNT(*) AS order_count,
+                COALESCE(SUM(i.grand_total), 0) AS grand_total
+            FROM pos_invoices i
+            WHERE {where}
+            GROUP BY i.outlet, i.customer_mobile
+            """,
+            params,
+        ).fetchall()
+        for row in inv_rows:
+            mobile = _normalize_customer_mobile(row["customer_mobile"])
+            bucket = _ensure(mobile, row["customer_name"] or "")
+            if not bucket:
+                continue
+            bucket["order_count"] += int(row["order_count"] or 0)
+            outlet_key = normalize_pos_outlet(row["outlet"])
+            value = round(float(row["grand_total"] or 0), 2)
+            if outlet_key == POS_OUTLET_BAR:
+                bucket["bar_value"] = round(bucket["bar_value"] + value, 2)
+            else:
+                bucket["restaurant_value"] = round(
+                    bucket["restaurant_value"] + value, 2
+                )
+
+        # One top item per mobile (avoids shipping every item×customer combo).
+        item_rows = conn.execute(
+            f"""
+            WITH item_qty AS (
+                SELECT
+                    i.customer_mobile AS customer_mobile,
+                    COALESCE(
+                        NULLIF(TRIM(m.name), ''),
+                        NULLIF(TRIM(l.name), ''),
+                        'Item'
+                    ) AS item_name,
+                    COALESCE(SUM(l.qty), 0) AS qty_sold
+                FROM pos_invoice_lines l
+                JOIN pos_invoices i ON i.id = l.invoice_id
+                LEFT JOIN pos_menu_items m ON m.id = l.menu_item_id
+                WHERE {where}
+                GROUP BY
+                    i.customer_mobile,
+                    COALESCE(
+                        NULLIF(TRIM(m.name), ''),
+                        NULLIF(TRIM(l.name), ''),
+                        'Item'
+                    )
+            ),
+            ranked AS (
+                SELECT
+                    customer_mobile,
+                    item_name,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY customer_mobile
+                        ORDER BY qty_sold DESC, item_name COLLATE NOCASE ASC
+                    ) AS rn
+                FROM item_qty
+            )
+            SELECT customer_mobile, item_name
+            FROM ranked
+            WHERE rn = 1
+            """,
+            params,
+        ).fetchall()
+        for row in item_rows:
+            bucket = _ensure(row["customer_mobile"], "")
+            if not bucket:
+                continue
+            item_name = str(row["item_name"] or "Item").strip() or "Item"
+            bucket["_top_item"] = item_name
+
+    if include_hotel:
+        hotel_clauses = ["1 = 1"]
+        hotel_params = []
+        if date_from:
+            # Prefix range keeps idx_hotel_room_invoices_generated usable.
+            hotel_clauses.append("invoice_generated_at >= ?")
+            hotel_params.append(str(date_from))
+        if date_to:
+            try:
+                end_exclusive = (
+                    datetime.strptime(str(date_to)[:10], "%Y-%m-%d").date()
+                    + timedelta(days=1)
+                ).isoformat()
+            except ValueError:
+                end_exclusive = str(date_to) + "\uffff"
+            hotel_clauses.append("invoice_generated_at < ?")
+            hotel_params.append(end_exclusive)
+        settlement_key = str(settlement or "").strip().lower()
+        if settlement_key == "settled":
+            hotel_clauses.append("LOWER(TRIM(COALESCE(status, ''))) = 'settled'")
+        elif settlement_key == "unsettled":
+            hotel_clauses.append("LOWER(TRIM(COALESCE(status, ''))) != 'settled'")
+        # Prefer JSON1 extract so we never pull/parse full payload blobs.
+        hotel_clauses.append(
+            """
+            (
+                LENGTH(TRIM(COALESCE(
+                    json_extract(payload_json, '$.stay.mobile'),
+                    json_extract(payload_json, '$.mobile'),
+                    ''
+                ))) >= 8
+            )
+            """
+        )
+        hotel_where = " AND ".join(hotel_clauses)
+        hotel_rows = conn.execute(
+            f"""
+            SELECT
+                COALESCE(
+                    json_extract(payload_json, '$.stay.mobile'),
+                    json_extract(payload_json, '$.mobile'),
+                    ''
+                ) AS mobile_raw,
+                MAX(NULLIF(TRIM(guest_name), '')) AS guest_name,
+                COUNT(*) AS order_count,
+                COALESCE(SUM(estimated_total), 0) AS hotel_value
+            FROM hotel_room_invoices
+            WHERE {hotel_where}
+            GROUP BY mobile_raw
+            """,
+            hotel_params,
+        ).fetchall()
+        for row in hotel_rows:
+            mobile = _hotel_guest_profile_key(row["mobile_raw"])
+            if len(mobile) != 10:
+                continue
+            guest = str(row["guest_name"] or "").strip() or "Guest"
+            bucket = _ensure(mobile, guest)
+            if not bucket:
+                continue
+            bucket["order_count"] += int(row["order_count"] or 0)
+            value = round(float(row["hotel_value"] or 0), 2)
+            bucket["hotel_value"] = round(bucket["hotel_value"] + value, 2)
+
+    # Prefer Customer Master names when present.
+    if by_mobile:
+        placeholders = ",".join("?" for _ in by_mobile)
+        master_rows = conn.execute(
+            f"""
+            SELECT mobile, first_name
+            FROM customers
+            WHERE mobile IN ({placeholders})
+            """,
+            list(by_mobile.keys()),
+        ).fetchall()
+        for row in master_rows:
+            key = _normalize_customer_mobile(row["mobile"])
+            bucket = by_mobile.get(key)
+            if not bucket:
+                continue
+            name = str(row["first_name"] or "").strip()
+            if name:
+                bucket["customer_name"] = name
+
+    results = []
+    for mobile, bucket in by_mobile.items():
+        top_item = str(bucket.pop("_top_item", "") or "").strip()
+        total = round(
+            float(bucket["restaurant_value"])
+            + float(bucket["bar_value"])
+            + float(bucket["hotel_value"]),
+            2,
+        )
+        results.append(
+            {
+                "mobile": mobile,
+                "customer_name": bucket["customer_name"] or "Guest",
+                "order_count": int(bucket["order_count"] or 0),
+                "top_item": top_item,
+                "restaurant_value": round(float(bucket["restaurant_value"]), 2),
+                "bar_value": round(float(bucket["bar_value"]), 2),
+                "hotel_value": round(float(bucket["hotel_value"]), 2),
+                "total_value": total,
+            }
+        )
+
+    results.sort(
+        key=lambda r: (-float(r.get("total_value") or 0), str(r.get("customer_name") or "").lower())
+    )
+    return results
+
+
+def customer_insights_kpis(rows):
+    """KPIs for customer insights list."""
+    rows = list(rows or [])
+    restaurant = 0.0
+    bar = 0.0
+    hotel = 0.0
+    orders = 0
+    for row in rows:
+        restaurant += float(row.get("restaurant_value") or 0)
+        bar += float(row.get("bar_value") or 0)
+        hotel += float(row.get("hotel_value") or 0)
+        orders += int(row.get("order_count") or 0)
+    total = round(restaurant + bar + hotel, 2)
+    return {
+        "customer_count": len(rows),
+        "order_count": orders,
+        "restaurant_value_sum": round(restaurant, 2),
+        "bar_value_sum": round(bar, 2),
+        "hotel_value_sum": round(hotel, 2),
+        "total_value_sum": total,
+    }
+
+
 def list_pos_today_invoices(conn, *, today=None, outlet=POS_OUTLET_RESTAURANT):
     """Active POS invoices for the business day — Tables Invoice hub.
 
@@ -4986,26 +5662,31 @@ def list_pos_today_invoices(conn, *, today=None, outlet=POS_OUTLET_RESTAURANT):
     )
     unsettled = pos_unsettled_today_summary_from_invoices(invoices)
     sales_total = 0.0
+    sales_count = 0
     for inv in invoices:
+        status = str((inv or {}).get("status") or "open").lower()
+        if status == "cancelled":
+            continue
+        sales_count += 1
         sales_total += _pos_money(inv.get("grand_total"))
     return {
         "date": today,
         "invoice_count": len(invoices),
         "invoices": invoices,
         "sales_total": _pos_money(sales_total),
-        "sales_count": len(invoices),
+        "sales_count": sales_count,
         "unsettled_count": unsettled["unsettled_count"],
         "unsettled_total": unsettled["unsettled_total"],
     }
 
 
 def pos_unsettled_today_summary_from_invoices(invoices):
-    """Sum open (not closed) invoice totals from a today-invoice list."""
+    """Sum open (not closed/cancelled) invoice totals from a today-invoice list."""
     total = 0.0
     count = 0
     for inv in invoices or []:
         status = str((inv or {}).get("status") or "open").lower()
-        if status == "closed":
+        if status in ("closed", "cancelled"):
             continue
         count += 1
         total += _pos_money((inv or {}).get("grand_total"))
@@ -5045,13 +5726,18 @@ def pos_invoice_kpis(conn, invoices, *, today=None):
     total_sales = 0.0
     today_sales = 0.0
     today_count = 0
+    counted = 0
     for inv in invoices or []:
+        status = str((inv or {}).get("status") or "open").lower()
+        if status == "cancelled":
+            continue
         amount = _pos_money(inv.get("grand_total"))
         total_sales += amount
+        counted += 1
         if str(inv.get("order_date") or "") == today:
             today_sales += amount
             today_count += 1
-    count = len(invoices or [])
+    count = counted
     average = (total_sales / count) if count else 0.0
     return {
         "total_sales": _pos_money(total_sales),
@@ -6670,6 +7356,90 @@ def hotel_room_invoice_kpis(rows):
         "settled": settled_count,
         "outstanding": round(outstanding, 2),
         "amount_sum": round(amount_sum, 2),
+    }
+
+
+def aggregate_settled_invoice_totals(conn, date_from, date_to, location=None):
+    """Sum settled invoice totals across Hotel / Restaurant / Bar.
+
+    location: None or 'All' → all modules; 'Hotel' / 'Restaurant' / 'Bar' → one module.
+    Returns {"total": float, "by_day": {iso_date: float}}.
+    """
+    ensure_hotel_room_invoices_schema(conn)
+    ensure_pos_schema(conn)
+
+    d0 = str(date_from)[:10]
+    d1 = str(date_to)[:10]
+    loc = str(location or "").strip()
+    if loc.lower() in ("", "all"):
+        loc = None
+
+    by_day = {}
+    total = 0.0
+
+    include_hotel = loc in (None, "Hotel")
+    include_restaurant = loc in (None, "Restaurant")
+    include_bar = loc in (None, "Bar")
+
+    if include_hotel:
+        rows = conn.execute(
+            """
+            SELECT substr(invoice_generated_at, 1, 10) AS sales_day,
+                   COALESCE(SUM(estimated_total), 0) AS amount
+            FROM hotel_room_invoices
+            WHERE status = 'settled'
+              AND substr(invoice_generated_at, 1, 10) >= ?
+              AND substr(invoice_generated_at, 1, 10) <= ?
+            GROUP BY substr(invoice_generated_at, 1, 10)
+            """,
+            (d0, d1),
+        ).fetchall()
+        for row in rows:
+            day = str(row["sales_day"] or "")[:10]
+            if not day:
+                continue
+            amount = float(row["amount"] or 0)
+            by_day[day] = by_day.get(day, 0.0) + amount
+            total += amount
+
+    outlets = []
+    if include_restaurant:
+        outlets.append(POS_OUTLET_RESTAURANT)
+    if include_bar:
+        outlets.append(POS_OUTLET_BAR)
+    if outlets:
+        placeholders = ",".join("?" for _ in outlets)
+        rows = conn.execute(
+            f"""
+            SELECT i.order_date AS sales_day,
+                   COALESCE(SUM(i.grand_total), 0) AS amount
+            FROM pos_invoices i
+            WHERE i.is_active = 1
+              AND i.outlet IN ({placeholders})
+              AND i.order_date >= ?
+              AND i.order_date <= ?
+              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
+              AND (
+                    EXISTS (
+                        SELECT 1 FROM pos_invoice_payments p WHERE p.invoice_id = i.id
+                    )
+                    OR TRIM(COALESCE(i.settled_at, '')) != ''
+              )
+            GROUP BY i.order_date
+            """,
+            (*outlets, d0, d1),
+        ).fetchall()
+        for row in rows:
+            day = str(row["sales_day"] or "")[:10]
+            if not day:
+                continue
+            amount = float(row["amount"] or 0)
+            by_day[day] = by_day.get(day, 0.0) + amount
+            total += amount
+
+    return {
+        "total": round(total, 2),
+        "by_day": {day: round(amount, 2) for day, amount in by_day.items()},
     }
 
 
@@ -10667,12 +11437,36 @@ def init_db():
         cursor.execute("ALTER TABLE users ADD COLUMN unlock_token_hash TEXT")
     if "unlock_token_expires_at" not in existing_user_cols:
         cursor.execute("ALTER TABLE users ADD COLUMN unlock_token_expires_at TEXT")
+    if "role_id" not in existing_user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN role_id INTEGER")
+    if "photo_path" not in existing_user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_permissions (
             user_id  INTEGER NOT NULL,
             scope    TEXT    NOT NULL,
             item_key TEXT    NOT NULL
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS access_roles (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT    NOT NULL UNIQUE,
+            description TEXT    NOT NULL DEFAULT '',
+            is_admin    INTEGER NOT NULL DEFAULT 0,
+            is_active   INTEGER NOT NULL DEFAULT 1,
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS access_role_permissions (
+            role_id  INTEGER NOT NULL,
+            scope    TEXT    NOT NULL,
+            item_key TEXT    NOT NULL,
+            UNIQUE(role_id, scope, item_key)
         )
     """)
 
@@ -11200,6 +11994,10 @@ def init_db():
                VALUES (?, ?, ?, 1, 1, ?, ?)""",
             ("admin", "Administrator", auth_security.hash_password("admin"), now, now),
         )
+
+    from workspace_access import ensure_access_roles_schema
+
+    ensure_access_roles_schema(conn)
 
     ensure_hotel_rooms_schema(conn)
     get_hotel_rooms_layout(conn)

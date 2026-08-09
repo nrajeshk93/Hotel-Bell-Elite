@@ -293,9 +293,12 @@ class MenuSalesReportTests(unittest.TestCase):
         page = self.client.get("/reports/sales/menu")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
-        self.assertIn("Menu Sales", html)
+        self.assertIn("Menu Insights", html)
         self.assertIn('id="menu-sales-report-page"', html)
         self.assertIn("Chicken Butter Masala", html)
+        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        self.assertIn(f'value="{fy_start.isoformat()}"', html)
+        self.assertIn(f'value="{today.isoformat()}"', html)
         self.assertIn("Orders", html)
         self.assertIn("Qty", html)
         self.assertIn("Sale", html)
@@ -317,9 +320,9 @@ class MenuSalesReportTests(unittest.TestCase):
         from openpyxl import load_workbook
 
         wb = load_workbook(BytesIO(export.data))
-        self.assertEqual(wb.sheetnames, ["Menu Sales"])
-        ws = wb["Menu Sales"]
-        self.assertEqual(ws["A1"].value, "Hotel Bell Elite — Menu Sales")
+        self.assertEqual(wb.sheetnames, ["Menu Insights"])
+        ws = wb["Menu Insights"]
+        self.assertEqual(ws["A1"].value, "Hotel Bell Elite — Menu Insights")
         self.assertIn("A1:F1", {str(r) for r in ws.merged_cells.ranges})
         self.assertEqual(
             [ws.cell(2, c).value for c in range(1, 7)],

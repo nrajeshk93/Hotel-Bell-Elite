@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='access_module_access.css') }}?v=3">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <script>
@@ -37,6 +37,9 @@ a{text-decoration:none;color:inherit}
 .layout{display:grid;grid-template-columns:minmax(390px,470px) minmax(0,1fr);gap:22px}
 .layout.form-focus,.layout.users-full{grid-template-columns:1fr}
 .card{overflow:hidden;margin-bottom:0}
+/* Role listbox is absolutely positioned — do not clip it at the card edge. */
+#user-form.card,
+#user-form.card .card-body{overflow:visible}
 .card-hdr{padding:18px 22px;border-bottom:1px solid var(--border-s);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .card-body{padding:22px}
 .msg{padding:12px 14px;border-radius:12px;font-size:13px;font-weight:600;margin-bottom:16px}
@@ -54,6 +57,11 @@ input[type="text"],input[type="password"],input[type="email"],input[type="search
 input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,input[type="search"]:focus{
   border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-ring)
 }
+.am-role-listbox{position:relative;width:100%}
+.am-role-listbox .se-filter-chip-control{border-radius:12px}
+.am-role-listbox .se-filter-chip-trigger{width:100%;justify-content:flex-start;text-align:left}
+.am-role-listbox .se-filter-listbox{left:0;right:0;z-index:80}
+.am-role-listbox.is-open{z-index:90}
 .section-panel{margin-top:22px;padding:24px;border:1px solid #E5E7EB;border-radius:18px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}
 .section-panel > label{font-size:14px;font-weight:700;color:#111827;letter-spacing:-.01em}
 .check-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
@@ -72,7 +80,7 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
 .toggle-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:18px}
 .toggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--txt2)}
 .helper{font-size:12px;color:var(--txt3);line-height:1.55;margin-top:8px;max-width:72ch}
-.form-actions{display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-s);flex-wrap:wrap}
+.form-actions{display:flex;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-s);flex-wrap:wrap;justify-content:flex-end}
 .users-panel.hidden{display:none}
 .empty{padding:36px 18px;text-align:center;color:var(--txt3)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1;white-space:nowrap;font-family:inherit;border:none}
@@ -106,7 +114,13 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
       <div class="su-header-tools">
         {% if form_focus %}
         <a class="btn" href="{{ url_for('access_management') }}">Users</a>
+        {% if has_user_access_submodule('roles') %}
+        <a class="btn" href="{{ url_for('access_roles') }}">Roles</a>
+        {% endif %}
         {% else %}
+        {% if has_user_access_submodule('roles') %}
+        <a class="btn" href="{{ url_for('access_roles') }}">Roles</a>
+        {% endif %}
         <a class="btn btn-primary" href="{{ url_for('access_management', focus='form') }}">Add User</a>
         {% endif %}
       </div>
@@ -137,8 +151,9 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
             </div>
             <div class="se-filter-listbox" id="am-users-role-list" role="listbox" aria-labelledby="am-users-role-label" hidden>
               <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="all" aria-selected="true">All</button>
-              <button type="button" class="se-filter-listbox-option" role="option" data-value="admin" aria-selected="false">Administrator</button>
-              <button type="button" class="se-filter-listbox-option" role="option" data-value="user" aria-selected="false">Standard User</button>
+              {% for role in roles %}
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="{{ role.id }}" aria-selected="false">{{ role.name }}</button>
+              {% endfor %}
             </div>
           </div>
           <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="amOnUsersFilterChange">
@@ -173,15 +188,6 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
     <div class="layout{% if form_focus %} form-focus{% else %} users-full{% endif %}">
       {% if form_focus %}
         <section class="card" id="user-form">
-          <div class="card-hdr">
-            <div>
-              <div class="card-title">{% if form.id %}Edit User{% else %}Add User{% endif %}</div>
-              <div class="card-sub">{% if form.id %}Update user access{% else %}Create a new user{% endif %}</div>
-            </div>
-            {% if form.id %}
-            <a class="btn" href="{{ url_for('access_management', focus='form') }}">Add User</a>
-            {% endif %}
-          </div>
           <div class="card-body">
             {% if success_message %}
             <div class="msg ok">{{ success_message }}</div>
@@ -194,8 +200,38 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
             </div>
             {% endif %}
 
-            <form method="POST" action="{{ url_for('save_access_user') }}">
+            <form method="POST" action="{{ url_for('save_access_user') }}" enctype="multipart/form-data" id="am-user-form">
               <input type="hidden" name="user_id" value="{{ form.id }}">
+              <input type="hidden" name="remove_photo" id="am-remove-photo" value="">
+
+              {% set form_name = form.full_name or form.username or 'User' %}
+              {% set form_parts = form_name.split() %}
+              {% if form_parts|length >= 2 %}
+                {% set form_initials = (form_parts[0][0] ~ form_parts[1][0])|upper %}
+              {% elif form_parts %}
+                {% set form_initials = form_parts[0][:2]|upper %}
+              {% else %}
+                {% set form_initials = 'U' %}
+              {% endif %}
+              <div class="am-photo-field">
+                <div class="am-photo-preview am-avatar-tone-{{ form.avatar_tone|default(0) }}" id="am-photo-preview" aria-hidden="true">
+                  {% if form.photo_path %}
+                  <img src="{{ url_for('access_user_photo', stored_name=form.photo_path) }}" alt="" id="am-photo-preview-img">
+                  <span class="am-photo-initials" id="am-photo-preview-initials" hidden>{{ form_initials }}</span>
+                  {% else %}
+                  <span class="am-photo-initials" id="am-photo-preview-initials">{{ form_initials }}</span>
+                  {% endif %}
+                </div>
+                <div class="am-photo-actions">
+                  <label class="am-photo-label" for="am-photo-input">Profile photo</label>
+                  <div class="am-photo-buttons">
+                    <label class="btn am-photo-upload-btn" for="am-photo-input">Upload photo</label>
+                    <input type="file" id="am-photo-input" name="photo" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/gif" hidden>
+                    <button type="button" class="btn" id="am-photo-remove-btn"{% if not form.photo_path %} hidden{% endif %}>Remove</button>
+                  </div>
+                  <p class="helper">JPG, PNG, or WebP up to 5&nbsp;MB. Shown on the users grid.</p>
+                </div>
+              </div>
 
               <div class="form-grid">
                 <div>
@@ -216,46 +252,61 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
                 </div>
               </div>
 
-              <div class="toggle-row">
-                <label class="toggle"><input type="checkbox" name="is_admin" value="1" {% if form.is_admin %}checked{% endif %}> Administrator</label>
-              </div>
-
-              <div class="section-panel" id="ma-access-root">
-                <label>Module Access</label>
-                <div class="helper" style="margin-top:6px;margin-bottom:14px;">Main modules and sub-modules are loaded automatically from the system registry.</div>
-
-                <script type="application/json" id="ma-tree-data">{{ access_module_tree_ui | tojson }}</script>
-                <script type="application/json" id="ma-initial-dashboard">{{ form.dashboard_modules | tojson }}</script>
-                <script type="application/json" id="ma-initial-sales-analytics">{{ form.sales_analytics_modules | tojson }}</script>
-                <script type="application/json" id="ma-initial-user-access">{{ form.user_access_modules | tojson }}</script>
-                <script type="application/json" id="ma-initial-payroll">{{ form.payroll_modules | tojson }}</script>
-                <script type="application/json" id="ma-initial-accounts">{{ form.accounts_modules | default([]) | tojson }}</script>
-                <script type="application/json" id="ma-initial-stores">{{ form.stores_modules | default([]) | tojson }}</script>
-                <div id="ma-hidden-inputs" class="ma-hidden-inputs" aria-hidden="true"></div>
-
-                <div class="ma-access">
-                  <div class="ma-access-card ma-tree-card">
-                    <div class="ma-tree-toolbar">
-                      <h3>Module tree</h3>
-                      <div class="ma-tree-toolbar-actions">
-                        <button type="button" class="ma-collapse-all" id="ma-collapse-all">Collapse All</button>
-                      </div>
+              {% set selected_role_id = form.role_id|string if form.role_id else '' %}
+              {% set ns = namespace(selected_role_label='Select a role…') %}
+              {% for role in roles %}
+                {% if selected_role_id and selected_role_id == (role.id|string) %}
+                  {% set ns.selected_role_label = role.name ~ (' (full access)' if role.is_admin else '') %}
+                {% endif %}
+              {% endfor %}
+              <div class="form-grid" style="margin-top:18px">
+                <div class="form-full">
+                  <div
+                    class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox am-role-listbox"
+                    data-se-listbox
+                    data-se-listbox-change="amOnRoleChange"
+                    id="am-role-listbox"
+                  >
+                    <span class="se-filter-chip-label" id="am-role-label">Role *</span>
+                    <div class="se-filter-chip-control">
+                      <input type="hidden" id="role_id" name="role_id" value="{{ selected_role_id }}">
+                      <button
+                        type="button"
+                        class="se-filter-chip-trigger"
+                        id="am-role-trigger"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-controls="am-role-list"
+                        aria-labelledby="am-role-label am-role-value"
+                      >
+                        <span class="se-filter-chip-value{% if not selected_role_id %} is-placeholder staff-supplier-placeholder{% endif %}" id="am-role-value">{{ ns.selected_role_label }}</span>
+                      </button>
+                      <span class="se-filter-chip-chev" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                      </span>
                     </div>
-                    <div class="ma-tree-search-wrap">
-                      <input type="search" class="ma-tree-search" id="ma-tree-search" placeholder="Search modules..." autocomplete="off" aria-label="Search modules">
-                    </div>
-                    <div class="ma-tree-scroll">
-                      <ul class="ma-tree" id="ma-tree" role="tree" aria-label="Module access tree"></ul>
-                    </div>
-                  </div>
-
-                  <div class="ma-access-card ma-summary-card" id="ma-summary" aria-live="polite">
-                    <div class="ma-summary-empty">
-                      <i data-lucide="layout-grid"></i>
-                      <p>Select a module to view access details.</p>
+                    <div class="se-filter-listbox" id="am-role-list" role="listbox" aria-labelledby="am-role-label" hidden>
+                      {% for role in roles %}
+                      {% set role_label = role.name ~ (' (full access)' if role.is_admin else '') %}
+                      <button
+                        type="button"
+                        class="se-filter-listbox-option{% if selected_role_id == (role.id|string) %} is-selected{% endif %}"
+                        role="option"
+                        data-value="{{ role.id }}"
+                        data-name="{{ role_label|lower }}"
+                        data-label="{{ role_label }}"
+                        aria-selected="{{ 'true' if selected_role_id == (role.id|string) else 'false' }}"
+                      >{{ role_label }}</button>
+                      {% endfor %}
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <script type="application/json" id="am-roles-summary-data">{{ roles_summary|default([]) | tojson }}</script>
+              <div class="section-panel" id="am-role-summary-panel" hidden>
+                <label>Role access</label>
+                <div class="am-access-chips" id="am-role-summary-chips" style="margin-top:12px"></div>
               </div>
 
               <div class="form-actions">
@@ -268,147 +319,240 @@ input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,
       {% endif %}
 
       {% if not form_focus %}
-        <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel am-users-panel" aria-label="Existing users">
-          <div class="card-hdr">
-            <div class="card-title">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              <span>Users</span>
-            </div>
-            <span class="pl-count" id="am-users-count">{{ users|length }} account{{ '' if users|length == 1 else 's' }}</span>
+        <section class="am-users-panel hbe-scroll-panel" aria-label="Existing users">
+          <div class="am-users-intro">
+            <h2 class="am-users-title">User Management</h2>
+            <span class="am-users-count" id="am-users-count">{{ users|length }} account{{ '' if users|length == 1 else 's' }}</span>
           </div>
-          <div class="card-body pl-card-body--flush">
-            {% if users %}
-            <div class="pl-table-wrap" tabindex="0" aria-label="Users, scroll for more">
-              <table class="pl-table am-users-table" aria-label="User accounts">
-                <thead>
-                  <tr>
-                    <th scope="col">User</th>
-                    <th scope="col">Role</th>
-                    <th scope="col">Status</th>
-                    <th scope="col">Access &amp; Permissions</th>
-                    <th class="pl-col-actions" scope="col">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="am-users-list">
-                  {% for user in users %}
-                  {% set name_parts = user.display_name.split() %}
-                  {% if name_parts|length >= 2 %}
-                    {% set user_initials = (name_parts[0][0] ~ name_parts[1][0])|upper %}
-                  {% elif name_parts %}
-                    {% set user_initials = name_parts[0][:2]|upper %}
-                  {% else %}
-                    {% set user_initials = 'U' %}
-                  {% endif %}
-                  <tr
-                    class="am-user-row pl-expense-row"
-                    data-user-id="{{ user.id }}"
-                    data-search="{{ (user.display_name ~ ' ' ~ user.username ~ ' ' ~ (user.email or ''))|lower }}"
-                    data-role="{{ 'admin' if user.is_admin else 'user' }}"
-                    data-status="{{ user.account_status }}"
-                    data-name="{{ user.display_name|lower }}"
-                  >
-                    <td>
-                      <div class="am-user-identity">
-                        <div class="am-user-avatar" aria-hidden="true">{{ user_initials }}</div>
-                        <div class="am-user-meta">
-                          <div class="pl-name am-user-name">{{ user.display_name }}</div>
-                          <div class="pl-meta am-user-handle">@{{ user.username }}{% if user.email %} · {{ user.email }}{% endif %}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      {% if user.is_admin %}
-                      <span class="am-role-badge am-role-admin"><i data-lucide="shield" aria-hidden="true"></i> Administrator</span>
-                      {% else %}
-                      <span class="am-role-badge am-role-user"><i data-lucide="user" aria-hidden="true"></i> Standard User</span>
-                      {% endif %}
-                    </td>
-                    <td>
+          {% if users %}
+          <div class="am-users-grid-wrap" id="am-users-grid-wrap" tabindex="0" aria-label="Users, scroll for more">
+            <div class="am-users-grid" id="am-users-list">
+              {% for user in users %}
+              {% set name_parts = user.display_name.split() %}
+              {% if name_parts|length >= 2 %}
+                {% set user_initials = (name_parts[0][0] ~ name_parts[1][0])|upper %}
+              {% elif name_parts %}
+                {% set user_initials = name_parts[0][:2]|upper %}
+              {% else %}
+                {% set user_initials = 'U' %}
+              {% endif %}
+              {% set role_label = user.role_name or ('Super Administrator' if user.is_admin else 'Unassigned') %}
+              <article
+                class="am-user-card am-user-row"
+                data-user-id="{{ user.id }}"
+                data-edit-href="{{ url_for('access_management', user_id=user.id, focus='form') }}"
+                data-search="{{ (user.display_name ~ ' ' ~ user.username ~ ' ' ~ (user.email or '') ~ ' ' ~ role_label)|lower }}"
+                data-role="{{ user.role_id if user.role_id else 'unassigned' }}"
+                data-status="{{ user.account_status }}"
+                data-name="{{ user.display_name|lower }}"
+                tabindex="0"
+                role="link"
+                aria-label="Edit {{ user.display_name }}"
+              >
+                <div class="am-user-card-top">
+                  <div class="am-user-avatar am-avatar-tone-{{ user.avatar_tone|default(0) }}" aria-hidden="true">
+                    {% if user.photo_path %}
+                    <img src="{{ url_for('access_user_photo', stored_name=user.photo_path) }}" alt="">
+                    {% else %}
+                    <span>{{ user_initials }}</span>
+                    {% endif %}
+                  </div>
+                  <div class="am-user-menu">
+                    <button type="button" class="am-user-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Actions for {{ user.display_name }}">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>
+                    </button>
+                    <div class="am-user-menu-panel" role="menu" hidden>
                       {% if user.is_locked %}
-                      <span class="am-status-badge am-status-locked">Locked</span>
-                      {% elif user.is_active %}
-                      <span class="am-status-badge am-status-active">Active</span>
-                      {% else %}
-                      <span class="am-status-badge am-status-inactive">Inactive</span>
+                      <form method="POST" action="{{ url_for('unlock_access_user', user_id=user.id) }}">
+                        <button type="submit" class="am-user-menu-item" role="menuitem">Unlock</button>
+                      </form>
                       {% endif %}
-                    </td>
-                    <td class="am-user-access">
-                      <div class="am-access-chips">
-                        {% if user.is_admin %}
-                          <span class="am-access-chip am-access-chip-full">
-                            <i data-lucide="shield-check" aria-hidden="true"></i>
-                            <span>All modules</span>
-                          </span>
+                      <a class="am-user-menu-item" role="menuitem" href="{{ url_for('access_management', user_id=user.id, focus='form') }}">Edit</a>
+                      {% if current_user and current_user.id != user.id %}
+                        {% if user.is_active %}
+                        <form method="POST" action="{{ url_for('toggle_access_user_active', user_id=user.id) }}">
+                          <button type="submit" class="am-user-menu-item" role="menuitem">Mark Inactive</button>
+                        </form>
                         {% else %}
-                          {% set raw_chips = user.dashboard_labels + user.sales_analytics_labels + user.user_access_labels + user.accounts_labels|default([]) + user.payroll_labels|default([]) + user.stores_labels|default([]) %}
-                          {% set chip_ns = namespace(chips=[], seen=[]) %}
-                          {% for chip in raw_chips %}
-                            {% if chip and chip not in chip_ns.seen %}
-                              {% set chip_ns.seen = chip_ns.seen + [chip] %}
-                              {% set chip_ns.chips = chip_ns.chips + [chip] %}
-                            {% endif %}
-                          {% endfor %}
-                          {% if chip_ns.chips %}
-                            {% for chip in chip_ns.chips[:4] %}
-                            <span class="am-access-chip{% if chip.startswith('Companies:') or chip.startswith('Locations:') %} am-access-chip-scope{% endif %}" data-chip="{{ chip }}">
-                              <span>{{ chip }}</span>
-                            </span>
-                            {% endfor %}
-                            {% if chip_ns.chips|length > 4 %}
-                            <a class="am-access-chip am-access-chip-more" href="{{ url_for('access_management', user_id=user.id, focus='form') }}" title="View all permissions">+{{ chip_ns.chips|length - 4 }} more</a>
-                            {% endif %}
-                          {% else %}
-                            <span class="am-access-chip am-access-chip-empty"><span>No access</span></span>
-                          {% endif %}
-                        {% endif %}
-                      </div>
-                    </td>
-                    <td class="pl-col-actions">
-                      <div class="act-grp pl-action-btns">
-                        {% if user.is_locked %}
-                        <form method="POST" action="{{ url_for('unlock_access_user', user_id=user.id) }}">
-                          <button type="submit" class="act-btn edit" data-tip="Unlock" title="Unlock {{ user.display_name }}" aria-label="Unlock {{ user.display_name }}">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
-                          </button>
+                        <form method="POST" action="{{ url_for('toggle_access_user_active', user_id=user.id) }}">
+                          <button type="submit" class="am-user-menu-item" role="menuitem">Activate</button>
                         </form>
                         {% endif %}
-                        <a class="act-btn edit" href="{{ url_for('access_management', user_id=user.id, focus='form') }}" data-tip="Edit" title="Edit {{ user.display_name }}" aria-label="Edit {{ user.display_name }}">
-                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                        </a>
-                        {% if user.username|lower != 'admin' %}
-                        <form method="POST" action="{{ url_for('delete_access_user', user_id=user.id) }}" onsubmit="return confirm('Delete {{ user.display_name }}?')">
-                          <button type="submit" class="act-btn del" data-tip="Delete" title="Delete {{ user.display_name }}" aria-label="Delete {{ user.display_name }}">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                          </button>
-                        </form>
-                        {% endif %}
-                      </div>
-                    </td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
+                      {% endif %}
+                      {% if user.username|lower != 'admin' %}
+                      <form method="POST" action="{{ url_for('delete_access_user', user_id=user.id) }}" onsubmit="return confirm('Delete {{ user.display_name }}?')">
+                        <button type="submit" class="am-user-menu-item am-user-menu-item--danger" role="menuitem">Delete</button>
+                      </form>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+                <div class="am-user-card-body">
+                  <div class="am-user-name">{{ user.display_name }}</div>
+                </div>
+                <div class="am-user-card-footer">
+                  <span class="am-role-dot am-role-tone-{{ user.role_tone|default(0) }}">{{ role_label }}</span>
+                  {% if user.is_locked %}
+                  <span class="am-card-status am-card-status--locked">Locked</span>
+                  {% elif not user.is_active %}
+                  <span class="am-card-status am-card-status--inactive">Inactive</span>
+                  {% endif %}
+                </div>
+              </article>
+              {% endfor %}
             </div>
-            <div class="am-users-empty-filter pl-empty hidden" id="am-users-empty-filter">
-              <p>No users match your search or filters.</p>
-            </div>
-            <div class="am-users-pagination" id="am-users-pagination" hidden></div>
-            {% else %}
-            <div class="am-users-empty pl-empty">
-              <p>No user accounts found.</p>
-            </div>
-            {% endif %}
           </div>
-        </article>
+          <div class="am-users-empty-filter pl-empty hidden" id="am-users-empty-filter">
+            <p>No users match your search or filters.</p>
+          </div>
+          <div class="am-users-pagination" id="am-users-pagination" hidden></div>
+          {% else %}
+          <div class="am-users-empty pl-empty">
+            <p>No user accounts found.</p>
+          </div>
+          {% endif %}
+        </section>
       {% endif %}
     </div>
   </section>
 </div>
 
-<script src="{{ url_for('static', filename='access_module_access.js') }}?v=3"></script>
-{% if not form_focus %}
+{% if form_focus %}
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
-<script src="{{ url_for('static', filename='access_users_list.js') }}?v=6"></script>
+<script>
+(function(){
+  function byId(id){ return document.getElementById(id); }
+  function parseJson(el, fallback){
+    if(!el) return fallback;
+    try { return JSON.parse(el.textContent || ''); } catch(e){ return fallback; }
+  }
+
+  var photoInput = byId('am-photo-input');
+  var photoPreview = byId('am-photo-preview');
+  var photoImg = byId('am-photo-preview-img');
+  var photoInitials = byId('am-photo-preview-initials');
+  var photoRemoveBtn = byId('am-photo-remove-btn');
+  var removePhotoField = byId('am-remove-photo');
+  var objectUrl = null;
+
+  function showInitials(){
+    if(photoImg){
+      photoImg.remove();
+      photoImg = null;
+    }
+    if(photoInitials) photoInitials.hidden = false;
+    if(photoRemoveBtn) photoRemoveBtn.hidden = true;
+  }
+
+  function showImage(src){
+    if(!photoPreview) return;
+    if(!photoImg){
+      photoImg = document.createElement('img');
+      photoImg.id = 'am-photo-preview-img';
+      photoImg.alt = '';
+      photoPreview.insertBefore(photoImg, photoPreview.firstChild);
+    }
+    photoImg.src = src;
+    if(photoInitials) photoInitials.hidden = true;
+    if(photoRemoveBtn) photoRemoveBtn.hidden = false;
+  }
+
+  if(photoInput){
+    photoInput.addEventListener('change', function(){
+      var file = photoInput.files && photoInput.files[0];
+      if(!file) return;
+      if(objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(file);
+      if(removePhotoField) removePhotoField.value = '';
+      showImage(objectUrl);
+    });
+  }
+  if(photoRemoveBtn){
+    photoRemoveBtn.addEventListener('click', function(){
+      if(photoInput) photoInput.value = '';
+      if(objectUrl){ URL.revokeObjectURL(objectUrl); objectUrl = null; }
+      if(removePhotoField) removePhotoField.value = '1';
+      showInitials();
+    });
+  }
+
+  var roleInput = byId('role_id');
+  var valueEl = byId('am-role-value');
+  var panel = byId('am-role-summary-panel');
+  var chips = byId('am-role-summary-chips');
+  var roles = parseJson(byId('am-roles-summary-data'), []);
+  if(!roleInput || !panel || !chips) return;
+
+  function render(roleId){
+    roleId = String(roleId || roleInput.value || '');
+    var role = null;
+    for(var i = 0; i < roles.length; i++){
+      if(String(roles[i].id) === roleId){ role = roles[i]; break; }
+    }
+    if(!role){
+      panel.hidden = true;
+      chips.innerHTML = '';
+      return;
+    }
+    panel.hidden = false;
+    if(role.is_admin){
+      chips.innerHTML = '<span class="am-access-chip am-access-chip-full"><i data-lucide="shield-check" aria-hidden="true"></i><span>Full access</span></span>';
+    } else {
+      var labels = [].concat(
+        role.dashboard_labels || [],
+        role.sales_analytics_labels || [],
+        role.user_access_labels || [],
+        role.accounts_labels || [],
+        role.payroll_labels || [],
+        role.stores_labels || []
+      );
+      if(!labels.length){
+        chips.innerHTML = '<span class="am-access-chip am-access-chip-empty"><span>No access</span></span>';
+      } else {
+        chips.innerHTML = labels.slice(0, 8).map(function(label){
+          return '<span class="am-access-chip"><span>' + String(label).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</span></span>';
+        }).join('');
+        if(labels.length > 8){
+          chips.innerHTML += '<span class="am-access-chip am-access-chip-more">+' + (labels.length - 8) + ' more</span>';
+        }
+      }
+    }
+    if(window.lucide && typeof window.lucide.createIcons === 'function'){
+      window.lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
+    }
+  }
+
+  window.amOnRoleChange = function(_root, value, label){
+    if(roleInput) roleInput.value = value || '';
+    if(valueEl){
+      valueEl.textContent = label || 'Select a role…';
+      if(value){
+        valueEl.classList.remove('is-placeholder', 'staff-supplier-placeholder');
+      } else {
+        valueEl.classList.add('is-placeholder', 'staff-supplier-placeholder');
+      }
+    }
+    render(value);
+  };
+
+  var form = roleInput.closest('form');
+  if(form){
+    form.addEventListener('submit', function(e){
+      if(!String(roleInput.value || '').trim()){
+        e.preventDefault();
+        var trigger = byId('am-role-trigger');
+        if(trigger) trigger.focus();
+        alert('Please select a role.');
+      }
+    });
+  }
+
+  render(roleInput.value);
+})();
+</script>
+{% else %}
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='access_users_list.js') }}?v=9"></script>
 {% endif %}
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>

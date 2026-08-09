@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=20">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -29,7 +29,8 @@
   data-create-url="{{ create_credit_payment_url }}"
   data-delete-url="{{ delete_credit_payment_url }}"
   data-detail-url-template="{{ settlement_detail_url_template }}"
-  data-today="{{ today_iso }}">
+  data-today="{{ today_iso }}"
+  data-can-mutate="{{ '1' if can_mutate_settlement else '0' }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -234,12 +235,13 @@
         </div>
         <div class="cp-panel-actions">
           <span class="pl-count" id="cp-entry-count">{{ outstanding_entries|length }} entries</span>
-          {% if outstanding_entries %}
+          {% if outstanding_entries and can_mutate_settlement %}
           <button type="button" class="btn btn-primary" id="cp-header-verify-btn" disabled>{{ settlement_labels.action_button }}</button>
           {% endif %}
         </div>
       </div>
       {% if outstanding_entries %}
+      {% if can_mutate_settlement %}
       <div class="cp-bulk-bar" id="cp-selection-bar" hidden data-action-label="{{ settlement_labels.action_button }}">
         <div class="cp-bulk-bar-left">
           <span class="cp-bulk-bar-icon" aria-hidden="true">
@@ -261,6 +263,7 @@
         </div>
       </div>
       {% endif %}
+      {% endif %}
       <div class="card-body pl-card-body--flush">
         {% if outstanding_entries %}
         <div class="cp-outstanding-error staff-credit-error" id="cp-outstanding-error" hidden></div>
@@ -268,9 +271,11 @@
           <table class="pl-table cp-outstanding-table" id="cp-outstanding-table" aria-label="{{ settlement_labels.outstanding_table_aria }}">
             <thead>
               <tr>
+                {% if can_mutate_settlement %}
                 <th class="cp-col-check">
                   <input type="checkbox" class="cp-expense-check" id="cp-select-all" aria-label="Select all expenses">
                 </th>
+                {% endif %}
                 <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">Expense ID</th>
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
                 <th class="pl-sortable" data-sort="expense" scope="col" tabindex="0" aria-sort="none">Expense</th>
@@ -278,7 +283,9 @@
                 <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
                 <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
                 <th class="pl-sortable pl-col-amount" data-sort="balance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Balance</th>
+                {% if can_mutate_settlement %}
                 <th class="cp-col-actions" scope="col">Action</th>
+                {% endif %}
               </tr>
             </thead>
             <tbody>
@@ -304,9 +311,11 @@
                   data-balance="{{ entry.balance }}"
                   data-category="{{ entry.category or '' }}"
                   data-search="{{ search_blob|e }}">
+                {% if can_mutate_settlement %}
                 <td class="cp-col-check">
                   <input type="checkbox" class="cp-expense-check cp-row-check" aria-label="Select {{ entry.expense_code or entry.id }}">
                 </td>
+                {% endif %}
                 <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
                 <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date }}</td>
                 <td data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
@@ -321,6 +330,7 @@
                 </td>
                 <td class="pl-col-amount pl-amount" data-amount="{{ entry.amount }}" data-sort-value="{{ entry.amount }}">{{ entry.amount }}</td>
                 <td class="pl-col-amount pl-amount cp-balance" data-amount="{{ entry.balance }}" data-sort-value="{{ entry.balance }}">{{ entry.balance }}</td>
+                {% if can_mutate_settlement %}
                 <td class="cp-col-actions">
                   <button
                     type="button"
@@ -334,6 +344,7 @@
                     <span>{{ settlement_labels.row_action_button }}</span>
                   </button>
                 </td>
+                {% endif %}
               </tr>
               {% endfor %}
             </tbody>
@@ -440,7 +451,28 @@
                 </td>
                 {% endif %}
                 <td class="cp-col-actions">
-                  <button type="button" class="cp-link-btn cp-view-payment" data-payment-id="{{ entry.id }}">View</button>
+                  <div class="act-grp">
+                    <button
+                      type="button"
+                      class="act-btn edit cp-view-payment"
+                      data-tip="View"
+                      aria-label="View payment {{ entry.id }}"
+                      data-payment-id="{{ entry.id }}"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    </button>
+                    {% if can_mutate_settlement %}
+                    <button
+                      type="button"
+                      class="act-btn del cp-delete-payment"
+                      data-tip="{{ settlement_labels.history_revert_tip|default('Revert') }}"
+                      aria-label="{{ settlement_labels.history_revert_tip|default('Revert') }}"
+                      data-payment-id="{{ entry.id }}"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                    </button>
+                    {% endif %}
+                  </div>
                 </td>
               </tr>
               {% endfor %}
@@ -498,7 +530,6 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
       <span id="cp-clearance-title">{{ settlement_labels.clearance_modal_title }}</span>
     </div>
-    <p class="staff-credit-copy">{{ settlement_labels.clearance_modal_copy }}</p>
     <div id="cp-clearance-error" class="staff-credit-error"></div>
     <div class="staff-field">
       <label for="cp-payment-date">{{ settlement_labels.clearance_date_label }}</label>

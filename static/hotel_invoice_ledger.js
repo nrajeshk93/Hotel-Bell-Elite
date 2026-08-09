@@ -45,23 +45,32 @@
   }
 
   function formatAmounts(root) {
-    var format =
-      typeof global.formatInr === 'function'
-        ? function (n) {
-            return global.formatInr(n, 2);
-          }
-        : function (n) {
-            var v = Number(n);
-            if (isNaN(v)) v = 0;
-            return (
-              '₹' +
-              v.toLocaleString('en-IN', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-              })
-            );
-          };
     $all('.pl-amount[data-amount]', root).forEach(function (el) {
+      if (typeof global.formatAmountNode === 'function') {
+        global.formatAmountNode(el);
+        return;
+      }
+      var isKpi =
+        typeof global.isKpiAmountNode === 'function'
+          ? global.isKpiAmountNode(el)
+          : el.classList.contains('pl-summary-value');
+      var places = isKpi ? 0 : 2;
+      var format =
+        typeof global.formatInr === 'function'
+          ? function (n) {
+              return global.formatInr(n, places);
+            }
+          : function (n) {
+              var v = Number(n);
+              if (isNaN(v)) v = 0;
+              return (
+                '₹' +
+                v.toLocaleString('en-IN', {
+                  minimumFractionDigits: places,
+                  maximumFractionDigits: places
+                })
+              );
+            };
       el.textContent = format(el.getAttribute('data-amount'));
     });
     if (typeof global.scheduleFitKpiValues === 'function') {

@@ -255,6 +255,112 @@ class LoginSecurityTests(unittest.TestCase):
         self.assertFalse(row["locked_at"])
         self.assertEqual(row["failed_login_attempts"], 0)
 
+    def test_toggle_access_user_active_route(self):
+        conn = db_mod.get_db()
+        try:
+            admin_id = conn.execute(
+                "SELECT id FROM users WHERE username = 'admin'"
+            ).fetchone()["id"]
+            conn.commit()
+        finally:
+            conn.close()
+
+        admin_ctx = {
+            "id": admin_id,
+            "username": "admin",
+            "is_admin": True,
+            "is_active": True,
+            "user_access": {"users", "add"},
+            "dashboard_access": set(),
+        }
+
+        with mock.patch.object(self.app_mod, "get_current_user") as get_user:
+            get_user.return_value = admin_ctx
+            resp = self.client.post(
+                f"/access-management/active/{self.user_id}",
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 303)
+        row = self._user_row()
+        self.assertEqual(int(row["is_active"]), 0)
+
+        with mock.patch.object(self.app_mod, "get_current_user") as get_user:
+            get_user.return_value = admin_ctx
+            resp = self.client.post(
+                f"/access-management/active/{self.user_id}",
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 303)
+        row = self._user_row()
+        self.assertEqual(int(row["is_active"]), 1)
+
+        with mock.patch.object(self.app_mod, "get_current_user") as get_user:
+            get_user.return_value = admin_ctx
+            resp = self.client.post(
+                f"/access-management/active/{admin_id}",
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 303)
+        conn = db_mod.get_db()
+        try:
+            admin_row = conn.execute(
+                "SELECT is_active FROM users WHERE id = ?", (admin_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(int(admin_row["is_active"]), 1)
+
+        # Last active admin cannot be deactivated even when acted on by another admin.
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                INSERT INTO users
+                  (username, full_name, email, password_hash, is_admin, is_active,
+                   created_at, updated_at)
+                VALUES (?, ?, ?, ?, 1, 1, datetime('now','localtime'), datetime('now','localtime'))
+                """,
+                ("admin2", "Admin Two", "admin2@example.com", generate_password_hash("secret123")),
+            )
+            other_admin_id = conn.execute(
+                "SELECT id FROM users WHERE username = 'admin2'"
+            ).fetchone()["id"]
+            # Seeded admin is the only Super Admin role user; mark other as admin flag only.
+            # Deactivate other_admin first so seeded admin is sole active admin.
+            conn.execute(
+                "UPDATE users SET is_active = 0 WHERE id = ?", (other_admin_id,)
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        other_admin_ctx = {
+            "id": other_admin_id,
+            "username": "admin2",
+            "is_admin": True,
+            "is_active": True,
+            "user_access": {"users", "add"},
+            "dashboard_access": set(),
+        }
+        # Reactivate other_admin in DB for actor identity, but keep only one active admin
+        # when attempting to deactivate the last remaining active admin (seeded admin).
+        # other_admin is inactive in DB; patch get_current_user so permission checks pass.
+        with mock.patch.object(self.app_mod, "get_current_user") as get_user:
+            get_user.return_value = other_admin_ctx
+            resp = self.client.post(
+                f"/access-management/active/{admin_id}",
+                follow_redirects=False,
+            )
+        self.assertEqual(resp.status_code, 303)
+        conn = db_mod.get_db()
+        try:
+            admin_row = conn.execute(
+                "SELECT is_active FROM users WHERE id = ?", (admin_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertEqual(int(admin_row["is_active"]), 1)
+
     def test_hash_password_uses_argon2id(self):
         encoded = auth_security.hash_password("fresh-secret")
         self.assertTrue(encoded.startswith("$argon2id$"))
@@ -293,16 +399,25 @@ class LoginSecurityTests(unittest.TestCase):
 
         conn = db_mod.get_db()
         try:
+            role_id, _ = workspace_access.save_access_role_record(
+                conn,
+                role_id=None,
+                name="Argon Role",
+                description="",
+                is_admin=False,
+                is_active=True,
+                dashboard_modules=["reports"],
+                sales_analytics_modules=[],
+                user_access_modules=[],
+                sql_now="datetime('now','localtime')",
+            )
             user_id, flag = workspace_access.save_access_user_record(
                 conn,
                 user_id=None,
                 username="argon_user",
                 full_name="Argon User",
                 password="ArgonPass1!",
-                is_admin=False,
-                dashboard_modules=[],
-                sales_analytics_modules=[],
-                user_access_modules=[],
+                role_id=role_id,
                 sql_now="datetime('now','localtime')",
                 email="argon@example.com",
             )
@@ -319,10 +434,7 @@ class LoginSecurityTests(unittest.TestCase):
                 username="argon_user",
                 full_name="Argon User",
                 password="ResetPass2!",
-                is_admin=False,
-                dashboard_modules=[],
-                sales_analytics_modules=[],
-                user_access_modules=[],
+                role_id=role_id,
                 sql_now="datetime('now','localtime')",
                 email="argon@example.com",
             )

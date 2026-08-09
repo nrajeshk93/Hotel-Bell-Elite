@@ -1,4 +1,4 @@
-"""Restaurant POS invoice numbers: SPC/{n}/{FY}."""
+"""Restaurant POS invoice numbers: SPC/{yy-yy}/{n}."""
 
 import os
 import tempfile
@@ -56,6 +56,22 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         self.assertEqual(db_mod.indian_fiscal_year_label(date(2026, 7, 29)), "2026-27")
         self.assertEqual(db_mod.indian_fiscal_year_label(date(2026, 3, 31)), "2025-26")
         self.assertEqual(db_mod.indian_fiscal_year_label(date(2026, 4, 1)), "2026-27")
+        self.assertEqual(db_mod.indian_fiscal_year_short_label(date(2026, 7, 29)), "26-27")
+        self.assertEqual(db_mod.indian_fiscal_year_short_label("2026-27"), "26-27")
+
+    def test_fiscal_year_bounds(self):
+        self.assertEqual(
+            db_mod.indian_fiscal_year_bounds(date(2026, 7, 29)),
+            (date(2026, 4, 1), date(2026, 7, 29)),
+        )
+        self.assertEqual(
+            db_mod.indian_fiscal_year_bounds(date(2026, 3, 31)),
+            (date(2025, 4, 1), date(2026, 3, 31)),
+        )
+        self.assertEqual(
+            db_mod.indian_fiscal_year_bounds(date(2026, 4, 1)),
+            (date(2026, 4, 1), date(2026, 4, 1)),
+        )
 
     def _payload(self, order_no, **overrides):
         data = {
@@ -83,43 +99,115 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
     def test_client_spc_number_persists(self):
         res = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("SPC/7/2026-27"),
+            json=self._payload("SPC/26-27/7"),
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "SPC/7/2026-27")
+        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/7")
+
+    def test_draft_kept_until_generate_invoice(self):
+        draft = "SPC/A1B2C3/26-27"
+        save = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(draft),
+        )
+        self.assertEqual(save.status_code, 200, save.get_data(as_text=True))
+        self.assertEqual(save.get_json()["invoice"]["order_no"], draft)
+        self.assertFalse(save.get_json()["invoice"].get("customer_bill_sent"))
+
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(draft, customerBill=True),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        body = bill.get_json()
+        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/1")
+        self.assertTrue(body["invoice"].get("customer_bill_sent"))
 
     def test_offline_draft_is_replaced_with_sequence(self):
         res = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("SPC/A1B2C3/2026-27"),
+            json=self._payload("SPC/A1B2C3/26-27", customerBill=True),
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "SPC/1/2026-27")
+        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/1")
+
+    def test_legacy_long_fy_draft_is_replaced(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/105868/2026-27", customerBill=True),
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/1")
 
     def test_sequences_increment_within_fy(self):
         first = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("SPC/BBBBBB/2026-27"),
+            json=self._payload("SPC/BBBBBB/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
         second = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("SPC/CCCCCC/2026-27"),
+            json=self._payload("SPC/CCCCCC/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(first, "SPC/1/2026-27")
-        self.assertEqual(second, "SPC/2/2026-27")
+        self.assertEqual(first, "SPC/26-27/1")
+        self.assertEqual(second, "SPC/26-27/2")
+
+    def test_legacy_long_fy_does_not_inflate_new_series(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """INSERT INTO pos_invoices
+                   (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
+                    captain, status, outlet, subtotal, discount_amount, gst_amount, service_amount,
+                    tip, round_off, grand_total, saved_at, is_active)
+                   VALUES ('SPC/105868/2026-27', '2026-07-28', 'takeaway', '', 'Old', '',
+                           '', 'open', 'restaurant', 50, 0, 0, 0, 0, 0, 50,
+                           '2026-07-28 12:00:00', 1)"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        allocated = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/AAAAAA/26-27", customerBill=True),
+        ).get_json()["invoice"]["order_no"]
+        self.assertEqual(allocated, "SPC/26-27/1")
+
+    def test_new_series_fills_from_one_despite_high_outlier(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """INSERT INTO pos_invoices
+                   (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
+                    captain, status, outlet, subtotal, discount_amount, gst_amount, service_amount,
+                    tip, round_off, grand_total, saved_at, is_active)
+                   VALUES ('SPC/26-27/105869', '2026-07-28', 'takeaway', '', 'Outlier', '',
+                           '', 'open', 'restaurant', 50, 0, 0, 0, 0, 0, 50,
+                           '2026-07-28 12:00:00', 1)"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        allocated = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/BBBBBB/26-27", customerBill=True),
+        ).get_json()["invoice"]["order_no"]
+        self.assertEqual(allocated, "SPC/26-27/1")
 
     def test_resume_keeps_spc_number(self):
         save = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("SPC/3/2026-27"),
+            json=self._payload("SPC/26-27/3"),
         )
         self.assertEqual(save.status_code, 200)
         again = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload(
-                "SPC/3/2026-27",
+                "SPC/26-27/3",
                 customerName="Guest Updated",
                 lines=[{"uid": "1", "name": "Coffee", "rate": 50, "qty": 2}],
                 totals={
@@ -135,5 +223,5 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         )
         self.assertEqual(again.status_code, 200, again.get_data(as_text=True))
         body = again.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "SPC/3/2026-27")
+        self.assertEqual(body["invoice"]["order_no"], "SPC/26-27/3")
         self.assertEqual(body["invoice"]["customer_name"], "Guest Updated")

@@ -41,7 +41,25 @@
 
   function formatAmounts(root) {
     $all('.pl-amount[data-amount]', root).forEach(function (el) {
-      el.textContent = formatMoney(el.getAttribute('data-amount'));
+      if (typeof global.formatAmountNode === 'function') {
+        global.formatAmountNode(el);
+        return;
+      }
+      var isKpi =
+        typeof global.isKpiAmountNode === 'function'
+          ? global.isKpiAmountNode(el)
+          : el.classList.contains('pl-summary-value');
+      var places = isKpi ? 0 : 2;
+      var v = Number(el.getAttribute('data-amount'));
+      if (isNaN(v)) v = 0;
+      if (typeof global.formatInr === 'function') {
+        el.textContent = global.formatInr(v, places);
+      } else {
+        el.textContent = v.toLocaleString('en-IN', {
+          minimumFractionDigits: places,
+          maximumFractionDigits: places
+        });
+      }
     });
     if (typeof global.scheduleFitKpiValues === 'function') {
       global.scheduleFitKpiValues(root);
@@ -467,40 +485,12 @@
         openViewModal(viewBtn.getAttribute('data-invoice-id'));
         return;
       }
-      var delBtn = ev.target.closest('.pos-il-delete-btn');
-      if (delBtn) {
-        var id = delBtn.getAttribute('data-invoice-id');
-        var orderNo = delBtn.getAttribute('data-order-no') || id;
-        if (!window.confirm('Delete invoice ' + orderNo + '?')) return;
-        delBtn.disabled = true;
-        fetch(resolvePosApiBase() + '/api/invoices/' + encodeURIComponent(id) + '/delete', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { Accept: 'application/json' }
-        })
-          .then(function (res) {
-            return res.json().then(function (data) {
-              return { ok: res.ok, data: data || {} };
-            });
-          })
-          .then(function (result) {
-            if (!result.ok || !result.data.ok) {
-              toast((result.data && result.data.error) || 'Could not delete invoice.');
-              delBtn.disabled = false;
-              return;
-            }
-            var row = page.querySelector('tr.pos-il-row[data-invoice-id="' + id + '"]');
-            if (row) row.remove();
-            updateVisibleCount(page);
-            toast('Invoice ' + orderNo + ' deleted.');
-            window.setTimeout(function () {
-              window.location.reload();
-            }, 400);
-          })
-          .catch(function () {
-            toast('Could not delete invoice.');
-            delBtn.disabled = false;
-          });
+      var voidBtn = ev.target.closest('.pos-il-delete-btn, .pos-il-cancel-btn');
+      if (voidBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (voidBtn.disabled) return;
+        openVoidInvoiceModal(voidBtn);
         return;
       }
 
@@ -536,6 +526,217 @@
         printViewedBill();
       });
     }
+
+    bindVoidInvoiceModal();
+  }
+
+  var pendingVoidInvoice = null;
+
+  function voidInvoiceModalEl() {
+    return document.getElementById('pos-il-void-modal');
+  }
+
+  function closeVoidInvoiceModal() {
+    var modal = voidInvoiceModalEl();
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    pendingVoidInvoice = null;
+    var reason = document.getElementById('pos-il-void-reason');
+    var err = document.getElementById('pos-il-void-error');
+    var confirmBtn = document.getElementById('pos-il-void-confirm');
+    if (reason) reason.value = '';
+    if (err) {
+      err.hidden = true;
+      err.textContent = '';
+    }
+    if (confirmBtn) confirmBtn.disabled = false;
+  }
+
+  function openVoidInvoiceModal(btn) {
+    if (!btn) return;
+    var invoiceId = btn.getAttribute('data-invoice-id');
+    if (!invoiceId) return;
+    var mode = btn.getAttribute('data-void-mode') || 'cancel';
+    var orderNo = btn.getAttribute('data-order-no') || 'this invoice';
+    pendingVoidInvoice = {
+      id: String(invoiceId),
+      orderNo: orderNo,
+      mode: mode,
+      btn: btn
+    };
+    var modal = voidInvoiceModalEl();
+    var title = document.getElementById('pos-il-void-title');
+    var lead = document.getElementById('pos-il-void-lead');
+    var reasonLabel = document.getElementById('pos-il-void-reason-label');
+    var reason = document.getElementById('pos-il-void-reason');
+    var err = document.getElementById('pos-il-void-error');
+    var confirmLabel = document.getElementById('pos-il-void-confirm-label');
+    var isDelete = mode === 'delete';
+    if (title) title.textContent = isDelete ? 'Delete Draft' : 'Cancel Invoice';
+    if (lead) {
+      lead.textContent = isDelete
+        ? 'Delete draft ' + orderNo + '? Enter a reason. This cannot be undone.'
+        : 'Cancel ' + orderNo + '? Enter a reason. This cannot be undone.';
+    }
+    if (reasonLabel) {
+      reasonLabel.textContent = isDelete
+        ? 'Reason for deletion'
+        : 'Reason for cancellation';
+    }
+    if (reason) {
+      reason.value = '';
+      reason.placeholder = isDelete
+        ? 'Why is this draft being deleted?'
+        : 'Why is this invoice being cancelled?';
+    }
+    if (confirmLabel) {
+      confirmLabel.textContent = isDelete ? 'Delete Draft' : 'Cancel Invoice';
+    }
+    if (err) {
+      err.hidden = true;
+      err.textContent = '';
+    }
+    if (modal) {
+      modal.hidden = false;
+      modal.removeAttribute('hidden');
+    }
+    window.setTimeout(function () {
+      if (reason) reason.focus();
+    }, 30);
+  }
+
+  function submitVoidInvoiceModal() {
+    if (!pendingVoidInvoice || !pendingVoidInvoice.id) return;
+    var reasonEl = document.getElementById('pos-il-void-reason');
+    var err = document.getElementById('pos-il-void-error');
+    var confirmBtn = document.getElementById('pos-il-void-confirm');
+    var reason = reasonEl ? String(reasonEl.value || '').trim() : '';
+    if (!reason) {
+      if (err) {
+        err.hidden = false;
+        err.textContent =
+          pendingVoidInvoice.mode === 'delete'
+            ? 'Enter a reason for deletion.'
+            : 'Enter a reason for cancellation.';
+      }
+      if (reasonEl) reasonEl.focus();
+      return;
+    }
+    var invoiceId = pendingVoidInvoice.id;
+    var orderNo = pendingVoidInvoice.orderNo;
+    var mode = pendingVoidInvoice.mode;
+    var btn = pendingVoidInvoice.btn;
+    var page = document.getElementById('pos-invoice-ledger-page');
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (btn) btn.disabled = true;
+    fetch(
+      resolvePosApiBase() +
+        '/api/invoices/' +
+        encodeURIComponent(invoiceId) +
+        '/delete',
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ reason: reason })
+      }
+    )
+      .then(function (res) {
+        return res
+          .json()
+          .catch(function () {
+            return {};
+          })
+          .then(function (data) {
+            return { ok: res.ok, data: data || {} };
+          });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data.ok) {
+          var msg =
+            (result.data && result.data.error) ||
+            (mode === 'delete'
+              ? 'Could not delete invoice.'
+              : 'Could not cancel invoice.');
+          if (err) {
+            err.hidden = false;
+            err.textContent = msg;
+          } else {
+            toast(msg);
+          }
+          return;
+        }
+        closeVoidInvoiceModal();
+        var resultMode = result.data.mode || mode;
+        toast(
+          resultMode === 'deleted'
+            ? 'Invoice ' + orderNo + ' deleted.'
+            : 'Invoice ' + orderNo + ' cancelled.'
+        );
+        if (page) {
+          var row = page.querySelector(
+            'tr.pos-il-row[data-invoice-id="' + invoiceId + '"]'
+          );
+          if (row && resultMode === 'deleted') {
+            row.remove();
+            updateVisibleCount(page);
+          }
+        }
+        window.setTimeout(function () {
+          window.location.reload();
+        }, 400);
+      })
+      .catch(function () {
+        var msg =
+          mode === 'delete'
+            ? 'Could not delete invoice. Check your connection.'
+            : 'Could not cancel invoice. Check your connection.';
+        if (err) {
+          err.hidden = false;
+          err.textContent = msg;
+        } else {
+          toast(msg);
+        }
+      })
+      .then(function () {
+        if (confirmBtn) confirmBtn.disabled = false;
+        if (btn) btn.disabled = false;
+      });
+  }
+
+  function bindVoidInvoiceModal() {
+    var modal = voidInvoiceModalEl();
+    if (!modal || modal.getAttribute('data-bound') === '1') return;
+    modal.setAttribute('data-bound', '1');
+    modal.addEventListener('click', function (event) {
+      if (event.target.closest('[data-pos-il-void-close]')) {
+        event.preventDefault();
+        closeVoidInvoiceModal();
+        return;
+      }
+      if (event.target.closest('#pos-il-void-confirm')) {
+        event.preventDefault();
+        submitVoidInvoiceModal();
+      }
+    });
+    var reason = document.getElementById('pos-il-void-reason');
+    if (reason) {
+      reason.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          event.preventDefault();
+          submitVoidInvoiceModal();
+        }
+      });
+    }
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && modal && !modal.hidden) {
+        closeVoidInvoiceModal();
+      }
+    });
   }
 
   function initPosInvoiceLedgerPage() {

@@ -1,0 +1,682 @@
+/* Main Dashboard filters — Period pills + Expense Ledger Outlet/Date chips */
+
+body.su-module .se-sales-header-filters:has(#md-filter-form) {
+  justify-content: stretch;
+}
+
+body.su-module #md-filter-form.sr-topbar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 12px 14px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+body.su-module #md-filter-form .pl-header-field .se-filter-chip-label,
+body.su-module #md-filter-form .md-period-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--txt2, #4a5568);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  text-align: left;
+  line-height: 1.2;
+}
+
+/* Period pill group (reference design) */
+body.su-module #md-filter-form .md-period-field {
+  flex: 1 1 420px;
+  min-width: min(100%, 280px);
+  max-width: 100%;
+}
+
+body.su-module #md-filter-form .md-period-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  min-width: 0;
+}
+
+body.su-module #md-filter-form .md-period-pill {
+  appearance: none;
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #334155;
+  font: 600 13px Inter, system-ui, sans-serif;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+body.su-module #md-filter-form .md-period-pill:hover {
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+body.su-module #md-filter-form .md-period-pill.is-active {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+body.su-module #md-filter-form .md-period-pill:focus-visible {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+/* Outlet / Date chips — Expense Ledger sizing */
+body.su-module #md-filter-form .pl-header-field-listbox {
+  position: relative;
+  width: 100%;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox .se-filter-chip-control {
+  width: 100%;
+  min-height: 44px;
+  background: #fff !important;
+  border: 1px solid var(--border, #e2e8f0) !important;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox .se-filter-chip-trigger {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px 0 12px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox .se-filter-chip-value {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox .se-filter-chip-chev {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  align-self: stretch;
+  color: #94a3b8;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox.is-open {
+  z-index: 80;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox.is-open .se-filter-chip-control,
+body.su-module #md-filter-form .pl-header-field-listbox .se-filter-chip-control:focus-within {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox.is-open .se-filter-chip-chev {
+  color: #2563eb;
+  transform: rotate(180deg);
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox .se-filter-listbox {
+  padding: 6px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.1);
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox .se-filter-listbox-option {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox .se-filter-listbox-option.is-selected {
+  background: rgba(37, 99, 235, 0.08);
+  color: #2563eb;
+  font-weight: 600;
+}
+
+body.su-module #md-filter-form .pl-header-field-listbox.se-filter-chip--listbox {
+  flex: 0 1 160px;
+  width: auto;
+  min-width: 132px;
+  max-width: 200px;
+}
+
+body.su-module #md-filter-form .md-date-range-host.pl-header-field {
+  flex: 0 1 220px;
+  min-width: 180px;
+  max-width: 260px;
+  z-index: 30;
+  margin-left: 0;
+  overflow: visible;
+}
+
+body.su-module #md-filter-form .md-date-range-host .se-filter-chip--date-range {
+  width: 100%;
+}
+
+body.su-module #md-filter-form .md-date-range-host .se-filter-chip--date-range .se-filter-chip-control {
+  width: 100%;
+  min-height: 44px;
+  background: #fff !important;
+  border: 1px solid var(--border, #e2e8f0) !important;
+  border-radius: 8px;
+}
+
+body.su-module #md-filter-form .md-date-range-host .se-filter-chip--date-range.is-filtered .se-filter-chip-control {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
+}
+
+body.su-module #md-filter-form .md-date-range-host .se-filter-chip-trigger {
+  min-height: 44px;
+  padding: 0 8px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  body.su-module #md-filter-form .md-period-field {
+    flex: 1 1 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  body.su-module #md-filter-form .pl-header-field-listbox.se-filter-chip--listbox,
+  body.su-module #md-filter-form .md-date-range-host.pl-header-field {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+}
+
+/* Analytics body — match Neeraj Retail Intelligence sizing */
+body.main-dashboard-module #main-dashboard-page {
+  container-type: inline-size;
+  container-name: md-dash;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Match header / filter card column to Sales Trend (same max-width + gutters) */
+body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header {
+  max-width: min(1480px, 100%);
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header .md-filter-card,
+body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header .se-sales-header-filters {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+body.main-dashboard-module #main-dashboard-page > .rdx-content.content.se-content {
+  max-width: min(1480px, 100%);
+  margin: 0 auto;
+  padding: 20px 24px 56px;
+  width: 100%;
+  box-sizing: border-box;
+  background:
+    radial-gradient(1200px 400px at 10% -10%, rgba(37, 99, 235, 0.08), transparent 55%),
+    radial-gradient(900px 300px at 90% 0%, rgba(14, 165, 233, 0.06), transparent 50%),
+    #f8fafc;
+}
+
+/* KPI grid — Neeraj proportions (5 across when the page is wide enough) */
+body.main-dashboard-module #main-dashboard-page .rdx-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  margin-bottom: 24px;
+  width: 100%;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-kpi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 200px;
+  height: auto;
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: md-kpi;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-kpi-value {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font-size: clamp(14px, 18cqi, 36px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin-bottom: 10px;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-kpi-change {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-spark {
+  height: 50px !important;
+  min-height: 50px !important;
+  max-height: 50px;
+  margin-top: 16px;
+  margin-left: -8px;
+  margin-right: -8px;
+  margin-bottom: -4px;
+  width: auto;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-spark > div,
+body.main-dashboard-module #main-dashboard-page .rdx-spark canvas {
+  height: 50px !important;
+  max-height: 50px !important;
+}
+
+@container md-dash (min-width: 900px) {
+  .rdx-kpi-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .rdx-kpi-value {
+    font-size: clamp(20px, 1.8cqi, 32px);
+  }
+}
+
+@container md-dash (min-width: 640px) and (max-width: 899px) {
+  .rdx-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .rdx-kpi-value {
+    font-size: 32px;
+  }
+}
+
+@container md-dash (max-width: 639px) {
+  .rdx-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rdx-kpi-value {
+    font-size: 42px;
+  }
+}
+
+/* Viewport fallback when container queries are unavailable */
+@media (min-width: 1200px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-kpi-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 900px) {
+  body.main-dashboard-module #main-dashboard-page > header.se-sales-header.su-header {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  body.main-dashboard-module #main-dashboard-page > .rdx-content.content.se-content {
+    padding: 14px 14px 40px;
+  }
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-2 {
+  margin-bottom: 16px;
+  align-items: stretch;
+  gap: 16px;
+}
+
+/* Day of week + Top Selling: equal-width columns; heatmap stacks under DOW */
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top {
+  align-items: start;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-dow-heat-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  width: 100%;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-dow-heat-stack > .rdx-card {
+  width: 100%;
+  height: auto;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items {
+  height: auto;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-dow-heat-stack > .rdx-card > .rdx-card-head,
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items > .rdx-card-head {
+  flex: 0 0 auto;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top #rdx-chart-dow {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 220px;
+  height: 220px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
+  width: 100%;
+  max-width: 100%;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card .rdx-heatmap-scroll {
+  flex: 1 1 auto;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-top-items {
+  padding: 16px 18px 14px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.04);
+  box-sizing: border-box;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-top-items .rdx-card-head {
+  align-items: flex-start;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-sort-btn {
+  appearance: none;
+  margin: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #64748b;
+  font: 600 12px Inter, system-ui, sans-serif;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-sort-btn:hover {
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-sort-btn.is-active {
+  border-color: #2563eb;
+  color: #1d4ed8;
+  background: #eff6ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-sort-btn:focus-visible {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-rank {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #64748b;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-main {
+  min-width: 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  text-align: right;
+  min-width: 5.5rem;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-sale {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-qty {
+  font-size: 12px;
+  font-weight: 500;
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-empty {
+  margin: 0;
+  padding: 8px 0 0;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+/* Legacy classname kept for any leftover references */
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-heat {
+  align-items: start;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-heat > .rdx-card {
+  height: auto;
+  align-self: start;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-heat #rdx-chart-dow {
+  min-height: 220px;
+  height: 220px;
+}
+
+/* Neeraj Retail Intelligence: top outlets + sales contribution chrome */
+body.main-dashboard-module #main-dashboard-page .rdx-co-leaderboard,
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib {
+  height: 100%;
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+  box-sizing: border-box;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-co-head,
+body.main-dashboard-module #main-dashboard-page .rdx-sc-head {
+  margin-bottom: 20px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-co-row {
+  padding: 16px 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-co-row-top {
+  margin-bottom: 10px;
+  gap: 12px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-co-bar {
+  height: 8px;
+  margin-bottom: 8px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-co-foot {
+  margin-top: 16px;
+  padding-top: 14px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-body {
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-chart-wrap {
+  max-width: 220px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-chart {
+  min-height: 200px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-row {
+  padding: 14px 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-row-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+  min-width: 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-pct {
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-insight {
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+@media (max-width: 760px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-body {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-trend,
+body.main-dashboard-module #main-dashboard-page .rdx-payment-mode {
+  margin-bottom: 16px;
+}

@@ -61,6 +61,7 @@
     root.setAttribute('data-ma-ready', '1');
 
     var treeData = parseJson(byId('ma-tree-data'), []);
+    var actorIsSuperAdmin = root.getAttribute('data-ma-actor-super-admin') === '1';
     var initial = {
       dashboard_modules: parseJson(byId('ma-initial-dashboard'), []),
       sales_analytics_modules: parseJson(byId('ma-initial-sales-analytics'), []),
@@ -78,6 +79,10 @@
       enabled: {},
       search: '',
     };
+
+    function isNodeLocked(node){
+      return !!(node && node.superAdminOnly && !actorIsSuperAdmin);
+    }
 
     var flatNodes = collectNodes(treeData, []);
 
@@ -147,9 +152,36 @@
     var hiddenEl = byId('ma-hidden-inputs');
     var searchEl = byId('ma-tree-search');
     var collapseBtn = byId('ma-collapse-all');
+    var fullAccessToggle = byId('ma-full-access');
 
     function nodeEnabled(node){
       return !!state.enabled[node.id];
+    }
+
+    function hasFullAccess(){
+      if(!treeData.length) return false;
+      return treeData.every(function(node){
+        if(isNodeLocked(node)) return true;
+        return getCheckState(node) === 'checked';
+      });
+    }
+
+    function syncFullAccessToggle(){
+      if(!fullAccessToggle || fullAccessToggle.disabled) return;
+      fullAccessToggle.checked = hasFullAccess();
+      fullAccessToggle.indeterminate = false;
+    }
+
+    function setFullAccess(enabled){
+      treeData.forEach(function(node){
+        if(isNodeLocked(node)) return;
+        setNodeEnabled(node, enabled);
+        if(enabled && node.children && node.children.length){
+          state.expanded[node.id] = true;
+        }
+      });
+      if(!enabled) state.expanded = {};
+      renderTree();
     }
 
     function isModuleAccessible(moduleNode){
@@ -195,6 +227,7 @@
     }
 
     function setNodeEnabled(node, enabled){
+      if(isNodeLocked(node)) return;
       if(isScopeNode(node) && enabled){
         ensureScopePermission(nodeScopeType(node));
       }
@@ -329,13 +362,8 @@
           '</div>';
       }
 
-      var icon = displayNode.icon && displayNode.icon !== 'dot'
-        ? displayNode.icon
-        : (moduleRoot.icon || 'layout-grid');
-
       summaryEl.innerHTML =
         '<div class="ma-summary-head">' +
-          '<div class="ma-summary-icon"><i data-lucide="' + escapeAttr(icon) + '"></i></div>' +
           '<div class="ma-summary-title-wrap">' +
             '<div class="ma-summary-title-row">' +
               '<h3 class="ma-summary-title">' + escapeHtml(displayNode.label) + '</h3>' + badge +
@@ -372,11 +400,11 @@
       var toggleClass = hasChildren ? (expanded ? 'is-expanded' : '') : 'is-empty';
 
       var html = '<li class="ma-tree-node" data-node-id="' + escapeAttr(node.id) + '" style="--depth:' + depth + '">';
-      html += '<div class="ma-tree-row' + (selected ? ' is-selected' : '') + (!visible ? ' is-hidden' : '') + '" data-select-id="' + escapeAttr(node.id) + '">';
+      html += '<div class="ma-tree-row' + (selected ? ' is-selected' : '') + (!visible ? ' is-hidden' : '') + (isNodeLocked(node) ? ' is-locked' : '') + '" data-select-id="' + escapeAttr(node.id) + '">';
       html += '<button type="button" class="ma-tree-toggle ' + toggleClass + '" data-toggle-id="' + escapeAttr(node.id) + '" aria-label="Toggle ' + escapeAttr(node.label) + '" aria-expanded="' + (expanded ? 'true' : 'false') + '">';
       html += '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>';
       html += '</button>';
-      html += '<input type="checkbox" class="ma-tree-checkbox" data-check-id="' + escapeAttr(node.id) + '" data-check-state="' + checkState + '"' + (checkState === 'checked' ? ' checked' : '') + ' aria-label="Enable ' + escapeAttr(node.label) + '">';
+      html += '<input type="checkbox" class="ma-tree-checkbox" data-check-id="' + escapeAttr(node.id) + '" data-check-state="' + checkState + '"' + (checkState === 'checked' ? ' checked' : '') + (isNodeLocked(node) ? ' disabled' : '') + ' aria-label="Enable ' + escapeAttr(node.label) + '"' + (isNodeLocked(node) ? ' title="Only a Super Administrator can change ' + escapeAttr(node.label) + ' access"' : '') + '>';
       html += '<span class="ma-tree-node-icon"><i data-lucide="' + escapeAttr(nodeIcon(node)) + '"></i></span>';
       html += '<span class="ma-tree-label">' + escapeHtml(node.label) + '</span>';
       html += '</div>';
@@ -412,6 +440,7 @@
       bindTreeEvents();
       applyIndeterminate();
       syncHiddenInputs();
+      syncFullAccessToggle();
       renderSummary();
       refreshIcons(treeEl);
     }
@@ -441,7 +470,7 @@
         input.addEventListener('change', function(){
           var id = input.getAttribute('data-check-id');
           var node = findNode(treeData, id);
-          if(!node) return;
+          if(!node || isNodeLocked(node)) return;
           state.selectedId = id;
           var shouldEnable = input.checked;
           if(input.indeterminate) shouldEnable = true;
@@ -472,6 +501,12 @@
       collapseBtn.addEventListener('click', function(){
         state.expanded = {};
         renderTree();
+      });
+    }
+
+    if(fullAccessToggle){
+      fullAccessToggle.addEventListener('change', function(){
+        setFullAccess(!!fullAccessToggle.checked);
       });
     }
 

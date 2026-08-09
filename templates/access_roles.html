@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Roles | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='access_module_access.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --card:#FFFFFF;--border:#E2E8F0;--border-s:#EEF2F7;
+  --txt:#111827;--txt2:#4B5563;--txt3:#9CA3AF;
+  --ok:#16A34A;--ok-bg:#F0FDF4;--warn:#D97706;--warn-bg:#FFF7ED;
+  --err:#DC2626;--err-bg:#FEF2F2;--chip:#F8FAFC;
+  --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);--r:10px;--rs:6px;
+}
+html,body{min-height:100%;font-size:14px;line-height:1.5}
+a{text-decoration:none;color:inherit}
+.layout{display:grid;grid-template-columns:minmax(390px,470px) minmax(0,1fr);gap:22px}
+.layout.form-focus,.layout.users-full{grid-template-columns:1fr}
+.card{overflow:hidden;margin-bottom:0}
+.card-hdr{padding:18px 22px;border-bottom:1px solid var(--border-s);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card-body{padding:22px}
+.msg{padding:12px 14px;border-radius:12px;font-size:13px;font-weight:600;margin-bottom:16px}
+.msg.ok{background:var(--ok-bg);color:var(--ok)}
+.msg.err{background:var(--err-bg);color:var(--err)}
+.errors{display:grid;gap:8px;margin-bottom:16px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 18px;align-items:start}
+.form-grid > div{display:flex;flex-direction:column;gap:6px;min-width:0}
+.form-full{grid-column:1/-1}
+input[type="text"],input[type="password"],input[type="email"],input[type="search"],textarea{
+  width:100%;max-width:100%;background:#fff;border:1px solid var(--border);color:var(--txt);
+  font-family:inherit;font-size:13px;padding:10px 12px;border-radius:12px;outline:none;
+  transition:border-color .15s,box-shadow .15s;box-sizing:border-box;
+}
+input[type="text"],input[type="password"],input[type="email"],input[type="search"]{height:44px}
+textarea{min-height:88px;resize:vertical}
+input[type="text"]:focus,input[type="password"]:focus,input[type="email"]:focus,input[type="search"]:focus,textarea:focus{
+  border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-ring)
+}
+.section-panel{margin-top:22px;padding:24px;border:1px solid #E5E7EB;border-radius:18px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.section-panel > label{font-size:14px;font-weight:700;color:#111827;letter-spacing:-.01em}
+.toggle-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:18px}
+.toggle{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:600;color:var(--txt2)}
+.form-actions{display:flex;gap:10px;margin-top:18px;padding-top:16px;border-bottom:0;border-top:1px solid var(--border-s);flex-wrap:wrap;justify-content:flex-end}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1;white-space:nowrap;font-family:inherit;border:none}
+@media(max-width:1100px){.layout{grid-template-columns:1fr}}
+@media(max-width:720px){.form-grid{grid-template-columns:1fr}}
+#ma-access-root.is-admin-hidden{display:none}
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
+</head>
+<body class="de-open am-module ep-module su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper" id="access-roles-page">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>{% if form_focus %}{% if form.id %}Edit Role{% else %}Add Role{% endif %}{% else %}Roles{% endif %}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        {% if form_focus %}
+        <a class="btn" href="{{ url_for('access_roles') }}">Roles</a>
+        {% else %}
+        <a class="btn btn-primary" href="{{ url_for('access_roles', focus='form') }}">Add Role</a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content am-content">
+    {% if auth_notice %}
+    <div class="msg info">{{ auth_notice }}</div>
+    {% endif %}
+
+    <div class="layout{% if form_focus %} form-focus{% else %} users-full{% endif %}">
+      {% if form_focus %}
+        <section class="card" id="role-form">
+          <div class="card-body">
+            {% if success_message %}
+            <div class="msg ok">{{ success_message }}</div>
+            {% endif %}
+            {% if errors %}
+            <div class="errors">
+              {% for error in errors %}
+              <div class="msg err">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endif %}
+
+            <form method="POST" action="{{ url_for('save_access_role') }}" data-de-hard-nav="1">
+              <input type="hidden" name="role_id" value="{{ form.id }}">
+
+              <div class="form-grid">
+                <div>
+                  <label for="name">Role name</label>
+                  <input type="text" id="name" name="name" value="{{ form.name }}" autocomplete="off" required{% if form.is_super_admin_role %} readonly{% endif %}>
+                </div>
+                <div>
+                  <label for="description">Description</label>
+                  <input type="text" id="description" name="description" value="{{ form.description }}" placeholder="Optional">
+                </div>
+              </div>
+
+              <div class="toggle-row">
+                {% if form.id %}
+                <label class="toggle"><input type="checkbox" name="is_active" value="1" {% if form.is_active %}checked{% endif %}> Active</label>
+                {% endif %}
+                {% if form.is_super_admin_role %}
+                <label class="toggle ma-super-admin-toggle" title="Full authority across all modules">
+                  <input type="checkbox" name="is_admin" id="role-is-admin" value="1" {% if form.is_admin %}checked{% endif %}>
+                  Super Administrator
+                </label>
+                {% else %}
+                <label class="toggle" title="Select or clear every module in the tree">
+                  <input type="checkbox" id="ma-full-access">
+                  Full Access
+                </label>
+                {% endif %}
+              </div>
+
+              <div class="section-panel{% if form.is_admin %} is-admin-hidden{% endif %}" id="ma-access-root"{% if current_user and current_user.is_admin %} data-ma-actor-super-admin="1"{% endif %}>
+                <label>Module Access</label>
+
+                <script type="application/json" id="ma-tree-data">{{ access_module_tree_ui | tojson }}</script>
+                <script type="application/json" id="ma-initial-dashboard">{{ form.dashboard_modules | tojson }}</script>
+                <script type="application/json" id="ma-initial-sales-analytics">{{ form.sales_analytics_modules | tojson }}</script>
+                <script type="application/json" id="ma-initial-user-access">{{ form.user_access_modules | tojson }}</script>
+                <script type="application/json" id="ma-initial-payroll">{{ form.payroll_modules | tojson }}</script>
+                <script type="application/json" id="ma-initial-accounts">{{ form.accounts_modules | default([]) | tojson }}</script>
+                <script type="application/json" id="ma-initial-stores">{{ form.stores_modules | default([]) | tojson }}</script>
+                <div id="ma-hidden-inputs" class="ma-hidden-inputs" aria-hidden="true"></div>
+
+                <div class="ma-access">
+                  <div class="ma-access-card ma-tree-card">
+                    <div class="ma-tree-toolbar">
+                      <h3>Module tree</h3>
+                      <div class="ma-tree-toolbar-actions">
+                        <button type="button" class="ma-collapse-all" id="ma-collapse-all">Collapse All</button>
+                      </div>
+                    </div>
+                    <div class="ma-tree-search-wrap">
+                      <input type="search" class="ma-tree-search" id="ma-tree-search" placeholder="Search modules..." autocomplete="off" aria-label="Search modules">
+                    </div>
+                    <div class="ma-tree-scroll">
+                      <ul class="ma-tree" id="ma-tree" role="tree" aria-label="Module access tree"></ul>
+                    </div>
+                  </div>
+
+                  <div class="ma-access-card ma-summary-card" id="ma-summary" aria-live="polite">
+                    <div class="ma-summary-empty">
+                      <i data-lucide="layout-grid"></i>
+                      <p>Select a module to view access details.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">{% if form.id %}Save Changes{% else %}Create Role{% endif %}</button>
+                <a class="btn" href="{{ url_for('access_roles', focus='form') }}">Reset</a>
+              </div>
+            </form>
+          </div>
+        </section>
+      {% endif %}
+
+      {% if not form_focus %}
+        <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel am-users-panel" aria-label="Roles">
+          <div class="card-hdr">
+            <div class="card-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              <span>Roles</span>
+            </div>
+            <span class="pl-count">{{ roles|length }} role{{ '' if roles|length == 1 else 's' }}</span>
+          </div>
+          <div class="card-body" style="padding:0">
+            {% if roles %}
+            <div class="pl-table-wrap">
+              <table class="pl-table am-users-table" aria-label="Access roles">
+                <thead>
+                  <tr>
+                    <th>Role</th>
+                    <th>Type</th>
+                    <th>Users</th>
+                    <th>Access</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for role in roles %}
+                  <tr class="pl-expense-row">
+                    <td>
+                      <div class="pl-name am-user-name">{{ role.name }}</div>
+                      {% if role.description %}
+                      <div class="pl-meta am-user-handle">{{ role.description }}</div>
+                      {% endif %}
+                      {% if not role.is_active %}
+                      <div class="pl-meta am-user-handle">Inactive</div>
+                      {% endif %}
+                    </td>
+                    <td>
+                      {% if role.is_admin %}
+                      <span class="am-role-badge am-role-admin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Super Administrator</span>
+                      {% else %}
+                      <span class="am-role-badge am-role-user"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Custom</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ role.user_count }}</td>
+                    <td class="am-user-access">
+                      <div class="am-access-chips">
+                        {% if role.is_admin %}
+                          <span class="am-access-chip am-access-chip-full">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                            <span>Full access</span>
+                          </span>
+                        {% else %}
+                          {% set raw_chips = role.dashboard_labels + role.sales_analytics_labels + role.user_access_labels + role.accounts_labels|default([]) + role.payroll_labels|default([]) + role.stores_labels|default([]) %}
+                          {% if raw_chips %}
+                            {% for chip in raw_chips[:4] %}
+                            <span class="am-access-chip"><span>{{ chip }}</span></span>
+                            {% endfor %}
+                            {% if raw_chips|length > 4 %}
+                            <a class="am-access-chip am-access-chip-more" href="{{ url_for('access_roles', role_id=role.id, focus='form') }}">+{{ raw_chips|length - 4 }} more</a>
+                            {% endif %}
+                          {% else %}
+                            <span class="am-access-chip am-access-chip-empty"><span>No access</span></span>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                    </td>
+                    <td>
+                      <div class="act-grp">
+                        <a class="act-btn edit" href="{{ url_for('access_roles', role_id=role.id, focus='form') }}" data-tip="Edit" title="Edit {{ role.name }}" aria-label="Edit {{ role.name }}">
+                          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </a>
+                        <form method="POST" action="{{ url_for('delete_access_role', role_id=role.id) }}" data-de-hard-nav="1" onsubmit="return confirm('Delete role {{ role.name }}?');" style="display:inline">
+                          <button type="submit" class="act-btn del" data-tip="Delete" title="Delete {{ role.name }}" aria-label="Delete {{ role.name }}" {% if role.user_count %}disabled{% endif %}>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="am-users-empty pl-empty">
+              <p>No roles yet. Create a role to assign permissions to users.</p>
+            </div>
+            {% endif %}
+          </div>
+        </article>
+      {% endif %}
+    </div>
+  </section>
+</div>
+
+{% if form_focus %}
+<script src="{{ url_for('static', filename='access_module_access.js') }}?v=7"></script>
+<script>
+(function(){
+  var accessRoot = document.getElementById('ma-access-root');
+  var adminToggle = document.getElementById('role-is-admin');
+  if(!accessRoot || !adminToggle) return;
+  function sync(){
+    if(adminToggle.checked) accessRoot.classList.add('is-admin-hidden');
+    else accessRoot.classList.remove('is-admin-hidden');
+  }
+  adminToggle.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endif %}
+<script>
+(function(){
+  if(window.lucide && typeof window.lucide.createIcons === 'function'){
+    window.lucide.createIcons({ attrs: { 'stroke-width': 1.75 } });
+  }
+})();
+</script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

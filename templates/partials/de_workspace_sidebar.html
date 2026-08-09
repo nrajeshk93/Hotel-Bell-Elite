@@ -44,6 +44,13 @@
       <span>Home</span>
     </a>
 
+    {% if has_dashboard_access('main_dashboard') %}
+    <a class="de-nav-item{% if nav_section == 'main_dashboard' %} is-active{% endif %}" id="de-nav-main-dashboard" href="{{ url_for('main_dashboard') }}"{% if nav_section == 'main_dashboard' %} aria-current="page"{% endif %}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 18.2a8.5 8.5 0 1 1 13 0"/><path d="M12 14v3"/><path d="m12 14 4.2-4.2"/><circle cx="12" cy="14" r="1.25"/></svg>
+      <span>Dashboard</span>
+    </a>
+    {% endif %}
+
     {% if has_dashboard_access('accounts') %}
     <div class="de-nav-group{% if accounts_open %} is-open is-child-active{% endif %}" id="de-nav-accounts-group">
       <button type="button" class="de-nav-group-toggle" id="de-nav-accounts-toggle" aria-expanded="{{ 'true' if accounts_open else 'false' }}" aria-controls="de-nav-accounts-sub" onclick="toggleDeNavGroup(event, 'de-nav-accounts-group')">
@@ -242,6 +249,9 @@
         {% endif %}
         {% if has_user_access_submodule('add') %}
         <a class="de-nav-subitem{% if access_view == 'add' %} is-active{% endif %}" id="de-nav-access-add" href="{{ url_for('access_management', focus='form') }}"{% if access_view == 'add' %} aria-current="page"{% endif %}>Add User</a>
+        {% endif %}
+        {% if has_user_access_submodule('roles') %}
+        <a class="de-nav-subitem{% if access_view == 'roles' %} is-active{% endif %}" id="de-nav-access-roles" href="{{ url_for('access_roles') }}"{% if access_view == 'roles' %} aria-current="page"{% endif %}>Roles</a>
         {% endif %}
       </div>
     </div>

@@ -9,6 +9,7 @@
   var PREFETCH_MAX = 20;
   var IDLE_PREFETCH_PATHS = [
     '/home',
+    '/main-dashboard',
     '/accounts',
     '/accounts/purchase-ledger',
     '/accounts/cash-ledger',
@@ -241,7 +242,10 @@
     }
     var link = target.closest('.de-sidebar a[href], .sidebar a[href], a[href]');
     if(!link) return;
-    if(link.closest && !link.closest('.de-sidebar, .sidebar') && event.type === 'mouseover') return;
+    /* Hover-prefetch sidebar + report hub cards (pointerdown still warms everything). */
+    if(link.closest && !link.closest('.de-sidebar, .sidebar') && event.type === 'mouseover'){
+      if(!link.classList.contains('rd-report-card')) return;
+    }
     var rawHref = link.getAttribute('href') || '';
     if(!rawHref || rawHref.indexOf('javascript:') === 0) return;
     if(!isSameOriginLink(link)) return;
@@ -428,20 +432,27 @@
     // Once the server has accepted the POST, never hard-resubmit — that previously
     // could double-fire expensive side effects (e.g. WhatsApp indent approval).
     var serverAccepted = false;
+    var followedUrl = '';
     fetch(postUrl, fetchOpts).then(function(response){
       serverAccepted = true;
+      followedUrl = stripPartialParam(response.url || actionUrl);
       if(!response.ok) throw new Error('post soft submit failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
       if(contentType.indexOf('text/html') === -1) throw new Error('non-html response');
-      var finalUrl = stripPartialParam(response.url || actionUrl);
       return response.text().then(function(html){
-        return { html: html, url: finalUrl };
+        return { html: html, url: followedUrl };
       });
     }).then(function(result){
       if(!isCurrentSoftNav(nav.token)){
         unlockFormSubmit(form);
         return;
       }
+      try{
+        var followedPath = new URL(result.url, window.location.href).pathname.replace(/\/$/, '') || '/';
+        if(followedPath.indexOf('/access-management') === 0){
+          invalidatePrefetchByPath('/access-management');
+        }
+      } catch(eInv){}
       try{ history.pushState({ deSoftNav: true }, '', result.url); } catch(e){}
       if(window.deFullscreen && typeof window.deFullscreen.preserveForNavigation === 'function'){
         window.deFullscreen.preserveForNavigation();
@@ -471,10 +482,10 @@
       unlockFormSubmit(form);
       try{ sessionStorage.removeItem(NAV_FLAG); } catch(e){}
       if(serverAccepted){
-        // POST already ran on the server; reload/navigate instead of resubmitting.
+        // POST already ran; never GET the POST-only action URL (Method Not Allowed).
         try{
-          var fallbackUrl = stripPartialParam(form.getAttribute('action') || window.location.href);
-          window.location.assign(fallbackUrl);
+          var fallbackUrl = followedUrl || window.location.href;
+          window.location.assign(stripPartialParam(fallbackUrl));
         } catch(e){}
         return;
       }
@@ -636,13 +647,13 @@
       if(!hrefMatch) continue;
       var href = hrefMatch[1];
       if(!href || href.indexOf('/static/') === -1) continue;
-      var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]')).some(function(el){
+      var exists = Array.from(document.querySelectorAll('link[rel="stylesheet"], link[rel="preload"][as="style"]')).some(function(el){
         return (el.getAttribute('href') || '') === href;
       });
       if(exists) continue;
+      /* Apply as stylesheet (not preload-only) so soft-nav merge finds a ready sheet. */
       var link = document.createElement('link');
-      link.rel = 'preload';
-      link.as = 'style';
+      link.rel = 'stylesheet';
       link.href = href;
       document.head.appendChild(link);
     }
@@ -704,6 +715,12 @@
           prefetchCache.delete(key);
           return null;
         }
+        /* Roles list mutates on create/edit/delete — a pre-create prefetch
+           makes custom roles look like they vanished after navigating away. */
+        if(path === '/access-management/roles'){
+          prefetchCache.delete(key);
+          return null;
+        }
         /* Indent / inward forms embed Product Master packs — stale prefetch
            leaves Pack stuck on "Base unit" after variants are edited. */
         if(path === '/stores/indent' || path === '/stores/inward'){
@@ -740,6 +757,9 @@
         try{
           var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
           if(path === '/communication-hub'){
+            return null;
+          }
+          if(path === '/access-management/roles'){
             return null;
           }
           if(path === '/stores/indent' || path === '/stores/inward'){
@@ -860,11 +880,16 @@
 
       /* Home / masters / reports / access */
       if(path === '/home') return !!main.querySelector('#dashboard-home-panel, .db-home');
+      if(path === '/main-dashboard') return !!main.querySelector('#main-dashboard-page, #main-dashboard-title');
       if(path === '/dashboard') return !!main.querySelector('#dashboard-coming-soon-title');
       if(path === '/master') return !!main.querySelector('#md-master-grid, #md-search-input');
       if(path === '/reports') return !!main.querySelector('#rd-report-sections, #rd-search-input');
       if(path.indexOf('/reports/sales/') === 0){
-        return !!main.querySelector('#sales-report-page, [data-sales-report]');
+        return !!main.querySelector(
+          '#sales-report-page, [data-sales-report], '
+          + '#menu-sales-report-page, [data-menu-sales-report], '
+          + '#customer-insights-report-page, [data-customer-insights-report]'
+        );
       }
       if(path === '/settings') return !!main.querySelector('#settings-page, [data-settings], #sd-settings-sections');
       if(path === '/access-management') return !!main.querySelector('#am-users-filter-form, #am-users-search');
@@ -963,19 +988,29 @@
     return false;
   }
 
+  function shouldRerunScript(scriptEl){
+    return !!(scriptEl && scriptEl.getAttribute('data-de-rerun') === '1');
+  }
+
   function mergeStylesheetLink(link, addedLinks){
     var href = link.getAttribute('href');
     if(!href) return;
     var path = '';
     try{ path = new URL(href, window.location.href).pathname; } catch(e){ path = String(href).split('?')[0]; }
     var exists = false;
-    Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).forEach(function(existing){
+    /* Check head + body — shell partials may leave sheets outside <head>. */
+    Array.from(document.querySelectorAll('link[rel="stylesheet"]')).forEach(function(existing){
       var eh = existing.getAttribute('href') || '';
       if(eh === href){ exists = true; return; }
       /* Same file, different ?v= — drop the stale sheet so the new one applies. */
       try{
         if(path && new URL(eh, window.location.href).pathname === path){
           if(existing.parentNode) existing.parentNode.removeChild(existing);
+          /* Critical: orphan removed links must leave the wait list, or soft-nav
+             stalls on the 2s+2.5s stylesheet timeouts (CIR open ~4.5s). */
+          for(var i = addedLinks.length - 1; i >= 0; i--){
+            if(addedLinks[i] === existing) addedLinks.splice(i, 1);
+          }
         }
       } catch(err){}
     });
@@ -1141,7 +1176,7 @@
         }
         var candidateSrc = candidate.getAttribute('src');
         if(!candidateSrc) break;
-        if(loaded[candidateSrc]){
+        if(loaded[candidateSrc] && !shouldRerunScript(candidate)){
           index++;
           continue;
         }
@@ -1172,7 +1207,7 @@
       }
       var src = old.getAttribute('src');
       if(src){
-        if(loaded[src]){
+        if(loaded[src] && !shouldRerunScript(old)){
           next();
           return;
         }
@@ -1802,30 +1837,35 @@
   }
 
   function finalizeSoftNav(){
-    if(typeof window.reinitDeWorkspaceSidebar === 'function'){
-      window.reinitDeWorkspaceSidebar();
-    } else if(typeof window.applyDeSidebarBootState === 'function'){
-      window.applyDeSidebarBootState();
+    try{
+      if(typeof window.reinitDeWorkspaceSidebar === 'function'){
+        window.reinitDeWorkspaceSidebar();
+      } else if(typeof window.applyDeSidebarBootState === 'function'){
+        window.applyDeSidebarBootState();
+      }
+      if(window.deFullscreen && typeof window.deFullscreen.reinit === 'function'){
+        window.deFullscreen.reinit();
+      }
+      if(window.deWorkspaceReinit){
+        window.deWorkspaceReinit();
+      } else {
+        initDeSidebarPageTransitions();
+      }
+      if(window.deFullscreen && typeof window.deFullscreen.updateUi === 'function'){
+        window.deFullscreen.updateUi();
+      }
+      // Restore while soft-nav flag is still set so accidental exits are not treated as user exits.
+      if(window.deFullscreen && typeof window.deFullscreen.restoreAfterNavigation === 'function'){
+        window.deFullscreen.restoreAfterNavigation();
+      }
+      if(typeof window.initHbeTableScroll === 'function'){
+        window.initHbeTableScroll();
+      }
+      clearNavigatingLinks();
+    } catch(err){
+      try{ console.error('de soft-nav page reinit failed', err); } catch(eLog){}
+      try{ clearNavigatingLinks(); } catch(eClear){}
     }
-    if(window.deFullscreen && typeof window.deFullscreen.reinit === 'function'){
-      window.deFullscreen.reinit();
-    }
-    if(window.deWorkspaceReinit){
-      window.deWorkspaceReinit();
-    } else {
-      initDeSidebarPageTransitions();
-    }
-    if(window.deFullscreen && typeof window.deFullscreen.updateUi === 'function'){
-      window.deFullscreen.updateUi();
-    }
-    // Restore while soft-nav flag is still set so accidental exits are not treated as user exits.
-    if(window.deFullscreen && typeof window.deFullscreen.restoreAfterNavigation === 'function'){
-      window.deFullscreen.restoreAfterNavigation();
-    }
-    if(typeof window.initHbeTableScroll === 'function'){
-      window.initHbeTableScroll();
-    }
-    clearNavigatingLinks();
     // Keep soft-nav flag briefly so late fullscreenchange events do not clear the lock.
     setTimeout(function(){
       setSoftNavFlag(false);
@@ -1937,14 +1977,19 @@
         }
         runScriptNodes(content.scripts, function(){
           if(!isCurrentSoftNav(navToken)) return;
-          finalizeSoftNav();
-          restoreSidebarScrollAfterLayout(sidebarScroll);
-          markMainLoading(false);
-          finishSoftNavUi(done, navToken);
-          endSoftNavigatingClass();
-          playMainEnterReveal(curMain);
-          /* Re-warm common destinations after each open (prefetch is no longer one-shot). */
-          try{ idlePrefetchSidebarDestinations(); } catch(e2){}
+          try{
+            finalizeSoftNav();
+            restoreSidebarScrollAfterLayout(sidebarScroll);
+          } catch(err){
+            try{ console.error('de soft-nav finalize failed', err); } catch(eLog){}
+          } finally {
+            markMainLoading(false);
+            finishSoftNavUi(done, navToken);
+            endSoftNavigatingClass();
+            try{ playMainEnterReveal(curMain); } catch(eReveal){}
+            /* Re-warm common destinations after each open (prefetch is no longer one-shot). */
+            try{ idlePrefetchSidebarDestinations(); } catch(e2){}
+          }
         });
       };
 
@@ -2461,8 +2506,19 @@
     if(typeof window.initMenuSalesReportPage === 'function'){
       window.initMenuSalesReportPage();
     }
+    if(typeof window.initCustomerInsightsReportPage === 'function'){
+      window.initCustomerInsightsReportPage();
+    }
     if(typeof window.initStockAuditReportPage === 'function'){
       window.initStockAuditReportPage();
+    }
+    if(typeof window.initMainDashboardFilters === 'function'){
+      window.initMainDashboardFilters();
+    }
+    if(typeof window.initMainDashboardCharts === 'function'){
+      try{
+        window.initMainDashboardCharts();
+      } catch(eCharts){}
     }
     if(window.SalesDateRangePicker && typeof window.SalesDateRangePicker.syncChipDisplays === 'function'){
       window.SalesDateRangePicker.syncChipDisplays();
@@ -2513,14 +2569,17 @@
         '/static/de_workspace_shell.css?v=45',
         '/static/stores.css?v=75',
         '/static/ep_form_listbox.css?v=21',
-        '/static/pos_tables.css?v=35',
-        '/static/pos_invoice.css?v=52',
+        '/static/pos_tables.css?v=54',
+        '/static/pos_invoice.css?v=55',
         '/static/purchase_ledger.css?v=29',
         '/static/communication_hub.css?v=12',
         '/static/hotel_rooms.css?v=60',
         '/static/hotel_date_picker.css?v=9',
-        '/static/access_management_premium.css?v=19',
-        '/static/hbe_home_premium.css?v=19'
+        '/static/access_management_premium.css?v=29',
+        '/static/hbe_home_premium.css?v=19',
+        '/static/sales_report.css?v=12',
+        '/static/sales_date_range.css?v=2',
+        '/static/reports_page_scroll.css?v=3'
       ].forEach(function(href){
         try{
           var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]')).some(function(el){

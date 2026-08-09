@@ -374,6 +374,24 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   background:#F8FAFD;
   z-index:4;
 }
+#credit-payment-page #cp-history-table td.cp-col-actions .act-grp{
+  margin-left:auto;
+}
+/* Keep View/Revert tips above the icons so .pl-table-wrap overflow:auto
+   does not clip them when the cursor moves (mirrors POS menu / stores). */
+#credit-payment-page #cp-history-table td.cp-col-actions,
+#credit-payment-page #cp-outstanding-table td.cp-col-actions{
+  overflow:visible;
+}
+#credit-payment-page #cp-history-table td.cp-col-actions .act-btn[data-tip]::after,
+#credit-payment-page #cp-outstanding-table td.cp-col-actions .act-btn[data-tip]::after{
+  top:auto;
+  bottom:calc(100% + 8px);
+  left:auto;
+  right:0;
+  transform:none;
+  z-index:40;
+}
 body.su-module .cp-link-btn{
   border:0;
   background:transparent;

@@ -156,17 +156,112 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(kpis["average_bill"], 375)
         self.assertEqual(kpis["today_sales"], 750)
 
-        deleted = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/delete")
+        deleted = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/delete",
+            json={"reason": "Test cancel"},
+        )
         self.assertEqual(deleted.status_code, 200)
-        self.assertTrue(deleted.get_json()["ok"])
+        deleted_body = deleted.get_json()
+        self.assertTrue(deleted_body["ok"])
+        self.assertEqual(deleted_body.get("mode"), "cancelled")
 
-        missing = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
-        self.assertEqual(missing.status_code, 404)
+        cancelled = self.client.get(f"/point-of-sale/api/invoices/{invoice_id}")
+        self.assertEqual(cancelled.status_code, 200)
+        self.assertEqual(cancelled.get_json()["invoice"]["status"], "cancelled")
+        self.assertEqual(cancelled.get_json()["invoice"]["payment_mode_label"], "Cancelled")
+
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_pos_invoices(conn)
+            kpis_after = db_mod.pos_invoice_kpis(conn, rows, today="2026-07-22")
+            cancelled_row = next(r for r in rows if r["id"] == invoice_id)
+        finally:
+            conn.close()
+        self.assertEqual(cancelled_row["payment_mode_label"], "Cancelled")
+        # Cancelled invoice remains listed but is excluded from sales KPIs.
+        self.assertEqual(kpis_after["invoice_count"], 1)
+        self.assertEqual(kpis_after["total_sales"], 200)
 
         page2 = self.client.get("/point-of-sale/invoice-ledger")
         html2 = page2.get_data(as_text=True)
-        self.assertNotIn("ORD-2607-0001", html2)
+        self.assertIn("ORD-2607-0001", html2)
         self.assertIn("ORD-2607-0002", html2)
+        self.assertIn("Cancelled", html2)
+
+    def test_ledger_hides_delete_for_generated_and_settled(self):
+        from datetime import date
+
+        today = date.today().isoformat()
+        draft = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="SPC/DRAFT1/26-27", total=100),
+        )
+        self.assertEqual(draft.status_code, 200, draft.get_data(as_text=True))
+        draft_id = draft.get_json()["invoice"]["id"]
+
+        generated = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="SPC/AAAAAA/26-27",
+                total=200,
+                customerBill=True,
+                orderDate=today,
+                savedAt=today + " 12:00:00",
+                orderType="takeaway",
+                table="",
+            ),
+        )
+        self.assertEqual(generated.status_code, 200, generated.get_data(as_text=True))
+        gen_inv = generated.get_json()["invoice"]
+        gen_id = gen_inv["id"]
+        self.assertTrue(gen_inv.get("customer_bill_sent"))
+        gen_no = gen_inv["order_no"]
+
+        settled = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-SETTLE-01", total=300, table="T2"),
+        )
+        self.assertEqual(settled.status_code, 200, settled.get_data(as_text=True))
+        settled_id = settled.get_json()["invoice"]["id"]
+        close = self.client.post(f"/point-of-sale/api/invoices/{settled_id}/close")
+        self.assertEqual(close.status_code, 200, close.get_data(as_text=True))
+
+        page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+
+        self.assertIn(f'data-invoice-id="{draft_id}"', html)
+        self.assertRegex(
+            html,
+            rf'pos-il-delete-btn[^>]*data-invoice-id="{draft_id}"|data-invoice-id="{draft_id}"[^>]*pos-il-delete-btn',
+        )
+        self.assertNotIn(
+            f'pos-il-cancel-btn" data-tip="Cancel" aria-label="Cancel invoice SPC/DRAFT1/26-27"',
+            html,
+        )
+
+        self.assertIn(f'data-invoice-id="{gen_id}"', html)
+        self.assertIn(f'Cancel invoice {gen_no}', html)
+        self.assertIn("pos-il-cancel-btn", html)
+        self.assertNotRegex(
+            html,
+            rf'pos-il-delete-btn[^>]*data-invoice-id="{gen_id}"|data-invoice-id="{gen_id}"[^>]*pos-il-delete-btn',
+        )
+
+        self.assertIn(f'data-invoice-id="{settled_id}"', html)
+        settled_block = html.split(f'data-invoice-id="{settled_id}"', 1)[1].split(
+            "</tr>", 1
+        )[0]
+        self.assertNotIn("pos-il-delete-btn", settled_block)
+        self.assertNotIn("pos-il-cancel-btn", settled_block)
+
+        # Settled cancel blocked for everyone (admin included).
+        blocked = self.client.post(
+            f"/point-of-sale/api/invoices/{settled_id}/delete",
+            json={"reason": "Should fail"},
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.assertIn("Settled", blocked.get_json()["error"])
 
     def test_export_report(self):
         save = self.client.post("/point-of-sale/api/invoices", json=self._payload())

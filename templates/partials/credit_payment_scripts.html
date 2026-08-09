@@ -7,6 +7,7 @@
   var deleteUrl = page.getAttribute('data-delete-url') || '';
   var detailUrlTemplate = page.getAttribute('data-detail-url-template') || '';
   var todayIso = page.getAttribute('data-today') || '';
+  var canMutate = page.getAttribute('data-can-mutate') === '1';
   var methodLabels = {{ credit_payment_method_labels|tojson }};
   var categoryLabels = {{ expense_category_labels|tojson }};
   var labels = {{ settlement_labels|tojson }};
@@ -608,6 +609,7 @@
 
   /* ---------- Outstanding table multi-select ---------- */
   var outstandingTable = document.getElementById('cp-outstanding-table');
+  var outstandingError = document.getElementById('cp-outstanding-error');
   var selectAllCheck = document.getElementById('cp-select-all');
   var selectionBar = document.getElementById('cp-selection-bar');
   var tableSelectCountEl = document.getElementById('cp-table-select-count');
@@ -621,6 +623,7 @@
   var actionLabelBase = (selectionBar && selectionBar.getAttribute('data-action-label')) || 'Verify';
 
   function runSelectedVerification(){
+    if (!canMutate) return;
     var selections = collectSelectionsFromTable();
     if (!selections.length) {
       openSelectModal();
@@ -783,7 +786,18 @@
         e.stopPropagation();
         var row = approveBtn.closest('.cp-expense-row');
         if (!row || row.hidden || approveBtn.disabled) return;
-        approveRowDirectly(row, approveBtn);
+        var selection = selectionFromRow(row);
+        if (!selection.expense_id || !(selection.amount > 0)) {
+          setError(outstandingError, labels.select_error_none || 'Unable to pay this expense.');
+          return;
+        }
+        if (!selection.supplier_id) {
+          setError(outstandingError, 'Supplier is required before payment.');
+          return;
+        }
+        setError(outstandingError, '');
+        // Same Payment Details flow as bulk Clear Payment (mode, date, txn, notes).
+        beginPaymentFromSelections([selection], 'table');
         return;
       }
       var row = e.target.closest('.cp-expense-row');
@@ -887,6 +901,7 @@
   }
 
   function openSelectModal(preselectedIds){
+    if (!canMutate) return;
     selectionSource = 'modal';
     setError(selectError, '');
     renderSelectRows(preselectedIds || []);
@@ -1013,6 +1028,7 @@
   }
 
   function beginPaymentFromSelections(selections, source){
+    if (!canMutate) return;
     if (!selections.length) return;
     selectionSource = source || 'table';
     pendingSelections = selections;
@@ -1064,6 +1080,7 @@
   }
 
   async function submitClearance(){
+    if (!canMutate) return;
     if (!pendingSelections.length) {
       setError(clearanceError, 'Select at least one expense.');
       return;
@@ -1158,48 +1175,6 @@
     }
   }
 
-  var outstandingError = document.getElementById('cp-outstanding-error');
-
-  async function approveRowDirectly(row, triggerBtn){
-    if (!row) return;
-    var selection = selectionFromRow(row);
-    if (!selection.expense_id || !(selection.amount > 0)) {
-      setError(outstandingError, labels.select_error_none || 'Unable to approve this expense.');
-      return;
-    }
-    if (!selection.supplier_id) {
-      setError(outstandingError, 'Supplier is required before approval.');
-      return;
-    }
-    setError(outstandingError, '');
-    if (triggerBtn) {
-      triggerBtn.disabled = true;
-      triggerBtn.classList.add('is-busy');
-    }
-    try {
-      await postSettlementGroups([selection], [{
-        expense_id: selection.expense_id,
-        amount: selection.amount
-      }], {
-        payment_date: todayIso,
-        payment_method: 'cash',
-        transaction_id: '',
-        notes: ''
-      });
-      if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
-      else window.location.reload();
-    } catch (err) {
-      setError(
-        outstandingError,
-        (err && err.message) || labels.submit_error_network || 'Network error while recording payment.'
-      );
-      if (triggerBtn) {
-        triggerBtn.disabled = false;
-        triggerBtn.classList.remove('is-busy');
-      }
-    }
-  }
-
   var submitBtn = document.getElementById('cp-clearance-submit');
   if (submitBtn) submitBtn.addEventListener('click', submitClearance);
 
@@ -1265,6 +1240,7 @@
   }
 
   async function deletePayment(paymentId){
+    if (!canMutate) return;
     var ok = typeof window.deConfirm === 'function'
       ? await window.deConfirm(labels.delete_confirm || 'Delete this payment? Outstanding balances will be restored.')
       : window.confirm(labels.delete_confirm || 'Delete this payment? Outstanding balances will be restored.');

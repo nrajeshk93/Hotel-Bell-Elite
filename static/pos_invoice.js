@@ -344,14 +344,23 @@
     return startYear + '-' + String(startYear + 1).slice(-2);
   }
 
+  function indianFiscalYearShortLabel(d) {
+    var fy = indianFiscalYearLabel(d);
+    var parts = String(fy || '').split('-');
+    if (parts.length === 2) {
+      return String(parts[0]).slice(-2) + '-' + String(parts[1]).slice(-2);
+    }
+    return fy;
+  }
+
   function noteOutletOrderSeq(orderNo) {
-    /* Keep a high-water mark after the server confirms SPC|INV/{n}/{fy}.
+    /* Keep a high-water mark after the server confirms SPC|INV/{yy-yy}/{n}.
        Client drafts must never mint from this — they use provisional hex ids. */
     var text = String(orderNo || '').trim();
-    var spc = /^SPC\/(\d+)\/(\d{4}-\d{2})$/i.exec(text);
+    var spc = /^SPC\/(\d{2}-\d{2})\/(\d+)$/i.exec(text);
     if (spc) {
-      var spcKey = 'hbe_pos_spc_seq_' + spc[2];
-      var spcN = parseInt(spc[1], 10) || 0;
+      var spcKey = 'hbe_pos_spc_seq_' + spc[1];
+      var spcN = parseInt(spc[2], 10) || 0;
       if (spcN >= 1) {
         try {
           var spcCur = parseInt(localStorage.getItem(spcKey) || '0', 10) || 0;
@@ -360,10 +369,10 @@
       }
       return;
     }
-    var inv = /^INV\/(\d+)\/(\d{4}-\d{2})$/i.exec(text);
+    var inv = /^INV\/(\d{2}-\d{2})\/(\d+)$/i.exec(text);
     if (!inv) return;
-    var invKey = 'hbe_pos_inv_seq_' + inv[2];
-    var invN = parseInt(inv[1], 10) || 0;
+    var invKey = 'hbe_pos_inv_seq_' + inv[1];
+    var invN = parseInt(inv[2], 10) || 0;
     if (invN < 1) return;
     try {
       var invCur = parseInt(localStorage.getItem(invKey) || '0', 10) || 0;
@@ -386,11 +395,11 @@
     return String(Date.now()).slice(-6).toUpperCase();
   }
 
-  /** True when the server has assigned SPC|INV/{n}/{fy} (not a client draft). */
+  /** True when the server has assigned SPC|INV/{yy-yy}/{n} (not a client draft). */
   function isConfirmedOutletOrderNo(orderNo) {
     var text = String(orderNo || '').trim();
     return (
-      /^SPC\/\d+\/\d{4}-\d{2}$/i.test(text) || /^INV\/\d+\/\d{4}-\d{2}$/i.test(text)
+      /^SPC\/\d{2}-\d{2}\/\d+$/i.test(text) || /^INV\/\d{2}-\d{2}\/\d+$/i.test(text)
     );
   }
 
@@ -407,13 +416,13 @@
     if (orderEl) orderEl.textContent = formatOrderNoDisplay(state.orderNo);
   }
 
-  /** Client draft only — server replaces with the next sequential SPC|INV/{n}/{fy}
+  /** Client draft only — server replaces with the next sequential SPC|INV/{yy-yy}/{n}
    *  on first save. Never mint sequential numbers in the browser (refresh must
    *  not burn or change the official series). */
   function makeOrderNo(d) {
     var outlet = resolvePosOutlet();
     var when = d instanceof Date ? d : new Date();
-    var fy = indianFiscalYearLabel(when);
+    var fy = indianFiscalYearShortLabel(when);
     var suffix = randomOrderSuffix();
     if (outlet === 'restaurant') {
       return 'SPC/' + suffix + '/' + fy;
@@ -1466,17 +1475,17 @@
     if (tipRow) tipRow.hidden = !(Number(t.tip) > 0);
   }
 
-  function canEditKitchenSentLines(page) {
-    var root = page || document.getElementById('pos-invoice-page');
-    return !!(root && root.getAttribute('data-pos-is-admin') === '1');
-  }
-
   function lineKitchenSentQty(line) {
     return Math.max(0, Number(line && line.sentQty) || 0);
   }
 
   function lineHasKitchenSent(line) {
     return lineKitchenSentQty(line) > 0;
+  }
+
+  function canCancelKotLines(page) {
+    var root = page || document.getElementById('pos-invoice-page');
+    return !!(root && root.getAttribute('data-pos-can-cancel-kot') === '1');
   }
 
   function renderLines(page) {
@@ -1494,24 +1503,56 @@
     }
 
     if (empty) empty.hidden = true;
-    var isAdmin = canEditKitchenSentLines(page);
     var locked = !!state.invoiceGenerated;
     var selecting = !!state.discountSelectMode;
     var draftSet = {};
     (state.discountSelectDraft || []).forEach(function (uid) {
       draftSet[String(uid)] = true;
     });
+    var canCancelKot = canCancelKotLines(page);
+    var kotLockTip = canCancelKot
+      ? 'Kitchen-sent — changes update the Kitchen Order Token'
+      : 'Sent to kitchen — needs Cancellation Access to change or remove';
 
     body.innerHTML = state.lines
       .map(function (line) {
         var amt = (Number(line.rate) || 0) * (Number(line.qty) || 0);
         var pendingQty = pendingKotQty(line);
         var sentQty = lineKitchenSentQty(line);
-        var lockReduce = locked || (!isAdmin && sentQty > 0);
-        var canDecrease = !locked && (!lockReduce || Number(line.qty) > sentQty);
-        var canDelete = !locked && !(!isAdmin && sentQty > 0);
+        var kotLocked = sentQty > 0 && !canCancelKot;
+        /* Pending units may always drop; kitchen-sent units need Cancellation Access. */
+        var canDecrease = !locked && (
+          canCancelKot ? Number(line.qty) > 1 : Number(line.qty) > sentQty
+        );
+        var canDelete = !locked && (!kotLocked || canCancelKot);
+        var canEditNote = !locked && (!kotLocked || canCancelKot);
         var lineNotes = String(line.notes || '').trim();
         var checked = !!draftSet[String(line.uid)];
+        var decreaseTip = selecting
+          ? 'Finish item selection first'
+          : locked
+            ? 'Invoice locked — settle to continue'
+            : kotLocked && !canDecrease
+              ? kotLockTip
+              : '';
+        var noteTip = selecting
+          ? 'Finish item selection first'
+          : locked
+            ? 'Invoice locked — settle to continue'
+            : kotLocked
+              ? kotLockTip
+              : lineNotes
+                ? lineNotes
+                : 'Add customised note';
+        var deleteTip = selecting
+          ? 'Finish item selection first'
+          : locked
+            ? 'Invoice locked — settle to continue'
+            : kotLocked
+              ? kotLockTip
+              : canCancelKot && sentQty > 0
+                ? kotLockTip
+                : '';
         return (
           '<tr data-line-id="' +
           escapeHtml(line.uid) +
@@ -1550,7 +1591,7 @@
           '</div></div></td>' +
           '<td class="pos-inv-col-qty"><div class="pos-inv-qty">' +
           '<button type="button" data-qty="-1" aria-label="Decrease quantity"' +
-          (canDecrease && !selecting ? '' : ' disabled title="' + (selecting ? 'Finish item selection first' : locked ? 'Invoice locked — settle to continue' : 'Only an administrator can reduce quantity after KOT') + '"') +
+          (canDecrease && !selecting ? '' : ' disabled title="' + escapeHtml(decreaseTip) + '"') +
           '>−</button>' +
           '<span>' +
           line.qty +
@@ -1569,13 +1610,15 @@
           '<button type="button" class="pos-inv-note-btn' +
           (lineNotes ? ' is-active' : '') +
           '" data-line-note aria-label="Customise item"' +
-          (locked || selecting ? ' disabled title="' + (locked ? 'Invoice locked — settle to continue' : 'Finish item selection first') + '"' : '') +
-          (lineNotes ? ' title="' + escapeHtml(lineNotes) + '"' : locked || selecting ? '' : ' title="Add customised note"') +
+          (canEditNote && !selecting ? '' : ' disabled') +
+          ' title="' +
+          escapeHtml(noteTip) +
+          '"' +
           '>' +
           '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
           '</button>' +
           '<button type="button" class="pos-inv-del" data-del aria-label="Remove item"' +
-          (canDelete && !selecting ? '' : ' disabled title="' + (selecting ? 'Finish item selection first' : locked ? 'Invoice locked — settle to continue' : 'Only an administrator can remove items after KOT') + '"') +
+          (canDelete && !selecting ? '' : ' disabled title="' + escapeHtml(deleteTip) + '"') +
           '>' +
           '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>' +
           '</button></div></td></tr>'
@@ -1587,6 +1630,8 @@
     renderSummary(page);
     updateKotBar(page);
     updateSettleBillButton(page);
+    updateGenerateInvoiceButton(page);
+    updatePrintTools(page);
   }
 
   function updateKotBar(page) {
@@ -2007,16 +2052,20 @@
           money(totals.discount) +
           '</span></div>'
         : '') +
-      '<div><span>CGST (' +
-      CGST_RATE * 100 +
-      '%)</span><span>' +
-      money(totals.cgst != null ? totals.cgst : Number(totals.gst || 0) / 2) +
-      '</span></div>' +
-      '<div><span>UGST (' +
-      UGST_RATE * 100 +
-      '%)</span><span>' +
-      money(totals.ugst != null ? totals.ugst : Number(totals.gst || 0) / 2) +
-      '</span></div>' +
+      (Number(totals.cgst != null ? totals.cgst : Number(totals.gst || 0) / 2) > 0
+        ? '<div><span>CGST (' +
+          CGST_RATE * 100 +
+          '%)</span><span>' +
+          money(totals.cgst != null ? totals.cgst : Number(totals.gst || 0) / 2) +
+          '</span></div>'
+        : '') +
+      (Number(totals.ugst != null ? totals.ugst : Number(totals.gst || 0) / 2) > 0
+        ? '<div><span>UGST (' +
+          UGST_RATE * 100 +
+          '%)</span><span>' +
+          money(totals.ugst != null ? totals.ugst : Number(totals.gst || 0) / 2) +
+          '</span></div>'
+        : '') +
       (Number(totals.vat) > 0
         ? '<div><span>VAT (' +
           VAT_RATE * 100 +
@@ -2034,9 +2083,9 @@
       (Number(totals.tip) > 0
         ? '<div><span>Tip</span><span>' + money(totals.tip) + '</span></div>'
         : '') +
-      '<div><span>Round Off</span><span>' +
-      money(totals.roundOff) +
-      '</span></div>' +
+      (Number(totals.roundOff) !== 0
+        ? '<div><span>Round Off</span><span>' + money(totals.roundOff) + '</span></div>'
+        : '') +
       '<div class="grand"><span>Total</span><span>' +
       money(totals.total) +
       '</span></div>' +
@@ -2203,9 +2252,10 @@
       }
 
       if (!wantAuto) {
-        /* Manual Print: open preview on the click gesture, also send to billing. */
+        /* Manual Print: open preview on the click gesture, also send to billing.
+           PDF toolbar skips the agent so staff can Save as PDF from the dialog. */
         browserPrint(false);
-        if (canAgent) {
+        if (canAgent && !opts.skipAgent) {
           prefs.printInvoiceHtml(html, {
             outlet: outlet,
             jobId: jobId,
@@ -2244,14 +2294,33 @@
   }
 
   function openToolbarPrintPage(page) {
+    if (!state.invoiceGenerated) {
+      toast('Generate the invoice before printing.');
+      return;
+    }
     if (!state.lines.length) {
       toast('Add at least one item before printing.');
       var search = $('#pos-inv-search', page);
       if (search) search.focus();
       return;
     }
-    /* Land on the print page; staff print from there (or browser print). */
-    printCustomerBill(page, null, { autoPrint: false });
+    /* Same silent Invoice-printer path as Generate Invoice / Settle. */
+    printCustomerBill(page, null, { autoPrint: true });
+  }
+
+  function openToolbarPdfPage(page) {
+    if (!state.invoiceGenerated) {
+      toast('Generate the invoice before exporting PDF.');
+      return;
+    }
+    if (!state.lines.length) {
+      toast('Add at least one item before exporting PDF.');
+      var search = $('#pos-inv-search', page);
+      if (search) search.focus();
+      return;
+    }
+    /* Same bill preview as Print, without Print Agent — use Save as PDF. */
+    printCustomerBill(page, null, { autoPrint: false, skipAgent: true });
   }
 
   function syncKotSentFromInvoice(invoice) {
@@ -2489,6 +2558,12 @@
       toast('Add at least one item before generating the invoice.');
       var search = $('#pos-inv-search', page);
       if (search) search.focus();
+      return;
+    }
+    if (pendingKotLines().length) {
+      toast('Send all items to the kitchen (KOT) before generating the invoice.');
+      var kotBtn = $('#pos-inv-send-kot', page);
+      if (kotBtn) kotBtn.focus();
       return;
     }
 
@@ -3205,6 +3280,34 @@
     );
   }
 
+  function updateGenerateInvoiceButton(page) {
+    var genBtn = $('#pos-inv-send-customer', page) || page.querySelector('[data-inv-action="send"]');
+    if (!genBtn) return;
+    /* Hide after Generate Invoice, and while any line still needs a KOT send. */
+    var allKotSent =
+      !!(state.lines && state.lines.length) && pendingKotLines().length === 0;
+    var canShow = !state.invoiceGenerated && allKotSent;
+    genBtn.hidden = !canShow;
+    genBtn.disabled = !canShow;
+    if (canShow) genBtn.removeAttribute('aria-disabled');
+    else genBtn.setAttribute('aria-disabled', 'true');
+  }
+
+  function updatePrintTools(page) {
+    if (!page) return;
+    var canPrint = !!state.invoiceGenerated;
+    page.querySelectorAll('[data-inv-action="print"], [data-inv-action="pdf"]').forEach(function (el) {
+      el.disabled = !canPrint;
+      if (canPrint) {
+        el.removeAttribute('aria-disabled');
+        el.title = el.getAttribute('data-inv-action') === 'pdf' ? 'Save bill as PDF' : 'Print';
+      } else {
+        el.setAttribute('aria-disabled', 'true');
+        el.title = 'Generate Invoice before printing';
+      }
+    });
+  }
+
   function guardInvoiceLocked(actionLabel) {
     if (!state.invoiceGenerated) return false;
     toast(
@@ -3220,11 +3323,8 @@
     if (!page) return;
     page.classList.toggle('is-invoice-generated', !!state.invoiceGenerated);
 
-    var genBtn = $('#pos-inv-send-customer', page) || page.querySelector('[data-inv-action="send"]');
-    if (genBtn) {
-      genBtn.hidden = !!state.invoiceGenerated;
-      genBtn.disabled = !!state.invoiceGenerated;
-    }
+    updateGenerateInvoiceButton(page);
+    updatePrintTools(page);
 
     var search = $('#pos-inv-search', page);
     if (search) {
@@ -4597,7 +4697,7 @@
       return;
     }
     if (action === 'pdf') {
-      toast('PDF download is not available yet.');
+      openToolbarPdfPage(page);
       return;
     }
     if (action === 'send') {
@@ -4613,14 +4713,11 @@
     if (action === 'clear') {
       closeMoreMenu(page);
       if (guardInvoiceLocked()) return;
-      var kept = [];
-      if (!canEditKitchenSentLines(page)) {
-        kept = state.lines.filter(function (line) {
-          return lineHasKitchenSent(line);
-        });
-      }
+      var kept = state.lines.filter(function (line) {
+        return lineHasKitchenSent(line);
+      });
       if (kept.length && kept.length === state.lines.length) {
-        toast('Only an administrator can clear items after they were sent to the kitchen.');
+        toast('Kitchen-sent items cannot be cleared. Cancel the KOT to remove them.');
         return;
       }
       state.lines = kept;
@@ -4992,13 +5089,17 @@
       }
       if (e.target.closest('[data-line-note]')) {
         if (guardInvoiceLocked()) return;
+        if (lineHasKitchenSent(line) && !canCancelKotLines(page)) {
+          toast('Sent to kitchen — needs Cancellation Access to edit this item.');
+          return;
+        }
         openLineNoteModal(page, line);
         return;
       }
       if (e.target.closest('[data-del]')) {
         if (guardInvoiceLocked()) return;
-        if (lineHasKitchenSent(line) && !canEditKitchenSentLines(page)) {
-          toast('Only an administrator can remove items after they were sent to the kitchen.');
+        if (lineHasKitchenSent(line) && !canCancelKotLines(page)) {
+          toast('Sent to kitchen — needs Cancellation Access to remove this item.');
           return;
         }
         state.lines = state.lines.filter(function (l) {
@@ -5014,12 +5115,17 @@
         var delta = Number(qtyBtn.getAttribute('data-qty')) || 0;
         var nextQty = Math.max(1, (Number(line.qty) || 1) + delta);
         var sentQty = lineKitchenSentQty(line);
-        if (delta < 0 && sentQty > 0 && !canEditKitchenSentLines(page) && nextQty < sentQty) {
-          toast('Only an administrator can reduce quantity below the amount already sent to kitchen.');
+        if (
+          delta < 0 &&
+          sentQty > 0 &&
+          nextQty < sentQty &&
+          !canCancelKotLines(page)
+        ) {
+          toast('Sent to kitchen — needs Cancellation Access to reduce below the sent quantity.');
           return;
         }
         line.qty = nextQty;
-        /* Never claim more units were sent to the kitchen than currently on the line. */
+        /* Cap kitchen-sent qty so Tables KOT tokens match the bill. */
         if ((Number(line.sentQty) || 0) > line.qty) line.sentQty = line.qty;
         renderLines(page);
         markOrderDirty(page);

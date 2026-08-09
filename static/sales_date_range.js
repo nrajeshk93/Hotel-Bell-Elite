@@ -510,6 +510,50 @@
         setText(plDisplay, plLabel || 'Date');
       }
 
+      var mdDisplay = document.getElementById('md-date-range-display');
+      var mdFrom = document.getElementById('md-date-from');
+      var mdTo = document.getElementById('md-date-to');
+      if (mdDisplay) {
+        var mdFromIso = ((mdFrom && mdFrom.value) || '').trim();
+        var mdToIso = ((mdTo && mdTo.value) || '').trim();
+        var mdLabel = '';
+        if (mdFromIso && mdToIso && mdFromIso !== mdToIso) {
+          var mdFromParts = mdFromIso.split('-').map(Number);
+          var mdToParts = mdToIso.split('-').map(Number);
+          if (
+            mdFromParts.length === 3 &&
+            mdToParts.length === 3 &&
+            mdFromParts[0] === mdToParts[0] &&
+            mdFromParts[1] === mdToParts[1]
+          ) {
+            mdLabel =
+              mdFromParts[2] +
+              ' – ' +
+              mdToParts[2] +
+              ' ' +
+              monthShort[mdFromParts[1] - 1] +
+              ', ' +
+              mdFromParts[0];
+          } else if (mdFromParts.length === 3 && mdToParts.length === 3 && mdFromParts[0] === mdToParts[0]) {
+            mdLabel =
+              mdFromParts[2] +
+              ' ' +
+              monthShort[mdFromParts[1] - 1] +
+              ' – ' +
+              mdToParts[2] +
+              ' ' +
+              monthShort[mdToParts[1] - 1] +
+              ', ' +
+              mdFromParts[0];
+          } else {
+            mdLabel = fmt(mdFromIso) + ' – ' + fmt(mdToIso);
+          }
+        } else if (mdFromIso) {
+          mdLabel = fmt(mdFromIso);
+        }
+        setText(mdDisplay, mdLabel || 'Select date range');
+      }
+
       var tipsDisplay = document.getElementById('tips-date-range-display');
       var tipsFrom = document.getElementById('tips-date-from');
       var tipsTo = document.getElementById('tips-date-to');

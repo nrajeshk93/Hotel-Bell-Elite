@@ -1,4 +1,4 @@
-"""Bar POS invoice numbers: INV/{n}/{FY}."""
+"""Bar POS invoice numbers: INV/{yy-yy}/{n}."""
 
 import os
 import tempfile
@@ -78,42 +78,42 @@ class PosBarInvoiceNoTests(unittest.TestCase):
     def test_client_inv_number_persists(self):
         res = self.client.post(
             "/bar-point-of-sale/api/invoices",
-            json=self._payload("INV/7/2026-27"),
+            json=self._payload("INV/26-27/7"),
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "INV/7/2026-27")
+        self.assertEqual(body["invoice"]["order_no"], "INV/26-27/7")
         self.assertEqual(body["invoice"]["outlet"], "bar")
 
     def test_offline_draft_is_replaced_with_sequence(self):
         res = self.client.post(
             "/bar-point-of-sale/api/invoices",
-            json=self._payload("INV/A1B2C3/2026-27"),
+            json=self._payload("INV/A1B2C3/26-27", customerBill=True),
         )
         self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
         body = res.get_json()
-        self.assertEqual(body["invoice"]["order_no"], "INV/1/2026-27")
+        self.assertEqual(body["invoice"]["order_no"], "INV/26-27/1")
 
     def test_sequences_increment_within_fy(self):
         first = self.client.post(
             "/bar-point-of-sale/api/invoices",
-            json=self._payload("INV/BBBBBB/2026-27"),
+            json=self._payload("INV/BBBBBB/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
         second = self.client.post(
             "/bar-point-of-sale/api/invoices",
-            json=self._payload("INV/CCCCCC/2026-27"),
+            json=self._payload("INV/CCCCCC/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(first, "INV/1/2026-27")
-        self.assertEqual(second, "INV/2/2026-27")
+        self.assertEqual(first, "INV/26-27/1")
+        self.assertEqual(second, "INV/26-27/2")
 
     def test_bar_and_restaurant_sequences_are_independent(self):
         bar = self.client.post(
             "/bar-point-of-sale/api/invoices",
-            json=self._payload("INV/ZZZZZZ/2026-27"),
+            json=self._payload("INV/ZZZZZZ/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
         rest = self.client.post(
             "/point-of-sale/api/invoices",
-            json=self._payload("SPC/ZZZZZZ/2026-27"),
+            json=self._payload("SPC/ZZZZZZ/26-27", customerBill=True),
         ).get_json()["invoice"]["order_no"]
-        self.assertEqual(bar, "INV/1/2026-27")
-        self.assertEqual(rest, "SPC/1/2026-27")
+        self.assertEqual(bar, "INV/26-27/1")
+        self.assertEqual(rest, "SPC/26-27/1")

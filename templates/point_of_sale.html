@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=42">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=62">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 <script>
 (function(){
@@ -27,7 +27,7 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=42">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=62">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 {% endif %}
 
@@ -54,7 +54,7 @@
   {% set areas = derived_areas %}
 {% endif %}
 
-<div class="de-main-inner pos-tables-page" id="pos-tables-page" data-pos-tables data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}">
+<div class="de-main-inner pos-tables-page" id="pos-tables-page" data-pos-tables data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-pos-can-cancel-kot="{{ '1' if current_user and user_can_edit_kot_sent_lines(current_user) else '0' }}">
   <header class="pos-tables-header">
     <div class="pos-tables-header-copy">
       <h1>Tables</h1>
@@ -118,7 +118,7 @@
       </div>
       <div>
         <div class="pos-kpi-label">Unsettled</div>
-        <div class="pos-kpi-value" data-kpi-value>₹0.00</div>
+        <div class="pos-kpi-value" data-kpi-value>₹0</div>
         <div class="pos-kpi-meta" data-kpi-meta>0 invoices</div>
       </div>
     </article>
@@ -126,7 +126,7 @@
       <div class="pos-kpi-icon pos-kpi-icon--purple pos-kpi-icon--rupee" aria-hidden="true">₹</div>
       <div>
         <div class="pos-kpi-label">Total sales</div>
-        <div class="pos-kpi-value" data-kpi-value>₹0.00</div>
+        <div class="pos-kpi-value" data-kpi-value>₹0</div>
         <div class="pos-kpi-meta" data-kpi-meta>0 invoices</div>
       </div>
     </article>
@@ -404,7 +404,6 @@
           </span>
           <div class="pos-kot-modal-heading-copy">
             <h2 id="pos-kot-tokens-title">Kitchen Order Tokens</h2>
-            <p class="pos-kot-modal-sub" id="pos-kot-tokens-sub">Resend a KOT if the kitchen missed the slip.</p>
           </div>
         </div>
         <button type="button" class="pos-kot-modal-close" data-kot-tokens-close aria-label="Close">
@@ -433,7 +432,10 @@
 
       <footer class="pos-kot-modal-footer">
         <p class="pos-kot-modal-meta" id="pos-kot-tokens-meta">Showing 0 tokens</p>
-        <button type="button" class="pos-kot-modal-footer-close" data-kot-tokens-close>Close</button>
+        <div class="pos-kot-modal-footer-actions">
+          <button type="button" class="pos-kot-modal-footer-save" id="pos-kot-tokens-save" data-kot-tokens-save hidden disabled>Save</button>
+          <button type="button" class="pos-kot-modal-footer-close" data-kot-tokens-close>Close</button>
+        </div>
       </footer>
     </div>
   </div>
@@ -452,7 +454,6 @@
           </span>
           <div class="pos-kot-modal-heading-copy">
             <h2 id="pos-today-invoices-title">Today’s Invoices</h2>
-            <p class="pos-kot-modal-sub" id="pos-today-invoices-sub">View or reprint bills created today.</p>
           </div>
         </div>
         <button type="button" class="pos-kot-modal-close" data-today-invoices-close aria-label="Close">
@@ -595,6 +596,26 @@
     </div>
   </div>
 
+  <div class="pos-inv-modal" id="pos-cancel-invoice-modal" hidden>
+    <div class="pos-inv-modal-backdrop" data-cancel-invoice-close tabindex="-1" aria-hidden="true"></div>
+    <div class="pos-inv-modal-box pos-cancel-invoice-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-cancel-invoice-title">
+      <h3 id="pos-cancel-invoice-title">Cancel Invoice</h3>
+      <p class="pos-inv-modal-lead" id="pos-cancel-invoice-lead">This cannot be undone.</p>
+      <label class="pos-inv-field">
+        <span>Reason for cancellation</span>
+        <textarea id="pos-cancel-invoice-reason" rows="3" maxlength="500" placeholder="Why is this invoice being cancelled?" autocomplete="off"></textarea>
+      </label>
+      <p class="pos-inv-modal-preview" id="pos-cancel-invoice-error" hidden></p>
+      <div class="staff-credit-actions pos-cancel-invoice-actions">
+        <button type="button" class="btn pos-cancel-btn pos-cancel-btn--secondary" data-cancel-invoice-close>Cancel</button>
+        <button type="button" class="btn pos-cancel-btn pos-cancel-btn--danger" id="pos-cancel-invoice-confirm">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+          <span>Cancel Invoice</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
   {% include 'partials/pos_settle_modal.html' %}
 
   <div class="pos-tables-toast" id="pos-tables-toast" role="status" aria-live="polite" hidden></div>
@@ -604,11 +625,11 @@
 <script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
 {% endif %}
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=11"></script>
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=18"></script>
 <script src="{{ url_for('static', filename='pos_settle.js') }}?v=2"></script>
-<script src="{{ url_for('static', filename='pos_tables.js') }}?v=68"></script>
+<script src="{{ url_for('static', filename='pos_tables.js') }}?v=84"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>
