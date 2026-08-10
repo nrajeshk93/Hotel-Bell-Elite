@@ -1067,9 +1067,35 @@
     });
     applyApprovalsDefaultSort(document.getElementById('st-approvals-pending-table'));
     applyApprovalsRecentDefaultSort(document.getElementById('st-approvals-recent-table'));
+    syncApprovalsOpenAttention(body);
     if (typeof window.initHbeTableScroll === 'function') window.initHbeTableScroll();
     initStFlashAutoDismiss();
     return true;
+  }
+
+  function syncApprovalsOpenAttention(scope) {
+    var openBtn = document.getElementById('st-approvals-open');
+    if (!openBtn) return;
+    var root = scope || document;
+    var count = 0;
+    var countEl = root.querySelector ? root.querySelector('.st-appr-card .st-appr-count') : null;
+    if (countEl) {
+      count = parseInt(String(countEl.textContent || '').replace(/[^\d]/g, ''), 10) || 0;
+    } else {
+      var pendingTable = root.querySelector
+        ? root.querySelector('#st-approvals-pending-table')
+        : document.getElementById('st-approvals-pending-table');
+      if (pendingTable) {
+        count = pendingTable.querySelectorAll('tbody tr[data-sort-row]').length;
+      }
+    }
+    openBtn.setAttribute('data-pending-count', String(count));
+    openBtn.classList.toggle('st-approvals-open--attention', count > 0);
+    if (count > 0) {
+      openBtn.setAttribute('title', count + ' pending for approval');
+    } else {
+      openBtn.removeAttribute('title');
+    }
   }
 
   function loadApprovalsModal(force) {

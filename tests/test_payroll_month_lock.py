@@ -5,6 +5,7 @@ import unittest
 from datetime import date
 
 from employee_payroll import (
+    _annotate_payroll_state_for_user,
     _can_modify_attendance_record,
     _employee_has_locked_month_data,
     _get_payroll_month_state,
@@ -78,6 +79,17 @@ class PayrollMonthLockTests(unittest.TestCase):
         self.assertTrue(state["locked"])
         self.assertFalse(state["can_edit"])
         self.assertIn("administrators", state["message"].lower())
+
+    def test_super_admin_can_unlock_annotation(self):
+        self.conn.execute("INSERT INTO payroll_month_locks (year, month) VALUES (2026, 7)")
+        self.conn.commit()
+        state = _get_payroll_month_state(self.conn, 2026, 7)
+        for_clerk = _annotate_payroll_state_for_user(state, {"is_admin": False})
+        self.assertFalse(for_clerk["can_unlock"])
+        self.assertEqual(for_clerk["button_label"], "Locked")
+        for_admin = _annotate_payroll_state_for_user(state, {"is_admin": True})
+        self.assertTrue(for_admin["can_unlock"])
+        self.assertIn("Unlock", for_admin["button_label"])
 
     def test_admin_cannot_modify_attendance_when_payroll_locked(self):
         admin = {"is_admin": True}

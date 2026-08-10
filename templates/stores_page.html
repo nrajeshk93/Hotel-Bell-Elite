@@ -12,11 +12,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=46">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=107">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=108">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -49,7 +49,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=107">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=108">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -87,7 +87,7 @@
           Product Master
         </button>
         {% if user_can_approve_transactions(current_user) %}
-        <button type="button" class="btn" id="st-approvals-open" data-st-approvals-url="{{ url_for('stores_approvals') }}">
+        <button type="button" class="btn{% if pending_approvals_count|default(0) %} st-approvals-open--attention{% endif %}" id="st-approvals-open" data-st-approvals-url="{{ url_for('stores_approvals') }}" data-pending-count="{{ pending_approvals_count|default(0) }}"{% if pending_approvals_count|default(0) %} title="{{ pending_approvals_count }} pending for approval"{% endif %}>
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           Approval
         </button>
@@ -443,7 +443,7 @@
 </div>
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=55"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=100"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=101"></script>
 {% if page_key == 'purchase_orders' %}
 <script src="{{ url_for('static', filename='stores_po.js') }}?v=35"></script>
 {% endif %}

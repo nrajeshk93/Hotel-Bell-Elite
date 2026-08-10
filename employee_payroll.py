@@ -690,6 +690,7 @@ def _get_payroll_month_state(conn, year, month):
             'locked': False,
             'can_edit': False,
             'can_lock': False,
+            'can_unlock': False,
             'message': f'Month locking starts from {start_label}. Earlier months stay read-only in the new repayment flow.',
             'button_label': 'Lock Not Available',
             'reason': f'Month locking starts from {start_label}.',
@@ -706,6 +707,7 @@ def _get_payroll_month_state(conn, year, month):
             'locked': True,
             'can_edit': False,
             'can_lock': False,
+            'can_unlock': False,
             'message': _payroll_month_frozen_message(year, month),
             'button_label': 'Locked',
             'reason': f'{label} is already locked.',
@@ -722,6 +724,7 @@ def _get_payroll_month_state(conn, year, month):
             'locked': False,
             'can_edit': True,
             'can_lock': True,
+            'can_unlock': False,
             'message': f'{label} is the starting month for the new repayment flow. Save repayments, then lock it to open the next month.',
             'button_label': f'Lock {label}',
             'reason': '',
@@ -738,6 +741,7 @@ def _get_payroll_month_state(conn, year, month):
             'locked': False,
             'can_edit': True,
             'can_lock': True,
+            'can_unlock': False,
             'message': f'{label} is open for repayment updates because {prev_label} is already locked.',
             'button_label': f'Lock {label}',
             'reason': '',
@@ -755,12 +759,26 @@ def _get_payroll_month_state(conn, year, month):
         'locked': False,
         'can_edit': True,
         'can_lock': False,
+        'can_unlock': False,
         'message': f'{label} is open for repayment updates. Lock {prev_label} first before locking {label}.',
         'button_label': f'Lock {label}',
         'reason': f'Lock {prev_label} first.',
         'previous_label': prev_label,
         'previous_locked': False,
     }
+
+
+def _annotate_payroll_state_for_user(state, user=None):
+    """Allow Super Administrators to unlock a frozen payroll month."""
+    annotated = dict(state or {})
+    can_unlock = bool(
+        annotated.get('locked') and user and user.get('is_admin')
+    )
+    annotated['can_unlock'] = can_unlock
+    if can_unlock:
+        annotated['button_label'] = f"Unlock {annotated.get('label') or 'month'}"
+        annotated['reason'] = ''
+    return annotated
 
 
 def _salary_repayment_descriptor(year, month):
@@ -1103,6 +1121,10 @@ def _emp_render(template, **kwargs):
             kwargs['payroll_state'] = _get_payroll_month_state(conn, int(sel_year), int(sel_month))
         finally:
             conn.close()
+    if 'payroll_state' in kwargs and kwargs['payroll_state'] is not None:
+        kwargs['payroll_state'] = _annotate_payroll_state_for_user(
+            kwargs['payroll_state'], get_current_user()
+        )
     return render_template(template, **kwargs)
 
 
@@ -4259,12 +4281,24 @@ def export_bank_report():
 @payroll_bp.route('/lock_payroll_month', methods=['POST'])
 def lock_payroll_month():
     year, month = _period_from_source(request.form)
-    if request.form.get('lock_action') != 'manual_lock':
+    lock_action = (request.form.get('lock_action') or '').strip()
+    if lock_action not in ('manual_lock', 'manual_unlock'):
         return redirect(request.referrer or url_for('employees', year=year, month=month))
+
+    user = get_current_user()
     conn = get_db()
     try:
-        state = _get_payroll_month_state(conn, year, month)
-        if state['can_lock'] and not state['locked']:
+        state = _annotate_payroll_state_for_user(
+            _get_payroll_month_state(conn, year, month), user
+        )
+        if lock_action == 'manual_unlock':
+            if state.get('can_unlock') and state.get('locked'):
+                conn.execute(
+                    "DELETE FROM payroll_month_locks WHERE year=? AND month=?",
+                    (year, month),
+                )
+                conn.commit()
+        elif state['can_lock'] and not state['locked']:
             existing = conn.execute(
                 "SELECT 1 FROM payroll_month_locks WHERE year=? AND month=?",
                 (year, month)

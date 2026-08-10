@@ -3175,13 +3175,49 @@ def _sales_report_kpi_bundle(conn, date_from, date_to, company=None, location=No
     }
 
 
+SALES_ENTRY_EDIT_WINDOW_DAYS = 7
+SALES_ENTRY_LOCK_MESSAGE = (
+    "This entry was saved more than 7 days ago. Only a Super Administrator can change it."
+)
+
+
+def _parse_sales_row_created_date(created_at):
+    """Return the calendar date of a sales_updates.created_at value, or None."""
+    if not created_at:
+        return None
+    text = str(created_at).strip()
+    if not text:
+        return None
+    if len(text) >= 19:
+        try:
+            return datetime.strptime(text[:19], "%Y-%m-%d %H:%M:%S").date()
+        except ValueError:
+            pass
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _sales_entry_locked_for_user(user, row):
+    """True when first save is older than the edit window and user is not Super Admin."""
+    if not row:
+        return False
+    if user and user.get("is_admin"):
+        return False
+    created = _parse_sales_row_created_date(row.get("created_at"))
+    if created is None:
+        return False
+    return (date.today() - created).days >= SALES_ENTRY_EDIT_WINDOW_DAYS
+
+
 def _check_sales_date_lock(user, company, location, sales_date):
     today_iso = date.today().isoformat()
     if sales_date > today_iso:
         return "Cannot save future dates."
-    if not user.get("is_admin") and sales_date < today_iso:
-        if load_sales_row(company, location, sales_date):
-            return "This date was already saved. Only administrators can change past sales entries."
+    row = load_sales_row(company, location, sales_date)
+    if _sales_entry_locked_for_user(user, row):
+        return SALES_ENTRY_LOCK_MESSAGE
     return None
 
 
@@ -9313,7 +9349,7 @@ def clear_hotel_ledger():
 def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_iso):
     is_future = sales_date > today_iso
     row = None if is_future else load_sales_row(company, location, sales_date)
-    sales_entry_locked = bool(row and sales_date < today_iso and not user.get("is_admin"))
+    sales_entry_locked = _sales_entry_locked_for_user(user, row)
     sales_entries = row.get("sales_entry_values", {}) if row else {}
     tip_entries = []
     tip_total = 0.0

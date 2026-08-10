@@ -26,9 +26,7 @@
   const inputs = Array.from(document.querySelectorAll('[data-denomination]'));
   const entryInputs = Array.from(document.querySelectorAll('[data-sales-entry]'));
   const salesOutlets = {{ selected_locations|tojson }};
-  const salesUpdateIsAdmin = widget?.dataset.salesAdmin === '1';
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const entryLockedMessage = 'This date was already saved. Only administrators can change past sales entries.';
+  const entryLockedMessage = 'This entry was saved more than 7 days ago. Only a Super Administrator can change it.';
   let saveTimer = null;
 
   function outletSlug(location) {
@@ -69,17 +67,8 @@
         .forEach((input) => { input.readOnly = true; input.disabled = true; });
     });
     if (salesOutlets.some((loc) => isEntryLocked(loc)) && !document.querySelector('.petty-save-state.err')) {
-      setSaveState('View only — past date already saved', 'ok');
+      setSaveState('View only — this entry is locked after 7 days', 'ok');
     }
-  }
-  function lockEntryAfterPastSave(){
-    if (!widget || salesUpdateIsAdmin) return;
-    if (widget.dataset.date >= todayIso) return;
-    salesOutlets.forEach((location) => {
-      const wrap = pettyWrap(location);
-      if (wrap) wrap.dataset.entryLocked = '1';
-    });
-    applyEntryLock();
   }
   function buildCounts(location){
     const counts = {};
@@ -153,13 +142,7 @@
           totalEl.textContent = formatKpiNum(data.petty_cash_total);
         }
       }
-      lockEntryAfterPastSave();
-      setSaveState(
-        salesOutlets.every((loc) => isEntryLocked(loc))
-          ? 'Saved. This date is now locked for editing.'
-          : `Saved for ${data.date || widget.dataset.date}`,
-        'ok'
-      );
+      setSaveState(`Saved for ${data.date || widget.dataset.date}`, 'ok');
     } catch (err) {
       setSaveState(`Save failed: ${err.message}`, 'err');
     }

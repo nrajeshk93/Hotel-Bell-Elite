@@ -860,6 +860,43 @@ body.su-module #st-approvals-modal .st-appr-card .pl-table-wrap{
   -webkit-overflow-scrolling:touch;
   position:relative;
 }
+
+/* Pending indent approvals — rose attention pulse (same language as overdue rooms). */
+@keyframes st-approvals-attention-pulse{
+  0%, 100%{
+    box-shadow:0 0 0 0 rgba(225,29,72,0), 0 1px 2px rgba(15,23,42,.04);
+    border-color:#FB7185;
+    background:linear-gradient(180deg,#FFFFFF 0%,#FFF1F2 100%);
+    color:#BE123C;
+  }
+  50%{
+    box-shadow:0 0 0 5px rgba(225,29,72,.28), 0 8px 20px rgba(225,29,72,.14);
+    border-color:#BE123C;
+    background:linear-gradient(180deg,#FFE4E6 0%,#FECDD3 100%);
+    color:#9F1239;
+  }
+}
+html.de-soft-nav-session .de-main-wrapper #st-approvals-open.st-approvals-open--attention,
+html.de-soft-navigating .de-main-wrapper #st-approvals-open.st-approvals-open--attention,
+body.su-module #st-approvals-open.st-approvals-open--attention{
+  border:1px solid #FB7185 !important;
+  color:#BE123C !important;
+  animation:st-approvals-attention-pulse 1.4s ease-in-out infinite !important;
+}
+body.su-module #st-approvals-open.st-approvals-open--attention svg{
+  stroke:currentColor;
+}
+@media (prefers-reduced-motion: reduce){
+  html.de-soft-nav-session .de-main-wrapper #st-approvals-open.st-approvals-open--attention,
+  html.de-soft-navigating .de-main-wrapper #st-approvals-open.st-approvals-open--attention,
+  body.su-module #st-approvals-open.st-approvals-open--attention{
+    animation:none !important;
+    border-color:#E11D48 !important;
+    box-shadow:inset 0 0 0 2px rgba(225,29,72,.35);
+    background:linear-gradient(180deg,#FFE4E6 0%,#FECDD3 100%);
+    color:#BE123C !important;
+  }
+}
 body.su-module .st-appr-table{
   min-width:1040px;
   width:max(100%,1040px);

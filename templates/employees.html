@@ -842,6 +842,11 @@
                 onclick='submitPayrollLock({{ sel_year|tojson }}, {{ sel_month|tojson }}, {{ payroll_state.label|tojson }})'>
           {{ payroll_state.button_label }}
         </button>
+        {% elif payroll_state.can_unlock %}
+        <button type="button" class="btn btn-secondary btn-sm"
+                onclick='submitPayrollUnlock({{ sel_year|tojson }}, {{ sel_month|tojson }}, {{ payroll_state.label|tojson }})'>
+          {{ payroll_state.button_label }}
+        </button>
         {% else %}
         <button type="button" class="btn btn-secondary btn-sm" disabled title="{{ payroll_state.reason }}">{{ payroll_state.button_label }}</button>
         {% endif %}
@@ -2975,7 +2980,7 @@
   </div>
 </div>
 <script type="application/json" id="ep-page-config">{"year":{{ sel_year|default('')|tojson }},"month":{{ sel_month|default('')|tojson }},"lockUrl":{{ url_for('lock_payroll_month')|tojson }}}</script>
-<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=5"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

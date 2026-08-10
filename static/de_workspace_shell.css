@@ -79,11 +79,20 @@ html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room
 html.de-soft-nav-session .de-main-wrapper .hotel-room-tile--attention .hotel-room-badge{
   animation:hotel-room-attention-badge-pulse 1.4s ease-in-out infinite!important;
 }
+/* Pending Indent Approvals button pulse (same soft-nav exception). */
+html.de-soft-navigating .de-main-wrapper #st-approvals-open.st-approvals-open--attention,
+html.de-soft-nav-session .de-main-wrapper #st-approvals-open.st-approvals-open--attention{
+  animation:st-approvals-attention-pulse 1.4s ease-in-out infinite!important;
+}
 @media (prefers-reduced-motion: reduce){
   html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention,
   html.de-soft-nav-session .de-main-wrapper .hotel-room-tile--attention,
   html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room-badge,
   html.de-soft-nav-session .de-main-wrapper .hotel-room-tile--attention .hotel-room-badge{
+    animation:none!important;
+  }
+  html.de-soft-navigating .de-main-wrapper #st-approvals-open.st-approvals-open--attention,
+  html.de-soft-nav-session .de-main-wrapper #st-approvals-open.st-approvals-open--attention{
     animation:none!important;
   }
 }

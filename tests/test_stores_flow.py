@@ -2341,6 +2341,49 @@ class StoresFlowTests(unittest.TestCase):
         self.assertNotRegex(page.data.decode("utf-8", errors="ignore"), r">\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}<")
         self.assertNotIn(b"st-appr-icon--cal", page.data)
 
+    def test_indent_approval_button_glows_when_pending(self):
+        create = self.client.post(
+            "/stores/indent?outlet=bar",
+            data={
+                "outlet": "bar",
+                "action": "submit",
+                "notes": "Glow me",
+                "item_name": ["Onion"],
+                "quantity": ["2"],
+                "unit": ["kg"],
+                "approximate_price": ["10"],
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(create.status_code, 302)
+
+        indent_page = self.client.get("/stores/indent?outlet=bar")
+        self.assertEqual(indent_page.status_code, 200)
+        self.assertIn(b'id="st-approvals-open"', indent_page.data)
+        self.assertIn(b"st-approvals-open--attention", indent_page.data)
+        self.assertIn(b'data-pending-count="1"', indent_page.data)
+
+        conn = db_mod.get_db()
+        try:
+            indent_id = conn.execute(
+                "SELECT id FROM store_indents WHERE notes = 'Glow me' ORDER BY id DESC LIMIT 1"
+            ).fetchone()["id"]
+        finally:
+            conn.close()
+
+        decide = self.client.post(
+            f"/stores/indent/{indent_id}/decide",
+            data={"outlet": "bar", "decision": "approved", "decision_note": ""},
+            follow_redirects=False,
+        )
+        self.assertEqual(decide.status_code, 302)
+
+        cleared = self.client.get("/stores/indent?outlet=bar")
+        self.assertEqual(cleared.status_code, 200)
+        self.assertIn(b'id="st-approvals-open"', cleared.data)
+        self.assertNotIn(b"st-approvals-open--attention", cleared.data)
+        self.assertIn(b'data-pending-count="0"', cleared.data)
+
     def test_home_shows_approvals_notification_only_for_approvers(self):
         create = self.client.post(
             "/stores/indent?outlet=bar",

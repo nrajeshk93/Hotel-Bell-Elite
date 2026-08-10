@@ -344,13 +344,33 @@
 
   window.submitPayrollLock = function submitPayrollLock(year, month, label) {
     if (!window.confirm(
-      'Lock ' + label + '? After locking, NO edits are allowed for this month — attendance, credits, repayments, tip incentive, and wage fields — including for administrators. This cannot be undone from here.'
+      'Lock ' + label + '? After locking, NO edits are allowed for this month — attendance, credits, repayments, tip incentive, and wage fields — including for administrators. A Super Administrator can unlock the month later if needed.'
     )) return;
     var cfg = pageConfig();
     var form = document.createElement('form');
     form.method = 'POST';
     form.action = cfg.lockUrl || '/lock_payroll_month';
     var fields = { year: year, month: month, lock_action: 'manual_lock' };
+    Object.keys(fields).forEach(function (k) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = k;
+      inp.value = fields[k];
+      form.appendChild(inp);
+    });
+    document.body.appendChild(form);
+    form.submit();
+  };
+
+  window.submitPayrollUnlock = function submitPayrollUnlock(year, month, label) {
+    if (!window.confirm(
+      'Unlock ' + label + '? This reopens attendance, credits, repayments, tip incentive, and wage edits for this month.'
+    )) return;
+    var cfg = pageConfig();
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = cfg.lockUrl || '/lock_payroll_month';
+    var fields = { year: year, month: month, lock_action: 'manual_unlock' };
     Object.keys(fields).forEach(function (k) {
       var inp = document.createElement('input');
       inp.type = 'hidden';

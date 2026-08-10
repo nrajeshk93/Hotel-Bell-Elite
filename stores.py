@@ -29,7 +29,7 @@ from whatsapp_indent import (
     notify_indent_pending_whatsapp,
     supersede_indent_whatsapp_sends,
 )
-from workspace_access import user_can_access_stores_submodule
+from workspace_access import user_can_access_stores_submodule, user_can_approve_transactions
 
 logger = logging.getLogger(__name__)
 STORES_OUTLETS = (
@@ -2542,6 +2542,21 @@ def _page_render(page_key: str, **kwargs):
         )
         kwargs.setdefault("back_label", "Back to Stock")
     nav_stores_view = kwargs.pop("de_nav_stores_view", page_key)
+    if page_key == "indent" and "pending_approvals_count" not in kwargs:
+        pending_count = 0
+        if user and user_can_approve_transactions(user):
+            conn = get_db()
+            try:
+                ensure_stores_schema(conn)
+                pending_count = int(
+                    conn.execute(
+                        "SELECT COUNT(*) AS c FROM store_indents WHERE status = 'pending'"
+                    ).fetchone()["c"]
+                    or 0
+                )
+            finally:
+                conn.close()
+        kwargs["pending_approvals_count"] = pending_count
     return render_template(
         "stores_page.html",
         de_nav_section="stores",

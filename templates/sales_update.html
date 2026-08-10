@@ -84,7 +84,7 @@
       {% if sales_entry_locked %}
       <div class="se-lock-banner" role="status">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        <span>This date was already saved. Only administrators can change past sales entries.</span>
+        <span>This entry was saved more than 7 days ago. Only a Super Administrator can change it.</span>
       </div>
       {% endif %}
       <section class="sr-kpi-section" aria-label="Sales KPI summary">
@@ -741,9 +741,7 @@ SalesDateRangePicker.init({
   const saveState = document.getElementById('petty-save-state');
   const clearSalesEntryBtn = document.getElementById('se-clear-sales-entry');
   const saveSendWhatsappReportBtn = document.getElementById('save-send-whatsapp-report');
-  const salesUpdateIsAdmin = widget?.dataset.salesAdmin === '1';
-  const todayIso = new Date().toISOString().slice(0, 10);
-  const entryLockedMessage = 'This date was already saved. Only administrators can change past sales entries.';
+  const entryLockedMessage = 'This entry was saved more than 7 days ago. Only a Super Administrator can change it.';
   let saveTimer = null;
   let editingStaffCreditId = null;
   let editingStaffRepaymentId = null;
@@ -782,20 +780,9 @@ SalesDateRangePicker.init({
       if (staffCreditDescription) staffCreditDescription.disabled = true;
       if (staffSdTrigger) staffSdTrigger.disabled = true;
       if (!document.querySelector('.petty-save-state.err')) {
-        setSaveState('View only — past date already saved', 'ok');
+        setSaveState('View only — this entry is locked after 7 days', 'ok');
       }
     }
-  }
-  function lockEntryAfterPastSave(){
-    if (!widget || salesUpdateIsAdmin) return;
-    if (widget.dataset.date >= todayIso) return;
-    salesOutlets.forEach((location) => {
-      const wrap = pettyWrap(location);
-      if (wrap) wrap.dataset.entryLocked = '1';
-    });
-    applyEntryLock();
-    renderStaffCreditEntries(staffCreditEntries);
-    renderStaffRepaymentEntries(staffRepaymentEntries);
   }
   function guardEntryEditable(location){
     if (!isEntryLocked(location)) return true;
@@ -1004,13 +991,7 @@ SalesDateRangePicker.init({
       updateSalesEntries();
       syncSelectedLocationCash();
       refreshCashReportSummary();
-      lockEntryAfterPastSave();
-      setSaveState(
-        salesOutlets.every((loc) => isEntryLocked(loc))
-          ? 'Saved. This date is now locked for editing.'
-          : `Saved for ${data.date || widget.dataset.date}`,
-        'ok'
-      );
+      setSaveState(`Saved for ${data.date || widget.dataset.date}`, 'ok');
     } catch (err) {
       setSaveState(`Save failed: ${err.message}`, 'err');
     }
