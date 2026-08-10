@@ -184,3 +184,129 @@ body.su-module .cl-date-range-host .an-range-actions{
     flex-wrap:wrap;
   }
 }
+
+/* Load / Transfer modal footers — match Purchases & Expenses Add entry */
+body.su-module #cl-load-modal .staff-credit-actions,
+body.su-module #cl-transfer-modal .staff-credit-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  width:100%;
+  flex-wrap:wrap;
+}
+body.su-module #cl-load-modal #cl-load-cancel,
+body.su-module #cl-transfer-modal #cl-transfer-cancel{
+  order:1;
+}
+body.su-module #cl-load-modal #cl-load-submit,
+body.su-module #cl-transfer-modal #cl-transfer-submit{
+  order:2;
+  margin-left:0;
+}
+body.su-module #cl-load-modal #cl-load-submit[hidden],
+body.su-module #cl-load-modal #cl-load-required-notice[hidden],
+body.su-module #cl-transfer-modal #cl-transfer-submit[hidden],
+body.su-module #cl-transfer-modal #cl-transfer-required-notice[hidden]{
+  display:none !important;
+}
+body.su-module #cl-load-modal #cl-load-required-notice,
+body.su-module #cl-transfer-modal #cl-transfer-required-notice{
+  order:2;
+  margin:0;
+  max-width:min(360px,100%);
+  font:600 12px/1.4 Inter,system-ui,sans-serif;
+  color:#64748B;
+  text-align:right;
+}
+
+/* Transfer Out: Destination + Date on one row (like Add entry Type + Date) */
+body.su-module #cl-transfer-modal .cl-transfer-dest-date-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:end;
+  gap:12px;
+  margin-bottom:14px;
+}
+body.su-module #cl-transfer-modal .cl-transfer-dest-date-row > .staff-field{
+  margin-bottom:0;
+  min-width:0;
+}
+body.su-module #cl-transfer-modal .cl-transfer-dest-field .staff-supplier-field-label{
+  display:block;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  margin-bottom:5px;
+}
+body.su-module #cl-transfer-modal .cl-transfer-dest-tabs.cp-view-tabs{
+  display:flex;
+  width:100%;
+  margin:8px 0 0;
+  margin-right:0;
+  box-sizing:border-box;
+}
+body.su-module #cl-transfer-modal .cl-transfer-dest-tabs .cl-transfer-dest-tab{
+  flex:1 1 0;
+  justify-content:center;
+  width:50%;
+  height:40px;
+  padding:0 12px;
+  border:0;
+  background:transparent;
+  cursor:pointer;
+  font:700 12px Inter,system-ui,sans-serif;
+}
+body.su-module #cl-transfer-modal .cl-transfer-dest-tabs .cl-transfer-dest-tab:hover{
+  color:#0F172A;
+  background:rgba(255,255,255,.65);
+}
+body.su-module #cl-transfer-modal .cl-transfer-dest-tabs .cl-transfer-dest-tab.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+
+/* Transfer Out date — match Purchases & Expenses Add entry */
+body.su-module #cl-transfer-modal .cl-modal-date-field{
+  width:auto;
+  flex:0 0 auto;
+}
+body.su-module #cl-transfer-modal .cl-modal-date-chip{
+  width:auto;
+  display:inline-block;
+  max-width:100%;
+}
+body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-control{
+  width:auto;
+}
+body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-trigger{
+  width:auto;
+  min-width:128px;
+  height:40px;
+  min-height:40px;
+  padding:0 16px;
+  border-radius:10px;
+  font:600 13px Inter,system-ui,sans-serif;
+  gap:0;
+  justify-content:center;
+}
+body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-caret{
+  display:none;
+}
+body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-value{
+  flex:0 0 auto;
+  text-align:center;
+}
+@media (max-width:640px){
+  body.su-module #cl-transfer-modal .cl-transfer-dest-date-row{
+    grid-template-columns:1fr;
+  }
+  body.su-module #cl-transfer-modal .cl-modal-date-chip,
+  body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-control,
+  body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-trigger{
+    width:100%;
+  }
+}

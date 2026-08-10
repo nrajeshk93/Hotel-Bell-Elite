@@ -358,7 +358,7 @@
     var useFixed =
       chip.hasAttribute('data-hotel-date-fixed') ||
       !!(chip.closest(
-        '.hrd-modal-body, .hrd-modal, .hrd-dialog-body, .hr-dialog-body, .hr-dialog, #hr-board-reserve-modal'
+        '.hrd-modal-body, .hrd-modal, .hrd-dialog-body, .hr-dialog-body, .hr-dialog, #hr-board-reserve-modal, .modal-backdrop, .staff-credit-box'
       ));
 
     if (!useFixed) {

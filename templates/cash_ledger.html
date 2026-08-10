@@ -10,8 +10,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=18">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
 <script>
 (function(){
@@ -23,6 +25,7 @@
 </script>
 </head>
 <body class="de-open su-module">
+{% from 'partials/hotel_date_macros.html' import hotel_date_field %}
 {% include 'partials/de_workspace_shell_open.html' %}
 <div class="main-wrapper" id="cash-ledger-page"
      data-load-url="{{ load_url }}"
@@ -63,7 +66,7 @@
               <span class="se-filter-chip-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
               </span>
-              <input type="search" id="cash-ledger-search" class="cl-search-input" placeholder="Type, detail, description…" autocomplete="off" aria-label="Search cash ledger">
+              <input type="search" id="cash-ledger-search" class="cl-search-input" placeholder="ID, type, detail, description…" autocomplete="off" aria-label="Search cash ledger">
             </div>
           </div>
           <div class="se-filter-chip se-filter-chip--location se-filter-chip--listbox cl-location-chip" data-se-listbox>
@@ -232,6 +235,7 @@
                 <th class="pl-sortable is-sorted-desc" data-sort="date" scope="col" tabindex="0" aria-sort="descending">Date</th>
                 <th class="pl-sortable" data-sort="type" scope="col" tabindex="0" aria-sort="none">Type</th>
                 <th class="pl-sortable" data-sort="detail" scope="col" tabindex="0" aria-sort="none">Detail</th>
+                <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">ID</th>
                 <th class="pl-sortable" data-sort="description" scope="col" tabindex="0" aria-sort="none">Description</th>
                 <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
                 <th class="pl-col-amount" scope="col">Balance</th>
@@ -242,12 +246,19 @@
               {% for entry in ledger_entries %}
               {% set type_label = cash_ledger_entry_labels.get(entry.entry_type, entry.entry_type) %}
               <tr class="cl-ledger-row" data-entry-type="{{ entry.entry_type }}" data-source-id="{{ entry.source_id }}"
-                  data-search="{{ [entry.entry_date or '', type_label, entry.detail or '', entry.description or '', entry.signed_amount|string]|join(' ')|lower }}">
+                  data-search="{{ [entry.entry_date or '', type_label, entry.detail or '', entry.expense_code or '', entry.description or '', entry.signed_amount|string]|join(' ')|lower }}">
                 <td class="pl-col-date" data-sort-value="{{ entry.entry_date or '' }}">{{ entry.entry_date }}</td>
                 <td data-sort-value="{{ type_label }}">
                   <span class="cl-type-pill cl-type-pill--{{ entry.entry_type }}">{{ type_label }}</span>
                 </td>
                 <td data-sort-value="{{ entry.detail or '' }}">{{ entry.detail or '—' }}</td>
+                <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}">
+                  {% if entry.expense_code %}
+                  <span class="pl-expense-code">{{ entry.expense_code }}</span>
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
                 <td data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
                 <td class="pl-col-amount {% if entry.signed_amount >= 0 %}cl-amount-in{% else %}cl-amount-out{% endif %}" data-amount="{{ entry.signed_amount }}" data-sort-value="{{ entry.signed_amount }}">{{ entry.signed_amount }}</td>
                 <td class="pl-col-amount cl-balance pl-amount" data-amount="{{ entry.running_balance }}">{{ entry.running_balance }}</td>
@@ -289,7 +300,6 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
       <span id="cl-load-title">Load Cash</span>
     </div>
-    <p class="staff-credit-copy">Add cash loaded into the hotel till. This increases Available Cash.</p>
     <div id="cl-load-error" class="staff-credit-error"></div>
     <div class="staff-field">
       <label for="cl-load-date">Date *</label>
@@ -304,8 +314,12 @@
       <input id="cl-load-description" class="staff-input" type="text" maxlength="200" placeholder="e.g. Opening float / owner top-up">
     </div>
     <div class="staff-credit-actions">
-      <button type="button" class="btn btn-secondary" id="cl-load-cancel">Cancel</button>
-      <button type="button" class="btn btn-primary" id="cl-load-submit">Save load</button>
+      <button type="button" class="btn staff-secondary" id="cl-load-cancel">Cancel</button>
+      <p class="cl-load-required-notice" id="cl-load-required-notice">Fill all the mandatory fields to save a load</p>
+      <button type="button" class="btn staff-primary" id="cl-load-submit" hidden disabled>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span>Save load</span>
+      </button>
     </div>
   </div>
 </div>
@@ -316,20 +330,36 @@
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
       <span id="cl-transfer-title">Transfer Out</span>
     </div>
-    <p class="staff-credit-copy">Record cash moved to the bank or given to the owner. This reduces Available Cash.</p>
     <div id="cl-transfer-error" class="staff-credit-error"></div>
-    <div class="staff-field">
-      <label for="cl-transfer-date">Date *</label>
-      <input id="cl-transfer-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
-    </div>
-    <div class="staff-field">
-      <label>Destination *</label>
-      <div class="staff-credit-type-toggle" id="cl-transfer-destination-toggle" role="group" aria-label="Transfer destination">
-        {% for dest_key, dest_label in cash_ledger_transfer_destinations %}
-        <button type="button" class="staff-credit-type-btn{% if dest_key == 'bank' %} active{% endif %}" data-value="{{ dest_key }}">{{ dest_label }}</button>
-        {% endfor %}
+    <div class="staff-grid cl-transfer-dest-date-row">
+      <div class="staff-field cl-transfer-dest-field">
+        <span class="staff-supplier-field-label" id="cl-transfer-destination-label">Destination *</span>
+        <input type="hidden" id="cl-transfer-destination" value="bank">
+        <div class="cp-view-tabs cl-transfer-dest-tabs" role="tablist" aria-labelledby="cl-transfer-destination-label" id="cl-transfer-destination-toggle">
+          {% for dest_key, dest_label in cash_ledger_transfer_destinations %}
+          <button type="button"
+                  class="cp-view-tab cl-transfer-dest-tab{% if dest_key == 'bank' %} is-active{% endif %}"
+                  role="tab"
+                  data-value="{{ dest_key }}"
+                  aria-selected="{{ 'true' if dest_key == 'bank' else 'false' }}">{{ dest_label }}</button>
+          {% endfor %}
+        </div>
       </div>
-      <input type="hidden" id="cl-transfer-destination" value="bank">
+      <div class="staff-field cl-modal-date-field">
+        {{ hotel_date_field(
+          'transfer_date',
+          'Date',
+          required=true,
+          value=today_iso,
+          field_id='cl-transfer-date',
+          extra_class='cl-modal-date-chip',
+          panel_title='Select date',
+          empty_label='Select date',
+          hint='',
+          show_cal_icon=false,
+          max_date='today'
+        ) }}
+      </div>
     </div>
     <div class="staff-field">
       <label for="cl-transfer-amount">Amount *</label>
@@ -340,14 +370,19 @@
       <input id="cl-transfer-description" class="staff-input" type="text" maxlength="200" placeholder="e.g. Bank deposit / owner draw">
     </div>
     <div class="staff-credit-actions">
-      <button type="button" class="btn btn-secondary" id="cl-transfer-cancel">Cancel</button>
-      <button type="button" class="btn btn-primary" id="cl-transfer-submit">Save transfer</button>
+      <button type="button" class="btn staff-secondary" id="cl-transfer-cancel">Cancel</button>
+      <p class="cl-transfer-required-notice" id="cl-transfer-required-notice">Fill all the mandatory fields to save a transfer</p>
+      <button type="button" class="btn staff-primary" id="cl-transfer-submit" hidden disabled>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span>Save transfer</span>
+      </button>
     </div>
   </div>
 </div>
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=10"></script>
 {% include 'partials/sales_update_filter_listbox_scripts.html' %}
 {% include 'partials/cash_ledger_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}

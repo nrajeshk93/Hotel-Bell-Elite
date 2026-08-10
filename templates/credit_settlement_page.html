@@ -10,9 +10,9 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=41">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -51,14 +51,14 @@
         <a class="btn btn-primary" href="{{ credit_payment_report_url }}" download>Credit payment report</a>
         {% endif %}
         {% if purchase_verification_report_url %}
-        <a class="btn btn-primary" href="{{ purchase_verification_report_url }}" download>Purchase verification Report</a>
+        <a class="btn btn-primary" href="{{ purchase_verification_report_url }}" download>Approvals Report</a>
         {% endif %}
       </div>
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
         <form id="credit-payment-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="{{ settlement_labels.filter_aria_label }}"
-              data-clear-url="{{ url_for(settlement_route_endpoint, view=selected_view, supplier=selected_supplier) }}">
+              data-clear-url="{{ url_for(settlement_route_endpoint, view=selected_view, supplier=selected_supplier, kind=selected_kind) }}">
           <input type="hidden" name="view" id="credit-payment-view" value="{{ selected_view }}">
           <div class="cp-view-tabs" role="tablist" aria-label="{{ settlement_labels.view_aria_label }}">
             {% for view_key, view_label in credit_payment_views %}
@@ -83,6 +83,24 @@
             <label class="se-filter-chip-label" for="credit-payment-search">Search</label>
             <div class="se-filter-chip-control">
               <input type="search" id="credit-payment-search" class="cp-search-input" placeholder="Expense, supplier, invoice…" autocomplete="off" aria-label="Search credit payment entries">
+            </div>
+          </div>
+          <div class="pl-kind-filter-host cp-kind-filter-host pl-header-field" id="credit-payment-kind-host">
+            <span class="se-filter-chip-label" id="credit-payment-kind-label">Type</span>
+            <input type="hidden" id="credit-payment-kind" name="kind" value="{{ selected_kind }}">
+            <div class="cp-view-tabs pl-kind-filter-tabs cp-kind-filter-tabs" role="tablist" aria-labelledby="credit-payment-kind-label" id="credit-payment-kind-tabs">
+              <button type="button"
+                      class="cp-view-tab pl-kind-filter-tab cp-kind-filter-tab{% if selected_kind == 'all' %} is-active{% endif %}"
+                      role="tab"
+                      data-value="all"
+                      aria-selected="{{ 'true' if selected_kind == 'all' else 'false' }}">All</button>
+              {% for kind_key, kind_label in ledger_entry_kinds %}
+              <button type="button"
+                      class="cp-view-tab pl-kind-filter-tab cp-kind-filter-tab{% if selected_kind == kind_key %} is-active{% endif %}"
+                      role="tab"
+                      data-value="{{ kind_key }}"
+                      aria-selected="{{ 'true' if selected_kind == kind_key else 'false' }}">{{ kind_label }}</button>
+              {% endfor %}
             </div>
           </div>
           <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pl-header-field-listbox pl-header-field pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-submit="credit-payment-filter-form" data-se-listbox-close-date-wrap="cp-date-range-wrap" id="credit-payment-supplier-listbox">
@@ -277,6 +295,7 @@
                 </th>
                 {% endif %}
                 <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">Expense ID</th>
+                <th class="pl-sortable" data-sort="kind" scope="col" tabindex="0" aria-sort="none">Type</th>
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
                 <th class="pl-sortable" data-sort="expense" scope="col" tabindex="0" aria-sort="none">Expense</th>
                 <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
@@ -290,8 +309,10 @@
             </thead>
             <tbody>
               {% for entry in outstanding_entries %}
+              {% set kind_label = ledger_entry_kind_labels.get(entry.entry_kind, entry.entry_kind or 'Expense') %}
               {% set search_blob = [
                 entry.expense_code,
+                kind_label,
                 entry.sales_date,
                 entry.description,
                 expense_category_labels.get(entry.category, entry.category or ''),
@@ -310,6 +331,7 @@
                   data-description="{{ entry.description or '' }}"
                   data-balance="{{ entry.balance }}"
                   data-category="{{ entry.category or '' }}"
+                  data-entry-kind="{{ entry.entry_kind or 'expense' }}"
                   data-search="{{ search_blob|e }}">
                 {% if can_mutate_settlement %}
                 <td class="cp-col-check">
@@ -317,6 +339,9 @@
                 </td>
                 {% endif %}
                 <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
+                <td data-sort-value="{{ kind_label }}">
+                  <span class="pl-kind-pill pl-kind-pill--{{ entry.entry_kind or 'expense' }}">{{ kind_label }}</span>
+                </td>
                 <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date }}</td>
                 <td data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
                 <td data-sort-value="{{ expense_category_labels.get(entry.category, entry.category or '') }}">{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>

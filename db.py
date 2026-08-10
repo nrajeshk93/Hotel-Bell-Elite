@@ -11504,6 +11504,7 @@ def init_db():
             payment_type    TEXT    NOT NULL DEFAULT 'cash',
             transaction_id  TEXT    NOT NULL DEFAULT '',
             expense_code    TEXT    NOT NULL DEFAULT '',
+            entry_kind      TEXT    NOT NULL DEFAULT 'expense',
             created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
             updated_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime'))
         )
@@ -11537,6 +11538,15 @@ def init_db():
             )
     if "invoice_number" not in existing_expense_cols:
         cursor.execute("ALTER TABLE sales_update_expenses ADD COLUMN invoice_number TEXT NOT NULL DEFAULT ''")
+    if "entry_kind" not in existing_expense_cols:
+        # Historical rows were treated as expenses; new purchases opt in explicitly.
+        cursor.execute(
+            "ALTER TABLE sales_update_expenses ADD COLUMN entry_kind TEXT NOT NULL DEFAULT 'expense'"
+        )
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_sales_update_expenses_kind
+        ON sales_update_expenses(location, entry_kind, sales_date)
+    """)
     cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_update_expenses_code
         ON sales_update_expenses(expense_code)

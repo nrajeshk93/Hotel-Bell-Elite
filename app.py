@@ -345,6 +345,13 @@ EXPENSE_PAYMENT_TYPES = _sorted_label_choices((
     (EXPENSE_PAYMENT_BANK, "Bank Transfer"),
     (EXPENSE_PAYMENT_CREDIT, "Credit"),
 ))
+LEDGER_ENTRY_KIND_PURCHASE = "purchase"
+LEDGER_ENTRY_KIND_EXPENSE = "expense"
+LEDGER_ENTRY_KINDS = (
+    (LEDGER_ENTRY_KIND_PURCHASE, "Purchase"),
+    (LEDGER_ENTRY_KIND_EXPENSE, "Expense"),
+)
+LEDGER_ENTRY_KIND_LABELS = dict(LEDGER_ENTRY_KINDS)
 EXPENSE_CATEGORIES = _sorted_label_choices((
     ("grocery", "Grocery"),
     ("vegetables", "Vegetables"),
@@ -1626,9 +1633,30 @@ def _load_tips_detail_entries(conn, company, date_from, date_to, location_filter
     ]
 
 
-def _next_expense_code(conn, company):
+def _normalize_ledger_entry_kind(value, *, default=LEDGER_ENTRY_KIND_EXPENSE):
+    raw = (value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if raw in ("purchase", "purchases", "stock", "resale"):
+        return LEDGER_ENTRY_KIND_PURCHASE
+    if raw in ("expense", "expenses", "opex", "overhead"):
+        return LEDGER_ENTRY_KIND_EXPENSE
+    return default
+
+
+def _parse_purchase_ledger_kind(value):
+    raw = (value or PURCHASE_LEDGER_FILTER_ALL).strip()
+    if not raw or raw == PURCHASE_LEDGER_FILTER_ALL:
+        return PURCHASE_LEDGER_FILTER_ALL, None
+    normalized = _normalize_ledger_entry_kind(raw, default="")
+    if normalized in LEDGER_ENTRY_KIND_LABELS:
+        return normalized, normalized
+    return PURCHASE_LEDGER_FILTER_ALL, None
+
+
+def _next_expense_code(conn, company, entry_kind=None):
     company = (company or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
-    prefix = f"{company}-EX-"
+    kind = _normalize_ledger_entry_kind(entry_kind)
+    token = "PU" if kind == LEDGER_ENTRY_KIND_PURCHASE else "EX"
+    prefix = f"{company}-{token}-"
     rows = conn.execute(
         """SELECT expense_code FROM sales_update_expenses
            WHERE company = ? AND expense_code IS NOT NULL AND expense_code != ''""",
@@ -1649,7 +1677,7 @@ def _next_expense_code(conn, company):
 def _sales_expense_entries(conn, company, location, sales_date):
     rows = conn.execute(
         """SELECT e.id, e.expense_code, e.description, e.amount, e.payment_type, e.transaction_id,
-                  e.category, e.invoice_number, e.supplier_id, s.name AS supplier_name
+                  e.category, e.invoice_number, e.supplier_id, e.entry_kind, s.name AS supplier_name
            FROM sales_update_expenses e
            LEFT JOIN suppliers s ON s.id = e.supplier_id
            WHERE e.company=? AND e.location=? AND e.sales_date=?
@@ -1660,6 +1688,7 @@ def _sales_expense_entries(conn, company, location, sales_date):
     for row in rows:
         item = dict(row)
         item["category"] = _normalize_expense_category(item.get("category"))
+        item["entry_kind"] = _normalize_ledger_entry_kind(item.get("entry_kind"))
         entries.append(item)
     return entries
 
@@ -1815,10 +1844,10 @@ CREDIT_PAYMENT_VIEWS = _sorted_label_choices((
     (CREDIT_PAYMENT_VIEW_OUTSTANDING, "Outstanding Credit"),
     (CREDIT_PAYMENT_VIEW_HISTORY, "Payment History"),
 ))
-PURCHASE_VERIFICATION_VIEWS = _sorted_label_choices((
-    (CREDIT_PAYMENT_VIEW_OUTSTANDING, "Pending Verification"),
-    (CREDIT_PAYMENT_VIEW_HISTORY, "Verified Purchase"),
-))
+PURCHASE_VERIFICATION_VIEWS = (
+    (CREDIT_PAYMENT_VIEW_OUTSTANDING, "Pending for Approval"),
+    (CREDIT_PAYMENT_VIEW_HISTORY, "Approved"),
+)
 CREDIT_SETTLEMENT_PAGE_MODES = {
     CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT: {
         "page_title": "Credit Payment",
@@ -1869,7 +1898,7 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "detail_error_network": "Network error while loading payment.",
     },
     CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION: {
-        "page_title": "Purchase Verification",
+        "page_title": "Approvals",
         "page_subtitle": "Verify hotel purchases by combining expenses into a single supplier verification.",
         "filter_aria_label": "Purchase verification filters",
         "view_aria_label": "Purchase verification views",
@@ -1877,17 +1906,17 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "route_endpoint": "purchase_verification",
         "views": PURCHASE_VERIFICATION_VIEWS,
         "outstanding_summary_label": "Pending balance",
-        "outstanding_panel_title": "Pending Verification",
-        "outstanding_panel_aria": "Purchases pending verification",
-        "outstanding_table_aria": "Purchases pending verification",
-        "outstanding_empty": "No purchases pending verification found for the selected filters.",
+        "outstanding_panel_title": "Pending for Approval",
+        "outstanding_panel_aria": "Purchases pending approval",
+        "outstanding_table_aria": "Purchases pending approval",
+        "outstanding_empty": "No purchases pending approval found for the selected filters.",
         "history_summary_label": "Purchases verified",
         "history_summary_unit": "verification",
-        "history_panel_title": "Verified Purchase",
-        "history_panel_aria": "Verified purchase history",
-        "history_table_aria": "Verified purchase history",
-        "history_date_column": "Verification date",
-        "history_empty": "No verified purchases found for the selected filters.",
+        "history_panel_title": "Approved",
+        "history_panel_aria": "Approved purchase history",
+        "history_table_aria": "Approved purchase history",
+        "history_date_column": "Approval date",
+        "history_empty": "No approved purchases found for the selected filters.",
         "history_revert_button": "Revert",
         "history_revert_tip": "Revert to Pending Verification",
         "action_button": "Verify",
@@ -1940,6 +1969,7 @@ def _render_credit_settlement_page(mode):
     selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
         request.args.get("supplier")
     )
+    selected_kind, entry_kind = _parse_purchase_ledger_kind(request.args.get("kind"))
 
     conn = get_db()
     try:
@@ -1948,29 +1978,34 @@ def _render_credit_settlement_page(mode):
         if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
             selected_supplier = PURCHASE_LEDGER_FILTER_ALL
             supplier_id = None
+        if selected_kind != PURCHASE_LEDGER_FILTER_ALL and selected_kind not in LEDGER_ENTRY_KIND_LABELS:
+            selected_kind = PURCHASE_LEDGER_FILTER_ALL
+            entry_kind = None
         page_mode = _credit_settlement_page_mode(mode)
         if page_mode == CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION:
             outstanding_entries = _pending_purchase_verifications(
-                conn, date_from, date_to, supplier_id=supplier_id
+                conn, date_from, date_to, supplier_id=supplier_id, entry_kind=entry_kind
             )
             payment_entries = _purchase_verification_entries(
                 conn,
                 verification_date_from=payment_date_from,
                 verification_date_to=payment_date_to,
                 supplier_id=supplier_id,
+                entry_kind=entry_kind,
             )
             create_url = url_for("create_purchase_verification")
             delete_url = url_for("delete_purchase_verification")
             detail_url_template = url_for("purchase_verification_detail", verification_id=0)
         else:
             outstanding_entries = _outstanding_credit_expenses(
-                conn, date_from, date_to, supplier_id=supplier_id
+                conn, date_from, date_to, supplier_id=supplier_id, entry_kind=entry_kind
             )
             payment_entries = _credit_payment_entries(
                 conn,
                 payment_date_from=payment_date_from,
                 payment_date_to=payment_date_to,
                 supplier_id=supplier_id,
+                entry_kind=entry_kind,
             )
             create_url = url_for("create_credit_payment")
             delete_url = url_for("delete_credit_payment")
@@ -2028,7 +2063,7 @@ def _render_credit_settlement_page(mode):
         if selected_view == CREDIT_PAYMENT_VIEW_OUTSTANDING
         else payment_date_filter_active
     )
-    tab_query = {"supplier": selected_supplier}
+    tab_query = {"supplier": selected_supplier, "kind": selected_kind}
     if date_filter_active:
         tab_query["date_from"] = filter_date_from
         tab_query["date_to"] = filter_date_to
@@ -2036,12 +2071,16 @@ def _render_credit_settlement_page(mode):
         tab_query["payment_date_from"] = filter_payment_date_from
         tab_query["payment_date_to"] = filter_payment_date_to
 
-    credit_report_kwargs = {"supplier": selected_supplier}
+    credit_report_kwargs = {"supplier": selected_supplier, "kind": selected_kind}
     if date_filter_active:
         credit_report_kwargs["date_from"] = filter_date_from
         credit_report_kwargs["date_to"] = filter_date_to
 
-    purchase_report_kwargs = {"view": selected_view, "supplier": selected_supplier}
+    purchase_report_kwargs = {
+        "view": selected_view,
+        "supplier": selected_supplier,
+        "kind": selected_kind,
+    }
     if date_filter_active:
         purchase_report_kwargs["date_from"] = filter_date_from
         purchase_report_kwargs["date_to"] = filter_date_to
@@ -2072,6 +2111,7 @@ def _render_credit_settlement_page(mode):
         settlement_tab_query=tab_query,
         selected_supplier=selected_supplier,
         selected_supplier_label=selected_supplier_label,
+        selected_kind=selected_kind,
         suppliers=suppliers,
         outstanding_entries=outstanding_entries,
         outstanding_total=outstanding_total,
@@ -2083,6 +2123,8 @@ def _render_credit_settlement_page(mode):
         credit_payment_methods=CREDIT_PAYMENT_METHODS,
         credit_payment_method_labels=CREDIT_PAYMENT_METHOD_LABELS,
         expense_category_labels=EXPENSE_CATEGORY_LABELS,
+        ledger_entry_kinds=LEDGER_ENTRY_KINDS,
+        ledger_entry_kind_labels=LEDGER_ENTRY_KIND_LABELS,
         credit_settlement_status_labels=CREDIT_SETTLEMENT_STATUS_LABELS,
         create_credit_payment_url=create_url,
         delete_credit_payment_url=delete_url,
@@ -2142,9 +2184,9 @@ def _normalize_credit_payment_view(value):
     return CREDIT_PAYMENT_VIEW_OUTSTANDING
 
 
-def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company=None, category=None, payment_type=None):
+def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company=None, category=None, payment_type=None, entry_kind=None):
     sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
-                    e.transaction_id, e.category, e.invoice_number, e.supplier_id,
+                    e.transaction_id, e.category, e.invoice_number, e.supplier_id, e.entry_kind,
                     s.name AS supplier_name, s.gst AS supplier_gst,
                     COALESCE((
                         SELECT SUM(a.amount) FROM credit_payment_allocations a WHERE a.expense_id = e.id
@@ -2165,6 +2207,9 @@ def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company
     if payment_type:
         sql += " AND e.payment_type = ?"
         params.append(payment_type)
+    if entry_kind:
+        sql += " AND COALESCE(NULLIF(TRIM(e.entry_kind), ''), ?) = ?"
+        params.extend([LEDGER_ENTRY_KIND_EXPENSE, entry_kind])
     sql += " ORDER BY e.sales_date DESC, e.created_at DESC, e.id DESC"
     rows = conn.execute(sql, params).fetchall()
     entries = []
@@ -2174,6 +2219,7 @@ def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company
         item["paid_amount"] = round_half_up(item.get("paid_amount"), 2)
         item["payment_type"] = _normalize_expense_payment_type(item.get("payment_type"))
         item["category"] = _normalize_expense_category(item.get("category"))
+        item["entry_kind"] = _normalize_ledger_entry_kind(item.get("entry_kind"))
         item["balance"] = _credit_expense_balance(item["amount"], item["paid_amount"])
         clearance_method = None
         if item["payment_type"] == EXPENSE_PAYMENT_CREDIT:
@@ -2188,9 +2234,9 @@ def _purchase_ledger_entries(conn, date_from, date_to, supplier_id=None, company
     return entries
 
 
-def _outstanding_credit_expenses(conn, date_from=None, date_to=None, supplier_id=None, company=None):
+def _outstanding_credit_expenses(conn, date_from=None, date_to=None, supplier_id=None, company=None, entry_kind=None):
     sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
-                    e.category, e.supplier_id,
+                    e.category, e.supplier_id, e.entry_kind,
                     s.name AS supplier_name, s.gst AS supplier_gst,
                     COALESCE((
                         SELECT SUM(a.amount) FROM credit_payment_allocations a WHERE a.expense_id = e.id
@@ -2214,6 +2260,9 @@ def _outstanding_credit_expenses(conn, date_from=None, date_to=None, supplier_id
     if supplier_id:
         sql += " AND e.supplier_id = ?"
         params.append(supplier_id)
+    if entry_kind:
+        sql += " AND COALESCE(NULLIF(TRIM(e.entry_kind), ''), ?) = ?"
+        params.extend([LEDGER_ENTRY_KIND_EXPENSE, entry_kind])
     sql += " ORDER BY e.sales_date DESC, e.created_at DESC, e.id DESC"
     rows = conn.execute(sql, params).fetchall()
     entries = []
@@ -2224,6 +2273,7 @@ def _outstanding_credit_expenses(conn, date_from=None, date_to=None, supplier_id
         item["verified_amount"] = round_half_up(item.get("verified_amount"), 2)
         item["payment_type"] = EXPENSE_PAYMENT_CREDIT
         item["category"] = _normalize_expense_category(item.get("category"))
+        item["entry_kind"] = _normalize_ledger_entry_kind(item.get("entry_kind"))
         # Credit Payment is step 3: only fully verified purchases are payable.
         if _purchase_verification_balance(item["amount"], item["verified_amount"]) > 0.001:
             continue
@@ -2303,9 +2353,9 @@ def _purchase_verification_balance(amount, verified_total):
     return _credit_expense_balance(amount, verified_total)
 
 
-def _pending_purchase_verifications(conn, date_from=None, date_to=None, supplier_id=None, company=None):
+def _pending_purchase_verifications(conn, date_from=None, date_to=None, supplier_id=None, company=None, entry_kind=None):
     sql = """SELECT e.id, e.expense_code, e.sales_date, e.company, e.description, e.amount, e.payment_type,
-                    e.category, e.supplier_id,
+                    e.category, e.supplier_id, e.entry_kind,
                     s.name AS supplier_name, s.gst AS supplier_gst,
                     COALESCE((
                         SELECT SUM(a.amount) FROM purchase_verification_allocations a WHERE a.expense_id = e.id
@@ -2326,6 +2376,9 @@ def _pending_purchase_verifications(conn, date_from=None, date_to=None, supplier
     if supplier_id:
         sql += " AND e.supplier_id = ?"
         params.append(supplier_id)
+    if entry_kind:
+        sql += " AND COALESCE(NULLIF(TRIM(e.entry_kind), ''), ?) = ?"
+        params.extend([LEDGER_ENTRY_KIND_EXPENSE, entry_kind])
     sql += " ORDER BY e.sales_date DESC, e.created_at DESC, e.id DESC"
     rows = conn.execute(sql, params).fetchall()
     entries = []
@@ -2335,6 +2388,7 @@ def _pending_purchase_verifications(conn, date_from=None, date_to=None, supplier
         item["paid_amount"] = round_half_up(item.get("paid_amount"), 2)
         item["payment_type"] = _normalize_expense_payment_type(item.get("payment_type"))
         item["category"] = _normalize_expense_category(item.get("category"))
+        item["entry_kind"] = _normalize_ledger_entry_kind(item.get("entry_kind"))
         item["balance"] = _purchase_verification_balance(item["amount"], item["paid_amount"])
         if item["balance"] <= 0:
             continue
@@ -2342,7 +2396,7 @@ def _pending_purchase_verifications(conn, date_from=None, date_to=None, supplier
     return entries
 
 
-def _purchase_verification_entries(conn, verification_date_from=None, verification_date_to=None, supplier_id=None, company=None):
+def _purchase_verification_entries(conn, verification_date_from=None, verification_date_to=None, supplier_id=None, company=None, entry_kind=None):
     sql = """SELECT v.id, v.company, v.supplier_id, v.verification_date AS payment_date,
                     v.verification_method AS payment_method, v.transaction_id,
                     v.verification_account, v.total_amount, v.notes, v.created_at,
@@ -2384,6 +2438,14 @@ def _purchase_verification_entries(conn, verification_date_from=None, verificati
             if hasattr(verification_date_to, "isoformat")
             else verification_date_to
         )
+    if entry_kind:
+        sql += """ AND EXISTS (
+            SELECT 1 FROM purchase_verification_allocations a
+            JOIN sales_update_expenses e ON e.id = a.expense_id
+            WHERE a.purchase_verification_id = v.id
+              AND COALESCE(NULLIF(TRIM(e.entry_kind), ''), ?) = ?
+        )"""
+        params.extend([LEDGER_ENTRY_KIND_EXPENSE, entry_kind])
     sql += " ORDER BY v.verification_date DESC, v.created_at DESC, v.id DESC"
     rows = conn.execute(sql, params).fetchall()
     entries = []
@@ -2528,7 +2590,7 @@ def _validate_purchase_verification_payload(conn, data, user=None):
     }, []
 
 
-def _credit_payment_entries(conn, payment_date_from=None, payment_date_to=None, supplier_id=None, company=None):
+def _credit_payment_entries(conn, payment_date_from=None, payment_date_to=None, supplier_id=None, company=None, entry_kind=None):
     sql = """SELECT p.id, p.company, p.supplier_id, p.payment_date, p.payment_method, p.transaction_id,
                     p.total_amount, p.notes, p.created_at,
                     s.name AS supplier_name, s.gst AS supplier_gst,
@@ -2555,6 +2617,14 @@ def _credit_payment_entries(conn, payment_date_from=None, payment_date_to=None, 
         params.append(
             payment_date_to.isoformat() if hasattr(payment_date_to, "isoformat") else payment_date_to
         )
+    if entry_kind:
+        sql += """ AND EXISTS (
+            SELECT 1 FROM credit_payment_allocations a
+            JOIN sales_update_expenses e ON e.id = a.expense_id
+            WHERE a.credit_payment_id = p.id
+              AND COALESCE(NULLIF(TRIM(e.entry_kind), ''), ?) = ?
+        )"""
+        params.extend([LEDGER_ENTRY_KIND_EXPENSE, entry_kind])
     sql += " ORDER BY p.payment_date DESC, p.created_at DESC, p.id DESC"
     rows = conn.execute(sql, params).fetchall()
     entries = []
@@ -2668,7 +2738,7 @@ def _validate_credit_payment_payload(conn, data):
         verified_total = _purchase_verification_verified_total(conn, expense_id)
         if _purchase_verification_balance(expense.get("amount"), verified_total) > 0.001:
             code = expense.get("expense_code") or f"#{expense_id}"
-            errors.append(f"{code} must be verified in Purchase Verification before payment.")
+            errors.append(f"{code} must be verified in Approvals before payment.")
             continue
         if supplier_id and int(expense.get("supplier_id") or 0) != supplier_id:
             errors.append("All selected expenses must belong to the same supplier.")
@@ -3103,15 +3173,45 @@ def _pct_change_vs_previous(current, previous):
     return round((cur - prev) / abs(prev) * 100, 1)
 
 
+def _append_sales_location_sql(sql, params, location):
+    """Append a location equality or IN filter. location may be str, list/tuple, or None."""
+    if not location:
+        return sql, params
+    if isinstance(location, (list, tuple)):
+        locs = [str(item).strip() for item in location if str(item or "").strip()]
+        if not locs:
+            return sql, params
+        if len(locs) == 1:
+            sql += " AND location = ?"
+            params.append(locs[0])
+            return sql, params
+        placeholders = ", ".join("?" for _ in locs)
+        sql += f" AND location IN ({placeholders})"
+        params.extend(locs)
+        return sql, params
+    sql += " AND location = ?"
+    params.append(location)
+    return sql, params
+
+
+def _normalize_dashboard_location_filter(location):
+    """Map dashboard outlet chip to SQL location filter (None = all outlets)."""
+    if not location or location == DASHBOARD_FILTER_LOCATION_ALL:
+        return None
+    if location == DASHBOARD_FILTER_LOCATION_RESTAURANT_BAR:
+        return [OUTLET_RESTAURANT, OUTLET_BAR]
+    if location in (OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR):
+        return location
+    return None
+
+
 def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None, difference_mode=None):
     sql = "SELECT sales_entry_values FROM sales_updates WHERE sales_date >= ? AND sales_date <= ?"
     params = [date_from.isoformat(), date_to.isoformat()]
     if company:
         sql += " AND company = ?"
         params.append(company)
-    if location:
-        sql += " AND location = ?"
-        params.append(location)
+    sql, params = _append_sales_location_sql(sql, params, location)
     rows = conn.execute(sql, params).fetchall()
 
     actual = digital = cash = room_credit = tips = actual_cash = difference = 0.0
@@ -3134,9 +3234,7 @@ def _aggregate_sales_kpis(conn, date_from, date_to, company=None, location=None,
     if company:
         expense_sql += " AND company = ?"
         expense_params.append(company)
-    if location:
-        expense_sql += " AND location = ?"
-        expense_params.append(location)
+    expense_sql, expense_params = _append_sales_location_sql(expense_sql, expense_params, location)
     expense_row = conn.execute(expense_sql, expense_params).fetchone()
     expense = round_half_up(expense_row["total"] if expense_row else 0, 2)
 
@@ -3608,12 +3706,15 @@ DASHBOARD_PERIODS = (
 )
 DASHBOARD_PERIOD_KEYS = {key for key, _label in DASHBOARD_PERIODS}
 DASHBOARD_FILTER_LOCATION_ALL = CASH_LEDGER_FILTER_ALL
+DASHBOARD_FILTER_LOCATION_RESTAURANT_BAR = "Restaurant & Bar"
 DASHBOARD_FILTER_LOCATIONS = (
     (CASH_LEDGER_FILTER_ALL, "All"),
     (OUTLET_HOTEL, OUTLET_HOTEL),
     (OUTLET_RESTAURANT, OUTLET_RESTAURANT),
     (OUTLET_BAR, OUTLET_BAR),
+    (DASHBOARD_FILTER_LOCATION_RESTAURANT_BAR, DASHBOARD_FILTER_LOCATION_RESTAURANT_BAR),
 )
+DASHBOARD_FILTER_LOCATION_KEYS = {key for key, _label in DASHBOARD_FILTER_LOCATIONS}
 
 
 def _dashboard_period_range(period, today=None):
@@ -3681,11 +3782,9 @@ def _resolve_main_dashboard_filters(args):
         period = "30d"
 
     location = (args.get("location") or DASHBOARD_FILTER_LOCATION_ALL).strip()
-    if location not in CASH_LEDGER_FILTER_LOCATIONS:
+    if location not in DASHBOARD_FILTER_LOCATION_KEYS:
         location = DASHBOARD_FILTER_LOCATION_ALL
-    location_label = (
-        "All" if location == DASHBOARD_FILTER_LOCATION_ALL else location
-    )
+    location_label = dict(DASHBOARD_FILTER_LOCATIONS).get(location, location)
 
     raw_from = (args.get("date_from") or "").strip()
     raw_to = (args.get("date_to") or "").strip()
@@ -3754,9 +3853,7 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
     if company:
         sql += " AND company = ?"
         params.append(company)
-    if location:
-        sql += " AND location = ?"
-        params.append(location)
+    sql, params = _append_sales_location_sql(sql, params, location)
     for row in conn.execute(sql, params).fetchall():
         day_key = str(row["sales_date"] or "")[:10]
         if not day_key:
@@ -3787,9 +3884,9 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
     if company:
         expense_sql += " AND company = ?"
         expense_params.append(company)
-    if location:
-        expense_sql += " AND location = ?"
-        expense_params.append(location)
+    expense_sql, expense_params = _append_sales_location_sql(
+        expense_sql, expense_params, location
+    )
     expense_sql += " GROUP BY sales_date"
     for row in conn.execute(expense_sql, expense_params).fetchall():
         day_key = str(row["sales_date"] or "")[:10]
@@ -3851,6 +3948,8 @@ def _sparkline_polyline(values, width=140, height=32, pad=2):
 
 
 def _dashboard_outlet_names(location=None):
+    if location == DASHBOARD_FILTER_LOCATION_RESTAURANT_BAR:
+        return [OUTLET_RESTAURANT, OUTLET_BAR]
     if location in (OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR):
         return [location]
     return [OUTLET_HOTEL, OUTLET_RESTAURANT, OUTLET_BAR]
@@ -3864,13 +3963,20 @@ def _dashboard_pos_menu_outlet(location=None):
         return POS_OUTLET_RESTAURANT
     if location == OUTLET_BAR:
         return POS_OUTLET_BAR
+    if location == DASHBOARD_FILTER_LOCATION_RESTAURANT_BAR:
+        return None  # Restaurant + Bar POS
     return None  # All
 
 
 def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
     """Retail Intelligence–style dashboard: KPIs + trend + outlets + payment + heatmap."""
-    bundle = _sales_report_kpi_bundle(conn, date_from, date_to, company=None, location=location)
-    sparks = _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location=location)
+    location_filter = _normalize_dashboard_location_filter(location)
+    bundle = _sales_report_kpi_bundle(
+        conn, date_from, date_to, company=None, location=location_filter
+    )
+    sparks = _dashboard_kpi_spark_series(
+        conn, date_from, date_to, company=None, location=location_filter
+    )
 
     if date_from == date_to:
         prev_to = date_from - timedelta(days=1)
@@ -3975,7 +4081,7 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
         bundle["current"]["digital_transactions"], bundle["current"]["cash"]
     )
     prev_kpis = _aggregate_sales_kpis(
-        conn, prev_from, prev_to, company=None, location=location
+        conn, prev_from, prev_to, company=None, location=location_filter
     )
     prev_dig_pct, prev_cash_pct = payment_mode_pct(
         prev_kpis["digital_transactions"], prev_kpis["cash"]
@@ -7514,6 +7620,7 @@ def _cash_ledger_sales_rows(conn, company, date_from, date_to, location=None):
                 "entry_date": item["sales_date"],
                 "location": item["location"] or "",
                 "detail": item["location"] or "",
+                "expense_code": "",
                 "description": f"Actual cash — {item['location']}",
                 "amount": amount,
                 "signed_amount": amount,
@@ -7552,8 +7659,6 @@ def _cash_ledger_expense_rows(conn, company, date_from, date_to, location=None):
             continue
         desc = (item.get("description") or "").strip() or "Cash expense"
         code = (item.get("expense_code") or "").strip()
-        if code:
-            desc = f"{code} · {desc}"
         entries.append(
             {
                 "id": f"expense-{item['id']}",
@@ -7562,6 +7667,7 @@ def _cash_ledger_expense_rows(conn, company, date_from, date_to, location=None):
                 "entry_date": item["sales_date"],
                 "location": item.get("location") or "",
                 "detail": item.get("location") or "",
+                "expense_code": code,
                 "description": desc,
                 "amount": amount,
                 "signed_amount": -amount,
@@ -7594,6 +7700,7 @@ def _cash_ledger_load_rows(conn, company, date_from, date_to):
                 "entry_date": item["load_date"],
                 "location": "",
                 "detail": "Cash load",
+                "expense_code": "",
                 "description": (item.get("description") or "").strip() or "Cash load",
                 "amount": amount,
                 "signed_amount": amount,
@@ -7698,6 +7805,7 @@ def _cash_ledger_credit_rows(conn, company, date_from, date_to, location=None):
                 "entry_date": item["payment_date"],
                 "location": detail,
                 "detail": detail,
+                "expense_code": "",
                 "description": _cash_ledger_credit_description(
                     invoices, guests, item.get("notes") or ""
                 ),
@@ -7734,6 +7842,7 @@ def _cash_ledger_transfer_rows(conn, company, date_from, date_to):
                 "location": "",
                 "detail": dest_label,
                 "destination": destination,
+                "expense_code": "",
                 "description": (item.get("description") or "").strip() or f"Transfer to {dest_label}",
                 "amount": amount,
                 "signed_amount": -amount,
@@ -7898,6 +8007,9 @@ def purchase_ledger():
     selected_payment, payment_type = _parse_purchase_ledger_payment(
         request.args.get("payment")
     )
+    selected_kind, entry_kind = _parse_purchase_ledger_kind(
+        request.args.get("kind")
+    )
 
     conn = get_db()
     expense_categories = EXPENSE_CATEGORIES
@@ -7914,6 +8026,9 @@ def purchase_ledger():
         if selected_payment != PURCHASE_LEDGER_FILTER_ALL and selected_payment not in EXPENSE_PAYMENT_LABELS:
             selected_payment = PURCHASE_LEDGER_FILTER_ALL
             payment_type = None
+        if selected_kind != PURCHASE_LEDGER_FILTER_ALL and selected_kind not in LEDGER_ENTRY_KIND_LABELS:
+            selected_kind = PURCHASE_LEDGER_FILTER_ALL
+            entry_kind = None
         entries = _purchase_ledger_entries(
             conn,
             query_date_from,
@@ -7921,6 +8036,7 @@ def purchase_ledger():
             supplier_id,
             category=category,
             payment_type=payment_type,
+            entry_kind=entry_kind,
         )
         available_cash = _cash_ledger_available_as_of(conn, DEFAULT_COMPANY, today)
         expense_categories = _expense_category_choices(conn)
@@ -7929,6 +8045,14 @@ def purchase_ledger():
         conn.close()
 
     total_amount = round_half_up(sum(entry["amount"] for entry in entries), 2)
+    purchase_kind_entries = [
+        entry for entry in entries
+        if entry.get("entry_kind") == LEDGER_ENTRY_KIND_PURCHASE
+    ]
+    expense_kind_entries = [
+        entry for entry in entries
+        if entry.get("entry_kind") != LEDGER_ENTRY_KIND_PURCHASE
+    ]
     outstanding_entries = [
         entry for entry in entries
         if entry.get("settlement_status") in ("outstanding", "partial")
@@ -7941,6 +8065,8 @@ def purchase_ledger():
         entry for entry in entries
         if entry.get("display_payment_type") == EXPENSE_PAYMENT_CASH
     ]
+    purchase_kind_total = round_half_up(sum(entry["amount"] for entry in purchase_kind_entries), 2)
+    expense_kind_total = round_half_up(sum(entry["amount"] for entry in expense_kind_entries), 2)
     outstanding_total = round_half_up(sum(entry["balance"] for entry in outstanding_entries), 2)
     cleared_total = round_half_up(sum(entry["amount"] for entry in cleared_entries), 2)
     cash_total = round_half_up(sum(entry["amount"] for entry in cash_entries), 2)
@@ -7957,6 +8083,9 @@ def purchase_ledger():
     selected_payment_label = "All payments"
     if selected_payment != PURCHASE_LEDGER_FILTER_ALL:
         selected_payment_label = EXPENSE_PAYMENT_LABELS.get(selected_payment, selected_payment_label)
+    selected_kind_label = "All types"
+    if selected_kind != PURCHASE_LEDGER_FILTER_ALL:
+        selected_kind_label = LEDGER_ENTRY_KIND_LABELS.get(selected_kind, selected_kind_label)
 
     filter_date_from = date_from.isoformat() if date_filter_active else ""
     filter_date_to = date_to.isoformat() if date_filter_active else ""
@@ -7964,6 +8093,7 @@ def purchase_ledger():
         "supplier": selected_supplier,
         "category": selected_category,
         "payment": selected_payment,
+        "kind": selected_kind,
     }
     if date_filter_active:
         report_kwargs["date_from"] = filter_date_from
@@ -7972,11 +8102,12 @@ def purchase_ledger():
         "supplier": selected_supplier,
         "category": selected_category,
         "payment": selected_payment,
+        "kind": selected_kind,
     }
 
     return render_template(
         "purchase_ledger.html",
-        page_title="Expense Ledger",
+        page_title="Purchases & Expenses",
         page_subtitle="",
         filter_form_action=url_for("purchase_ledger"),
         date_from=filter_date_from,
@@ -7988,9 +8119,15 @@ def purchase_ledger():
         selected_category_label=selected_category_label,
         selected_payment=selected_payment,
         selected_payment_label=selected_payment_label,
+        selected_kind=selected_kind,
+        selected_kind_label=selected_kind_label,
         suppliers=suppliers,
         purchase_entries=entries,
         purchase_total=total_amount,
+        purchase_kind_total=purchase_kind_total,
+        purchase_kind_count=len(purchase_kind_entries),
+        expense_kind_total=expense_kind_total,
+        expense_kind_count=len(expense_kind_entries),
         outstanding_total=outstanding_total,
         outstanding_count=len(outstanding_entries),
         cleared_total=cleared_total,
@@ -8000,6 +8137,8 @@ def purchase_ledger():
         expense_payment_types=EXPENSE_PAYMENT_TYPES,
         expense_payment_labels=EXPENSE_PAYMENT_LABELS,
         purchase_ledger_payment_labels=PURCHASE_LEDGER_PAYMENT_LABELS,
+        ledger_entry_kinds=LEDGER_ENTRY_KINDS,
+        ledger_entry_kind_labels=LEDGER_ENTRY_KIND_LABELS,
         expense_categories=expense_categories,
         expense_category_labels=expense_category_labels,
         credit_settlement_status_labels=CREDIT_SETTLEMENT_STATUS_LABELS,
@@ -8041,11 +8180,16 @@ def export_purchase_ledger_report():
     selected_payment, payment_type = _parse_purchase_ledger_payment(
         request.args.get("payment")
     )
+    selected_kind, entry_kind = _parse_purchase_ledger_kind(
+        request.args.get("kind")
+    )
     if selected_category != PURCHASE_LEDGER_FILTER_ALL and not _normalize_expense_category(selected_category):
         category = None
         selected_category = PURCHASE_LEDGER_FILTER_ALL
     if selected_payment != PURCHASE_LEDGER_FILTER_ALL and selected_payment not in EXPENSE_PAYMENT_LABELS:
         payment_type = None
+    if selected_kind != PURCHASE_LEDGER_FILTER_ALL and selected_kind not in LEDGER_ENTRY_KIND_LABELS:
+        entry_kind = None
 
     conn = get_db()
     try:
@@ -8057,18 +8201,20 @@ def export_purchase_ledger_report():
             supplier_id,
             category=category,
             payment_type=payment_type,
+            entry_kind=entry_kind,
         )
     finally:
         conn.close()
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Expense Ledger"
+    ws.title = "Purchases Expenses"
     header_font = Font(bold=True)
     headers = [
-        "Expense ID",
+        "ID",
+        "Type",
         "Date",
-        "Expense",
+        "Description",
         "Category",
         "Invoice",
         "Supplier",
@@ -8087,33 +8233,39 @@ def export_purchase_ledger_report():
         category_key = entry.get("category") or ""
         payment_key = entry.get("display_payment_type") or entry.get("payment_type") or ""
         status_key = entry.get("settlement_status") or ""
+        kind_key = entry.get("entry_kind") or LEDGER_ENTRY_KIND_EXPENSE
         ws.cell(row=idx, column=1, value=entry.get("expense_code") or "")
-        ws.cell(row=idx, column=2, value=entry.get("sales_date") or "")
-        ws.cell(row=idx, column=3, value=entry.get("description") or "")
         ws.cell(
             row=idx,
-            column=4,
+            column=2,
+            value=LEDGER_ENTRY_KIND_LABELS.get(kind_key, kind_key),
+        )
+        ws.cell(row=idx, column=3, value=entry.get("sales_date") or "")
+        ws.cell(row=idx, column=4, value=entry.get("description") or "")
+        ws.cell(
+            row=idx,
+            column=5,
             value=category_labels.get(
                 category_key,
                 EXPENSE_CATEGORY_LABELS.get(category_key, category_key),
             ),
         )
-        ws.cell(row=idx, column=5, value=entry.get("invoice_number") or "")
-        ws.cell(row=idx, column=6, value=entry.get("supplier_name") or "")
-        ws.cell(row=idx, column=7, value=entry.get("supplier_gst") or "")
+        ws.cell(row=idx, column=6, value=entry.get("invoice_number") or "")
+        ws.cell(row=idx, column=7, value=entry.get("supplier_name") or "")
+        ws.cell(row=idx, column=8, value=entry.get("supplier_gst") or "")
         ws.cell(
             row=idx,
-            column=8,
+            column=9,
             value=PURCHASE_LEDGER_PAYMENT_LABELS.get(payment_key, payment_key),
         )
         ws.cell(
             row=idx,
-            column=9,
+            column=10,
             value=CREDIT_SETTLEMENT_STATUS_LABELS.get(status_key, status_key),
         )
-        ws.cell(row=idx, column=10, value=round_half_up(entry.get("amount"), 2))
-        ws.cell(row=idx, column=11, value=round_half_up(entry.get("paid_amount"), 2))
-        ws.cell(row=idx, column=12, value=round_half_up(entry.get("balance"), 2))
+        ws.cell(row=idx, column=11, value=round_half_up(entry.get("amount"), 2))
+        ws.cell(row=idx, column=12, value=round_half_up(entry.get("paid_amount"), 2))
+        ws.cell(row=idx, column=13, value=round_half_up(entry.get("balance"), 2))
 
     for column_cells in ws.columns:
         width = 12
@@ -8141,6 +8293,10 @@ def export_purchase_ledger_report():
 def purchase_ledger_add():
     user = get_current_user()
     data = request.get_json(silent=True) or {}
+    selected_kind = _normalize_ledger_entry_kind(data.get("entry_kind"), default="")
+    if selected_kind not in LEDGER_ENTRY_KIND_LABELS:
+        return jsonify({"ok": False, "error": "Please select Purchase or Expense."}), 400
+    data = {**data, "entry_kind": selected_kind}
     conn = get_db()
     try:
         result, error = _create_sales_expense(
@@ -8169,7 +8325,7 @@ def _update_purchase_ledger_expense(conn, user, data):
 
     existing = conn.execute(
         """SELECT id, company, location, sales_date, description, amount, payment_type,
-                  transaction_id, supplier_id, category, invoice_number, expense_code
+                  transaction_id, supplier_id, category, invoice_number, expense_code, entry_kind
            FROM sales_update_expenses WHERE id = ?""",
         (expense_id,),
     ).fetchone()
@@ -8196,6 +8352,10 @@ def _update_purchase_ledger_expense(conn, user, data):
         return None, "Please select a payment type."
     payment_type = _normalize_expense_payment_type(raw_payment_type)
     category = _normalize_expense_category(data.get("category"))
+    entry_kind = _normalize_ledger_entry_kind(
+        data.get("entry_kind"),
+        default=_normalize_ledger_entry_kind(existing.get("entry_kind")),
+    )
     transaction_id = (data.get("transaction_id") or "").strip()
     invoice_number = (data.get("invoice_number") or "").strip()
     supplier_id = data.get("supplier_id")
@@ -8248,7 +8408,7 @@ def _update_purchase_ledger_expense(conn, user, data):
         f"""UPDATE sales_update_expenses
            SET sales_date = ?, description = ?, amount = ?, payment_type = ?,
                transaction_id = ?, supplier_id = ?, category = ?, invoice_number = ?,
-               updated_at = {SQL_NOW}
+               entry_kind = ?, updated_at = {SQL_NOW}
            WHERE id = ? AND location = ?""",
         (
             sales_date,
@@ -8259,6 +8419,7 @@ def _update_purchase_ledger_expense(conn, user, data):
             supplier_id,
             category,
             invoice_number,
+            entry_kind,
             expense_id,
             OUTLET_HOTEL,
         ),
@@ -8267,6 +8428,7 @@ def _update_purchase_ledger_expense(conn, user, data):
         "expense_id": expense_id,
         "expense_code": existing.get("expense_code") or "",
         "sales_date": sales_date,
+        "entry_kind": entry_kind,
     }, None
 
 
@@ -8572,7 +8734,7 @@ def export_cash_ledger_report():
         summary.cell(row=idx, column=3, value=count)
 
     movements = wb.create_sheet("Cash Movements")
-    headers = ["Date", "Type", "Detail", "Description", "Amount", "Balance"]
+    headers = ["Date", "Type", "Detail", "ID", "Description", "Amount", "Balance"]
     for col, title in enumerate(headers, start=1):
         cell = movements.cell(row=1, column=col, value=title)
         cell.font = header_font
@@ -8585,9 +8747,10 @@ def export_cash_ledger_report():
             value=CASH_LEDGER_ENTRY_LABELS.get(entry_type, entry_type),
         )
         movements.cell(row=idx, column=3, value=entry.get("detail") or "")
-        movements.cell(row=idx, column=4, value=entry.get("description") or "")
-        movements.cell(row=idx, column=5, value=round_half_up(entry.get("signed_amount"), 2))
-        movements.cell(row=idx, column=6, value=round_half_up(entry.get("running_balance"), 2))
+        movements.cell(row=idx, column=4, value=entry.get("expense_code") or "")
+        movements.cell(row=idx, column=5, value=entry.get("description") or "")
+        movements.cell(row=idx, column=6, value=round_half_up(entry.get("signed_amount"), 2))
+        movements.cell(row=idx, column=7, value=round_half_up(entry.get("running_balance"), 2))
 
     for ws in (summary, movements):
         for column_cells in ws.columns:
@@ -8704,10 +8867,10 @@ def _vendor_payment_category_narration(category):
     return label.upper()
 
 
-def _credit_payment_report_rows(conn, date_from, date_to, supplier_id=None):
+def _credit_payment_report_rows(conn, date_from, date_to, supplier_id=None, entry_kind=None):
     """One ICICI vendor-payment row per supplier + category with outstanding credit."""
     entries = _outstanding_credit_expenses(
-        conn, date_from, date_to, supplier_id=supplier_id
+        conn, date_from, date_to, supplier_id=supplier_id, entry_kind=entry_kind
     )
     grouped = {}
     for entry in entries:
@@ -8760,11 +8923,12 @@ def export_credit_payment_report():
         request.args, "date_from", "date_to", default_fy=True
     )
     _, supplier_id = _parse_purchase_ledger_supplier(request.args.get("supplier"))
+    _, entry_kind = _parse_purchase_ledger_kind(request.args.get("kind"))
 
     conn = get_db()
     try:
         rows = _credit_payment_report_rows(
-            conn, date_from, date_to, supplier_id=supplier_id
+            conn, date_from, date_to, supplier_id=supplier_id, entry_kind=entry_kind
         )
     finally:
         conn.close()
@@ -8839,6 +9003,7 @@ def export_purchase_verification_report():
         request.args, "payment_date_from", "payment_date_to"
     )
     _, supplier_id = _parse_purchase_ledger_supplier(request.args.get("supplier"))
+    _, entry_kind = _parse_purchase_ledger_kind(request.args.get("kind"))
 
     wb = Workbook()
     ws = wb.active
@@ -8867,6 +9032,7 @@ def export_purchase_verification_report():
                 verification_date_from=payment_date_from,
                 verification_date_to=payment_date_to,
                 supplier_id=supplier_id,
+                entry_kind=entry_kind,
             )
             for idx, entry in enumerate(entries, start=2):
                 method = entry.get("payment_method") or ""
@@ -8889,6 +9055,7 @@ def export_purchase_verification_report():
             ws.title = "Pending Verification"
             headers = [
                 "Expense ID",
+                "Type",
                 "Date",
                 "Expense",
                 "Category",
@@ -8903,23 +9070,29 @@ def export_purchase_verification_report():
                 cell = ws.cell(row=1, column=col, value=title)
                 cell.font = header_font
             entries = _pending_purchase_verifications(
-                conn, date_from, date_to, supplier_id=supplier_id
+                conn, date_from, date_to, supplier_id=supplier_id, entry_kind=entry_kind
             )
             for idx, entry in enumerate(entries, start=2):
                 category = entry.get("category") or ""
                 category_label = EXPENSE_CATEGORY_LABELS.get(category, category)
                 payment_type = entry.get("payment_type") or ""
                 payment_label = EXPENSE_PAYMENT_LABELS.get(payment_type, payment_type)
+                kind_key = entry.get("entry_kind") or LEDGER_ENTRY_KIND_EXPENSE
                 ws.cell(row=idx, column=1, value=entry.get("expense_code") or "")
-                ws.cell(row=idx, column=2, value=entry.get("sales_date") or "")
-                ws.cell(row=idx, column=3, value=entry.get("description") or "")
-                ws.cell(row=idx, column=4, value=category_label)
-                ws.cell(row=idx, column=5, value=entry.get("supplier_name") or "")
-                ws.cell(row=idx, column=6, value=entry.get("supplier_gst") or "")
-                ws.cell(row=idx, column=7, value=payment_label)
-                ws.cell(row=idx, column=8, value=round_half_up(entry.get("amount"), 2))
-                ws.cell(row=idx, column=9, value=round_half_up(entry.get("paid_amount"), 2))
-                ws.cell(row=idx, column=10, value=round_half_up(entry.get("balance"), 2))
+                ws.cell(
+                    row=idx,
+                    column=2,
+                    value=LEDGER_ENTRY_KIND_LABELS.get(kind_key, kind_key),
+                )
+                ws.cell(row=idx, column=3, value=entry.get("sales_date") or "")
+                ws.cell(row=idx, column=4, value=entry.get("description") or "")
+                ws.cell(row=idx, column=5, value=category_label)
+                ws.cell(row=idx, column=6, value=entry.get("supplier_name") or "")
+                ws.cell(row=idx, column=7, value=entry.get("supplier_gst") or "")
+                ws.cell(row=idx, column=8, value=payment_label)
+                ws.cell(row=idx, column=9, value=round_half_up(entry.get("amount"), 2))
+                ws.cell(row=idx, column=10, value=round_half_up(entry.get("paid_amount"), 2))
+                ws.cell(row=idx, column=11, value=round_half_up(entry.get("balance"), 2))
             fname = (
                 f"purchase_verification_pending_"
                 f"{date_from.isoformat() if date_filter_active else 'All'}_to_"
@@ -10050,6 +10223,9 @@ def _create_sales_expense(
         return None, "Please select a payment type."
     payment_type = _normalize_expense_payment_type(raw_payment_type)
     category = _normalize_expense_category(data.get("category"))
+    entry_kind = _normalize_ledger_entry_kind(
+        data.get("entry_kind"), default=LEDGER_ENTRY_KIND_EXPENSE
+    )
     transaction_id = (data.get("transaction_id") or "").strip()
     invoice_number = (data.get("invoice_number") or "").strip()
     supplier_id = data.get("supplier_id")
@@ -10086,12 +10262,26 @@ def _create_sales_expense(
             code = duplicate["expense_code"] or f"#{duplicate['id']}"
             return None, f"An expense with this supplier and invoice number already exists ({code})."
 
-    expense_code = _next_expense_code(conn, company)
+    expense_code = _next_expense_code(conn, company, entry_kind)
     cursor = conn.execute(
         """INSERT INTO sales_update_expenses
-           (company, location, sales_date, description, amount, payment_type, transaction_id, supplier_id, category, expense_code, invoice_number)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (company, location, sales_date, description, amount, payment_type, transaction_id, supplier_id, category, expense_code, invoice_number),
+           (company, location, sales_date, description, amount, payment_type, transaction_id,
+            supplier_id, category, expense_code, invoice_number, entry_kind)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            company,
+            location,
+            sales_date,
+            description,
+            amount,
+            payment_type,
+            transaction_id,
+            supplier_id,
+            category,
+            expense_code,
+            invoice_number,
+            entry_kind,
+        ),
     )
     expense_id = cursor.lastrowid
     result = {
@@ -10099,6 +10289,7 @@ def _create_sales_expense(
         "expense_code": expense_code,
         "sales_date": sales_date,
         "category": category,
+        "entry_kind": entry_kind,
         "amount": amount,
     }
     if include_sales_totals:

@@ -37,6 +37,7 @@ def _memory_conn():
             expense_code TEXT NOT NULL DEFAULT '',
             supplier_id INTEGER,
             category TEXT NOT NULL DEFAULT '',
+            entry_kind TEXT NOT NULL DEFAULT 'expense',
             created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
         );
@@ -92,12 +93,12 @@ def _seed_supplier(conn, name="Acme Foods", gst="29AAAAA0000A1Z5"):
     return cur.lastrowid
 
 
-def _seed_expense(conn, supplier_id, amount, payment_type="credit", code="HBE-EX-1", sales_date="2026-07-01"):
+def _seed_expense(conn, supplier_id, amount, payment_type="credit", code="HBE-EX-1", sales_date="2026-07-01", entry_kind="expense"):
     cur = conn.execute(
         """INSERT INTO sales_update_expenses
-           (company, location, sales_date, description, amount, payment_type, supplier_id, category, expense_code)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        ("HBE", "Hotel", sales_date, "Test expense", amount, payment_type, supplier_id, "grocery", code),
+           (company, location, sales_date, description, amount, payment_type, supplier_id, category, expense_code, entry_kind)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        ("HBE", "Hotel", sales_date, "Test expense", amount, payment_type, supplier_id, "grocery", code, entry_kind),
     )
     return cur.lastrowid
 
@@ -319,6 +320,36 @@ class CreditPaymentValidationTests(unittest.TestCase):
         self.assertIn(self.expense_a1, ids)
         self.assertIn(self.expense_a2, ids)
 
+    def test_outstanding_filters_by_entry_kind(self):
+        purchase = _seed_expense(
+            self.conn,
+            self.supplier_a,
+            1800,
+            code="HBE-PU-KIND",
+            sales_date="2026-07-04",
+            entry_kind="purchase",
+        )
+        _seed_verification(self.conn, self.supplier_a, purchase, 1800, verification_date="2026-07-04")
+        self.conn.commit()
+
+        purchases = app_module._outstanding_credit_expenses(
+            self.conn,
+            date(2026, 7, 1),
+            date(2026, 7, 31),
+            supplier_id=self.supplier_a,
+            entry_kind="purchase",
+        )
+        expenses = app_module._outstanding_credit_expenses(
+            self.conn,
+            date(2026, 7, 1),
+            date(2026, 7, 31),
+            supplier_id=self.supplier_a,
+            entry_kind="expense",
+        )
+        self.assertEqual({entry["id"] for entry in purchases}, {purchase})
+        self.assertIn(self.expense_a1, {entry["id"] for entry in expenses})
+        self.assertNotIn(purchase, {entry["id"] for entry in expenses})
+
     def test_reject_unverified_credit_expense(self):
         unverified = _seed_expense(
             self.conn, self.supplier_a, 2500, code="HBE-EX-UNVERIFIED", sales_date="2026-07-03"
@@ -470,6 +501,7 @@ class CreditPaymentValidationTests(unittest.TestCase):
                 "supplier_id": self.supplier_a,
                 "invoice_number": "inv-1001",
             },
+            skip_cash_check=True,
         )
         self.assertIsNone(result)
         self.assertIn("already exists", error.lower())
@@ -488,6 +520,7 @@ class CreditPaymentValidationTests(unittest.TestCase):
                 "supplier_id": self.supplier_a,
                 "invoice_number": "INV-2002",
             },
+            skip_cash_check=True,
         )
         self.assertIsNotNone(result2)
         self.assertIsNone(error2)

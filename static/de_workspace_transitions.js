@@ -903,7 +903,7 @@
         return !!main.querySelector('#credit-payment-page') && /credit payment/i.test(h1);
       }
       if(path === '/accounts/purchase-verification'){
-        return !!main.querySelector('#credit-payment-page') && /purchase verification/i.test(h1);
+        return !!main.querySelector('#credit-payment-page') && /approvals/i.test(h1);
       }
       if(path === '/suppliers') return !!main.querySelector('#sm-supplier-table, #sm-supplier-list-panel');
       if(path === '/agencies') return !!main.querySelector('#sm-agency-table, #sm-agency-list-panel');

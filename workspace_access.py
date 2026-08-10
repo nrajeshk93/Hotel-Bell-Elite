@@ -27,9 +27,9 @@ _PAYROLL_SUBMODULES = (
 )
 
 _ACCOUNTS_SUBMODULES = (
-    {"key": "purchase_ledger", "label": "Expense Ledger"},
+    {"key": "purchase_ledger", "label": "Purchases & Expenses"},
     {"key": "cash_ledger", "label": "Cash Ledger"},
-    {"key": "purchase_verification", "label": "Purchase Verification"},
+    {"key": "purchase_verification", "label": "Approvals"},
     {"key": "credit_payment", "label": "Credit Payment"},
     {"key": "supplier_master", "label": "Supplier Master"},
 )

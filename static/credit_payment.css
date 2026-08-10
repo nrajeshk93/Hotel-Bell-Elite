@@ -80,6 +80,60 @@ body.su-module .cp-search-chip.is-active .se-filter-chip-control{
   background:#EFF6FF !important;
 }
 body.su-module .cp-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
+
+/* Type filter — match Purchases & Expenses segmented control */
+body.su-module #credit-payment-filter-form .cp-kind-filter-host{
+  position:relative;
+  flex:0 0 auto;
+  min-width:0;
+}
+body.su-module #credit-payment-filter-form .cp-kind-filter-host > .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2,#4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  text-align:left;
+}
+body.su-module #credit-payment-filter-form .cp-kind-filter-tabs.cp-view-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  height:44px;
+  min-height:44px;
+  margin:0;
+  padding:4px;
+  box-sizing:border-box;
+  background:#F1F5F9;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:12px;
+}
+body.su-module #credit-payment-filter-form .cp-kind-filter-tabs .cp-kind-filter-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:36px;
+  min-height:36px;
+  padding:0 14px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#64748B;
+  font:700 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+}
+body.su-module #credit-payment-filter-form .cp-kind-filter-tabs .cp-kind-filter-tab:hover{
+  color:#0F172A;
+  background:rgba(255,255,255,.65);
+}
+body.su-module #credit-payment-filter-form .cp-kind-filter-tabs .cp-kind-filter-tab.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
 /* Supplier combobox — match header field chips (white bg, type-to-search in chip) */
 body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control{
   background:#fff !important;

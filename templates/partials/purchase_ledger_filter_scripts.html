@@ -500,12 +500,33 @@
     applyPurchaseLedgerSearch();
   }
 
+  function bindKindFilterTabs(form){
+    var tabs = document.getElementById('purchase-ledger-kind-tabs');
+    var hidden = document.getElementById('purchase-ledger-kind');
+    if (!tabs || !hidden || tabs.getAttribute('data-pl-kind-filter-bound') === '1') return;
+    tabs.setAttribute('data-pl-kind-filter-bound', '1');
+    tabs.addEventListener('click', function(e){
+      var tab = e.target.closest('.pl-kind-filter-tab');
+      if (!tab || !tabs.contains(tab)) return;
+      var value = tab.getAttribute('data-value') || 'all';
+      if (String(hidden.value || '') === value) return;
+      hidden.value = value;
+      tabs.querySelectorAll('.pl-kind-filter-tab').forEach(function(btn){
+        var on = btn === tab;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      submitScope();
+    });
+  }
+
   function initPurchaseLedgerFilters(){
     var form = document.getElementById('purchase-ledger-filter-form');
     if (!form) return;
     f = form;
     bindDocumentGuards();
     form.querySelectorAll('[data-se-listbox]').forEach(bindListbox);
+    bindKindFilterTabs(form);
 
     var dateFrom = document.getElementById('purchase-ledger-date-from');
     var dateTo = document.getElementById('purchase-ledger-date-to');
@@ -548,8 +569,6 @@
     }
 
     if (typeof formatInr === 'function') {
-      var totalEl = document.getElementById('pl-total-amount');
-      if (totalEl) totalEl.textContent = formatInr(totalEl.getAttribute('data-amount'), 0);
       document.querySelectorAll('.pl-amount[data-amount]').forEach(function(el){
         el.textContent = formatInr(el.getAttribute('data-amount'), 0);
       });

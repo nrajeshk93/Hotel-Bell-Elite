@@ -61,7 +61,7 @@ REPORT_DEFINITIONS = [
     },
     {
         "id": "purchase_verification",
-        "name": "Purchase Verification Report",
+        "name": "Approvals Report",
         "description": "Verified purchases with Excel download.",
         "icon": "check",
         "icon_tone": "amber",

@@ -2157,6 +2157,7 @@ def _create_inward_category_expenses(
         expense_data["category"] = group["category_key"]
         expense_data["amount"] = group["amount"]
         expense_data["description"] = desc
+        expense_data["entry_kind"] = app_module.LEDGER_ENTRY_KIND_PURCHASE
         result, err = app_module._create_sales_expense(
             conn,
             user,

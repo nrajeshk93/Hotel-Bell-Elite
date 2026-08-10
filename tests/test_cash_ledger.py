@@ -44,7 +44,8 @@ def _memory_conn():
             expense_code TEXT NOT NULL DEFAULT '',
             category TEXT NOT NULL DEFAULT '',
             invoice_number TEXT NOT NULL DEFAULT '',
-            supplier_id INTEGER
+            supplier_id INTEGER,
+            entry_kind TEXT NOT NULL DEFAULT 'expense'
         );
         CREATE TABLE cash_ledger_loads (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,6 +159,11 @@ class CashLedgerHelperTests(unittest.TestCase):
             e["location"] for e in entries if e["entry_type"] == "expense"
         }
         self.assertEqual(expense_outlets, {"Hotel", "Bar"})
+        expense_rows = [e for e in entries if e["entry_type"] == "expense"]
+        self.assertEqual(
+            {(e["expense_code"], e["description"]) for e in expense_rows},
+            {("HBE-EX-1", "Veggies"), ("HBE-EX-2", "Ice")},
+        )
         conn.close()
 
     def test_location_filter_scopes_sales_and_expenses(self):

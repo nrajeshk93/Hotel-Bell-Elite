@@ -20,6 +20,7 @@
   var cancelBtn = document.getElementById('pl-add-purchase-cancel');
   var saveBtn = document.getElementById('pl-add-purchase-save');
   var saveLabel = document.getElementById('pl-add-purchase-save-label');
+  var requiredNoticeEl = document.getElementById('pl-add-required-notice');
   var titleEl = document.getElementById('pl-add-purchase-title');
   var availableWrap = document.getElementById('pl-add-available-wrap');
   var availableCashEl = document.getElementById('pl-add-available-cash');
@@ -91,6 +92,9 @@
     if (!el) return;
     el.classList.remove('open');
     el.setAttribute('aria-hidden', 'true');
+    if (el === modal && typeof window.closeHotelDatePickers === 'function') {
+      window.closeHotelDatePickers();
+    }
   }
 
   function closeAllListboxes() {
@@ -99,11 +103,83 @@
 
   window.plAddPaymentChanged = function () {
     syncTransactionVisibility();
+    syncSaveEnabled();
   };
+
+  window.plAddFieldChanged = function () {
+    syncSaveEnabled();
+  };
+
+  function isFormReady() {
+    var entryKind = document.getElementById('pl-add-kind') ? document.getElementById('pl-add-kind').value : '';
+    var purchaseDate = dateEl ? String(dateEl.value || '').trim() : '';
+    var supplierId = document.getElementById('pl-add-supplier') ? document.getElementById('pl-add-supplier').value : '';
+    var category = document.getElementById('pl-add-category') ? document.getElementById('pl-add-category').value : '';
+    var description = descriptionEl ? descriptionEl.value.trim() : '';
+    var amountRaw = amountEl ? amountEl.value : '';
+    var paymentType = document.getElementById('pl-add-payment') ? document.getElementById('pl-add-payment').value : '';
+    var transactionId = transactionEl ? transactionEl.value.trim() : '';
+    if (entryKind !== 'purchase' && entryKind !== 'expense') return false;
+    if (!purchaseDate) return false;
+    if (!supplierId) return false;
+    if (!category) return false;
+    if (!description) return false;
+    if (!amountRaw || !(Number(amountRaw) > 0)) return false;
+    if (!paymentType) return false;
+    if (paymentType === 'bank_transfer' && !transactionId) return false;
+    return true;
+  }
+
+  function syncSaveEnabled() {
+    var ready = isFormReady();
+    var saving = !!(saveBtn && saveBtn.getAttribute('data-pl-saving') === '1');
+    var showButton = saving || ready;
+    if (requiredNoticeEl) {
+      requiredNoticeEl.hidden = showButton;
+      requiredNoticeEl.setAttribute('aria-hidden', showButton ? 'true' : 'false');
+    }
+    if (!saveBtn) return;
+    saveBtn.hidden = !showButton;
+    saveBtn.setAttribute('aria-hidden', showButton ? 'false' : 'true');
+    saveBtn.disabled = saving ? true : !ready;
+  }
+
+  function setKindValue(value) {
+    var raw = String(value || '').trim().toLowerCase();
+    var kind = raw === 'expense' ? 'expense' : (raw === 'purchase' ? 'purchase' : '');
+    var hidden = document.getElementById('pl-add-kind');
+    if (hidden) hidden.value = kind;
+    var tabs = document.querySelectorAll('#pl-add-kind-tabs .pl-kind-tab');
+    tabs.forEach(function (tab) {
+      var selected = !!kind && String(tab.getAttribute('data-value') || '') === kind;
+      tab.classList.toggle('is-active', selected);
+      tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+    });
+    setModalMode(!!editingExpenseId);
+    syncSaveEnabled();
+  }
+
+  function setPurchaseDate(iso) {
+    var next = iso || todayIso;
+    if (typeof window.setHotelDateValue === 'function') {
+      window.setHotelDateValue('pl-add-purchase-date', next);
+      syncSaveEnabled();
+      return;
+    }
+    if (dateEl) dateEl.value = next;
+    syncSaveEnabled();
+  }
+
+  function initPlAddDatePicker() {
+    if (typeof window.initHotelDatePickers === 'function') {
+      window.initHotelDatePickers(modal || document);
+    }
+  }
 
   function setListboxValue(prefix, value, label, placeholder) {
     if (typeof window.resetEpListbox === 'function') {
       window.resetEpListbox(prefix, value || '', value ? (label || value) : (placeholder || 'Select'));
+      syncSaveEnabled();
       return;
     }
     var hidden = document.getElementById(prefix);
@@ -126,6 +202,7 @@
         opt.setAttribute('aria-selected', selected ? 'true' : 'false');
       });
     }
+    syncSaveEnabled();
   }
 
   function initPlAddListboxes() {
@@ -141,32 +218,43 @@
   }
 
   function setModalMode(isEdit){
-    if (titleEl) titleEl.textContent = isEdit ? 'Edit Purchase' : 'Add Purchase';
-    if (saveLabel) saveLabel.textContent = isEdit ? 'Save changes' : 'Add purchase';
+    var kindInput = document.getElementById('pl-add-kind');
+    var kind = kindInput ? (kindInput.value || '') : '';
+    var kindLabel = kind === 'expense' ? 'Expense' : (kind === 'purchase' ? 'Purchase' : 'Entry');
+    if (titleEl) titleEl.textContent = isEdit ? ('Edit ' + kindLabel) : ('Add ' + kindLabel);
+    if (saveLabel) {
+      saveLabel.textContent = isEdit
+        ? 'Save changes'
+        : (kind ? ('Add ' + kindLabel.toLowerCase()) : 'Add entry');
+    }
   }
 
   function resetForm(){
     editingExpenseId = null;
     if (expenseIdEl) expenseIdEl.value = '';
-    setModalMode(false);
     setError('');
-    if (dateEl) dateEl.value = todayIso;
+    setPurchaseDate(todayIso);
     if (descriptionEl) descriptionEl.value = '';
     if (amountEl) amountEl.value = '';
     if (invoiceEl) invoiceEl.value = '';
     if (transactionEl) transactionEl.value = '';
+    setKindValue('');
     setListboxValue('pl-add-supplier', '', '', 'Select supplier');
     setListboxValue('pl-add-category', '', '', 'Select category');
     setListboxValue('pl-add-payment', '', '', 'Select payment type');
+    setModalMode(false);
     syncTransactionVisibility();
     closeAllListboxes();
+    if (typeof window.closeHotelDatePickers === 'function') window.closeHotelDatePickers();
     refreshAvailableCash();
+    syncSaveEnabled();
   }
 
   function openPurchaseModal(){
     resetForm();
     openModal(modal);
     initPlAddListboxes();
+    initPlAddDatePicker();
     if (descriptionEl) descriptionEl.focus();
   }
 
@@ -176,7 +264,7 @@
     editingExpenseId = btn.getAttribute('data-expense-id') || '';
     if (expenseIdEl) expenseIdEl.value = editingExpenseId;
     setModalMode(true);
-    if (dateEl) dateEl.value = btn.getAttribute('data-date') || todayIso;
+    setPurchaseDate(btn.getAttribute('data-date') || todayIso);
     if (descriptionEl) descriptionEl.value = btn.getAttribute('data-description') || '';
     if (amountEl) amountEl.value = btn.getAttribute('data-amount') || '';
     if (invoiceEl) invoiceEl.value = btn.getAttribute('data-invoice') || '';
@@ -191,11 +279,15 @@
     );
     var paymentType = btn.getAttribute('data-payment-type') || 'credit';
     setListboxValue('pl-add-payment', paymentType, paymentLabels[paymentType] || paymentType);
+    var entryKind = btn.getAttribute('data-entry-kind') || 'expense';
+    setKindValue(entryKind);
     if (transactionEl) transactionEl.value = btn.getAttribute('data-transaction-id') || '';
     syncTransactionVisibility();
     refreshAvailableCash();
     openModal(modal);
     initPlAddListboxes();
+    initPlAddDatePicker();
+    syncSaveEnabled();
     if (descriptionEl) descriptionEl.focus();
   }
 
@@ -255,6 +347,11 @@
     var supplierId = document.getElementById('pl-add-supplier') ? document.getElementById('pl-add-supplier').value : '';
     var category = document.getElementById('pl-add-category') ? document.getElementById('pl-add-category').value : '';
     var paymentType = document.getElementById('pl-add-payment') ? document.getElementById('pl-add-payment').value : '';
+    var entryKind = document.getElementById('pl-add-kind') ? document.getElementById('pl-add-kind').value : '';
+    if (entryKind !== 'purchase' && entryKind !== 'expense') {
+      setError('Please select Purchase or Expense.');
+      return;
+    }
     var transactionId = transactionEl ? transactionEl.value.trim() : '';
     var invoiceNumber = invoiceEl ? invoiceEl.value.trim() : '';
 
@@ -292,7 +389,10 @@
     }
 
     setError('');
-    if (saveBtn) saveBtn.disabled = true;
+    if (saveBtn) {
+      saveBtn.setAttribute('data-pl-saving', '1');
+      saveBtn.disabled = true;
+    }
     var isEdit = !!editingExpenseId;
     var payload = {
       company: defaultCompany,
@@ -302,6 +402,7 @@
       amount: amountRaw,
       payment_type: paymentType,
       category: category,
+      entry_kind: entryKind,
       transaction_id: paymentType === 'bank_transfer' ? transactionId : '',
       invoice_number: invoiceNumber,
       supplier_id: supplierId
@@ -327,12 +428,39 @@
     } catch (err) {
       setError(err.message || (isEdit ? 'Could not update purchase.' : 'Could not save purchase.'));
     } finally {
-      if (saveBtn) saveBtn.disabled = false;
+      if (saveBtn) saveBtn.removeAttribute('data-pl-saving');
+      syncSaveEnabled();
     }
   }
 
   if (saveBtn) saveBtn.addEventListener('click', submitPurchase);
-  if (dateEl) dateEl.addEventListener('change', refreshAvailableCash);
+  if (dateEl) {
+    dateEl.addEventListener('change', function () {
+      refreshAvailableCash();
+      syncSaveEnabled();
+    });
+  }
+  if (descriptionEl) descriptionEl.addEventListener('input', syncSaveEnabled);
+  if (amountEl) amountEl.addEventListener('input', syncSaveEnabled);
+  if (transactionEl) transactionEl.addEventListener('input', syncSaveEnabled);
+  if (modal) {
+    modal.addEventListener('change', function (e) {
+      if (!e.target) return;
+      if (e.target.id === 'pl-add-supplier' || e.target.id === 'pl-add-category' || e.target.id === 'pl-add-payment' || e.target.id === 'pl-add-kind' || e.target.id === 'pl-add-purchase-date') {
+        syncSaveEnabled();
+      }
+    });
+  }
+
+  var kindTabs = document.getElementById('pl-add-kind-tabs');
+  if (kindTabs && kindTabs.getAttribute('data-pl-kind-bound') !== '1') {
+    kindTabs.setAttribute('data-pl-kind-bound', '1');
+    kindTabs.addEventListener('click', function (e) {
+      var tab = e.target.closest('.pl-kind-tab');
+      if (!tab || !kindTabs.contains(tab)) return;
+      setKindValue(tab.getAttribute('data-value') || '');
+    });
+  }
 
   /* Inline supplier add */
   var supplierModal = document.getElementById('pl-add-supplier-modal');
@@ -427,5 +555,8 @@
       if (e.target === supplierModal) closeModal(supplierModal);
     });
   }
+
+  initPlAddDatePicker();
+  syncSaveEnabled();
 })();
 </script>

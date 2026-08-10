@@ -4131,7 +4131,7 @@ _BANK_REPORT_HEADERS = (
 
 
 def _load_bank_report(conn, year, month):
-    """Build ICICI fund-transfer rows for active EPF employees in the payroll month."""
+    """Build ICICI fund-transfer rows for active EPF employees with bank details."""
     rows = conn.execute(
         f"""SELECT * FROM employees
             WHERE status='active' AND COALESCE(epf_exempt, 0)=0
@@ -4146,7 +4146,11 @@ def _load_bank_report(conn, year, month):
         amount = _round_rupee(view.get('net', 0) or 0)
         if amount <= 0:
             continue
+        account = (view.get('account_number') or '').strip()
         ifsc = (view.get('ifsc_code') or '').strip().upper()
+        # Payout rows need both account and IFSC; skip incomplete bank details.
+        if not account or not ifsc:
+            continue
         holder = (view.get('account_holder_name') or '').strip() or (view.get('name') or '')
         mode = 'FT' if ifsc.startswith('ICIC') else 'NEFT'
         if mode == 'FT':
@@ -4159,7 +4163,7 @@ def _load_bank_report(conn, year, month):
             'employee_name': (view.get('name') or '').strip(),
             'department': (view.get('location') or '').strip(),
             'name': holder,
-            'account': (view.get('account_number') or '').strip(),
+            'account': account,
             'ifsc': ifsc,
             'amount': amount,
             'mobile': (view.get('mobile') or '').strip(),

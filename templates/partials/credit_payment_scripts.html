@@ -553,6 +553,27 @@
     options.forEach(function(opt){ wrap.appendChild(opt); });
   }
 
+  function bindKindFilterTabs(form){
+    var tabs = document.getElementById('credit-payment-kind-tabs');
+    var hidden = document.getElementById('credit-payment-kind');
+    if (!tabs || !hidden || tabs.getAttribute('data-cp-kind-filter-bound') === '1') return;
+    tabs.setAttribute('data-cp-kind-filter-bound', '1');
+    tabs.addEventListener('click', function(e){
+      var tab = e.target.closest('.cp-kind-filter-tab');
+      if (!tab || !tabs.contains(tab)) return;
+      var value = tab.getAttribute('data-value') || 'all';
+      if (String(hidden.value || '') === value) return;
+      hidden.value = value;
+      tabs.querySelectorAll('.cp-kind-filter-tab').forEach(function(btn){
+        var on = btn === tab;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      if (typeof window.deSoftSubmitForm === 'function' && window.deSoftSubmitForm(form)) return;
+      form.submit();
+    });
+  }
+
   function initCreditPaymentFilters(){
     var filterForm = document.getElementById('credit-payment-filter-form');
     if (!filterForm) return;
@@ -560,6 +581,7 @@
     bindCpDocumentGuards();
     var supplierListbox = document.getElementById('credit-payment-supplier-listbox');
     if (supplierListbox) bindCpListbox(supplierListbox);
+    bindKindFilterTabs(filterForm);
 
     if (window.SalesDateRangePicker) {
       SalesDateRangePicker.init({

@@ -1,8 +1,9 @@
+{% from 'partials/hotel_date_macros.html' import hotel_date_field %}
 <div class="modal-backdrop" id="pl-add-purchase-modal" aria-hidden="true">
   <div class="staff-credit-box pl-add-purchase-box" role="dialog" aria-modal="true" aria-labelledby="pl-add-purchase-title">
     <div class="staff-credit-head">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/><path d="M16 16v6"/><path d="M19 19h-6"/></svg>
-      <span id="pl-add-purchase-title">Add Purchase</span>
+      <span id="pl-add-purchase-title">Add Entry</span>
     </div>
     <div class="se-expense-available-cash" id="pl-add-available-wrap" hidden>
       <div class="se-expense-available-cash-card" aria-label="Available cash">
@@ -12,16 +13,43 @@
     </div>
     <div id="pl-add-purchase-error" class="staff-credit-error"></div>
     <input type="hidden" id="pl-edit-expense-id" value="">
-    <div class="staff-field">
-      <label for="pl-add-purchase-date">Purchase date *</label>
-      <input id="pl-add-purchase-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
+    <div class="staff-grid pl-add-kind-date-row">
+      <div class="staff-field pl-add-kind-field">
+        <span class="staff-supplier-field-label" id="pl-add-kind-label">Type *</span>
+        <input type="hidden" id="pl-add-kind" value="">
+        <div class="cp-view-tabs pl-kind-tabs" role="tablist" aria-labelledby="pl-add-kind-label" id="pl-add-kind-tabs">
+          {% for kind_key, kind_label in ledger_entry_kinds %}
+          <button type="button"
+                  class="cp-view-tab pl-kind-tab"
+                  role="tab"
+                  id="pl-add-kind-tab-{{ kind_key }}"
+                  data-value="{{ kind_key }}"
+                  aria-selected="false">{{ kind_label }}</button>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="staff-field pl-add-date-field">
+        {{ hotel_date_field(
+          'purchase_date',
+          'Date',
+          required=true,
+          value=today_iso,
+          field_id='pl-add-purchase-date',
+          extra_class='pl-add-date-chip',
+          panel_title='Select date',
+          empty_label='Select date',
+          hint='',
+          show_cal_icon=false,
+          max_date='today'
+        ) }}
+      </div>
     </div>
     <div class="staff-field">
       <div class="staff-supplier-field-head">
         <span class="staff-supplier-field-label">Supplier *</span>
         <button type="button" class="staff-supplier-add-btn" id="pl-add-supplier-btn">+ Add</button>
       </div>
-      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pl-add-supplier-listbox">
+      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="plAddFieldChanged" id="pl-add-supplier-listbox">
         <span class="visually-hidden" id="pl-add-supplier-label">Supplier</span>
         <div class="se-filter-chip-control">
           <input type="hidden" id="pl-add-supplier" value="">
@@ -56,7 +84,7 @@
     </div>
     <div class="staff-grid pl-add-category-row">
       <div class="staff-field staff-field--inline">
-        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pl-add-category-listbox">
+        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="plAddFieldChanged" id="pl-add-category-listbox">
           <span class="se-filter-chip-label" id="pl-add-category-label">Category *</span>
           <div class="se-filter-chip-control">
             <input type="hidden" id="pl-add-category" value="">
@@ -93,8 +121,8 @@
     </div>
     <div class="staff-grid">
       <div class="staff-field staff-field--inline">
-        <label for="pl-add-description">Expense *</label>
-        <input id="pl-add-description" class="staff-input" type="text" placeholder="e.g. Transport, Supplies...">
+        <label for="pl-add-description" id="pl-add-description-label">Description *</label>
+        <input id="pl-add-description" class="staff-input" type="text" placeholder="e.g. Vegetables for kitchen, AC repair...">
       </div>
       <div class="staff-field staff-field--inline">
         <label for="pl-add-amount">Value (₹) *</label>
@@ -125,11 +153,12 @@
       <input id="pl-add-transaction-id" class="staff-input" type="text" placeholder="e.g. UTR / reference number">
     </div>
     <div class="staff-credit-actions">
-      <button type="button" class="btn staff-primary" id="pl-add-purchase-save">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-        <span id="pl-add-purchase-save-label">Add purchase</span>
-      </button>
       <button type="button" class="btn staff-secondary" id="pl-add-purchase-cancel">Cancel</button>
+      <p class="pl-add-required-notice" id="pl-add-required-notice">Fill all the mandatory fields to add an entry</p>
+      <button type="button" class="btn staff-primary" id="pl-add-purchase-save" hidden disabled>
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        <span id="pl-add-purchase-save-label">Add entry</span>
+      </button>
     </div>
   </div>
 </div>

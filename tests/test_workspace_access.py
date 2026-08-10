@@ -142,9 +142,9 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(
             accounts_children,
             [
-                "Expense Ledger",
+                "Purchases & Expenses",
                 "Cash Ledger",
-                "Purchase Verification",
+                "Approvals",
                 "Credit Payment",
                 "Supplier Master",
             ],

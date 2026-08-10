@@ -129,6 +129,7 @@
   }
   function closeModal(el){
     if (!el) return;
+    if (typeof window.closeHotelDatePickers === 'function') window.closeHotelDatePickers();
     el.classList.remove('open');
     el.setAttribute('aria-hidden', 'true');
   }
@@ -147,13 +148,45 @@
   var openLoadBtn = document.getElementById('cl-open-load');
   var loadCancel = document.getElementById('cl-load-cancel');
   var loadSubmit = document.getElementById('cl-load-submit');
+  var loadRequiredNotice = document.getElementById('cl-load-required-notice');
+
+  function isLoadFormReady(){
+    var dateVal = loadDate ? String(loadDate.value || '').trim() : '';
+    var amountRaw = loadAmount ? loadAmount.value : '';
+    var description = loadDescription ? loadDescription.value.trim() : '';
+    if (!dateVal) return false;
+    if (!description) return false;
+    if (!amountRaw || !(Number(amountRaw) > 0)) return false;
+    return true;
+  }
+
+  function syncLoadSaveEnabled(){
+    var ready = isLoadFormReady();
+    var saving = !!(loadSubmit && loadSubmit.getAttribute('data-cl-saving') === '1');
+    var showButton = saving || ready;
+    if (loadRequiredNotice) {
+      loadRequiredNotice.hidden = showButton;
+      loadRequiredNotice.setAttribute('aria-hidden', showButton ? 'true' : 'false');
+    }
+    if (!loadSubmit) return;
+    loadSubmit.hidden = !showButton;
+    loadSubmit.setAttribute('aria-hidden', showButton ? 'false' : 'true');
+    loadSubmit.disabled = saving ? true : !ready;
+  }
 
   function resetLoadModal(){
     showError(loadError, '');
     if (loadDate) loadDate.value = todayIso;
     if (loadAmount) loadAmount.value = '';
     if (loadDescription) loadDescription.value = '';
+    if (loadSubmit) loadSubmit.removeAttribute('data-cl-saving');
+    syncLoadSaveEnabled();
   }
+  [loadDate, loadAmount, loadDescription].forEach(function(el){
+    if (!el) return;
+    el.addEventListener('input', syncLoadSaveEnabled);
+    el.addEventListener('change', syncLoadSaveEnabled);
+  });
   if (openLoadBtn) openLoadBtn.addEventListener('click', function(){
     resetLoadModal();
     openModal(loadModal);
@@ -162,7 +195,10 @@
   if (loadCancel) loadCancel.addEventListener('click', function(){ closeModal(loadModal); });
   if (loadModal) loadModal.addEventListener('click', function(e){ if (e.target === loadModal) closeModal(loadModal); });
   if (loadSubmit) loadSubmit.addEventListener('click', async function(){
+    if (!isLoadFormReady() || loadSubmit.getAttribute('data-cl-saving') === '1') return;
     showError(loadError, '');
+    loadSubmit.setAttribute('data-cl-saving', '1');
+    syncLoadSaveEnabled();
     var payload = {
       company: company,
       date: loadDate ? loadDate.value : '',
@@ -177,15 +213,20 @@
       });
       var data = await res.json();
       if (!res.ok || !data.ok) {
+        loadSubmit.removeAttribute('data-cl-saving');
+        syncLoadSaveEnabled();
         showError(loadError, (data && data.error) || 'Could not save cash load.');
         return;
       }
       if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
       else window.location.reload();
     } catch (err) {
+      loadSubmit.removeAttribute('data-cl-saving');
+      syncLoadSaveEnabled();
       showError(loadError, 'Network error while saving cash load.');
     }
   });
+  syncLoadSaveEnabled();
 
   /* Transfer Out */
   var transferModal = document.getElementById('cl-transfer-modal');
@@ -198,39 +239,102 @@
   var openTransferBtn = document.getElementById('cl-open-transfer');
   var transferCancel = document.getElementById('cl-transfer-cancel');
   var transferSubmit = document.getElementById('cl-transfer-submit');
+  var transferRequiredNotice = document.getElementById('cl-transfer-required-notice');
+
+  function isTransferFormReady(){
+    var dateVal = transferDate ? String(transferDate.value || '').trim() : '';
+    var destination = transferDestination ? String(transferDestination.value || '').trim() : '';
+    var amountRaw = transferAmount ? transferAmount.value : '';
+    var description = transferDescription ? transferDescription.value.trim() : '';
+    if (!dateVal) return false;
+    if (!destination) return false;
+    if (!description) return false;
+    if (!amountRaw || !(Number(amountRaw) > 0)) return false;
+    return true;
+  }
+
+  function syncTransferSaveEnabled(){
+    var ready = isTransferFormReady();
+    var saving = !!(transferSubmit && transferSubmit.getAttribute('data-cl-saving') === '1');
+    var showButton = saving || ready;
+    if (transferRequiredNotice) {
+      transferRequiredNotice.hidden = showButton;
+      transferRequiredNotice.setAttribute('aria-hidden', showButton ? 'true' : 'false');
+    }
+    if (!transferSubmit) return;
+    transferSubmit.hidden = !showButton;
+    transferSubmit.setAttribute('aria-hidden', showButton ? 'false' : 'true');
+    transferSubmit.disabled = saving ? true : !ready;
+  }
+
+  function setTransferDate(iso){
+    var next = iso || todayIso;
+    if (typeof window.setHotelDateValue === 'function') {
+      window.setHotelDateValue('cl-transfer-date', next);
+      syncTransferSaveEnabled();
+      return;
+    }
+    if (transferDate) transferDate.value = next;
+    syncTransferSaveEnabled();
+  }
+
+  function initTransferDatePicker(){
+    if (typeof window.initHotelDatePickers === 'function') {
+      window.initHotelDatePickers(transferModal || document);
+    }
+  }
 
   function resetTransferModal(){
     showError(transferError, '');
-    if (transferDate) transferDate.value = todayIso;
+    setTransferDate(todayIso);
     if (transferAmount) transferAmount.value = '';
     if (transferDescription) transferDescription.value = '';
     if (transferDestination) transferDestination.value = 'bank';
     if (transferToggle) {
-      transferToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(btn){
-        btn.classList.toggle('active', btn.getAttribute('data-value') === 'bank');
+      transferToggle.querySelectorAll('.cl-transfer-dest-tab').forEach(function(btn){
+        var selected = btn.getAttribute('data-value') === 'bank';
+        btn.classList.toggle('is-active', selected);
+        btn.setAttribute('aria-selected', selected ? 'true' : 'false');
       });
     }
+    if (transferSubmit) transferSubmit.removeAttribute('data-cl-saving');
+    syncTransferSaveEnabled();
   }
   if (transferToggle) {
-    transferToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(btn){
+    transferToggle.querySelectorAll('.cl-transfer-dest-tab').forEach(function(btn){
       btn.addEventListener('click', function(){
-        transferToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(other){
-          other.classList.remove('active');
+        transferToggle.querySelectorAll('.cl-transfer-dest-tab').forEach(function(other){
+          var selected = other === btn;
+          other.classList.toggle('is-active', selected);
+          other.setAttribute('aria-selected', selected ? 'true' : 'false');
         });
-        btn.classList.add('active');
         if (transferDestination) transferDestination.value = btn.getAttribute('data-value') || 'bank';
+        syncTransferSaveEnabled();
       });
     });
+  }
+  [transferAmount, transferDescription].forEach(function(el){
+    if (!el) return;
+    el.addEventListener('input', syncTransferSaveEnabled);
+    el.addEventListener('change', syncTransferSaveEnabled);
+  });
+  if (transferDate) {
+    transferDate.addEventListener('input', syncTransferSaveEnabled);
+    transferDate.addEventListener('change', syncTransferSaveEnabled);
   }
   if (openTransferBtn) openTransferBtn.addEventListener('click', function(){
     resetTransferModal();
     openModal(transferModal);
+    initTransferDatePicker();
     if (transferAmount) transferAmount.focus();
   });
   if (transferCancel) transferCancel.addEventListener('click', function(){ closeModal(transferModal); });
   if (transferModal) transferModal.addEventListener('click', function(e){ if (e.target === transferModal) closeModal(transferModal); });
   if (transferSubmit) transferSubmit.addEventListener('click', async function(){
+    if (!isTransferFormReady() || transferSubmit.getAttribute('data-cl-saving') === '1') return;
     showError(transferError, '');
+    transferSubmit.setAttribute('data-cl-saving', '1');
+    syncTransferSaveEnabled();
     var payload = {
       company: company,
       date: transferDate ? transferDate.value : '',
@@ -246,15 +350,20 @@
       });
       var data = await res.json();
       if (!res.ok || !data.ok) {
+        transferSubmit.removeAttribute('data-cl-saving');
+        syncTransferSaveEnabled();
         showError(transferError, (data && data.error) || 'Could not save transfer.');
         return;
       }
       if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
       else window.location.reload();
     } catch (err) {
+      transferSubmit.removeAttribute('data-cl-saving');
+      syncTransferSaveEnabled();
       showError(transferError, 'Network error while saving transfer.');
     }
   });
+  syncTransferSaveEnabled();
 
   /* Delete load / transfer */
   document.querySelectorAll('.cl-delete-btn').forEach(function(btn){
