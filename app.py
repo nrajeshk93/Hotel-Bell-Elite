@@ -64,7 +64,6 @@ from db import (
     indian_fiscal_year_bounds,
     is_valid_agency_gst,
     list_hotel_room_invoices,
-    aggregate_settled_invoice_totals,
     save_hotel_room_checkin,
     save_hotel_room_reservation,
     generate_hotel_room_invoice,
@@ -569,8 +568,7 @@ def whatsapp_webhook():
 def enforce_access():
     endpoint = request.endpoint or ""
     if (
-        endpoint in _PUBLIC_ENDPOINTS
-        or endpoint == "service_worker"
+        endpoint == "service_worker"
         or request.path == "/sw.js"
         or request.path.startswith("/static/")
         or request.path.startswith("/webhook/")
@@ -579,6 +577,13 @@ def enforce_access():
         return None
 
     user = get_current_user()
+    if user and user.get("must_change_password"):
+        if endpoint not in {"change_password", "logout", "favicon"}:
+            return redirect(url_for("change_password"))
+
+    if endpoint in _PUBLIC_ENDPOINTS:
+        return None
+
     if not user:
         return redirect(url_for("index"))
 
@@ -633,8 +638,11 @@ def enforce_access():
         return _permission_denied_response(f"You do not have access to the {label} payroll section.")
 
     if not user_can_access_endpoint_stores(user, endpoint):
+        submodule = get_endpoint_stores_submodule(endpoint) or ""
+        if submodule == "approvals":
+            return _permission_denied_response("You do not have access to Approval.")
         label = _STORES_SUBMODULE_LABELS.get(
-            get_endpoint_stores_submodule(endpoint) or "",
+            submodule,
             "requested Purchase & Inventory section",
         )
         return _permission_denied_response(f"You do not have access to {label}.")
@@ -3413,7 +3421,56 @@ def login():
     auth_security.clear_captcha_challenge(session)
     session.clear()
     session[AUTH_USER_SESSION_KEY] = row["id"]
+    if bool(row["must_change_password"]):
+        return redirect(url_for("change_password"))
     return redirect(url_for("home"))
+
+
+@app.route("/change-password", methods=["GET", "POST"])
+def change_password():
+    user = get_current_user()
+    if not user:
+        return redirect(url_for("index"))
+    if not user.get("must_change_password"):
+        return redirect(url_for("home"))
+
+    error = ""
+    if request.method == "POST":
+        new_password = request.form.get("new_password") or ""
+        confirm_password = request.form.get("confirm_password") or ""
+        if not new_password.strip():
+            error = "Enter a new password."
+        elif new_password != confirm_password:
+            error = "New password and confirmation do not match."
+        else:
+            conn = get_db()
+            try:
+                row = conn.execute(
+                    "SELECT id, password_hash FROM users WHERE id = ?",
+                    (user["id"],),
+                ).fetchone()
+                if not row:
+                    session.pop(AUTH_USER_SESSION_KEY, None)
+                    return redirect(url_for("index"))
+                if auth_security.verify_password(row["password_hash"], new_password):
+                    error = "Choose a password that is different from your temporary password."
+                else:
+                    conn.execute(
+                        f"""UPDATE users
+                               SET password_hash = ?,
+                                   must_change_password = 0,
+                                   updated_at = {SQL_NOW}
+                             WHERE id = ?""",
+                        (auth_security.hash_password(new_password), user["id"]),
+                    )
+                    conn.commit()
+                    g._auth_loaded = False
+                    g.current_user = None
+                    return redirect(url_for("home"))
+            finally:
+                conn.close()
+
+    return render_template("change_password.html", error=error)
 
 
 @app.route("/login/captcha")
@@ -3790,41 +3847,18 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
         spark_from = date_from
     spark_to = date_to
 
-    settled_current = aggregate_settled_invoice_totals(
-        conn, date_from, date_to, location=location
-    )
-    settled_previous = aggregate_settled_invoice_totals(
-        conn, prev_from, prev_to, location=location
-    )
-    settled_range = aggregate_settled_invoice_totals(
-        conn, date_from, date_to, location=location
-    )
-    settled_spark = aggregate_settled_invoice_totals(
-        conn, spark_from, spark_to, location=location
-    )
-    settled_by_day = settled_spark.get("by_day") or {}
-    range_by_day = settled_range.get("by_day") or {}
-
+    # Total Sales = Sales Update total_sales (Hotel + Restaurant + Bar).
     spark_dates = date_range_days(spark_from, spark_to)
-    settled_series = [float(settled_by_day.get(d) or 0) for d in spark_dates]
-    sparks["actual_sales"] = settled_series
-
-    bundle["current"]["actual_sales"] = settled_current["total"]
-    bundle["trends"]["actual_sales"] = _pct_change_vs_previous(
-        settled_current["total"], settled_previous["total"]
-    )
 
     daily_series = []
     su_days = date_range_days(date_from, date_to)
     if date_from == date_to:
-        day_kpi = _aggregate_sales_kpis(
-            conn, date_from, date_to, company=None, location=location
-        )
+        day_kpi = bundle["current"]
         d = date_from.isoformat()
         daily_series.append(
             {
                 "date": d,
-                "actual_sales": float(range_by_day.get(d) or 0),
+                "actual_sales": float(day_kpi.get("actual_sales") or 0),
                 "digital_transactions": float(day_kpi.get("digital_transactions") or 0),
                 "cash": float(day_kpi.get("cash") or 0),
                 "expense": float(day_kpi.get("expense") or 0),
@@ -3833,21 +3867,20 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
             }
         )
     else:
-        su_sparks = _dashboard_kpi_spark_series(
-            conn, date_from, date_to, company=None, location=location
-        )
         for i, d in enumerate(su_days):
             daily_series.append(
                 {
                     "date": d,
-                    "actual_sales": float(range_by_day.get(d) or 0),
-                    "digital_transactions": float(
-                        (su_sparks.get("digital_transactions") or [0] * len(su_days))[i]
+                    "actual_sales": float(
+                        (sparks.get("actual_sales") or [0] * len(su_days))[i]
                     ),
-                    "cash": float((su_sparks.get("cash") or [0] * len(su_days))[i]),
-                    "expense": float((su_sparks.get("expense") or [0] * len(su_days))[i]),
+                    "digital_transactions": float(
+                        (sparks.get("digital_transactions") or [0] * len(su_days))[i]
+                    ),
+                    "cash": float((sparks.get("cash") or [0] * len(su_days))[i]),
+                    "expense": float((sparks.get("expense") or [0] * len(su_days))[i]),
                     "difference": float(
-                        (su_sparks.get("difference") or [0] * len(su_days))[i]
+                        (sparks.get("difference") or [0] * len(su_days))[i]
                     ),
                     "transaction_count": 0,
                 }
@@ -3871,14 +3904,20 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
     outlet_totals = {}
     prev_outlet_totals = {}
     for name in outlet_names:
-        outlet_totals[name] = aggregate_settled_invoice_totals(
-            conn, date_from, date_to, location=name
-        )["total"]
-        prev_outlet_totals[name] = aggregate_settled_invoice_totals(
-            conn, prev_from, prev_to, location=name
-        )["total"]
+        outlet_totals[name] = float(
+            _aggregate_sales_kpis(
+                conn, date_from, date_to, company=None, location=name
+            ).get("actual_sales")
+            or 0
+        )
+        prev_outlet_totals[name] = float(
+            _aggregate_sales_kpis(
+                conn, prev_from, prev_to, company=None, location=name
+            ).get("actual_sales")
+            or 0
+        )
 
-    grand_sales = float(settled_current["total"] or 0)
+    grand_sales = float(bundle["current"].get("actual_sales") or 0)
     company_leaderboard, sales_contribution = build_outlet_boards(
         outlet_totals, prev_outlet_totals, grand_sales
     )

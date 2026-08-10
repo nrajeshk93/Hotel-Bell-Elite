@@ -4,6 +4,7 @@
 
   var charts = [];
   var resizeHandler = null;
+  var chartResizeObserver = null;
   var ECHARTS_SRC = 'https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js';
 
   function ensureEcharts(cb) {
@@ -59,6 +60,14 @@
       window.removeEventListener('resize', window.__mdDashResizeHandler);
       window.__mdDashResizeHandler = null;
     }
+    if (chartResizeObserver) {
+      try { chartResizeObserver.disconnect(); } catch (e) {}
+      chartResizeObserver = null;
+    }
+    if (window.__mdDashChartResizeObserver) {
+      try { window.__mdDashChartResizeObserver.disconnect(); } catch (e) {}
+      window.__mdDashChartResizeObserver = null;
+    }
   }
 
   // Soft-nav re-runs this file; dispose any prior module instance first.
@@ -103,7 +112,12 @@
     if (existing) {
       // Force a clean option replace (avoids leftover axisPointer / splitLine from prior mounts).
       existing.setOption(option, { notMerge: true, lazyUpdate: false });
-      existing.resize();
+      observeChartHost(el);
+      try {
+        existing.resize({ width: el.clientWidth, height: el.clientHeight || undefined });
+      } catch (e) {
+        existing.resize();
+      }
       return existing;
     }
     // Tall mounts for line charts only. Donut uses CSS aspect-ratio (Neeraj ~200px).
@@ -121,13 +135,39 @@
     var chart = echarts.init(el, null, { renderer: 'canvas' });
     chart.setOption(option);
     charts.push(chart);
+    observeChartHost(el);
     return chart;
+  }
+
+  function observeChartHost(el) {
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    if (!chartResizeObserver) {
+      chartResizeObserver = new ResizeObserver(function (entries) {
+        entries.forEach(function (entry) {
+          var host = entry.target;
+          var inst = echarts.getInstanceByDom(host);
+          if (!inst) return;
+          try {
+            inst.resize({ width: host.clientWidth, height: host.clientHeight });
+          } catch (e) {}
+        });
+      });
+      window.__mdDashChartResizeObserver = chartResizeObserver;
+    }
+    try { chartResizeObserver.observe(el); } catch (e) {}
   }
 
   function scheduleChartResize() {
     function resizeAll() {
       charts.forEach(function (c) {
-        try { c.resize(); } catch (e) {}
+        try {
+          var dom = c.getDom && c.getDom();
+          if (dom && dom.clientWidth > 0) {
+            c.resize({ width: dom.clientWidth, height: dom.clientHeight || undefined });
+          } else {
+            c.resize();
+          }
+        } catch (e) {}
       });
     }
     resizeAll();
@@ -494,7 +534,8 @@
     series: [{
       type: 'bar',
       data: (DATA.dow_avg || []).map(function (x) { return x.avg_sales; }),
-      barWidth: 28,
+      barMaxWidth: 28,
+      barCategoryGap: '28%',
       showBackground: false,
       itemStyle: { borderRadius: [6, 6, 0, 0] },
     }],

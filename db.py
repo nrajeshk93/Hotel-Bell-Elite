@@ -11441,6 +11441,10 @@ def init_db():
         cursor.execute("ALTER TABLE users ADD COLUMN role_id INTEGER")
     if "photo_path" not in existing_user_cols:
         cursor.execute("ALTER TABLE users ADD COLUMN photo_path TEXT NOT NULL DEFAULT ''")
+    if "must_change_password" not in existing_user_cols:
+        cursor.execute(
+            "ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0"
+        )
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_permissions (

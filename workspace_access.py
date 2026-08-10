@@ -877,6 +877,7 @@ def build_user_context(conn, row):
     user["is_locked"] = bool(user.get("locked_at"))
     user["failed_login_attempts"] = int(user.get("failed_login_attempts") or 0)
     user["captcha_required"] = bool(user.get("captcha_required"))
+    user["must_change_password"] = bool(user.get("must_change_password"))
     user["account_status"] = (
         "locked"
         if user["is_locked"]
@@ -1005,6 +1006,9 @@ def user_can_access_stores_submodule(user, submodule_key):
         return False
     if user.get("is_admin"):
         return True
+    # Indent Approvals (header button + /stores/approvals) require Module Tree → Approval.
+    if submodule_key == "approvals":
+        return user_can_approve_transactions(user)
     return submodule_key in _stores_access_keys(user)
 
 
@@ -1090,8 +1094,11 @@ def accounts_access_list(user):
 def stores_access_list(user):
     if not user:
         return []
-    unlocked = _stores_access_keys(user)
-    return [item["key"] for item in _STORES_SUBMODULES_FLAT if item["key"] in unlocked]
+    return [
+        item["key"]
+        for item in _STORES_SUBMODULES_FLAT
+        if user_can_access_stores_submodule(user, item["key"])
+    ]
 
 
 def sales_analytics_access_list(user):
@@ -1232,11 +1239,13 @@ def user_can_edit_kot_sent_lines(user):
 
 
 def user_can_approve_transactions(user):
-    """True when the user may clear/verify/revert settlement transactions.
+    """True when the user may clear/verify/revert settlement transactions
+    and open Indent Approvals.
 
     Granted via the Approval module (administrators include all modules).
-    Covers Credit Payment Clear Payment / Revert and Purchase Verification
-    Verify / Approve / Revert. View access to those pages is separate.
+    Covers Credit Payment Clear Payment / Revert, Purchase Verification
+    Verify / Approve / Revert, and Stores Indent Approvals. View access to
+    settlement pages is separate.
     """
     return user_can_access_dashboard(user, "approval")
 
@@ -1796,7 +1805,7 @@ def save_access_user_record(
             f"role_id = ?, is_active = 1, updated_at = {sql_now}"
         )
         if password:
-            update_sql += ", password_hash = ?"
+            update_sql += ", password_hash = ?, must_change_password = 1"
             params.append(auth_security.hash_password(password))
         if photo_path is not None:
             update_sql += ", photo_path = ?"
@@ -1809,8 +1818,9 @@ def save_access_user_record(
     else:
         conn.execute(
             f"""INSERT INTO users
-                (username, full_name, email, password_hash, is_admin, role_id, photo_path, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, {sql_now}, {sql_now})""",
+                (username, full_name, email, password_hash, is_admin, role_id, photo_path,
+                 must_change_password, is_active, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, {sql_now}, {sql_now})""",
             (
                 username,
                 full_name,

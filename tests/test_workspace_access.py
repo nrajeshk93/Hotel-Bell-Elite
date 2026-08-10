@@ -194,6 +194,27 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertTrue(user_can_approve_transactions(unlocked))
         self.assertTrue(user_can_approve_transactions(admin))
 
+    def test_indent_approvals_require_approval_module(self):
+        from workspace_access import user_can_access_stores_submodule
+
+        stores_only = {
+            "id": 31,
+            "is_admin": False,
+            "dashboard_access": {"stores"},
+            "stores_access": {"indent", "approvals", "stock"},
+        }
+        with_approval = {
+            "id": 32,
+            "is_admin": False,
+            "dashboard_access": {"stores", "approval"},
+            "stores_access": {"indent", "stock"},
+        }
+        self.assertFalse(user_can_access_stores_submodule(stores_only, "approvals"))
+        self.assertFalse(user_can_approve_transactions(stores_only))
+        self.assertTrue(user_can_access_stores_submodule(with_approval, "approvals"))
+        self.assertTrue(user_can_approve_transactions(with_approval))
+        self.assertTrue(user_can_access_stores_submodule(with_approval, "indent"))
+
     def test_supplier_master_uses_accounts_access(self):
         user = {
             "id": 4,

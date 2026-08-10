@@ -130,3 +130,15 @@ Open the link below to unlock your account (valid for 1 hour):
 http://localhost/unlock-account?token=Hg4ywxvPxzuIRFkBa8fT42uOdwfPY44PkJbSbI34Lv0
 
 If you did not try to sign in, contact your administrator.
+
+===== 2026-08-10 06:41:37 | email =====
+To: locke@example.com
+Subject: Unlock your Hotel Bell Elite account
+Hello locke,
+
+Your account was locked after too many failed sign-in attempts.
+Open the link below to unlock your account (valid for 1 hour):
+
+http://localhost/unlock-account?token=cb7NTHm8HfPHdZdpB8upIsm7zwL7PRphKd91MNjJ5qY
+
+If you did not try to sign in, contact your administrator.

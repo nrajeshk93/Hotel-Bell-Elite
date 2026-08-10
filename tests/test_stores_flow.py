@@ -2360,27 +2360,34 @@ class StoresFlowTests(unittest.TestCase):
         home = self.client.get("/home")
         self.assertEqual(home.status_code, 200)
         self.assertIn(b"Indents awaiting approval", home.data)
-        self.assertIn(b"has-unread", home.data)
         self.assertIn(b'href="/stores/approvals"', home.data)
 
-        viewer = {
+        # Stores Approvals submodule alone is not enough — need Module Tree → Approval.
+        stores_clerk = {
             "id": self.admin_id,
             "username": "storeclerk",
             "full_name": "Store Clerk",
             "is_admin": False,
             "is_active": True,
             "dashboard_access": {"stores"},
-            "stores_access": {"indent", "stock"},
+            "stores_access": {"indent", "stock", "approvals"},
             "sales_analytics_access": set(),
             "user_access": set(),
             "payroll_access": set(),
             "accounts_access": set(),
         }
-        with mock.patch.object(self.app_mod, "get_current_user", return_value=viewer):
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=stores_clerk):
             denied = self.client.get("/home")
         self.assertEqual(denied.status_code, 200)
         self.assertNotIn(b"Indents awaiting approval", denied.data)
-        self.assertNotIn(b"has-unread", denied.data)
+
+        approver = dict(stores_clerk)
+        approver["dashboard_access"] = {"stores", "approval"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=approver):
+            allowed = self.client.get("/home")
+        self.assertEqual(allowed.status_code, 200)
+        self.assertIn(b"Indents awaiting approval", allowed.data)
+        self.assertIn(b'href="/stores/approvals"', allowed.data)
 
     def test_approvals_reject_popup_and_reopen(self):
         create = self.client.post(

@@ -80,6 +80,13 @@ body.am-module .am-help-link{
 body.am-module .am-help-link:hover{background:#F9FAFB;border-color:#93C5FD}
 body.am-module .am-help-link.is-disabled{opacity:.55;pointer-events:none}
 body.am-module .am-help-link svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
+body.am-module .am-field-hint{
+  margin:6px 0 0;
+  font-size:12px;
+  font-weight:500;
+  color:#64748B;
+  line-height:1.4;
+}
 body.am-module.sb-off .sb-pin-btn svg{transform:rotate(180deg)}
 /* Expense Ledger–style page shell */
 #access-management-page{
@@ -238,16 +245,32 @@ body.am-module .am-user-card{
   border-radius:16px;
   box-shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.04);
   cursor:pointer;
-  transition:border-color .15s ease,box-shadow .15s ease,transform .15s ease;
+  transition:
+    transform .4s cubic-bezier(.22,1,.36,1),
+    box-shadow .4s cubic-bezier(.22,1,.36,1),
+    border-color .35s ease,
+    background-color .35s ease;
+  will-change:transform,box-shadow;
 }
 body.am-module .am-user-card:focus-visible{
   outline:2px solid #2563EB;
   outline-offset:2px;
 }
-body.am-module .am-user-card:hover{
-  border-color:#DBE3EF;
-  box-shadow:0 2px 4px rgba(15,23,42,.05),0 12px 28px rgba(15,23,42,.07);
-  transform:translateY(-1px);
+body.am-module .am-user-card:hover,
+body.am-module .am-user-card:focus-visible{
+  border-color:#BFDBFE;
+  background:#fff;
+  box-shadow:
+    0 4px 10px rgba(37,99,235,.06),
+    0 16px 36px rgba(15,23,42,.12);
+  transform:translateY(-5px);
+}
+body.am-module .am-user-card:active{
+  transform:translateY(-2px);
+  box-shadow:
+    0 2px 6px rgba(37,99,235,.05),
+    0 10px 22px rgba(15,23,42,.1);
+  transition-duration:.18s;
 }
 body.am-module .am-user-card-top{
   display:flex;
@@ -267,6 +290,11 @@ body.am-module .am-user-avatar{
   display:flex;align-items:center;justify-content:center;
   font-size:15px;font-weight:800;letter-spacing:.02em;flex-shrink:0;
   overflow:hidden;
+  transition:transform .4s cubic-bezier(.22,1,.36,1);
+}
+body.am-module .am-user-card:hover .am-user-avatar,
+body.am-module .am-user-card:focus-visible .am-user-avatar{
+  transform:translateY(-2px) scale(1.04);
 }
 body.am-module .am-user-avatar img{
   width:100%;height:100%;object-fit:cover;display:block;
@@ -321,12 +349,46 @@ body.am-module .am-user-email{
 }
 body.am-module .am-user-card-footer{
   margin-top:auto;
-  display:flex;align-items:center;justify-content:flex-start;gap:8px;
+  display:grid;
+  grid-template-columns:0fr auto;
+  align-items:center;
+  column-gap:0;
+  width:100%;
+  min-height:20px;
+  position:relative;
+  overflow:visible;
+  transition:grid-template-columns .85s cubic-bezier(.22,1,.36,1);
+}
+/* Master-card spacer: role trail glides left → right on hover. */
+body.am-module .am-user-card-footer::before{
+  content:"";
+  min-width:0;
+  overflow:hidden;
+}
+body.am-module .am-user-card:hover .am-user-card-footer,
+body.am-module .am-user-card:focus-visible .am-user-card-footer{
+  grid-template-columns:1fr auto;
+}
+body.am-module .am-role-trail{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  max-width:100%;
 }
 body.am-module .am-role-dot{
   display:inline-flex;align-items:center;gap:7px;
   min-width:0;font-size:12px;font-weight:600;color:#475569;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:100%;
+  transition:
+    color .45s ease,
+    transform .85s cubic-bezier(.22,1,.36,1);
+}
+body.am-module .am-user-card:hover .am-role-dot,
+body.am-module .am-user-card:focus-visible .am-role-dot{
+  transform:translateX(2px);
 }
 body.am-module .am-role-dot::before{
   content:"";width:8px;height:8px;border-radius:50%;flex-shrink:0;background:currentColor;
@@ -504,4 +566,31 @@ body.am-module .btn-primary svg{width:16px;height:16px}
 }
 #access-management-page #am-role-listbox.is-open{
   z-index:90;
+}
+
+@media (prefers-reduced-motion:reduce){
+  body.am-module .am-user-card,
+  body.am-module .am-user-avatar,
+  body.am-module .am-user-card-footer,
+  body.am-module .am-role-dot{
+    transition:none;
+    will-change:auto;
+  }
+  body.am-module .am-user-card:hover,
+  body.am-module .am-user-card:focus-visible,
+  body.am-module .am-user-card:active{
+    transform:none;
+  }
+  body.am-module .am-user-card:hover .am-user-avatar,
+  body.am-module .am-user-card:focus-visible .am-user-avatar{
+    transform:none;
+  }
+  body.am-module .am-user-card:hover .am-user-card-footer,
+  body.am-module .am-user-card:focus-visible .am-user-card-footer{
+    grid-template-columns:0fr auto;
+  }
+  body.am-module .am-user-card:hover .am-role-dot,
+  body.am-module .am-user-card:focus-visible .am-role-dot{
+    transform:none;
+  }
 }

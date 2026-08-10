@@ -427,6 +427,12 @@ class LoginSecurityTests(unittest.TestCase):
             ).fetchone()["password_hash"]
             self.assertTrue(str(stored).startswith("$argon2id$"))
             self.assertTrue(auth_security.verify_password(stored, "ArgonPass1!"))
+            self.assertEqual(
+                conn.execute(
+                    "SELECT must_change_password FROM users WHERE id = ?", (user_id,)
+                ).fetchone()["must_change_password"],
+                1,
+            )
 
             workspace_access.save_access_user_record(
                 conn,
@@ -438,15 +444,130 @@ class LoginSecurityTests(unittest.TestCase):
                 sql_now="datetime('now','localtime')",
                 email="argon@example.com",
             )
-            reset = conn.execute(
-                "SELECT password_hash FROM users WHERE id = ?", (user_id,)
-            ).fetchone()["password_hash"]
+            reset_row = conn.execute(
+                "SELECT password_hash, must_change_password FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            reset = reset_row["password_hash"]
             self.assertTrue(str(reset).startswith("$argon2id$"))
             self.assertTrue(auth_security.verify_password(reset, "ResetPass2!"))
             self.assertFalse(auth_security.verify_password(reset, "ArgonPass1!"))
+            self.assertEqual(reset_row["must_change_password"], 1)
+
+            conn.execute(
+                "UPDATE users SET must_change_password = 0 WHERE id = ?", (user_id,)
+            )
+            workspace_access.save_access_user_record(
+                conn,
+                user_id=user_id,
+                username="argon_user",
+                full_name="Argon User",
+                password="",
+                role_id=role_id,
+                sql_now="datetime('now','localtime')",
+                email="argon@example.com",
+            )
+            kept = conn.execute(
+                "SELECT password_hash, must_change_password FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            self.assertTrue(auth_security.verify_password(kept["password_hash"], "ResetPass2!"))
+            self.assertEqual(kept["must_change_password"], 0)
             conn.commit()
         finally:
             conn.close()
+
+    def test_temp_password_forces_change_on_first_login(self):
+        import workspace_access
+
+        conn = db_mod.get_db()
+        try:
+            role_id, _ = workspace_access.save_access_role_record(
+                conn,
+                role_id=None,
+                name="Temp Pass Role",
+                description="",
+                is_admin=False,
+                is_active=True,
+                dashboard_modules=["reports"],
+                sales_analytics_modules=[],
+                user_access_modules=[],
+                sql_now="datetime('now','localtime')",
+            )
+            workspace_access.save_access_user_record(
+                conn,
+                user_id=None,
+                username="temp_user",
+                full_name="Temp User",
+                password="TempPass1!",
+                role_id=role_id,
+                sql_now="datetime('now','localtime')",
+                email="temp@example.com",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        login = self.client.post(
+            "/login",
+            data={"username": "temp_user", "password": "TempPass1!"},
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 302)
+        self.assertTrue(login.headers["Location"].endswith("/change-password"))
+
+        blocked = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(blocked.status_code, 302)
+        self.assertTrue(blocked.headers["Location"].endswith("/change-password"))
+
+        page = self.client.get("/change-password")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Change password", page.data)
+
+        same = self.client.post(
+            "/change-password",
+            data={"new_password": "TempPass1!", "confirm_password": "TempPass1!"},
+            follow_redirects=False,
+        )
+        self.assertEqual(same.status_code, 200)
+        self.assertIn(b"different from your temporary password", same.data)
+
+        mismatch = self.client.post(
+            "/change-password",
+            data={"new_password": "NewPass2!", "confirm_password": "OtherPass"},
+            follow_redirects=False,
+        )
+        self.assertEqual(mismatch.status_code, 200)
+        self.assertIn(b"do not match", mismatch.data)
+
+        changed = self.client.post(
+            "/change-password",
+            data={"new_password": "NewPass2!", "confirm_password": "NewPass2!"},
+            follow_redirects=False,
+        )
+        self.assertEqual(changed.status_code, 302)
+        self.assertTrue(changed.headers["Location"].endswith("/home"))
+
+        conn = db_mod.get_db()
+        try:
+            flag = conn.execute(
+                "SELECT must_change_password FROM users WHERE username = 'temp_user'"
+            ).fetchone()["must_change_password"]
+        finally:
+            conn.close()
+        self.assertEqual(flag, 0)
+
+        home = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(home.status_code, 200)
+
+        self.client.get("/logout")
+        again = self.client.post(
+            "/login",
+            data={"username": "temp_user", "password": "NewPass2!"},
+            follow_redirects=False,
+        )
+        self.assertEqual(again.status_code, 302)
+        self.assertTrue(again.headers["Location"].endswith("/home"))
 
     def test_admin_seed_uses_argon2id(self):
         tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
