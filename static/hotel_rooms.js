@@ -470,7 +470,17 @@
       var key = card.getAttribute('data-kpi');
       var el = card.querySelector('[data-kpi-value]');
       if (!el || !key) return;
-      el.textContent = String(data[key] != null ? data[key] : 0);
+      var n = Number(data[key] != null ? data[key] : 0);
+      if (!isFinite(n) || n < 0) n = 0;
+      el.textContent = String(n);
+      if (key === 'dirty') {
+        card.hidden = n <= 0;
+        if (n <= 0 && card.classList.contains('is-active')) {
+          global.setTimeout(function () {
+            if (statusFilterValue(root) === 'dirty') setStatusFilter(root, 'all');
+          }, 0);
+        }
+      }
     });
   }
 
@@ -3439,10 +3449,14 @@
     );
 
     root.addEventListener('click', function (event) {
-      var reserveBtn = event.target.closest('#hotel-rooms-reserve-btn');
+      var reserveBtn = event.target.closest('#hotel-rooms-quick-reservations');
       if (reserveBtn && root.contains(reserveBtn)) {
         event.preventDefault();
-        openBoardReserveModal(root);
+        if (typeof global.deNavigateWithTransition === 'function') {
+          global.deNavigateWithTransition('/hotel/reservations');
+        } else {
+          global.location.href = '/hotel/reservations';
+        }
         return;
       }
 

@@ -7,6 +7,7 @@
 .hbe-scroll-panel .pl-table-wrap,
 .hbe-scroll-panel .emp-table-wrap,
 .hbe-scroll-panel .sm-table-wrap,
+.hbe-scroll-panel .hres-table-wrap,
 .pl-list-panel--scroll .pl-table-wrap,
 .emp-list-panel--scroll .emp-table-wrap,
 .sm-list-panel--scroll .sm-table-wrap{
@@ -19,6 +20,7 @@
 .hbe-scroll-panel .pl-table-wrap.is-edge-scroll-right,
 .hbe-scroll-panel .emp-table-wrap.is-edge-scroll-right,
 .hbe-scroll-panel .sm-table-wrap.is-edge-scroll-right,
+.hbe-scroll-panel .hres-table-wrap.is-edge-scroll-right,
 .pl-list-panel--scroll .pl-table-wrap.is-edge-scroll-right,
 .emp-list-panel--scroll .emp-table-wrap.is-edge-scroll-right,
 .sm-list-panel--scroll .sm-table-wrap.is-edge-scroll-right{
@@ -28,6 +30,7 @@
 .hbe-scroll-panel .pl-table-wrap.is-edge-scroll-left,
 .hbe-scroll-panel .emp-table-wrap.is-edge-scroll-left,
 .hbe-scroll-panel .sm-table-wrap.is-edge-scroll-left,
+.hbe-scroll-panel .hres-table-wrap.is-edge-scroll-left,
 .pl-list-panel--scroll .pl-table-wrap.is-edge-scroll-left,
 .emp-list-panel--scroll .emp-table-wrap.is-edge-scroll-left,
 .sm-list-panel--scroll .sm-table-wrap.is-edge-scroll-left{
@@ -37,6 +40,7 @@
 .hbe-scroll-panel .pl-table thead th,
 .hbe-scroll-panel .emp-pl-table thead th,
 .hbe-scroll-panel .sm-table thead th,
+.hbe-scroll-panel .hres-table thead th,
 .pl-list-panel--scroll .pl-table thead th,
 .emp-list-panel--scroll .emp-pl-table thead th,
 .sm-list-panel--scroll .sm-table thead th{

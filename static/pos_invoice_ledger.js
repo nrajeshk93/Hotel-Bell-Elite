@@ -128,11 +128,14 @@
             bv = Number(bv) || 0;
             return dir === 'asc' ? av - bv : bv - av;
           }
-          av = String(av).toLowerCase();
-          bv = String(bv).toLowerCase();
-          if (av < bv) return dir === 'asc' ? -1 : 1;
-          if (av > bv) return dir === 'asc' ? 1 : -1;
-          return 0;
+          av = String(av).trim();
+          bv = String(bv).trim();
+          // Numeric-aware compare so SPC/26-27/99 sorts before SPC/26-27/708.
+          var cmp = av.localeCompare(bv, undefined, {
+            numeric: true,
+            sensitivity: 'base',
+          });
+          return dir === 'asc' ? cmp : -cmp;
         });
         rows.forEach(function (row) {
           tbody.appendChild(row);

@@ -7,6 +7,7 @@
     '.hbe-scroll-panel .pl-table-wrap',
     '.hbe-scroll-panel .emp-table-wrap',
     '.hbe-scroll-panel .sm-table-wrap',
+    '.hbe-scroll-panel .hres-table-wrap',
     '.pl-list-panel--scroll .pl-table-wrap',
     '.emp-list-panel--scroll .emp-table-wrap',
     '.sm-list-panel--scroll .sm-table-wrap',

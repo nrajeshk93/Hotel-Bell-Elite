@@ -41,23 +41,12 @@
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox, ep_toolbar_listbox %}
 {% set ep_month_names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
 {% set ep_month_opts = namespace(options=[]) %}
-{% set _ep_month_start = (today_month|default(sel_month|default(1)))|int %}
-{% for i in range(4) %}
-  {% set m = ((_ep_month_start - 1 + i) % 12) + 1 %}
+{% for m in range(1, 13) %}
   {% set ep_month_opts.options = ep_month_opts.options + [(m|string, ep_month_names[m])] %}
 {% endfor %}
-{% if sel_month is defined %}
-  {% set _ep_month_has_sel = namespace(found=false) %}
-  {% for opt in ep_month_opts.options %}
-    {% if opt[0] == sel_month|string %}{% set _ep_month_has_sel.found = true %}{% endif %}
-  {% endfor %}
-  {% if not _ep_month_has_sel.found %}
-    {% set ep_month_opts.options = [(sel_month|string, ep_month_names[sel_month])] + ep_month_opts.options %}
-  {% endif %}
-{% endif %}
 {% set ep_year_opts = namespace(options=[]) %}
-{% set _ep_year_start = (today_year|default(sel_year|default(2026)))|int %}
-{% for y in range(_ep_year_start, _ep_year_start + 4) %}
+{% set _ep_year_now = (today_year|default(sel_year|default(2026)))|int %}
+{% for y in range(_ep_year_now - 5, _ep_year_now + 4) %}
   {% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}
 {% endfor %}
 {% if sel_year is defined %}
@@ -840,11 +829,6 @@
         {% if payroll_state.can_lock %}
         <button type="button" class="btn btn-secondary btn-sm"
                 onclick='submitPayrollLock({{ sel_year|tojson }}, {{ sel_month|tojson }}, {{ payroll_state.label|tojson }})'>
-          {{ payroll_state.button_label }}
-        </button>
-        {% elif payroll_state.can_unlock %}
-        <button type="button" class="btn btn-secondary btn-sm"
-                onclick='submitPayrollUnlock({{ sel_year|tojson }}, {{ sel_month|tojson }}, {{ payroll_state.label|tojson }})'>
           {{ payroll_state.button_label }}
         </button>
         {% else %}
@@ -2980,7 +2964,7 @@
   </div>
 </div>
 <script type="application/json" id="ep-page-config">{"year":{{ sel_year|default('')|tojson }},"month":{{ sel_month|default('')|tojson }},"lockUrl":{{ url_for('lock_payroll_month')|tojson }}}</script>
-<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=6"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

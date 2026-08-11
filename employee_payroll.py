@@ -769,15 +769,14 @@ def _get_payroll_month_state(conn, year, month):
 
 
 def _annotate_payroll_state_for_user(state, user=None):
-    """Allow Super Administrators to unlock a frozen payroll month."""
+    """Keep payroll lock state as-is — locked months cannot be unlocked."""
     annotated = dict(state or {})
-    can_unlock = bool(
-        annotated.get('locked') and user and user.get('is_admin')
-    )
-    annotated['can_unlock'] = can_unlock
-    if can_unlock:
-        annotated['button_label'] = f"Unlock {annotated.get('label') or 'month'}"
-        annotated['reason'] = ''
+    annotated['can_unlock'] = False
+    if annotated.get('locked'):
+        annotated['button_label'] = 'Locked'
+        annotated['reason'] = annotated.get('reason') or (
+            f"{annotated.get('label') or 'This month'} is already locked."
+        )
     return annotated
 
 
@@ -4286,7 +4285,8 @@ def export_bank_report():
 def lock_payroll_month():
     year, month = _period_from_source(request.form)
     lock_action = (request.form.get('lock_action') or '').strip()
-    if lock_action not in ('manual_lock', 'manual_unlock'):
+    # Unlock is not supported — once locked, a payroll month stays locked.
+    if lock_action != 'manual_lock':
         return redirect(request.referrer or url_for('employees', year=year, month=month))
 
     user = get_current_user()
@@ -4295,14 +4295,7 @@ def lock_payroll_month():
         state = _annotate_payroll_state_for_user(
             _get_payroll_month_state(conn, year, month), user
         )
-        if lock_action == 'manual_unlock':
-            if state.get('can_unlock') and state.get('locked'):
-                conn.execute(
-                    "DELETE FROM payroll_month_locks WHERE year=? AND month=?",
-                    (year, month),
-                )
-                conn.commit()
-        elif state['can_lock'] and not state['locked']:
+        if state['can_lock'] and not state['locked']:
             existing = conn.execute(
                 "SELECT 1 FROM payroll_month_locks WHERE year=? AND month=?",
                 (year, month)

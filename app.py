@@ -133,6 +133,7 @@ from db import (
 )
 from fo_invoice_tax_parser import parse_fo_invoice_tax_report
 from sales_report_parser import OUTLET_BAR, OUTLET_RESTAURANT, parse_sales_report
+import asia_tech_client
 from workspace_access import (
     _ACCOUNTS_SUBMODULE_LABELS,
     _DASHBOARD_MODULE_LABELS,
@@ -5476,6 +5477,191 @@ def hotel_rooms():
     )
 
 
+@app.route("/hotel/reservations", endpoint="hotel_reservations")
+def hotel_reservations():
+    """Hotel Reservations manager — Asia Tech channel bookings."""
+    return render_template(
+        "hotel_reservations.html",
+        de_nav_section="hotel",
+        de_nav_hotel_view="reservations",
+        today_iso=date.today().isoformat(),
+    )
+
+
+@app.route("/hotel/api/reservations", methods=["GET", "POST"], endpoint="hotel_reservations_api")
+def hotel_reservations_api():
+    """List / create Asia Tech reservations (stub provider until live API is wired)."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        settings = get_hotel_settings(conn)
+        if request.method == "GET":
+            rows = asia_tech_client.list_provider_reservations(settings)
+            filtered = asia_tech_client.filter_reservations(
+                rows,
+                q=request.args.get("q") or "",
+                status=request.args.get("status") or "all",
+                source=request.args.get("source") or "all",
+                on_date=request.args.get("date") or "",
+            )
+            page_rows, pagination = asia_tech_client.paginate(
+                filtered,
+                page=request.args.get("page") or 1,
+                page_size=request.args.get("page_size")
+                or request.args.get("pageSize")
+                or "all",
+            )
+            kpis = asia_tech_client.compute_kpis(rows)
+            vacant = []
+            layout = get_hotel_rooms_layout(conn)
+            for room in layout.get("rooms") or []:
+                if not isinstance(room, dict):
+                    continue
+                status = str(room.get("status") or "vacant").lower()
+                if status != "vacant":
+                    continue
+                vacant.append(
+                    {
+                        "id": room.get("id"),
+                        "number": room.get("number"),
+                        "roomType": room.get("roomType"),
+                        "roomTypeLabel": room.get("roomTypeLabel")
+                        or room.get("roomType")
+                        or "",
+                        "status": status,
+                        "statusLabel": "Vacant",
+                    }
+                )
+            conn.commit()
+            return jsonify(
+                {
+                    "ok": True,
+                    "mode": asia_tech_client.get_mode(settings),
+                    "hasApiKey": bool(asia_tech_client.get_api_key(settings)),
+                    "kpis": kpis,
+                    "reservations": page_rows,
+                    "pagination": pagination,
+                    "vacantRooms": vacant,
+                    "sources": [
+                        {"value": key, "label": label}
+                        for key, label in asia_tech_client.SOURCE_LABELS.items()
+                    ],
+                    "statuses": [
+                        {"value": key, "label": label}
+                        for key, label in asia_tech_client.STATUS_LABELS.items()
+                    ],
+                }
+            )
+
+        data = request.get_json(silent=True) or {}
+        try:
+            item, next_settings = asia_tech_client.create_reservation(settings, data)
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        save_hotel_settings(conn, next_settings)
+        conn.commit()
+        return jsonify({"ok": True, "reservation": item})
+    finally:
+        conn.close()
+
+
+@app.route(
+    "/hotel/api/reservations/<reservation_id>",
+    methods=["GET", "PUT"],
+    endpoint="hotel_reservation_detail_api",
+)
+def hotel_reservation_detail_api(reservation_id):
+    """Fetch or update a single reservation."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        settings = get_hotel_settings(conn)
+        if request.method == "GET":
+            item = asia_tech_client.get_reservation(settings, reservation_id)
+            conn.commit()
+            if not item:
+                return jsonify({"ok": False, "error": "Reservation not found."}), 404
+            return jsonify({"ok": True, "reservation": item})
+
+        data = request.get_json(silent=True) or {}
+        try:
+            item, next_settings = asia_tech_client.update_reservation(
+                settings, reservation_id, data
+            )
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        save_hotel_settings(conn, next_settings)
+        conn.commit()
+        return jsonify({"ok": True, "reservation": item})
+    finally:
+        conn.close()
+
+
+@app.route(
+    "/hotel/api/reservations/<reservation_id>/assign",
+    methods=["POST"],
+    endpoint="hotel_reservation_assign_api",
+)
+def hotel_reservation_assign_api(reservation_id):
+    """Assign a local hotel room to an Asia Tech reservation."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        settings = get_hotel_settings(conn)
+        data = request.get_json(silent=True) or {}
+        room_id = str(data.get("roomId") or data.get("room_id") or "").strip()
+        if not room_id:
+            return jsonify({"ok": False, "error": "roomId is required."}), 400
+        room = get_hotel_room(conn, room_id)
+        if not room:
+            return jsonify({"ok": False, "error": "Room not found."}), 404
+        status = str(room.get("status") or "vacant").lower()
+        if status != "vacant":
+            return jsonify({"ok": False, "error": "Only vacant rooms can be assigned."}), 400
+
+        reservation = asia_tech_client.get_reservation(settings, reservation_id)
+        if not reservation:
+            return jsonify({"ok": False, "error": "Reservation not found."}), 404
+
+        try:
+            updated, next_settings = asia_tech_client.assign_room_local(
+                settings,
+                reservation_id,
+                room_id=room_id,
+                room_number=str(room.get("number") or ""),
+                room_type_label=str(room.get("roomTypeLabel") or room.get("roomType") or ""),
+            )
+            saved_room = save_hotel_room_reservation(
+                conn,
+                room_id,
+                updated.get("checkInDate"),
+                updated.get("checkOutDate"),
+                stay_fields={
+                    "guestName": updated.get("guestName") or "",
+                    "mobile": updated.get("mobile") or "",
+                    "email": updated.get("email") or "",
+                },
+                replace=False,
+            )
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+
+        save_hotel_settings(conn, next_settings)
+        conn.commit()
+        return jsonify(
+            {
+                "ok": True,
+                "reservation": updated,
+                "room": saved_room,
+            }
+        )
+    finally:
+        conn.close()
+
+
 @app.route("/hotel/settings", endpoint="hotel_settings")
 def hotel_settings():
     """Hotel Settings — floors, rooms, taxes, invoice, payment, printers."""
@@ -5508,7 +5694,7 @@ def hotel_settings_api():
             return jsonify(
                 {
                     "ok": True,
-                    "settings": settings,
+                    "settings": asia_tech_client.mask_settings_for_client(settings),
                     "taxRates": rates,
                     "tariffRates": tariff,
                 }
@@ -5521,14 +5707,16 @@ def hotel_settings_api():
             settings = data
         if not isinstance(settings, dict):
             return jsonify({"ok": False, "error": "settings object is required."}), 400
-        saved = save_hotel_settings(conn, settings)
+        existing = get_hotel_settings(conn)
+        merged = asia_tech_client.merge_settings_on_save(existing, settings)
+        saved = save_hotel_settings(conn, merged)
         conn.commit()
         rates = get_hotel_tax_rates(conn)
         tariff = get_hotel_tariff_rates(conn)
         return jsonify(
             {
                 "ok": True,
-                "settings": saved,
+                "settings": asia_tech_client.mask_settings_for_client(saved),
                 "taxRates": rates,
                 "tariffRates": tariff,
             }
@@ -5604,7 +5792,7 @@ def hotel_invoice_ledger():
         "hotel_invoice_ledger.html",
         de_nav_section="hotel",
         de_nav_hotel_view="invoice_ledger",
-        page_title="Invoice Ledger",
+        page_title="Invoice Ledger - Hotel",
         invoices=rows,
         kpis=kpis,
         today_iso=filters["today"].isoformat(),
@@ -6558,9 +6746,14 @@ def point_of_sale_invoice_ledger():
     report_ep = _pos_endpoint("export_pos_invoice_ledger_report", outlet)
     invoice_ep = _pos_endpoint("point_of_sale_invoice", outlet)
 
+    page_title = (
+        "Invoice Ledger - Bar"
+        if normalize_pos_outlet(outlet) == POS_OUTLET_BAR
+        else "Invoice Ledger - Restaurant"
+    )
     return render_template(
         "point_of_sale_invoice_ledger.html",
-        page_title="Invoice Ledger",
+        page_title=page_title,
         invoices=invoices,
         kpis=kpis,
         can_cancel_invoices=can_cancel,

@@ -85,36 +85,43 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   background:#F1F5F9;
   color:#0F172A;
 }
-.hotel-rooms-header-actions .btn-primary,
-.hotel-rooms-header-actions .hotel-rooms-reserve-btn{
+.hotel-rooms-header-actions .btn-primary{
   background:var(--hotel-primary, #2563EB);
   border-color:var(--hotel-primary, #2563EB);
   color:#fff;
 }
-.hotel-rooms-header-actions .btn-primary:hover,
-.hotel-rooms-header-actions .hotel-rooms-reserve-btn:hover{
+.hotel-rooms-header-actions .btn-primary:hover{
   background:#1D4ED8;
   border-color:#1D4ED8;
   color:#fff;
 }
 
 .hotel-rooms-kpis{
-  display:grid;
-  grid-template-columns:repeat(5, minmax(0, 1fr));
-  gap:14px;
+  display:flex;
+  flex-wrap:nowrap;
+  align-items:stretch;
+  gap:12px;
   margin-bottom:20px;
+  width:100%;
+  min-width:0;
 }
 .hotel-kpi{
   display:flex;
   align-items:center;
-  gap:14px;
-  padding:16px 18px;
+  gap:12px;
+  flex:1 1 0;
+  min-width:0;
+  padding:14px 16px;
   background:var(--hotel-card);
   border:1px solid var(--hotel-border);
   border-radius:16px;
   box-shadow:var(--hotel-shadow);
   cursor:pointer;
   transition:border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+}
+/* Author display:flex beats the UA [hidden] rule — keep hide reliable */
+.hotel-kpi[hidden]{
+  display:none !important;
 }
 .hotel-kpi.is-active{
   border-color:rgba(37,99,235,.42);
@@ -159,11 +166,14 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   color:var(--hotel-muted);
   letter-spacing:.01em;
   line-height:1.25;
-  max-width:11em;
+  max-width:none;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 .hotel-kpi-value{
   margin-top:2px;
-  font-size:24px;
+  font-size:clamp(18px, 1.6vw + 12px, 24px);
   font-weight:750;
   letter-spacing:-.03em;
   font-variant-numeric:tabular-nums;
@@ -231,6 +241,23 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
 .hotel-toolbar-right .hotel-date,
 .hotel-toolbar-right .hotel-view-toggle{
   flex:0 0 auto;
+}
+/* Rooms date chip — date text only (no chevron / calendar icon) */
+.hotel-toolbar-right .hotel-toolbar-date.hotel-date--no-cal .hotel-date-trigger,
+.hotel-toolbar-right .hotel-toolbar-date .hotel-date-trigger{
+  width:auto;
+  min-width:118px;
+  justify-content:center;
+  gap:0;
+  padding:0 14px;
+}
+.hotel-toolbar-right .hotel-toolbar-date .hotel-date-caret,
+.hotel-toolbar-right .hotel-toolbar-date .hotel-date-cal-icon{
+  display:none;
+}
+.hotel-toolbar-right .hotel-toolbar-date .hotel-date-value{
+  flex:0 0 auto;
+  text-align:center;
 }
 /* Toolbar listboxes — same compact chip pattern as Tables.
    ep_form_listbox.css only scopes to ep/su/pos modules, so Rooms needs local rules. */
@@ -1745,7 +1772,25 @@ body.hr-board-reserve-open{overflow:hidden}
 }
 
 @media (max-width:1100px){
-  .hotel-rooms-kpis{grid-template-columns:repeat(3, minmax(0, 1fr))}
+  .hotel-rooms-kpis{
+    gap:10px;
+  }
+  .hotel-kpi{
+    gap:10px;
+    padding:12px 12px;
+  }
+  .hotel-kpi-icon{
+    width:36px;
+    height:36px;
+    border-radius:10px;
+  }
+  .hotel-kpi-icon svg{
+    width:18px;
+    height:18px;
+  }
+  .hotel-kpi-label{
+    font-size:11px;
+  }
   .hotel-rooms-search{min-width:160px;max-width:none}
   .hotel-toolbar-right .hotel-filter-listbox{
     min-width:140px;
@@ -1769,11 +1814,96 @@ body.hr-board-reserve-open{overflow:hidden}
     max-width:none;
   }
 }
+/* Quick actions (POS-style cards) */
+.hotel-quick-actions{
+  margin-top:28px;
+}
+.hotel-quick-actions-title{
+  margin:0 0 12px;
+  font-size:14px;
+  font-weight:720;
+  color:var(--hotel-text);
+}
+.hotel-quick-actions-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(170px,1fr));
+  gap:12px;
+}
+.hotel-quick-card{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-height:76px;
+  padding:14px 16px;
+  background:var(--hotel-card);
+  border:1px solid var(--hotel-border);
+  border-radius:18px;
+  box-shadow:var(--hotel-shadow);
+  text-decoration:none;
+  color:inherit;
+  text-align:left;
+  cursor:pointer;
+  transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  font:inherit;
+}
+.hotel-quick-card:hover:not(.is-disabled):not(:disabled){
+  transform:translateY(-2px);
+  border-color:#BFDBFE;
+  box-shadow:0 12px 28px rgba(37,99,235,.1);
+}
+.hotel-quick-card.is-disabled,
+.hotel-quick-card:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+.hotel-quick-icon{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  background:rgba(37,99,235,.1);
+  color:var(--hotel-primary);
+  flex:0 0 auto;
+}
+.hotel-quick-icon svg{
+  width:18px;
+  height:18px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.hotel-quick-copy{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+.hotel-quick-copy strong{
+  font-size:13px;
+  font-weight:720;
+  color:var(--hotel-text);
+}
+.hotel-quick-copy small{
+  font-size:11px;
+  color:var(--hotel-muted);
+  font-weight:500;
+}
+
 @media (max-width:720px){
   body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
     padding:20px 16px 32px;
   }
-  .hotel-rooms-kpis{grid-template-columns:repeat(2, minmax(0, 1fr))}
+  .hotel-rooms-kpis{
+    flex-wrap:wrap;
+  }
+  .hotel-kpi{
+    flex:1 1 calc(50% - 6px);
+    min-width:140px;
+  }
   .hotel-view-toggle{flex:0 0 auto}
   .hotel-rooms-search{flex:1 1 100%;width:100%}
   .hotel-toolbar-right .hotel-filter-listbox{

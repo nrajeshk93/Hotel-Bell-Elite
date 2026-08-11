@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=61">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=66">
 <script>
 (function(){
   try{
@@ -30,7 +30,7 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=61">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=66">
 {% endif %}
 
 <div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers">
@@ -38,9 +38,7 @@
     <div class="hotel-rooms-header-copy">
       <h1>Rooms</h1>
     </div>
-    <div class="hotel-rooms-header-actions" aria-label="Page tools">
-      <button type="button" class="btn btn-primary hotel-rooms-reserve-btn" id="hotel-rooms-reserve-btn">Reserve</button>
-    </div>
+    <div class="hotel-rooms-header-actions" aria-label="Page tools"></div>
   </header>
 
   <section class="hotel-rooms-kpis" aria-label="Room status summary">
@@ -71,7 +69,7 @@
         <div class="hotel-kpi-value" data-kpi-value>0</div>
       </div>
     </article>
-    <article class="hotel-kpi" data-kpi="dirty" role="button" tabindex="0" aria-pressed="false" aria-label="Filter dirty rooms">
+    <article class="hotel-kpi" data-kpi="dirty" role="button" tabindex="0" aria-pressed="false" aria-label="Filter dirty rooms" hidden>
       <div class="hotel-kpi-icon hotel-kpi-icon--rose" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20V10l6-4 6 4v10"/><path d="M10 14h4v6h-4z"/></svg>
       </div>
@@ -136,13 +134,23 @@
           <button type="button" class="se-filter-listbox-option" role="option" data-value="out_of_order" data-label="Out of order" aria-selected="false">Out of order</button>
         </div>
       </div>
-      {{ hotel_date_field('roomsDate', 'Date', value=today_iso|default(''), field_id='hotel-rooms-date-filter', extra_class='hotel-toolbar-date', panel_title='Select date', empty_label='Select date') }}
+      {{ hotel_date_field('roomsDate', 'Date', value=today_iso|default(''), field_id='hotel-rooms-date-filter', extra_class='hotel-toolbar-date', panel_title='Select date', empty_label='Select date', hint='', show_cal_icon=false) }}
     </div>
   </div>
 
   <div class="hotel-rooms-body">
     <div class="hotel-rooms-floor" id="hotel-rooms-floor" data-view="grid" aria-live="polite"></div>
   </div>
+
+  <section class="hotel-quick-actions" aria-label="Quick actions">
+    <h2 class="hotel-quick-actions-title">Quick Actions</h2>
+    <div class="hotel-quick-actions-grid">
+      <button type="button" class="hotel-quick-card" id="hotel-rooms-quick-reservations" title="Open reservations manager">
+        <span class="hotel-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg></span>
+        <span class="hotel-quick-copy"><strong>Reservations</strong><small>Manage bookings</small></span>
+      </button>
+    </div>
+  </section>
 
   <div class="hotel-rooms-toast" id="hotel-rooms-toast" role="status" aria-live="polite" hidden></div>
 
@@ -416,7 +424,7 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=78"></script>
+<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=83"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

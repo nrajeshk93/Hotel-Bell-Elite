@@ -1125,6 +1125,36 @@ def is_valid_agency_gst(value):
     return (not gst) or bool(_GSTIN_RE.fullmatch(gst))
 
 
+def sanitize_agency_gst_for_import(value):
+    """Normalize GSTIN for migration imports.
+
+    Strips labels like ``GST `` / ``GST:`` and returns a valid 15-char GSTIN,
+    or ``""`` when missing/invalid (never aborts the agency upsert).
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    upper = raw.upper()
+    if upper.startswith("GSTIN"):
+        raw = raw[5:].lstrip(" :#-")
+    elif upper.startswith("GST"):
+        raw = raw[3:].lstrip(" :#-")
+    gst = _normalize_agency_gst(raw)
+    if gst and _GSTIN_RE.fullmatch(gst):
+        return gst
+    return ""
+
+
+def upsert_agency_for_import(conn, name, gst="", address=""):
+    """Upsert agency for data migration — invalid GST is dropped, not fatal."""
+    return upsert_agency_by_name(
+        conn,
+        name,
+        sanitize_agency_gst_for_import(gst),
+        address,
+    )
+
+
 def _normalize_agency_address(value):
     return " ".join(str(value or "").split()).strip()
 
@@ -4226,6 +4256,8 @@ POS_PAYMENT_METHODS = (
     ("card", "Card"),
     ("room_transfer", "Room Transfer"),
     ("bank_transfer", "Bank Transfer"),
+    ("swiggy", "Swiggy"),
+    ("zomato", "Zomato"),
 )
 POS_PAYMENT_METHOD_LABELS = dict(POS_PAYMENT_METHODS)
 # Kept for historical settlements that still show in Invoice Ledger.
@@ -4245,6 +4277,10 @@ def _normalize_pos_payment_method(payment_method):
         return "cash"
     if value in ("room_transfer", "room transfer"):
         return "room_transfer"
+    if value == "swiggy":
+        return "swiggy"
+    if value == "zomato":
+        return "zomato"
     # Historical ledger rows only — not offered for new settlements.
     if value == "credit":
         return "credit"
@@ -4411,6 +4447,285 @@ def settle_pos_invoice(
         invoice["hotel_room"] = folio_result.get("room")
         invoice["folio_charge"] = folio_result.get("charge")
     return invoice
+
+
+def import_settled_pos_invoice_snapshot(conn, snapshot):
+    """Upsert a historical settled POS invoice (no table occupancy / stock / folio).
+
+    ``snapshot`` keys:
+      order_no, outlet, order_type, order_date, saved_at, settled_at, customer_name,
+      notes, subtotal, discount_amount, gst_amount, vat_amount, grand_total,
+      lines: [{name, rate, qty, line_total}],
+      payments: [{payment_method, amount, payment_date, transaction_id?, notes?}]
+    """
+    ensure_pos_schema(conn)
+    if not isinstance(snapshot, dict):
+        raise ValueError("Invalid invoice snapshot.")
+    order_no = " ".join(str(snapshot.get("order_no") or "").split()).strip()
+    if not order_no:
+        raise ValueError("Order number is required.")
+    outlet = normalize_pos_outlet(snapshot.get("outlet"))
+    order_type = _normalize_pos_order_type(snapshot.get("order_type") or "dine_in")
+    customer_name = " ".join(
+        str(snapshot.get("customer_name") or "Guest").split()
+    ).strip() or "Guest"
+    order_date = str(snapshot.get("order_date") or "").strip()[:10]
+    if not order_date:
+        raise ValueError("Order date is required.")
+    saved_at = str(snapshot.get("saved_at") or "").strip()
+    if not saved_at:
+        saved_at = f"{order_date} 12:00:00"
+    settled_at = str(snapshot.get("settled_at") or saved_at).strip()
+    notes = str(snapshot.get("notes") or "").strip()[:500]
+    payment_notes = str(snapshot.get("payment_notes") or "Imported from sales ledger").strip()[
+        :500
+    ]
+
+    subtotal = _pos_money(snapshot.get("subtotal"))
+    discount_amount = _pos_money(snapshot.get("discount_amount"))
+    gst_amount = _pos_money(snapshot.get("gst_amount"))
+    vat_amount = _pos_money(snapshot.get("vat_amount"))
+    grand_total = _pos_money(snapshot.get("grand_total"))
+    if grand_total < 0:
+        raise ValueError("Grand total cannot be negative.")
+
+    lines_in = snapshot.get("lines") if isinstance(snapshot.get("lines"), list) else []
+    lines = []
+    for idx, line in enumerate(lines_in):
+        if not isinstance(line, dict):
+            continue
+        name = " ".join(str(line.get("name") or "").split()).strip()
+        if not name:
+            continue
+        qty = _pos_money(line.get("qty") if line.get("qty") is not None else 1) or 1.0
+        rate = _pos_money(line.get("rate"))
+        line_total = _pos_money(line.get("line_total"))
+        if line_total <= 0 and rate > 0:
+            line_total = round(rate * qty, 2)
+        if line_total <= 0 and rate <= 0:
+            continue
+        lines.append(
+            {
+                "sort_order": idx,
+                "name": name[:200],
+                "rate": rate if rate > 0 else line_total,
+                "qty": qty,
+                "line_total": line_total,
+            }
+        )
+    if not lines:
+        # Guarantee at least one line so ledger item counts stay honest.
+        lines.append(
+            {
+                "sort_order": 0,
+                "name": "Imported sale",
+                "rate": grand_total,
+                "qty": 1.0,
+                "line_total": grand_total,
+            }
+        )
+        if subtotal <= 0:
+            subtotal = grand_total
+
+    payments_in = snapshot.get("payments") if isinstance(snapshot.get("payments"), list) else []
+    payments = []
+    for raw in payments_in:
+        if not isinstance(raw, dict):
+            continue
+        method = _normalize_pos_payment_method(raw.get("payment_method"))
+        if not method:
+            method = str(raw.get("payment_method") or "").strip().lower() or "cash"
+        amount = _pos_money(raw.get("amount"))
+        if amount <= 0:
+            continue
+        pay_date = str(raw.get("payment_date") or order_date).strip()[:10] or order_date
+        payments.append(
+            {
+                "payment_method": method,
+                "amount": amount,
+                "payment_date": pay_date,
+                "transaction_id": str(raw.get("transaction_id") or "").strip()[:80],
+                "notes": str(raw.get("notes") or payment_notes).strip()[:200],
+            }
+        )
+    if not payments and grand_total > 0:
+        payments.append(
+            {
+                "payment_method": "cash",
+                "amount": grand_total,
+                "payment_date": order_date,
+                "transaction_id": "",
+                "notes": payment_notes,
+            }
+        )
+    elif not payments:
+        payments.append(
+            {
+                "payment_method": "cash",
+                "amount": 0.0,
+                "payment_date": order_date,
+                "transaction_id": "",
+                "notes": payment_notes,
+            }
+        )
+
+    existing = conn.execute(
+        """
+        SELECT id FROM pos_invoices
+        WHERE order_no = ? AND is_active = 1
+        LIMIT 1
+        """,
+        (order_no,),
+    ).fetchone()
+    created = existing is None
+    if existing:
+        invoice_id = int(existing["id"])
+        conn.execute(
+            f"""
+            UPDATE pos_invoices
+            SET saved_at = ?,
+                order_date = ?,
+                order_type = ?,
+                table_label = '',
+                captain = '',
+                customer_name = ?,
+                customer_mobile = '',
+                notes = ?,
+                discount_type = 'inr',
+                discount_value = ?,
+                service_type = 'pct',
+                service_value = 0,
+                tip_amount = 0,
+                coupon_code = '',
+                discount_line_uids = '',
+                discount_reason = '',
+                subtotal = ?,
+                discount_amount = ?,
+                gst_amount = ?,
+                vat_amount = ?,
+                service_amount = 0,
+                tip = 0,
+                round_off = 0,
+                grand_total = ?,
+                status = 'closed',
+                kot_sent = 0,
+                first_kot_at = '',
+                customer_bill_sent = 1,
+                customer_bill_at = ?,
+                payment_notes = ?,
+                settled_at = ?,
+                outlet = ?,
+                stock_deducted_at = COALESCE(NULLIF(stock_deducted_at, ''), 'import-skip'),
+                updated_at = {SQL_NOW}
+            WHERE id = ?
+            """,
+            (
+                saved_at,
+                order_date,
+                order_type,
+                customer_name,
+                notes,
+                discount_amount,
+                subtotal,
+                discount_amount,
+                gst_amount,
+                vat_amount,
+                grand_total,
+                settled_at,
+                payment_notes,
+                settled_at,
+                outlet,
+                invoice_id,
+            ),
+        )
+        conn.execute("DELETE FROM pos_invoice_lines WHERE invoice_id = ?", (invoice_id,))
+        conn.execute("DELETE FROM pos_invoice_payments WHERE invoice_id = ?", (invoice_id,))
+    else:
+        cursor = conn.execute(
+            f"""
+            INSERT INTO pos_invoices (
+                order_no, saved_at, order_date, order_type, table_label, captain,
+                customer_name, customer_mobile, notes,
+                discount_type, discount_value, service_type, service_value,
+                tip_amount, coupon_code, discount_line_uids, discount_reason,
+                subtotal, discount_amount, gst_amount, vat_amount, service_amount, tip,
+                round_off, grand_total, created_by, status, kot_sent, first_kot_at,
+                customer_bill_sent, customer_bill_at, payment_notes, settled_at,
+                outlet, stock_deducted_at, is_active, created_at, updated_at
+            ) VALUES (
+                ?, ?, ?, ?, '', '',
+                ?, '', ?,
+                'inr', ?, 'pct', 0,
+                0, '', '', '',
+                ?, ?, ?, ?, 0, 0,
+                0, ?, 'sales_import', 'closed', 0, '',
+                1, ?, ?, ?,
+                ?, 'import-skip', 1, {SQL_NOW}, {SQL_NOW}
+            )
+            """,
+            (
+                order_no,
+                saved_at,
+                order_date,
+                order_type,
+                customer_name,
+                notes,
+                discount_amount,
+                subtotal,
+                discount_amount,
+                gst_amount,
+                vat_amount,
+                grand_total,
+                settled_at,
+                payment_notes,
+                settled_at,
+                outlet,
+            ),
+        )
+        invoice_id = int(cursor.lastrowid)
+
+    for line in lines:
+        conn.execute(
+            """
+            INSERT INTO pos_invoice_lines (
+                invoice_id, sort_order, menu_item_id, name, variant, rate, qty,
+                line_total, sent_qty, notes, line_uid
+            ) VALUES (?, ?, NULL, ?, '', ?, ?, ?, 0, 'import', ?)
+            """,
+            (
+                invoice_id,
+                line["sort_order"],
+                line["name"],
+                line["rate"],
+                line["qty"],
+                line["line_total"],
+                f"imp-{line['sort_order']}",
+            ),
+        )
+    for pay in payments:
+        conn.execute(
+            """
+            INSERT INTO pos_invoice_payments
+                (invoice_id, payment_date, payment_method, amount, transaction_id, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                invoice_id,
+                pay["payment_date"],
+                pay["payment_method"],
+                pay["amount"],
+                pay["transaction_id"],
+                pay["notes"],
+            ),
+        )
+    return {
+        "id": invoice_id,
+        "order_no": order_no,
+        "outlet": outlet,
+        "created": created,
+        "status": "closed",
+        "grand_total": grand_total,
+    }
 
 
 def list_pos_invoice_payments(conn, invoice_id):
@@ -7246,6 +7561,120 @@ def upsert_hotel_room_invoice_from_room(conn, room):
         ),
     )
     return invoice_number
+
+
+def import_hotel_room_invoice_snapshot(conn, room):
+    """Upsert a historical invoice from a room+stay snapshot (no live layout merge).
+
+    Used by room-sales migration so archived multi-room labels are preserved
+    exactly as provided, without reading or changing the floor board.
+
+    Does **not** run ``_normalize_hotel_room_stay`` (that would inflate nights via
+    overstay against today's date for past check-outs).
+    """
+    if not isinstance(room, dict):
+        return None
+    room = dict(room)
+    stay_in = room.get("stay") if isinstance(room.get("stay"), dict) else None
+    if not stay_in:
+        return None
+    stay = dict(stay_in)
+    invoice_number = _hotel_str(stay.get("invoiceNumber") or stay.get("invoice_number"), 60)
+    if not invoice_number:
+        return None
+    ensure_hotel_room_invoices_schema(conn)
+
+    def _money(value):
+        try:
+            return round(float(value or 0), 2)
+        except (TypeError, ValueError):
+            return 0.0
+
+    estimated = _money(stay.get("estimatedTotal") or stay.get("estimated_total"))
+    advance = _money(stay.get("advancePaid") or stay.get("advance_paid"))
+    balance = _money(stay.get("balanceAmount") or stay.get("balance_amount"))
+    status = _hotel_invoice_status(balance)
+    generated_at = _hotel_str(
+        stay.get("invoiceGeneratedAt") or stay.get("invoice_generated_at"), 40
+    ) or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    stay["invoiceNumber"] = invoice_number
+    stay["invoiceGenerated"] = True
+    stay["invoiceGeneratedAt"] = generated_at
+    stay["estimatedTotal"] = estimated
+    stay["advancePaid"] = advance
+    stay["balanceAmount"] = balance
+    stay["guestName"] = _hotel_invoice_guest_name(stay) or _hotel_str(
+        stay.get("guestName") or stay.get("guest_name"), 160
+    )
+    room_number_display = _hotel_str(
+        stay.get("mergeRoomLabel") or room.get("number"), 80
+    ) or _hotel_str(room.get("number"), 20)
+    payload = {
+        "id": room.get("id") or "",
+        "number": room.get("number") or "",
+        "roomType": room.get("roomType") or room.get("room_type") or "",
+        "roomTypeLabel": room.get("roomTypeLabel")
+        or room.get("room_type_label")
+        or "",
+        "floorId": room.get("floorId") or room.get("floor_id") or "",
+        "status": room.get("status") or "checked_out",
+        "mergeRoomNumbers": list(stay.get("mergeRoomNumbers") or []),
+        "mergeRoomLabel": stay.get("mergeRoomLabel") or "",
+        "importedFrom": room.get("importedFrom") or "room_sales_xlsx",
+        "stay": stay,
+    }
+    blob = json.dumps(payload, separators=(",", ":"))
+    existing = conn.execute(
+        "SELECT invoice_number FROM hotel_room_invoices WHERE invoice_number = ?",
+        (invoice_number,),
+    ).fetchone()
+    conn.execute(
+        """
+        INSERT INTO hotel_room_invoices (
+            invoice_number, room_id, room_number, room_type_label,
+            guest_name, booking_number, check_in_date, check_out_date,
+            invoice_generated_at, estimated_total, advance_paid, balance_amount,
+            status, payload_json, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+        ON CONFLICT(invoice_number) DO UPDATE SET
+            room_id = excluded.room_id,
+            room_number = excluded.room_number,
+            room_type_label = excluded.room_type_label,
+            guest_name = excluded.guest_name,
+            booking_number = excluded.booking_number,
+            check_in_date = excluded.check_in_date,
+            check_out_date = excluded.check_out_date,
+            invoice_generated_at = COALESCE(
+                NULLIF(excluded.invoice_generated_at, ''),
+                hotel_room_invoices.invoice_generated_at
+            ),
+            estimated_total = excluded.estimated_total,
+            advance_paid = excluded.advance_paid,
+            balance_amount = excluded.balance_amount,
+            status = excluded.status,
+            payload_json = excluded.payload_json,
+            updated_at = datetime('now','localtime')
+        """,
+        (
+            invoice_number,
+            _hotel_str(room.get("id"), 40),
+            room_number_display,
+            _hotel_str(
+                room.get("roomTypeLabel") or room.get("room_type_label"), 80
+            ),
+            stay["guestName"],
+            _hotel_str(stay.get("bookingNumber") or stay.get("booking_number"), 40),
+            _hotel_str(stay.get("checkInDate") or stay.get("check_in_date"), 10),
+            _hotel_str(stay.get("checkOutDate") or stay.get("check_out_date"), 10),
+            generated_at,
+            estimated,
+            advance,
+            balance,
+            status,
+            blob,
+        ),
+    )
+    return {"invoice_number": invoice_number, "created": existing is None, "status": status}
 
 
 def backfill_hotel_room_invoices_from_layout(conn):

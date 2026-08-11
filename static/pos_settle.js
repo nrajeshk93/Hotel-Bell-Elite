@@ -10,7 +10,9 @@
     ['upi', 'UPI'],
     ['card', 'Card'],
     ['room_transfer', 'Room Transfer'],
-    ['bank_transfer', 'Bank Transfer']
+    ['bank_transfer', 'Bank Transfer'],
+    ['swiggy', 'Swiggy'],
+    ['zomato', 'Zomato']
   ];
   var POS_METHODS_REQUIRING_TXN = { bank_transfer: true };
   try {

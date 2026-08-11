@@ -1,0 +1,824 @@
+/* Hotel → Reservations manager */
+body.hotel-reservations-module,
+body.hotel-reservations-module *,
+body.hotel-reservations-module *::before,
+body.hotel-reservations-module *::after{
+  box-sizing:border-box;
+}
+body.hotel-reservations-module{
+  --hres-bg:#F8FAFC;
+  --hres-card:#FFFFFF;
+  --hres-border:#E8EEF5;
+  --hres-text:#0F172A;
+  --hres-muted:#64748B;
+  --hres-primary:#2563EB;
+  --hres-green:#16A34A;
+  --hres-green-soft:#ECFDF5;
+  --hres-rose:#E11D48;
+  --hres-rose-soft:#FFF1F2;
+  --hres-purple:#7C3AED;
+  --hres-purple-soft:#F5F3FF;
+  --hres-teal:#0D9488;
+  --hres-teal-soft:#F0FDFA;
+  --hres-indigo:#4F46E5;
+  --hres-indigo-soft:#EEF2FF;
+  --hres-shadow:0 8px 24px rgba(15,23,42,.05);
+  background:var(--hres-bg);
+  color:var(--hres-text);
+  font-family:Inter,'Segoe UI',system-ui,sans-serif;
+}
+#ep-workspace.de-module .de-main-wrapper{
+  background:var(--hres-bg);
+}
+body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
+  max-width:1400px;
+  margin:0 auto;
+  padding:28px 32px 48px;
+  min-height:100vh;
+}
+
+.hotel-reservations-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+  margin-bottom:22px;
+}
+.hotel-reservations-header h1{
+  margin:0;
+  font-size:30px;
+  line-height:1.15;
+  font-weight:750;
+  letter-spacing:-.03em;
+  color:var(--hres-text);
+}
+.hotel-reservations-header-actions{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+}
+.hotel-reservations-header-actions .btn,
+.hres-toolbar .btn,
+.hres-action-stack .btn,
+.hres-dialog-foot .btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  padding:8px 14px;
+  min-height:36px;
+  border-radius:10px;
+  font:600 12px Inter,'Segoe UI',system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+  background:#fff;
+  color:#475569;
+  border:1px solid #E2E8F0;
+  text-decoration:none;
+  transition:background 160ms ease,border-color 160ms ease,color 160ms ease;
+}
+.hotel-reservations-header-actions .btn svg,
+.hres-toolbar .btn svg{
+  width:14px;height:14px;
+  stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+.hotel-reservations-header-actions .btn-primary,
+.hres-toolbar .btn-primary,
+.hres-action-stack .btn-primary,
+.hres-dialog-foot .btn-primary{
+  background:var(--hres-primary);
+  border-color:var(--hres-primary);
+  color:#fff;
+}
+.hotel-reservations-header-actions .btn-primary:hover,
+.hres-toolbar .btn-primary:hover,
+.hres-action-stack .btn-primary:hover{
+  background:#1D4ED8;
+  border-color:#1D4ED8;
+}
+.hotel-reservations-header-actions .btn:hover:not(.btn-primary),
+.hres-action-stack .btn:hover:not(.btn-primary){
+  background:#F1F5F9;
+  color:#0F172A;
+}
+.btn:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+.hres-kpis{
+  display:flex;
+  flex-wrap:nowrap;
+  gap:12px;
+  margin-bottom:18px;
+}
+.hres-kpi{
+  flex:1 1 0;
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:14px 16px;
+  background:var(--hres-card);
+  border:1px solid var(--hres-border);
+  border-radius:16px;
+  box-shadow:var(--hres-shadow);
+}
+.hres-kpi-icon{
+  width:40px;height:40px;
+  border-radius:12px;
+  display:grid;place-items:center;
+  flex:0 0 auto;
+}
+.hres-kpi-icon svg{
+  width:18px;height:18px;
+  stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+.hres-kpi-icon--rose{background:var(--hres-rose-soft);color:var(--hres-rose)}
+.hres-kpi-icon--green{background:var(--hres-green-soft);color:var(--hres-green)}
+.hres-kpi-icon--purple{background:var(--hres-purple-soft);color:var(--hres-purple)}
+.hres-kpi-icon--teal{background:var(--hres-teal-soft);color:var(--hres-teal)}
+.hres-kpi-icon--indigo{background:var(--hres-indigo-soft);color:var(--hres-indigo)}
+.hres-kpi-label{
+  font-size:11px;
+  font-weight:600;
+  color:var(--hres-muted);
+  margin-bottom:2px;
+}
+.hres-kpi-value{
+  font-size:20px;
+  font-weight:750;
+  letter-spacing:-.02em;
+  color:var(--hres-text);
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.hres-toolbar{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  gap:12px;
+  margin-bottom:16px;
+}
+.hres-toolbar .hres-toolbar-date .hotel-date-label,
+.hres-toolbar .hotel-date .hotel-date-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:#4A5568;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+.hres-toolbar .hres-toolbar-date .hotel-date-trigger,
+.hres-toolbar .hotel-date .hotel-date-trigger{
+  min-height:44px;
+  height:44px;
+  border-radius:8px;
+  border:1px solid #E2E8F0;
+  background:#fff;
+}
+/* Accounts / Purchase Ledger–style filter chips */
+.hres-filter-listbox{
+  position:relative;
+  flex:0 1 auto;
+  width:clamp(140px,14vw,180px);
+  min-width:132px;
+  max-width:200px;
+  margin:0;
+  z-index:20;
+}
+.hres-filter-listbox .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:#4A5568;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  text-align:left;
+}
+.hres-filter-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:44px;
+  background:#fff !important;
+  border:1px solid #E2E8F0 !important;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+  box-sizing:border-box;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+.hres-filter-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  padding:0 8px 0 12px;
+  border:0;
+  background:transparent;
+  font:600 13px Inter,'Segoe UI',system-ui,sans-serif;
+  color:var(--hres-text);
+  text-align:left;
+  cursor:pointer;
+}
+.hres-filter-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.hres-filter-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  align-self:stretch;
+  color:#94A3B8;
+}
+.hres-filter-listbox .se-filter-chip-chev svg{
+  width:16px;
+  height:16px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.hres-filter-listbox.is-open{
+  z-index:80;
+}
+.hres-filter-listbox.is-open .se-filter-chip-control,
+.hres-filter-listbox .se-filter-chip-control:focus-within{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
+}
+.hres-filter-listbox.is-open .se-filter-chip-chev{
+  color:#2563EB;
+  transform:rotate(180deg);
+}
+.hres-filter-listbox .se-filter-listbox{
+  padding:6px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  box-shadow:0 8px 24px rgba(15,23,42,.1);
+  background:#fff;
+}
+.hres-filter-listbox .se-filter-listbox-option{
+  padding:10px 12px;
+  border-radius:8px;
+  font-size:13px;
+  font-weight:500;
+}
+.hres-filter-listbox .se-filter-listbox-option.is-selected{
+  background:rgba(37,99,235,.08);
+  color:#2563EB;
+  font-weight:600;
+}
+.hres-search{
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  gap:0;
+  min-width:220px;
+  flex:1 1 220px;
+  max-width:320px;
+  padding:0;
+  min-height:0;
+  background:transparent;
+  border:0;
+  border-radius:0;
+  position:relative;
+}
+.hres-search::before{
+  content:"Search";
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:#4A5568;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+.hres-search svg{
+  position:absolute;
+  left:12px;
+  bottom:14px;
+  width:16px;height:16px;
+  stroke:var(--hres-muted);fill:none;stroke-width:2;
+  flex:0 0 auto;
+  pointer-events:none;
+  z-index:1;
+}
+.hres-search input{
+  width:100%;
+  min-height:44px;
+  border:1px solid #E2E8F0;
+  border-radius:8px;
+  outline:0;
+  background:#fff;
+  padding:0 12px 0 36px;
+  font:500 13px Inter,'Segoe UI',system-ui,sans-serif;
+  color:var(--hres-text);
+  box-sizing:border-box;
+}
+.hres-search input:focus{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+.hres-toolbar .hres-toolbar-date,
+.hres-toolbar .hotel-date.hres-toolbar-date{
+  flex:0 0 auto;
+  min-width:168px;
+  margin-left:auto;
+}
+.hres-refresh-btn{
+  align-self:center;
+  min-height:36px;
+}
+
+.hres-table-card{
+  background:var(--hres-card);
+  border:1px solid var(--hres-border);
+  border-radius:18px;
+  box-shadow:var(--hres-shadow);
+  overflow:hidden;
+}
+.hres-table-card-hdr{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 16px;
+  border-bottom:1px solid var(--hres-border);
+  background:#fff;
+}
+.hres-table-card-title{
+  font-size:14px;
+  font-weight:720;
+  color:var(--hres-text);
+}
+.hres-count{
+  font-size:12px;
+  font-weight:600;
+  color:var(--hres-muted);
+}
+.hres-table-wrap{
+  max-height:calc(44px + 10 * 56px);
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  position:relative;
+}
+.hres-table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:920px;
+}
+.hres-table th{
+  text-align:left;
+  padding:12px 16px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.02em;
+  text-transform:uppercase;
+  color:var(--hres-muted);
+  background:#F8FAFC;
+  border-bottom:1px solid var(--hres-border);
+  position:sticky;
+  top:0;
+  z-index:2;
+  box-shadow:0 1px 0 var(--hres-border);
+}
+.hres-table td{
+  padding:14px 16px;
+  border-bottom:1px solid var(--hres-border);
+  vertical-align:middle;
+  font-size:13px;
+  color:var(--hres-text);
+}
+.hres-table tbody tr{
+  cursor:pointer;
+  transition:background 140ms ease;
+}
+.hres-table tbody tr:hover,
+.hres-table tbody tr.is-selected{
+  background:#F8FBFF;
+}
+.hres-empty-row td,
+.hres-empty-row:hover{
+  text-align:center;
+  color:var(--hres-muted);
+  cursor:default;
+  background:transparent !important;
+  padding:36px 16px;
+}
+
+.hres-guest{
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  min-width:0;
+}
+.hres-avatar{
+  width:40px;height:40px;
+  border-radius:999px;
+  display:grid;place-items:center;
+  background:rgba(37,99,235,.1);
+  color:var(--hres-primary);
+  font-size:12px;
+  font-weight:750;
+  flex:0 0 auto;
+}
+.hres-guest-copy{min-width:0}
+.hres-guest-name{
+  font-weight:700;
+  font-size:13px;
+  color:var(--hres-text);
+}
+.hres-guest-id{
+  font-size:11px;
+  color:var(--hres-primary);
+  font-weight:600;
+  margin-top:1px;
+}
+.hres-guest-meta{
+  font-size:11px;
+  color:var(--hres-muted);
+  margin-top:2px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:260px;
+}
+.hres-datetime{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.hres-datetime strong{font-weight:650}
+.hres-datetime span{font-size:11px;color:var(--hres-muted)}
+.hres-room-cell.is-unassigned{
+  color:var(--hres-rose);
+  font-weight:650;
+}
+.hres-price strong{display:block;font-weight:700}
+.hres-price span{font-size:11px;color:var(--hres-muted)}
+
+.hres-status-pill{
+  display:inline-flex;
+  align-items:center;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:700;
+  white-space:nowrap;
+}
+.hres-status-pill.is-upcoming{background:#DBEAFE;color:#1D4ED8}
+.hres-status-pill.is-checked_in{background:var(--hres-green-soft);color:var(--hres-green)}
+.hres-status-pill.is-checked_out{background:var(--hres-teal-soft);color:var(--hres-teal)}
+.hres-status-pill.is-cancelled{background:#F1F5F9;color:#64748B}
+
+.hres-row-actions{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.hres-icon-btn{
+  width:32px;height:32px;
+  border-radius:8px;
+  border:1px solid transparent;
+  background:transparent;
+  display:grid;place-items:center;
+  cursor:pointer;
+  color:var(--hres-muted);
+}
+.hres-icon-btn:hover{
+  background:#F1F5F9;
+  color:var(--hres-text);
+}
+.hres-icon-btn svg{
+  width:16px;height:16px;
+  stroke:currentColor;fill:none;stroke-width:2;
+  stroke-linecap:round;stroke-linejoin:round;
+}
+
+.hres-detail{
+  position:relative;
+  margin-top:18px;
+  padding:18px;
+  background:var(--hres-card);
+  border:1px solid var(--hres-border);
+  border-radius:18px;
+  box-shadow:var(--hres-shadow);
+}
+.hres-detail[hidden]{display:none !important}
+.hres-detail-close{
+  position:absolute;
+  top:14px;right:14px;
+  width:32px;height:32px;
+  border:0;border-radius:8px;
+  background:#F1F5F9;
+  display:grid;place-items:center;
+  cursor:pointer;
+  color:var(--hres-muted);
+}
+.hres-detail-close svg{
+  width:16px;height:16px;
+  stroke:currentColor;fill:none;stroke-width:2;
+}
+.hres-detail-grid{
+  display:grid;
+  grid-template-columns:minmax(240px,1fr) minmax(280px,1.4fr) minmax(200px,.9fr);
+  gap:14px;
+  padding-right:28px;
+}
+.hres-detail-card{
+  border:1px solid var(--hres-border);
+  border-radius:14px;
+  padding:16px;
+  background:#fff;
+}
+.hres-detail-card-head{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  margin-bottom:14px;
+  min-height:40px;
+}
+.hres-detail-card-head h2{
+  margin:0;
+  font-size:15px;
+  font-weight:720;
+  line-height:1.2;
+}
+.hres-detail-card-head > div:not(.hres-assign-icon):not(.hres-detail-avatar){
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  min-width:0;
+}
+.hres-detail-card-head p{
+  margin:2px 0 0;
+  font-size:12px;
+  color:var(--hres-muted);
+  line-height:1.3;
+}
+.hres-assign-card .hres-detail-card-head{
+  align-items:center;
+}
+.hres-assign-icon{
+  width:40px;
+  height:40px;
+  border-radius:12px;
+  display:grid;
+  place-items:center;
+  background:rgba(37,99,235,.1);
+  color:var(--hres-primary);
+  flex:0 0 auto;
+}
+.hres-detail-avatar{
+  width:44px;height:44px;
+  border-radius:999px;
+  display:grid;place-items:center;
+  background:rgba(37,99,235,.1);
+  color:var(--hres-primary);
+  font-weight:750;
+  flex:0 0 auto;
+}
+.hres-detail-card-head .hres-status-pill{margin-left:auto}
+.hres-detail-dl{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px 14px;
+  margin:0;
+}
+.hres-detail-dl div{min-width:0}
+.hres-detail-dl dt{
+  font-size:11px;
+  color:var(--hres-muted);
+  font-weight:600;
+  margin:0 0 2px;
+}
+.hres-detail-dl dd{
+  margin:0;
+  font-size:13px;
+  font-weight:650;
+  color:var(--hres-text);
+  word-break:break-word;
+}
+.hres-assign-icon svg{
+  width:18px;height:18px;
+  stroke:currentColor;fill:none;stroke-width:2;
+}
+.hres-room-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+  gap:10px;
+  max-height:260px;
+  overflow:auto;
+}
+.hres-room-option{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  padding:12px;
+  border:1px solid var(--hres-border);
+  border-radius:12px;
+  background:#fff;
+  text-align:left;
+  cursor:pointer;
+  font:inherit;
+  transition:border-color .15s ease, box-shadow .15s ease;
+}
+.hres-room-option:hover,
+.hres-room-option.is-selected{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 2px rgba(37,99,235,.12);
+}
+.hres-room-option strong{
+  font-size:16px;
+  font-weight:750;
+}
+.hres-room-option span{
+  font-size:11px;
+  color:var(--hres-muted);
+}
+.hres-room-option .hres-room-vacant{
+  align-self:flex-start;
+  margin-top:4px;
+  padding:2px 8px;
+  border-radius:999px;
+  background:var(--hres-green-soft);
+  color:var(--hres-green);
+  font-size:10px;
+  font-weight:750;
+  letter-spacing:.04em;
+}
+.hres-room-empty{
+  grid-column:1 / -1;
+  text-align:center;
+  color:var(--hres-muted);
+  font-size:13px;
+  padding:24px 8px;
+}
+.hres-payment-block{margin-bottom:18px}
+.hres-payment-label{
+  font-size:12px;
+  font-weight:600;
+  color:var(--hres-muted);
+  margin-bottom:8px;
+}
+.hres-payment-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.hres-payment-pill{
+  display:inline-flex;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:700;
+  background:var(--hres-green-soft);
+  color:var(--hres-green);
+}
+.hres-payment-pill.is-pending{
+  background:#FFF7ED;
+  color:#EA580C;
+}
+.hres-payment-row strong{
+  font-size:18px;
+  font-weight:750;
+}
+.hres-action-stack{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.hres-action-stack .btn{width:100%}
+
+.hres-toast{
+  position:fixed;
+  right:24px;
+  bottom:24px;
+  z-index:80;
+  padding:12px 16px;
+  border-radius:12px;
+  background:#0F172A;
+  color:#fff;
+  font:600 13px Inter,system-ui,sans-serif;
+  box-shadow:0 12px 30px rgba(15,23,42,.25);
+}
+.hres-toast[hidden]{display:none !important}
+
+.hres-dialog-overlay{
+  position:fixed;
+  inset:0;
+  z-index:90;
+  background:rgba(15,23,42,.45);
+  display:grid;
+  place-items:center;
+  padding:20px;
+}
+.hres-dialog-overlay[hidden]{display:none !important}
+.hres-dialog{
+  width:min(520px,100%);
+  background:#fff;
+  border-radius:16px;
+  box-shadow:0 24px 60px rgba(15,23,42,.25);
+  overflow:hidden;
+}
+.hres-dialog-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:16px 18px;
+  border-bottom:1px solid var(--hres-border);
+}
+.hres-dialog-head h2{
+  margin:0;
+  font-size:16px;
+  font-weight:720;
+}
+.hres-dialog-close{
+  width:32px;height:32px;
+  border:0;border-radius:8px;
+  background:#F1F5F9;
+  display:grid;place-items:center;
+  cursor:pointer;
+}
+.hres-dialog-close svg{
+  width:16px;height:16px;
+  stroke:currentColor;fill:none;stroke-width:2;
+}
+.hres-dialog-body{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  padding:16px 18px;
+}
+.hres-field-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.hres-field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  font-size:12px;
+  font-weight:600;
+  color:var(--hres-muted);
+}
+.hres-field input,
+.hres-field select{
+  min-height:38px;
+  border:1px solid var(--hres-border);
+  border-radius:10px;
+  padding:8px 10px;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:var(--hres-text);
+  background:#fff;
+}
+.hres-dialog-foot{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  padding:14px 18px;
+  border-top:1px solid var(--hres-border);
+}
+
+@media (max-width:1100px){
+  .hres-detail-grid{
+    grid-template-columns:1fr 1fr;
+  }
+  .hres-actions-card{grid-column:1 / -1}
+}
+@media (max-width:720px){
+  body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
+    padding:20px 16px 32px;
+  }
+  .hres-kpis{flex-wrap:wrap}
+  .hres-kpi{flex:1 1 calc(50% - 6px)}
+  .hres-refresh-btn{margin-left:0;width:auto}
+  .hres-toolbar .hres-toolbar-date,
+  .hres-toolbar .hotel-date.hres-toolbar-date{
+    margin-left:0;
+    width:100%;
+  }
+  .hres-detail-grid{grid-template-columns:1fr}
+  .hres-field-row{grid-template-columns:1fr}
+}

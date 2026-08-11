@@ -19,6 +19,7 @@
     '/point-of-sale',
     '/point-of-sale/invoice',
     '/hotel/rooms',
+    '/hotel/reservations',
     '/hotel/invoice-ledger',
     '/communication-hub',
     '/access-management',
@@ -862,6 +863,9 @@
       /* Hotel rooms */
       if(path === '/hotel/rooms'){
         return !!main.querySelector('#hotel-rooms-page, [data-hotel-rooms]');
+      }
+      if(path === '/hotel/reservations'){
+        return !!main.querySelector('#hotel-reservations-page, [data-hotel-reservations]');
       }
       if(path === '/hotel/settings'){
         return !!main.querySelector('#hotel-settings-page, [data-hotel-settings]');
@@ -2467,6 +2471,9 @@
     if(typeof window.initHotelRoomsPage === 'function'){
       window.initHotelRoomsPage();
     }
+    if(typeof window.initHotelReservationsPage === 'function'){
+      window.initHotelReservationsPage();
+    }
     if(typeof window.initHotelRoomDetailPage === 'function'){
       window.initHotelRoomDetailPage();
     }
@@ -2574,6 +2581,7 @@
         '/static/purchase_ledger.css?v=29',
         '/static/communication_hub.css?v=12',
         '/static/hotel_rooms.css?v=60',
+        '/static/hotel_reservations.css?v=1',
         '/static/hotel_date_picker.css?v=9',
         '/static/access_management_premium.css?v=29',
         '/static/hbe_home_premium.css?v=19',

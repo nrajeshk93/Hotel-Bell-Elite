@@ -21,6 +21,7 @@
     '.pos-set-header-actions',
     '.pos-inv-header-actions',
     '.hotel-rooms-header-actions',
+    '.hotel-reservations-header-actions',
     '.hrd-header-actions',
     '.hrd-modal-head-actions'
   ];

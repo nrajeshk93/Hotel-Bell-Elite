@@ -80,6 +80,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V4h12v5"/><rect x="4" y="9" width="16" height="8" rx="2"/><path d="M6 17h12v4H6z"/></svg>
           <span>Printers</span>
         </button>
+        <button type="button" class="pos-set-nav-item" role="tab" aria-selected="false" data-section="asia_tech" data-search="asia tech asiatech api key channel reservations provider">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          <span>Asia Tech</span>
+        </button>
       </nav>
       <p class="pos-set-nav-empty" id="hotel-set-nav-empty" hidden>No matching sections</p>
     </aside>
@@ -230,6 +234,34 @@
           </div>
         </div>
       </section>
+
+      <section class="pos-set-panel" id="hotel-set-panel-asia_tech" data-panel="asia_tech" role="tabpanel" hidden>
+        <div class="pos-set-panel-head">
+          <div>
+            <h2>Asia Tech</h2>
+            <p>API credentials for the Hotel → Reservations manager. Leave mode on Stub until live endpoints are configured.</p>
+          </div>
+        </div>
+        <div class="pos-set-card">
+          <div class="pos-set-fields pos-set-fields--inline pos-set-fields--2">
+            <label class="pos-set-field">
+              <span>API key</span>
+              <input type="password" data-hotel-set-field data-hotel-set-key="asia_tech_api_key" placeholder="Paste Asia Tech API key" autocomplete="new-password">
+            </label>
+            <label class="pos-set-field">
+              <span>Base URL</span>
+              <input type="url" data-hotel-set-field data-hotel-set-key="asia_tech_base_url" placeholder="https://api.asiatech.in" autocomplete="off">
+            </label>
+            <label class="pos-set-field">
+              <span>Mode</span>
+              <select data-hotel-set-field data-hotel-set-key="asia_tech_mode">
+                <option value="stub">Stub (local only)</option>
+                <option value="live">Live (Asia Tech API)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -242,7 +274,7 @@
   'use strict';
   var KEY = 'hbe_hotel_settings_section';
   var DEFAULT = 'floor';
-  var VALID = ['floor','rooms','tariff','taxes','invoice','payment','printers'];
+  var VALID = ['floor','rooms','tariff','taxes','invoice','payment','printers','asia_tech'];
   function normalizeKey(key){
     key = String(key || '').replace(/^#/, '').trim().toLowerCase();
     return VALID.indexOf(key) >= 0 ? key : '';
@@ -281,7 +313,7 @@
 })(window);
 </script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
-<script src="{{ url_for('static', filename='hotel_settings.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='hotel_settings.js') }}?v=4"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>
