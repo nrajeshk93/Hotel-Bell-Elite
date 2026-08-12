@@ -79,22 +79,9 @@
     return String(value || '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[ch]));
   }
 
-  function updateKpis(salesEntries){
-    const map = {
-      'actual-sales-kpi': salesEntries.total_sales,
-      'digital-transactions-kpi': (Number(salesEntries.card || 0) + Number(salesEntries.upi || 0)),
-      'cash-kpi': salesEntries.cash,
-      'expense-kpi': salesEntries.expense || 0,
-      'sales-difference-kpi': Number(salesEntries.total_sales || 0)
-        - Number(salesEntries.cash || 0)
-        - Number(salesEntries.card || 0)
-        - Number(salesEntries.upi || 0)
-        - Number(salesEntries.room_credit || 0),
-    };
-    Object.keys(map).forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = formatInrKpi(map[id]);
-    });
+  function updateKpis(_salesEntries){
+    // Invoice-backed KPI cards are server-rendered for the fixed date window;
+    // do not overwrite them from daily sales-entry values.
   }
 
   function applySalesEntries(salesEntries){

@@ -140,6 +140,6 @@
 <p class="sr-kpi-note" id="sr-kpi-note-default">
   <span class="sr-kpi-note-pill">
     <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
-    All values are for today
+    {{ kpi_note|default('All values are from invoices for the selected date, settled and unsettled.') }}
   </span>
 </p>

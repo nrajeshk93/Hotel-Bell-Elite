@@ -61,6 +61,10 @@ from db import (
     get_hotel_tax_rates,
     get_hotel_tariff_rates,
     hotel_room_invoice_kpis,
+    aggregate_invoice_sales_kpis,
+    aggregate_invoice_sales_kpis_by_day,
+    hotel_sales_entry_from_invoices,
+    pos_sales_entry_from_invoices,
     indian_fiscal_year_bounds,
     is_valid_agency_gst,
     list_hotel_room_invoices,
@@ -3274,9 +3278,109 @@ def _sales_report_kpi_bundle(conn, date_from, date_to, company=None, location=No
     }
 
 
+# Default import window constants (kept for reference / scripts).
+INVOICE_KPI_DATE_FROM = date(2026, 4, 1)
+INVOICE_KPI_DATE_TO = date(2026, 5, 4)
+
+
+def _invoice_sales_expense_total(conn, date_from, date_to, company=None, location=None):
+    expense_sql = (
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses "
+        "WHERE sales_date >= ? AND sales_date <= ?"
+    )
+    expense_params = [date_from.isoformat(), date_to.isoformat()]
+    if company:
+        expense_sql += " AND company = ?"
+        expense_params.append(company)
+    expense_sql, expense_params = _append_sales_location_sql(
+        expense_sql, expense_params, location
+    )
+    expense_row = conn.execute(expense_sql, expense_params).fetchone()
+    return round_half_up(expense_row["total"] if expense_row else 0, 2)
+
+
+def _format_invoice_kpi_note(date_from, date_to):
+    months = (
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    )
+
+    def _label(d):
+        return f"{d.day} {months[d.month - 1]} {d.year}"
+
+    if date_from == date_to:
+        window = _label(date_from)
+    else:
+        window = f"{_label(date_from)} – {_label(date_to)}"
+    return f"All values are from invoices ({window}), settled and unsettled."
+
+
+def _invoice_sales_kpi_bundle(conn, company=None, location=None, date_from=None, date_to=None):
+    """KPI cards from Hotel + Restaurant + Bar invoices for the selected date(s)."""
+    if date_from is None and date_to is None:
+        date_from = INVOICE_KPI_DATE_FROM
+        date_to = INVOICE_KPI_DATE_TO
+    elif date_from is None:
+        date_from = date_to
+    elif date_to is None:
+        date_to = date_from
+    if date_from > date_to:
+        date_from, date_to = date_to, date_from
+
+    is_single_day = date_from == date_to
+    if is_single_day:
+        prev_from = prev_to = date_from - timedelta(days=1)
+        vs_label = "yesterday"
+    else:
+        span_days = (date_to - date_from).days + 1
+        prev_to = date_from - timedelta(days=1)
+        prev_from = prev_to - timedelta(days=span_days - 1)
+        vs_label = "previous period"
+
+    current = aggregate_invoice_sales_kpis(conn, date_from, date_to)
+    previous = aggregate_invoice_sales_kpis(conn, prev_from, prev_to)
+
+    expense_company = company or DEFAULT_COMPANY
+    expense_location = location if location in HOTEL_LOCATIONS else OUTLET_HOTEL
+    current["expense"] = _invoice_sales_expense_total(
+        conn, date_from, date_to, expense_company, expense_location
+    )
+    previous["expense"] = _invoice_sales_expense_total(
+        conn, prev_from, prev_to, expense_company, expense_location
+    )
+
+    trends = {
+        key: _pct_change_vs_previous(current[key], previous[key])
+        for key in (
+            "actual_sales",
+            "digital_transactions",
+            "cash",
+            "room_credit",
+            "tips",
+            "expense",
+            "difference",
+        )
+    }
+    return {
+        "current": current,
+        "trends": trends,
+        "vs_label": vs_label,
+        "is_single_day": is_single_day,
+        "note": _format_invoice_kpi_note(date_from, date_to),
+    }
+
+
 SALES_ENTRY_EDIT_WINDOW_DAYS = 7
 SALES_ENTRY_LOCK_MESSAGE = (
     "This entry was saved more than 7 days ago. Only a Super Administrator can change it."
+)
+PURCHASE_LEDGER_EDIT_DAYS_SUPER_ADMIN = 30
+PURCHASE_LEDGER_EDIT_DAYS_ADMIN = 7
+PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE = (
+    "This purchase is outside your edit window and can no longer be changed."
+)
+PURCHASE_LEDGER_CREDIT_SETTLED_EDIT_MESSAGE = (
+    "Only outstanding credit purchases can be edited after payment has been applied."
 )
 
 
@@ -3317,6 +3421,80 @@ def _check_sales_date_lock(user, company, location, sales_date):
     row = load_sales_row(company, location, sales_date)
     if _sales_entry_locked_for_user(user, row):
         return SALES_ENTRY_LOCK_MESSAGE
+    return None
+
+
+def _purchase_ledger_edit_window_days(user):
+    """Return the purchase-ledger edit age limit in days for the user."""
+    if user and user.get("is_admin"):
+        return PURCHASE_LEDGER_EDIT_DAYS_SUPER_ADMIN
+    return PURCHASE_LEDGER_EDIT_DAYS_ADMIN
+
+
+def _parse_purchase_ledger_entry_date(sales_date):
+    """Return a calendar date from a purchase ledger sales_date value, or None."""
+    if isinstance(sales_date, date) and not isinstance(sales_date, datetime):
+        return sales_date
+    if isinstance(sales_date, datetime):
+        return sales_date.date()
+    text = str(sales_date or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return None
+
+
+def _purchase_ledger_entry_in_edit_window(user, sales_date):
+    """True when sales_date is within the role-based purchase edit window."""
+    entry_date = _parse_purchase_ledger_entry_date(sales_date)
+    if entry_date is None:
+        return False
+    age_days = (date.today() - entry_date).days
+    if age_days < 0:
+        return False
+    return age_days < _purchase_ledger_edit_window_days(user)
+
+
+def _purchase_ledger_entry_can_edit(user, entry):
+    """True when the user may edit a purchase ledger row (window + settlement)."""
+    if not entry:
+        return False
+    if not _purchase_ledger_entry_in_edit_window(user, entry.get("sales_date")):
+        return False
+    settlement = entry.get("settlement_status")
+    if settlement is None:
+        payment_type = entry.get("payment_type")
+        amount = entry.get("amount")
+        paid_total = entry.get("paid_amount", 0)
+        settlement = _credit_settlement_status(payment_type, amount, paid_total)
+    # Non-credit rows are treated as cleared by settlement helper; still editable.
+    payment_type = _normalize_expense_payment_type(entry.get("payment_type"))
+    if payment_type == EXPENSE_PAYMENT_CREDIT and settlement in ("partial", "cleared"):
+        return False
+    return True
+
+
+def _purchase_ledger_edit_guard_error(user, entry, *, new_sales_date=None):
+    """Return an error message when edit is blocked, else None."""
+    if not entry:
+        return "Purchase not found."
+    payment_type = _normalize_expense_payment_type(entry.get("payment_type"))
+    settlement = entry.get("settlement_status")
+    if settlement is None:
+        settlement = _credit_settlement_status(
+            payment_type, entry.get("amount"), entry.get("paid_amount", 0)
+        )
+    if payment_type == EXPENSE_PAYMENT_CREDIT and settlement in ("partial", "cleared"):
+        return PURCHASE_LEDGER_CREDIT_SETTLED_EDIT_MESSAGE
+    if not _purchase_ledger_entry_in_edit_window(user, entry.get("sales_date")):
+        return PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE
+    if new_sales_date is not None and str(new_sales_date).strip() != str(
+        entry.get("sales_date") or ""
+    ).strip():
+        if not _purchase_ledger_entry_in_edit_window(user, new_sales_date):
+            return PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE
     return None
 
 
@@ -3842,41 +4020,13 @@ DASHBOARD_KPI_KEYS = tuple(key for key, _label in DASHBOARD_KPI_CARDS)
 
 
 def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location=None, difference_mode=None):
-    """Daily KPI values for sparklines over the selected range (or last 14 days if single-day)."""
+    """Daily KPI values for sparklines from invoices over the selected range."""
     spark_from = date_from
     spark_to = date_to
     if spark_from == spark_to:
         spark_from = spark_to - timedelta(days=13)
 
-    by_day = {}
-    sql = "SELECT sales_date, sales_entry_values FROM sales_updates WHERE sales_date >= ? AND sales_date <= ?"
-    params = [spark_from.isoformat(), spark_to.isoformat()]
-    if company:
-        sql += " AND company = ?"
-        params.append(company)
-    sql, params = _append_sales_location_sql(sql, params, location)
-    for row in conn.execute(sql, params).fetchall():
-        day_key = str(row["sales_date"] or "")[:10]
-        if not day_key:
-            continue
-        bucket = by_day.setdefault(
-            day_key,
-            {
-                "actual_sales": 0.0,
-                "digital_transactions": 0.0,
-                "cash": 0.0,
-                "actual_cash": 0.0,
-                "difference": 0.0,
-                "expense": 0.0,
-            },
-        )
-        vals = json.loads(row["sales_entry_values"] or "{}")
-        bucket["actual_sales"] += parse_money(vals.get("total_sales"))
-        bucket["digital_transactions"] += get_digital_transactions(vals)
-        bucket["cash"] += parse_money(vals.get("cash"))
-        bucket["actual_cash"] += parse_money(vals.get("actual_cash"))
-        if difference_mode != "cash_actual":
-            bucket["difference"] += get_difference(vals)
+    by_day = aggregate_invoice_sales_kpis_by_day(conn, spark_from, spark_to, location=location)
 
     expense_sql = """SELECT sales_date, COALESCE(SUM(amount), 0) AS total
                      FROM sales_update_expenses
@@ -3899,24 +4049,21 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
                 "actual_sales": 0.0,
                 "digital_transactions": 0.0,
                 "cash": 0.0,
-                "actual_cash": 0.0,
-                "difference": 0.0,
+                "room_credit": 0.0,
+                "tips": 0.0,
                 "expense": 0.0,
+                "difference": 0.0,
             },
         )
-        bucket["expense"] += float(row["total"] or 0)
+        bucket["expense"] = round_half_up(
+            float(bucket.get("expense") or 0) + float(row["total"] or 0), 2
+        )
 
     series = {key: [] for key in DASHBOARD_KPI_KEYS}
     cursor = spark_from
     while cursor <= spark_to:
         bucket = by_day.get(cursor.isoformat()) or {}
-        if difference_mode == "cash_actual":
-            day_difference = round_half_up(
-                float(bucket.get("cash") or 0) - float(bucket.get("actual_cash") or 0),
-                2,
-            )
-        else:
-            day_difference = round_half_up(float(bucket.get("difference") or 0), 2)
+        day_difference = round_half_up(float(bucket.get("difference") or 0), 2)
         series["actual_sales"].append(round_half_up(float(bucket.get("actual_sales") or 0), 2))
         series["digital_transactions"].append(
             round_half_up(float(bucket.get("digital_transactions") or 0), 2)
@@ -3926,6 +4073,49 @@ def _dashboard_kpi_spark_series(conn, date_from, date_to, company=None, location
         series["difference"].append(day_difference)
         cursor += timedelta(days=1)
     return series
+
+
+def _dashboard_invoice_kpi_bundle(conn, date_from, date_to, location=None, company=None):
+    """Main dashboard KPI bundle from invoices for the selected range/location."""
+    is_single_day = date_from == date_to
+    if is_single_day:
+        prev_from = prev_to = date_from - timedelta(days=1)
+        vs_label = "yesterday"
+    else:
+        span_days = (date_to - date_from).days + 1
+        prev_to = date_from - timedelta(days=1)
+        prev_from = prev_to - timedelta(days=span_days - 1)
+        vs_label = "previous period"
+
+    current = aggregate_invoice_sales_kpis(conn, date_from, date_to, location=location)
+    previous = aggregate_invoice_sales_kpis(conn, prev_from, prev_to, location=location)
+    current["expense"] = _invoice_sales_expense_total(
+        conn, date_from, date_to, company, location
+    )
+    previous["expense"] = _invoice_sales_expense_total(
+        conn, prev_from, prev_to, company, location
+    )
+    trends = {
+        key: _pct_change_vs_previous(current[key], previous[key])
+        for key in (
+            "actual_sales",
+            "digital_transactions",
+            "cash",
+            "room_credit",
+            "tips",
+            "expense",
+            "difference",
+        )
+    }
+    return {
+        "current": current,
+        "previous": previous,
+        "trends": trends,
+        "vs_label": vs_label,
+        "is_single_day": is_single_day,
+        "prev_from": prev_from,
+        "prev_to": prev_to,
+    }
 
 
 def _sparkline_polyline(values, width=140, height=32, pad=2):
@@ -3972,8 +4162,8 @@ def _dashboard_pos_menu_outlet(location=None):
 def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
     """Retail Intelligence–style dashboard: KPIs + trend + outlets + payment + heatmap."""
     location_filter = _normalize_dashboard_location_filter(location)
-    bundle = _sales_report_kpi_bundle(
-        conn, date_from, date_to, company=None, location=location_filter
+    bundle = _dashboard_invoice_kpi_bundle(
+        conn, date_from, date_to, location=location_filter, company=None
     )
     sparks = _dashboard_kpi_spark_series(
         conn, date_from, date_to, company=None, location=location_filter
@@ -3990,7 +4180,7 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
         spark_from = date_from
     spark_to = date_to
 
-    # Total Sales = Sales Update total_sales (Hotel + Restaurant + Bar).
+    # Total Sales = invoice ledger totals (Hotel + Restaurant + Bar).
     spark_dates = date_range_days(spark_from, spark_to)
 
     daily_series = []
@@ -4048,14 +4238,14 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
     prev_outlet_totals = {}
     for name in outlet_names:
         outlet_totals[name] = float(
-            _aggregate_sales_kpis(
-                conn, date_from, date_to, company=None, location=name
+            aggregate_invoice_sales_kpis(
+                conn, date_from, date_to, location=name
             ).get("actual_sales")
             or 0
         )
         prev_outlet_totals[name] = float(
-            _aggregate_sales_kpis(
-                conn, prev_from, prev_to, company=None, location=name
+            aggregate_invoice_sales_kpis(
+                conn, prev_from, prev_to, location=name
             ).get("actual_sales")
             or 0
         )
@@ -4081,9 +4271,7 @@ def _build_main_dashboard_payload(conn, date_from, date_to, location=None):
     dig_pct, cash_pct = payment_mode_pct(
         bundle["current"]["digital_transactions"], bundle["current"]["cash"]
     )
-    prev_kpis = _aggregate_sales_kpis(
-        conn, prev_from, prev_to, company=None, location=location_filter
-    )
+    prev_kpis = bundle["previous"]
     prev_dig_pct, prev_cash_pct = payment_mode_pct(
         prev_kpis["digital_transactions"], prev_kpis["cash"]
     )
@@ -5496,13 +5684,25 @@ def hotel_reservations_api():
         ensure_hotel_rooms_schema(conn)
         settings = get_hotel_settings(conn)
         if request.method == "GET":
-            rows = asia_tech_client.list_provider_reservations(settings)
+            force_refresh = str(
+                request.args.get("refresh") or request.args.get("force") or ""
+            ).strip().lower() in ("1", "true", "yes")
+            rows = asia_tech_client.list_provider_reservations(
+                settings, force_refresh=force_refresh
+            )
+            sync = asia_tech_client.get_last_sync_meta()
+            checkout_only = str(
+                request.args.get("checkout_only") or ""
+            ).strip().lower() in ("1", "true", "yes")
             filtered = asia_tech_client.filter_reservations(
                 rows,
                 q=request.args.get("q") or "",
                 status=request.args.get("status") or "all",
                 source=request.args.get("source") or "all",
                 on_date=request.args.get("date") or "",
+                date_from=request.args.get("date_from") or "",
+                date_to=request.args.get("date_to") or "",
+                checkout_only=checkout_only,
             )
             page_rows, pagination = asia_tech_client.paginate(
                 filtered,
@@ -5511,7 +5711,30 @@ def hotel_reservations_api():
                 or request.args.get("pageSize")
                 or "all",
             )
+            # Total / in-house / upcoming use stays covering the selected date
+            # (including checkout day). Checked Out counts CHECK OUT column
+            # dates that fall in that range.
             kpis = asia_tech_client.compute_kpis(rows)
+            date_from = request.args.get("date_from") or ""
+            date_to = request.args.get("date_to") or ""
+            on_date = request.args.get("date") or ""
+            date_rows = asia_tech_client.filter_reservations(
+                rows,
+                on_date=on_date,
+                date_from=date_from,
+                date_to=date_to,
+            )
+            date_kpis = asia_tech_client.compute_kpis(date_rows)
+            kpis["total"] = date_kpis["total"]
+            kpis["revenue"] = date_kpis["revenue"]
+            kpis["checked_in"] = date_kpis["checked_in"]
+            kpis["upcoming"] = date_kpis["upcoming"]
+            kpis["checked_out"] = asia_tech_client.count_checkouts_for_date(
+                rows,
+                on_date=on_date,
+                date_from=date_from,
+                date_to=date_to,
+            )
             vacant = []
             layout = get_hotel_rooms_layout(conn)
             for room in layout.get("rooms") or []:
@@ -5538,6 +5761,8 @@ def hotel_reservations_api():
                     "ok": True,
                     "mode": asia_tech_client.get_mode(settings),
                     "hasApiKey": bool(asia_tech_client.get_api_key(settings)),
+                    "hasCredentials": asia_tech_client.credentials_configured(settings),
+                    "sync": sync,
                     "kpis": kpis,
                     "reservations": page_rows,
                     "pagination": pagination,
@@ -8184,6 +8409,7 @@ def accounts():
 
 @app.route("/accounts/purchase-ledger")
 def purchase_ledger():
+    user = get_current_user()
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
         request.args, "date_from", "date_to", default_fy=True
@@ -8236,6 +8462,9 @@ def purchase_ledger():
         expense_category_labels = _expense_category_labels(conn)
     finally:
         conn.close()
+
+    for entry in entries:
+        entry["can_edit"] = _purchase_ledger_entry_can_edit(user, entry)
 
     total_amount = round_half_up(sum(entry["amount"] for entry in entries), 2)
     purchase_kind_entries = [
@@ -8509,7 +8738,7 @@ def purchase_ledger_add():
 
 
 def _update_purchase_ledger_expense(conn, user, data):
-    """Update a hotel purchase only when it is still outstanding credit."""
+    """Update a hotel purchase within the role edit window (not settled credit)."""
     expense_id = data.get("id") or data.get("expense_id")
     try:
         expense_id = int(expense_id)
@@ -8529,15 +8758,20 @@ def _update_purchase_ledger_expense(conn, user, data):
         return None, "Only hotel purchases can be edited here."
 
     paid_total = _credit_expense_paid_total(conn, expense_id)
-    status = _credit_settlement_status(
+    existing["paid_amount"] = paid_total
+    existing["settlement_status"] = _credit_settlement_status(
         existing.get("payment_type"), existing.get("amount"), paid_total
     )
-    if status != "outstanding":
-        return None, "Only outstanding credit purchases can be edited."
 
     company = existing.get("company") or data.get("company", DEFAULT_COMPANY)
     location = OUTLET_HOTEL
     sales_date = (data.get("date") or existing.get("sales_date") or "").strip()
+    guard_error = _purchase_ledger_edit_guard_error(
+        user, existing, new_sales_date=sales_date
+    )
+    if guard_error:
+        return None, guard_error
+
     description = (data.get("description") or "").strip()
     amount = parse_money(data.get("amount"))
     raw_payment_type = (data.get("payment_type") or "").strip()
@@ -8633,7 +8867,19 @@ def purchase_ledger_edit():
     try:
         result, error = _update_purchase_ledger_expense(conn, user, data)
         if error:
-            status = 403 if "Cannot save" in error or "already saved" in error else 400
+            status = (
+                403
+                if (
+                    "Cannot save" in error
+                    or "already saved" in error
+                    or error
+                    in (
+                        PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE,
+                        PURCHASE_LEDGER_CREDIT_SETTLED_EDIT_MESSAGE,
+                    )
+                )
+                else 400
+            )
             if "not found" in error.lower():
                 status = 404
             return jsonify({"ok": False, "error": error}), status
@@ -8671,6 +8917,8 @@ def _delete_purchase_ledger_expense(conn, user, data):
 
     company = existing.get("company") or DEFAULT_COMPANY
     sales_date = existing.get("sales_date") or ""
+    if not _purchase_ledger_entry_in_edit_window(user, sales_date):
+        return None, PURCHASE_LEDGER_EDIT_WINDOW_MESSAGE
     lock_error = _check_sales_date_lock(user, company, OUTLET_HOTEL, sales_date)
     if lock_error:
         return None, lock_error
@@ -9533,7 +9781,9 @@ def sales_update_hotel():
                 conn, user, selected_company, OUTLET_HOTEL, selected_date, today_iso
             )
         }
-        kpi_bundle = _sales_report_kpi_bundle(conn, entry_date, entry_date, selected_company, selected_location)
+        kpi_bundle = _invoice_sales_kpi_bundle(
+            conn, selected_company, selected_location, entry_date, entry_date
+        )
         suppliers = _all_suppliers(conn)
         tip_employees = _active_employees_for_tips(conn)
         available_cash = _cash_ledger_available_as_of(conn, selected_company, entry_date)
@@ -9567,6 +9817,7 @@ def sales_update_hotel():
         kpi=kpi_bundle["current"],
         kpi_trends=kpi_bundle["trends"],
         kpi_vs_label=kpi_bundle["vs_label"],
+        kpi_note=kpi_bundle.get("note"),
         de_nav_section="analytics",
         de_nav_sales_view="hotel",
     )
@@ -9721,11 +9972,25 @@ def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_i
     tip_total = 0.0
     if location in HOTEL_LOCATIONS:
         sales_entries = build_hotel_sales_entry_values(sales_entries)
+        # Prefer FO ledger rollup when present; otherwise fill from room invoices.
+        ledger_entries = [] if is_future else load_hotel_ledger_entries(
+            conn, company, location, sales_date
+        )
+        if ledger_entries:
+            invoice_entries = rollup_hotel_ledger_entries(ledger_entries)
+        else:
+            invoice_entries = hotel_sales_entry_from_invoices(conn, sales_date)
+        for key in HOTEL_IMPORT_FIELD_KEYS:
+            sales_entries[key] = parse_money(invoice_entries.get(key))
         expense_total = _sales_expense_total(conn, company, location, sales_date)
         sales_entries["expense"] = expense_total
         expense_entries = _sales_expense_entries(conn, company, location, sales_date)
     else:
         sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
+        if not is_future:
+            invoice_entries = pos_sales_entry_from_invoices(conn, location, sales_date)
+            for key in IMPORT_FIELD_KEYS:
+                sales_entries[key] = parse_money(invoice_entries.get(key))
         expense_entries = []
         expense_total = 0.0
     if location in TIP_OUTLET_LOCATIONS:
@@ -9773,8 +10038,8 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
         cash_transfer_total = _sales_cash_transfer_total(conn, selected_company, selected_location, selected_date)
         tip_employees = _active_employees_for_tips(conn)
         entry_date = _parse_sales_date(selected_date)
-        kpi_bundle = _sales_report_kpi_bundle(
-            conn, entry_date, entry_date, selected_company, selected_location, difference_mode="cash_actual"
+        kpi_bundle = _invoice_sales_kpi_bundle(
+            conn, selected_company, selected_location, entry_date, entry_date
         )
     finally:
         conn.close()
@@ -9829,6 +10094,7 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
         kpi_trends=kpi_bundle["trends"],
         kpi_vs_label=kpi_bundle["vs_label"],
         kpi_is_single_day=kpi_bundle["is_single_day"],
+        kpi_note=kpi_bundle.get("note"),
         cash_panel=False,
         cash_date_from=selected_date,
         cash_date_to=selected_date,

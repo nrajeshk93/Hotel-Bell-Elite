@@ -1,7 +1,7 @@
 {# Smooth hotel date pill + custom calendar (Rooms / check-in). #}
-{% macro hotel_date_field(name, label, required=false, value='', field_id='', extra_class='', panel_title='Select date', empty_label='dd/mm/yyyy', hint='Pick a day. Use arrows to change month.', show_today=true, show_cal_icon=true, max_date='', min_date='') %}
+{% macro hotel_date_field(name, label, required=false, value='', field_id='', extra_class='', panel_title='Select date', empty_label='dd/mm/yyyy', hint='Pick a day. Use arrows to change month.', show_today=true, show_cal_icon=true, show_caret=true, max_date='', min_date='') %}
 {% set fid = field_id or name %}
-<div class="hotel-date hotel-filter-date{% if extra_class %} {{ extra_class }}{% endif %}{% if not show_cal_icon %} hotel-date--no-cal{% endif %}" id="{{ fid }}-chip" data-hotel-date{% if max_date %} data-max-date="{{ max_date }}"{% endif %}{% if min_date %} data-min-date="{{ min_date }}"{% endif %}>
+<div class="hotel-date hotel-filter-date{% if extra_class %} {{ extra_class }}{% endif %}{% if not show_cal_icon %} hotel-date--no-cal{% endif %}{% if not show_caret %} hotel-date--no-caret{% endif %}" id="{{ fid }}-chip" data-hotel-date{% if max_date %} data-max-date="{{ max_date }}"{% endif %}{% if min_date %} data-min-date="{{ min_date }}"{% endif %}>
   <span class="hotel-date-label" id="{{ fid }}-label">{{ label }}{% if required %} *{% endif %}</span>
   <div class="hotel-date-control">
     <button
@@ -13,9 +13,11 @@
       aria-controls="{{ fid }}-panel"
       aria-labelledby="{{ fid }}-label {{ fid }}-value"
     >
+      {% if show_caret %}
       <span class="hotel-date-caret" aria-hidden="true">
         <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
       </span>
+      {% endif %}
       <span class="hotel-date-value" id="{{ fid }}-value">{{ empty_label }}</span>
       {% if show_cal_icon %}
       <span class="hotel-date-cal-icon" aria-hidden="true">

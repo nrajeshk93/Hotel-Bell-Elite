@@ -538,123 +538,14 @@ def export_hub_mirror_payload(conn) -> dict:
 
 
 def pull_hub_mirror_into(conn) -> int:
-    """Pull WhatsApp hub rows from production into this DB (local preview).
+    """Hub mirroring is permanently disabled (local + production).
 
-    Meta webhooks only hit APP_BASE_URL / production. Local ``127.0.0.1`` never
-    receives them unless we mirror. Opt-in via ``HUB_MIRROR_URL`` + ``HUB_MIRROR_TOKEN``.
+    Previously used to pull WhatsApp hub rows from production into a local DB.
+    That path caused production self-mirror lag (Cloudflare 403) and is no longer
+    needed. Call sites may remain; this is always a no-op.
     """
-    import os
+    return 0
 
-    import requests
-
-    base = (os.environ.get("HUB_MIRROR_URL") or "").strip().rstrip("/")
-    token = (os.environ.get("HUB_MIRROR_TOKEN") or "").strip()
-    if not base or not token:
-        return 0
-    url = base + "/communication-hub/api/mirror-export"
-    try:
-        response = requests.get(
-            url,
-            headers={"X-Hub-Mirror-Token": token, "Accept": "application/json"},
-            timeout=12,
-        )
-    except requests.RequestException as exc:
-        log.warning("Hub mirror pull failed: %s", exc)
-        return 0
-    if response.status_code != 200:
-        log.warning("Hub mirror pull HTTP %s", response.status_code)
-        return 0
-    try:
-        payload = response.json()
-    except ValueError:
-        return 0
-    if not isinstance(payload, dict) or not payload.get("ok"):
-        return 0
-
-    ensure_communication_hub_schema(conn)
-    added = 0
-    for item in payload.get("messages") or []:
-        if not isinstance(item, dict):
-            continue
-        phone = wa.normalise_whatsapp_number(item.get("phone") or "")
-        if not phone:
-            continue
-        if conversation_is_tombstoned(conn, phone):
-            continue
-        wa_id = str(item.get("wa_message_id") or "").strip()
-        if wa_id:
-            exists = conn.execute(
-                "SELECT 1 FROM wa_messages WHERE wa_message_id = ? LIMIT 1",
-                (wa_id,),
-            ).fetchone()
-            if exists:
-                continue
-        direction = "out" if str(item.get("direction") or "").lower() == "out" else "in"
-        display_name = str(item.get("display_name") or "").strip()
-        conversation = get_or_create_conversation(conn, phone, display_name=display_name)
-        if not conversation:
-            continue
-        before = conn.execute(
-            "SELECT COUNT(*) AS c FROM wa_messages WHERE conversation_id = ?",
-            (conversation["id"],),
-        ).fetchone()["c"]
-        append_message(
-            conn,
-            conversation["id"],
-            direction=direction,
-            body=str(item.get("body") or ""),
-            message_type=str(item.get("message_type") or "text"),
-            media_mime=str(item.get("media_mime") or ""),
-            media_filename=str(item.get("media_filename") or ""),
-            media_size=int(item.get("media_size") or 0),
-            wa_message_id=wa_id,
-            status=str(item.get("status") or ("sent" if direction == "out" else "delivered")),
-            error=str(item.get("error") or ""),
-            bump_unread=(direction == "in"),
-        )
-        after = conn.execute(
-            "SELECT COUNT(*) AS c FROM wa_messages WHERE conversation_id = ?",
-            (conversation["id"],),
-        ).fetchone()["c"]
-        if after > before:
-            added += 1
-
-    # Sync previews/timestamps from production, but never overwrite local unread.
-    # Forcing remote unread_count re-marked conversations as unread after open
-    # (local mark_read → later poll → unread restored from prod).
-    preview_synced = 0
-    for item in payload.get("conversations") or []:
-        if not isinstance(item, dict):
-            continue
-        phone = wa.normalise_whatsapp_number(
-            item.get("phone") or item.get("phone_e164") or ""
-        )
-        if not phone:
-            continue
-        preview = str(item.get("last_preview") or "").strip()
-        last_at = str(item.get("last_message_at") or "").strip()
-        if not preview and not last_at:
-            continue
-        row = conn.execute(
-            "SELECT id, unread_count FROM wa_conversations WHERE phone_e164 = ?",
-            (phone,),
-        ).fetchone()
-        if not row:
-            continue
-        remote_unread = int(item.get("unread_count") or 0)
-        local_unread = int(row["unread_count"] or 0)
-        conn.execute(
-            """UPDATE wa_conversations
-               SET last_preview = CASE WHEN ? != '' THEN ? ELSE last_preview END,
-                   last_message_at = CASE WHEN ? != '' THEN ? ELSE last_message_at END,
-                   updated_at = datetime('now','localtime')
-             WHERE id = ?""",
-            (preview, preview, last_at, last_at, row["id"]),
-        )
-        preview_synced += 1
-    if added or preview_synced:
-        conn.commit()
-    return added
 
 
 def send_conversation_text(conn, conversation_id: int, text: str, *, user_id=None) -> tuple[bool, str, dict]:
@@ -938,19 +829,8 @@ def register_communication_hub(app, *, pop_auth_notice, get_user):
 
     @app.route("/communication-hub/api/mirror-export", methods=["GET"])
     def communication_hub_api_mirror_export():
-        """Token-gated export so local Flask can mirror live WhatsApp hub rows."""
-        import os
-
-        expected = (os.environ.get("HUB_MIRROR_TOKEN") or "").strip()
-        got = (request.headers.get("X-Hub-Mirror-Token") or "").strip()
-        if not expected or got != expected:
-            return jsonify({"ok": False, "error": "Unauthorized"}), 401
-        conn = get_db()
-        try:
-            payload = export_hub_mirror_payload(conn)
-        finally:
-            conn.close()
-        return jsonify(payload)
+        """Permanently disabled — hub mirroring is not used."""
+        return jsonify({"ok": False, "error": "Hub mirroring is permanently disabled."}), 410
 
     @app.route("/communication-hub/api/conversations", methods=["POST"])
     def communication_hub_api_conversation_create():

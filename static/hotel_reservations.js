@@ -14,8 +14,44 @@
     vacantRooms: [],
     pagination: null,
     loadGen: 0,
-    bound: false
+    bound: false,
+    autoRefreshTimer: null,
+    syncBannerTimer: null,
+    sortKey: '',
+    sortAsc: true,
+    kpiFilter: 'total',
+    checkoutOnly: false
   };
+
+  var KPI_FILTERS = {
+    total: { status: 'all', label: 'All Statuses', checkoutOnly: false },
+    revenue: { status: 'all', label: 'All Statuses', checkoutOnly: false },
+    checked_in: { status: 'checked_in', label: 'Checked In', checkoutOnly: false },
+    upcoming: { status: 'upcoming', label: 'Upcoming', checkoutOnly: false },
+    checked_out: { status: 'checked_out', label: 'Checked Out', checkoutOnly: true }
+  };
+
+  var AUTO_REFRESH_MS = 30 * 60 * 1000;
+  var SYNC_BANNER_MS = 10 * 1000;
+
+  function stopAutoRefresh() {
+    if (state.autoRefreshTimer) {
+      clearInterval(state.autoRefreshTimer);
+      state.autoRefreshTimer = null;
+    }
+  }
+
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    state.autoRefreshTimer = setInterval(function () {
+      if (!pageRoot()) {
+        stopAutoRefresh();
+        return;
+      }
+      // Bypass 60s server cache so Asia Tech data stays fresh.
+      loadReservations({ silent: true, refresh: true });
+    }, AUTO_REFRESH_MS);
+  }
 
   function $(sel, root) {
     return (root || document).querySelector(sel);
@@ -93,12 +129,26 @@
     return el ? String(el.value || '').trim() : '';
   }
 
-  function dateFilterIso(root) {
-    var hidden =
-      document.getElementById('hres-date-filter') ||
-      (root && root.querySelector('#hres-date-filter'));
-    if (hidden && hidden.value) return String(hidden.value).slice(0, 10);
-    return '';
+  function dateFilterRange(root) {
+    root = root || pageRoot();
+    var fromEl =
+      (root && root.querySelector('#hres-date-from')) ||
+      document.getElementById('hres-date-from');
+    var toEl =
+      (root && root.querySelector('#hres-date-to')) ||
+      document.getElementById('hres-date-to');
+    var from = fromEl ? String(fromEl.value || '').trim().slice(0, 10) : '';
+    var to = toEl ? String(toEl.value || '').trim().slice(0, 10) : '';
+    if (from && !to) to = from;
+    if (to && !from) from = to;
+    return { from: from, to: to };
+  }
+
+  function setDateRangeFilteredClass() {
+    var host = document.querySelector('#hres-date-range-host .se-filter-chip--date-range');
+    if (!host) return;
+    var range = dateFilterRange();
+    host.classList.toggle('is-filtered', !!(range.from && range.to));
   }
 
   function paintKpis(kpis) {
@@ -116,6 +166,157 @@
       var val = card.querySelector('[data-kpi-value]');
       if (val) val.textContent = map[key];
     });
+  }
+
+  function paintKpiActive() {
+    var root = pageRoot();
+    var cards = (root || document).querySelectorAll('.hres-kpi[data-kpi]');
+    cards.forEach(function (card) {
+      var on = card.getAttribute('data-kpi') === state.kpiFilter;
+      card.classList.toggle('is-active', on);
+      card.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  function setStatusFilter(value, label) {
+    var root = pageRoot();
+    var hidden =
+      (root && root.querySelector('#hres-status-filter')) ||
+      document.getElementById('hres-status-filter');
+    var display =
+      (root && root.querySelector('#hres-status-value')) ||
+      document.getElementById('hres-status-value');
+    var list =
+      (root && root.querySelector('#hres-status-list')) ||
+      document.getElementById('hres-status-list');
+    if (hidden) hidden.value = value;
+    if (display) display.textContent = label || value;
+    if (list) {
+      list.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
+        var on = opt.getAttribute('data-value') === value;
+        opt.classList.toggle('is-selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+  }
+
+  function applyKpiFilter(key) {
+    var want = String(key || 'total');
+    if (!KPI_FILTERS[want]) want = 'total';
+    if (
+      state.kpiFilter === want &&
+      want !== 'total' &&
+      want !== 'revenue'
+    ) {
+      want = 'total';
+    }
+    var spec = KPI_FILTERS[want];
+    state.kpiFilter = want;
+    state.checkoutOnly = !!(spec && spec.checkoutOnly);
+    setStatusFilter(spec.status, spec.label);
+    paintKpiActive();
+    loadReservations();
+  }
+
+  function syncKpiFromStatusFilter() {
+    var status = filterValue('hres-status-filter') || 'all';
+    state.checkoutOnly = false;
+    if (status === 'all') state.kpiFilter = 'total';
+    else if (KPI_FILTERS[status]) state.kpiFilter = status;
+    else state.kpiFilter = '';
+    paintKpiActive();
+  }
+
+  function formatSyncStamp(iso) {
+    var raw = String(iso || '').trim();
+    if (!raw) return '';
+    var d = new Date(raw.indexOf('T') >= 0 ? raw : raw.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return raw;
+    function pad(n) {
+      return String(n).padStart(2, '0');
+    }
+    return (
+      pad(d.getDate()) +
+      '/' +
+      pad(d.getMonth() + 1) +
+      '/' +
+      d.getFullYear() +
+      ' ' +
+      pad(d.getHours()) +
+      ':' +
+      pad(d.getMinutes()) +
+      ':' +
+      pad(d.getSeconds())
+    );
+  }
+
+  function clearSyncBannerTimer() {
+    if (state.syncBannerTimer) {
+      clearTimeout(state.syncBannerTimer);
+      state.syncBannerTimer = null;
+    }
+  }
+
+  function hideSyncBanner() {
+    var banner = document.getElementById('hres-sync-banner');
+    var text = document.getElementById('hres-sync-banner-text');
+    clearSyncBannerTimer();
+    if (banner) {
+      banner.setAttribute('hidden', 'hidden');
+      banner.hidden = true;
+      banner.classList.remove('is-error', 'is-ok', 'is-visible');
+    }
+    if (text) text.textContent = '';
+  }
+
+  function scheduleSyncBannerHide() {
+    clearSyncBannerTimer();
+    state.syncBannerTimer = setTimeout(function () {
+      state.syncBannerTimer = null;
+      hideSyncBanner();
+    }, SYNC_BANNER_MS);
+  }
+
+  function paintSyncBanner(sync, mode, opts) {
+    var banner = document.getElementById('hres-sync-banner');
+    var text = document.getElementById('hres-sync-banner-text');
+    if (!banner || !text) return;
+    sync = sync || {};
+    opts = opts || {};
+    var error = String(sync.error || '').trim();
+    var syncedAt = formatSyncStamp(sync.synced_at);
+    var source = String(sync.source || mode || '').toLowerCase();
+    if (error) {
+      banner.hidden = false;
+      banner.removeAttribute('hidden');
+      banner.classList.remove('is-ok');
+      banner.classList.add('is-error', 'is-visible');
+      text.textContent = error;
+      scheduleSyncBannerHide();
+      return;
+    }
+    if (!opts.refresh) {
+      return;
+    }
+    if (source === 'asia_tech' && syncedAt) {
+      banner.hidden = false;
+      banner.removeAttribute('hidden');
+      banner.classList.remove('is-error');
+      banner.classList.add('is-ok', 'is-visible');
+      text.textContent = 'Last synced from Asia Tech at ' + syncedAt;
+      scheduleSyncBannerHide();
+      return;
+    }
+    if (source === 'asia_tech') {
+      banner.hidden = false;
+      banner.removeAttribute('hidden');
+      banner.classList.remove('is-error');
+      banner.classList.add('is-ok', 'is-visible');
+      text.textContent = 'Last synced from Asia Tech';
+      scheduleSyncBannerHide();
+      return;
+    }
+    hideSyncBanner();
   }
 
   function statusClass(status) {
@@ -138,10 +339,12 @@
         return (
           '<tr data-res-id="' +
           escapeAttr(row.id) +
-          '" class="' +
+          '" data-sort-row class="' +
           selected.trim() +
           '">' +
-          '<td><div class="hres-guest">' +
+          '<td data-sort-value="' +
+          escapeAttr(String(row.guestName || '').toLowerCase()) +
+          '"><div class="hres-guest">' +
           '<div class="hres-avatar">' +
           escapeHtml(row.initials || '?') +
           '</div>' +
@@ -156,24 +359,32 @@
           escapeHtml(row.mobile || '') +
           (row.email ? ' · ' + escapeHtml(row.email) : '') +
           '</div></div></div></td>' +
-          '<td><div class="hres-datetime"><strong>' +
+          '<td data-sort-value="' +
+          escapeAttr(String(row.checkInDate || '') + ' ' + String(row.checkInTime || '')) +
+          '"><div class="hres-datetime"><strong>' +
           escapeHtml(formatDisplayDate(row.checkInDate)) +
           '</strong><span>' +
           escapeHtml(formatTime(row.checkInTime)) +
           '</span></div></td>' +
-          '<td><div class="hres-datetime"><strong>' +
+          '<td data-sort-value="' +
+          escapeAttr(String(row.checkOutDate || '') + ' ' + String(row.checkOutTime || '')) +
+          '"><div class="hres-datetime"><strong>' +
           escapeHtml(formatDisplayDate(row.checkOutDate)) +
           '</strong><span>' +
           escapeHtml(formatTime(row.checkOutTime)) +
           '</span></div></td>' +
-          '<td><div class="hres-price"><strong>' +
+          '<td data-sort-value="' +
+          escapeAttr(String(row.amount == null ? 0 : row.amount)) +
+          '"><div class="hres-price"><strong>' +
           escapeHtml(formatInr(row.amount)) +
           '</strong><span>' +
           escapeHtml(String(row.nights || 1)) +
           ' Night' +
           (Number(row.nights) === 1 ? '' : 's') +
           '</span></div></td>' +
-          '<td><span class="hres-status-pill ' +
+          '<td data-sort-value="' +
+          escapeAttr(String(row.statusLabel || row.status || '').toLowerCase()) +
+          '"><span class="hres-status-pill ' +
           statusClass(row.status) +
           '">' +
           escapeHtml(row.statusLabel || row.status) +
@@ -189,6 +400,87 @@
         );
       })
       .join('');
+    applyTableSort(false);
+  }
+
+  function cellSortValue(row, colIndex, type) {
+    var cell = row.cells[colIndex];
+    if (!cell) return type === 'number' ? 0 : '';
+    var raw = cell.getAttribute('data-sort-value');
+    if (raw == null || raw === '') raw = (cell.textContent || '').trim();
+    if (type === 'number') {
+      var n = Number(raw);
+      return isFinite(n) ? n : 0;
+    }
+    return String(raw).toLowerCase();
+  }
+
+  function applyTableSort(toggle) {
+    var table = document.querySelector('#hotel-reservations-page table.hres-table');
+    if (!table) return;
+    var tbody = table.tBodies[0];
+    if (!tbody) return;
+    var headers = Array.prototype.slice.call(table.querySelectorAll('th.pl-sortable'));
+    var th = null;
+    if (state.sortKey) {
+      for (var i = 0; i < headers.length; i++) {
+        if (headers[i].getAttribute('data-sort') === state.sortKey) {
+          th = headers[i];
+          break;
+        }
+      }
+    }
+    if (!th) return;
+    if (toggle) state.sortAsc = !state.sortAsc;
+    var type = th.getAttribute('data-sort-type') || 'text';
+    var colIndex = Array.prototype.indexOf.call(th.parentNode.children, th);
+    if (colIndex < 0) return;
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-sort-row]'));
+    var ascending = state.sortAsc;
+    rows.sort(function (a, b) {
+      var av = cellSortValue(a, colIndex, type);
+      var bv = cellSortValue(b, colIndex, type);
+      var cmp = 0;
+      if (type === 'number') cmp = av - bv;
+      else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
+      return ascending ? cmp : -cmp;
+    });
+    rows.forEach(function (row) {
+      tbody.appendChild(row);
+    });
+    headers.forEach(function (header) {
+      header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+      header.setAttribute('aria-sort', 'none');
+    });
+    th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
+    th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
+  }
+
+  function bindTableSort(root) {
+    var table = (root || document).querySelector('table.hres-table');
+    if (!table || table.getAttribute('data-hres-sort-bound') === '1') return;
+    table.setAttribute('data-hres-sort-bound', '1');
+    var headers = Array.prototype.slice.call(table.querySelectorAll('th.pl-sortable'));
+    headers.forEach(function (th) {
+      th.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var key = th.getAttribute('data-sort') || '';
+        if (!key) return;
+        if (state.sortKey === key) applyTableSort(true);
+        else {
+          state.sortKey = key;
+          state.sortAsc = true;
+          applyTableSort(false);
+        }
+      });
+      th.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          th.click();
+        }
+      });
+    });
   }
 
   function renderPagination(pagination) {
@@ -330,12 +622,17 @@
     params.set('page_size', 'all');
     var q = filterValue('hres-search');
     var status = filterValue('hres-status-filter') || 'all';
-    var source = filterValue('hres-source-filter') || 'all';
-    var onDate = dateFilterIso(root);
+    var range = dateFilterRange(root);
     if (q) params.set('q', q);
-    if (status) params.set('status', status);
-    if (source) params.set('source', source);
-    if (onDate) params.set('date', onDate);
+    if (state.checkoutOnly) {
+      params.set('status', 'all');
+      params.set('checkout_only', '1');
+    } else if (status) {
+      params.set('status', status);
+    }
+    if (range.from) params.set('date_from', range.from);
+    if (range.to) params.set('date_to', range.to);
+    if (opts.refresh) params.set('refresh', '1');
 
     var body = document.getElementById('hres-table-body');
     if (body && !opts.silent) {
@@ -359,6 +656,7 @@
           throw new Error((result.data && result.data.error) || 'Load failed');
         }
         paintKpis(result.data.kpis);
+        paintSyncBanner(result.data.sync, result.data.mode, opts);
         state.vacantRooms = Array.isArray(result.data.vacantRooms)
           ? result.data.vacantRooms
           : [];
@@ -376,6 +674,11 @@
           body.innerHTML =
             '<tr class="hres-empty-row"><td colspan="6">Could not load reservations.</td></tr>';
         }
+        paintSyncBanner(
+          { error: 'Could not load reservations from the server.' },
+          'stub',
+          opts
+        );
         showToast('Could not load reservations');
       });
   }
@@ -510,9 +813,7 @@
     root.setAttribute('data-hres-bound', '1');
 
     global.hresStatusChanged = function () {
-      loadReservations();
-    };
-    global.hresSourceChanged = function () {
+      syncKpiFromStatusFilter();
       loadReservations();
     };
 
@@ -528,11 +829,18 @@
     }
 
     root.addEventListener('click', function (event) {
+      var kpiCard = event.target.closest('.hres-kpi[data-kpi]');
+      if (kpiCard && root.contains(kpiCard)) {
+        event.preventDefault();
+        applyKpiFilter(kpiCard.getAttribute('data-kpi') || 'total');
+        return;
+      }
+
       var refresh = event.target.closest('#hres-refresh-btn');
       if (refresh) {
         event.preventDefault();
-        loadReservations();
-        showToast('Refreshed');
+        loadReservations({ refresh: true });
+        showToast('Refreshing from Asia Tech…');
         return;
       }
 
@@ -598,39 +906,90 @@
       }
     });
 
+    root.addEventListener('keydown', function (event) {
+      var kpiCard = event.target.closest('.hres-kpi[data-kpi]');
+      if (
+        kpiCard &&
+        root.contains(kpiCard) &&
+        (event.key === 'Enter' || event.key === ' ')
+      ) {
+        event.preventDefault();
+        applyKpiFilter(kpiCard.getAttribute('data-kpi') || 'total');
+      }
+    });
+
     var form = document.getElementById('hres-edit-form');
     if (form) form.addEventListener('submit', saveEditForm);
 
-    /* Date picker change — hotel date field dispatches input/change on hidden iso */
-    root.addEventListener('change', function (event) {
-      var t = event.target;
-      if (!t) return;
-      if (
-        t.id === 'hres-date-filter' ||
-        (t.closest && t.closest('#hres-date-filter-chip'))
-      ) {
-        loadReservations({ silent: true });
+    if (global.SalesDateRangePicker && typeof global.SalesDateRangePicker.init === 'function') {
+      global.SalesDateRangePicker.init({
+        wrapId: 'hres-date-range-wrap',
+        triggerId: 'hres-date-range-trigger',
+        backdropId: 'hres-date-range-backdrop',
+        panelId: 'hres-date-range-panel',
+        displayId: 'hres-date-range-display',
+        fromInputId: 'hres-date-from',
+        toInputId: 'hres-date-to',
+        applyId: 'hres-date-range-apply',
+        prevId: 'hres-cal-prev',
+        nextId: 'hres-cal-next',
+        title0Id: 'hres-cal-title0',
+        title1Id: 'hres-cal-title1',
+        grid0Id: 'hres-cal-grid0',
+        grid1Id: 'hres-cal-grid1',
+        emptyLabel: 'Select date…',
+        onApply: function () {
+          setDateRangeFilteredClass();
+          loadReservations({ silent: true });
+        }
+      });
+      if (typeof global.SalesDateRangePicker.syncChipDisplays === 'function') {
+        global.SalesDateRangePicker.syncChipDisplays();
       }
-    });
-    root.addEventListener('hotel-date-change', function () {
-      loadReservations({ silent: true });
-    });
+    }
+    var clearBtn = document.getElementById('hres-date-range-clear');
+    if (clearBtn && clearBtn.getAttribute('data-hres-clear-bound') !== '1') {
+      clearBtn.setAttribute('data-hres-clear-bound', '1');
+      clearBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        var fromEl = document.getElementById('hres-date-from');
+        var toEl = document.getElementById('hres-date-to');
+        var display = document.getElementById('hres-date-range-display');
+        var wrap = document.getElementById('hres-date-range-wrap');
+        var panel = document.getElementById('hres-date-range-panel');
+        var trigger = document.getElementById('hres-date-range-trigger');
+        if (fromEl) fromEl.value = '';
+        if (toEl) toEl.value = '';
+        if (display) display.textContent = 'Select date…';
+        if (wrap) wrap.classList.remove('open');
+        if (panel) panel.setAttribute('hidden', 'hidden');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
+        if (global.SalesDateRangePicker && typeof global.SalesDateRangePicker.clearPanelPosition === 'function') {
+          global.SalesDateRangePicker.clearPanelPosition(panel);
+        }
+        setDateRangeFilteredClass();
+        loadReservations({ silent: true });
+      });
+    }
+    setDateRangeFilteredClass();
   }
 
   function initHotelReservationsPage() {
     var root = pageRoot();
     if (!root) return;
     bindOnce(root);
+    bindTableSort(root);
+    paintKpiActive();
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();
     }
-    if (typeof global.initHotelDatePickers === 'function') {
-      global.initHotelDatePickers(root);
-    }
     loadReservations();
+    startAutoRefresh();
   }
 
   global.initHotelReservationsPage = initHotelReservationsPage;
+  global.stopHotelReservationsAutoRefresh = stopAutoRefresh;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initHotelReservationsPage);
   } else {

@@ -7872,6 +7872,490 @@ def aggregate_settled_invoice_totals(conn, date_from, date_to, location=None):
     }
 
 
+INVOICE_KPI_DIGITAL_METHODS = frozenset(
+    {"upi", "card", "swiggy", "zomato", "bank_transfer"}
+)
+INVOICE_KPI_ROOM_METHODS = frozenset({"room_transfer", "room_credit"})
+
+
+def _invoice_kpi_bucket_for_method(payment_method):
+    """Map a tender to cash / digital / room_credit / other."""
+    key = _normalize_pos_payment_method(payment_method)
+    if key is None:
+        raw = str(payment_method or "").strip().lower().replace(" ", "_")
+        if raw in ("room_credit", "room-credit"):
+            key = "room_transfer"
+        elif raw in ("bank", "bank_transfer", "neft", "rtgs", "imps"):
+            key = "bank_transfer"
+        else:
+            key = raw
+    if key == "cash":
+        return "cash"
+    if key in INVOICE_KPI_DIGITAL_METHODS:
+        return "digital"
+    if key in INVOICE_KPI_ROOM_METHODS or key == "room_transfer":
+        return "room_credit"
+    return "other"
+
+
+def _hotel_payload_tender_splits(payload_json):
+    """Extract cash/digital/room_credit amounts from a hotel invoice payload."""
+    cash = digital = room_credit = 0.0
+    try:
+        payload = json.loads(payload_json or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return cash, digital, room_credit
+    if not isinstance(payload, dict):
+        return cash, digital, room_credit
+    stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
+    payments = stay.get("payments") or payload.get("payments") or []
+    if isinstance(payments, list) and payments:
+        for pay in payments:
+            if not isinstance(pay, dict):
+                continue
+            amount = float(pay.get("amount") or 0)
+            if abs(amount) < 0.005:
+                continue
+            bucket = _invoice_kpi_bucket_for_method(
+                pay.get("method") or pay.get("payment_method") or pay.get("paymentMethod")
+            )
+            if bucket == "cash":
+                cash += amount
+            elif bucket == "digital":
+                digital += amount
+            elif bucket == "room_credit":
+                room_credit += amount
+        return cash, digital, room_credit
+
+    method = stay.get("paymentMethod") or stay.get("payment_method") or ""
+    advance = float(stay.get("advancePaid") or stay.get("checkInAdvancePaid") or 0)
+    if advance > 0.005 and method:
+        bucket = _invoice_kpi_bucket_for_method(method)
+        if bucket == "cash":
+            cash += advance
+        elif bucket == "digital":
+            digital += advance
+        elif bucket == "room_credit":
+            room_credit += advance
+    return cash, digital, room_credit
+
+
+def _hotel_payload_sales_entry_tenders(payload_json):
+    """Split hotel payload payments into cash / card / upi / room_credit / other."""
+    cash = card = upi = room_credit = other = 0.0
+    try:
+        payload = json.loads(payload_json or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return cash, card, upi, room_credit, other
+    if not isinstance(payload, dict):
+        return cash, card, upi, room_credit, other
+    stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
+
+    def _apply(method, amount):
+        nonlocal cash, card, upi, room_credit, other
+        amount = float(amount or 0)
+        if abs(amount) < 0.005:
+            return
+        key = _normalize_pos_payment_method(method)
+        if key is None:
+            raw = str(method or "").strip().lower().replace(" ", "_")
+            if raw in ("room_credit", "room-credit", "credit"):
+                key = "room_transfer"
+            elif raw in ("bank", "bank_transfer", "neft", "rtgs", "imps"):
+                key = "bank_transfer"
+            else:
+                key = raw
+        if key == "cash":
+            cash += amount
+        elif key == "card":
+            card += amount
+        elif key == "upi":
+            upi += amount
+        elif key in ("room_transfer", "room_credit") or key == "credit":
+            room_credit += amount
+        elif key in ("bank_transfer", "swiggy", "zomato"):
+            # Hotel sales entry has no bank/online row — fold into card.
+            card += amount
+        else:
+            other += amount
+
+    payments = stay.get("payments") or payload.get("payments") or []
+    if isinstance(payments, list) and payments:
+        for pay in payments:
+            if not isinstance(pay, dict):
+                continue
+            _apply(
+                pay.get("method") or pay.get("payment_method") or pay.get("paymentMethod"),
+                pay.get("amount"),
+            )
+        return cash, card, upi, room_credit, other
+
+    method = stay.get("paymentMethod") or stay.get("payment_method") or ""
+    advance = float(stay.get("advancePaid") or stay.get("checkInAdvancePaid") or 0)
+    if advance > 0.005:
+        _apply(method or "cash", advance)
+    return cash, card, upi, room_credit, other
+
+
+def hotel_sales_entry_from_invoices(conn, sales_date):
+    """Build Hotel Sales Entry totals from room invoices for one day.
+
+    Unpaid / unsettled balance is mapped to ``room_credit`` (Credit), matching FO
+    ledger behavior when payment mode is missing.
+    """
+    ensure_hotel_room_invoices_schema(conn)
+    day = str(sales_date)[:10]
+    rows = conn.execute(
+        """
+        SELECT estimated_total, payload_json
+        FROM hotel_room_invoices
+        WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
+          AND substr(invoice_generated_at, 1, 10) = ?
+        """,
+        (day,),
+    ).fetchall()
+
+    total_sales = cash = card = upi = room_credit = 0.0
+    for row in rows:
+        amount = float(row["estimated_total"] or 0)
+        total_sales += amount
+        h_cash, h_card, h_upi, h_room, h_other = _hotel_payload_sales_entry_tenders(
+            row["payload_json"]
+        )
+        cash += h_cash
+        card += h_card
+        upi += h_upi
+        room_credit += h_room
+        # Unmapped tenders and unpaid remainder land in Credit.
+        room_credit += h_other
+
+    allocated = cash + card + upi + room_credit
+    remainder = round(total_sales - allocated, 2)
+    if remainder > 0.005:
+        room_credit += remainder
+
+    return {
+        "total_sales": round(total_sales, 2),
+        "cash": round(cash, 2),
+        "card": round(card, 2),
+        "upi": round(upi, 2),
+        "room_credit": round(room_credit, 2),
+    }
+
+
+def pos_sales_entry_from_invoices(conn, outlet, sales_date):
+    """Build Restaurant/Bar Sales Entry totals from POS invoices for one day."""
+    ensure_pos_schema(conn)
+    outlet_key = normalize_pos_outlet(outlet)
+    day = str(sales_date)[:10]
+
+    total_row = conn.execute(
+        """
+        SELECT COALESCE(SUM(i.grand_total), 0) AS amount
+        FROM pos_invoices i
+        WHERE i.is_active = 1
+          AND i.outlet = ?
+          AND i.order_date = ?
+          AND lower(COALESCE(i.status, 'open')) != 'cancelled'
+        """,
+        (outlet_key, day),
+    ).fetchone()
+    total_sales = float(total_row["amount"] if total_row else 0)
+
+    pay_rows = conn.execute(
+        """
+        SELECT p.payment_method AS payment_method,
+               COALESCE(SUM(p.amount), 0) AS amount
+        FROM pos_invoice_payments p
+        JOIN pos_invoices i ON i.id = p.invoice_id
+        WHERE i.is_active = 1
+          AND i.outlet = ?
+          AND i.order_date = ?
+          AND lower(COALESCE(i.status, 'open')) != 'cancelled'
+        GROUP BY p.payment_method
+        """,
+        (outlet_key, day),
+    ).fetchall()
+
+    cash = card = upi = room_credit = online_order = 0.0
+    for row in pay_rows:
+        amount = float(row["amount"] or 0)
+        if abs(amount) < 0.005:
+            continue
+        key = _normalize_pos_payment_method(row["payment_method"])
+        if key == "cash":
+            cash += amount
+        elif key == "card":
+            card += amount
+        elif key == "upi":
+            upi += amount
+        elif key in ("room_transfer",):
+            room_credit += amount
+        elif key in ("swiggy", "zomato"):
+            online_order += amount
+        elif key == "bank_transfer":
+            card += amount
+
+    return {
+        "total_sales": round(total_sales, 2),
+        "cash": round(cash, 2),
+        "card": round(card, 2),
+        "upi": round(upi, 2),
+        "room_credit": round(room_credit, 2),
+        "online_order": round(online_order, 2),
+    }
+
+
+def _invoice_kpi_modules(location=None):
+    """Return ``(include_hotel, pos_outlets)`` for invoice KPI filters."""
+    if location is None:
+        return True, [POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
+    if isinstance(location, (list, tuple)):
+        locs = {str(item or "").strip() for item in location if str(item or "").strip()}
+        include_hotel = "Hotel" in locs
+        outlets = []
+        if "Restaurant" in locs:
+            outlets.append(POS_OUTLET_RESTAURANT)
+        if "Bar" in locs:
+            outlets.append(POS_OUTLET_BAR)
+        return include_hotel, outlets
+    loc = str(location or "").strip()
+    if loc.lower() in ("", "all"):
+        return True, [POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
+    if loc == "Hotel":
+        return True, []
+    if loc == "Restaurant":
+        return False, [POS_OUTLET_RESTAURANT]
+    if loc == "Bar":
+        return False, [POS_OUTLET_BAR]
+    return True, [POS_OUTLET_RESTAURANT, POS_OUTLET_BAR]
+
+
+def _empty_invoice_kpi_bucket():
+    return {
+        "actual_sales": 0.0,
+        "digital_transactions": 0.0,
+        "cash": 0.0,
+        "room_credit": 0.0,
+        "tips": 0.0,
+        "expense": 0.0,
+        "difference": 0.0,
+    }
+
+
+def _finalize_invoice_kpi_bucket(bucket):
+    actual = round(float(bucket.get("actual_sales") or 0), 2)
+    cash = round(float(bucket.get("cash") or 0), 2)
+    digital = round(float(bucket.get("digital_transactions") or 0), 2)
+    room_credit = round(float(bucket.get("room_credit") or 0), 2)
+    expense = round(float(bucket.get("expense") or 0), 2)
+    return {
+        "actual_sales": actual,
+        "digital_transactions": digital,
+        "cash": cash,
+        "room_credit": room_credit,
+        "tips": round(float(bucket.get("tips") or 0), 2),
+        "expense": expense,
+        "difference": round(actual - (cash + digital + room_credit), 2),
+    }
+
+
+def aggregate_invoice_sales_kpis(conn, date_from, date_to, location=None):
+    """Sum invoice KPIs for a date range (settled + unsettled).
+
+    ``location``: None/All, ``Hotel`` / ``Restaurant`` / ``Bar``, or a list of those.
+    Returns keys compatible with ``_aggregate_sales_kpis``.
+    ``expense`` is left at 0 — callers may overlay ``sales_update_expenses``.
+    """
+    ensure_hotel_room_invoices_schema(conn)
+    ensure_pos_schema(conn)
+
+    d0 = str(date_from)[:10]
+    d1 = str(date_to)[:10]
+    include_hotel, outlets = _invoice_kpi_modules(location)
+
+    actual = 0.0
+    cash = 0.0
+    digital = 0.0
+    room_credit = 0.0
+
+    if include_hotel:
+        hotel_row = conn.execute(
+            """
+            SELECT COALESCE(SUM(estimated_total), 0) AS amount
+            FROM hotel_room_invoices
+            WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
+              AND substr(invoice_generated_at, 1, 10) >= ?
+              AND substr(invoice_generated_at, 1, 10) <= ?
+            """,
+            (d0, d1),
+        ).fetchone()
+        actual += float(hotel_row["amount"] if hotel_row else 0)
+
+        hotel_payloads = conn.execute(
+            """
+            SELECT payload_json
+            FROM hotel_room_invoices
+            WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
+              AND substr(invoice_generated_at, 1, 10) >= ?
+              AND substr(invoice_generated_at, 1, 10) <= ?
+            """,
+            (d0, d1),
+        ).fetchall()
+        for row in hotel_payloads:
+            h_cash, h_digital, h_room = _hotel_payload_tender_splits(row["payload_json"])
+            cash += h_cash
+            digital += h_digital
+            room_credit += h_room
+
+    if outlets:
+        placeholders = ",".join("?" for _ in outlets)
+        pos_row = conn.execute(
+            f"""
+            SELECT COALESCE(SUM(i.grand_total), 0) AS amount
+            FROM pos_invoices i
+            WHERE i.is_active = 1
+              AND i.outlet IN ({placeholders})
+              AND i.order_date >= ?
+              AND i.order_date <= ?
+              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
+            """,
+            (*outlets, d0, d1),
+        ).fetchone()
+        actual += float(pos_row["amount"] if pos_row else 0)
+
+        pay_rows = conn.execute(
+            f"""
+            SELECT p.payment_method AS payment_method,
+                   COALESCE(SUM(p.amount), 0) AS amount
+            FROM pos_invoice_payments p
+            JOIN pos_invoices i ON i.id = p.invoice_id
+            WHERE i.is_active = 1
+              AND i.outlet IN ({placeholders})
+              AND i.order_date >= ?
+              AND i.order_date <= ?
+              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
+            GROUP BY p.payment_method
+            """,
+            (*outlets, d0, d1),
+        ).fetchall()
+        for row in pay_rows:
+            amount = float(row["amount"] or 0)
+            if abs(amount) < 0.005:
+                continue
+            bucket = _invoice_kpi_bucket_for_method(row["payment_method"])
+            if bucket == "cash":
+                cash += amount
+            elif bucket == "digital":
+                digital += amount
+            elif bucket == "room_credit":
+                room_credit += amount
+
+    return _finalize_invoice_kpi_bucket(
+        {
+            "actual_sales": actual,
+            "digital_transactions": digital,
+            "cash": cash,
+            "room_credit": room_credit,
+        }
+    )
+
+
+def aggregate_invoice_sales_kpis_by_day(conn, date_from, date_to, location=None):
+    """Daily invoice KPI buckets for sparkline / trend charts."""
+    ensure_hotel_room_invoices_schema(conn)
+    ensure_pos_schema(conn)
+
+    d0 = str(date_from)[:10]
+    d1 = str(date_to)[:10]
+    include_hotel, outlets = _invoice_kpi_modules(location)
+    by_day = {}
+
+    def bucket_for(day):
+        return by_day.setdefault(day, _empty_invoice_kpi_bucket())
+
+    if include_hotel:
+        rows = conn.execute(
+            """
+            SELECT substr(invoice_generated_at, 1, 10) AS sales_day,
+                   estimated_total, payload_json
+            FROM hotel_room_invoices
+            WHERE lower(COALESCE(status, '')) IN ('open', 'settled')
+              AND substr(invoice_generated_at, 1, 10) >= ?
+              AND substr(invoice_generated_at, 1, 10) <= ?
+            """,
+            (d0, d1),
+        ).fetchall()
+        for row in rows:
+            day = str(row["sales_day"] or "")[:10]
+            if not day:
+                continue
+            bucket = bucket_for(day)
+            bucket["actual_sales"] += float(row["estimated_total"] or 0)
+            h_cash, h_digital, h_room = _hotel_payload_tender_splits(row["payload_json"])
+            bucket["cash"] += h_cash
+            bucket["digital_transactions"] += h_digital
+            bucket["room_credit"] += h_room
+
+    if outlets:
+        placeholders = ",".join("?" for _ in outlets)
+        rows = conn.execute(
+            f"""
+            SELECT i.order_date AS sales_day,
+                   COALESCE(SUM(i.grand_total), 0) AS amount
+            FROM pos_invoices i
+            WHERE i.is_active = 1
+              AND i.outlet IN ({placeholders})
+              AND i.order_date >= ?
+              AND i.order_date <= ?
+              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
+            GROUP BY i.order_date
+            """,
+            (*outlets, d0, d1),
+        ).fetchall()
+        for row in rows:
+            day = str(row["sales_day"] or "")[:10]
+            if not day:
+                continue
+            bucket_for(day)["actual_sales"] += float(row["amount"] or 0)
+
+        pay_rows = conn.execute(
+            f"""
+            SELECT i.order_date AS sales_day,
+                   p.payment_method AS payment_method,
+                   COALESCE(SUM(p.amount), 0) AS amount
+            FROM pos_invoice_payments p
+            JOIN pos_invoices i ON i.id = p.invoice_id
+            WHERE i.is_active = 1
+              AND i.outlet IN ({placeholders})
+              AND i.order_date >= ?
+              AND i.order_date <= ?
+              AND lower(COALESCE(i.status, 'open')) != 'cancelled'
+            GROUP BY i.order_date, p.payment_method
+            """,
+            (*outlets, d0, d1),
+        ).fetchall()
+        for row in pay_rows:
+            day = str(row["sales_day"] or "")[:10]
+            if not day:
+                continue
+            amount = float(row["amount"] or 0)
+            if abs(amount) < 0.005:
+                continue
+            bucket = bucket_for(day)
+            tend = _invoice_kpi_bucket_for_method(row["payment_method"])
+            if tend == "cash":
+                bucket["cash"] += amount
+            elif tend == "digital":
+                bucket["digital_transactions"] += amount
+            elif tend == "room_credit":
+                bucket["room_credit"] += amount
+
+    return {
+        day: _finalize_invoice_kpi_bucket(bucket) for day, bucket in by_day.items()
+    }
+
+
 def get_hotel_room_invoice(conn, invoice_number):
     """Return ledger row + reconstructed room payload for print/view."""
     ensure_hotel_room_invoices_schema(conn)

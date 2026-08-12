@@ -239,24 +239,36 @@
         <div class="pos-set-panel-head">
           <div>
             <h2>Asia Tech</h2>
-            <p>API credentials for the Hotel → Reservations manager. Leave mode on Stub until live endpoints are configured.</p>
+            <p>Read-only credentials for Hotel → Reservations. Prefer server env vars; settings are a local fallback. Never pushes inventory or rates to Asia Tech.</p>
           </div>
         </div>
         <div class="pos-set-card">
           <div class="pos-set-fields pos-set-fields--inline pos-set-fields--2">
             <label class="pos-set-field">
-              <span>API key</span>
-              <input type="password" data-hotel-set-field data-hotel-set-key="asia_tech_api_key" placeholder="Paste Asia Tech API key" autocomplete="new-password">
+              <span>Username</span>
+              <input type="text" data-hotel-set-field data-hotel-set-key="asia_tech_username" placeholder="Asia Tech username" autocomplete="username">
+            </label>
+            <label class="pos-set-field">
+              <span>Hotel ID</span>
+              <input type="text" data-hotel-set-field data-hotel-set-key="asia_tech_hotel_id" placeholder="e.g. 119" inputmode="numeric" autocomplete="off">
+            </label>
+            <label class="pos-set-field">
+              <span>Password</span>
+              <input type="password" data-hotel-set-field data-hotel-set-key="asia_tech_password" placeholder="Asia Tech password / API key" autocomplete="new-password">
+            </label>
+            <label class="pos-set-field">
+              <span>API key (legacy)</span>
+              <input type="password" data-hotel-set-field data-hotel-set-key="asia_tech_api_key" placeholder="Same as password if only one secret" autocomplete="new-password">
             </label>
             <label class="pos-set-field">
               <span>Base URL</span>
-              <input type="url" data-hotel-set-field data-hotel-set-key="asia_tech_base_url" placeholder="https://api.asiatech.in" autocomplete="off">
+              <input type="url" data-hotel-set-field data-hotel-set-key="asia_tech_base_url" placeholder="https://provider.asiatech.in" autocomplete="off">
             </label>
             <label class="pos-set-field">
               <span>Mode</span>
               <select data-hotel-set-field data-hotel-set-key="asia_tech_mode">
                 <option value="stub">Stub (local only)</option>
-                <option value="live">Live (Asia Tech API)</option>
+                <option value="live">Live (Asia Tech API, read-only)</option>
               </select>
             </label>
           </div>

@@ -1,17 +1,20 @@
 """Asia Tech reservations provider adapter.
 
-Until Asia Tech publishes API docs, ``mode=stub`` (default) starts with an empty
-reservation list. Live HTTP calls are reserved for when credentials + endpoints
-exist. Local creates, room assignments, and edits are stored in hotel settings
-under ``asia_tech_state`` so they survive settings panel saves.
+Live mode pulls bookings read-only via ``asia_tech_http`` when credentials exist.
+Local creates, room assignments, and edits are stored in hotel settings under
+``asia_tech_state``. Never pushes inventory, rates, or booking changes to Asia Tech.
 """
 
 from __future__ import annotations
 
 import copy
+import hashlib
+import os
 import re
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Tuple
+
+from asia_tech_http import DEFAULT_BASE_URL, clear_caches, fetch_bookings
 
 MASKED_API_KEY = "••••••••••••••••"
 STATUS_LABELS = {
@@ -25,20 +28,44 @@ SOURCE_LABELS = {
     "expedia": "Expedia",
     "makemytrip": "MakeMyTrip",
     "goibibo": "Goibibo",
+    "agoda": "Agoda",
     "direct": "Direct",
     "walk_in": "Walk-in",
     "asia_tech": "Asia Tech",
 }
 
+_last_sync_meta: Dict[str, Any] = {
+    "mode": "stub",
+    "configured": False,
+    "synced_at": "",
+    "cached": False,
+    "rooms_ok": False,
+    "bookings_path": None,
+    "error": "",
+    "source": "stub",
+}
+
 
 def _parse_iso(value: Any) -> Optional[date]:
-    text = str(value or "").strip()[:10]
+    text = str(value or "").strip()
     if not text:
         return None
+    text = text[:10] if len(text) >= 10 and text[4] == "-" else text
     try:
-        return datetime.strptime(text, "%Y-%m-%d").date()
+        return datetime.strptime(text[:10], "%Y-%m-%d").date()
     except ValueError:
-        return None
+        pass
+    for sep in ("-", "/", "."):
+        parts = text.split(sep)
+        if len(parts) == 3 and len(parts[2]) == 4:
+            try:
+                d, m, y = int(parts[0]), int(parts[1]), int(parts[2])
+                if d > 31:
+                    y, m, d = d, m, y
+                return date(y, m, d)
+            except ValueError:
+                continue
+    return None
 
 
 def _nights(check_in: str, check_out: str) -> int:
@@ -68,6 +95,22 @@ def _money(value: Any, default: float = 0.0) -> float:
     return round(amount, 2)
 
 
+def _pick(row: Dict[str, Any], *keys: str, default: Any = "") -> Any:
+    lower_map = {str(k).lower(): v for k, v in row.items()}
+    for key in keys:
+        if key in row and row[key] not in (None, ""):
+            return row[key]
+        value = lower_map.get(str(key).lower())
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def _stable_id(*parts: Any) -> str:
+    raw = "|".join(str(p or "") for p in parts)
+    return "AT-" + hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+
+
 def panel_value(settings: Dict[str, Any], key: str, default: str = "") -> str:
     panels = settings.get("panels") if isinstance(settings, dict) else None
     if not isinstance(panels, dict):
@@ -88,39 +131,16 @@ def panel_value(settings: Dict[str, Any], key: str, default: str = "") -> str:
     return str(raw).strip()
 
 
-def get_api_key(settings: Dict[str, Any]) -> str:
-    key = panel_value(settings, "asia_tech_api_key", "")
-    if not key or key == MASKED_API_KEY or set(key) <= {"•", "*"}:
-        # Fall back to top-level secret if panels only have a mask.
-        state = settings.get("asia_tech_state") if isinstance(settings, dict) else None
-        if isinstance(state, dict):
-            secret = str(state.get("api_key") or "").strip()
-            if secret:
-                return secret
-        return ""
-    return key
-
-
-def get_base_url(settings: Dict[str, Any]) -> str:
-    return panel_value(settings, "asia_tech_base_url", "") or "https://api.asiatech.in"
-
-
-def get_mode(settings: Dict[str, Any]) -> str:
-    mode = panel_value(settings, "asia_tech_mode", "stub").lower()
-    if mode not in ("stub", "live"):
-        return "stub"
-    # Live requires a real key; otherwise stay on stub.
-    if mode == "live" and not get_api_key(settings):
-        return "stub"
-    return mode
-
-
 def get_state(settings: Dict[str, Any]) -> Dict[str, Any]:
     state = settings.get("asia_tech_state") if isinstance(settings, dict) else None
     if not isinstance(state, dict):
         state = {}
     return {
         "api_key": str(state.get("api_key") or "").strip(),
+        "password": str(state.get("password") or state.get("api_key") or "").strip(),
+        "username": str(state.get("username") or "").strip(),
+        "hotel_id": str(state.get("hotel_id") or "").strip(),
+        "base_url": str(state.get("base_url") or "").strip(),
         "assignments": (
             dict(state["assignments"])
             if isinstance(state.get("assignments"), dict)
@@ -132,14 +152,99 @@ def get_state(settings: Dict[str, Any]) -> Dict[str, Any]:
         "created": (
             list(state["created"]) if isinstance(state.get("created"), list) else []
         ),
+        "last_sync_meta": (
+            dict(state["last_sync_meta"])
+            if isinstance(state.get("last_sync_meta"), dict)
+            else {}
+        ),
     }
 
 
+def _is_masked_secret(value: str) -> bool:
+    text = str(value or "").strip()
+    return (not text) or text == MASKED_API_KEY or set(text) <= {"•", "*"}
+
+
+def get_api_key(settings: Dict[str, Any]) -> str:
+    """Password / API key — env preferred, then panel, then state."""
+    env = os.environ.get("ASIA_TECH_PASSWORD", "").strip()
+    if env:
+        return env
+    key = panel_value(settings, "asia_tech_api_key", "")
+    if not _is_masked_secret(key):
+        return key
+    password_panel = panel_value(settings, "asia_tech_password", "")
+    if not _is_masked_secret(password_panel):
+        return password_panel
+    state = get_state(settings)
+    return str(state.get("password") or state.get("api_key") or "").strip()
+
+
+def get_username(settings: Dict[str, Any]) -> str:
+    env = os.environ.get("ASIA_TECH_USERNAME", "").strip()
+    if env:
+        return env
+    panel = panel_value(settings, "asia_tech_username", "")
+    if panel:
+        return panel
+    return get_state(settings).get("username") or ""
+
+
+def get_hotel_id(settings: Dict[str, Any]) -> str:
+    env = os.environ.get("ASIA_TECH_HOTEL_ID", "").strip()
+    if env:
+        return env
+    panel = panel_value(settings, "asia_tech_hotel_id", "")
+    if panel:
+        return panel
+    return get_state(settings).get("hotel_id") or ""
+
+
+def get_base_url(settings: Dict[str, Any]) -> str:
+    from asia_tech_http import _normalize_base
+
+    env = os.environ.get("ASIA_TECH_BASE_URL", "").strip()
+    if env:
+        return _normalize_base(env)
+    panel = panel_value(settings, "asia_tech_base_url", "")
+    if panel:
+        return _normalize_base(panel)
+    state_url = get_state(settings).get("base_url") or ""
+    return _normalize_base(state_url or DEFAULT_BASE_URL)
+
+
+def credentials_configured(settings: Dict[str, Any]) -> bool:
+    return bool(get_username(settings) and get_api_key(settings) and get_hotel_id(settings))
+
+
+def get_mode(settings: Dict[str, Any]) -> str:
+    mode = panel_value(settings, "asia_tech_mode", "stub").lower()
+    if mode not in ("stub", "live"):
+        mode = "stub"
+    configured = credentials_configured(settings)
+    # Env credentials on the server imply live pull when mode isn't forced stub…
+    # but honor explicit stub for local demos. Auto-live when mode=live OR env triad present.
+    env_live = bool(
+        os.environ.get("ASIA_TECH_USERNAME", "").strip()
+        and os.environ.get("ASIA_TECH_PASSWORD", "").strip()
+        and os.environ.get("ASIA_TECH_HOTEL_ID", "").strip()
+    )
+    if not configured:
+        return "stub"
+    if mode == "live" or env_live:
+        return "live"
+    return "stub"
+
+
+def get_last_sync_meta() -> Dict[str, Any]:
+    return dict(_last_sync_meta)
+
+
 def mask_settings_for_client(settings: Dict[str, Any]) -> Dict[str, Any]:
-    """Return a copy safe to send to the browser (API key masked)."""
+    """Return a copy safe to send to the browser (API key / password masked)."""
     out = copy.deepcopy(settings) if isinstance(settings, dict) else {}
     state = get_state(out)
-    has_key = bool(state.get("api_key") or get_api_key(out))
+    has_key = bool(state.get("api_key") or state.get("password") or get_api_key(out))
     panels = out.setdefault("panels", {})
     if not isinstance(panels, dict):
         panels = {}
@@ -156,26 +261,39 @@ def mask_settings_for_client(settings: Dict[str, Any]) -> Dict[str, Any]:
         "kind": "text",
         "value": MASKED_API_KEY if has_key else "",
     }
-    if "asia_tech_base_url" not in values:
-        values["asia_tech_base_url"] = {
-            "kind": "text",
-            "value": panel_value(out, "asia_tech_base_url", get_base_url(out)),
-        }
+    values["asia_tech_password"] = {
+        "kind": "text",
+        "value": MASKED_API_KEY if has_key else "",
+    }
+    values["asia_tech_username"] = {
+        "kind": "text",
+        "value": panel_value(out, "asia_tech_username", get_username(out)),
+    }
+    values["asia_tech_hotel_id"] = {
+        "kind": "text",
+        "value": panel_value(out, "asia_tech_hotel_id", get_hotel_id(out)),
+    }
+    values["asia_tech_base_url"] = {
+        "kind": "text",
+        "value": panel_value(out, "asia_tech_base_url", get_base_url(out))
+        or DEFAULT_BASE_URL,
+    }
     if "asia_tech_mode" not in values:
         values["asia_tech_mode"] = {
             "kind": "text",
             "value": panel_value(out, "asia_tech_mode", "stub") or "stub",
         }
-    # Never expose raw secret in asia_tech_state to the client.
     if "asia_tech_state" in out and isinstance(out["asia_tech_state"], dict):
         safe_state = dict(out["asia_tech_state"])
-        if safe_state.get("api_key"):
+        if safe_state.get("api_key") or safe_state.get("password"):
             safe_state["api_key"] = MASKED_API_KEY
+            safe_state["password"] = MASKED_API_KEY
             safe_state["has_api_key"] = True
         else:
             safe_state["has_api_key"] = False
         out["asia_tech_state"] = safe_state
     out["asia_tech_has_api_key"] = has_key
+    out["asia_tech_has_credentials"] = credentials_configured(out)
     out["asia_tech_mode_effective"] = get_mode(out)
     return out
 
@@ -187,46 +305,63 @@ def merge_settings_on_save(
     existing = existing if isinstance(existing, dict) else {}
     incoming = copy.deepcopy(incoming) if isinstance(incoming, dict) else {}
 
-    # Preserve runtime state unless caller explicitly replaces it.
     if "asia_tech_state" not in incoming:
         if "asia_tech_state" in existing:
             incoming["asia_tech_state"] = copy.deepcopy(existing["asia_tech_state"])
     else:
-        # Merge nested assignment maps rather than clobbering blindly if partial.
         prev = get_state(existing)
         nxt = get_state(incoming)
         incoming["asia_tech_state"] = {
             "api_key": nxt.get("api_key") or prev.get("api_key") or "",
+            "password": nxt.get("password") or nxt.get("api_key") or prev.get("password") or prev.get("api_key") or "",
+            "username": nxt.get("username") or prev.get("username") or "",
+            "hotel_id": nxt.get("hotel_id") or prev.get("hotel_id") or "",
+            "base_url": nxt.get("base_url") or prev.get("base_url") or "",
             "assignments": nxt.get("assignments") or prev.get("assignments") or {},
             "overrides": nxt.get("overrides") or prev.get("overrides") or {},
             "created": nxt.get("created") if nxt.get("created") is not None else prev.get("created") or [],
+            "last_sync_meta": nxt.get("last_sync_meta") or prev.get("last_sync_meta") or {},
         }
 
-    # Panel API key: keep previous secret when masked/empty.
     in_panels = incoming.get("panels") if isinstance(incoming.get("panels"), dict) else {}
     asia = in_panels.get("asia_tech") if isinstance(in_panels.get("asia_tech"), dict) else {}
     values = asia.get("values") if isinstance(asia.get("values"), dict) else {}
-    submitted = ""
-    if isinstance(values, dict) and "asia_tech_api_key" in values:
-        field = values.get("asia_tech_api_key")
-        submitted = (
+
+    def _submitted(key: str) -> str:
+        if not isinstance(values, dict) or key not in values:
+            return ""
+        field = values.get(key)
+        return (
             str(field.get("value") or "").strip()
             if isinstance(field, dict)
             else str(field or "").strip()
         )
-    prev_key = get_state(existing).get("api_key") or ""
-    # Also recover from previously stored panel if state empty (legacy).
+
+    prev_state = get_state(existing)
+    prev_key = prev_state.get("password") or prev_state.get("api_key") or ""
     if not prev_key:
         prev_key = panel_value(existing, "asia_tech_api_key", "")
-        if prev_key == MASKED_API_KEY or set(prev_key) <= {"•", "*"}:
+        if _is_masked_secret(prev_key):
             prev_key = ""
 
+    submitted_key = _submitted("asia_tech_api_key")
+    submitted_password = _submitted("asia_tech_password")
     secret = prev_key
-    if submitted and submitted != MASKED_API_KEY and not (set(submitted) <= {"•", "*"}):
-        secret = submitted
+    for candidate in (submitted_password, submitted_key):
+        if candidate and not _is_masked_secret(candidate):
+            secret = candidate
+            break
+
+    username = _submitted("asia_tech_username") or prev_state.get("username") or ""
+    hotel_id = _submitted("asia_tech_hotel_id") or prev_state.get("hotel_id") or ""
+    base_url = _submitted("asia_tech_base_url") or prev_state.get("base_url") or DEFAULT_BASE_URL
 
     state = get_state(incoming)
     state["api_key"] = secret
+    state["password"] = secret
+    state["username"] = username
+    state["hotel_id"] = hotel_id
+    state["base_url"] = base_url
     incoming["asia_tech_state"] = state
 
     if isinstance(values, dict):
@@ -234,10 +369,21 @@ def merge_settings_on_save(
             "kind": "text",
             "value": MASKED_API_KEY if secret else "",
         }
+        values["asia_tech_password"] = {
+            "kind": "text",
+            "value": MASKED_API_KEY if secret else "",
+        }
+        values["asia_tech_username"] = {"kind": "text", "value": username}
+        values["asia_tech_hotel_id"] = {"kind": "text", "value": hotel_id}
+        values["asia_tech_base_url"] = {
+            "kind": "text",
+            "value": base_url or DEFAULT_BASE_URL,
+        }
         asia["values"] = values
         in_panels["asia_tech"] = asia
         incoming["panels"] = in_panels
 
+    clear_caches()
     return incoming
 
 
@@ -251,48 +397,277 @@ def update_state(settings: Dict[str, Any], **patches: Any) -> Dict[str, Any]:
 
 
 def _stub_seed() -> List[Dict[str, Any]]:
-    """Provider seed rows. Empty until the live Asia Tech API is wired."""
+    """Provider seed rows when not in live mode."""
     return []
 
 
+def _map_status(raw: Any) -> str:
+    status = str(raw or "upcoming").strip().lower().replace(" ", "_").replace("-", "_")
+    aliases = {
+        "confirmed": "upcoming",
+        "confirm": "upcoming",
+        "booked": "upcoming",
+        "reservation": "upcoming",
+        "reserved": "upcoming",
+        "upcoming": "upcoming",
+        "modified": "upcoming",
+        "checkedin": "checked_in",
+        "checked_in": "checked_in",
+        "checkin": "checked_in",
+        "in_house": "checked_in",
+        "inhouse": "checked_in",
+        "checkedout": "checked_out",
+        "checked_out": "checked_out",
+        "checkout": "checked_out",
+        "departed": "checked_out",
+        "cancelled": "cancelled",
+        "canceled": "cancelled",
+        "cancel": "cancelled",
+        "no_show": "cancelled",
+        "noshow": "cancelled",
+    }
+    mapped = aliases.get(status, status)
+    if mapped not in STATUS_LABELS:
+        return "upcoming"
+    return mapped
+
+
+def _derive_operational_status(
+    status: str,
+    check_in: str,
+    check_out: str,
+    *,
+    today: Optional[date] = None,
+) -> str:
+    """
+    Asia Tech getbooking often returns only confirmed/cancelled.
+    Infer checked_in / checked_out / upcoming from the stay window vs today.
+    """
+    if status == "cancelled":
+        return "cancelled"
+    if status in ("checked_in", "checked_out"):
+        return status
+    today = today or date.today()
+    cin = _parse_iso(check_in)
+    cout = _parse_iso(check_out)
+    if not cin or not cout:
+        return status if status in STATUS_LABELS else "upcoming"
+    if cin <= today < cout:
+        return "checked_in"
+    if cout <= today:
+        return "checked_out"
+    return "upcoming"
+
+
+def _map_source(raw: Any) -> str:
+    source = str(raw or "asia_tech").strip().lower()
+    compact = re.sub(r"[^a-z0-9]+", "_", source).strip("_")
+    aliases = {
+        "booking_com": "booking_com",
+        "bookingcom": "booking_com",
+        "booking": "booking_com",
+        "expedia": "expedia",
+        "makemytrip": "makemytrip",
+        "mmt": "makemytrip",
+        "goibibo": "goibibo",
+        "agoda": "agoda",
+        "direct": "direct",
+        "offline_booking": "direct",
+        "offline": "direct",
+        "walk_in": "walk_in",
+        "walkin": "walk_in",
+        "asia_tech": "asia_tech",
+        "asiatech": "asia_tech",
+    }
+    return aliases.get(compact, compact or "asia_tech")
+
+
+def _room_label_from_raw(raw: Dict[str, Any]) -> str:
+    detail = raw.get("room_detail") or raw.get("roomdetail") or raw.get("rooms")
+    if isinstance(detail, list) and detail:
+        first = detail[0] if isinstance(detail[0], dict) else {}
+        label = str(
+            first.get("roomname")
+            or first.get("room_name")
+            or first.get("roomtype")
+            or first.get("RoomName")
+            or ""
+        ).strip()
+        if label:
+            return label
+    return str(
+        _pick(
+            raw,
+            "roomTypeLabel",
+            "room_type_label",
+            "roomType",
+            "RoomType",
+            "roomname",
+            "RoomName",
+            "room",
+            default="",
+        )
+        or ""
+    ).strip()
+
+
+def _map_payment(raw: Any) -> str:
+    if isinstance(raw, (int, float)):
+        # Asia Tech getbooking: paymentstatus 1 ≈ paid.
+        return "paid" if int(raw) == 1 else "pending"
+    text = str(raw or "pending").strip().lower()
+    if text in ("1", "paid", "success", "complete", "completed"):
+        return "paid"
+    if text in ("partial", "part"):
+        return "partial"
+    if text in ("refunded", "refund"):
+        return "refunded"
+    return "pending"
+
+
 def _normalize_reservation(raw: Dict[str, Any]) -> Dict[str, Any]:
-    guest_name = str(raw.get("guestName") or raw.get("guest_name") or "").strip()
+    guest_name = str(
+        _pick(
+            raw,
+            "guestName",
+            "guest_name",
+            "GuestName",
+            "guestname",
+            "customerName",
+            "CustomerName",
+            "name",
+            default="",
+        )
+    ).strip()
     booking_id = str(
-        raw.get("bookingId") or raw.get("booking_id") or raw.get("id") or ""
+        _pick(
+            raw,
+            "bookingId",
+            "booking_id",
+            "BookingId",
+            "bookingid",
+            "reservationId",
+            "reservation_id",
+            "ReservationId",
+            "id",
+            default="",
+        )
     ).strip()
-    check_in = str(raw.get("checkInDate") or raw.get("check_in_date") or "")[:10]
-    check_out = str(raw.get("checkOutDate") or raw.get("check_out_date") or "")[:10]
-    status = str(raw.get("status") or "upcoming").strip().lower().replace(" ", "_")
-    if status in ("checkedin", "in_house", "inhouse"):
-        status = "checked_in"
-    if status in ("checkedout", "departed"):
-        status = "checked_out"
-    if status not in STATUS_LABELS:
-        status = "upcoming"
-    source = str(raw.get("source") or "asia_tech").strip().lower()
-    amount = _money(raw.get("amount") or raw.get("totalAmount") or raw.get("price"))
-    nights = int(raw.get("nights") or _nights(check_in, check_out))
-    room_number = str(raw.get("roomNumber") or raw.get("room_number") or "").strip()
-    room_label = str(
-        raw.get("roomTypeLabel") or raw.get("room_type_label") or raw.get("roomType") or ""
+    check_in_raw = _pick(
+        raw,
+        "checkInDate",
+        "check_in_date",
+        "check_in",
+        "checkin",
+        "CheckIn",
+        "arrival",
+        "ArrivalDate",
+        "from_date",
+    )
+    check_out_raw = _pick(
+        raw,
+        "checkOutDate",
+        "check_out_date",
+        "check_out",
+        "checkout",
+        "CheckOut",
+        "departure",
+        "DepartureDate",
+        "to_date",
+    )
+    cin = _parse_iso(check_in_raw)
+    cout = _parse_iso(check_out_raw)
+    check_in = cin.isoformat() if cin else str(check_in_raw or "")[:10]
+    check_out = cout.isoformat() if cout else str(check_out_raw or "")[:10]
+    status = _map_status(
+        _pick(
+            raw,
+            "status",
+            "Status",
+            "bookingstatus",
+            "booking_status",
+            "BookingStatus",
+        )
+    )
+    status = _derive_operational_status(status, check_in, check_out)
+    source = _map_source(
+        _pick(
+            raw,
+            "source",
+            "Source",
+            "bookingsource",
+            "booking_source",
+            "channel",
+            "Channel",
+            "ota",
+            "OTA",
+            "booked_by",
+        )
+    )
+    amount = _money(
+        _pick(
+            raw,
+            "amount",
+            "totalrate",
+            "total_rate",
+            "TotalRate",
+            "totalAmount",
+            "total_amount",
+            "TotalAmount",
+            "price",
+            "Price",
+            "total",
+            "Total",
+        )
+    )
+    nights = int(_pick(raw, "nights", "Nights", default=0) or 0) or _nights(check_in, check_out)
+    room_number = str(
+        _pick(raw, "roomNumber", "room_number", "RoomNumber", "assigned_room", default="")
     ).strip()
-    payment = str(raw.get("paymentStatus") or raw.get("payment_status") or "pending").lower()
-    if payment not in ("paid", "pending", "partial", "refunded"):
-        payment = "pending"
+    room_label = _room_label_from_raw(raw)
+    payment = _map_payment(
+        _pick(raw, "paymentStatus", "payment_status", "PaymentStatus", "paymentstatus", default="pending")
+    )
+    if not booking_id:
+        booking_id = _stable_id(guest_name, check_in, check_out, room_label, amount)
+    guests = int(
+        _money(
+            _pick(raw, "guests", "guestCount", "pax", "Pax", "adults", "Adults", default=1)
+        )
+        or 1
+    )
+    if guests < 1:
+        guests = 1
     return {
         "id": booking_id,
         "bookingId": booking_id,
-        "guestName": guest_name,
-        "initials": _initials(guest_name),
-        "mobile": str(raw.get("mobile") or raw.get("phone") or "").strip(),
-        "email": str(raw.get("email") or "").strip(),
-        "guests": int(raw.get("guests") or raw.get("guestCount") or 1),
+        "guestName": guest_name or "Guest",
+        "initials": _initials(guest_name or "Guest"),
+        "mobile": str(
+            _pick(
+                raw,
+                "mobile",
+                "phone",
+                "Phone",
+                "Mobile",
+                "guestmobile",
+                "guest_mobile",
+                "guest_phone",
+                default="",
+            )
+        ).strip(),
+        "email": str(
+            _pick(raw, "email", "Email", "guestemail", "guest_email", default="") or ""
+        ).strip(),
+        "guests": guests,
         "checkInDate": check_in,
-        "checkInTime": str(raw.get("checkInTime") or "14:00"),
+        "checkInTime": str(_pick(raw, "checkInTime", "check_in_time", default="14:00") or "14:00"),
         "checkOutDate": check_out,
-        "checkOutTime": str(raw.get("checkOutTime") or "11:00"),
+        "checkOutTime": str(
+            _pick(raw, "checkOutTime", "check_out_time", default="11:00") or "11:00"
+        ),
         "nights": nights,
-        "roomId": str(raw.get("roomId") or raw.get("room_id") or "").strip(),
+        "roomId": str(_pick(raw, "roomId", "room_id", default="") or "").strip(),
         "roomNumber": room_number,
         "roomTypeLabel": room_label,
         "roomAssigned": bool(room_number),
@@ -340,9 +715,52 @@ def _apply_local_state(
     return list(by_id.values())
 
 
-def list_provider_reservations(settings: Dict[str, Any]) -> List[Dict[str, Any]]:
-    # Live HTTP reserved until Asia Tech endpoints are wired; local-only rows for now.
-    return _apply_local_state(_stub_seed(), settings)
+def list_provider_reservations(
+    settings: Dict[str, Any],
+    *,
+    force_refresh: bool = False,
+) -> List[Dict[str, Any]]:
+    """List reservations; live mode fetches Asia Tech read-only when configured."""
+    global _last_sync_meta
+    mode = get_mode(settings)
+    meta: Dict[str, Any] = {
+        "mode": mode,
+        "configured": credentials_configured(settings),
+        "synced_at": "",
+        "cached": False,
+        "rooms_ok": False,
+        "bookings_path": None,
+        "error": "",
+        "source": "stub",
+        "base_url": get_base_url(settings),
+    }
+    seed: List[Dict[str, Any]] = []
+    if mode == "live":
+        raw_rows, http_meta = fetch_bookings(
+            base_url=get_base_url(settings),
+            username=get_username(settings),
+            password=get_api_key(settings),
+            hotel_id=get_hotel_id(settings),
+            force_refresh=force_refresh,
+        )
+        meta.update(
+            {
+                "synced_at": http_meta.get("synced_at") or "",
+                "cached": bool(http_meta.get("cached")),
+                "rooms_ok": bool(http_meta.get("rooms_ok")),
+                "bookings_path": http_meta.get("bookings_path"),
+                "error": http_meta.get("error") or "",
+                "source": "asia_tech",
+                "base_url": http_meta.get("base_url") or get_base_url(settings),
+            }
+        )
+        seed = [_normalize_reservation(r) for r in raw_rows if isinstance(r, dict)]
+    else:
+        seed = list(_stub_seed())
+        meta["source"] = "stub"
+
+    _last_sync_meta = meta
+    return _apply_local_state(seed, settings)
 
 
 def compute_kpis(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -360,6 +778,111 @@ def compute_kpis(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
+def _resolve_filter_dates(
+    *,
+    on_date: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> Tuple[Optional[date], Optional[date]]:
+    d_from = _parse_iso(date_from)
+    d_to = _parse_iso(date_to)
+    day = _parse_iso(on_date)
+    if day and not d_from and not d_to:
+        d_from = day
+        d_to = day
+    if d_from and not d_to:
+        d_to = d_from
+    if d_to and not d_from:
+        d_from = d_to
+    if d_from and d_to and d_from > d_to:
+        d_from, d_to = d_to, d_from
+    return d_from, d_to
+
+
+def count_checkouts_for_date(
+    rows: List[Dict[str, Any]],
+    *,
+    on_date: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> int:
+    """Count expected checkouts whose departure date falls in the selected range.
+
+    A stay with check-out on 12 Aug is counted for 12 Aug even though stay
+    overlap treats checkout day as exclusive (so the table/Total omit them).
+    Cancelled bookings are excluded. When no date is selected, count all
+    currently checked-out rows.
+    """
+    d_from, d_to = _resolve_filter_dates(
+        on_date=on_date, date_from=date_from, date_to=date_to
+    )
+    if not d_from or not d_to:
+        return sum(1 for r in rows if r.get("status") == "checked_out")
+    count = 0
+    for row in rows:
+        if row.get("status") == "cancelled":
+            continue
+        cout = _parse_iso(row.get("checkOutDate"))
+        if cout and d_from <= cout <= d_to:
+            count += 1
+    return count
+
+
+def count_upcoming_for_date(
+    rows: List[Dict[str, Any]],
+    *,
+    on_date: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> int:
+    """Count stays for the selected date that are still pending check-in.
+
+    This is the upcoming subset of Total Reservations (stay overlap). When no
+    date is selected, count all upcoming rows.
+    """
+    d_from, d_to = _resolve_filter_dates(
+        on_date=on_date, date_from=date_from, date_to=date_to
+    )
+    if not d_from or not d_to:
+        return sum(1 for r in rows if r.get("status") == "upcoming")
+    overlapping = filter_reservations(
+        rows,
+        date_from=d_from.isoformat(),
+        date_to=d_to.isoformat(),
+    )
+    return sum(1 for row in overlapping if row.get("status") == "upcoming")
+
+
+def count_checked_in_for_date(
+    rows: List[Dict[str, Any]],
+    *,
+    on_date: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> int:
+    """Count guests in-house during the selected date range.
+
+    Occupancy is check-in through the night before checkout. When no date is
+    selected, count all currently checked-in rows.
+    """
+    d_from, d_to = _resolve_filter_dates(
+        on_date=on_date, date_from=date_from, date_to=date_to
+    )
+    if not d_from or not d_to:
+        return sum(1 for r in rows if r.get("status") == "checked_in")
+    count = 0
+    for row in rows:
+        if row.get("status") == "cancelled":
+            continue
+        cin = _parse_iso(row.get("checkInDate"))
+        cout = _parse_iso(row.get("checkOutDate"))
+        if not cin or not cout:
+            continue
+        if cin <= d_to and cout > d_from:
+            count += 1
+    return count
+
+
 def filter_reservations(
     rows: List[Dict[str, Any]],
     *,
@@ -367,25 +890,44 @@ def filter_reservations(
     status: str = "all",
     source: str = "all",
     on_date: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    checkout_only: bool = False,
 ) -> List[Dict[str, Any]]:
     needle = str(q or "").strip().lower()
     status = str(status or "all").strip().lower()
     source = str(source or "all").strip().lower()
-    day = _parse_iso(on_date)
+    checkout_only = bool(checkout_only)
+    d_from, d_to = _resolve_filter_dates(
+        on_date=on_date, date_from=date_from, date_to=date_to
+    )
     out: List[Dict[str, Any]] = []
     for row in rows:
-        if status != "all" and row.get("status") != status:
-            continue
         if source != "all" and row.get("source") != source:
             continue
-        if day:
-            cin = _parse_iso(row.get("checkInDate"))
-            cout = _parse_iso(row.get("checkOutDate"))
-            if not cin or not cout:
+        if checkout_only:
+            # Match the Checked Out KPI: expected departures on the selected
+            # date(s), including in-house guests leaving that day.
+            if d_from and d_to:
+                if row.get("status") == "cancelled":
+                    continue
+                cout = _parse_iso(row.get("checkOutDate"))
+                if not cout or not (d_from <= cout <= d_to):
+                    continue
+            elif row.get("status") != "checked_out":
                 continue
-            # Inclusive stay window for the selected date (checkout day exclusive).
-            if not (cin <= day < cout or cin == day):
+        else:
+            if status != "all" and row.get("status") != status:
                 continue
+            if d_from and d_to:
+                cin = _parse_iso(row.get("checkInDate"))
+                cout = _parse_iso(row.get("checkOutDate"))
+                if not cin or not cout:
+                    continue
+                # Stay covers [from, to], including checkout day so CHECK OUT
+                # column dates for the selected day remain visible.
+                if not (cin <= d_to and cout >= d_from):
+                    continue
         if needle:
             blob = " ".join(
                 [
@@ -497,7 +1039,6 @@ def update_reservation(
     state = get_state(settings)
     overrides = dict(state.get("overrides") or {})
     overrides[normalized["id"]] = normalized
-    # Also update created list if it originated there.
     created = []
     for item in state.get("created") or []:
         if not isinstance(item, dict):

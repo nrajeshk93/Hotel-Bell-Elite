@@ -869,18 +869,15 @@ SalesDateRangePicker.init({
     return false;
   }
   function calculateActualSales(){
-    const actual = sumAcrossOutlets('total_sales');
-    if (actualSalesKpi) actualSalesKpi.textContent = formatKpiInr(actual);
-    return actual;
+    // Keep computing for entry totals; invoice KPI cards stay server-rendered.
+    return sumAcrossOutlets('total_sales');
   }
   function salesEntryValidationMessage(){
     return '';
   }
   function updateCashDenominations(){
     syncSelectedLocationCash();
-    const totalCash = sumAcrossOutlets('cash');
-    if (cashKpi) cashKpi.textContent = formatKpiInr(totalCash);
-    return totalCash;
+    return sumAcrossOutlets('cash');
   }
   function formatRepaymentInr(amount){
     const value = Math.max(0, Number(amount) || 0);
@@ -909,23 +906,9 @@ SalesDateRangePicker.init({
     });
   }
   function updateSalesEntries(){
+    // Refresh entry-side cash sync only. Top KPI row is invoice-backed (server).
     updateCashDenominations();
     calculateActualSales();
-    let digital = 0;
-    salesOutlets.forEach((loc) => {
-      entryInputs
-        .filter((input) => input.dataset.salesLocation === loc)
-        .forEach((input) => {
-          const key = String(input.dataset.salesEntry || '');
-          if (salesDigitalKeys.has(key)) digital += salesEntryAmount(input);
-        });
-    });
-    if (digitalKpi) digitalKpi.textContent = formatKpiInr(digital, 0);
-    if (roomTransferKpi) roomTransferKpi.textContent = formatKpiInr(sumAcrossOutlets('room_credit'));
-    if (differenceKpi) {
-      const diff = Math.round((sumAcrossOutlets('cash') - sumAcrossOutlets('actual_cash')) * 100) / 100;
-      differenceKpi.textContent = formatKpiInr(diff);
-    }
   }
   function attachZeroClearBehavior(input){
     if (input.readOnly) return;

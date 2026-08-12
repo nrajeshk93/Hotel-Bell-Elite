@@ -414,12 +414,18 @@ class CreditPaymentValidationTests(unittest.TestCase):
         self.assertEqual(cash_entry["settlement_status"], "cleared")
 
     def test_update_outstanding_purchase_from_ledger(self):
+        recent = date.today().isoformat()
+        self.conn.execute(
+            "UPDATE sales_update_expenses SET sales_date = ? WHERE id = ?",
+            (recent, self.expense_a1),
+        )
+        self.conn.commit()
         result, error = app_module._update_purchase_ledger_expense(
             self.conn,
             {"is_admin": True},
             {
                 "expense_id": self.expense_a1,
-                "date": "2026-07-14",
+                "date": recent,
                 "description": "Updated credit purchase",
                 "amount": 12000,
                 "payment_type": "credit",
@@ -430,34 +436,58 @@ class CreditPaymentValidationTests(unittest.TestCase):
         )
         self.assertIsNone(error)
         self.assertEqual(result["expense_id"], self.expense_a1)
-        self.assertEqual(result["sales_date"], "2026-07-14")
+        self.assertEqual(result["sales_date"], recent)
         row = self.conn.execute(
             "SELECT description, amount, sales_date, invoice_number FROM sales_update_expenses WHERE id = ?",
             (self.expense_a1,),
         ).fetchone()
         self.assertEqual(row["description"], "Updated credit purchase")
         self.assertEqual(float(row["amount"]), 12000.0)
-        self.assertEqual(row["sales_date"], "2026-07-14")
+        self.assertEqual(row["sales_date"], recent)
         self.assertEqual(row["invoice_number"], "INV-EDIT-1")
 
     def test_reject_edit_for_cleared_purchase(self):
+        recent = date.today().isoformat()
+        self.conn.execute(
+            "UPDATE sales_update_expenses SET sales_date = ? WHERE id = ?",
+            (recent, self.expense_a1),
+        )
+        cur = self.conn.execute(
+            """INSERT INTO credit_payments
+               (company, supplier_id, payment_date, payment_method, total_amount)
+               VALUES ('HBE', ?, ?, 'cash', 10000)""",
+            (self.supplier_a, recent),
+        )
+        payment_id = cur.lastrowid
+        self.conn.execute(
+            """INSERT INTO credit_payment_allocations (credit_payment_id, expense_id, amount)
+               VALUES (?, ?, 10000)""",
+            (payment_id, self.expense_a1),
+        )
+        self.conn.commit()
         result, error = app_module._update_purchase_ledger_expense(
             self.conn,
             {"is_admin": True},
             {
-                "expense_id": self.expense_cash,
-                "date": "2026-07-01",
+                "expense_id": self.expense_a1,
+                "date": recent,
                 "description": "Should fail",
                 "amount": 50,
-                "payment_type": "cash",
+                "payment_type": "credit",
                 "category": "grocery",
                 "supplier_id": self.supplier_a,
             },
         )
         self.assertIsNone(result)
-        self.assertIn("outstanding", (error or "").lower())
+        self.assertEqual(error, app_module.PURCHASE_LEDGER_CREDIT_SETTLED_EDIT_MESSAGE)
 
     def test_delete_outstanding_purchase_from_ledger(self):
+        recent = date.today().isoformat()
+        self.conn.execute(
+            "UPDATE sales_update_expenses SET sales_date = ? WHERE id = ?",
+            (recent, self.expense_a2),
+        )
+        self.conn.commit()
         result, error = app_module._delete_purchase_ledger_expense(
             self.conn,
             {"is_admin": True},

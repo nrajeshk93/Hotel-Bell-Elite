@@ -83,9 +83,6 @@
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-sales-analytics-sub">
-        {% if has_sales_analytics_access('dashboard') %}
-        <a class="de-nav-subitem{% if sales_view == 'dashboard' %} is-active{% endif %}" href="{{ url_for('dashboard') }}"{% if sales_view == 'dashboard' %} aria-current="page"{% endif %}>Dashboard</a>
-        {% endif %}
         {% if has_sales_analytics_access('hotel') %}
         <a class="de-nav-subitem{% if sales_view == 'hotel' %} is-active{% endif %}" href="{{ url_for('sales_update_hotel', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_hotel') }}"{% if sales_view == 'hotel' %} aria-current="page"{% endif %}>Sales Update - Hotel</a>
         {% endif %}

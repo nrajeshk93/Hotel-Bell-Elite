@@ -58,6 +58,8 @@
     panel.style.maxHeight = '';
     panel.style.overflowY = '';
     panel.style.visibility = '';
+    panel.style.display = '';
+    panel.style.flexDirection = '';
   }
 
   function init(cfg) {
@@ -66,7 +68,7 @@
     const backdrop = document.getElementById(cfg.backdropId);
     const panel = document.getElementById(cfg.panelId);
     const display = document.getElementById(cfg.displayId);
-    const form = document.getElementById(cfg.formId);
+    const form = cfg.formId ? document.getElementById(cfg.formId) : null;
     const ff = document.getElementById(cfg.fromInputId);
     const ft = document.getElementById(cfg.toInputId);
     const cancelBtn = document.getElementById(cfg.cancelId);
@@ -77,12 +79,12 @@
     const title1 = document.getElementById(cfg.title1Id);
     const grid0 = document.getElementById(cfg.grid0Id);
     const grid1 = document.getElementById(cfg.grid1Id);
+    const hasApplyHook = typeof cfg.onApply === 'function';
     if (
       !wrap ||
       !trigger ||
       !panel ||
       !display ||
-      !form ||
       !ff ||
       !ft ||
       !btnPrev ||
@@ -90,7 +92,8 @@
       !title0 ||
       !title1 ||
       !grid0 ||
-      !grid1
+      !grid1 ||
+      (!form && !hasApplyHook)
     ) {
       return;
     }
@@ -387,7 +390,21 @@
         }
         ff.value = lo;
         ft.value = hi;
-        if (cfg.syncReportScopeFromSelects) {
+        openSnapshot = { from: lo, to: hi };
+        selFrom = lo;
+        selTo = hi;
+        refreshTriggerText();
+        if (hasApplyHook) {
+          try {
+            cfg.onApply({ from: lo, to: hi });
+          } catch (err) {}
+          wrap.classList.remove('open');
+          trigger.setAttribute('aria-expanded', 'false');
+          panel.setAttribute('hidden', 'hidden');
+          clearPanelPosition(panel);
+          return;
+        }
+        if (cfg.syncReportScopeFromSelects && form) {
           var sc = document.getElementById('sr-filter-company');
           var sl = document.getElementById('sr-filter-location');
           var hc = form.querySelector('input[name="company"]');
@@ -576,6 +593,21 @@
         if (ecFromIso && ecToIso && ecFromIso !== ecToIso) ecLabel = fmt(ecFromIso) + ' – ' + fmt(ecToIso);
         else if (ecFromIso) ecLabel = fmt(ecFromIso);
         setText(ecDisplay, ecLabel || 'Date');
+      }
+
+      var hresDisplay = document.getElementById('hres-date-range-display');
+      var hresFrom = document.getElementById('hres-date-from');
+      var hresTo = document.getElementById('hres-date-to');
+      if (hresDisplay) {
+        var hresFromIso = ((hresFrom && hresFrom.value) || '').trim();
+        var hresToIso = ((hresTo && hresTo.value) || '').trim();
+        var hresLabel = '';
+        if (hresFromIso && hresToIso && hresFromIso !== hresToIso) {
+          hresLabel = fmt(hresFromIso) + ' – ' + fmt(hresToIso);
+        } else if (hresFromIso) {
+          hresLabel = fmt(hresFromIso);
+        }
+        setText(hresDisplay, hresLabel || 'Select date…');
       }
     }
   };
