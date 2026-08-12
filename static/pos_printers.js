@@ -689,7 +689,6 @@
     var payments = Array.isArray(invoice.payments) ? invoice.payments : [];
     if (payments.length) {
       out.push(rule);
-      out.push(kotCenter('RECEIPTS'));
       payments.forEach(function (pay) {
         out.push(kotPad(billPaymentLabel(pay), billAmt(pay.amount)));
       });
@@ -814,11 +813,6 @@
     var payments = Array.isArray(invoice.payments) ? invoice.payments : [];
     if (payments.length) {
       line(rule);
-      center(true);
-      textStyle({ bold: true });
-      line('RECEIPTS');
-      textStyle({});
-      center(false);
       payments.forEach(function (pay) {
         line(kotPad(billPaymentLabel(pay), billAmt(pay.amount)));
       });

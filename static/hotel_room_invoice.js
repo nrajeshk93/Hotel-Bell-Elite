@@ -12,13 +12,26 @@
     email: 'hotelbellelite@gmail.com',
     website: 'www.hotelbellelite.in',
     gst: '35AANFH8592H1ZS',
-    markUrl: '/static/hbe_mark.png'
+    markUrl: '/static/hbe_mark_form.png'
   };
 
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=5';
+  var CSS_HREF = '/static/hotel_room_invoice.css?v=6';
+
+  function absoluteAssetUrl(path) {
+    var raw = String(path || '').trim();
+    if (!raw) return '';
+    if (/^(https?:|data:|blob:)/i.test(raw)) return raw;
+    try {
+      if (global.location && global.location.origin) {
+        if (raw.charAt(0) === '/') return global.location.origin + raw;
+        return new URL(raw, global.location.href).href;
+      }
+    } catch (err) {}
+    return raw;
+  }
 
   var ONES = [
     '',
@@ -219,9 +232,36 @@
     };
   }
 
-  function overstayNightsFromStay(stay) {
+  function isLiveInHouseStay(room, stay) {
+    var status = String((room && room.status) || '').trim().toLowerCase();
+    // Only currently in-house rooms should accrue calendar overstay vs "today".
+    if (status === 'occupied' || status === 'checked_in' || status === 'due_out') {
+      return true;
+    }
+    // Checked-out / vacant / imported ledger snapshots must keep booked nights only.
+    if (
+      status === 'checked_out' ||
+      status === 'vacant' ||
+      status === 'available' ||
+      status === 'dirty' ||
+      status === 'maintenance'
+    ) {
+      return false;
+    }
+    if (stay && (stay.invoiceGenerated || stay.source === 'room_sales_import')) {
+      return false;
+    }
+    if (room && (room.importedFrom || room.status === 'checked_out')) {
+      return false;
+    }
+    return false;
+  }
+
+  function overstayNightsFromStay(stay, room) {
     var fromStay = Number(stay && stay.overstayNights);
     if (isFinite(fromStay) && fromStay > 0) return Math.floor(fromStay);
+    // Do not invent overstay lines for historical invoices by comparing checkout to today.
+    if (!isLiveInHouseStay(room, stay)) return 0;
     var outIso = toDateISO(
       stay &&
         (stay.checkOutDate || stay.check_out_date || stay.expectedCheckOut)
@@ -245,11 +285,11 @@
     return diff > 0 ? diff : 0;
   }
 
-  function billableNightsFromStay(stay) {
+  function billableNightsFromStay(stay, room) {
     var booked = Math.max(1, Number((stay && stay.nights) || 1));
     var fromStay = Number(stay && stay.billableNights);
     if (isFinite(fromStay) && fromStay >= booked) return Math.floor(fromStay);
-    return Math.max(1, booked + overstayNightsFromStay(stay));
+    return Math.max(1, booked + overstayNightsFromStay(stay, room));
   }
 
   function buildInvoiceLines(room) {
@@ -257,8 +297,8 @@
     var lines = [];
     var checkIn = toDateISO(stay.checkInDate || stay.check_in_date);
     var nights = Math.max(1, Number(stay.nights || 1));
-    var overstayNights = overstayNightsFromStay(stay);
-    var billableNights = billableNightsFromStay(stay);
+    var overstayNights = overstayNightsFromStay(stay, room);
+    var billableNights = billableNightsFromStay(stay, room);
     var roomRate = Math.max(0, Number(stay.roomRate || 0));
     var roomLabel =
       (room && (room.roomTypeLabel || room.roomType)) ||
@@ -551,7 +591,7 @@
       '<div class="hri-header">' +
       '<div class="hri-brand">' +
       '<img class="hri-mark" src="' +
-      HOTEL.markUrl +
+      escapeHtml(absoluteAssetUrl(HOTEL.markUrl)) +
       '" alt="Hotel Bell Elite">' +
       '<div class="hri-brand-copy">' +
       '<h1 class="hri-brand-name">' +
@@ -682,7 +722,7 @@
       escapeHtml(invoiceNo) +
       ' | Hotel Bell Elite</title>' +
       '<link rel="stylesheet" href="' +
-      CSS_HREF +
+      absoluteAssetUrl(CSS_HREF) +
       '">' +
       '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
       '</head><body>' +

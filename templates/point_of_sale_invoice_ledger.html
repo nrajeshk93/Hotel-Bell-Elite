@@ -24,7 +24,7 @@
 </head>
 <body class="de-open su-module pos-invoice-ledger-module">
 {% include 'partials/de_workspace_shell_open.html' %}
-<div class="main-wrapper" id="pos-invoice-ledger-page" data-pos-invoice-ledger data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-pos-can-cancel="{{ '1' if can_cancel_invoices else '0' }}">
+<div class="main-wrapper" id="pos-invoice-ledger-page" data-pos-invoice-ledger data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-can-cancel="{{ '1' if can_cancel_invoices else '0' }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -346,8 +346,9 @@
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=11"></script>
-<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=17"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=19"></script>
+<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=19"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

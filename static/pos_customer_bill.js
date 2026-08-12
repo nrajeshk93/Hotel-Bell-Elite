@@ -332,7 +332,6 @@
       .join('');
     return (
       '<div class="receipts">' +
-      '<div class="section-title">RECEIPTS</div>' +
       '<table class="receipts-table"><thead><tr><th>PAY MODE</th><th class="pay-amt">AMOUNT</th></tr></thead>' +
       '<tbody>' +
       rows +

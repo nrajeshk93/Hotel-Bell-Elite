@@ -395,22 +395,133 @@
     );
   }
 
+  var currentViewedInvoice = null;
+
+  function resolveLedgerOutlet(invoice) {
+    var page = document.getElementById('pos-invoice-ledger-page');
+    var fromPage = page && page.getAttribute('data-pos-outlet');
+    var fromInv = invoice && invoice.outlet;
+    var fromPath =
+      (window.location.pathname || '').indexOf('/bar-point-of-sale') === 0
+        ? 'bar'
+        : 'restaurant';
+    return String(fromInv || fromPage || fromPath || 'restaurant')
+      .trim()
+      .toLowerCase();
+  }
+
+  function getViewedInvoice() {
+    var modal = document.getElementById('pos-il-view-modal');
+    if (modal && modal.__posIlInvoice) return modal.__posIlInvoice;
+    return currentViewedInvoice;
+  }
+
+  function setViewedInvoice(invoice) {
+    currentViewedInvoice = invoice || null;
+    var modal = document.getElementById('pos-il-view-modal');
+    if (modal) modal.__posIlInvoice = invoice || null;
+  }
+
+  function printBillViaBrowserFrame() {
+    var frame = document.getElementById('pos-il-bill-frame');
+    if (!frame || !frame.contentWindow) return false;
+    try {
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+      return true;
+    } catch (err) {
+      return false;
+    }
+  }
+
   function closeViewModal() {
     var modal = document.getElementById('pos-il-view-modal');
     var printBtn = document.getElementById('pos-il-view-print');
     if (modal) modal.hidden = true;
     if (printBtn) printBtn.hidden = true;
+    setViewedInvoice(null);
   }
 
   function printViewedBill() {
-    var frame = document.getElementById('pos-il-bill-frame');
-    if (!frame || !frame.contentWindow) return;
-    try {
-      frame.contentWindow.focus();
-      frame.contentWindow.print();
-    } catch (err) {
-      toast('Could not print bill.');
+    var invoice = getViewedInvoice();
+    if (!invoice) {
+      toast('Load a bill before printing.');
+      return;
     }
+
+    var html = '';
+    try {
+      html = buildCustomerBillHtml(invoice);
+    } catch (err) {
+      toast('Could not build the bill for printing.');
+      return;
+    }
+
+    var outlet = resolveLedgerOutlet(invoice);
+    var prefs = global.hbePosPrinterPrefs;
+    var canAgent =
+      prefs &&
+      typeof prefs.printInvoiceHtml === 'function' &&
+      global.HotelPrintAgent &&
+      typeof global.HotelPrintAgent.print === 'function';
+
+    if (!canAgent) {
+      if (printBillViaBrowserFrame()) {
+        toast('Print Agent unavailable — opened browser print.');
+        return;
+      }
+      toast(
+        'Hotel Print Agent is required for bill printing. Install and open it on this PC.'
+      );
+      return;
+    }
+
+    var jobId =
+      'ledger-' +
+      String(invoice.id || invoice.order_no || Date.now()) +
+      '-' +
+      Date.now();
+
+    var printPromise = Promise.resolve();
+    if (typeof global.HotelPrintAgent.ensurePaired === 'function') {
+      printPromise = global.HotelPrintAgent.ensurePaired(true).catch(function () {
+        return null;
+      });
+    }
+
+    printPromise
+      .then(function () {
+        return prefs.printInvoiceHtml(html, {
+          outlet: outlet,
+          jobId: jobId,
+          invoice: invoice,
+          allowBrowserFallback: false
+        });
+      })
+      .then(function (result) {
+        if (result && result.via === 'agent') {
+          toast('Sent to printer.');
+          return;
+        }
+        var errMsg =
+          (result && result.error && result.error.message) ||
+          'Bill print failed. Open Hotel Print Agent and map the Invoice printer.';
+        if (printBillViaBrowserFrame()) {
+          toast(errMsg + ' Opened browser print as fallback.');
+          return;
+        }
+        toast(errMsg);
+      })
+      .catch(function (err) {
+        var msg =
+          (err && err.message) ||
+          'Bill print failed. Check Hotel Print Agent.';
+        if (printBillViaBrowserFrame()) {
+          toast(msg + ' Opened browser print as fallback.');
+          return;
+        }
+        toast(msg);
+      });
   }
 
   function openViewModal(invoiceId) {
@@ -421,6 +532,7 @@
     if (!modal || !body) return;
     modal.hidden = false;
     if (printBtn) printBtn.hidden = true;
+    setViewedInvoice(null);
     body.innerHTML = '<p class="pos-il-modal-loading">Loading…</p>';
     if (title) title.textContent = 'Customer Bill';
 
@@ -442,6 +554,7 @@
           return;
         }
         var inv = result.data.invoice;
+        setViewedInvoice(inv);
         if (title) title.textContent = inv.order_no || 'Customer Bill';
         body.innerHTML =
           '<iframe class="pos-il-bill-frame" id="pos-il-bill-frame" title="Customer bill"></iframe>';
@@ -515,6 +628,11 @@
     if (modal && modal.getAttribute('data-bound') !== '1') {
       modal.setAttribute('data-bound', '1');
       modal.addEventListener('click', function (ev) {
+        if (ev.target.closest('#pos-il-view-print')) {
+          ev.preventDefault();
+          printViewedBill();
+          return;
+        }
         if (ev.target.closest('[data-pos-il-close]')) closeViewModal();
       });
       document.addEventListener('keydown', function (ev) {
@@ -526,6 +644,7 @@
       printBtn.setAttribute('data-bound', '1');
       printBtn.addEventListener('click', function (ev) {
         ev.preventDefault();
+        ev.stopPropagation();
         printViewedBill();
       });
     }
@@ -759,6 +878,26 @@
   }
 
   global.initPosInvoiceLedgerPage = initPosInvoiceLedgerPage;
+  global.__posIlPrintViewedBill = printViewedBill;
+
+  /* Soft-nav safe: one document listener always calls the latest print handler. */
+  if (!global.__posIlPrintDelegated) {
+    global.__posIlPrintDelegated = true;
+    document.addEventListener(
+      'click',
+      function (ev) {
+        var btn = ev.target && ev.target.closest
+          ? ev.target.closest('#pos-il-view-print')
+          : null;
+        if (!btn) return;
+        ev.preventDefault();
+        if (typeof global.__posIlPrintViewedBill === 'function') {
+          global.__posIlPrintViewedBill();
+        }
+      },
+      true
+    );
+  }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initPosInvoiceLedgerPage);
