@@ -117,6 +117,8 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertIn("ORD-2607-0001", html)
         self.assertIn("Invoice Ledger", html)
+        self.assertIn("22 July 26", html)
+        self.assertIn("18:00", html)
         self.assertIn("Guest One", html)
         self.assertIn("Payment Mode", html)
         self.assertNotIn('data-sort="table"', html)
@@ -273,6 +275,47 @@ class PosInvoiceLedgerTests(unittest.TestCase):
             export.content_type or "",
         )
         self.assertIn(b"PK", export.data[:4])
+        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        from reports import report_export_filename
+
+        expected_name = report_export_filename(
+            "Invoice Ledger - Restaurant",
+            date_from=fy_start,
+            date_to=today,
+            date_filter_active=True,
+        )
+        self.assertIn(expected_name, export.headers.get("Content-Disposition") or "")
+
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        ws = wb.active
+        self.assertEqual(
+            ws["A1"].value, "Hotel Bell Elite — Invoice Ledger — Restaurant"
+        )
+        self.assertTrue(str(ws["A2"].value or "").startswith("From "))
+        headers = [ws.cell(3, col).value for col in range(1, 15)]
+        self.assertEqual(headers[0], "Order No")
+        self.assertEqual(headers[1], "Date")
+        self.assertEqual(headers[2], "Customer")
+        self.assertNotIn("Saved At", headers)
+        self.assertEqual(headers[-1], "Total")
+        self.assertEqual(ws["A1"].fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(ws.cell(3, 1).fill.fgColor.rgb, "FF315A78")
+        self.assertEqual(ws["A1"].font.color.rgb, "FFFFFFFF")
+        self.assertEqual(ws.cell(3, 1).font.color.rgb, "FFFFFFFF")
+        self.assertEqual(ws["A1"].font.size, 14)
+        self.assertEqual(ws.cell(3, 1).font.size, 11)
+        self.assertTrue(ws["A1"].font.bold)
+        self.assertEqual(ws.cell(4, 1).font.size, 11)
+        self.assertEqual(ws.cell(4, 1).font.color.rgb, "FF000000")
+        self.assertEqual(ws.cell(4, 1).alignment.horizontal, "left")
+        self.assertEqual(ws.cell(4, 14).alignment.horizontal, "right")
+        self.assertIsNotNone(ws.cell(4, 1).border.left.style)
+        self.assertEqual(ws.cell(4, 1).value, "ORD-2607-0001")
+        self.assertEqual(ws.cell(4, 2).value, "2026-07-22")
+        self.assertEqual(ws.cell(4, 3).value, "Guest One")
 
     def test_save_validation(self):
         empty = self.client.post(

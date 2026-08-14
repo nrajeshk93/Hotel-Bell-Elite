@@ -39,6 +39,9 @@ from db import (
     POS_INVOICE_SETTLEMENT_STATUS_LABELS,
     POS_OUTLET_BAR,
     POS_OUTLET_RESTAURANT,
+    POS_PAYMENT_METHODS,
+    POS_PAYMENT_METHOD_LABELS,
+    _normalize_pos_payment_method,
     clear_all_pos_tables,
     close_pos_invoice_and_free_table,
     delete_customer_record,
@@ -70,6 +73,9 @@ from db import (
     list_hotel_room_invoices,
     save_hotel_room_checkin,
     save_hotel_room_reservation,
+    hotel_room_available_for_stay,
+    _hotel_stay_date_window,
+    HOTEL_ROOM_STATUS_LABELS,
     generate_hotel_room_invoice,
     record_hotel_room_payment,
     record_hotel_room_invoice_payment,
@@ -100,6 +106,7 @@ from db import (
     list_pos_kot_tokens,
     apply_pos_kot_token_reductions,
     list_pos_menu_sales,
+    group_pos_menu_sales_by_category,
     list_customer_insights,
     list_pos_today_invoices,
     get_pos_menu_item_details,
@@ -199,7 +206,16 @@ from user_photos import (
     resolve_stored_user_photo,
 )
 from masters import build_masters_dashboard
-from reports import build_reports_dashboard
+from reports import (
+    PURCHASE_EXPENSE_LEDGER_NAME,
+    build_reports_dashboard,
+    format_report_date,
+    format_report_datetime,
+    format_report_time,
+    report_export_date_label,
+    report_export_filename,
+)
+from manager_insight import build_manager_insight
 from stores import register_stores
 from communication_hub import register_communication_hub
 from main_dashboard_data import (
@@ -265,7 +281,7 @@ SALES_ENTRY_TOTAL_KEYS = (
 
 MANUAL_SALES_ENTRY_KEYS = ("tips", "actual_cash")
 
-SALES_DIGITAL_TRANSACTION_KEYS = ("card", "upi")
+SALES_DIGITAL_TRANSACTION_KEYS = ("card", "upi", "online_order")
 
 PETTY_CASH_DENOMINATIONS = (500, 200, 100, 50, 20, 10, 5, 2, 1)
 
@@ -522,6 +538,8 @@ def _access_nav_view():
         return "add"
     if user_can_access_user_access_submodule(user, "roles"):
         return "roles"
+    if user_can_access_user_access_submodule(user, "logs"):
+        return "logs"
     return "users"
 
 
@@ -549,6 +567,25 @@ def _am_roles_page_render(template, **kwargs):
         kwargs.setdefault("back_href", url_for("access_management"))
         kwargs.setdefault("back_label", "Back to Users")
     return _am_page_render(template, **kwargs)
+
+
+def _am_logs_page_render(template, **kwargs):
+    kwargs.setdefault("de_nav_access_view", "logs")
+    kwargs.setdefault("back_href", url_for("access_management"))
+    kwargs.setdefault("back_label", "Back to Users")
+    return _am_page_render(template, **kwargs)
+
+
+def _write_login_log(conn, *, username, success, reason, user_id=None):
+    auth_security.record_login_attempt(
+        conn,
+        username=username,
+        success=success,
+        reason=reason,
+        user_id=user_id,
+        ip=auth_security.client_ip_from_request(request),
+        user_agent=(request.headers.get("User-Agent") or "")[:250],
+    )
 
 
 def _user_display_name(user):
@@ -3299,7 +3336,7 @@ def _invoice_sales_expense_total(conn, date_from, date_to, company=None, locatio
     return round_half_up(expense_row["total"] if expense_row else 0, 2)
 
 
-def _format_invoice_kpi_note(date_from, date_to):
+def _format_kpi_date_window(date_from, date_to):
     months = (
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -3309,13 +3346,22 @@ def _format_invoice_kpi_note(date_from, date_to):
         return f"{d.day} {months[d.month - 1]} {d.year}"
 
     if date_from == date_to:
-        window = _label(date_from)
-    else:
-        window = f"{_label(date_from)} – {_label(date_to)}"
-    return f"All values are from invoices ({window}), settled and unsettled."
+        return _label(date_from)
+    return f"{_label(date_from)} – {_label(date_to)}"
 
 
-def _invoice_sales_kpi_bundle(conn, company=None, location=None, date_from=None, date_to=None):
+def _format_invoice_kpi_note(date_from, date_to):
+    return (
+        f"All values are from invoices ({_format_kpi_date_window(date_from, date_to)}), "
+        "settled and unsettled."
+    )
+
+
+def _format_sales_entry_kpi_note(date_from, date_to):
+    return f"All values are from the sales entry ({_format_kpi_date_window(date_from, date_to)})."
+
+
+def _invoice_sales_kpi_bundle(conn, company=None, location=None, date_from=None, date_to=None, *, filter_by_location=False):
     """KPI cards from Hotel + Restaurant + Bar invoices for the selected date(s)."""
     if date_from is None and date_to is None:
         date_from = INVOICE_KPI_DATE_FROM
@@ -3337,8 +3383,9 @@ def _invoice_sales_kpi_bundle(conn, company=None, location=None, date_from=None,
         prev_from = prev_to - timedelta(days=span_days - 1)
         vs_label = "previous period"
 
-    current = aggregate_invoice_sales_kpis(conn, date_from, date_to)
-    previous = aggregate_invoice_sales_kpis(conn, prev_from, prev_to)
+    kpi_location = location if filter_by_location else None
+    current = aggregate_invoice_sales_kpis(conn, date_from, date_to, kpi_location)
+    previous = aggregate_invoice_sales_kpis(conn, prev_from, prev_to, kpi_location)
 
     expense_company = company or DEFAULT_COMPANY
     expense_location = location if location in HOTEL_LOCATIONS else OUTLET_HOTEL
@@ -3368,6 +3415,62 @@ def _invoice_sales_kpi_bundle(conn, company=None, location=None, date_from=None,
         "is_single_day": is_single_day,
         "note": _format_invoice_kpi_note(date_from, date_to),
     }
+
+
+def _kpi_current_from_sales_entries(entries):
+    """Build Sales Update KPI cards from the same values shown in Sales Entry."""
+    values = entries or {}
+    return {
+        "actual_sales": parse_money(values.get("total_sales")),
+        "digital_transactions": get_digital_transactions(values),
+        "cash": parse_money(values.get("cash")),
+        "room_credit": parse_money(values.get("room_credit")),
+        "tips": parse_money(values.get("tips")),
+        "expense": parse_money(values.get("expense")),
+        "difference": get_difference(values),
+    }
+
+
+def _kpi_bundle_from_sales_entries(current_entries, previous_entries, date_from, date_to):
+    current = _kpi_current_from_sales_entries(current_entries)
+    previous = _kpi_current_from_sales_entries(previous_entries)
+    trends = {
+        key: _pct_change_vs_previous(current[key], previous[key])
+        for key in (
+            "actual_sales",
+            "digital_transactions",
+            "cash",
+            "room_credit",
+            "tips",
+            "expense",
+            "difference",
+        )
+    }
+    return {
+        "current": current,
+        "trends": trends,
+        "vs_label": "yesterday" if date_from == date_to else "previous period",
+        "is_single_day": date_from == date_to,
+        "note": _format_sales_entry_kpi_note(date_from, date_to),
+    }
+
+
+def _outlet_sales_update_kpi_bundle(conn, company, location, date_from, date_to, user=None, current_entries=None):
+    """KPI cards that match the Sales Entry / ledger figures on this page."""
+    today_iso = date.today().isoformat()
+    user = user or {}
+    if current_entries is None:
+        current_row = _load_outlet_entry_bundle(
+            conn, user, company, location, date_from.isoformat(), today_iso
+        )
+        current_entries = current_row["sales_entry_values"]
+    prev_date = (date_from - timedelta(days=1)).isoformat()
+    prev_row = _load_outlet_entry_bundle(
+        conn, user, company, location, prev_date, today_iso
+    )
+    return _kpi_bundle_from_sales_entries(
+        current_entries, prev_row["sales_entry_values"], date_from, date_to
+    )
 
 
 SALES_ENTRY_EDIT_WINDOW_DAYS = 7
@@ -3544,6 +3647,21 @@ def inr_format(value, dec=0):
         return "₹0"
 
 
+@app.template_filter("report_date")
+def report_date_filter(value):
+    return format_report_date(value)
+
+
+@app.template_filter("report_time")
+def report_time_filter(value):
+    return format_report_time(value)
+
+
+@app.template_filter("report_dt")
+def report_dt_filter(value):
+    return format_report_datetime(value)
+
+
 @app.route("/favicon.ico")
 def favicon():
     return send_from_directory(
@@ -3658,6 +3776,12 @@ def login():
     auth_security.note_ip_login_attempt(ip)
 
     if auth_security.ip_is_throttled(ip):
+        conn = get_db()
+        try:
+            _write_login_log(conn, username=username, success=False, reason="throttled")
+            conn.commit()
+        finally:
+            conn.close()
         return _login_page(
             error="Too many sign-in attempts from this network. Please wait and try again.",
             username=username,
@@ -3671,6 +3795,14 @@ def login():
         ).fetchone()
 
         if row and auth_security.is_account_locked(row):
+            _write_login_log(
+                conn,
+                username=username,
+                success=False,
+                reason="locked",
+                user_id=int(row["id"]),
+            )
+            conn.commit()
             return _login_page(
                 error=_locked_account_message(),
                 username=username,
@@ -3681,6 +3813,13 @@ def login():
         if needs_captcha:
             if not auth_security.verify_captcha_answer(session, captcha_answer):
                 state = auth_security.record_failed_login(conn, int(row["id"]))
+                _write_login_log(
+                    conn,
+                    username=username,
+                    success=False,
+                    reason="captcha",
+                    user_id=int(row["id"]),
+                )
                 conn.commit()
                 if state["newly_locked"]:
                     send_result = _send_unlock_email_for_user(conn, row)
@@ -3700,6 +3839,13 @@ def login():
         if not row or not password_ok:
             if row:
                 state = auth_security.record_failed_login(conn, int(row["id"]))
+                _write_login_log(
+                    conn,
+                    username=username,
+                    success=False,
+                    reason="invalid_password",
+                    user_id=int(row["id"]),
+                )
                 conn.commit()
                 if state["newly_locked"]:
                     send_result = _send_unlock_email_for_user(conn, row)
@@ -3715,12 +3861,21 @@ def login():
                     show_captcha=state["captcha_required"],
                 )
             auth_security.record_unknown_user_failure()
+            _write_login_log(conn, username=username, success=False, reason="unknown_user")
+            conn.commit()
             return _login_page(
                 error="Invalid username or password.",
                 username=username,
             )
 
         auth_security.clear_login_failures(conn, int(row["id"]))
+        _write_login_log(
+            conn,
+            username=username,
+            success=True,
+            reason="success",
+            user_id=int(row["id"]),
+        )
         auth_security.upgrade_password_hash_if_needed(
             conn,
             int(row["id"]),
@@ -4568,14 +4723,12 @@ _SALES_REPORT_KINDS = {
         "page_endpoint": "sales_report_hotel",
         "export_endpoint": "sales_report_hotel_export",
         "export_sheet": "Hotel Sales",
-        "export_prefix": "hotel_sales",
     },
     "restaurant": {
-        "title": "Restaurant Sales",
+        "title": "Sales - Restaurant & Bar",
         "page_endpoint": "sales_report_restaurant",
         "export_endpoint": "sales_report_restaurant_export",
-        "export_sheet": "Restaurant Sales",
-        "export_prefix": "restaurant_sales",
+        "export_sheet": "Sales - Restaurant & Bar",
         "outlet": POS_OUTLET_RESTAURANT,
     },
     "bar": {
@@ -4583,7 +4736,6 @@ _SALES_REPORT_KINDS = {
         "page_endpoint": "sales_report_bar",
         "export_endpoint": "sales_report_bar_export",
         "export_sheet": "Bar Sales",
-        "export_prefix": "bar_sales",
         "outlet": POS_OUTLET_BAR,
     },
 }
@@ -4598,12 +4750,16 @@ def _sales_report_filters(args):
     selected_status = (args.get("status") or "all").strip().lower()
     if selected_status not in ("all", "unsettled", "settled"):
         selected_status = "all"
+    selected_outlet = (args.get("outlet") or "all").strip().lower()
+    if selected_outlet not in ("all", POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
+        selected_outlet = "all"
     return {
         "today": today,
         "date_from": date_from,
         "date_to": date_to,
         "date_filter_active": date_filter_active,
         "selected_status": selected_status,
+        "selected_outlet": selected_outlet,
     }
 
 
@@ -4615,16 +4771,97 @@ def _sales_report_status_labels():
     }
 
 
+def _sales_report_outlet_labels():
+    return {
+        "all": "All",
+        POS_OUTLET_RESTAURANT: "Restaurant",
+        POS_OUTLET_BAR: "Bar",
+    }
+
+
+_SALES_REPORT_EXCEL_MONTHS = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+
+
+def _sales_report_excel_title_date(filters):
+    """Parenthetical date for the Excel title: (1 April 2026)."""
+    if not (
+        filters.get("date_filter_active")
+        and filters.get("date_from")
+        and filters.get("date_to")
+    ):
+        return ""
+    start = filters["date_from"]
+    end = filters["date_to"]
+
+    def _fmt(value):
+        return (
+            f"{value.day} {_SALES_REPORT_EXCEL_MONTHS[value.month - 1]} {value.year}"
+        )
+
+    if start == end:
+        return f" ({_fmt(start)})"
+    return f" ({_fmt(start)} – {_fmt(end)})"
+
+
+def _sales_report_outlet_groups(rows):
+    """Split POS invoices into Restaurant then Bar groups for the All view."""
+    restaurant = []
+    bar = []
+    for inv in rows or []:
+        outlet = str(inv.get("outlet") or "").strip().lower()
+        if outlet == POS_OUTLET_BAR:
+            bar.append(inv)
+        else:
+            restaurant.append(inv)
+    groups = []
+    if restaurant:
+        groups.append(
+            {"key": POS_OUTLET_RESTAURANT, "label": "Restaurant", "invoices": restaurant}
+        )
+    if bar:
+        groups.append({"key": POS_OUTLET_BAR, "label": "Bar", "invoices": bar})
+    return groups
+
+
+def _sales_report_amount_ex_tip(inv):
+    """Sales amount for reports: grand total with tip removed (tips live on payroll)."""
+    total = round_half_up((inv or {}).get("grand_total"), 2)
+    tip_raw = (inv or {}).get("tip")
+    if tip_raw is None:
+        tip_raw = (inv or {}).get("tip_amount")
+    tip = round_half_up(tip_raw, 2)
+    return round_half_up(max(0.0, float(total or 0) - float(tip or 0)), 2)
+
+
 def _sales_report_pos_kpis(invoices):
     """Invoice-count / total / settled / unsettled KPIs for POS sales reports."""
     total_sales = 0.0
+    restaurant_amount = 0.0
+    bar_amount = 0.0
     settled_count = 0
     settled_amount = 0.0
     unsettled_count = 0
     unsettled_amount = 0.0
     for inv in invoices or []:
-        amount = round_half_up(inv.get("grand_total"), 2)
+        amount = _sales_report_amount_ex_tip(inv)
         total_sales += amount
+        if normalize_pos_outlet(inv.get("outlet")) == POS_OUTLET_BAR:
+            bar_amount += amount
+        else:
+            restaurant_amount += amount
         is_settled = bool(inv.get("payment_modes")) or bool(
             str(inv.get("settled_at") or "").strip()
         )
@@ -4637,11 +4874,70 @@ def _sales_report_pos_kpis(invoices):
     return {
         "total": len(invoices or []),
         "amount_sum": round_half_up(total_sales, 2),
+        "restaurant_amount": round_half_up(restaurant_amount, 2),
+        "bar_amount": round_half_up(bar_amount, 2),
         "settled": settled_count,
         "settled_amount": round_half_up(settled_amount, 2),
         "open": unsettled_count,
         "outstanding": round_half_up(unsettled_amount, 2),
     }
+
+
+def _sales_report_payment_mode_summary(conn, invoices):
+    """Payment-mode amounts for the Summary Excel sheet."""
+    ensure_pos_schema(conn)
+    known_order = [label for _key, label in POS_PAYMENT_METHODS]
+    if "Credit" not in known_order:
+        known_order.append("Credit")
+    totals = {label: 0.0 for label in known_order}
+    extra_order = []
+    paid_ids = set()
+    ids = []
+    for inv in invoices or []:
+        try:
+            ids.append(int(inv["id"]))
+        except (TypeError, ValueError, KeyError):
+            continue
+    if ids:
+        placeholders = ",".join("?" for _ in ids)
+        pay_rows = conn.execute(
+            f"""
+            SELECT invoice_id, payment_method, amount
+            FROM pos_invoice_payments
+            WHERE invoice_id IN ({placeholders})
+            """,
+            ids,
+        ).fetchall()
+        for row in pay_rows:
+            paid_ids.add(int(row["invoice_id"]))
+            key = _normalize_pos_payment_method(row["payment_method"])
+            label = POS_PAYMENT_METHOD_LABELS.get(key or "")
+            if not label:
+                raw = str(row["payment_method"] or "").strip()
+                label = raw.replace("_", " ").title() if raw else "Other"
+            if label not in totals:
+                extra_order.append(label)
+                totals[label] = 0.0
+            totals[label] = round_half_up(
+                totals[label] + float(row["amount"] or 0), 2
+            )
+    unsettled = 0.0
+    for inv in invoices or []:
+        try:
+            inv_id = int(inv.get("id"))
+        except (TypeError, ValueError):
+            inv_id = None
+        if inv_id is None or inv_id not in paid_ids:
+            unsettled += _sales_report_amount_ex_tip(inv)
+    rows = []
+    for label in known_order + extra_order:
+        amount = totals.get(label) or 0.0
+        if abs(amount) > 0.004:
+            rows.append({"label": label, "amount": round_half_up(amount, 2)})
+    if abs(unsettled) > 0.004:
+        rows.append({"label": "Un Settled", "amount": round_half_up(unsettled, 2)})
+    total = round_half_up(sum(item["amount"] for item in rows), 2)
+    return rows, total
 
 
 def _sales_report_load_rows(kind, filters):
@@ -4683,13 +4979,20 @@ def _sales_report_load_rows(kind, filters):
         # When no date filter, match POS ledger default window.
         query_from = date_from or "2000-01-01"
         query_to = date_to or filters["today"].isoformat()
+        if kind == "restaurant":
+            selected_outlet = filters.get("selected_outlet") or "all"
+            outlet = None if selected_outlet == "all" else selected_outlet
+        else:
+            outlet = meta["outlet"]
         rows = list_pos_invoices(
             conn,
             date_from=query_from,
             date_to=query_to,
             settlement=settlement,
-            outlet=meta["outlet"],
+            outlet=outlet,
         )
+        for inv in rows:
+            inv["sales_amount"] = _sales_report_amount_ex_tip(inv)
         kpis = _sales_report_pos_kpis(rows)
         return rows, kpis
     finally:
@@ -4701,10 +5004,14 @@ def _sales_report_page(kind):
     filters = _sales_report_filters(request.args)
     rows, kpis = _sales_report_load_rows(kind, filters)
     status_labels = _sales_report_status_labels()
+    outlet_labels = _sales_report_outlet_labels()
+    show_outlet_filter = kind == "restaurant"
 
     clear_kwargs = {}
     if filters["selected_status"] != "all":
         clear_kwargs["status"] = filters["selected_status"]
+    if show_outlet_filter and filters["selected_outlet"] != "all":
+        clear_kwargs["outlet"] = filters["selected_outlet"]
     from_hub = (request.args.get("from_hub") or "").strip().lower()
     if from_hub == "reports":
         clear_kwargs["from_hub"] = "reports"
@@ -4740,30 +5047,51 @@ def _sales_report_page(kind):
         selected_status_label=status_labels.get(
             filters["selected_status"], "All statuses"
         ),
+        show_outlet_filter=show_outlet_filter,
+        selected_outlet=filters["selected_outlet"],
+        selected_outlet_label=outlet_labels.get(filters["selected_outlet"], "All"),
+        invoice_groups=(
+            _sales_report_outlet_groups(rows)
+            if show_outlet_filter and filters["selected_outlet"] == "all"
+            else None
+        ),
         filter_form_action=url_for(meta["page_endpoint"], **filter_kwargs),
         sales_report_clear_url=url_for(meta["page_endpoint"], **clear_kwargs),
         sales_report_export_url=url_for(meta["export_endpoint"], **export_kwargs),
+        sales_report_export_filename=report_export_filename(
+            meta["title"], filters=filters
+        ),
         preserve_from_hub=from_hub == "reports",
     )
 
 
 def _sales_report_export(kind):
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
     from io import BytesIO
 
     meta = _SALES_REPORT_KINDS[kind]
     filters = _sales_report_filters(request.args)
-    rows, _kpis = _sales_report_load_rows(kind, filters)
+    rows, kpis = _sales_report_load_rows(kind, filters)
+
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
 
     wb = Workbook()
     ws = wb.active
     ws.title = meta["export_sheet"]
     header_font = Font(bold=True)
-    ws["A1"] = f"Hotel Bell Elite — {meta['title']}"
-    ws["A1"].font = Font(bold=True, size=14)
 
     if kind == "hotel":
+        ws["A1"] = f"Hotel Bell Elite — {meta['title']}"
+        ws["A1"].font = Font(bold=True, size=14)
         headers = (
             "Invoice No",
             "Invoice Date",
@@ -4797,11 +5125,20 @@ def _sales_report_export(kind):
                 column=11,
                 value="Settled" if status_key == "settled" else "Un Settled",
             )
+        max_col = ws.max_column or 1
+        last = ws.max_row or 1
+        for col in range(1, max_col + 1):
+            width = 12
+            for row in range(1, last + 1):
+                value = ws.cell(row=row, column=col).value
+                if value is None:
+                    continue
+                width = max(width, min(len(str(value)) + 2, 40))
+            ws.column_dimensions[get_column_letter(col)].width = width
     else:
         headers = (
             "Order No",
             "Date",
-            "Saved At",
             "Customer",
             "Mobile",
             "Order Type",
@@ -4813,68 +5150,208 @@ def _sales_report_export(kind):
             "Discount",
             "GST",
             "Service",
-            "Tip",
             "Total",
         )
-        for col, title in enumerate(headers, start=1):
-            cell = ws.cell(row=3, column=col, value=title)
-            cell.font = header_font
-        for idx, inv in enumerate(rows, start=4):
+        col_count = len(headers)
+        amount_cols = {10, 11, 12, 13, 14}
+        title_date = _sales_report_excel_title_date(filters)
+        conn = get_db()
+        try:
+            payment_rows, payment_total = _sales_report_payment_mode_summary(conn, rows)
+        finally:
+            conn.close()
+
+        summary = wb.active
+        summary.title = "Summary"
+        details = wb.create_sheet("Line Items")
+
+        def _write_pos_invoice_row(target, row_idx, inv):
             is_settled = bool(inv.get("payment_modes")) or bool(
                 str(inv.get("settled_at") or "").strip()
             )
-            ws.cell(row=idx, column=1, value=inv.get("order_no") or "")
-            ws.cell(row=idx, column=2, value=inv.get("order_date") or "")
-            ws.cell(row=idx, column=3, value=inv.get("saved_at") or "")
-            ws.cell(row=idx, column=4, value=inv.get("customer_name") or "")
-            ws.cell(row=idx, column=5, value=inv.get("customer_mobile") or "")
-            ws.cell(
-                row=idx,
-                column=6,
-                value=inv.get("order_type_label") or inv.get("order_type") or "",
+            values = (
+                inv.get("order_no") or "",
+                inv.get("order_date") or "",
+                inv.get("customer_name") or "",
+                inv.get("customer_mobile") or "",
+                inv.get("order_type_label") or inv.get("order_type") or "",
+                inv.get("payment_mode_label") or "Un Settled",
+                "Settled" if is_settled else "Un Settled",
+                inv.get("captain") or "",
+                int(inv.get("item_count") or 0),
+                _whole_or_float(round_half_up(inv.get("subtotal"), 2)),
+                _whole_or_float(round_half_up(inv.get("discount"), 2)),
+                _whole_or_float(round_half_up(inv.get("gst"), 2)),
+                _whole_or_float(round_half_up(inv.get("service"), 2)),
+                _whole_or_float(_sales_report_amount_ex_tip(inv)),
             )
-            ws.cell(
-                row=idx,
-                column=7,
-                value=inv.get("payment_mode_label") or "Un Settled",
-            )
-            ws.cell(
-                row=idx,
-                column=8,
-                value="Settled" if is_settled else "Un Settled",
-            )
-            ws.cell(row=idx, column=9, value=inv.get("captain") or "")
-            ws.cell(row=idx, column=10, value=int(inv.get("item_count") or 0))
-            ws.cell(row=idx, column=11, value=round_half_up(inv.get("subtotal"), 2))
-            ws.cell(row=idx, column=12, value=round_half_up(inv.get("discount"), 2))
-            ws.cell(row=idx, column=13, value=round_half_up(inv.get("gst"), 2))
-            ws.cell(row=idx, column=14, value=round_half_up(inv.get("service"), 2))
-            ws.cell(row=idx, column=15, value=round_half_up(inv.get("tip"), 2))
-            ws.cell(row=idx, column=16, value=round_half_up(inv.get("grand_total"), 2))
+            for col, value in enumerate(values, start=1):
+                target.cell(row=row_idx, column=col, value=value)
 
-    for column_cells in ws.columns:
-        width = 12
-        for cell in column_cells:
-            value = "" if cell.value is None else str(cell.value)
-            width = max(width, min(len(value) + 2, 40))
-        ws.column_dimensions[column_cells[0].column_letter].width = width
-
-    if filters["date_filter_active"]:
-        stamp = (
-            f"{filters['date_from'].isoformat()}_to_{filters['date_to'].isoformat()}"
+        summary["A1"] = f"Hotel Bell Elite — {meta['title']}{title_date}"
+        summary["A2"] = "Restaurant"
+        summary["B2"] = _whole_or_float(
+            round_half_up((kpis or {}).get("restaurant_amount"), 2)
         )
-        fname = f"{meta['export_prefix']}_{stamp}.xlsx"
-    else:
-        fname = f"{meta['export_prefix']}_all.xlsx"
+        summary["A3"] = "Bar"
+        summary["B3"] = _whole_or_float(
+            round_half_up((kpis or {}).get("bar_amount"), 2)
+        )
+        summary["A4"] = "Total Sales"
+        summary["B4"] = _whole_or_float(
+            round_half_up((kpis or {}).get("amount_sum"), 2)
+        )
+        summary.merge_cells("A1:B1")
+
+        pay_header_row = 6
+        summary.cell(row=pay_header_row, column=1, value="Payment Mode")
+        summary.cell(row=pay_header_row, column=2, value="Amount")
+        pay_data_rows = []
+        row_idx = pay_header_row + 1
+        for item in payment_rows:
+            summary.cell(row=row_idx, column=1, value=item["label"])
+            summary.cell(
+                row=row_idx,
+                column=2,
+                value=_whole_or_float(item["amount"]),
+            )
+            pay_data_rows.append(row_idx)
+            row_idx += 1
+        pay_total_row = row_idx
+        summary.cell(row=pay_total_row, column=1, value="Total")
+        summary.cell(
+            row=pay_total_row,
+            column=2,
+            value=_whole_or_float(payment_total),
+        )
+
+        selected_outlet = filters.get("selected_outlet") or "all"
+        if kind == "bar" or selected_outlet == POS_OUTLET_BAR:
+            sections = [{"label": "Bar", "invoices": rows}]
+        elif kind == "restaurant" and selected_outlet == "all":
+            sections = _sales_report_outlet_groups(rows)
+        else:
+            sections = [{"label": "Restaurant", "invoices": rows}]
+
+        banner_rows = []
+        header_rows = []
+        invoice_rows = []
+        row_idx = 1
+        for i, section in enumerate(sections):
+            if i > 0:
+                row_idx += 1
+            details.cell(
+                row=row_idx,
+                column=1,
+                value=f"Hotel Bell Elite — Sales - {section['label']}",
+            )
+            details.merge_cells(
+                start_row=row_idx,
+                start_column=1,
+                end_row=row_idx,
+                end_column=col_count,
+            )
+            banner_rows.append(row_idx)
+            row_idx += 1
+            for col, title in enumerate(headers, start=1):
+                details.cell(row=row_idx, column=col, value=title)
+            header_rows.append(row_idx)
+            row_idx += 1
+            for inv in section.get("invoices") or []:
+                _write_pos_invoice_row(details, row_idx, inv)
+                invoice_rows.append(row_idx)
+                row_idx += 1
+
+        last_details = max(1, row_idx - 1)
+        header_fill = PatternFill(
+            fill_type="solid",
+            start_color="FF315A78",
+            end_color="FF315A78",
+        )
+        banner_font = Font(bold=True, size=16, color="FFFFFFFF")
+        chrome_header_font = Font(bold=True, size=11, color="FFFFFFFF")
+        summary_title_font = Font(
+            name="Calibri", bold=True, size=16, color="FFFFFFFF"
+        )
+        summary_font = Font(name="Calibri", size=12, color="FF000000")
+        summary_bold_font = Font(
+            name="Calibri", bold=True, size=12, color="FF000000"
+        )
+        body_font = Font(size=11, color="FF000000")
+        thin = Side(style="thin", color="FF000000")
+        grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+        center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+        summary_chrome_rows = {1, 2, 3, 4, pay_header_row, pay_total_row, *pay_data_rows}
+        for r in sorted(summary_chrome_rows):
+            for col in range(1, 3):
+                cell = summary.cell(row=r, column=col)
+                cell.border = grid
+                cell.alignment = center
+                if r == 1 or r == pay_header_row:
+                    cell.fill = header_fill
+                    cell.font = summary_title_font
+                elif r in (4, pay_total_row):
+                    cell.font = summary_bold_font
+                else:
+                    cell.font = summary_font
+
+        for r in range(1, last_details + 1):
+            for col in range(1, col_count + 1):
+                cell = details.cell(row=r, column=col)
+                cell.border = grid
+                if r in banner_rows:
+                    cell.fill = header_fill
+                    cell.font = banner_font
+                    cell.alignment = center
+                elif r in header_rows:
+                    cell.fill = header_fill
+                    cell.font = chrome_header_font
+                    cell.alignment = center
+                elif r in invoice_rows:
+                    cell.font = body_font
+                    if col in amount_cols:
+                        cell.alignment = right
+                    else:
+                        cell.alignment = left
+                elif col in amount_cols:
+                    cell.font = body_font
+                    cell.alignment = right
+
+        summary.row_dimensions[1].height = 23.2
+        for r in (2, 3, 4):
+            summary.row_dimensions[r].height = 17.6
+        summary.row_dimensions[pay_header_row].height = 23.2
+        for r in pay_data_rows:
+            summary.row_dimensions[r].height = 17.6
+        summary.row_dimensions[pay_total_row].height = 17.6
+        summary.column_dimensions["A"].width = 34
+        summary.column_dimensions["B"].width = 39.5
+        for r in banner_rows:
+            details.row_dimensions[r].height = 20
+        for r in header_rows:
+            details.row_dimensions[r].height = 20
+        for r in invoice_rows:
+            details.row_dimensions[r].height = 17
+        pos_widths = (40, 12, 40, 12, 13, 15, 12, 13, 13, 13, 13, 13, 13, 13)
+        for col, width in enumerate(pos_widths, start=1):
+            details.column_dimensions[get_column_letter(col)].width = width
+
+    fname = report_export_filename(meta["title"], filters=filters)
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return send_file(
+    response = send_file(
         buf,
         as_attachment=True,
         download_name=fname,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.route("/reports/sales/hotel", endpoint="sales_report_hotel")
@@ -4889,15 +5366,228 @@ def sales_report_hotel_export():
     return _sales_report_export("hotel")
 
 
+def _manager_insight_filters(args, *, today=None):
+    """Duration from Period pills or custom dates. Default is MTD."""
+    ref = today or date.today()
+    period = (args.get("period") or "").strip().lower()
+    if period not in DASHBOARD_PERIOD_KEYS and period != "custom":
+        period = ""
+    raw_from = (args.get("date_from") or "").strip()
+    raw_to = (args.get("date_to") or "").strip()
+    parsed_from = _parse_sales_date(raw_from) if raw_from else None
+    parsed_to = _parse_sales_date(raw_to) if raw_to else None
+    if parsed_from and parsed_to and parsed_from > parsed_to:
+        parsed_from, parsed_to = parsed_to, parsed_from
+
+    if period in DASHBOARD_PERIOD_KEYS:
+        expected_from, expected_to = _dashboard_period_range(period, ref)
+        if parsed_from and parsed_to:
+            if (parsed_from, parsed_to) == (expected_from, expected_to):
+                date_from, date_to = expected_from, expected_to
+            else:
+                date_from, date_to = parsed_from, parsed_to
+                period = "custom"
+        else:
+            date_from, date_to = expected_from, expected_to
+    elif parsed_from and parsed_to:
+        date_from, date_to = parsed_from, parsed_to
+        period = "custom"
+    else:
+        period = "mtd"
+        date_from, date_to = _dashboard_period_range(period, ref)
+
+    return {
+        "date_from": date_from,
+        "date_to": date_to,
+        "date_filter_active": True,
+        "today": ref,
+        "selected_period": period,
+        "periods": DASHBOARD_PERIODS,
+    }
+
+
+def _manager_insight_load(filters):
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        return build_manager_insight(
+            conn,
+            date_from=filters["date_from"],
+            date_to=filters["date_to"],
+            today=filters["today"],
+        )
+    finally:
+        conn.close()
+
+
+def _format_manager_insight_cell(kind, value):
+    if kind == "count":
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+    try:
+        num = round(float(value or 0), 2)
+    except (TypeError, ValueError):
+        num = 0.0
+    return int(num) if num == int(num) else num
+
+
+@app.route(
+    "/reports/sales/manager-insight",
+    endpoint="sales_report_manager_insight",
+)
+def sales_report_manager_insight():
+    """Manager Insight — hotel occupancy and room revenue vs MTD and FY."""
+    filters = _manager_insight_filters(request.args)
+    payload = _manager_insight_load(filters)
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    filter_kwargs = {}
+    if from_hub == "reports":
+        filter_kwargs["from_hub"] = "reports"
+    export_kwargs = dict(filter_kwargs)
+    export_kwargs["date_from"] = filters["date_from"].isoformat()
+    export_kwargs["date_to"] = filters["date_to"].isoformat()
+    if filters.get("selected_period") and filters["selected_period"] != "custom":
+        export_kwargs["period"] = filters["selected_period"]
+    windows = payload["windows"]
+
+    def _window_label(pair):
+        start, end = pair
+        if not start or not end:
+            return ""
+        return f"{format_report_date(start)} – {format_report_date(end)}"
+
+    return render_template(
+        "manager_insight_report.html",
+        de_nav_section="report",
+        de_nav_report_view="sales",
+        page_title="Manager Insight",
+        rows=payload["rows"],
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat(),
+        date_to=filters["date_to"].isoformat(),
+        active_date_filter=True,
+        duration_label=_window_label(windows["duration"]),
+        mtd_label=_window_label(windows["mtd"]),
+        ytd_label=_window_label(windows["ytd"]),
+        mtd_month_label=payload.get("mtd_month_label") or "MTD",
+        selected_period=filters.get("selected_period") or "mtd",
+        mi_periods=filters.get("periods") or DASHBOARD_PERIODS,
+        filter_form_action=url_for("sales_report_manager_insight", **filter_kwargs),
+        sales_report_clear_url=url_for("sales_report_manager_insight", **filter_kwargs),
+        sales_report_export_url=url_for(
+            "sales_report_manager_insight_export", **export_kwargs
+        ),
+        sales_report_export_filename=report_export_filename(
+            "Manager Insight", filters=filters
+        ),
+        preserve_from_hub=from_hub == "reports",
+        back_href=url_for("reports") if from_hub == "reports" else None,
+        back_label="Back to Reports" if from_hub == "reports" else None,
+    )
+
+
+@app.route(
+    "/reports/sales/manager-insight/export",
+    endpoint="sales_report_manager_insight_export",
+)
+def sales_report_manager_insight_export():
+    """Excel export for Manager Insight."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+
+    filters = _manager_insight_filters(request.args)
+    payload = _manager_insight_load(filters)
+    title_date = _sales_report_excel_title_date(filters)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Manager Insight"
+
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    title_font = Font(bold=True, size=14, color="FFFFFFFF")
+    header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center")
+
+    headers = ("HEAD", "Duration", payload.get("mtd_month_label") or "MTD", "YTD")
+    ws["A1"] = f"Hotel Bell Elite — Manager Insight{title_date}"
+    for col, title in enumerate(headers, start=1):
+        ws.cell(row=2, column=col, value=title)
+
+    for idx, row in enumerate(payload["rows"], start=3):
+        kind = row.get("kind") or "count"
+        values = (
+            row.get("label") or "",
+            _format_manager_insight_cell(kind, row.get("duration")),
+            _format_manager_insight_cell(kind, row.get("mtd")),
+            _format_manager_insight_cell(kind, row.get("ytd")),
+        )
+        for col, value in enumerate(values, start=1):
+            ws.cell(row=idx, column=col, value=value)
+
+    ws.merge_cells("A1:D1")
+    last_row = max(2, ws.max_row)
+    for col in range(1, 5):
+        title_cell = ws.cell(row=1, column=col)
+        title_cell.fill = header_fill
+        title_cell.font = title_font
+        title_cell.alignment = center
+        title_cell.border = grid
+        header_cell = ws.cell(row=2, column=col)
+        header_cell.fill = header_fill
+        header_cell.font = header_font
+        header_cell.alignment = center
+        header_cell.border = grid
+
+    for row_idx in range(3, last_row + 1):
+        for col in range(1, 5):
+            cell = ws.cell(row=row_idx, column=col)
+            cell.font = body_font
+            cell.border = grid
+            cell.alignment = left if col == 1 else right
+
+    ws.row_dimensions[1].height = 24
+    ws.row_dimensions[2].height = 20
+    col_widths = (28, 14, 14, 14)
+    for col, width in enumerate(col_widths, start=1):
+        ws.column_dimensions[get_column_letter(col)].width = width
+
+    fname = report_export_filename("Manager Insight", filters=filters)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @app.route("/reports/sales/restaurant", endpoint="sales_report_restaurant")
 def sales_report_restaurant():
-    """Restaurant Sales report — POS invoices invoice-wise."""
+    """Sales - Restaurant & Bar report — POS invoices invoice-wise."""
     return _sales_report_page("restaurant")
 
 
 @app.route("/reports/sales/restaurant/export", endpoint="sales_report_restaurant_export")
 def sales_report_restaurant_export():
-    """Excel export for Restaurant Sales report."""
+    """Excel export for Sales - Restaurant & Bar report."""
     return _sales_report_export("restaurant")
 
 
@@ -4929,6 +5619,29 @@ def _menu_sales_filters(args):
     base["selected_outlet"] = outlet
     base["selected_category_id"] = category_id
     return base
+
+
+def _menu_sales_export_date_label(value):
+    """Filename date fragment: 01 July 26."""
+    return report_export_date_label(value)
+
+
+def _menu_sales_export_filename(filters):
+    """Download name: Hotel Bell Elite Menu Sales 01 July 26 to 31 July 26.xlsx"""
+    return report_export_filename("Menu Sales", filters=filters)
+
+
+def _menu_sales_date_range_label(filters):
+    """On-page date line: From 1 August 26 To 13 August 26."""
+    if not (
+        filters.get("date_filter_active")
+        and filters.get("date_from")
+        and filters.get("date_to")
+    ):
+        return ""
+    start = format_report_date(filters["date_from"])
+    end = format_report_date(filters["date_to"])
+    return f"From {start} To {end}"
 
 
 def _menu_sales_outlet_labels():
@@ -4968,6 +5681,9 @@ def _menu_sales_load(filters):
             settlement=settlement,
             category_id=category_id,
         )
+        groups = group_pos_menu_sales_by_category(
+            rows, include_outlet_label=(outlet == "all")
+        )
         kpis = pos_menu_sales_kpis(
             rows,
             conn,
@@ -4985,7 +5701,7 @@ def _menu_sales_load(filters):
         categories = list_pos_menu_categories(
             conn, outlets=cat_outlets, include_inactive=False
         )
-        return rows, kpis, categories
+        return rows, groups, kpis, categories
     finally:
         conn.close()
 
@@ -5013,7 +5729,7 @@ def _menu_sales_filter_kwargs(filters, *, include_dates=True, include_from_hub=T
 def sales_report_menu():
     """Menu Sales report — item-wise order count, qty, and sale value."""
     filters = _menu_sales_filters(request.args)
-    rows, kpis, categories = _menu_sales_load(filters)
+    rows, groups, kpis, categories = _menu_sales_load(filters)
     status_labels = _sales_report_status_labels()
     outlet_labels = _menu_sales_outlet_labels()
 
@@ -5040,8 +5756,10 @@ def sales_report_menu():
         de_nav_report_view="sales",
         page_title="Menu Insights",
         rows=rows,
+        groups=groups,
         kpis=kpis,
         categories=categories,
+        report_date_range_label=_menu_sales_date_range_label(filters),
         today_iso=filters["today"].isoformat(),
         date_from=filters["date_from"].isoformat()
         if filters["date_filter_active"] and filters["date_from"]
@@ -5063,28 +5781,39 @@ def sales_report_menu():
         filter_form_action=url_for("sales_report_menu", **filter_kwargs),
         sales_report_clear_url=url_for("sales_report_menu", **clear_kwargs),
         sales_report_export_url=url_for("sales_report_menu_export", **export_kwargs),
+        sales_report_export_filename=_menu_sales_export_filename(filters),
         preserve_from_hub=True,
         back_href=url_for("reports"),
         back_label="Back to Reports",
     )
 
 
-@app.route("/reports/sales/menu/export", endpoint="sales_report_menu_export")
-def sales_report_menu_export():
-    """Excel export for Menu Sales report (item-wise)."""
-    from openpyxl import Workbook
+def _menu_sales_ranked_item_rows(rows):
+    """Most sold → least sold (qty, then net amount, then name)."""
+    return sorted(
+        list(rows or []),
+        key=lambda row: (
+            -float(row.get("qty_sold") or 0),
+            -float(row.get("sale_value") or 0),
+            str(row.get("item_name") or "").casefold(),
+        ),
+    )
+
+
+def _write_menu_sales_excel_sheet(
+    ws,
+    *,
+    date_label,
+    kpis,
+    groups=None,
+    item_rows=None,
+    grouped=True,
+    include_category_summary=False,
+):
+    """Write one Item Wise Sales Report sheet (grouped or flat ranked list)."""
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
-    from io import BytesIO
 
-    filters = _menu_sales_filters(request.args)
-    rows, _kpis, _categories = _menu_sales_load(filters)
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Menu Insights"
-
-    # All header rows use #315A78 with white text; data rows stay white.
     header_fill = PatternFill(
         fill_type="solid",
         start_color="FF315A78",
@@ -5093,10 +5822,12 @@ def sales_report_menu_export():
     title_font = Font(bold=True, size=14, color="FFFFFFFF")
     header_font = Font(bold=True, size=11, color="FFFFFFFF")
     body_font = Font(size=11, color="FF000000")
+    group_font = Font(bold=True, size=11, color="FF000000")
     thin = Side(style="thin", color="FF000000")
     grid = Border(left=thin, right=thin, top=thin, bottom=thin)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
 
     def _whole_or_float(value):
         if value is None:
@@ -5107,73 +5838,187 @@ def sales_report_menu_export():
         except (TypeError, ValueError):
             return value
 
-    headers = (
-        "Item",
-        "Category",
-        "Outlet",
-        "Order Count",
-        "Qty Sold",
-        "Sale Value",
-    )
-
-    # Write values first, then style (merge-safe fill application).
-    ws["A1"] = "Hotel Bell Elite — Menu Insights"
-    for col, title in enumerate(headers, start=1):
-        ws.cell(row=2, column=col, value=title)
-
-    for idx, row in enumerate(rows, start=3):
-        item = (row.get("item_name") or "").strip().upper()
-        category = (row.get("category_name") or "").strip().upper()
-        outlet = row.get("outlet_label") or ""
-        order_count = int(row.get("order_count") or 0)
-        qty = _whole_or_float(row.get("qty_sold"))
-        sale = _whole_or_float(round_half_up(row.get("sale_value"), 2))
-        values = (item, category, outlet, order_count, qty, sale)
+    def _write_item_row(row_idx, item):
+        qty = _whole_or_float(item.get("qty_sold"))
+        rate = _whole_or_float(round_half_up(item.get("rate"), 2))
+        net = _whole_or_float(round_half_up(item.get("sale_value"), 2))
+        values = (
+            (item.get("item_name") or "").strip() or "Item",
+            qty,
+            rate,
+            net,
+        )
         for col, value in enumerate(values, start=1):
-            ws.cell(row=idx, column=col, value=value)
+            ws.cell(row=row_idx, column=col, value=value)
 
-    ws.merge_cells("A1:F1")
-    last_row = max(2, ws.max_row)
+    def _category_label(group):
+        return (
+            (group.get("category_name") or "Uncategorized").strip() or "Uncategorized"
+        )
 
-    for col in range(1, 7):
+    def _merge_section(row_idx):
+        ws.merge_cells(
+            start_row=row_idx,
+            start_column=1,
+            end_row=row_idx,
+            end_column=col_count,
+        )
+
+    headers = ("ItemName", "Qty", "Rate", "Net Amount")
+    col_count = len(headers)
+
+    ws["A1"] = "Hotel Bell Elite — Item Wise Sales Report"
+    ws["A2"] = date_label or "All dates"
+    for col, title in enumerate(headers, start=1):
+        ws.cell(row=3, column=col, value=title)
+
+    row_idx = 4
+    group_header_rows = []
+    section_header_rows = []
+    total_rows = []
+    if grouped and include_category_summary:
+        ws.cell(row=row_idx, column=1, value="Category Summary")
+        section_header_rows.append(row_idx)
+        _merge_section(row_idx)
+        row_idx += 1
+        for group in groups or []:
+            ws.cell(row=row_idx, column=1, value=_category_label(group))
+            ws.cell(row=row_idx, column=2, value=_whole_or_float(group.get("qty_sum")))
+            ws.cell(
+                row=row_idx,
+                column=4,
+                value=_whole_or_float(round_half_up(group.get("sale_sum"), 2)),
+            )
+            row_idx += 1
+        ws.cell(row=row_idx, column=1, value="Category Total")
+        ws.cell(row=row_idx, column=2, value=_whole_or_float((kpis or {}).get("qty_sum")))
+        ws.cell(
+            row=row_idx,
+            column=4,
+            value=_whole_or_float(round_half_up((kpis or {}).get("sale_value_sum"), 2)),
+        )
+        total_rows.append(row_idx)
+        row_idx += 2
+        ws.cell(row=row_idx, column=1, value="Item Wise Sales")
+        section_header_rows.append(row_idx)
+        _merge_section(row_idx)
+        row_idx += 1
+
+    if grouped:
+        for group in groups or []:
+            category = _category_label(group)
+            ws.cell(row=row_idx, column=1, value=category)
+            group_header_rows.append(row_idx)
+            _merge_section(row_idx)
+            row_idx += 1
+            for item in group.get("item_rows") or []:
+                _write_item_row(row_idx, item)
+                row_idx += 1
+            ws.cell(row=row_idx, column=1, value="Group Total")
+            ws.cell(row=row_idx, column=2, value=_whole_or_float(group.get("qty_sum")))
+            ws.cell(
+                row=row_idx,
+                column=4,
+                value=_whole_or_float(round_half_up(group.get("sale_sum"), 2)),
+            )
+            total_rows.append(row_idx)
+            row_idx += 1
+    else:
+        for item in item_rows or []:
+            _write_item_row(row_idx, item)
+            row_idx += 1
+
+    ws.cell(row=row_idx, column=1, value="Total Sales")
+    ws.cell(row=row_idx, column=2, value=_whole_or_float((kpis or {}).get("qty_sum")))
+    ws.cell(
+        row=row_idx,
+        column=4,
+        value=_whole_or_float(round_half_up((kpis or {}).get("sale_value_sum"), 2)),
+    )
+    total_rows.append(row_idx)
+    last_row = row_idx
+
+    ws.merge_cells("A1:D1")
+    ws.merge_cells("A2:D2")
+
+    for col in range(1, col_count + 1):
         title_cell = ws.cell(row=1, column=col)
         title_cell.fill = header_fill
         title_cell.font = title_font
         title_cell.alignment = center
         title_cell.border = grid
 
-        header_cell = ws.cell(row=2, column=col)
+        date_cell = ws.cell(row=2, column=col)
+        date_cell.fill = header_fill
+        date_cell.font = header_font
+        date_cell.alignment = center
+        date_cell.border = grid
+
+        header_cell = ws.cell(row=3, column=col)
         header_cell.fill = header_fill
         header_cell.font = header_font
         header_cell.alignment = center
         header_cell.border = grid
 
-    for row_idx in range(3, last_row + 1):
-        for col in range(1, 7):
-            cell = ws.cell(row=row_idx, column=col)
-            cell.font = body_font
+    for r in range(4, last_row + 1):
+        is_emphasis = (
+            r in group_header_rows or r in section_header_rows or r in total_rows
+        )
+        for col in range(1, col_count + 1):
+            cell = ws.cell(row=r, column=col)
+            cell.font = group_font if is_emphasis else body_font
             cell.border = grid
-            cell.alignment = left if col == 1 else center
+            if col == 1:
+                cell.alignment = left
+            else:
+                cell.alignment = right
 
     ws.row_dimensions[1].height = 24
     ws.row_dimensions[2].height = 20
-    col_widths = (36, 16, 12, 14, 12, 12)
+    ws.row_dimensions[3].height = 20
+    col_widths = (36, 12, 12, 14)
     for col, width in enumerate(col_widths, start=1):
         max_len = width
-        for row in range(2, last_row + 1):
+        for row in range(3, last_row + 1):
             value = ws.cell(row=row, column=col).value
             if value is None:
                 continue
             max_len = max(max_len, min(len(str(value)) + 2, 42))
         ws.column_dimensions[get_column_letter(col)].width = max_len
 
-    if filters["date_filter_active"]:
-        stamp = (
-            f"{filters['date_from'].isoformat()}_to_{filters['date_to'].isoformat()}"
-        )
-        fname = f"menu_sales_{stamp}.xlsx"
-    else:
-        fname = "menu_sales_all.xlsx"
+
+@app.route("/reports/sales/menu/export", endpoint="sales_report_menu_export")
+def sales_report_menu_export():
+    """Excel export for Menu Sales report (grouped + ranked item list)."""
+    from openpyxl import Workbook
+    from io import BytesIO
+
+    filters = _menu_sales_filters(request.args)
+    rows, groups, kpis, _categories = _menu_sales_load(filters)
+    date_label = _menu_sales_date_range_label(filters)
+
+    wb = Workbook()
+    grouped_ws = wb.active
+    grouped_ws.title = "By Category"
+    _write_menu_sales_excel_sheet(
+        grouped_ws,
+        date_label=date_label,
+        kpis=kpis,
+        groups=groups,
+        grouped=True,
+        include_category_summary=True,
+    )
+
+    ranked_ws = wb.create_sheet("By Qty Sold")
+    _write_menu_sales_excel_sheet(
+        ranked_ws,
+        date_label=date_label,
+        kpis=kpis,
+        item_rows=_menu_sales_ranked_item_rows(rows),
+        grouped=False,
+    )
+
+    fname = _menu_sales_export_filename(filters)
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -5306,6 +6151,9 @@ def sales_report_customer_insights():
         sales_report_export_url=url_for(
             "sales_report_customer_insights_export", **export_kwargs
         ),
+        sales_report_export_filename=report_export_filename(
+            "Customer Insights", filters=filters
+        ),
         preserve_from_hub=True,
         back_href=url_for("reports"),
         back_label="Back to Reports",
@@ -5416,13 +6264,7 @@ def sales_report_customer_insights_export():
             max_len = max(max_len, min(len(str(value)) + 2, 42))
         ws.column_dimensions[get_column_letter(col)].width = max_len
 
-    if filters["date_filter_active"]:
-        stamp = (
-            f"{filters['date_from'].isoformat()}_to_{filters['date_to'].isoformat()}"
-        )
-        fname = f"customer_insights_{stamp}.xlsx"
-    else:
-        fname = "customer_insights_all.xlsx"
+    fname = report_export_filename("Customer Insights", filters=filters)
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -5690,6 +6532,10 @@ def hotel_reservations_api():
             rows = asia_tech_client.list_provider_reservations(
                 settings, force_refresh=force_refresh
             )
+            patched = asia_tech_client.persist_provider_rows(settings)
+            if patched is not None:
+                save_hotel_settings(conn, patched)
+                settings = patched
             sync = asia_tech_client.get_last_sync_meta()
             checkout_only = str(
                 request.args.get("checkout_only") or ""
@@ -5741,8 +6587,16 @@ def hotel_reservations_api():
                 if not isinstance(room, dict):
                     continue
                 status = str(room.get("status") or "vacant").lower()
-                if status != "vacant":
+                if status == "out_of_order":
                     continue
+                stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+                upcoming = room.get("upcomingStay")
+                if not isinstance(upcoming, dict):
+                    upcoming = room.get("upcoming_stay")
+                stay_in, stay_out = _hotel_stay_date_window(stay)
+                up_in, up_out = _hotel_stay_date_window(
+                    upcoming if isinstance(upcoming, dict) else None
+                )
                 vacant.append(
                     {
                         "id": room.get("id"),
@@ -5752,7 +6606,19 @@ def hotel_reservations_api():
                         or room.get("roomType")
                         or "",
                         "status": status,
-                        "statusLabel": "Vacant",
+                        "statusLabel": HOTEL_ROOM_STATUS_LABELS.get(
+                            status, status.replace("_", " ").title()
+                        ),
+                        "stay": (
+                            {"checkInDate": stay_in, "checkOutDate": stay_out}
+                            if stay_in
+                            else None
+                        ),
+                        "upcomingStay": (
+                            {"checkInDate": up_in, "checkOutDate": up_out}
+                            if up_in
+                            else None
+                        ),
                     }
                 )
             conn.commit()
@@ -5842,13 +6708,23 @@ def hotel_reservation_assign_api(reservation_id):
         room = get_hotel_room(conn, room_id)
         if not room:
             return jsonify({"ok": False, "error": "Room not found."}), 404
-        status = str(room.get("status") or "vacant").lower()
-        if status != "vacant":
-            return jsonify({"ok": False, "error": "Only vacant rooms can be assigned."}), 400
 
         reservation = asia_tech_client.get_reservation(settings, reservation_id)
         if not reservation:
             return jsonify({"ok": False, "error": "Reservation not found."}), 404
+        if str(reservation.get("status") or "") == "checked_out":
+            return jsonify(
+                {"ok": False, "error": "Cannot assign a room to a checked-out reservation."}
+            ), 400
+        already_this_room = str(reservation.get("roomId") or "") == str(room_id)
+        if not already_this_room and not hotel_room_available_for_stay(
+            room,
+            reservation.get("checkInDate"),
+            reservation.get("checkOutDate"),
+        ):
+            return jsonify(
+                {"ok": False, "error": "This room is not available for these dates."}
+            ), 400
 
         try:
             updated, next_settings = asia_tech_client.assign_room_local(
@@ -6107,11 +6983,12 @@ def hotel_invoice_ledger_export():
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
-    stamp = date.today().isoformat()
     return send_file(
         buf,
         as_attachment=True,
-        download_name=f"hotel_invoice_ledger_{stamp}.xlsx",
+        download_name=report_export_filename(
+            "Invoice Ledger - Hotel", filters=filters
+        ),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -7005,7 +7882,8 @@ def point_of_sale_invoice_ledger():
 def export_pos_invoice_ledger_report():
     """Excel download of saved POS invoices for the selected filters."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
 
     outlet = _pos_outlet_from_request()
     filters = _pos_invoice_ledger_filters(request.args)
@@ -7024,14 +7902,39 @@ def export_pos_invoice_ledger_report():
     finally:
         conn.close()
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Invoice Ledger"
-    header_font = Font(bold=True)
-    headers = [
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    outlet_label = (
+        "Bar"
+        if normalize_pos_outlet(outlet) == POS_OUTLET_BAR
+        else "Restaurant"
+    )
+    date_label = _menu_sales_date_range_label(filters) or "All dates"
+
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    title_font = Font(bold=True, size=14, color="FFFFFFFF")
+    header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    headers = (
         "Order No",
         "Date",
-        "Saved At",
         "Customer",
         "Mobile",
         "Order Type",
@@ -7044,46 +7947,91 @@ def export_pos_invoice_ledger_report():
         "Service",
         "Tip",
         "Total",
-    ]
+    )
+    col_count = len(headers)
+    amount_cols = {8, 9, 10, 11, 12, 13, 14}
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Invoice Ledger"
+    ws["A1"] = f"Hotel Bell Elite — Invoice Ledger — {outlet_label}"
+    ws["A2"] = date_label
     for col, title in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col, value=title)
-        cell.font = header_font
+        ws.cell(row=3, column=col, value=title)
 
-    for idx, inv in enumerate(invoices, start=2):
-        ws.cell(row=idx, column=1, value=inv.get("order_no") or "")
-        ws.cell(row=idx, column=2, value=inv.get("order_date") or "")
-        ws.cell(row=idx, column=3, value=inv.get("saved_at") or "")
-        ws.cell(row=idx, column=4, value=inv.get("customer_name") or "")
-        ws.cell(row=idx, column=5, value=inv.get("customer_mobile") or "")
-        ws.cell(
-            row=idx,
-            column=6,
-            value=inv.get("order_type_label") or inv.get("order_type") or "",
+    for idx, inv in enumerate(invoices, start=4):
+        values = (
+            inv.get("order_no") or "",
+            inv.get("order_date") or "",
+            inv.get("customer_name") or "",
+            inv.get("customer_mobile") or "",
+            inv.get("order_type_label") or inv.get("order_type") or "",
+            inv.get("payment_mode_label") or "Unsettled",
+            inv.get("captain") or "",
+            int(inv.get("item_count") or 0),
+            _whole_or_float(round_half_up(inv.get("subtotal"), 2)),
+            _whole_or_float(round_half_up(inv.get("discount"), 2)),
+            _whole_or_float(round_half_up(inv.get("gst"), 2)),
+            _whole_or_float(round_half_up(inv.get("service"), 2)),
+            _whole_or_float(round_half_up(inv.get("tip"), 2)),
+            _whole_or_float(round_half_up(inv.get("grand_total"), 2)),
         )
-        ws.cell(row=idx, column=7, value=inv.get("payment_mode_label") or "Unsettled")
-        ws.cell(row=idx, column=8, value=inv.get("captain") or "")
-        ws.cell(row=idx, column=9, value=int(inv.get("item_count") or 0))
-        ws.cell(row=idx, column=10, value=round_half_up(inv.get("subtotal"), 2))
-        ws.cell(row=idx, column=11, value=round_half_up(inv.get("discount"), 2))
-        ws.cell(row=idx, column=12, value=round_half_up(inv.get("gst"), 2))
-        ws.cell(row=idx, column=13, value=round_half_up(inv.get("service"), 2))
-        ws.cell(row=idx, column=14, value=round_half_up(inv.get("tip"), 2))
-        ws.cell(row=idx, column=15, value=round_half_up(inv.get("grand_total"), 2))
+        for col, value in enumerate(values, start=1):
+            ws.cell(row=idx, column=col, value=value)
 
-    for column_cells in ws.columns:
-        width = 12
-        for cell in column_cells:
-            value = "" if cell.value is None else str(cell.value)
-            width = max(width, min(len(value) + 2, 40))
-        ws.column_dimensions[column_cells[0].column_letter].width = width
+    last_row = max(3, ws.max_row)
+    ws.merge_cells(
+        start_row=1, start_column=1, end_row=1, end_column=col_count
+    )
+    ws.merge_cells(
+        start_row=2, start_column=1, end_row=2, end_column=col_count
+    )
 
-    if filters["date_filter_active"]:
-        fname = (
-            f"invoice_ledger_{filters['query_date_from'].isoformat()}_to_"
-            f"{filters['query_date_to'].isoformat()}.xlsx"
-        )
-    else:
-        fname = "invoice_ledger_all.xlsx"
+    for col in range(1, col_count + 1):
+        title_cell = ws.cell(row=1, column=col)
+        title_cell.fill = header_fill
+        title_cell.font = title_font
+        title_cell.alignment = center
+        title_cell.border = grid
+
+        date_cell = ws.cell(row=2, column=col)
+        date_cell.fill = header_fill
+        date_cell.font = header_font
+        date_cell.alignment = center
+        date_cell.border = grid
+
+        header_cell = ws.cell(row=3, column=col)
+        header_cell.fill = header_fill
+        header_cell.font = header_font
+        header_cell.alignment = center
+        header_cell.border = grid
+
+    for row_idx in range(4, last_row + 1):
+        for col in range(1, col_count + 1):
+            cell = ws.cell(row=row_idx, column=col)
+            cell.font = body_font
+            cell.border = grid
+            if col in amount_cols:
+                cell.alignment = right
+            else:
+                cell.alignment = left
+
+    ws.row_dimensions[1].height = 24
+    ws.row_dimensions[2].height = 20
+    ws.row_dimensions[3].height = 20
+    col_widths = (16, 14, 22, 14, 14, 16, 14, 10, 12, 12, 12, 12, 10, 12)
+    for col, width in enumerate(col_widths, start=1):
+        max_len = width
+        for row in range(3, last_row + 1):
+            value = ws.cell(row=row, column=col).value
+            if value is None:
+                continue
+            max_len = max(max_len, min(len(str(value)) + 2, 42))
+        ws.column_dimensions[get_column_letter(col)].width = max_len
+
+    fname = report_export_filename(
+        f"Invoice Ledger - {outlet_label}", filters=filters
+    )
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -7119,6 +8067,7 @@ def point_of_sale_api_invoices_save():
                 data,
                 created_by=created_by,
                 allow_kot_cancel=user_can_edit_kot_sent_lines(user),
+                actor_is_admin=bool(user and user.get("is_admin")),
             )
             sync_pos_floor_occupancy_from_open_orders(conn, outlet)
             conn.commit()
@@ -8568,6 +9517,12 @@ def purchase_ledger():
         purchase_edit_url=url_for("purchase_ledger_edit"),
         purchase_delete_url=url_for("purchase_ledger_delete"),
         purchase_ledger_report_url=url_for("export_purchase_ledger_report", **report_kwargs),
+        purchase_ledger_export_filename=report_export_filename(
+            PURCHASE_EXPENSE_LEDGER_NAME,
+            date_from=date_from,
+            date_to=date_to,
+            date_filter_active=date_filter_active,
+        ),
         purchase_ledger_clear_url=url_for("purchase_ledger", **clear_kwargs),
         supplier_create_url=url_for("create_supplier"),
         available_cash=available_cash,
@@ -8582,9 +9537,10 @@ def purchase_ledger():
 
 @app.route("/accounts/purchase-ledger/report")
 def export_purchase_ledger_report():
-    """Excel download of purchase ledger entries for the selected filters."""
+    """Excel download of ledger entries — Summary + Line Items."""
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
 
     today = date.today()
     date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
@@ -8628,13 +9584,53 @@ def export_purchase_ledger_report():
     finally:
         conn.close()
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Purchases Expenses"
-    header_font = Font(bold=True)
-    headers = [
+    def _whole_or_float(value):
+        if value is None:
+            return None
+        try:
+            num = float(value)
+            return int(num) if num == int(num) else num
+        except (TypeError, ValueError):
+            return value
+
+    purchase_entries = [
+        entry for entry in entries
+        if entry.get("entry_kind") == LEDGER_ENTRY_KIND_PURCHASE
+    ]
+    expense_entries = [
+        entry for entry in entries
+        if entry.get("entry_kind") != LEDGER_ENTRY_KIND_PURCHASE
+    ]
+    purchase_total = round_half_up(sum(e.get("amount") or 0 for e in purchase_entries), 2)
+    expense_total = round_half_up(sum(e.get("amount") or 0 for e in expense_entries), 2)
+    amount_sum = round_half_up(purchase_total + expense_total, 2)
+
+    pay_totals = {}
+    pay_order = []
+    for entry in entries:
+        key = entry.get("display_payment_type") or entry.get("payment_type") or ""
+        label = PURCHASE_LEDGER_PAYMENT_LABELS.get(key, key) or "Other"
+        if label not in pay_totals:
+            pay_order.append(label)
+            pay_totals[label] = 0.0
+        pay_totals[label] = round_half_up(
+            pay_totals[label] + float(entry.get("amount") or 0), 2
+        )
+    payment_rows = [
+        {"label": label, "amount": pay_totals[label]}
+        for label in pay_order
+        if abs(pay_totals[label]) > 0.004
+    ]
+    payment_total = round_half_up(sum(item["amount"] for item in payment_rows), 2)
+
+    sections = []
+    if purchase_entries:
+        sections.append({"label": "Purchase", "entries": purchase_entries})
+    if expense_entries:
+        sections.append({"label": "Expense", "entries": expense_entries})
+
+    headers = (
         "ID",
-        "Type",
         "Date",
         "Description",
         "Category",
@@ -8646,69 +9642,189 @@ def export_purchase_ledger_report():
         "Amount",
         "Paid",
         "Balance",
-    ]
-    for col, title in enumerate(headers, start=1):
-        cell = ws.cell(row=1, column=col, value=title)
-        cell.font = header_font
+    )
+    col_count = len(headers)
+    amount_cols = {10, 11, 12}
+    title_date = _sales_report_excel_title_date(
+        {
+            "date_filter_active": date_filter_active,
+            "date_from": date_from,
+            "date_to": date_to,
+        }
+    )
 
-    for idx, entry in enumerate(entries, start=2):
+    wb = Workbook()
+    summary = wb.active
+    summary.title = "Summary"
+    details = wb.create_sheet("Line Items")
+
+    summary["A1"] = f"Hotel Bell Elite — {PURCHASE_EXPENSE_LEDGER_NAME}{title_date}"
+    summary["A2"] = "Purchase"
+    summary["B2"] = _whole_or_float(purchase_total)
+    summary["A3"] = "Expense"
+    summary["B3"] = _whole_or_float(expense_total)
+    summary["A4"] = "Total"
+    summary["B4"] = _whole_or_float(amount_sum)
+    summary.merge_cells("A1:B1")
+
+    pay_header_row = 6
+    summary.cell(row=pay_header_row, column=1, value="Payment Mode")
+    summary.cell(row=pay_header_row, column=2, value="Amount")
+    pay_data_rows = []
+    row_idx = pay_header_row + 1
+    for item in payment_rows:
+        summary.cell(row=row_idx, column=1, value=item["label"])
+        summary.cell(row=row_idx, column=2, value=_whole_or_float(item["amount"]))
+        pay_data_rows.append(row_idx)
+        row_idx += 1
+    pay_total_row = row_idx
+    summary.cell(row=pay_total_row, column=1, value="Total")
+    summary.cell(row=pay_total_row, column=2, value=_whole_or_float(payment_total))
+
+    def _write_ledger_row(row_idx, entry):
         category_key = entry.get("category") or ""
         payment_key = entry.get("display_payment_type") or entry.get("payment_type") or ""
         status_key = entry.get("settlement_status") or ""
-        kind_key = entry.get("entry_kind") or LEDGER_ENTRY_KIND_EXPENSE
-        ws.cell(row=idx, column=1, value=entry.get("expense_code") or "")
-        ws.cell(
-            row=idx,
-            column=2,
-            value=LEDGER_ENTRY_KIND_LABELS.get(kind_key, kind_key),
-        )
-        ws.cell(row=idx, column=3, value=entry.get("sales_date") or "")
-        ws.cell(row=idx, column=4, value=entry.get("description") or "")
-        ws.cell(
-            row=idx,
-            column=5,
-            value=category_labels.get(
+        values = (
+            entry.get("expense_code") or "",
+            entry.get("sales_date") or "",
+            entry.get("description") or "",
+            category_labels.get(
                 category_key,
                 EXPENSE_CATEGORY_LABELS.get(category_key, category_key),
             ),
+            entry.get("invoice_number") or "",
+            entry.get("supplier_name") or "",
+            entry.get("supplier_gst") or "",
+            PURCHASE_LEDGER_PAYMENT_LABELS.get(payment_key, payment_key),
+            CREDIT_SETTLEMENT_STATUS_LABELS.get(status_key, status_key),
+            _whole_or_float(round_half_up(entry.get("amount"), 2)),
+            _whole_or_float(round_half_up(entry.get("paid_amount"), 2)),
+            _whole_or_float(round_half_up(entry.get("balance"), 2)),
         )
-        ws.cell(row=idx, column=6, value=entry.get("invoice_number") or "")
-        ws.cell(row=idx, column=7, value=entry.get("supplier_name") or "")
-        ws.cell(row=idx, column=8, value=entry.get("supplier_gst") or "")
-        ws.cell(
-            row=idx,
-            column=9,
-            value=PURCHASE_LEDGER_PAYMENT_LABELS.get(payment_key, payment_key),
-        )
-        ws.cell(
-            row=idx,
-            column=10,
-            value=CREDIT_SETTLEMENT_STATUS_LABELS.get(status_key, status_key),
-        )
-        ws.cell(row=idx, column=11, value=round_half_up(entry.get("amount"), 2))
-        ws.cell(row=idx, column=12, value=round_half_up(entry.get("paid_amount"), 2))
-        ws.cell(row=idx, column=13, value=round_half_up(entry.get("balance"), 2))
+        for col, value in enumerate(values, start=1):
+            details.cell(row=row_idx, column=col, value=value)
 
-    for column_cells in ws.columns:
-        width = 12
-        for cell in column_cells:
-            value = "" if cell.value is None else str(cell.value)
-            width = max(width, min(len(value) + 2, 40))
-        ws.column_dimensions[column_cells[0].column_letter].width = width
+    banner_rows = []
+    header_rows = []
+    item_rows = []
+    row_idx = 1
+    for i, section in enumerate(sections):
+        if i > 0:
+            row_idx += 1
+        details.cell(
+            row=row_idx,
+            column=1,
+            value=f"Hotel Bell Elite — {PURCHASE_EXPENSE_LEDGER_NAME} - {section['label']}",
+        )
+        details.merge_cells(
+            start_row=row_idx,
+            start_column=1,
+            end_row=row_idx,
+            end_column=col_count,
+        )
+        banner_rows.append(row_idx)
+        row_idx += 1
+        for col, title in enumerate(headers, start=1):
+            details.cell(row=row_idx, column=col, value=title)
+        header_rows.append(row_idx)
+        row_idx += 1
+        for entry in section.get("entries") or []:
+            _write_ledger_row(row_idx, entry)
+            item_rows.append(row_idx)
+            row_idx += 1
 
-    if date_filter_active:
-        fname = f"purchase_ledger_{query_date_from.isoformat()}_to_{query_date_to.isoformat()}.xlsx"
-    else:
-        fname = "purchase_ledger_all.xlsx"
+    last_details = max(1, row_idx - 1)
+    header_fill = PatternFill(
+        fill_type="solid",
+        start_color="FF315A78",
+        end_color="FF315A78",
+    )
+    banner_font = Font(bold=True, size=16, color="FFFFFFFF")
+    chrome_header_font = Font(bold=True, size=11, color="FFFFFFFF")
+    summary_title_font = Font(name="Calibri", bold=True, size=16, color="FFFFFFFF")
+    summary_font = Font(name="Calibri", size=12, color="FF000000")
+    summary_bold_font = Font(name="Calibri", bold=True, size=12, color="FF000000")
+    body_font = Font(size=11, color="FF000000")
+    thin = Side(style="thin", color="FF000000")
+    grid = Border(left=thin, right=thin, top=thin, bottom=thin)
+    center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    left = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    right = Alignment(horizontal="right", vertical="center", wrap_text=True)
+
+    summary_chrome_rows = {1, 2, 3, 4, pay_header_row, pay_total_row, *pay_data_rows}
+    for r in sorted(summary_chrome_rows):
+        for col in range(1, 3):
+            cell = summary.cell(row=r, column=col)
+            cell.border = grid
+            cell.alignment = center
+            if r == 1 or r == pay_header_row:
+                cell.fill = header_fill
+                cell.font = summary_title_font
+            elif r in (4, pay_total_row):
+                cell.font = summary_bold_font
+            else:
+                cell.font = summary_font
+
+    for r in range(1, last_details + 1):
+        for col in range(1, col_count + 1):
+            cell = details.cell(row=r, column=col)
+            cell.border = grid
+            if r in banner_rows:
+                cell.fill = header_fill
+                cell.font = banner_font
+                cell.alignment = center
+            elif r in header_rows:
+                cell.fill = header_fill
+                cell.font = chrome_header_font
+                cell.alignment = center
+            elif r in item_rows:
+                cell.font = body_font
+                if col in amount_cols:
+                    cell.alignment = right
+                else:
+                    cell.alignment = left
+            elif col in amount_cols:
+                cell.font = body_font
+                cell.alignment = right
+
+    summary.row_dimensions[1].height = 23.2
+    for r in (2, 3, 4):
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[pay_header_row].height = 23.2
+    for r in pay_data_rows:
+        summary.row_dimensions[r].height = 17.6
+    summary.row_dimensions[pay_total_row].height = 17.6
+    summary.column_dimensions["A"].width = 34
+    summary.column_dimensions["B"].width = 39.5
+    for r in banner_rows:
+        details.row_dimensions[r].height = 20
+    for r in header_rows:
+        details.row_dimensions[r].height = 20
+    for r in item_rows:
+        details.row_dimensions[r].height = 17
+    detail_widths = (16, 12, 32, 16, 14, 22, 16, 14, 12, 12, 12, 12)
+    for col, width in enumerate(detail_widths, start=1):
+        details.column_dimensions[get_column_letter(col)].width = width
+
+    fname = report_export_filename(
+        PURCHASE_EXPENSE_LEDGER_NAME,
+        date_from=date_from,
+        date_to=date_to,
+        date_filter_active=date_filter_active,
+    )
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return send_file(
+    response = send_file(
         buf,
         as_attachment=True,
         download_name=fname,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @app.route("/accounts/purchase-ledger/add", methods=["POST"])
@@ -9201,10 +10317,11 @@ def export_cash_ledger_report():
                 width = max(width, min(len(value) + 2, 48))
             ws.column_dimensions[column_cells[0].column_letter].width = width
 
-    fname = (
-        f"cash_ledger_{date_from.isoformat()}_to_{date_to.isoformat()}.xlsx"
-        if date_filter_active
-        else "cash_ledger_all.xlsx"
+    fname = report_export_filename(
+        "Cash Ledger",
+        date_from=date_from,
+        date_to=date_to,
+        date_filter_active=date_filter_active,
     )
     buf = io.BytesIO()
     wb.save(buf)
@@ -9360,7 +10477,7 @@ def export_credit_payment_report():
     from openpyxl.styles import Font
 
     today = date.today()
-    date_from, date_to, _date_filter_active = _resolve_optional_filter_date_range(
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
         request.args, "date_from", "date_to", default_fy=True
     )
     _, supplier_id = _parse_purchase_ledger_supplier(request.args.get("supplier"))
@@ -9415,7 +10532,12 @@ def export_credit_payment_report():
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f"credit_payment_report_{today.isoformat()}.xlsx"
+    fname = report_export_filename(
+        "Credit Payment",
+        date_from=date_from,
+        date_to=date_to,
+        date_filter_active=date_filter_active,
+    )
     return send_file(
         buf,
         as_attachment=True,
@@ -9487,10 +10609,11 @@ def export_purchase_verification_report():
                 ws.cell(row=idx, column=7, value=entry.get("expense_codes") or "")
                 ws.cell(row=idx, column=8, value=round_half_up(entry.get("total_amount"), 2))
                 ws.cell(row=idx, column=9, value=entry.get("notes") or "")
-            fname = (
-                f"purchase_verification_history_"
-                f"{payment_date_from.isoformat() if payment_date_filter_active else 'All'}_to_"
-                f"{payment_date_to.isoformat() if payment_date_filter_active else 'All'}.xlsx"
+            fname = report_export_filename(
+                "Approvals",
+                date_from=payment_date_from,
+                date_to=payment_date_to,
+                date_filter_active=payment_date_filter_active,
             )
         else:
             ws.title = "Pending Verification"
@@ -9534,10 +10657,11 @@ def export_purchase_verification_report():
                 ws.cell(row=idx, column=9, value=round_half_up(entry.get("amount"), 2))
                 ws.cell(row=idx, column=10, value=round_half_up(entry.get("paid_amount"), 2))
                 ws.cell(row=idx, column=11, value=round_half_up(entry.get("balance"), 2))
-            fname = (
-                f"purchase_verification_pending_"
-                f"{date_from.isoformat() if date_filter_active else 'All'}_to_"
-                f"{date_to.isoformat() if date_filter_active else 'All'}.xlsx"
+            fname = report_export_filename(
+                "Approvals",
+                date_from=date_from,
+                date_to=date_to,
+                date_filter_active=date_filter_active,
             )
     finally:
         conn.close()
@@ -9781,8 +10905,14 @@ def sales_update_hotel():
                 conn, user, selected_company, OUTLET_HOTEL, selected_date, today_iso
             )
         }
-        kpi_bundle = _invoice_sales_kpi_bundle(
-            conn, selected_company, selected_location, entry_date, entry_date
+        kpi_bundle = _outlet_sales_update_kpi_bundle(
+            conn,
+            selected_company,
+            selected_location,
+            entry_date,
+            entry_date,
+            user=user,
+            current_entries=outlet_records[OUTLET_HOTEL]["sales_entry_values"],
         )
         suppliers = _all_suppliers(conn)
         tip_employees = _active_employees_for_tips(conn)
@@ -9987,7 +11117,10 @@ def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_i
         expense_entries = _sales_expense_entries(conn, company, location, sales_date)
     else:
         sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
-        if not is_future:
+        # Collections upload writes these fields. Do not replace them with empty
+        # in-app POS totals or the Upload button looks like it did nothing.
+        saved_import = any(parse_money(sales_entries.get(key)) for key in IMPORT_FIELD_KEYS)
+        if not is_future and not saved_import:
             invoice_entries = pos_sales_entry_from_invoices(conn, location, sales_date)
             for key in IMPORT_FIELD_KEYS:
                 sales_entries[key] = parse_money(invoice_entries.get(key))
@@ -10038,8 +11171,14 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
         cash_transfer_total = _sales_cash_transfer_total(conn, selected_company, selected_location, selected_date)
         tip_employees = _active_employees_for_tips(conn)
         entry_date = _parse_sales_date(selected_date)
-        kpi_bundle = _invoice_sales_kpi_bundle(
-            conn, selected_company, selected_location, entry_date, entry_date
+        kpi_bundle = _outlet_sales_update_kpi_bundle(
+            conn,
+            selected_company,
+            selected_location,
+            entry_date,
+            entry_date,
+            user=user,
+            current_entries=outlet_records[outlet]["sales_entry_values"],
         )
     finally:
         conn.close()
@@ -11357,10 +12496,12 @@ def export_tips_report():
                 width = max(width, min(len(value) + 2, 40))
             ws.column_dimensions[column_cells[0].column_letter].width = width
 
-    if date_filter_active:
-        fname = f"tips_report_{date_from.isoformat()}_to_{date_to.isoformat()}.xlsx"
-    else:
-        fname = "tips_report_all.xlsx"
+    fname = report_export_filename(
+        "Tips",
+        date_from=date_from,
+        date_to=date_to,
+        date_filter_active=date_filter_active,
+    )
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -11804,7 +12945,7 @@ def export_supplier_report():
             width = max(width, min(len(value) + 2, 40))
         ws.column_dimensions[column_cells[0].column_letter].width = width
 
-    fname = f"supplier_report_{date.today().isoformat()}.xlsx"
+    fname = report_export_filename("Supplier")
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -12032,7 +13173,7 @@ def export_customer_report():
             width = max(width, min(len(value) + 2, 40))
         ws.column_dimensions[column_cells[0].column_letter].width = width
 
-    fname = f"customer_report_{date.today().isoformat()}.xlsx"
+    fname = report_export_filename("Customer")
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -12588,6 +13729,33 @@ def access_roles():
         errors=[],
         success_message=success_message,
         form_focus=form_focus,
+    )
+
+
+@app.route("/access-management/logs")
+def access_login_logs():
+    user = get_current_user()
+    if not user_can_access_user_access_submodule(user, "logs"):
+        return _permission_denied_response("You do not have access to Logs.")
+
+    result = (request.args.get("result") or "all").strip().lower()
+    if result not in {"all", "success", "failed"}:
+        result = "all"
+
+    conn = get_db()
+    try:
+        logs = auth_security.fetch_login_logs(conn, result=result, limit=500)
+    finally:
+        conn.close()
+
+    success_count = sum(1 for item in logs if item.get("success"))
+    failed_count = len(logs) - success_count
+    return _am_logs_page_render(
+        "access_login_logs.html",
+        logs=logs,
+        result_filter=result,
+        success_count=success_count,
+        failed_count=failed_count,
     )
 
 

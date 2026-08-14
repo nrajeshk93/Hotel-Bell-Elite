@@ -27,6 +27,13 @@
         try { indentView = new URL(window.location.href).searchParams.get('view') || ''; } catch (err) {}
       }
       if (indentView) url.searchParams.set('view', indentView);
+      var placeEl = document.getElementById('st-stock-place');
+      if (placeEl) {
+        var place = String(placeEl.value || '').toLowerCase();
+        if (place === 'counter' || place === 'warehouse') {
+          url.searchParams.set('place', place);
+        }
+      }
       // Stock Inward / Purchase Order: changing outlet clears PO / indent / supplier.
       if (
         document.getElementById('st-inward-page') ||
@@ -4379,12 +4386,43 @@
     applyIndentSearch();
   }
 
+  function initStockPlaceTabs() {
+    var placeHost = document.getElementById('st-stock-place-host');
+    if (!placeHost || placeHost.getAttribute('data-st-place-bound') === '1') return;
+    placeHost.setAttribute('data-st-place-bound', '1');
+    placeHost.addEventListener('click', function (event) {
+      var tab = event.target && event.target.closest ? event.target.closest('.st-stock-place-tab') : null;
+      if (!tab || !placeHost.contains(tab)) return;
+      event.preventDefault();
+      var next = String(tab.getAttribute('data-value') || 'warehouse').toLowerCase();
+      if (next !== 'counter') next = 'warehouse';
+      var input = document.getElementById('st-stock-place');
+      if (input) input.value = next;
+      placeHost.querySelectorAll('.st-stock-place-tab').forEach(function (btn) {
+        var on = String(btn.getAttribute('data-value') || '') === next;
+        btn.classList.toggle('is-active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      try {
+        var url = new URL(window.location.href);
+        url.searchParams.set('place', next);
+        stSoftNavigate(url.pathname + url.search);
+      } catch (err) {}
+    });
+  }
+
   function initStockSearch() {
     var searchInput = document.getElementById('st-stock-search');
     if (!searchInput) return;
 
     function getPage() { return document.getElementById('st-stock-page'); }
     function getTable() { return document.getElementById('st-stock-table'); }
+
+    function getPlace() {
+      var el = document.getElementById('st-stock-place');
+      var value = el ? String(el.value || 'warehouse').toLowerCase() : 'warehouse';
+      return value === 'counter' ? 'counter' : 'warehouse';
+    }
 
     function getCategory() {
       var el = document.getElementById('st-stock-category');
@@ -4417,16 +4455,7 @@
           opt.setAttribute('aria-selected', on ? 'true' : 'false');
         });
       }
-      syncOutOfStockButton();
       applyStockFilters();
-    }
-
-    function syncOutOfStockButton() {
-      var btn = document.getElementById('st-stock-out-filter');
-      if (!btn) return;
-      var active = getStatus() === 'out';
-      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
-      btn.title = active ? 'Show all stock items' : 'Show only out-of-stock items';
     }
 
     function syncStockExportLink() {
@@ -4440,6 +4469,9 @@
         var q = String((searchEl && searchEl.value) || '').trim();
         if (category && category !== 'all') url.searchParams.set('category', category);
         else url.searchParams.delete('category');
+        var place = getPlace();
+        if (place && place !== 'warehouse') url.searchParams.set('place', place);
+        else url.searchParams.delete('place');
         if (status && status !== 'all') url.searchParams.set('status', status);
         else url.searchParams.delete('status');
         if (q) url.searchParams.set('q', q);
@@ -4467,6 +4499,7 @@
       var needle = String((searchEl && searchEl.value) || '').trim().toLowerCase();
       var category = getCategory();
       var status = getStatus();
+      var place = getPlace();
       return Array.from(table.querySelectorAll('tbody tr[data-sort-row]')).filter(function (row) {
         var hay = String(row.getAttribute('data-search') || row.textContent || '').toLowerCase();
         var searchOk = !needle || hay.indexOf(needle) !== -1;
@@ -4474,7 +4507,9 @@
         var categoryOk = category === 'all' || cat === category;
         var rowStatus = String(row.getAttribute('data-status') || '').toLowerCase();
         var statusOk = status === 'all' || rowStatus === status;
-        return searchOk && categoryOk && statusOk;
+        var rowPlace = String(row.getAttribute('data-place') || 'warehouse').toLowerCase();
+        var placeOk = rowPlace === place;
+        return searchOk && categoryOk && statusOk && placeOk;
       });
     }
 
@@ -4531,19 +4566,32 @@
       });
 
       if (countEl) countEl.textContent = total + ' item' + (total === 1 ? '' : 's');
-      var noMatch = total === 0 && (!!needle || getCategory() !== 'all' || getStatus() !== 'all');
-      if (emptyEl) emptyEl.hidden = !noMatch;
+      var noMatch = total === 0 && (
+        !!needle || getCategory() !== 'all' || getStatus() !== 'all' || getPlace() === 'counter'
+      );
+      if (emptyEl) {
+        var titleEl = document.getElementById('st-stock-empty-title');
+        var copyEl = document.getElementById('st-stock-empty-copy');
+        if (getPlace() === 'counter' && !needle && getCategory() === 'all' && getStatus() === 'all') {
+          if (titleEl) titleEl.textContent = 'No counter stock';
+          if (copyEl) copyEl.textContent = 'Transfer items from Warehouse to Counter.';
+        } else {
+          if (titleEl) titleEl.textContent = 'No stock items match';
+          if (copyEl) copyEl.textContent = 'Try a different search or filter.';
+        }
+        emptyEl.hidden = !noMatch;
+      }
       if (tableWrap) tableWrap.hidden = !!noMatch;
       updateKpis(rows);
       syncStockExportLink();
+      if (typeof window.stStockSyncTransferSelection === 'function') {
+        window.stStockSyncTransferSelection();
+      }
     }
 
     window.stStockApplyFilters = applyStockFilters;
     window.stStockCategoryChanged = function () { applyStockFilters(); };
-    window.stStockStatusChanged = function () {
-      syncOutOfStockButton();
-      applyStockFilters();
-    };
+    window.stStockStatusChanged = function () { applyStockFilters(); };
     window.stStockSetStatusFilter = setStockStatusFilter;
 
     if (searchInput.getAttribute('data-st-search-bound') !== '1') {
@@ -4559,23 +4607,291 @@
       });
     }
 
-    if (!window.__stStockClickBound) {
-      window.__stStockClickBound = true;
-      document.addEventListener('click', function (e) {
-        if (!document.getElementById('st-stock-page')) return;
-        var t = e.target;
-        if (!t || !t.closest) return;
-        var outBtn = t.closest('#st-stock-out-filter');
-        if (outBtn) {
-          e.preventDefault();
-          setStockStatusFilter(getStatus() === 'out' ? 'all' : 'out');
-          return;
-        }
+    applyStockFilters();
+  }
+
+  function initStockTransferModal() {
+    var page = document.getElementById('st-stock-page');
+    var modal = document.getElementById('st-stock-transfer-modal');
+    if (!page || !modal) return;
+    var form = document.getElementById('st-stock-transfer-form');
+    var errEl = document.getElementById('st-stock-transfer-err');
+    var titleEl = document.getElementById('st-stock-transfer-title');
+    var linesEl = document.getElementById('st-stock-transfer-lines');
+    var submitEl = document.getElementById('st-stock-transfer-submit');
+    var selectAll = document.getElementById('st-stock-select-all');
+    var transferBtn = document.getElementById('st-stock-transfer-selected');
+
+    function roundQty(n) {
+      return Math.round((parseFloat(n) || 0) * 1000) / 1000;
+    }
+
+    function showErr(msg) {
+      if (!errEl) return;
+      errEl.textContent = msg || '';
+      errEl.style.display = msg ? '' : 'none';
+    }
+
+    function closeModal() {
+      modal.classList.remove('active');
+      showErr('');
+    }
+
+    function clampQtyInput(input) {
+      if (!input || !input.classList || !input.classList.contains('st-stock-transfer-line-qty')) return;
+      var line = input.closest('.st-stock-transfer-line');
+      var avail = roundQty(line && line.getAttribute('data-available'));
+      var raw = String(input.value || '').trim();
+      if (raw === '') return false;
+      var qty = roundQty(raw);
+      if (qty < 0) {
+        input.value = '0';
+        return true;
+      }
+      if (qty - avail > 0.0001) {
+        input.value = avail > 0 ? String(avail) : '';
+        showErr('Qty cannot exceed available stock.');
+        return true;
+      }
+      showErr('');
+      return false;
+    }
+
+    function selectableRows() {
+      return Array.from(page.querySelectorAll('#st-stock-table tbody tr[data-sort-row]')).filter(function (row) {
+        if (row.hidden) return false;
+        var check = row.querySelector('.st-stock-row-check');
+        return !!(check && !check.disabled);
       });
     }
 
-    syncOutOfStockButton();
-    applyStockFilters();
+    function checkedRows() {
+      return selectableRows().filter(function (row) {
+        var check = row.querySelector('.st-stock-row-check');
+        return !!(check && check.checked);
+      });
+    }
+
+    function syncSelection() {
+      var table = document.getElementById('st-stock-table');
+      if (table) {
+        Array.from(table.querySelectorAll('tbody tr[data-sort-row]')).forEach(function (row) {
+          var check = row.querySelector('.st-stock-row-check');
+          if (row.hidden && check && check.checked) check.checked = false;
+          row.classList.toggle('is-selected', !!(check && check.checked && !row.hidden));
+        });
+      }
+      var rows = selectableRows();
+      var selected = checkedRows();
+      if (selectAll) {
+        selectAll.disabled = rows.length === 0;
+        selectAll.checked = rows.length > 0 && selected.length === rows.length;
+        selectAll.indeterminate = selected.length > 0 && selected.length < rows.length;
+      }
+      if (transferBtn) transferBtn.disabled = selected.length === 0;
+    }
+
+    function selectedToOutlet() {
+      var hidden = document.getElementById('st-stock-transfer-to-outlet');
+      var key = String((hidden && hidden.value) || '').trim().toLowerCase();
+      return key === 'bar' || key === 'restaurant' ? key : '';
+    }
+
+    function syncSubmitEnabled() {
+      if (!submitEl) return;
+      submitEl.disabled = !selectedToOutlet();
+    }
+
+    function setToOutlet(outlet) {
+      var key = outlet === 'bar' || outlet === 'restaurant' ? outlet : '';
+      var hidden = document.getElementById('st-stock-transfer-to-outlet');
+      if (hidden) hidden.value = key;
+      var tabs = modal.querySelectorAll('.st-stock-transfer-dest-tabs .cp-view-tab');
+      tabs.forEach(function (tab) {
+        var on = !!key && String(tab.getAttribute('data-value') || '') === key;
+        tab.classList.toggle('is-active', on);
+        tab.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      syncSubmitEnabled();
+    }
+
+    function syncDestLabels(toCounter) {
+      var labelEl = document.getElementById('st-stock-transfer-dest-label');
+      var restBtn = document.getElementById('st-stock-transfer-dest-restaurant');
+      var barBtn = document.getElementById('st-stock-transfer-dest-bar');
+      if (labelEl) labelEl.textContent = toCounter ? 'Transfer to' : 'Return to';
+      if (restBtn) restBtn.textContent = toCounter ? 'Restaurant Counter' : 'Restaurant Warehouse';
+      if (barBtn) barBtn.textContent = toCounter ? 'Bar Counter' : 'Bar Warehouse';
+    }
+
+    function openModal(rows, direction) {
+      if (!rows.length) return;
+      var toCounter = direction === 'to_counter';
+      document.getElementById('st-stock-transfer-direction').value = toCounter ? 'to_counter' : 'to_warehouse';
+      var noteEl = document.getElementById('st-stock-transfer-note');
+      if (noteEl) noteEl.value = '';
+      if (titleEl) titleEl.textContent = toCounter ? 'Transfer to Counter' : 'Return to Warehouse';
+      if (submitEl) submitEl.textContent = toCounter ? 'Transfer' : 'Return';
+      syncDestLabels(toCounter);
+      setToOutlet('');
+      if (linesEl) {
+        linesEl.innerHTML = rows.map(function (row, idx) {
+          var name = String(row.getAttribute('data-item-name') || '').trim();
+          var unit = String(row.getAttribute('data-unit') || '').trim();
+          var outlet = String(row.getAttribute('data-outlet') || '').trim();
+          var avail = roundQty(row.getAttribute('data-qty') || '0');
+          return (
+            '<tr class="st-stock-transfer-line" data-outlet="' + escapeHtml(outlet) +
+            '" data-item-name="' + escapeHtml(name) +
+            '" data-unit="' + escapeHtml(unit) +
+            '" data-available="' + avail + '">' +
+            '<td class="st-stock-transfer-item">' + escapeHtml(name) + '</td>' +
+            '<td class="st-stock-transfer-avail">' + avail + (unit ? ' ' + escapeHtml(unit) : '') + '</td>' +
+            '<td class="st-stock-transfer-qty-cell">' +
+            '<div class="st-stock-transfer-qty-wrap">' +
+            '<input id="st-stock-transfer-qty-' + idx + '" class="st-stock-transfer-line-qty" type="number" min="0" step="0.01" max="' + avail + '" inputmode="decimal" aria-label="Qty for ' + escapeHtml(name) + '">' +
+            (unit ? '<span class="st-stock-transfer-qty-unit">' + escapeHtml(unit) + '</span>' : '') +
+            '</div></td></tr>'
+          );
+        }).join('');
+      }
+      showErr('');
+      modal.classList.add('active');
+      var destBtn = document.getElementById('st-stock-transfer-dest-restaurant');
+      if (destBtn) destBtn.focus();
+    }
+
+    window.stStockSyncTransferSelection = syncSelection;
+
+    if (page.getAttribute('data-st-transfer-bound') !== '1') {
+      page.setAttribute('data-st-transfer-bound', '1');
+      page.addEventListener('change', function (event) {
+        var t = event.target;
+        if (!t) return;
+        if (t.id === 'st-stock-select-all') {
+          var on = !!t.checked;
+          selectableRows().forEach(function (row) {
+            var check = row.querySelector('.st-stock-row-check');
+            if (check) check.checked = on;
+          });
+          syncSelection();
+          return;
+        }
+        if (t.classList && t.classList.contains('st-stock-row-check')) {
+          syncSelection();
+        }
+      });
+      page.addEventListener('click', function (event) {
+        var btn = event.target && event.target.closest ? event.target.closest('#st-stock-transfer-selected') : null;
+        if (!btn || !page.contains(btn) || btn.disabled) return;
+        event.preventDefault();
+        var rows = checkedRows();
+        if (!rows.length) return;
+        openModal(rows, String(btn.getAttribute('data-st-transfer') || 'to_counter'));
+      });
+    }
+
+    var cancel = document.getElementById('st-stock-transfer-cancel');
+    if (cancel && cancel.getAttribute('data-st-bound') !== '1') {
+      cancel.setAttribute('data-st-bound', '1');
+      cancel.addEventListener('click', function (e) {
+        e.preventDefault();
+        closeModal();
+      });
+    }
+    if (modal.getAttribute('data-st-overlay-bound') !== '1') {
+      modal.setAttribute('data-st-overlay-bound', '1');
+      modal.addEventListener('click', function (e) {
+        if (e.target === modal) closeModal();
+        var destTab = e.target && e.target.closest ? e.target.closest('.st-stock-transfer-dest-tabs .cp-view-tab') : null;
+        if (destTab && modal.contains(destTab)) {
+          e.preventDefault();
+          setToOutlet(String(destTab.getAttribute('data-value') || ''));
+        }
+      });
+      modal.addEventListener('input', function (e) {
+        clampQtyInput(e.target);
+      });
+      modal.addEventListener('change', function (e) {
+        clampQtyInput(e.target);
+      });
+      modal.addEventListener('blur', function (e) {
+        clampQtyInput(e.target);
+      }, true);
+    }
+    if (form && form.getAttribute('data-st-bound') !== '1') {
+      form.setAttribute('data-st-bound', '1');
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        showErr('');
+        var lineNodes = linesEl ? Array.from(linesEl.querySelectorAll('.st-stock-transfer-line')) : [];
+        var items = [];
+        for (var i = 0; i < lineNodes.length; i++) {
+          var node = lineNodes[i];
+          var qtyInput = node.querySelector('.st-stock-transfer-line-qty');
+          var qty = roundQty(qtyInput && qtyInput.value);
+          if (qty <= 0) continue;
+          var avail = roundQty(node.getAttribute('data-available') || '0');
+          var name = String(node.getAttribute('data-item-name') || '').trim();
+          var unit = String(node.getAttribute('data-unit') || '').trim();
+          if (qty - avail > 0.0001) {
+            showErr('Qty for ' + name + (unit ? ' (' + unit + ')' : '') + ' cannot exceed available stock.');
+            if (qtyInput) qtyInput.focus();
+            return;
+          }
+          items.push({
+            outlet: String(node.getAttribute('data-outlet') || '').trim(),
+            item_name: name,
+            unit: unit,
+            qty: qty
+          });
+        }
+        if (!items.length) {
+          showErr('Enter a quantity greater than zero.');
+          var firstQty = linesEl && linesEl.querySelector('.st-stock-transfer-line-qty');
+          if (firstQty) firstQty.focus();
+          return;
+        }
+        var toOutletEl = document.getElementById('st-stock-transfer-to-outlet');
+        var toOutlet = String((toOutletEl && toOutletEl.value) || '').trim().toLowerCase();
+        if (toOutlet !== 'bar' && toOutlet !== 'restaurant') {
+          showErr('Choose Restaurant or Bar.');
+          return;
+        }
+        var url = page.getAttribute('data-transfer-url') || '/stores/stock/transfer';
+        var payload = {
+          direction: document.getElementById('st-stock-transfer-direction').value,
+          to_outlet: toOutlet,
+          note: (document.getElementById('st-stock-transfer-note') || {}).value || '',
+          items: items
+        };
+        if (submitEl) submitEl.disabled = true;
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(function (res) {
+          return res.json().then(function (data) {
+            return { ok: res.ok, status: res.status, data: data };
+          }).catch(function () {
+            return { ok: res.ok, status: res.status, data: {} };
+          });
+        }).then(function (result) {
+          syncSubmitEnabled();
+          if (!result.data || !result.data.ok) {
+            showErr((result.data && result.data.error) || 'Could not transfer stock.');
+            return;
+          }
+          closeModal();
+          stSoftNavigate(window.location.pathname + window.location.search);
+        }).catch(function () {
+          syncSubmitEnabled();
+          showErr('Could not transfer stock.');
+        });
+      });
+    }
+
+    syncSelection();
   }
 
   window.initStoresPage = function () {
@@ -4590,6 +4906,8 @@
     initProductPackRowToggle();
     initIndentListSearch();
     initStockSearch();
+    initStockPlaceTabs();
+    initStockTransferModal();
     if (typeof window.initStockAudit === 'function') window.initStockAudit();
     syncIndentLineTotals(document.getElementById('st-indent-form'));
     syncIndentSendButtons();

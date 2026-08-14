@@ -23,6 +23,12 @@
   }
 
   var pendingSelections = [];
+  function reportDt(value) {
+    if (typeof window.formatReportDatetime === 'function') {
+      return window.formatReportDatetime(value);
+    }
+    return value == null || value === '' ? '—' : String(value);
+  }
   var selectionSource = 'table'; // 'table' | 'modal'
 
   function formatInr(amount, dec){
@@ -873,7 +879,7 @@
       tr.innerHTML =
         '<td class="cp-col-check"><input type="checkbox" class="cp-select-check" aria-label="Select ' + escapeHtml(entry.expense_code || entry.id) + '"' + (initiallyChecked ? ' checked' : '') + '></td>' +
         '<td><span class="cp-alloc-code">' + escapeHtml(entry.expense_code || '—') + '</span><div class="pl-name">' + escapeHtml(entry.description || '—') + '</div></td>' +
-        '<td class="pl-col-date">' + escapeHtml(entry.sales_date || '—') + '</td>' +
+        '<td class="pl-col-date">' + escapeHtml(reportDt(entry.sales_date || '—')) + '</td>' +
         '<td><div class="pl-name">' + escapeHtml(entry.supplier_name || '—') + '</div></td>' +
         '<td class="pl-col-amount">' + formatInr(entry.balance) + '</td>' +
         '<td class="pl-col-amount"><input class="cp-alloc-input cp-select-amount" type="number" min="0.01" step="0.01" max="' + entry.balance + '" value="' + entry.balance + '"' + (initiallyChecked ? '' : ' disabled') + '></td>';
@@ -1218,13 +1224,13 @@
       var cat = categoryLabels[item.category] || item.category || '—';
       return '<tr>' +
         '<td><span class="cp-alloc-code">' + escapeHtml(item.expense_code || '—') + '</span>' + escapeHtml(item.description || '—') +
-        '<div class="pl-meta">' + escapeHtml(item.sales_date || '') + (cat && cat !== '—' ? ' · ' + cat : '') + '</div></td>' +
+        '<div class="pl-meta">' + escapeHtml(reportDt(item.sales_date || '')) + (cat && cat !== '—' ? ' · ' + cat : '') + '</div></td>' +
         '<td class="pl-col-amount">' + formatInr(item.amount) + '</td>' +
         '</tr>';
     }).join('');
     detailBody.innerHTML =
       '<div class="cp-detail-meta">' +
-        '<div><span class="cp-detail-label">' + escapeHtml(labels.detail_date_label || 'Payment date') + '</span><span class="cp-detail-value">' + escapeHtml(payment.payment_date || '—') + '</span></div>' +
+        '<div><span class="cp-detail-label">' + escapeHtml(labels.detail_date_label || 'Payment date') + '</span><span class="cp-detail-value">' + escapeHtml(reportDt(payment.payment_date || '—')) + '</span></div>' +
         '<div><span class="cp-detail-label">Supplier</span><span class="cp-detail-value">' + escapeHtml(payment.supplier_name || '—') + '</span></div>' +
         (showPaymentMode
           ? '<div><span class="cp-detail-label">' + escapeHtml((labels.clearance_mode_label || 'Payment mode *').replace(' *', '')) + '</span><span class="cp-detail-value">' + escapeHtml(methodLabel) + '</span></div>' +

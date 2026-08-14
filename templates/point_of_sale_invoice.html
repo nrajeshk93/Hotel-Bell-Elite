@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=58">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=62">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 <script>
 (function(){
@@ -27,7 +27,7 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=58">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=62">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 {% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox, ep_listbox %}
@@ -224,11 +224,19 @@
             <dd id="pos-inv-sum-discount">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row">
-            <dt>CGST <span class="pos-inv-summary-muted" id="pos-inv-sum-cgst-rate">(2.5%)</span></dt>
+            <dt>
+              CGST
+              <span class="pos-inv-summary-muted" id="pos-inv-sum-cgst-rate">(2.5%)</span>
+              <span class="pos-inv-tax-edit">(<input id="pos-inv-sum-cgst-pct" class="pos-inv-tax-pct" type="text" inputmode="decimal" maxlength="6" autocomplete="off" spellcheck="false" aria-label="CGST percent">%)</span>
+            </dt>
             <dd id="pos-inv-sum-cgst">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row">
-            <dt>UGST <span class="pos-inv-summary-muted" id="pos-inv-sum-ugst-rate">(2.5%)</span></dt>
+            <dt>
+              UGST
+              <span class="pos-inv-summary-muted" id="pos-inv-sum-ugst-rate">(2.5%)</span>
+              <span class="pos-inv-tax-edit">(<input id="pos-inv-sum-ugst-pct" class="pos-inv-tax-pct" type="text" inputmode="decimal" maxlength="6" autocomplete="off" spellcheck="false" aria-label="UGST percent">%)</span>
+            </dt>
             <dd id="pos-inv-sum-ugst">₹0.00</dd>
           </div>
           <div class="pos-inv-summary-row" id="pos-inv-sum-vat-row" hidden>
@@ -432,11 +440,11 @@
 {% endif %}
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='pos_offline.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=13"></script>
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=19"></script>
 <script src="{{ url_for('static', filename='pos_settle.js') }}?v=3"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=123"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=125"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

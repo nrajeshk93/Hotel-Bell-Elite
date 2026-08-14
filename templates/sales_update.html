@@ -6,7 +6,7 @@
 <title>{{ page_title|default('Sales Update') }} | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=35">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=4">
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
@@ -282,7 +282,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script>
 (function(){
   const wrap = document.getElementById('se-date-range-wrap');
@@ -1077,7 +1077,21 @@ SalesDateRangePicker.init({
       const importedDate = data.date || uploadDate;
       try { sessionStorage.setItem('hbe.salesUpdate.date', importedDate); } catch (e) {}
       if (statusEl) statusEl.textContent = data.message || 'Report imported. Refreshing…';
-      window.location.assign(window.location.pathname + '?date=' + encodeURIComponent(importedDate));
+      const next = new URL(window.location.href);
+      next.searchParams.set('date', importedDate);
+      if (typeof window.deInvalidateSoftNavCacheByPath === 'function') {
+        window.deInvalidateSoftNavCacheByPath(next.pathname);
+      }
+      if (typeof window.deSoftRefresh === 'function') {
+        window.deSoftRefresh(next.toString());
+        return;
+      }
+      const nextPath = next.pathname + next.search;
+      if (nextPath === window.location.pathname + window.location.search) {
+        window.location.reload();
+        return;
+      }
+      window.location.assign(nextPath);
     } catch (err) {
       const message = err.message || 'Upload failed.';
       if (statusEl) statusEl.textContent = message;

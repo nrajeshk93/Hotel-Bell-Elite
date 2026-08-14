@@ -2,6 +2,132 @@
 
 from __future__ import annotations
 
+import calendar
+from datetime import date, datetime
+
+REPORT_EXPORT_BRAND = "Hotel Bell Elite"
+PURCHASE_EXPENSE_LEDGER_NAME = "Purchase & Expense Ledger"
+SALARY_PAYMENT_NAME = "Salary Payment"
+_REPORT_EXPORT_MONTHS = (
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+)
+
+
+def report_export_date_label(value):
+    """Filename date fragment: 01 July 26."""
+    return f"{value.day:02d} {_REPORT_EXPORT_MONTHS[value.month - 1]} {value.strftime('%y')}"
+
+
+def report_export_filename(
+    report_title,
+    filters=None,
+    *,
+    date_from=None,
+    date_to=None,
+    date_filter_active=None,
+):
+    """Hotel Bell Elite {Report Title} 01 July 26 to 31 July 26.xlsx"""
+    title = " ".join(str(report_title or "").split())
+    payload = filters if isinstance(filters, dict) else {}
+    start = date_from if date_from is not None else payload.get("date_from")
+    end = date_to if date_to is not None else payload.get("date_to")
+    active = date_filter_active
+    if active is None:
+        if "date_filter_active" in payload:
+            active = bool(payload.get("date_filter_active"))
+        else:
+            active = bool(start and end)
+    if active and start and end:
+        start_label = report_export_date_label(start)
+        end_label = report_export_date_label(end)
+        return f"{REPORT_EXPORT_BRAND} {title} {start_label} to {end_label}.xlsx"
+    return f"{REPORT_EXPORT_BRAND} {title}.xlsx"
+
+
+def report_export_month_filename(report_title, year, month):
+    """Month-window filename: first day through last day of the payroll month."""
+    year = int(year)
+    month = int(month)
+    start = date(year, month, 1)
+    end = date(year, month, calendar.monthrange(year, month)[1])
+    return report_export_filename(
+        report_title,
+        date_from=start,
+        date_to=end,
+        date_filter_active=True,
+    )
+
+
+def _parse_report_datetime(value):
+    """Return ``(datetime, has_time)`` for report display values."""
+    if value is None:
+        return None, False
+    if isinstance(value, datetime):
+        return value, True
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day), False
+    text = str(value).strip()
+    if not text or text in {"—", "-", "never"}:
+        return None, False
+    text = text.replace("T", " ", 1)
+    for fmt, length, has_time in (
+        ("%Y-%m-%d %H:%M:%S", 19, True),
+        ("%Y-%m-%d %H:%M", 16, True),
+        ("%Y-%m-%d", 10, False),
+    ):
+        chunk = text[:length]
+        if len(chunk) < length:
+            continue
+        try:
+            return datetime.strptime(chunk, fmt), has_time
+        except ValueError:
+            continue
+    return None, False
+
+
+def format_report_date(value, empty="—"):
+    """Invoice Ledger date-only display: ``31 July 26``."""
+    parsed, _has_time = _parse_report_datetime(value)
+    if parsed is None:
+        text = "" if value is None else str(value).strip()
+        return empty if not text else text
+    return (
+        f"{parsed.day} {_REPORT_EXPORT_MONTHS[parsed.month - 1]} "
+        f"{parsed.strftime('%y')}"
+    )
+
+
+def format_report_time(value, empty=""):
+    """Invoice Ledger time: ``15:49`` (empty when the value is date-only)."""
+    parsed, has_time = _parse_report_datetime(value)
+    if parsed is None or not has_time:
+        return empty
+    return f"{parsed.hour:02d}:{parsed.minute:02d}"
+
+
+def format_report_datetime(value, empty="—"):
+    """Invoice Ledger display: ``31 July 26`` or ``31 July 26 15:49``."""
+    parsed, has_time = _parse_report_datetime(value)
+    if parsed is None:
+        text = "" if value is None else str(value).strip()
+        return empty if not text else text
+    label = format_report_date(parsed, empty=empty)
+    if has_time:
+        return f"{label} {format_report_time(parsed)}"
+    return label
+
+
 REPORT_CATEGORY_LABELS = {
     "all": "All",
     "restaurant": "Restaurant",
@@ -9,26 +135,14 @@ REPORT_CATEGORY_LABELS = {
     "hr": "Employee Payroll",
     "sales": "Sales",
     "inventory": "Inventory",
-    "masters": "Masters",
 }
 
 # Server-driven report cards. Add entries here to surface new reports on /reports.
 # view_route → open/view page; download_route → Excel (or file) export when available.
 REPORT_DEFINITIONS = [
     {
-        "id": "invoice_ledger",
-        "name": "Invoice Ledger Report",
-        "description": "Restaurant POS invoices — view ledger and export Excel.",
-        "icon": "invoice",
-        "icon_tone": "violet",
-        "category": "restaurant",
-        "view_route": "point_of_sale_invoice_ledger",
-        "download_route": "export_pos_invoice_ledger_report",
-        "downloadable": True,
-    },
-    {
         "id": "expense_ledger",
-        "name": "Expense Ledger Report",
+        "name": PURCHASE_EXPENSE_LEDGER_NAME,
         "description": "Purchase / expense entries with date filters and Excel export.",
         "icon": "ledger",
         "icon_tone": "blue",
@@ -39,7 +153,7 @@ REPORT_DEFINITIONS = [
     },
     {
         "id": "cash_ledger",
-        "name": "Cash Ledger Report",
+        "name": "Cash Ledger",
         "description": "Outlet cash position and movements — view and export.",
         "icon": "cash",
         "icon_tone": "green",
@@ -50,7 +164,7 @@ REPORT_DEFINITIONS = [
     },
     {
         "id": "credit_payment",
-        "name": "Credit Payment Report",
+        "name": "Credit Payment",
         "description": "Supplier credit payments and ICICI vendor payment export.",
         "icon": "credit",
         "icon_tone": "teal",
@@ -60,19 +174,8 @@ REPORT_DEFINITIONS = [
         "downloadable": True,
     },
     {
-        "id": "purchase_verification",
-        "name": "Approvals Report",
-        "description": "Verified purchases with Excel download.",
-        "icon": "check",
-        "icon_tone": "amber",
-        "category": "accounts",
-        "view_route": "purchase_verification",
-        "download_route": "export_purchase_verification_report",
-        "downloadable": True,
-    },
-    {
         "id": "tips",
-        "name": "Tips Report",
+        "name": "Tips",
         "description": "Employee tip collections by outlet — analytics and Excel.",
         "icon": "tip",
         "icon_tone": "rose",
@@ -82,19 +185,8 @@ REPORT_DEFINITIONS = [
         "downloadable": True,
     },
     {
-        "id": "payroll_hub",
-        "name": "Payroll Reports",
-        "description": "Employee master, wages, attendance, credits, and bank files.",
-        "icon": "payroll",
-        "icon_tone": "indigo",
-        "category": "hr",
-        "view_route": "report",
-        "download_route": None,
-        "downloadable": True,
-    },
-    {
         "id": "employee_master",
-        "name": "Employee Master Report",
+        "name": "Employee Master",
         "description": "View employee master records and download Excel.",
         "icon": "person",
         "icon_tone": "cyan",
@@ -105,7 +197,7 @@ REPORT_DEFINITIONS = [
     },
     {
         "id": "monthly_payroll",
-        "name": "Monthly Payroll Report",
+        "name": "Monthly Payroll",
         "description": "Attendance-based salary ledger — view and export Excel.",
         "icon": "wage",
         "icon_tone": "blue",
@@ -127,7 +219,7 @@ REPORT_DEFINITIONS = [
     },
     {
         "id": "credits",
-        "name": "Credit / Advance Report",
+        "name": "Credit / Advance",
         "description": "Staff credit and advance export.",
         "icon": "advance",
         "icon_tone": "orange",
@@ -138,7 +230,7 @@ REPORT_DEFINITIONS = [
     },
     {
         "id": "bank",
-        "name": "Bank Report",
+        "name": SALARY_PAYMENT_NAME,
         "description": "ICICI fund-transfer bank file for payroll payouts.",
         "icon": "bank",
         "icon_tone": "green",
@@ -148,30 +240,8 @@ REPORT_DEFINITIONS = [
         "downloadable": True,
     },
     {
-        "id": "supplier",
-        "name": "Supplier Report",
-        "description": "Supplier master Excel export.",
-        "icon": "truck",
-        "icon_tone": "blue",
-        "category": "masters",
-        "view_route": "supplier_master",
-        "download_route": "export_supplier_report",
-        "downloadable": True,
-    },
-    {
-        "id": "customer",
-        "name": "Customer Report",
-        "description": "Customer master Excel export.",
-        "icon": "user",
-        "icon_tone": "teal",
-        "category": "masters",
-        "view_route": "customer_master",
-        "download_route": "export_customer_report",
-        "downloadable": True,
-    },
-    {
         "id": "menu_margin",
-        "name": "Menu & Margin Report",
+        "name": "Menu & Margin",
         "description": "Menu catalog with food cost and margin — export from Menu Master.",
         "icon": "menu",
         "icon_tone": "violet",
@@ -182,8 +252,8 @@ REPORT_DEFINITIONS = [
     },
     {
         "id": "stock",
-        "name": "Stock Report",
-        "description": "Outlet stock on hand — export Excel from Stock.",
+        "name": "Store",
+        "description": "Outlet stock on hand — export Excel from Store.",
         "icon": "package",
         "icon_tone": "amber",
         "category": "inventory",
@@ -193,7 +263,7 @@ REPORT_DEFINITIONS = [
     },
     {
         "id": "stock_audit",
-        "name": "Stock Audit Report",
+        "name": "Stock Audit",
         "description": "Detailed stock adjustments from weekly audits — view and export Excel.",
         "icon": "package",
         "icon_tone": "teal",
@@ -214,25 +284,25 @@ REPORT_DEFINITIONS = [
         "downloadable": True,
     },
     {
+        "id": "manager_insight",
+        "name": "Manager Insight",
+        "description": "Hotel occupancy and room revenue — Duration, current month, and financial year.",
+        "icon": "invoice",
+        "icon_tone": "teal",
+        "category": "sales",
+        "view_route": "sales_report_manager_insight",
+        "download_route": "sales_report_manager_insight_export",
+        "downloadable": True,
+    },
+    {
         "id": "restaurant_sales",
-        "name": "Restaurant Sales",
-        "description": "Restaurant POS invoices invoice-wise — filters, KPIs, and Excel export.",
+        "name": "Sales - Restaurant & Bar",
+        "description": "Restaurant and Bar POS invoices invoice-wise — filters, KPIs, and Excel export.",
         "icon": "invoice",
         "icon_tone": "violet",
         "category": "sales",
         "view_route": "sales_report_restaurant",
         "download_route": "sales_report_restaurant_export",
-        "downloadable": True,
-    },
-    {
-        "id": "bar_sales",
-        "name": "Bar Sales",
-        "description": "Bar POS invoices invoice-wise — filters, KPIs, and Excel export.",
-        "icon": "invoice",
-        "icon_tone": "rose",
-        "category": "sales",
-        "view_route": "sales_report_bar",
-        "download_route": "sales_report_bar_export",
         "downloadable": True,
     },
     {

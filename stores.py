@@ -24,6 +24,7 @@ from db import (
     list_pos_menu_recipe_lines,
 )
 from embed_helpers import is_embed_request
+from reports import report_export_filename
 from whatsapp_indent import (
     assign_fresh_approval_token,
     notify_indent_pending_whatsapp,
@@ -37,6 +38,13 @@ STORES_OUTLETS = (
     {"key": "restaurant", "label": "Restaurant"},
 )
 OUTLET_KEYS = {item["key"] for item in STORES_OUTLETS}
+STOCK_PLACE_WAREHOUSE = "warehouse"
+STOCK_PLACE_COUNTER = "counter"
+STOCK_PLACES = (
+    {"key": STOCK_PLACE_WAREHOUSE, "label": "Warehouse"},
+    {"key": STOCK_PLACE_COUNTER, "label": "Counter"},
+)
+STOCK_PLACE_KEYS = {item["key"] for item in STOCK_PLACES}
 # Indent filter can also use "All" (key stays "both" for existing URLs/data).
 STORES_FILTER_OUTLETS = (
     {"key": "both", "label": "All"},
@@ -148,9 +156,9 @@ PAGE_META = {
         "cta": None,
     },
     "stock": {
-        "title": "Stock",
+        "title": "Store",
         "subtitle": "What is currently in the store for this outlet.",
-        "step": "4 · Stock",
+        "step": "4 · Store",
         "list_endpoint": "stores_stock",
         "cta": None,
     },
@@ -371,6 +379,45 @@ def _outlet_match_sql(column: str, outlet: str) -> tuple[str, tuple[Any, ...]]:
     if outlet == "both":
         return f"{column} IN ('bar', 'restaurant')", ()
     return f"{column} = ?", (outlet,)
+
+
+def _normalize_stock_place(value, default: str = STOCK_PLACE_WAREHOUSE) -> str:
+    key = str(value or "").strip().lower()
+    if key in STOCK_PLACE_KEYS:
+        return key
+    fallback = str(default or "").strip().lower()
+    if fallback in STOCK_PLACE_KEYS:
+        return fallback
+    return STOCK_PLACE_WAREHOUSE
+
+
+def _stock_place_label(place: str) -> str:
+    key = _normalize_stock_place(place)
+    for item in STOCK_PLACES:
+        if item["key"] == key:
+            return item["label"]
+    return key.title()
+
+
+def _parse_stock_place(raw: str | None) -> str:
+    return _normalize_stock_place(raw, default=STOCK_PLACE_WAREHOUSE)
+
+
+def _stock_qty_on_hand(conn, outlet: str, place: str, item_name: str, unit: str) -> float:
+    row = conn.execute(
+        """
+        SELECT qty_on_hand FROM store_stock_items
+        WHERE outlet = ? AND place = ?
+          AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
+        """,
+        (outlet, place, item_name, unit),
+    ).fetchone()
+    if row is None:
+        return 0.0
+    try:
+        return float(row["qty_on_hand"] or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _parse_product_outlet(raw: str | None) -> str:
@@ -1439,14 +1486,19 @@ def _adjust_stock(
     ref_id,
     notes,
     user_id,
+    place,
     unit_cost=None,
     allow_shortfall=False,
 ):
     """Adjust on-hand qty and write a stock movement.
 
+    ``place`` is required (warehouse | counter). Lookup, insert, update, and
+    the movement row are all keyed by outlet + place + name + unit.
+
     Returns the qty_delta actually applied (may be clamped when allow_shortfall
     is True). Returns 0.0 when nothing was written (no row / zero delta).
     """
+    place = _normalize_stock_place(place)
     try:
         qty_delta = float(qty_delta)
     except (TypeError, ValueError):
@@ -1457,9 +1509,10 @@ def _adjust_stock(
     existing = conn.execute(
         """
         SELECT id, qty_on_hand FROM store_stock_items
-        WHERE outlet = ? AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
+        WHERE outlet = ? AND place = ?
+          AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
         """,
-        (outlet, item_name, unit),
+        (outlet, place, item_name, unit),
     ).fetchone()
     if existing:
         on_hand = float(existing["qty_on_hand"] or 0)
@@ -1487,10 +1540,11 @@ def _adjust_stock(
             return 0.0
         conn.execute(
             """
-            INSERT INTO store_stock_items (outlet, item_name, unit, qty_on_hand, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO store_stock_items
+                (outlet, place, item_name, unit, qty_on_hand, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (outlet, item_name, unit, round(float(qty_delta), 3), _now()),
+            (outlet, place, item_name, unit, round(float(qty_delta), 3), _now()),
         )
     cost_value = None
     if unit_cost is not None:
@@ -1503,12 +1557,13 @@ def _adjust_stock(
     conn.execute(
         """
         INSERT INTO store_stock_movements
-            (outlet, item_name, unit, qty_delta, movement_type, ref_type, ref_id,
+            (outlet, place, item_name, unit, qty_delta, movement_type, ref_type, ref_id,
              notes, unit_cost, created_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             outlet,
+            place,
             item_name,
             unit,
             float(qty_delta),
@@ -1522,36 +1577,6 @@ def _adjust_stock(
         ),
     )
     return float(qty_delta)
-
-
-def _resolve_pos_sale_stock_outlet(conn, product_outlet, item_name, unit) -> str:
-    """Pick bar/restaurant stock outlet for a Product Master row."""
-    po = _normalize_outlet_key(product_outlet or "restaurant")
-    if po in OUTLET_KEYS:
-        return po
-    # Product outlet is "both" (or unknown): prefer an existing stock row.
-    rows = conn.execute(
-        """
-        SELECT outlet, qty_on_hand
-        FROM store_stock_items
-        WHERE lower(item_name) = lower(?) AND lower(unit) = lower(?)
-        """,
-        (item_name, unit),
-    ).fetchall()
-    if not rows:
-        return "restaurant"
-    by_outlet = {
-        _normalize_outlet_key(r["outlet"]): float(r["qty_on_hand"] or 0) for r in rows
-    }
-    if by_outlet.get("restaurant", 0) > 0.0001:
-        return "restaurant"
-    if by_outlet.get("bar", 0) > 0.0001:
-        return "bar"
-    if "restaurant" in by_outlet:
-        return "restaurant"
-    if "bar" in by_outlet:
-        return "bar"
-    return "restaurant"
 
 
 def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
@@ -1573,7 +1598,7 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
 
     inv = conn.execute(
         """
-        SELECT id, order_no, status, is_active,
+        SELECT id, order_no, status, is_active, outlet,
                COALESCE(stock_deducted_at, '') AS stock_deducted_at
         FROM pos_invoices
         WHERE id = ?
@@ -1605,6 +1630,9 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
         return {"ok": True, "skipped": True, "reason": "movements_exist"}
 
     order_no = (inv["order_no"] or "").strip() or f"#{invoice_id}"
+    invoice_outlet = _normalize_outlet_key(inv["outlet"] or "restaurant")
+    if invoice_outlet not in OUTLET_KEYS:
+        invoice_outlet = "restaurant"
     lines = conn.execute(
         """
         SELECT menu_item_id, name, qty
@@ -1694,10 +1722,7 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
                 need = float(per_portion) * float(sold_qty)
                 if need <= 0:
                     continue
-                outlet = _resolve_pos_sale_stock_outlet(
-                    conn, recipe.get("product_outlet"), product_name, product_unit
-                )
-                key = (outlet, product_name, product_unit)
+                key = (invoice_outlet, product_name, product_unit)
                 needs[key] = needs.get(key, 0.0) + need
 
     deducted: list[dict[str, Any]] = []
@@ -1705,6 +1730,7 @@ def deduct_stock_for_pos_invoice(conn, invoice_id, *, user_id=None):
         applied = _adjust_stock(
             conn,
             outlet=outlet,
+            place=STOCK_PLACE_COUNTER,
             item_name=name,
             unit=unit,
             qty_delta=-abs(need_qty),
@@ -2541,7 +2567,7 @@ def _page_render(page_key: str, **kwargs):
             "back_href",
             url_for("stores_stock", outlet=outlet if outlet else "both"),
         )
-        kwargs.setdefault("back_label", "Back to Stock")
+        kwargs.setdefault("back_label", "Back to Store")
     nav_stores_view = kwargs.pop("de_nav_stores_view", page_key)
     if page_key == "indent" and "pending_approvals_count" not in kwargs:
         pending_count = 0
@@ -7170,6 +7196,7 @@ def stores_confirm_stock_inward_expense():
                 _adjust_stock(
                     conn,
                     outlet=write_outlet,
+                    place=STOCK_PLACE_WAREHOUSE,
                     item_name=line["item_name"],
                     unit=line["unit"] or "",
                     qty_delta=stock_qty,
@@ -7262,10 +7289,10 @@ def stores_confirm_stock_inward_expense():
             }
             if po_still_open:
                 redirect_kwargs["po_id"] = purchase_order_id
-                message = "Partial stock inward recorded. Remaining items stay on Stock Inward."
+                message = "Partial warehouse stock inward recorded. Remaining items stay on Stock Inward."
             else:
                 message = (
-                    "Stock inward recorded for this purchase order. "
+                    "Warehouse stock inward recorded for this purchase order. "
                     "Remaining indent qty stays available for other POs."
                 )
             redirect_url = url_for("stores_purchase_requests", **redirect_kwargs)
@@ -7275,7 +7302,7 @@ def stores_confirm_stock_inward_expense():
                 (indent_id,),
             )
             redirect_url = url_for("stores_stock", outlet=write_outlet)
-            message = "Stock inward and expense recorded."
+            message = "Stock inward recorded into warehouse."
 
         conn.commit()
     except ValueError as exc:
@@ -7442,6 +7469,7 @@ def stores_confirm_direct_stock_inward_expense():
                 _adjust_stock(
                     conn,
                     outlet=write_outlet,
+                    place=STOCK_PLACE_WAREHOUSE,
                     item_name=line["item_name"],
                     unit=line["unit"] or "",
                     qty_delta=stock_qty,
@@ -7481,7 +7509,7 @@ def stores_confirm_direct_stock_inward_expense():
         "expense_id": expenses[0]["expense_id"] if expenses else None,
         "expense_code": expenses[0].get("expense_code") if expenses else None,
         "expenses": expenses,
-        "message": "Stock inward recorded. Expense awaits Purchase Verification.",
+        "message": "Warehouse stock inward recorded. Expense awaits Purchase Verification.",
         "partial": False,
     })
 
@@ -7542,6 +7570,7 @@ def stores_pr_receive(pr_id: int):
             _adjust_stock(
                 conn,
                 outlet=outlet,
+                place=STOCK_PLACE_WAREHOUSE,
                 item_name=line["item_name"],
                 unit=line["unit"],
                 qty_delta=_line_stock_qty_delta(line, float(line["quantity"])),
@@ -7562,7 +7591,7 @@ def stores_pr_receive(pr_id: int):
         return redirect(url_for("stores_purchase_requests", outlet=outlet))
     finally:
         conn.close()
-    flash("Items received into stock.", "ok")
+    flash("Items received into warehouse stock.", "ok")
     return redirect(url_for("stores_stock", outlet=outlet))
 
 
@@ -7723,19 +7752,21 @@ def _load_stock_report_items(
     conn,
     outlet: str,
     *,
+    place: str = STOCK_PLACE_WAREHOUSE,
     category: str = "",
     status: str = "",
     q: str = "",
 ) -> list[dict[str, Any]]:
+    place = _parse_stock_place(place)
     outlet_sql, outlet_params = _outlet_match_sql("outlet", outlet)
     outlet_sql_m, outlet_params_m = _outlet_match_sql("m.outlet", outlet)
     items = conn.execute(
         f"""
         SELECT * FROM store_stock_items
-        WHERE {outlet_sql}
+        WHERE {outlet_sql} AND place = ?
         ORDER BY lower(item_name), lower(unit)
         """,
-        outlet_params,
+        (*outlet_params, place),
     ).fetchall()
     inward_costs = _inward_weighted_unit_costs(conn, outlet_sql_m, outlet_params_m)
     stock_items = _enrich_stock_items(
@@ -7769,6 +7800,7 @@ def _load_stock_report_items(
                 category_name,
                 str(item.get("qty_on_hand") or ""),
                 status_label,
+                str(item.get("place") or place),
             ]
         ).lower()
         if needle and needle not in hay:
@@ -7781,6 +7813,7 @@ def _load_stock_report_items(
         line_value = (
             round(qty * unit_price_f, 2) if unit_price_f is not None else None
         )
+        item_place = _parse_stock_place(item.get("place") or place)
         out.append(
             {
                 "item_name": item.get("item_name") or "",
@@ -7792,6 +7825,8 @@ def _load_stock_report_items(
                 "value": line_value,
                 "outlet": item.get("outlet") or "",
                 "outlet_label": _outlet_label(_normalize_outlet_key(item.get("outlet"))),
+                "place": item_place,
+                "place_label": _stock_place_label(item_place),
             }
         )
     return out
@@ -7834,8 +7869,9 @@ def _build_stock_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
         "Unit price",
         "Value",
         "Outlet",
+        "Place",
     ]
-    widths = (22, 18, 12, 10, 12, 12, 12, 14)
+    widths = (22, 18, 12, 10, 12, 12, 12, 14, 12)
     for col, title in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col, value=title)
         cell.font = header_font
@@ -7853,6 +7889,7 @@ def _build_stock_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
             _excel_number(row.get("unit_price")),
             _excel_number(row.get("value")),
             row.get("outlet_label") or row.get("outlet") or "",
+            row.get("place_label") or _stock_place_label(row.get("place")),
         ]
         for col, value in enumerate(values, start=1):
             cell = ws.cell(row=idx, column=col, value=value)
@@ -7861,7 +7898,7 @@ def _build_stock_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
             cell.border = border
     ws.freeze_panes = "A2"
     if rows:
-        ws.auto_filter.ref = f"A1:H{len(rows) + 1}"
+        ws.auto_filter.ref = f"A1:I{len(rows) + 1}"
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -7871,11 +7908,15 @@ def _build_stock_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
 def _stock_export_filter_args(
     outlet: str,
     *,
+    place: str = STOCK_PLACE_WAREHOUSE,
     category: str = "",
     status: str = "",
     q: str = "",
 ) -> dict[str, str]:
-    args: dict[str, str] = {"outlet": outlet or "both"}
+    args: dict[str, str] = {
+        "outlet": outlet or "both",
+        "place": _parse_stock_place(place),
+    }
     cat = (category or "").strip()
     if cat and cat.lower() != "all":
         args["category"] = cat
@@ -7891,6 +7932,7 @@ def _stock_export_filter_args(
 @stores_bp.route("/stores/stock")
 def stores_stock():
     outlet = _parse_outlet_filter(request.args.get("outlet"))
+    place = _parse_stock_place(request.args.get("place"))
     outlet_sql, outlet_params = _outlet_match_sql("outlet", outlet)
     outlet_sql_m, outlet_params_m = _outlet_match_sql("m.outlet", outlet)
     conn = get_db()
@@ -7899,10 +7941,10 @@ def stores_stock():
         items = conn.execute(
             f"""
             SELECT * FROM store_stock_items
-            WHERE {outlet_sql}
+            WHERE {outlet_sql} AND place = ?
             ORDER BY lower(item_name), lower(unit)
             """,
-            outlet_params,
+            (*outlet_params, place),
         ).fetchall()
         inward_costs = _inward_weighted_unit_costs(conn, outlet_sql_m, outlet_params_m)
         stock_items = _enrich_stock_items(
@@ -7915,11 +7957,11 @@ def stores_stock():
             SELECT m.*, u.full_name AS created_by_name
             FROM store_stock_movements m
             LEFT JOIN users u ON u.id = m.created_by
-            WHERE {outlet_sql_m}
+            WHERE {outlet_sql_m} AND m.place = ?
             ORDER BY m.created_at DESC, m.id DESC
             LIMIT 25
             """,
-            outlet_params_m,
+            (*outlet_params_m, place),
         ).fetchall()
     finally:
         conn.close()
@@ -7934,16 +7976,19 @@ def stores_stock():
     has_prices = any(item.get("approximate_price") is not None for item in stock_items)
     has_inward_prices = any(item.get("price_source") == "inward" for item in stock_items)
     stock_export_url = url_for(
-        "stores_stock_export", **_stock_export_filter_args(outlet)
+        "stores_stock_export", **_stock_export_filter_args(outlet, place=place)
     )
+    transfer_url = url_for("stores_stock_transfer")
     return _page_render(
         "stock",
         outlet=outlet,
+        stock_place=place,
         stock_items=stock_items,
         stock_categories=categories,
         stock_has_prices=has_prices,
         stock_has_inward_prices=has_inward_prices,
         stock_export_url=stock_export_url,
+        stock_transfer_url=transfer_url,
         movements=[dict(row) for row in movements],
     )
 
@@ -7952,6 +7997,7 @@ def stores_stock():
 def stores_stock_export():
     """Excel download of current stock on hand (Stock Report)."""
     outlet = _parse_outlet_filter(request.args.get("outlet"))
+    place = _parse_stock_place(request.args.get("place"))
     category = str(request.args.get("category") or "").strip()
     status = str(request.args.get("status") or "").strip().lower()
     q = str(request.args.get("q") or "").strip()
@@ -7961,6 +8007,7 @@ def stores_stock_export():
         rows = _load_stock_report_items(
             conn,
             outlet,
+            place=place,
             category=category,
             status=status,
             q=q,
@@ -7968,14 +8015,249 @@ def stores_stock_export():
     finally:
         conn.close()
     buf = _build_stock_report_xlsx(rows)
-    stamp = datetime.now().strftime("%Y%m%d")
-    outlet_slug = re.sub(r"[^\w.-]+", "_", outlet or "all")
+    place_title = f"Store {_stock_place_label(place)}"
     return send_file(
         buf,
         as_attachment=True,
-        download_name=f"stock_report_{outlet_slug}_{stamp}.xlsx",
+        download_name=report_export_filename(place_title),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+def _parse_stock_transfer_places(data) -> tuple[str, str] | None:
+    direction = str(data.get("direction") or "").strip().lower()
+    raw_from = str(data.get("from_place") or "").strip().lower()
+    raw_to = str(data.get("to_place") or "").strip().lower()
+    if direction in ("to_counter", "warehouse_to_counter"):
+        return STOCK_PLACE_WAREHOUSE, STOCK_PLACE_COUNTER
+    if direction in ("to_warehouse", "counter_to_warehouse"):
+        return STOCK_PLACE_COUNTER, STOCK_PLACE_WAREHOUSE
+    if raw_from in STOCK_PLACE_KEYS and raw_to in STOCK_PLACE_KEYS and raw_from != raw_to:
+        return raw_from, raw_to
+    return None
+
+
+def _coerce_transfer_qty(raw) -> float:
+    try:
+        return float(raw if raw is not None else 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _stock_transfer_lines_from_payload(data) -> tuple[list[dict[str, Any]], str | None]:
+    raw_items = data.get("items") if hasattr(data, "get") else None
+    if isinstance(raw_items, list):
+        lines: list[dict[str, Any]] = []
+        for raw in raw_items:
+            if not isinstance(raw, dict):
+                continue
+            item_name = str(raw.get("item_name") or "").strip()
+            unit = str(raw.get("unit") or "").strip() or "pcs"
+            outlet_key = _normalize_outlet_key(raw.get("outlet") or data.get("outlet"))
+            qty = _coerce_transfer_qty(
+                raw.get("qty") if raw.get("qty") is not None else raw.get("quantity")
+            )
+            if qty <= 0.0001:
+                continue
+            if outlet_key not in OUTLET_KEYS:
+                return [], "Choose Bar or Restaurant."
+            if not item_name:
+                return [], "Item is required."
+            lines.append(
+                {
+                    "outlet": outlet_key,
+                    "item_name": item_name,
+                    "unit": unit,
+                    "qty": qty,
+                }
+            )
+        if not lines:
+            return [], "Enter a quantity greater than zero."
+        return lines, None
+
+    outlet_key = _normalize_outlet_key(data.get("outlet"))
+    if outlet_key not in OUTLET_KEYS:
+        return [], "Choose Bar or Restaurant."
+    item_name = str(data.get("item_name") or "").strip()
+    unit = str(data.get("unit") or "").strip() or "pcs"
+    if not item_name:
+        return [], "Item is required."
+    qty = _coerce_transfer_qty(
+        data.get("qty") if data.get("qty") is not None else data.get("quantity")
+    )
+    if qty <= 0.0001:
+        return [], "Enter a quantity greater than zero."
+    return (
+        [{"outlet": outlet_key, "item_name": item_name, "unit": unit, "qty": qty}],
+        None,
+    )
+
+
+def _apply_stock_transfer_line(
+    conn,
+    *,
+    from_outlet: str,
+    to_outlet: str,
+    from_place: str,
+    to_place: str,
+    item_name: str,
+    unit: str,
+    qty: float,
+    notes: str,
+    user_id: int | None,
+) -> None:
+    on_hand = _stock_qty_on_hand(conn, from_outlet, from_place, item_name, unit)
+    if qty - on_hand > 0.0001:
+        raise ValueError(
+            f"Not enough {_stock_place_label(from_place).lower()} stock "
+            f"for {item_name} ({unit})."
+        )
+    _adjust_stock(
+        conn,
+        outlet=from_outlet,
+        place=from_place,
+        item_name=item_name,
+        unit=unit,
+        qty_delta=-qty,
+        movement_type="transfer",
+        ref_type="stock_transfer",
+        ref_id=None,
+        notes=notes,
+        user_id=user_id,
+    )
+    _adjust_stock(
+        conn,
+        outlet=to_outlet,
+        place=to_place,
+        item_name=item_name,
+        unit=unit,
+        qty_delta=qty,
+        movement_type="transfer",
+        ref_type="stock_transfer",
+        ref_id=None,
+        notes=notes,
+        user_id=user_id,
+    )
+
+
+def _parse_transfer_to_outlet(data, fallback: str) -> tuple[str | None, str | None]:
+    raw = data.get("to_outlet") if hasattr(data, "get") else None
+    if raw is None or str(raw).strip() == "":
+        key = _normalize_outlet_key(fallback)
+        if key not in OUTLET_KEYS:
+            return None, "Choose Restaurant or Bar."
+        return key, None
+    key = _normalize_outlet_key(raw)
+    if key not in OUTLET_KEYS:
+        return None, "Choose Restaurant Counter or Bar Counter."
+    return key, None
+
+
+def _stock_transfer_route_label(from_outlet: str, from_place: str, to_outlet: str, to_place: str) -> str:
+    return (
+        f"{_outlet_label(from_outlet)} {_stock_place_label(from_place)} → "
+        f"{_outlet_label(to_outlet)} {_stock_place_label(to_place)}"
+    )
+
+
+@stores_bp.route("/stores/stock/transfer", methods=["POST"])
+def stores_stock_transfer():
+    """Move qty between warehouse and counter for the same outlet+item+unit."""
+    user = _get_user() if _get_user else None
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in."}), 401
+    data = request.get_json(silent=True) or request.form
+    places = _parse_stock_transfer_places(data)
+    if not places:
+        return jsonify({"ok": False, "error": "Choose transfer direction."}), 400
+    from_place, to_place = places
+    lines, line_error = _stock_transfer_lines_from_payload(data)
+    if line_error:
+        return jsonify({"ok": False, "error": line_error}), 400
+    fallback_outlet = lines[0]["outlet"]
+    to_outlet, dest_error = _parse_transfer_to_outlet(data, fallback_outlet)
+    if dest_error:
+        return jsonify({"ok": False, "error": dest_error}), 400
+    note = str(data.get("note") or data.get("notes") or "").strip()
+    conn = get_db()
+    try:
+        ensure_stores_schema(conn)
+        for line in lines:
+            on_hand = _stock_qty_on_hand(
+                conn,
+                line["outlet"],
+                from_place,
+                line["item_name"],
+                line["unit"],
+            )
+            if line["qty"] - on_hand > 0.0001:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            f"Not enough {_stock_place_label(from_place).lower()} stock "
+                            f"for {line['item_name']} ({line['unit']})."
+                        ),
+                    }
+                ), 400
+        for line in lines:
+            route = _stock_transfer_route_label(
+                line["outlet"], from_place, to_outlet, to_place
+            )
+            movement_note = f"{route}: {note}" if note else route
+            _apply_stock_transfer_line(
+                conn,
+                from_outlet=line["outlet"],
+                to_outlet=to_outlet,
+                from_place=from_place,
+                to_place=to_place,
+                item_name=line["item_name"],
+                unit=line["unit"],
+                qty=line["qty"],
+                notes=movement_note,
+                user_id=user.get("id"),
+            )
+        conn.commit()
+        first = lines[0]
+        route = _stock_transfer_route_label(
+            first["outlet"], from_place, to_outlet, to_place
+        )
+        if len(lines) == 1:
+            message = f"Transferred {first['qty']:g} {first['unit']} ({route})."
+        else:
+            message = f"Transferred {len(lines)} items to {_outlet_label(to_outlet)} {_stock_place_label(to_place)}."
+        return jsonify(
+            {
+                "ok": True,
+                "outlet": first["outlet"],
+                "to_outlet": to_outlet,
+                "item_name": first["item_name"],
+                "unit": first["unit"],
+                "qty": round(float(first["qty"]), 3),
+                "from_place": from_place,
+                "to_place": to_place,
+                "count": len(lines),
+                "items": [
+                    {
+                        "outlet": line["outlet"],
+                        "item_name": line["item_name"],
+                        "unit": line["unit"],
+                        "qty": round(float(line["qty"]), 3),
+                    }
+                    for line in lines
+                ],
+                "message": message,
+            }
+        )
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception:
+        conn.rollback()
+        logger.exception("stock transfer failed")
+        return jsonify({"ok": False, "error": "Could not transfer stock."}), 500
+    finally:
+        conn.close()
 
 
 STOCK_AUDIT_REASONS_NEGATIVE = (
@@ -8021,18 +8303,19 @@ def _parse_audit_ts(raw: Any) -> datetime | None:
 
 
 def _current_audit_stock_qty(
-    conn, outlet: str, stock_item_id: Any, item_name: str, unit: str
+    conn, outlet: str, stock_item_id: Any, item_name: str, unit: str, place: str = STOCK_PLACE_WAREHOUSE
 ) -> float | None:
+    place = _parse_stock_place(place)
     try:
         sid = int(stock_item_id) if stock_item_id is not None else None
     except (TypeError, ValueError):
         sid = None
     if sid is not None:
         row = conn.execute(
-            "SELECT qty_on_hand FROM store_stock_items WHERE id = ?",
+            "SELECT qty_on_hand, place FROM store_stock_items WHERE id = ?",
             (sid,),
         ).fetchone()
-        if row is not None:
+        if row is not None and _parse_stock_place(row["place"] if "place" in row.keys() else place) == place:
             try:
                 return float(row["qty_on_hand"] or 0)
             except (TypeError, ValueError):
@@ -8040,9 +8323,10 @@ def _current_audit_stock_qty(
     row = conn.execute(
         """
         SELECT qty_on_hand FROM store_stock_items
-        WHERE outlet = ? AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
+        WHERE outlet = ? AND place = ?
+          AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
         """,
-        (outlet, item_name or "", unit or "pcs"),
+        (outlet, place, item_name or "", unit or "pcs"),
     ).fetchone()
     if row is None:
         return None
@@ -8052,8 +8336,11 @@ def _current_audit_stock_qty(
         return 0.0
 
 
-def _audit_refresh_line_statuses(conn, audit_id: int, outlet: str) -> bool:
+def _audit_refresh_line_statuses(
+    conn, audit_id: int, outlet: str, place: str = STOCK_PLACE_WAREHOUSE
+) -> bool:
     """Convert skipped→pending and expire verified lines older than one week."""
+    place = _parse_stock_place(place)
     changed = False
     skipped = conn.execute(
         """
@@ -8069,7 +8356,7 @@ def _audit_refresh_line_statuses(conn, audit_id: int, outlet: str) -> bool:
     cutoff = datetime.now() - timedelta(days=STOCK_AUDIT_VERIFY_TTL_DAYS)
     rows = conn.execute(
         """
-        SELECT id, stock_item_id, item_name, unit, system_qty, verified_at
+        SELECT id, stock_item_id, item_name, unit, system_qty, verified_at, place
         FROM store_stock_audit_lines
         WHERE audit_id = ? AND lower(status) = 'verified'
         """,
@@ -8085,6 +8372,7 @@ def _audit_refresh_line_statuses(conn, audit_id: int, outlet: str) -> bool:
             row["stock_item_id"],
             row["item_name"] or "",
             row["unit"] or "pcs",
+            _parse_stock_place(row["place"] if "place" in row.keys() else place),
         )
         try:
             system_qty = (
@@ -8237,14 +8525,17 @@ def _last_purchase_dates(
     }
 
 
-def _seed_audit_lines(conn, audit_id: int, outlet: str) -> None:
+def _seed_audit_lines(
+    conn, audit_id: int, outlet: str, place: str = STOCK_PLACE_WAREHOUSE
+) -> None:
+    place = _parse_stock_place(place)
     items = conn.execute(
         """
         SELECT * FROM store_stock_items
-        WHERE outlet = ?
+        WHERE outlet = ? AND place = ?
         ORDER BY lower(item_name), lower(unit)
         """,
-        (outlet,),
+        (outlet, place),
     ).fetchall()
     stock_items = _enrich_stock_items(conn, [dict(row) for row in items])
     for item in stock_items:
@@ -8260,15 +8551,16 @@ def _seed_audit_lines(conn, audit_id: int, outlet: str) -> None:
         conn.execute(
             """
             INSERT INTO store_stock_audit_lines (
-                audit_id, stock_item_id, item_name, unit, category_name,
+                audit_id, stock_item_id, item_name, unit, place, category_name,
                 system_qty, status, unit_cost
-            ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
             """,
             (
                 audit_id,
                 item.get("id"),
                 item.get("item_name") or "",
                 item.get("unit") or "pcs",
+                place,
                 item.get("category_name") or "",
                 round(system_qty, 3),
                 unit_cost,
@@ -8276,7 +8568,9 @@ def _seed_audit_lines(conn, audit_id: int, outlet: str) -> None:
         )
 
 
-def _sync_audit_lines_from_stock(conn, audit_id: int, outlet: str) -> bool:
+def _sync_audit_lines_from_stock(
+    conn, audit_id: int, outlet: str, place: str = STOCK_PLACE_WAREHOUSE
+) -> bool:
     """Add stock items that appeared after the open audit was seeded (e.g. new inwards).
 
     Also refreshes ``system_qty`` / category / unit cost for still-pending lines so
@@ -8308,10 +8602,10 @@ def _sync_audit_lines_from_stock(conn, audit_id: int, outlet: str) -> bool:
     items = conn.execute(
         """
         SELECT * FROM store_stock_items
-        WHERE outlet = ?
+        WHERE outlet = ? AND place = ?
         ORDER BY lower(item_name), lower(unit)
         """,
-        (outlet,),
+        (outlet, _parse_stock_place(place)),
     ).fetchall()
     stock_items = _enrich_stock_items(conn, [dict(row) for row in items])
     changed = False
@@ -8341,15 +8635,16 @@ def _sync_audit_lines_from_stock(conn, audit_id: int, outlet: str) -> bool:
             conn.execute(
                 """
                 INSERT INTO store_stock_audit_lines (
-                    audit_id, stock_item_id, item_name, unit, category_name,
+                    audit_id, stock_item_id, item_name, unit, place, category_name,
                     system_qty, status, unit_cost
-                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
                 """,
                 (
                     audit_id,
                     stock_id or None,
                     name,
                     unit,
+                    _parse_stock_place(place),
                     category_name,
                     system_qty,
                     unit_cost,
@@ -8398,28 +8693,31 @@ def _sync_audit_lines_from_stock(conn, audit_id: int, outlet: str) -> bool:
     return changed
 
 
-def _get_or_create_open_audit(conn, outlet: str, user_id: int | None) -> dict[str, Any]:
+def _get_or_create_open_audit(
+    conn, outlet: str, user_id: int | None, place: str = STOCK_PLACE_WAREHOUSE
+) -> dict[str, Any]:
+    place = _parse_stock_place(place)
     row = conn.execute(
         """
         SELECT * FROM store_stock_audits
-        WHERE outlet = ? AND status = 'open'
+        WHERE outlet = ? AND place = ? AND status = 'open'
         ORDER BY id DESC
         LIMIT 1
         """,
-        (outlet,),
+        (outlet, place),
     ).fetchone()
     if row:
         return dict(row)
     label = _audit_week_label()
     cur = conn.execute(
         """
-        INSERT INTO store_stock_audits (outlet, status, label, started_at, started_by)
-        VALUES (?, 'open', ?, ?, ?)
+        INSERT INTO store_stock_audits (outlet, place, status, label, started_at, started_by)
+        VALUES (?, ?, 'open', ?, ?, ?)
         """,
-        (outlet, label, _now(), user_id),
+        (outlet, place, label, _now(), user_id),
     )
     audit_id = int(cur.lastrowid)
-    _seed_audit_lines(conn, audit_id, outlet)
+    _seed_audit_lines(conn, audit_id, outlet, place)
     conn.commit()
     created = conn.execute(
         "SELECT * FROM store_stock_audits WHERE id = ?", (audit_id,)
@@ -8463,6 +8761,7 @@ def _serialize_audit_line(line: dict[str, Any]) -> dict[str, Any]:
 def stores_stock_audit():
     filter_outlet = _parse_outlet_filter(request.args.get("outlet"))
     outlet = _audit_concrete_outlet(filter_outlet)
+    place = _parse_stock_place(request.args.get("place"))
     line_id_raw = request.args.get("line_id")
     try:
         selected_line_id = int(line_id_raw) if line_id_raw else None
@@ -8473,25 +8772,25 @@ def stores_stock_audit():
     conn = get_db()
     try:
         ensure_stores_schema(conn)
-        audit = _get_or_create_open_audit(conn, outlet, user_id)
+        audit = _get_or_create_open_audit(conn, outlet, user_id, place)
         changed = False
-        if _audit_refresh_line_statuses(conn, int(audit["id"]), outlet):
+        if _audit_refresh_line_statuses(conn, int(audit["id"]), outlet, place):
             changed = True
-        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet):
+        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet, place):
             changed = True
         if changed:
             conn.commit()
         lines = _load_audit_lines(conn, audit["id"])
         if not lines:
-            _seed_audit_lines(conn, audit["id"], outlet)
+            _seed_audit_lines(conn, audit["id"], outlet, place)
             conn.commit()
             lines = _load_audit_lines(conn, audit["id"])
         purchases = _last_purchase_dates(conn, outlet, lines)
         stock_meta = {
             int(row["id"]): row["updated_at"]
             for row in conn.execute(
-                "SELECT id, updated_at FROM store_stock_items WHERE outlet = ?",
-                (outlet,),
+                "SELECT id, updated_at FROM store_stock_items WHERE outlet = ? AND place = ?",
+                (outlet, place),
             ).fetchall()
             if row["id"] is not None
         }
@@ -8533,11 +8832,11 @@ def stores_stock_audit():
                     WHERE l.audit_id = a.id AND l.status = 'verified') AS verified_count
             FROM store_stock_audits a
             LEFT JOIN users u ON u.id = a.started_by
-            WHERE a.outlet = ? AND a.status = 'completed'
+            WHERE a.outlet = ? AND a.place = ? AND a.status = 'completed'
             ORDER BY a.completed_at DESC, a.id DESC
             LIMIT 20
             """,
-            (outlet,),
+            (outlet, place),
         ).fetchall()
     finally:
         conn.close()
@@ -8551,6 +8850,7 @@ def stores_stock_audit():
     return _page_render(
         "stock_audit",
         outlet=outlet,
+        stock_place=place,
         audit=audit,
         audit_lines=lines,
         audit_kpis=kpis,
@@ -8592,7 +8892,7 @@ def stores_stock_audit_verify():
         ensure_stores_schema(conn)
         line_row = conn.execute(
             """
-            SELECT l.*, a.outlet, a.status AS audit_status, a.id AS audit_pk
+            SELECT l.*, a.outlet, a.place AS audit_place, a.status AS audit_status, a.id AS audit_pk
             FROM store_stock_audit_lines l
             JOIN store_stock_audits a ON a.id = l.audit_id
             WHERE l.id = ?
@@ -8630,6 +8930,10 @@ def stores_stock_audit_verify():
         notes = reason.replace("_", " ").title() if reason else "Stock audit"
         if remarks:
             notes = f"{notes}: {remarks}" if reason else remarks
+        line_data = dict(line_row)
+        stock_place = _parse_stock_place(
+            line_data.get("place") or line_data.get("audit_place")
+        )
         # Reconcile live stock to the counted quantity (not only snapshot delta).
         stock_row = None
         try:
@@ -8638,16 +8942,20 @@ def stores_stock_audit_verify():
             sid = None
         if sid is not None:
             stock_row = conn.execute(
-                "SELECT id, outlet, qty_on_hand FROM store_stock_items WHERE id = ?",
-                (sid,),
+                """
+                SELECT id, outlet, place, qty_on_hand FROM store_stock_items
+                WHERE id = ? AND place = ?
+                """,
+                (sid, stock_place),
             ).fetchone()
         if stock_row is None:
             stock_row = conn.execute(
                 """
-                SELECT id, outlet, qty_on_hand FROM store_stock_items
-                WHERE outlet = ? AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
+                SELECT id, outlet, place, qty_on_hand FROM store_stock_items
+                WHERE outlet = ? AND place = ?
+                  AND lower(item_name) = lower(?) AND lower(unit) = lower(?)
                 """,
-                (line_row["outlet"], line_row["item_name"], line_row["unit"]),
+                (line_row["outlet"], stock_place, line_row["item_name"], line_row["unit"]),
             ).fetchone()
         current_qty = float(stock_row["qty_on_hand"] or 0) if stock_row else 0.0
         stock_outlet = (stock_row["outlet"] if stock_row else None) or line_row["outlet"]
@@ -8657,6 +8965,7 @@ def stores_stock_audit_verify():
             applied = _adjust_stock(
                 conn,
                 outlet=stock_outlet,
+                place=stock_place,
                 item_name=line_row["item_name"],
                 unit=line_row["unit"],
                 qty_delta=live_delta if stock_row is not None else round(actual_qty, 3),
@@ -8784,6 +9093,9 @@ def stores_stock_audit_skip():
 def stores_stock_audit_history():
     filter_outlet = _parse_outlet_filter(request.args.get("outlet"))
     outlet = _audit_concrete_outlet(filter_outlet)
+    place = _parse_stock_place(
+        request.args.get("place") if request.args.get("place") is not None else None
+    )
     conn = get_db()
     try:
         ensure_stores_schema(conn)
@@ -8795,11 +9107,11 @@ def stores_stock_audit_history():
                     WHERE l.audit_id = a.id AND l.status = 'verified') AS verified_count
             FROM store_stock_audits a
             LEFT JOIN users u ON u.id = a.started_by
-            WHERE a.outlet = ? AND a.status = 'completed'
+            WHERE a.outlet = ? AND a.place = ? AND a.status = 'completed'
             ORDER BY a.completed_at DESC, a.id DESC
             LIMIT 50
             """,
-            (outlet,),
+            (outlet, place),
         ).fetchall()
     finally:
         conn.close()
@@ -8830,16 +9142,19 @@ def stores_stock_audit_new():
         data.get("outlet") if data.get("outlet") is not None else request.args.get("outlet")
     )
     outlet = _audit_concrete_outlet(filter_outlet)
+    place = _parse_stock_place(
+        data.get("place") if data.get("place") is not None else request.args.get("place")
+    )
     conn = get_db()
     try:
         ensure_stores_schema(conn)
         open_row = conn.execute(
             """
             SELECT id FROM store_stock_audits
-            WHERE outlet = ? AND status = 'open'
+            WHERE outlet = ? AND place = ? AND status = 'open'
             ORDER BY id DESC LIMIT 1
             """,
-            (outlet,),
+            (outlet, place),
         ).fetchone()
         if open_row:
             conn.execute(
@@ -8850,19 +9165,19 @@ def stores_stock_audit_new():
                 """,
                 (_now(), open_row["id"]),
             )
-        audit = _get_or_create_open_audit(conn, outlet, user.get("id"))
-        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet):
+        audit = _get_or_create_open_audit(conn, outlet, user.get("id"), place)
+        if _sync_audit_lines_from_stock(conn, int(audit["id"]), outlet, place):
             conn.commit()
         lines = _load_audit_lines(conn, audit["id"])
         if not lines:
-            _seed_audit_lines(conn, audit["id"], outlet)
+            _seed_audit_lines(conn, audit["id"], outlet, place)
             conn.commit()
             lines = _load_audit_lines(conn, audit["id"])
         return jsonify(
             {
                 "ok": True,
                 "audit_id": audit["id"],
-                "redirect": url_for("stores_stock_audit", outlet=outlet),
+                "redirect": url_for("stores_stock_audit", outlet=outlet, place=place),
                 "line_count": len(lines),
             }
         )
@@ -8898,6 +9213,7 @@ def _load_stock_audit_adjustment_rows(
     conn,
     *,
     outlet: str,
+    place: str = "",
     date_from: date | None = None,
     date_to: date | None = None,
     reason: str = "",
@@ -8911,6 +9227,10 @@ def _load_stock_audit_adjustment_rows(
         f"abs(coalesce(l.variance_qty, 0)) > {STOCK_AUDIT_EPS}",
     ]
     params: list[Any] = list(outlet_params)
+    place_key = str(place or "").strip().lower()
+    if place_key in STOCK_PLACE_KEYS:
+        clauses.append("lower(coalesce(l.place, a.place, 'warehouse')) = ?")
+        params.append(place_key)
     if date_from is not None:
         clauses.append("date(l.verified_at) >= date(?)")
         params.append(date_from.isoformat())
@@ -8952,6 +9272,7 @@ def _load_stock_audit_adjustment_rows(
         SELECT l.id, l.item_name, l.unit, l.category_name, l.system_qty, l.actual_qty,
                l.variance_qty, l.variance_value, l.reason, l.remarks, l.unit_cost,
                l.verified_at, l.verified_by,
+               coalesce(l.place, a.place, 'warehouse') AS place,
                a.id AS audit_id, a.outlet, a.label AS audit_label, a.status AS audit_status,
                u.full_name AS verified_by_name
         FROM store_stock_audit_lines l
@@ -9007,6 +9328,8 @@ def _load_stock_audit_adjustment_rows(
                 "verified_by_name": item.get("verified_by_name") or "",
                 "outlet": item.get("outlet") or "",
                 "outlet_label": _outlet_label(_normalize_outlet_key(item.get("outlet"))),
+                "place": _parse_stock_place(item.get("place")),
+                "place_label": _stock_place_label(item.get("place")),
                 "audit_id": item.get("audit_id"),
                 "audit_label": item.get("audit_label") or "",
                 "audit_status": item.get("audit_status") or "",
@@ -9067,8 +9390,11 @@ def _parse_stock_audit_report_filters() -> dict[str, Any]:
     if category.lower() == "all":
         category = ""
     q = str(request.args.get("q") or "").strip()
+    raw_place = str(request.args.get("place") or "").strip().lower()
+    place = raw_place if raw_place in STOCK_PLACE_KEYS else ""
     return {
         "outlet": outlet,
+        "place": place,
         "date_from": date_from,
         "date_to": date_to,
         "reason": reason,
@@ -9079,6 +9405,8 @@ def _parse_stock_audit_report_filters() -> dict[str, Any]:
 
 def _stock_audit_report_filter_args(filters: dict[str, Any]) -> dict[str, str]:
     args: dict[str, str] = {"outlet": filters.get("outlet") or "both"}
+    if filters.get("place") in STOCK_PLACE_KEYS:
+        args["place"] = filters["place"]
     if filters.get("date_from"):
         args["date_from"] = filters["date_from"].isoformat()
     if filters.get("date_to"):
@@ -9107,6 +9435,7 @@ def _build_stock_audit_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
     headers = (
         "Verified at",
         "Outlet",
+        "Place",
         "Audit",
         "Product",
         "Category",
@@ -9122,25 +9451,26 @@ def _build_stock_audit_report_xlsx(rows: list[dict[str, Any]]) -> io.BytesIO:
     for col, title in enumerate(headers, start=1):
         cell = ws.cell(row=4, column=col, value=title)
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="center" if col >= 7 else "left")
+        cell.alignment = Alignment(horizontal="center" if col >= 8 else "left")
     for idx, row in enumerate(rows, start=5):
         ws.cell(row=idx, column=1, value=row.get("verified_at") or "")
         ws.cell(row=idx, column=2, value=row.get("outlet_label") or "")
-        ws.cell(row=idx, column=3, value=row.get("audit_label") or "")
-        ws.cell(row=idx, column=4, value=row.get("item_name") or "")
-        ws.cell(row=idx, column=5, value=row.get("category_name") or "")
-        ws.cell(row=idx, column=6, value=row.get("unit") or "")
-        ws.cell(row=idx, column=7, value=row.get("system_qty"))
-        ws.cell(row=idx, column=8, value=row.get("actual_qty"))
-        ws.cell(row=idx, column=9, value=row.get("variance_qty"))
+        ws.cell(row=idx, column=3, value=row.get("place_label") or "")
+        ws.cell(row=idx, column=4, value=row.get("audit_label") or "")
+        ws.cell(row=idx, column=5, value=row.get("item_name") or "")
+        ws.cell(row=idx, column=6, value=row.get("category_name") or "")
+        ws.cell(row=idx, column=7, value=row.get("unit") or "")
+        ws.cell(row=idx, column=8, value=row.get("system_qty"))
+        ws.cell(row=idx, column=9, value=row.get("actual_qty"))
+        ws.cell(row=idx, column=10, value=row.get("variance_qty"))
         vv = row.get("variance_value")
-        ws.cell(row=idx, column=10, value=vv if vv is not None else "")
-        ws.cell(row=idx, column=11, value=row.get("reason_label") or "")
-        ws.cell(row=idx, column=12, value=row.get("remarks") or "")
-        ws.cell(row=idx, column=13, value=row.get("verified_by_name") or "")
+        ws.cell(row=idx, column=11, value=vv if vv is not None else "")
+        ws.cell(row=idx, column=12, value=row.get("reason_label") or "")
+        ws.cell(row=idx, column=13, value=row.get("remarks") or "")
+        ws.cell(row=idx, column=14, value=row.get("verified_by_name") or "")
     from openpyxl.utils import get_column_letter
 
-    widths = (18, 12, 18, 22, 16, 8, 12, 12, 12, 14, 22, 24, 18)
+    widths = (18, 12, 12, 18, 22, 16, 8, 12, 12, 12, 14, 22, 24, 18)
     for idx, width in enumerate(widths, start=1):
         ws.column_dimensions[get_column_letter(idx)].width = width
     buf = io.BytesIO()
@@ -9158,6 +9488,7 @@ def stores_stock_audit_report():
         rows = _load_stock_audit_adjustment_rows(
             conn,
             outlet=filters["outlet"],
+            place=filters.get("place") or "",
             date_from=filters["date_from"],
             date_to=filters["date_to"],
             reason=filters["reason"],
@@ -9213,6 +9544,7 @@ def stores_stock_audit_report_export():
         rows = _load_stock_audit_adjustment_rows(
             conn,
             outlet=filters["outlet"],
+            place=filters.get("place") or "",
             date_from=filters["date_from"],
             date_to=filters["date_to"],
             reason=filters["reason"],
@@ -9222,11 +9554,15 @@ def stores_stock_audit_report_export():
     finally:
         conn.close()
     buf = _build_stock_audit_report_xlsx(rows)
-    stamp = datetime.now().strftime("%Y%m%d")
     return send_file(
         buf,
         as_attachment=True,
-        download_name=f"stock_audit_report_{stamp}.xlsx",
+        download_name=report_export_filename(
+            "Stock Audit",
+            date_from=filters.get("date_from"),
+            date_to=filters.get("date_to"),
+            date_filter_active=bool(filters.get("date_from") and filters.get("date_to")),
+        ),
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 

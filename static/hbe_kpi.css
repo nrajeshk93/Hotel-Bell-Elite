@@ -2,7 +2,7 @@
  * Unified KPI cards:
  * - Layout: Employee Payroll (left icon + stacked text)
  * - Type: Purchase Ledger (label / value / meta)
- * Values auto-shrink/wrap so long ₹ amounts fit the card.
+ * Cards wrap by available width; amounts scale to the card, not the viewport.
  */
 body.su-module .hbe-kpi-row,
 body.su-module .pl-summary-row,
@@ -12,7 +12,7 @@ body.ep-module .kpi-grid,
 body.ep-module .emp-summary-row,
 .kpi-grid{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
   gap:14px;
   margin-bottom:16px;
   width:100%;
@@ -20,7 +20,7 @@ body.ep-module .emp-summary-row,
 body.ep-module .kpi-grid.kpi-grid--3,
 body.ep-module .pl-summary-row.cd-summary-row,
 .kpi-grid.kpi-grid--3{
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
 }
 /* Cash ledger keeps its own 5-column row in cash_ledger.css */
 
@@ -39,6 +39,7 @@ body.ep-module .emp-summary-card,
   min-width:0;
   overflow:hidden;
   margin-bottom:0;
+  container-type:inline-size;
 }
 
 body.ep-module .kpi-card,
@@ -144,14 +145,14 @@ body.ep-module .pl-summary-value,
 body.ep-module .kpi-val,
 .kpi-val{
   margin:0;
-  font-size:clamp(15px,2.4vw,28px);
+  font-size:clamp(13px,7.5cqi,28px);
   font-weight:800;
   color:var(--txt,#1A202C);
   line-height:1.15;
   font-variant-numeric:tabular-nums;
-  white-space:normal;
-  overflow-wrap:anywhere;
-  word-break:break-word;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
   max-width:100%;
 }
 
@@ -176,41 +177,26 @@ body.ep-module .kpi-val.kpi-val--action,
   overflow:visible;
 }
 
-@media (max-width:1100px){
-  body.su-module .hbe-kpi-row,
-  body.su-module .pl-summary-row,
-  body.ep-module .hbe-kpi-row,
-  body.ep-module .pl-summary-row,
-  body.ep-module .kpi-grid,
-  body.ep-module .emp-summary-row,
-  .kpi-grid,
-  body.ep-module .kpi-grid.kpi-grid--3,
-  body.ep-module .pl-summary-row.cd-summary-row,
-  .kpi-grid.kpi-grid--3{
-    grid-template-columns:repeat(2,minmax(0,1fr));
+@container (max-width:280px){
+  .hbe-kpi-body,
+  .pl-summary-body{
+    padding:14px 12px;
+    gap:10px;
   }
-}
-@media (max-width:640px){
-  body.su-module .hbe-kpi-row,
-  body.su-module .pl-summary-row,
-  body.ep-module .hbe-kpi-row,
-  body.ep-module .pl-summary-row,
-  body.ep-module .kpi-grid,
-  body.ep-module .emp-summary-row,
-  .kpi-grid,
-  body.ep-module .kpi-grid.kpi-grid--3,
-  body.ep-module .pl-summary-row.cd-summary-row,
-  .kpi-grid.kpi-grid--3{
-    grid-template-columns:minmax(0,1fr);
+  .hbe-kpi-icon,
+  .kpi-icon{
+    width:32px;
+    height:32px;
   }
-  body.su-module .hbe-kpi-value,
-  body.su-module .pl-summary-value,
-  body.ep-module .hbe-kpi-value,
-  body.ep-module .pl-summary-value,
-  body.ep-module .kpi-val,
+  .hbe-kpi-icon svg,
+  .kpi-icon svg{
+    width:16px;
+    height:16px;
+  }
+  .hbe-kpi-value,
+  .pl-summary-value,
   .kpi-val{
-    font-size:clamp(16px,5.5vw,24px);
+    font-size:clamp(12px,8.5cqi,22px);
   }
-  body.ep-module .kpi-val.kpi-val--action,
   .kpi-val.kpi-val--action{font-size:inherit}
 }

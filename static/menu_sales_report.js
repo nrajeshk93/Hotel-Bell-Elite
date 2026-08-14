@@ -1,5 +1,5 @@
 /**
- * Menu Sales Report — client search, sort, date/outlet/category/status filters.
+ * Menu Sales Report — client search, column sort, date/outlet/category/status filters.
  * Soft-nav safe: window.initMenuSalesReportPage / msr*Changed.
  */
 (function (global) {
@@ -58,6 +58,22 @@
       visible + ' item' + (visible === 1 ? '' : 's');
   }
 
+  function syncGroupVisibility(page) {
+    $all('tr.msr-group-header', page).forEach(function (header) {
+      var gid = header.getAttribute('data-group') || '';
+      var items = $all('tr.msr-row[data-group="' + gid + '"]', page);
+      var anyVisible = items.some(function (row) {
+        return row.style.display !== 'none' && !row.hidden;
+      });
+      header.style.display = anyVisible ? '' : 'none';
+      $all('tr.msr-group-total[data-group="' + gid + '"]', page).forEach(
+        function (total) {
+          total.style.display = anyVisible ? '' : 'none';
+        }
+      );
+    });
+  }
+
   function bindClientSearch(page) {
     var input = $('#msr-search', page);
     if (!input || input.getAttribute('data-msr-bound') === '1') return;
@@ -71,6 +87,7 @@
         var match = !needle || hay.indexOf(needle) !== -1;
         row.style.display = match ? '' : 'none';
       });
+      syncGroupVisibility(page);
       updateVisibleCount(page);
     }
     input.addEventListener('input', apply);
@@ -99,6 +116,27 @@
       return String(raw).toLowerCase();
     }
 
+    function collectGroups() {
+      var groups = [];
+      var current = null;
+      Array.prototype.forEach.call(tbody.rows, function (row) {
+        if (row.classList.contains('msr-group-header')) {
+          current = { header: row, items: [], total: null };
+          groups.push(current);
+          return;
+        }
+        if (!current) return;
+        if (row.classList.contains('msr-group-total')) {
+          current.total = row;
+          return;
+        }
+        if (row.classList.contains('msr-row')) {
+          current.items.push(row);
+        }
+      });
+      return groups;
+    }
+
     function sortBy(th) {
       var key = th.getAttribute('data-sort') || '';
       var type = th.getAttribute('data-sort-type') || 'text';
@@ -111,26 +149,32 @@
         ascending = true;
       }
 
-      var rows = Array.prototype.slice.call(tbody.rows);
-      rows.sort(function (a, b) {
-        var av = cellSortValue(a, colIndex, type);
-        var bv = cellSortValue(b, colIndex, type);
-        var cmp = 0;
-        if (type === 'number') cmp = av - bv;
-        else {
-          cmp = String(av).localeCompare(String(bv), undefined, {
-            numeric: true,
-            sensitivity: 'base'
-          });
-        }
-        return ascending ? cmp : -cmp;
+      collectGroups().forEach(function (group) {
+        group.items.sort(function (a, b) {
+          var av = cellSortValue(a, colIndex, type);
+          var bv = cellSortValue(b, colIndex, type);
+          var cmp = 0;
+          if (type === 'number') cmp = av - bv;
+          else {
+            cmp = String(av).localeCompare(String(bv), undefined, {
+              numeric: true,
+              sensitivity: 'base'
+            });
+          }
+          return ascending ? cmp : -cmp;
+        });
+        tbody.appendChild(group.header);
+        group.items.forEach(function (row) {
+          tbody.appendChild(row);
+        });
+        if (group.total) tbody.appendChild(group.total);
       });
-      rows.forEach(function (row) {
-        tbody.appendChild(row);
+
+      headers.forEach(function (header) {
+        header.classList.remove('is-sorted-asc', 'is-sorted-desc');
+        header.setAttribute('aria-sort', 'none');
       });
-      headers.forEach(function (h) {
-        h.setAttribute('aria-sort', 'none');
-      });
+      th.classList.add(ascending ? 'is-sorted-asc' : 'is-sorted-desc');
       th.setAttribute('aria-sort', ascending ? 'ascending' : 'descending');
     }
 
@@ -163,10 +207,20 @@
     }
     var dateFrom = $('#msr-date-from', form);
     var dateTo = $('#msr-date-to', form);
-    if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
-    if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
+    if (dateFrom && dateFrom.value) dateFrom.setAttribute('name', 'date_from');
+    else if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
+    if (dateTo && dateTo.value) dateTo.setAttribute('name', 'date_to');
+    else if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
     var qs = new URLSearchParams(new FormData(form)).toString();
-    var url = form.action + (qs ? '?' + qs : '');
+    var action = form.getAttribute('action') || form.action || '';
+    var url;
+    try {
+      var parsed = new URL(action, window.location.href);
+      parsed.search = qs;
+      url = parsed.pathname + parsed.search + parsed.hash;
+    } catch (err) {
+      url = action.split('?')[0] + (qs ? '?' + qs : '');
+    }
     if (typeof global.deNavigateWithTransition === 'function') {
       global.deNavigateWithTransition(url);
       return;
@@ -197,8 +251,6 @@
       return;
     }
 
-    var dateFrom = $('#msr-date-from', form);
-    var dateTo = $('#msr-date-to', form);
     global.SalesDateRangePicker.init({
       wrapId: 'msr-date-range-wrap',
       triggerId: 'msr-date-range-trigger',
@@ -216,21 +268,8 @@
       grid0Id: 'msr-cal-grid0',
       grid1Id: 'msr-cal-grid1',
       emptyLabel: 'Select date…',
-      onBeforeSubmit: function () {
-        if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
-        if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
-        var status = $('#msr-status', form);
-        if (status && (status.value === 'all' || !status.value)) {
-          status.removeAttribute('name');
-        }
-        var outlet = $('#msr-outlet', form);
-        if (outlet && (outlet.value === 'all' || !outlet.value)) {
-          outlet.removeAttribute('name');
-        }
-        var category = $('#msr-category', form);
-        if (category && !category.value) {
-          category.removeAttribute('name');
-        }
+      onApply: function () {
+        prepareAndSubmit(form);
       }
     });
 

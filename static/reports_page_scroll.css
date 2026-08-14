@@ -304,3 +304,45 @@
     max-height:min(65vh, calc(44px + 12 * 52px));
   }
 }
+
+#ep-workspace.de-module .de-main-wrapper:has(#manager-insight-report-page),
+#main-app.de-module .de-main-wrapper:has(#manager-insight-report-page),
+#de-fs-app .de-main-wrapper:has(#manager-insight-report-page){
+  overflow:auto;
+}
+#manager-insight-report-page{
+  display:block;
+  height:auto;
+  min-height:0;
+  box-sizing:border-box;
+  padding-bottom:18px;
+}
+#manager-insight-report-page > header.se-sales-header{
+  flex:none;
+}
+#manager-insight-report-page .content.se-content{
+  display:block;
+  padding-bottom:18px;
+}
+#manager-insight-report-page .pl-list-panel.hbe-scroll-panel{
+  display:block;
+  margin-bottom:0;
+  height:auto;
+  max-height:none;
+}
+#manager-insight-report-page .pl-list-panel > .card-body{
+  display:block;
+}
+#manager-insight-report-page .hbe-scroll-panel .pl-table-wrap,
+#manager-insight-report-page .pl-list-panel--scroll .pl-table-wrap{
+  max-height:min(70vh, calc(44px + 14 * 52px));
+  min-height:0;
+  height:auto;
+  overflow:auto;
+}
+@media (max-width:760px){
+  #manager-insight-report-page .hbe-scroll-panel .pl-table-wrap,
+  #manager-insight-report-page .pl-list-panel--scroll .pl-table-wrap{
+    max-height:min(65vh, calc(44px + 12 * 52px));
+  }
+}

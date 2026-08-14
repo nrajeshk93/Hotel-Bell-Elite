@@ -176,7 +176,8 @@ body.sales-report-module #sr-filter-form .pl-date-range-host .an-range-trigger,
 body.sales-report-module #sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
 body.sales-report-module #msr-filter-form .pl-date-range-host .an-range-trigger,
 body.sales-report-module #menu-sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
-body.sales-report-module #customer-insights-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+body.sales-report-module #customer-insights-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
+body.sales-report-module #manager-insight-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
   min-width:168px;
   width:auto;
   max-width:min(300px,42vw);
@@ -209,21 +210,21 @@ body.sales-report-module #sr-table .cp-status-pill{
   flex-shrink:0;
 }
 
-/* Menu Sales — even column rhythm; numeric cols right-aligned. */
+/* Menu Sales — Item Wise Sales Report: even column gutters. */
 body.sales-report-module #msr-table{
   table-layout:fixed;
   width:100%;
-  min-width:880px;
+  min-width:640px;
 }
-body.sales-report-module #msr-table col.msr-col-item{width:32%;}
-body.sales-report-module #msr-table col.msr-col-category{width:18%;}
-body.sales-report-module #msr-table col.msr-col-outlet{width:12%;}
-body.sales-report-module #msr-table col.msr-col-orders{width:12%;}
-body.sales-report-module #msr-table col.msr-col-qty{width:12%;}
-body.sales-report-module #msr-table col.msr-col-sale{width:14%;}
+body.sales-report-module #msr-table col.msr-col-item,
+body.sales-report-module #msr-table col.msr-col-qty,
+body.sales-report-module #msr-table col.msr-col-rate,
+body.sales-report-module #msr-table col.msr-col-sale{
+  width:25%;
+}
 body.sales-report-module #msr-table th,
 body.sales-report-module #msr-table td{
-  padding:12px 14px;
+  padding:12px 24px;
   vertical-align:middle;
 }
 body.sales-report-module #msr-table .msr-col-item{
@@ -234,39 +235,56 @@ body.sales-report-module #msr-table .msr-col-item .pl-name{
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-body.sales-report-module #msr-table .msr-col-category,
-body.sales-report-module #msr-table .msr-col-outlet{
-  text-align:left;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+body.sales-report-module #msr-table th.pl-sortable{
+  position:relative;
 }
-body.sales-report-module #msr-table th.msr-col-orders,
-body.sales-report-module #msr-table td.msr-col-orders,
 body.sales-report-module #msr-table th.msr-col-qty,
 body.sales-report-module #msr-table td.msr-col-qty,
+body.sales-report-module #msr-table th.msr-col-rate,
+body.sales-report-module #msr-table td.msr-col-rate,
 body.sales-report-module #msr-table th.msr-col-sale,
 body.sales-report-module #msr-table td.msr-col-sale{
   text-align:right !important;
   white-space:nowrap;
   font-variant-numeric:tabular-nums;
+  padding-right:28px;
 }
-/* Reserve caret gutter so header labels line up with values. */
-body.sales-report-module #msr-table th.pl-sortable.msr-col-orders,
-body.sales-report-module #msr-table th.pl-sortable.msr-col-qty,
-body.sales-report-module #msr-table th.pl-sortable.msr-col-sale{
-  padding-right:14px;
-}
-body.sales-report-module #msr-table th.pl-sortable.msr-col-orders::after,
 body.sales-report-module #msr-table th.pl-sortable.msr-col-qty::after,
+body.sales-report-module #msr-table th.pl-sortable.msr-col-rate::after,
 body.sales-report-module #msr-table th.pl-sortable.msr-col-sale::after{
-  margin-left:4px;
-  min-width:0.7em;
+  position:absolute;
+  right:10px;
+  top:50%;
+  transform:translateY(-50%);
+  margin-left:0;
+  min-width:0;
 }
-body.sales-report-module #msr-table td.msr-col-orders,
-body.sales-report-module #msr-table td.msr-col-qty,
-body.sales-report-module #msr-table td.msr-col-sale{
-  padding-right:calc(14px + 0.7em + 4px);
+body.sales-report-module #menu-sales-report-page .msr-report-heading{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+}
+body.sales-report-module #menu-sales-report-page .msr-report-dates{
+  font-size:12px;
+  font-weight:600;
+  color:var(--txt3, #6b7280);
+}
+body.sales-report-module #msr-table tr.msr-group-header td,
+body.sales-report-module #sr-table tr.sr-group-header td{
+  font-weight:700;
+  padding-top:16px;
+  border-bottom:1px dashed var(--border, #e5e7eb);
+}
+body.sales-report-module #msr-table tr.msr-group-total td{
+  font-weight:700;
+  border-top:1px dashed var(--border, #e5e7eb);
+  border-bottom:1px solid var(--border, #e5e7eb);
+}
+body.sales-report-module #msr-table tfoot tr.msr-grand-total th,
+body.sales-report-module #msr-table tfoot tr.msr-grand-total td{
+  font-weight:800;
+  border-top:2px solid var(--border, #d1d5db);
 }
 
 /* Customer Insights — text left, orders centered, money right-aligned. */
@@ -405,4 +423,99 @@ body.sales-report-module #cir-table th.pl-sortable.cir-col-total::after{
   body.sales-report-module #sr-filter-form .se-filter-chip-date-host{
     width:auto;
   }
+}
+
+body.sales-report-module #mi-table{
+  table-layout:fixed;
+  width:100%;
+}
+body.sales-report-module #mi-table th,
+body.sales-report-module #mi-table td{
+  vertical-align:middle;
+}
+body.sales-report-module #mi-table .mi-col-head{
+  text-align:left;
+  width:40%;
+}
+body.sales-report-module #mi-table th.mi-col-num,
+body.sales-report-module #mi-table td.mi-col-num{
+  text-align:right !important;
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+body.sales-report-module #manager-insight-report-page .pl-count{
+  font-weight:500;
+  font-size:12px;
+}
+body.sales-report-module .se-sales-header-filters:has(#mi-filter-form){
+  justify-content:stretch;
+}
+body.sales-report-module #mi-filter-form.sr-topbar-filters{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-end;
+  justify-content:flex-start;
+  gap:12px 14px;
+  width:100%;
+}
+body.sales-report-module #mi-filter-form .md-period-field{
+  flex:1 1 420px;
+  min-width:min(100%, 280px);
+  max-width:100%;
+}
+body.sales-report-module #mi-filter-form .md-period-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2, #4a5568);
+  text-transform:uppercase;
+  letter-spacing:0.4px;
+  text-align:left;
+  line-height:1.2;
+}
+body.sales-report-module #mi-filter-form .md-period-pills{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  min-height:44px;
+  min-width:0;
+}
+body.sales-report-module #mi-filter-form .md-period-pill{
+  appearance:none;
+  position:relative;
+  z-index:2;
+  margin:0;
+  padding:10px 14px;
+  border-radius:999px;
+  border:1px solid #e2e8f0;
+  background:#fff;
+  color:#334155;
+  font:600 13px Inter, system-ui, sans-serif;
+  line-height:1.2;
+  white-space:nowrap;
+  cursor:pointer;
+  pointer-events:auto;
+  transition:border-color 0.15s ease, color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+body.sales-report-module #mi-filter-form .md-period-pill:hover{
+  border-color:#93c5fd;
+  color:#1d4ed8;
+}
+body.sales-report-module #mi-filter-form .md-period-pill.is-active{
+  border-color:#2563eb;
+  color:#1d4ed8;
+  background:#eff6ff;
+  box-shadow:0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+body.sales-report-module #mi-filter-form .md-period-pill:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(37, 99, 235, 0.28);
+}
+body.sales-report-module #mi-filter-form #mi-date-range-host{
+  margin-left:auto;
+  flex:0 0 auto;
+  width:auto;
+  max-width:100%;
 }

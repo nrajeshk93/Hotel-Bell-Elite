@@ -92,7 +92,7 @@
                 <div class="an-range-wrap an-range-wrap--sales" id="tips-date-range-wrap" data-max-date="{{ today_iso }}">
                   <button type="button" class="an-range-trigger se-filter-chip-trigger" id="tips-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="tips-date-range-panel">
                     <span class="an-range-trigger-label">
-                      <span id="tips-date-range-display">{% if date_filter_active %}{{ date_from }} – {{ date_to }}{% else %}Date{% endif %}</span>
+                      <span id="tips-date-range-display">{% if date_filter_active %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Date{% endif %}</span>
                     </span>
                   </button>
                   <div class="an-range-backdrop" id="tips-date-range-backdrop" aria-hidden="true"></div>
@@ -453,7 +453,8 @@ window.TIPS_EDIT_EMPLOYEE = {
 };
 </script>
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='report_datetime.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 {% include 'partials/sales_update_filter_listbox_scripts.html' %}
 {% include 'partials/sales_update_tips_page_scripts.html' %}
 {% include 'partials/sales_update_tips_incentive_payout_scripts.html' %}

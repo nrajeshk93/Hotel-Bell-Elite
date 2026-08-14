@@ -384,9 +384,14 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-2 {
   gap: 16px;
 }
 
-/* Day of week + Top Selling: equal-width columns; heatmap stacks under DOW */
+/* Day of week + Top Selling: same outline size; heatmap stays under DOW */
 body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top {
-  align-items: start;
+  align-items: stretch;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  grid-template-areas:
+    "dow top"
+    "heat .";
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > * {
@@ -394,19 +399,12 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > * {
   max-width: 100%;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-dow-heat-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-}
-
-body.main-dashboard-module #main-dashboard-page .rdx-dow-heat-stack > .rdx-card {
+body.main-dashboard-module #main-dashboard-page .rdx-dow-card {
+  grid-area: dow;
   width: 100%;
   max-width: 100%;
   min-width: 0;
+  min-height: 0;
   height: auto;
   align-self: stretch;
   display: flex;
@@ -415,15 +413,24 @@ body.main-dashboard-module #main-dashboard-page .rdx-dow-heat-stack > .rdx-card 
   overflow: hidden;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items {
-  height: auto;
+body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
+  grid-area: heat;
+  width: 100%;
+  max-width: 100%;
   align-self: start;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items {
+  grid-area: top;
+  height: auto;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  width: 100%;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-dow-heat-stack > .rdx-card > .rdx-card-head,
+body.main-dashboard-module #main-dashboard-page .rdx-dow-card > .rdx-card-head,
 body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items > .rdx-card-head {
   flex: 0 0 auto;
 }
@@ -434,15 +441,33 @@ body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top #rdx-chart-dow
   max-width: 100%;
   min-width: 0;
   min-height: 220px;
-  height: 220px;
+  height: auto;
   overflow: hidden;
   position: relative;
   box-sizing: border-box;
 }
 
-body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
-  width: 100%;
-  max-width: 100%;
+@media (max-width: 1100px) {
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas:
+      "dow"
+      "heat"
+      "top";
+    align-items: start;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-dow-card,
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items {
+    height: auto;
+    align-self: stretch;
+  }
+
+  body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top #rdx-chart-dow {
+    flex: 0 0 auto;
+    height: 220px;
+  }
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card .rdx-heatmap-scroll {
@@ -506,7 +531,9 @@ body.main-dashboard-module #main-dashboard-page .rdx-ti-sort-btn:focus-visible {
 body.main-dashboard-module #main-dashboard-page .rdx-ti-list {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
   gap: 0;
+  min-height: 0;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-ti-row {

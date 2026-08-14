@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Logs | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --card:#FFFFFF;--border:#E2E8F0;--border-s:#EEF2F7;
+  --txt:#111827;--txt2:#4B5563;--txt3:#9CA3AF;
+  --ok:#16A34A;--ok-bg:#F0FDF4;--err:#DC2626;--err-bg:#FEF2F2;
+  --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);--r:10px;
+}
+html,body{min-height:100%;font-size:14px;line-height:1.5}
+a{text-decoration:none;color:inherit}
+.card{overflow:hidden;margin-bottom:0}
+.card-hdr{padding:18px 22px;border-bottom:1px solid var(--border-s);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1;white-space:nowrap;font-family:inherit;border:none}
+</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
+</head>
+<body class="de-open am-module ep-module su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper" id="access-login-logs-page">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>Logs</h1>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <div class="sr-topbar-filters" aria-label="Login log filters">
+          <a class="btn{% if result_filter == 'all' %} btn-primary{% endif %}" href="{{ url_for('access_login_logs') }}">All</a>
+          <a class="btn{% if result_filter == 'success' %} btn-primary{% endif %}" href="{{ url_for('access_login_logs', result='success') }}">Successful</a>
+          <a class="btn{% if result_filter == 'failed' %} btn-primary{% endif %}" href="{{ url_for('access_login_logs', result='failed') }}">Failed</a>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section class="content">
+    <div class="layout users-full">
+      <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel am-users-panel" aria-label="Login logs">
+        <div class="card-hdr">
+          <div class="card-title">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+            <span>Sign-in attempts</span>
+          </div>
+          <span class="pl-count">{{ logs|length }} shown{% if result_filter == 'all' %} · {{ success_count }} successful · {{ failed_count }} failed{% endif %}</span>
+        </div>
+        <div class="card-body" style="padding:0">
+          {% if logs %}
+          <div class="pl-table-wrap">
+            <table class="pl-table am-users-table" aria-label="Login attempts">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Username</th>
+                  <th>Result</th>
+                  <th>Detail</th>
+                  <th>IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in logs %}
+                <tr class="pl-expense-row">
+                  <td class="am-logs-meta">{{ row.created_at }}</td>
+                  <td>
+                    <div class="pl-name am-user-name">{{ row.username or '—' }}</div>
+                  </td>
+                  <td>
+                    {% if row.success %}
+                    <span class="am-role-badge am-log-ok">Successful</span>
+                    {% else %}
+                    <span class="am-role-badge am-log-fail">Failed</span>
+                    {% endif %}
+                  </td>
+                  <td class="am-logs-meta">{{ row.reason_label }}</td>
+                  <td class="am-logs-meta">{{ row.ip_address or '—' }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="am-users-empty pl-empty">
+            <p>{% if result_filter == 'success' %}No successful sign-ins recorded yet.{% elif result_filter == 'failed' %}No failed sign-in attempts recorded yet.{% else %}No sign-in attempts recorded yet.{% endif %}</p>
+          </div>
+          {% endif %}
+        </div>
+      </article>
+    </div>
+  </section>
+</div>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

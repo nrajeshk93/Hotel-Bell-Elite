@@ -19,7 +19,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
 <style>
 #bank-report-page{box-sizing:border-box;}
 #bank-report-page .ep-header-filters.sr-topbar-filters{
@@ -71,7 +71,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
 <style>
 #bank-report-page{box-sizing:border-box;}
 #bank-report-page .ep-header-filters.sr-topbar-filters{
@@ -139,7 +139,7 @@
         </div>
       </div>
       <div class="su-header-tools">
-        <a class="btn btn-primary" href="{{ bank_report_url }}" download="bank_report.xlsx">Bank Report</a>
+        <a class="btn btn-primary" href="{{ bank_report_url }}" download="{{ bank_report_export_filename|default('bank_report.xlsx') }}">Bank Report</a>
       </div>
     </div>
     <div class="se-sales-header-card">

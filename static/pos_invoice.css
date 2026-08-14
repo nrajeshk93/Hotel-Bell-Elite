@@ -1,11 +1,6 @@
 /* Point of Sale — Invoice billing (search-first, 70/30) */
 body.pos-invoice-module,
-body.pos-invoice-module *,
-body.pos-invoice-module *::before,
-body.pos-invoice-module *::after{
-  box-sizing:border-box;
-}
-body.pos-invoice-module{
+#pos-invoice-page{
   --pos-bg:#F8FAFC;
   --pos-card:#FFFFFF;
   --pos-border:#E8EEF5;
@@ -21,14 +16,34 @@ body.pos-invoice-module{
   --pos-gap:16px;
   --pos-pad:24px;
   --pos-ctrl-h:44px;
-  background:var(--pos-bg);
-  color:var(--pos-text);
+  color-scheme:light;
+}
+body.pos-invoice-module,
+body.pos-invoice-module *,
+body.pos-invoice-module *::before,
+body.pos-invoice-module *::after,
+#pos-invoice-page,
+#pos-invoice-page *,
+#pos-invoice-page *::before,
+#pos-invoice-page *::after{
+  box-sizing:border-box;
+}
+body.pos-invoice-module{
+  background:var(--pos-bg, #F8FAFC);
+  color:var(--pos-text, #0F172A);
   font-family:Inter,'Segoe UI',system-ui,sans-serif;
 }
-#ep-workspace.de-module .de-main-wrapper{
-  background:var(--pos-bg);
+#pos-invoice-page{
+  background:var(--pos-bg, #F8FAFC);
+  color:var(--pos-text, #0F172A);
+  font-family:Inter,'Segoe UI',system-ui,sans-serif;
 }
-body.pos-invoice-module .de-main-inner.pos-invoice-page{
+body.pos-invoice-module #ep-workspace.de-module .de-main-wrapper,
+#ep-workspace.de-module:has(#pos-invoice-page) .de-main-wrapper{
+  background:var(--pos-bg, #F8FAFC);
+}
+body.pos-invoice-module .de-main-inner.pos-invoice-page,
+#pos-invoice-page.de-main-inner{
   max-width:1440px;
   margin:0 auto;
   padding:24px 28px 108px;
@@ -54,13 +69,13 @@ body.pos-invoice-module .de-main-inner.pos-invoice-page{
   column-gap:20px;
   row-gap:14px;
   padding:20px 24px;
-  background:var(--pos-card);
-  border:1px solid var(--pos-border);
-  border-radius:var(--pos-radius);
-  box-shadow:var(--pos-shadow);
-  margin-bottom:var(--pos-gap);
+  background:var(--pos-card, #FFFFFF);
+  border:1px solid var(--pos-border, #E8EEF5);
+  border-radius:var(--pos-radius, 16px);
+  box-shadow:var(--pos-shadow, 0 8px 24px rgba(15,23,42,.05));
+  margin-bottom:var(--pos-gap, 16px);
   overflow:visible;
-  animation:posInvFadeUp .4s ease both;
+  animation:posInvFadeUp .4s ease;
   container-type:inline-size;
   container-name:pos-inv-header;
 }
@@ -559,15 +574,17 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   gap:var(--pos-gap);
   z-index:2;
   min-width:0;
+  max-width:100%;
 }
 .pos-inv-card{
-  background:var(--pos-card);
-  border:1px solid var(--pos-border);
-  border-radius:var(--pos-radius);
-  box-shadow:var(--pos-shadow);
-  padding:var(--pos-pad);
+  background:var(--pos-card, #FFFFFF);
+  border:1px solid var(--pos-border, #E8EEF5);
+  border-radius:var(--pos-radius, 16px);
+  box-shadow:var(--pos-shadow, 0 8px 24px rgba(15,23,42,.05));
+  padding:var(--pos-pad, 24px);
   overflow:visible;
-  animation:posInvFadeUp .45s ease both;
+  animation:posInvFadeUp .45s ease;
+  color:var(--pos-text, #0F172A);
 }
 .pos-inv-search-card{
   position:relative;
@@ -600,7 +617,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   font-size:16px;
   font-weight:750;
   letter-spacing:-.02em;
-  color:var(--pos-text);
+  color:var(--pos-text, #0F172A);
 }
 
 /* Search */
@@ -1332,6 +1349,8 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
 /* Bill summary */
 .pos-inv-summary{
   animation-delay:.1s;
+  min-width:0;
+  max-width:100%;
 }
 .pos-inv-summary-list{margin:0;padding:0}
 .pos-inv-summary-row{
@@ -1341,26 +1360,90 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   gap:12px;
   padding:10px 0;
   border-bottom:1px solid #F1F5F9;
+  flex-wrap:nowrap;
+  min-width:0;
 }
 .pos-inv-summary-row[hidden]{display:none !important}
 .pos-inv-summary-row:last-child{border-bottom:0}
 .pos-inv-summary-row dt{
+  display:flex;
+  align-items:baseline;
+  gap:6px;
   margin:0;
+  min-width:0;
   font-size:13.5px;
   font-weight:550;
-  color:var(--pos-muted);
+  color:var(--pos-muted, #64748B);
 }
 .pos-inv-summary-row dd{
-  margin:0;
+  margin:0 0 0 auto;
   font-size:13.5px;
   font-weight:700;
   font-variant-numeric:tabular-nums;
-  color:var(--pos-text);
+  color:var(--pos-text, #0F172A);
+  flex-shrink:0;
+  white-space:nowrap;
 }
 .pos-inv-summary-muted{
   font-weight:500;
   color:#94A3B8;
   font-size:12px;
+}
+.pos-inv-tax-edit{
+  display:none;
+  align-items:center;
+  gap:0;
+  font-weight:500;
+  color:#94A3B8;
+  font-size:12px;
+  line-height:1;
+}
+.pos-inv-summary.is-banquet-tax-edit .pos-inv-tax-edit{
+  display:inline-flex;
+}
+.pos-inv-summary.is-banquet-tax-edit .pos-inv-summary-muted[id$="-rate"]{
+  display:none;
+}
+#pos-invoice-page .pos-inv-tax-pct{
+  appearance:none;
+  -webkit-appearance:none;
+  display:inline-block;
+  box-sizing:border-box;
+  width:2.75em !important;
+  max-width:2.75em !important;
+  min-width:0 !important;
+  height:18px !important;
+  min-height:18px !important;
+  margin:0 1px;
+  padding:0 1px !important;
+  border:0 !important;
+  border-bottom:1px solid #CBD5E1 !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  outline:none !important;
+  color:#64748B;
+  font:500 12px Inter,system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;
+  text-align:center;
+  line-height:16px;
+  vertical-align:baseline;
+}
+#pos-invoice-page .pos-inv-tax-pct:hover,
+#pos-invoice-page .pos-inv-tax-pct:focus{
+  border-bottom-color:#2563EB !important;
+  color:#0F172A;
+  background:transparent !important;
+  box-shadow:none !important;
+  outline:none !important;
+}
+#pos-invoice-page .pos-inv-tax-pct:-webkit-autofill,
+#pos-invoice-page .pos-inv-tax-pct:-webkit-autofill:hover,
+#pos-invoice-page .pos-inv-tax-pct:-webkit-autofill:focus{
+  -webkit-text-fill-color:#0F172A;
+  caret-color:#0F172A;
+  box-shadow:0 0 0 1000px #fff inset !important;
+  transition:background-color 99999s ease-out;
 }
 .pos-inv-summary-total{
   display:flex;
@@ -1400,7 +1483,7 @@ body.pos-invoice-module .pos-inv-meta :is(.pos-inv-order-type-listbox,.pos-inv-c
   border:1px solid var(--pos-border);
   box-shadow:0 10px 30px rgba(15,23,42,.1);
   backdrop-filter:blur(8px);
-  animation:posInvFadeUp .5s ease both;
+  animation:posInvFadeUp .5s ease;
   animation-delay:.14s;
 }
 .pos-inv-toolbar-tools{

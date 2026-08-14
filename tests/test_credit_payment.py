@@ -1127,7 +1127,16 @@ class CreditPaymentReportExportTests(unittest.TestCase):
         )
         self.assertEqual(resp.data[:2], b"PK")
         cd = resp.headers.get("Content-Disposition") or ""
-        self.assertIn("credit_payment_report_", cd)
+        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        from reports import report_export_filename
+
+        expected_name = report_export_filename(
+            "Credit Payment",
+            date_from=fy_start,
+            date_to=today,
+            date_filter_active=True,
+        )
+        self.assertIn(expected_name, cd)
 
         from openpyxl import load_workbook
         import io

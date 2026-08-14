@@ -18,7 +18,9 @@
 
 <div class="st-stock-page" id="st-stock-page"
      data-low-threshold="{{ low_threshold }}"
-     data-has-prices="{{ '1' if stock_has_prices else '0' }}">
+     data-has-prices="{{ '1' if stock_has_prices else '0' }}"
+     data-place="{{ stock_place|default('warehouse') }}"
+     data-transfer-url="{{ stock_transfer_url|default(url_for('stores_stock_transfer')) }}">
 
   {% if verification_due %}
   <div class="st-stock-due st-due-banner" role="status">
@@ -27,7 +29,7 @@
     <span>Stock verification is due for {{ selected_outlet_label }}. Interval: every {{ verification_due.interval_days }} day(s).</span>
     {% else %}
     <span class="st-due st-due--ok">On track</span>
-    <span>Next verification by {{ verification_due.due_on }}. Last checked: {{ verification_due.last_verified_at or 'never' }}.</span>
+    <span>Next verification by {{ verification_due.due_on|report_date }}. Last checked: {{ verification_due.last_verified_at|report_dt if verification_due.last_verified_at else 'never' }}.</span>
     {% endif %}
   </div>
   {% endif %}
@@ -70,13 +72,21 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9l1-4h16l1 4"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></svg>
             <span>Current stock</span>
           </div>
-          <span class="pl-count" id="st-stock-count">{{ stock_items|length }} item{% if stock_items|length != 1 %}s{% endif %}</span>
+          <div class="st-stock-card-actions">
+            <span class="pl-count" id="st-stock-count">{{ stock_items|length }} item{% if stock_items|length != 1 %}s{% endif %}</span>
+            {% if stock_place|default('warehouse') == 'counter' %}
+            <button type="button" class="btn btn-primary" id="st-stock-transfer-selected" data-st-transfer="to_warehouse" disabled title="Return selected items to Warehouse">Return</button>
+            {% else %}
+            <button type="button" class="btn btn-primary" id="st-stock-transfer-selected" data-st-transfer="to_counter" disabled title="Transfer selected items to Counter">Transfer</button>
+            {% endif %}
+          </div>
         </div>
         <div class="card-body pl-card-body--flush">
           {% if stock_items %}
           <div class="pl-table-wrap" id="st-stock-table-wrap" tabindex="0" aria-label="Current stock items, scroll for more">
             <table class="pl-table st-stock-inv-table{% if stock_has_prices|default(false) %} st-stock-inv-table--priced{% endif %}" id="st-stock-table" aria-label="Current stock items">
               <colgroup>
+                <col class="st-stock-col-check">
                 <col class="st-stock-col-product">
                 <col class="st-stock-col-category">
                 <col class="st-stock-col-qty">
@@ -86,6 +96,9 @@
               </colgroup>
               <thead>
                 <tr>
+                  <th class="st-stock-col-check" scope="col">
+                    <input type="checkbox" id="st-stock-select-all" class="st-stock-check" aria-label="Select all stock items">
+                  </th>
                   <th class="pl-sortable" data-sort="product" scope="col" tabindex="0" aria-sort="none">Product</th>
                   <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
                   <th class="pl-sortable pl-col-amount" data-sort="qty" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">On hand</th>
@@ -111,14 +124,22 @@
                 {% if item.approximate_price is not none %}
                   {% set line_value = qty * (item.approximate_price|float) %}
                 {% endif %}
+                {% set item_place = (item.place or stock_place or 'warehouse') %}
                 <tr
                   data-sort-row
+                  data-place="{{ item_place }}"
+                  data-outlet="{{ item.outlet or selected_outlet }}"
+                  data-item-name="{{ item.item_name or '' }}"
+                  data-unit="{{ item.unit or '' }}"
                   data-qty="{{ qty }}"
                   data-status="{{ status }}"
                   data-category="{{ (item.category_name or '')|lower }}"
                   data-price="{{ item.approximate_price if item.approximate_price is not none else '' }}"
                   data-search="{{ [item.item_name or '', item.unit or '', item.category_name or '', item.qty_on_hand|string, item.updated_at or '', status_label]|join(' ')|lower }}"
                 >
+                  <td class="st-stock-col-check">
+                    <input type="checkbox" class="st-stock-check st-stock-row-check" aria-label="Select {{ item.item_name }}"{% if qty <= 0 %} disabled{% endif %}>
+                  </td>
                   <td class="pl-name st-stock-product-name" data-sort-value="{{ item.item_name or '' }}">{{ item.item_name }}</td>
                   <td data-sort-value="{{ item.category_name or '' }}">
                     {% if item.category_name %}<span class="st-cat-pill">{{ item.category_name }}</span>{% else %}—{% endif %}
@@ -139,13 +160,18 @@
             </table>
           </div>
           <div class="pl-empty" id="st-stock-search-empty" hidden>
-            <strong>No stock items match</strong>
-            Try a different search or filter.
+            <strong id="st-stock-empty-title">No stock items match</strong>
+            <span id="st-stock-empty-copy">Try a different search or filter.</span>
           </div>
           {% else %}
           <div class="pl-empty">
-            <strong>Store is empty</strong>
-            Receive a purchase request to add the first items.
+            {% if stock_place|default('warehouse') == 'counter' %}
+            <strong>Counter is empty</strong>
+            Transfer stock from Warehouse to Counter.
+            {% else %}
+            <strong>Warehouse is empty</strong>
+            Receive a purchase into warehouse stock to add the first items.
+            {% endif %}
           </div>
           {% endif %}
         </div>
@@ -187,7 +213,7 @@
                 {% set delta = move.qty_delta|float %}
                 {% set type_label = move.movement_type.replace('_', ' ') if move.movement_type else '' %}
                 <tr data-sort-row>
-                  <td class="pl-col-date st-stock-updated" data-sort-value="{{ move.created_at or '' }}">{{ stores_dt(move.created_at) }}</td>
+                  <td class="pl-col-date st-stock-updated" data-sort-value="{{ move.created_at or '' }}">{{ move.created_at|report_dt }}</td>
                   <td class="pl-name st-stock-product-name" data-sort-value="{{ move.item_name or '' }}">{{ move.item_name }}</td>
                   <td class="pl-col-amount pl-amount {% if delta > 0 %}st-stock-delta--in{% elif delta < 0 %}st-stock-delta--out{% endif %}" data-sort-value="{{ delta }}">
                     {% if delta > 0 %}+{% endif %}{{ move.qty_delta }}

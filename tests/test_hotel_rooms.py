@@ -322,6 +322,35 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hrd-reserve-new", html)
         self.assertIn("hrd-reserve-modal", html)
 
+    def test_reserved_future_room_detail_renders(self):
+        reserved = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "reserve",
+                "checkInDate": "2026-08-14",
+                "checkOutDate": "2026-08-15",
+                "stay": {
+                    "guestName": "Pratik",
+                    "mobile": "8587836993",
+                    "email": "pratikmmt@gmail.com",
+                },
+            },
+        )
+        self.assertEqual(reserved.status_code, 200, reserved.get_data(as_text=True))
+        self.assertEqual(reserved.get_json()["room"]["status"], "reserved")
+
+        detail = self.client.get("/hotel/rooms/room-102")
+        self.assertEqual(detail.status_code, 200, detail.get_data(as_text=True))
+        html = detail.get_data(as_text=True)
+        self.assertIn("hotel-room-detail-page", html)
+        self.assertIn("Room 102", html)
+        self.assertIn("hrd-start-checkin-reserved", html)
+        self.assertIn("Edit Reservation", html)
+
+        with_date = self.client.get("/hotel/rooms/room-102?date=2026-08-14")
+        self.assertEqual(with_date.status_code, 200)
+        self.assertIn("hotel-room-detail-page", with_date.get_data(as_text=True))
+
     def test_room_detail_reserve_and_occupied_reject(self):
         reserved = self.client.put(
             "/hotel/api/rooms/room-105",

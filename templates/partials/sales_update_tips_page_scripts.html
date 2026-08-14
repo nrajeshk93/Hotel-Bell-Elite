@@ -8,6 +8,12 @@
   var dateFromInput = document.getElementById('tips-date-from');
   var dateToInput = document.getElementById('tips-date-to');
   var clearUrl = form ? String(form.getAttribute('data-clear-url') || form.action || '') : '';
+  function reportDt(value) {
+    if (typeof window.formatReportDatetime === 'function') {
+      return window.formatReportDatetime(value);
+    }
+    return value == null || value === '' ? '—' : String(value);
+  }
 
   if (window.SalesDateRangePicker) {
     SalesDateRangePicker.init({
@@ -182,7 +188,7 @@
     if (editSave) editSave.disabled = false;
     editLines.innerHTML = editState.lines.map(function(line, index){
       return '<tr data-tips-edit-row="' + index + '">'
-        + '<td>' + escapeHtml(line.sales_date) + '</td>'
+        + '<td>' + escapeHtml(reportDt(line.sales_date)) + '</td>'
         + '<td>' + escapeHtml(line.location) + '</td>'
         + '<td class="pl-col-amount"><input class="staff-input tips-edit-amount" type="number" min="0.01" step="0.01" value="' + escapeHtml(line.amount) + '" aria-label="Tip amount"></td>'
         + '<td><input class="staff-input tips-edit-note" type="text" value="' + escapeHtml(line.description || '') + '" placeholder="Optional" aria-label="Note"></td>'

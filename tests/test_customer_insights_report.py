@@ -226,6 +226,58 @@ class CustomerInsightsReportTests(unittest.TestCase):
         self.assertEqual(kpis["customer_count"], 1)
         self.assertEqual(kpis["total_value_sum"], 5390.0)
 
+    def test_named_customers_without_mobile_are_included(self):
+        self._pos_invoice(
+            outlet="restaurant",
+            order_no="ORD-CI-NM-01",
+            menu_id=self.butter["id"],
+            name="Chicken Butter Masala",
+            rate=320,
+            qty=1,
+            customer_name="Mr. Baborsekh",
+            customer_mobile="",
+        )
+        self._pos_invoice(
+            outlet="bar",
+            order_no="ORD-CI-NM-02",
+            menu_id=self.whisky["id"],
+            name="Whisky Peg",
+            rate=250,
+            qty=2,
+            customer_name="Mr. Baborsekh",
+            customer_mobile="",
+        )
+        self._pos_invoice(
+            outlet="restaurant",
+            order_no="ORD-CI-NM-03",
+            menu_id=self.butter["id"],
+            name="Chicken Butter Masala",
+            rate=320,
+            qty=1,
+            customer_name="Guest",
+            customer_mobile="",
+        )
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_customer_insights(
+                conn,
+                date_from="2026-08-01",
+                date_to="2026-08-08",
+                channel="all",
+            )
+        finally:
+            conn.close()
+        by_name = {row["customer_name"]: row for row in rows}
+        self.assertIn("Mr. Baborsekh", by_name)
+        named = by_name["Mr. Baborsekh"]
+        self.assertEqual(named["mobile"], "")
+        self.assertEqual(named["order_count"], 2)
+        self.assertEqual(named["restaurant_value"], 320.0)
+        self.assertEqual(named["bar_value"], 500.0)
+        self.assertEqual(named["top_item"], "Whisky Peg")
+        self.assertIn("Guest", by_name)
+        self.assertEqual(by_name["Guest"]["order_count"], 1)
+
     def test_channel_filter_hotel_only(self):
         self._pos_invoice(
             outlet="restaurant",
@@ -307,6 +359,10 @@ class CustomerInsightsReportTests(unittest.TestCase):
                 },
             }
             db_mod.save_pos_invoice(conn, payload)
+            payload["orderNo"] = "ORD-CI-05"
+            payload["customerName"] = "Mr. Baborsekh"
+            payload["customerMobile"] = ""
+            db_mod.save_pos_invoice(conn, payload)
             conn.commit()
         finally:
             conn.close()
@@ -315,8 +371,10 @@ class CustomerInsightsReportTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn("Customer Insights", html)
+        self.assertIn("Unique customers", html)
         self.assertIn("Meera", html)
         self.assertIn("9000011111", html)
+        self.assertIn("Mr. Baborsekh", html)
         fy_start_year = today.year if today.month >= 4 else today.year - 1
         self.assertIn(f'value="{date(fy_start_year, 4, 1).isoformat()}"', html)
         self.assertIn(f'value="{today.isoformat()}"', html)
@@ -324,7 +382,16 @@ class CustomerInsightsReportTests(unittest.TestCase):
         export = self.client.get("/reports/sales/customer-insights/export")
         self.assertEqual(export.status_code, 200)
         cd = export.headers.get("Content-Disposition") or ""
-        self.assertIn("customer_insights", cd)
+        fy_start, fy_today = db_mod.indian_fiscal_year_bounds()
+        from reports import report_export_filename
+
+        expected_name = report_export_filename(
+            "Customer Insights",
+            date_from=fy_start,
+            date_to=fy_today,
+            date_filter_active=True,
+        )
+        self.assertIn(expected_name, cd)
 
         from io import BytesIO
         from openpyxl import load_workbook

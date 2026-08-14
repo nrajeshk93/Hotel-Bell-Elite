@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=40">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=83">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=84">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <script>
 (function(){
@@ -35,7 +35,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=40">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=83">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=84">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 {% endif %}
 
@@ -96,7 +96,7 @@
           <button type="button" class="hrd-more-item" role="menuitem" data-set-status="out_of_order" id="hrd-menu-status-out_of_order">Out of order</button>
         </div>
       </div>
-      {{ hotel_date_field('headerDate', 'Date', value=today_iso|default(''), field_id='hrd-header-date', extra_class='hrd-header-date', panel_title='Select date', empty_label='Select date', hint='', show_cal_icon=false, max_date='today') }}
+      {{ hotel_date_field('headerDate', 'Date', value=today_iso|default(''), field_id='hrd-header-date', extra_class='hrd-header-date', panel_title='Select date', empty_label='Select date', hint='', show_cal_icon=false) }}
       {% if room_status != 'occupied' %}
       <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-reserve" data-action="reserve">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
@@ -266,7 +266,11 @@
             <div><dt>Check In</dt><dd id="hrd-guest-checkin">—</dd></div>
             <div><dt>Expected Check Out</dt><dd id="hrd-guest-checkout">—</dd></div>
           </dl>
-          <button type="button" class="hrd-btn hrd-btn--checkout" id="hrd-start-checkout" data-action="checkout">
+          <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-start-checkin-reserved" data-action="checkin" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+            Start Check-In
+          </button>
+          <button type="button" class="hrd-btn hrd-btn--checkout" id="hrd-start-checkout" data-action="checkout"{% if room_status != 'occupied' %} hidden{% endif %}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
             Check Out Guest
           </button>
@@ -1051,7 +1055,7 @@
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=15"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=107"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=108"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

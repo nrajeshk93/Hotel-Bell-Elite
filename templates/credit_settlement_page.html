@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=41">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -143,7 +143,7 @@
                 <div class="an-range-wrap an-range-wrap--sales" id="cp-date-range-wrap" data-max-date="{{ today_iso }}">
                   <button type="button" class="an-range-trigger se-filter-chip-trigger" id="cp-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="cp-date-range-panel" aria-labelledby="cp-date-range-label cp-date-range-display">
                     <span class="an-range-trigger-label">
-                      <span id="cp-date-range-display">{% if active_date_filter %}{% if selected_view == 'outstanding' %}{{ date_from }} – {{ date_to }}{% else %}{{ payment_date_from }} – {{ payment_date_to }}{% endif %}{% else %}Select date…{% endif %}</span>
+                      <span id="cp-date-range-display">{% if active_date_filter %}{% if selected_view == 'outstanding' %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}{{ payment_date_from|report_date }} – {{ payment_date_to|report_date }}{% endif %}{% else %}Select date…{% endif %}</span>
                     </span>
                   </button>
                   <div class="an-range-backdrop" id="cp-date-range-backdrop" aria-hidden="true"></div>
@@ -342,7 +342,7 @@
                 <td data-sort-value="{{ kind_label }}">
                   <span class="pl-kind-pill pl-kind-pill--{{ entry.entry_kind or 'expense' }}">{{ kind_label }}</span>
                 </td>
-                <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date }}</td>
+                <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date|report_dt }}</td>
                 <td data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
                 <td data-sort-value="{{ expense_category_labels.get(entry.category, entry.category or '') }}">{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
                 <td data-sort-value="{{ entry.supplier_name or '' }}">
@@ -442,7 +442,7 @@
                 entry.allocation_count
               ]|select|join(' ')|lower %}
               <tr class="cp-history-row" data-payment-id="{{ entry.id }}" data-search="{{ search_blob|e }}">
-                <td class="pl-col-date" data-sort-value="{{ entry.payment_date or '' }}">{{ entry.payment_date }}</td>
+                <td class="pl-col-date" data-sort-value="{{ entry.payment_date or '' }}">{{ entry.payment_date|report_dt }}</td>
                 <td data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
@@ -625,7 +625,8 @@
 </div>
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='report_datetime.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script id="cp-outstanding-data" type="application/json">{{ outstanding_entries|tojson }}</script>
 {% include 'partials/credit_payment_scripts.html' %}

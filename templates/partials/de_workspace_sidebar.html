@@ -199,7 +199,7 @@
         <a class="de-nav-subitem{% if stores_view == 'purchase_order' %} is-active{% endif %}" id="de-nav-stores-purchase-order" href="{{ url_for('stores_orders') }}"{% if stores_view == 'purchase_order' %} aria-current="page"{% endif %}>Purchase Order</a>
         {% endif %}
         {% if has_stores_access('stock') %}
-        <a class="de-nav-subitem{% if stores_view == 'stock' %} is-active{% endif %}" id="de-nav-stores-stock" href="{{ url_for('stores_stock') }}"{% if stores_view == 'stock' %} aria-current="page"{% endif %}>Stock</a>
+        <a class="de-nav-subitem{% if stores_view == 'stock' %} is-active{% endif %}" id="de-nav-stores-stock" href="{{ url_for('stores_stock') }}"{% if stores_view == 'stock' %} aria-current="page"{% endif %}>Store</a>
         {% endif %}
         {% if has_stores_access('stock_audit') %}
         <a class="de-nav-subitem{% if stores_view == 'stock_audit' %} is-active{% endif %}" id="de-nav-stores-stock-audit" href="{{ url_for('stores_stock_audit') }}"{% if stores_view == 'stock_audit' %} aria-current="page"{% endif %}>Stock Audit</a>
@@ -250,6 +250,9 @@
         {% endif %}
         {% if has_user_access_submodule('roles') %}
         <a class="de-nav-subitem{% if access_view == 'roles' %} is-active{% endif %}" id="de-nav-access-roles" href="{{ url_for('access_roles') }}"{% if access_view == 'roles' %} aria-current="page"{% endif %}>Roles</a>
+        {% endif %}
+        {% if has_user_access_submodule('logs') %}
+        <a class="de-nav-subitem{% if access_view == 'logs' %} is-active{% endif %}" id="de-nav-access-logs" href="{{ url_for('access_login_logs') }}"{% if access_view == 'logs' %} aria-current="page"{% endif %}>Logs</a>
         {% endif %}
       </div>
     </div>

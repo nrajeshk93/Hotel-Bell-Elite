@@ -1,8 +1,50 @@
 (function (global) {
   'use strict';
 
+  function listEl(root){
+    if (!root) return null;
+    if (root.__epPortaledList && root.__epPortaledList.isConnected) {
+      return root.__epPortaledList;
+    }
+    return root.querySelector('.se-filter-listbox');
+  }
+
   function optionsWrapFor(root){
-    return root.querySelector('.ep-listbox-options') || root.querySelector('.se-filter-listbox');
+    var list = listEl(root);
+    if (!list) return null;
+    return list.querySelector('.ep-listbox-options') || list;
+  }
+
+  function portalHost(){
+    return document.getElementById('de-fs-app') || document.body;
+  }
+
+  function portalFixedListbox(root, list){
+    if (!root || !list) return;
+    var host = portalHost();
+    if (!host) return;
+    if (!list.__epPortalHome) list.__epPortalHome = list.parentNode;
+    if (list.parentNode !== host) host.appendChild(list);
+    list.classList.add('ep-listbox-portaled');
+    list.setAttribute('data-ep-listbox-portaled', '1');
+    root.__epPortaledList = list;
+    list.__epPortalRoot = root;
+  }
+
+  function unportalListbox(root, list){
+    list = list || listEl(root);
+    if (!list) return;
+    var home = list.__epPortalHome;
+    if (home && home.isConnected) {
+      home.appendChild(list);
+    } else if (root && root.isConnected) {
+      root.appendChild(list);
+    }
+    list.classList.remove('ep-listbox-portaled');
+    list.removeAttribute('data-ep-listbox-portaled');
+    list.__epPortalHome = null;
+    list.__epPortalRoot = null;
+    if (root) root.__epPortaledList = null;
   }
 
   function scoreSearchOption(option, needle){
@@ -103,7 +145,7 @@
   function closeListbox(root){
     if (!root) return;
     var trigger = root.querySelector('.se-filter-chip-trigger');
-    var list = root.querySelector('.se-filter-listbox');
+    var list = listEl(root);
     var search = root.querySelector('.ep-listbox-search');
     var wasOpen = root.classList.contains('is-open');
     root.classList.remove('is-open');
@@ -112,6 +154,7 @@
       root.classList.remove('is-closing');
       if (list) {
         list.hidden = true;
+        unportalListbox(root, list);
         clearFixedListbox(list);
         resetListboxPanelSize(list);
         var emptyStatus = list.querySelector('.se-filter-listbox-status[data-ep-empty]');
@@ -268,10 +311,10 @@
     if (root.classList.contains('ep-form-listbox') && root.closest('#st-indent-edit-modal, #st-indent-view-modal, #st-stores-ledger-modal, #st-ledger-pending-modal')) {
       return true;
     }
-    /* Hotel New Check-In / Room Transfer — modal body scrolls and clips absolute menus. */
+    /* Hotel New Check-In / Room Transfer / Edit Reservation — modal body scrolls and clips absolute menus. */
     if (
       root.classList.contains('ep-form-listbox') &&
-      root.closest('#hrd-checkin-modal, #hrd-transfer-modal, #hr-transfer-modal, .hrd-modal, .hrd-dialog, .hr-dialog')
+      root.closest('#hrd-checkin-modal, #hrd-transfer-modal, #hr-transfer-modal, #hres-edit-modal, .hrd-modal, .hrd-dialog, .hr-dialog, .hres-dialog')
     ) {
       return true;
     }
@@ -280,21 +323,22 @@
 
   function positionFixedListbox(root, list){
     if (!root || !list || !shouldUseFixedListbox(root)) return;
+    portalFixedListbox(root, list);
     var control = root.querySelector('.se-filter-chip-control') || root;
     var rect = control.getBoundingClientRect();
     var width = Math.max(rect.width, 140);
     var left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 8));
     var spaceBelow = window.innerHeight - rect.bottom - 12;
     var spaceAbove = rect.top - 12;
-    var openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
-    var maxHeight = Math.min(260, Math.max(120, openUp ? spaceAbove : spaceBelow));
+    var openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+    var maxHeight = Math.min(320, Math.max(160, openUp ? spaceAbove : spaceBelow));
     list.style.position = 'fixed';
     list.style.left = left + 'px';
     list.style.right = 'auto';
     list.style.width = width + 'px';
     list.style.minWidth = width + 'px';
     list.style.maxHeight = maxHeight + 'px';
-    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #sales-expense-modal, #hrd-checkin-modal, #hrd-transfer-modal, #hr-transfer-modal') ? '11250' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '10090');
+    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #sales-expense-modal, #hrd-checkin-modal, #hrd-transfer-modal, #hr-transfer-modal, #hres-edit-modal') ? '11250' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '12050');
     if (openUp) {
       list.style.top = 'auto';
       list.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
@@ -325,7 +369,7 @@
     list.style.paddingBottom = '';
   }
 
-  /** Scroll selected into view when the list overflows; never pad below the last option. */
+  /** Keep the selected row in view without hiding earlier options above the fold. */
   function scrollSelectedToTop(list){
     if (!list) return;
     var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
@@ -335,10 +379,8 @@
     }
     list.style.paddingBottom = '';
     requestAnimationFrame(function(){
-      var searchWrap = list.querySelector('.ep-listbox-search-wrap, .pl-supplier-search-wrap, .staff-supplier-search-wrap');
-      var topPad = searchWrap ? searchWrap.offsetHeight : 0;
       var cssCap = parseFloat(list.style.maxHeight);
-      var naturalCap = 260;
+      var naturalCap = 320;
       var cap = (cssCap && cssCap >= 48) ? cssCap : Math.max(list.clientHeight || 0, naturalCap);
       var options = list.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)');
       if (!options.length) {
@@ -350,7 +392,6 @@
       /* Short list: hug content — do not force a tall empty tray. */
       if (contentH <= cap + 1) {
         if (contentH < 40) {
-          /* Layout race before options paint — leave CSS sizing alone. */
           resetListboxPanelSize(list);
           list.scrollTop = 0;
           return;
@@ -360,29 +401,22 @@
         return;
       }
 
-      // Prefer selected near the top, but never invent blank scroll space under the last row.
-      var target = Math.max(0, selected.offsetTop - topPad);
-      var naturalMax = Math.max(0, list.scrollHeight - cap);
       list.style.paddingBottom = '';
       list.style.maxHeight = cap + 'px';
-      list.scrollTop = Math.min(target, naturalMax);
-
-      // Trim leftover blank space under the last option (viewport taller than needed).
-      requestAnimationFrame(function(){
-        var last = null;
-        var visible = list.querySelectorAll('.se-filter-listbox-option:not(.is-filtered-out)');
-        if (visible.length) last = visible[visible.length - 1];
-        if (!last) return;
-        var gap = list.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom;
-        if (gap > 10) {
-          list.style.maxHeight = Math.max(contentH > 0 ? Math.min(contentH, list.clientHeight) : 40, list.clientHeight - gap + 4) + 'px';
-        }
-      });
+      try {
+        selected.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (err) {
+        var scroller = list.querySelector('.ep-listbox-options') || list;
+        var topPad = 0;
+        var target = Math.max(0, selected.offsetTop - topPad);
+        var naturalMax = Math.max(0, list.scrollHeight - cap);
+        scroller.scrollTop = Math.min(target, naturalMax);
+      }
     });
   }
 
   function syncListboxEmptyState(root){
-    var list = root && root.querySelector('.se-filter-listbox');
+    var list = listEl(root);
     if (!list) return;
     var optionsWrap = optionsWrapFor(root) || list;
     var visible = visibleOptions(root);
@@ -416,7 +450,7 @@
       document.dispatchEvent(new CustomEvent('ep-listbox-opened', { detail: { root: root } }));
     } catch (err) {}
     var trigger = root.querySelector('.se-filter-chip-trigger');
-    var list = root.querySelector('.se-filter-listbox');
+    var list = listEl(root);
     var search = root.querySelector('.ep-listbox-search');
     var combo = comboboxInput(root);
     global.clearTimeout(root._epCloseTimer);
@@ -435,6 +469,7 @@
        filter chips also need an immediate paint. */
     if (
       isCombobox(root) ||
+      root.classList.contains('ep-toolbar-listbox') ||
       root.closest(
         '.st-indent-page, #st-indent-edit-modal, #st-indent-form, ' +
         '#room-transfer-filter-form, #purchase-ledger-filter-form, #credits-dashboard-filter-form'
@@ -525,7 +560,7 @@
       option.classList.contains('is-filtered-out') ||
       isOptionDisabled(option)
     ) return;
-    var list = root.querySelector('.se-filter-listbox');
+    var list = listEl(root);
     var value = option.getAttribute('data-value') || '';
     var label = (option.getAttribute('data-label') || option.textContent || '').trim();
     updateDisplay(root, label, value);
@@ -570,7 +605,7 @@
     if (root.closest('#sales-expense-modal, #sales-tips-modal')) return;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');
-    var list = root.querySelector('.se-filter-listbox');
+    var list = listEl(root);
     var search = root.querySelector('.ep-listbox-search');
     var combo = isCombobox(root) ? comboboxInput(root) : null;
     if (!trigger || !list) return;
@@ -753,6 +788,7 @@
 
   function rebindEpListbox(root){
     if (!root || !root.parentNode) return root || null;
+    closeListbox(root);
     /* Clone-replace strips every prior listener (soft-nav can load multiple
        ep_form_listbox.js versions; AbortController only covers the latest bind). */
     var clone = root.cloneNode(true);
@@ -761,13 +797,16 @@
     clone.__suFilterListboxBound = false;
     clone.__plFilterListboxBound = false;
     clone.__epListboxAbort = null;
+    clone.__epPortaledList = null;
     bindListbox(clone);
     return clone;
   }
 
   document.addEventListener('click', function(e){
     listboxRoots('[data-se-listbox].is-open').forEach(function(root){
-      if (!root.contains(e.target)) closeListbox(root);
+      var list = listEl(root);
+      if (root.contains(e.target) || (list && list.contains(e.target))) return;
+      closeListbox(root);
     });
   });
   document.addEventListener('keydown', function(e){
@@ -775,10 +814,13 @@
     listboxRoots('[data-se-listbox].is-open').forEach(closeListbox);
   });
 
-  function repositionOpenFixedListboxes(){
+  function repositionOpenFixedListboxes(e){
+    var target = e && e.target;
     listboxRoots('[data-se-listbox].is-open').forEach(function(root){
-      var list = root.querySelector('.se-filter-listbox');
-      if (list) positionFixedListbox(root, list);
+      var list = listEl(root);
+      if (!list) return;
+      if (target && (list === target || list.contains(target))) return;
+      positionFixedListbox(root, list);
     });
   }
   window.addEventListener('resize', repositionOpenFixedListboxes);
@@ -815,7 +857,7 @@
         valueEl.classList.add('is-placeholder', 'staff-supplier-placeholder');
       }
     }
-    var list = root.querySelector('.se-filter-listbox');
+    var list = listEl(root);
     if (list) {
       list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
         var on = (opt.getAttribute('data-value') || '') === String(value);

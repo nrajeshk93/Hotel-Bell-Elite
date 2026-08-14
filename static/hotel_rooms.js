@@ -3422,6 +3422,23 @@
     if (saveBtn) saveBtn.disabled = false;
   }
 
+  function openRoomDetail(tile, root) {
+    if (!tile) return;
+    var roomId = tile.getAttribute('data-id') || '';
+    if (!roomId) return;
+    var url = '/hotel/rooms/' + encodeURIComponent(roomId);
+    var checkIn = toDateISO(tile.getAttribute('data-check-in') || '');
+    var boardDate = toDateISO(dateFilterValue(root) || '') || todayISO();
+    var asOf = boardDate;
+    if (checkIn && checkIn > boardDate) asOf = checkIn;
+    if (asOf) url += '?date=' + encodeURIComponent(asOf);
+    if (typeof window.deNavigateWithTransition === 'function') {
+      window.deNavigateWithTransition(url);
+    } else {
+      window.location.href = url;
+    }
+  }
+
   function bindEvents(root) {
     if (!root || root.__hotelRoomsBound) return;
     root.__hotelRoomsBound = true;
@@ -3522,14 +3539,7 @@
         event.preventDefault();
         event.stopPropagation();
         closeRoomMenu();
-        var roomId = tileClick.getAttribute('data-id') || '';
-        if (!roomId) return;
-        var url = '/hotel/rooms/' + encodeURIComponent(roomId);
-        if (typeof window.deNavigateWithTransition === 'function') {
-          window.deNavigateWithTransition(url);
-        } else {
-          window.location.href = url;
-        }
+        openRoomDetail(tileClick, root);
         return;
       }
     });
@@ -3547,14 +3557,7 @@
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
         closeRoomMenu();
-        var roomId = tile.getAttribute('data-id') || '';
-        if (!roomId) return;
-        var url = '/hotel/rooms/' + encodeURIComponent(roomId);
-        if (typeof window.deNavigateWithTransition === 'function') {
-          window.deNavigateWithTransition(url);
-        } else {
-          window.location.href = url;
-        }
+        openRoomDetail(tile, root);
       } else if (event.key === 'Escape') {
         closeRoomMenu();
       }

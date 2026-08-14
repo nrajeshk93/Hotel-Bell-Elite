@@ -44,12 +44,18 @@ _last_sync_meta: Dict[str, Any] = {
     "error": "",
     "source": "stub",
 }
+_pending_provider_rows: List[Dict[str, Any]] = []
 
 
 def _parse_iso(value: Any) -> Optional[date]:
     text = str(value or "").strip()
     if not text:
         return None
+    # Drop time portion ("2026-08-24 14:00:00" / "24/08/2026 14:00").
+    for sep in ("T", " "):
+        if sep in text:
+            text = text.split(sep, 1)[0].strip()
+            break
     text = text[:10] if len(text) >= 10 and text[4] == "-" else text
     try:
         return datetime.strptime(text[:10], "%Y-%m-%d").date()
@@ -152,6 +158,13 @@ def get_state(settings: Dict[str, Any]) -> Dict[str, Any]:
         "created": (
             list(state["created"]) if isinstance(state.get("created"), list) else []
         ),
+        "provider_rows": (
+            list(state["provider_rows"])
+            if isinstance(state.get("provider_rows"), list)
+            else []
+        ),
+        "cm_email": str(state.get("cm_email") or "").strip(),
+        "cm_password": str(state.get("cm_password") or "").strip(),
         "last_sync_meta": (
             dict(state["last_sync_meta"])
             if isinstance(state.get("last_sync_meta"), dict)
@@ -217,6 +230,42 @@ def credentials_configured(settings: Dict[str, Any]) -> bool:
     return bool(get_username(settings) and get_api_key(settings) and get_hotel_id(settings))
 
 
+def get_cm_email(settings: Dict[str, Any]) -> str:
+    """Channel Manager browser login email (Booking Reports), not the JSON API user."""
+    env = os.environ.get("ASIA_TECH_CM_EMAIL", "").strip()
+    if env:
+        return env
+    panel = panel_value(settings, "asia_tech_cm_email", "")
+    if panel:
+        return panel
+    return str(get_state(settings).get("cm_email") or "").strip()
+
+
+def get_cm_password(settings: Dict[str, Any]) -> str:
+    env = os.environ.get("ASIA_TECH_CM_PASSWORD", "").strip()
+    if env:
+        return env
+    panel = panel_value(settings, "asia_tech_cm_password", "")
+    if not _is_masked_secret(panel):
+        return panel
+    return str(get_state(settings).get("cm_password") or "").strip()
+
+
+def cm_credentials_configured(settings: Dict[str, Any]) -> bool:
+    return bool(get_cm_email(settings) and get_cm_password(settings))
+
+
+def _persisted_provider_rows(settings: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Saved Asia Tech rows, only if they belong to the current hotel."""
+    state = get_state(settings)
+    current = str(get_hotel_id(settings) or "").strip()
+    stored = str(state.get("provider_hotel_id") or "").strip()
+    if not current or stored != current:
+        return []
+    rows = state.get("provider_rows") or []
+    return [row for row in rows if isinstance(row, dict)]
+
+
 def get_mode(settings: Dict[str, Any]) -> str:
     mode = panel_value(settings, "asia_tech_mode", "stub").lower()
     if mode not in ("stub", "live"):
@@ -265,6 +314,15 @@ def mask_settings_for_client(settings: Dict[str, Any]) -> Dict[str, Any]:
         "kind": "text",
         "value": MASKED_API_KEY if has_key else "",
     }
+    has_cm = bool(get_cm_password(out))
+    values["asia_tech_cm_password"] = {
+        "kind": "text",
+        "value": MASKED_API_KEY if has_cm else "",
+    }
+    values["asia_tech_cm_email"] = {
+        "kind": "text",
+        "value": panel_value(out, "asia_tech_cm_email", get_cm_email(out)),
+    }
     values["asia_tech_username"] = {
         "kind": "text",
         "value": panel_value(out, "asia_tech_username", get_username(out)),
@@ -291,6 +349,8 @@ def mask_settings_for_client(settings: Dict[str, Any]) -> Dict[str, Any]:
             safe_state["has_api_key"] = True
         else:
             safe_state["has_api_key"] = False
+        if safe_state.get("cm_password"):
+            safe_state["cm_password"] = MASKED_API_KEY
         out["asia_tech_state"] = safe_state
     out["asia_tech_has_api_key"] = has_key
     out["asia_tech_has_credentials"] = credentials_configured(out)
@@ -320,6 +380,11 @@ def merge_settings_on_save(
             "assignments": nxt.get("assignments") or prev.get("assignments") or {},
             "overrides": nxt.get("overrides") or prev.get("overrides") or {},
             "created": nxt.get("created") if nxt.get("created") is not None else prev.get("created") or [],
+            "provider_rows": (
+                nxt.get("provider_rows")
+                if nxt.get("provider_rows") is not None
+                else prev.get("provider_rows") or []
+            ),
             "last_sync_meta": nxt.get("last_sync_meta") or prev.get("last_sync_meta") or {},
         }
 
@@ -352,6 +417,22 @@ def merge_settings_on_save(
             secret = candidate
             break
 
+    prev_cm_password = str(prev_state.get("cm_password") or "").strip()
+    if not prev_cm_password:
+        prev_cm_password = panel_value(existing, "asia_tech_cm_password", "")
+        if _is_masked_secret(prev_cm_password):
+            prev_cm_password = ""
+    submitted_cm_password = _submitted("asia_tech_cm_password")
+    cm_password = prev_cm_password
+    if submitted_cm_password and not _is_masked_secret(submitted_cm_password):
+        cm_password = submitted_cm_password
+    cm_email = (
+        _submitted("asia_tech_cm_email")
+        or prev_state.get("cm_email")
+        or panel_value(existing, "asia_tech_cm_email", "")
+        or ""
+    )
+
     username = _submitted("asia_tech_username") or prev_state.get("username") or ""
     hotel_id = _submitted("asia_tech_hotel_id") or prev_state.get("hotel_id") or ""
     base_url = _submitted("asia_tech_base_url") or prev_state.get("base_url") or DEFAULT_BASE_URL
@@ -362,6 +443,8 @@ def merge_settings_on_save(
     state["username"] = username
     state["hotel_id"] = hotel_id
     state["base_url"] = base_url
+    state["cm_email"] = cm_email
+    state["cm_password"] = cm_password
     incoming["asia_tech_state"] = state
 
     if isinstance(values, dict):
@@ -373,6 +456,11 @@ def merge_settings_on_save(
             "kind": "text",
             "value": MASKED_API_KEY if secret else "",
         }
+        values["asia_tech_cm_password"] = {
+            "kind": "text",
+            "value": MASKED_API_KEY if cm_password else "",
+        }
+        values["asia_tech_cm_email"] = {"kind": "text", "value": cm_email}
         values["asia_tech_username"] = {"kind": "text", "value": username}
         values["asia_tech_hotel_id"] = {"kind": "text", "value": hotel_id}
         values["asia_tech_base_url"] = {
@@ -505,6 +593,68 @@ def _room_label_from_raw(raw: Dict[str, Any]) -> str:
             "roomname",
             "RoomName",
             "room",
+            default="",
+        )
+        or ""
+    ).strip()
+
+
+MEAL_PLAN_LABELS = {
+    "ep": "Room only",
+    "cp": "Breakfast",
+    "map": "Breakfast & dinner",
+    "ap": "All meals",
+    "ai": "All inclusive",
+    "bb": "Bed & breakfast",
+}
+
+
+def _format_meal_plan(code: str) -> str:
+    text = str(code or "").strip()
+    if not text:
+        return ""
+    friendly = MEAL_PLAN_LABELS.get(text.lower())
+    if friendly and friendly.lower() != text.lower():
+        return f"{text} · {friendly}"
+    return text
+
+
+def _meal_plan_from_raw(raw: Dict[str, Any]) -> str:
+    codes: List[str] = []
+    seen = set()
+    detail = raw.get("room_detail") or raw.get("roomdetail") or raw.get("rooms")
+    if isinstance(detail, list):
+        for item in detail:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("mealplan") or item.get("meal_plan") or item.get("MealPlan") or "").strip()
+            key = code.lower()
+            if code and key not in seen:
+                seen.add(key)
+                codes.append(code)
+    if not codes:
+        code = str(
+            _pick(raw, "mealPlan", "mealplan", "meal_plan", "MealPlan", default="") or ""
+        ).strip()
+        if code:
+            codes.append(code)
+    return ", ".join(_format_meal_plan(code) for code in codes if code)
+
+
+def _special_notes_from_raw(raw: Dict[str, Any]) -> str:
+    return str(
+        _pick(
+            raw,
+            "specialNotes",
+            "special_notes",
+            "guestinfo",
+            "guest_info",
+            "guestInfo",
+            "specialrequest",
+            "special_request",
+            "remarks",
+            "notes",
+            "comment",
             default="",
         )
         or ""
@@ -678,6 +828,8 @@ def _normalize_reservation(raw: Dict[str, Any]) -> Dict[str, Any]:
         "sourceLabel": SOURCE_LABELS.get(source, source.replace("_", " ").title()),
         "paymentStatus": payment,
         "paymentStatusLabel": payment.replace("_", " ").title(),
+        "mealPlan": _meal_plan_from_raw(raw),
+        "specialNotes": _special_notes_from_raw(raw),
         "provider": str(raw.get("provider") or "asia_tech"),
     }
 
@@ -721,7 +873,8 @@ def list_provider_reservations(
     force_refresh: bool = False,
 ) -> List[Dict[str, Any]]:
     """List reservations; live mode fetches Asia Tech read-only when configured."""
-    global _last_sync_meta
+    global _last_sync_meta, _pending_provider_rows
+    _pending_provider_rows = []
     mode = get_mode(settings)
     meta: Dict[str, Any] = {
         "mode": mode,
@@ -735,7 +888,21 @@ def list_provider_reservations(
         "base_url": get_base_url(settings),
     }
     seed: List[Dict[str, Any]] = []
+    prior_raw = _persisted_provider_rows(settings)
     if mode == "live":
+        if prior_raw:
+            from asia_tech_http import merge_booking_rows
+
+            merge_booking_rows(
+                [row for row in prior_raw if isinstance(row, dict)],
+                cred_key="|".join(
+                    [
+                        get_base_url(settings),
+                        get_username(settings),
+                        get_hotel_id(settings),
+                    ]
+                ),
+            )
         raw_rows, http_meta = fetch_bookings(
             base_url=get_base_url(settings),
             username=get_username(settings),
@@ -752,15 +919,140 @@ def list_provider_reservations(
                 "error": http_meta.get("error") or "",
                 "source": "asia_tech",
                 "base_url": http_meta.get("base_url") or get_base_url(settings),
+                "fromdate": http_meta.get("fromdate") or "",
+                "todate": http_meta.get("todate") or "",
+                "pulled": int(http_meta.get("pulled") or 0),
             }
         )
+        if not meta["error"]:
+            meta["coverage"] = (
+                "Asia Tech only sends bookings created or updated in the last "
+                "10 days. Older stays show here after they are saved again "
+                "in Asia Tech."
+            )
+        if cm_credentials_configured(settings):
+            try:
+                from asia_tech_cm import fetch_checkin_booking_reports
+                from asia_tech_http import merge_booking_rows
+
+                cm_rows, cm_meta = fetch_checkin_booking_reports(
+                    email=get_cm_email(settings),
+                    password=get_cm_password(settings),
+                )
+                meta["cm_ok"] = bool(cm_meta.get("cm_ok"))
+                meta["cm_pulled"] = int(cm_meta.get("cm_pulled") or 0)
+                meta["cm_error"] = str(cm_meta.get("cm_error") or "")
+                if cm_rows:
+                    raw_rows = merge_booking_rows(
+                        list(raw_rows) + list(cm_rows),
+                        cred_key="|".join(
+                            [
+                                get_base_url(settings),
+                                get_username(settings),
+                                get_hotel_id(settings),
+                            ]
+                        ),
+                    )
+                    meta["bookings_path"] = (
+                        str(meta.get("bookings_path") or "")
+                        + "+cm/booking-reports"
+                    ).strip("+")
+            except Exception as exc:  # pragma: no cover - network/runtime guard
+                meta["cm_ok"] = False
+                meta["cm_error"] = str(exc)[:240]
+        elif not meta.get("error"):
+            meta["cm_hint"] = (
+                "Add Asia Tech Channel Manager email/password to sync by "
+                "check-in date (Bookings → Booking Reports), including older stays."
+            )
+
         seed = [_normalize_reservation(r) for r in raw_rows if isinstance(r, dict)]
+        by_id = {row["id"]: row for row in seed if row.get("id")}
+        for item in prior_raw:
+            if not isinstance(item, dict):
+                continue
+            normalized = _normalize_reservation(item)
+            rid = str(normalized.get("id") or "")
+            if rid and rid not in by_id:
+                by_id[rid] = normalized
+        seed = list(by_id.values())
+        if meta.get("cm_ok") and int(meta.get("cm_pulled") or 0) > 0:
+            meta["coverage"] = (
+                "Synced Asia Tech Booking Report by check-in date, plus recent "
+                "API activity."
+            )
+        elif meta.get("cm_error") and not meta.get("error"):
+            meta["error"] = (
+                "Asia Tech Booking Report (check-in) sync failed: "
+                + str(meta.get("cm_error"))
+            )
+        elif meta.get("cm_hint") and not meta.get("error"):
+            # Keep coverage note; do not treat missing CM login as a hard error.
+            meta["coverage"] = (
+                str(meta.get("coverage") or "")
+                + (" " if meta.get("coverage") else "")
+                + str(meta["cm_hint"])
+            ).strip()
     else:
         seed = list(_stub_seed())
         meta["source"] = "stub"
 
     _last_sync_meta = meta
+    _pending_provider_rows = list(seed) if mode == "live" else []
     return _apply_local_state(seed, settings)
+
+
+_PROVIDER_ROW_KEYS = (
+    "id",
+    "bookingId",
+    "guestName",
+    "checkInDate",
+    "checkOutDate",
+    "status",
+    "source",
+    "amount",
+    "mobile",
+    "email",
+    "guests",
+    "roomTypeLabel",
+    "roomNumber",
+    "roomId",
+    "paymentStatus",
+    "nights",
+    "mealPlan",
+    "specialNotes",
+    "provider",
+)
+
+
+def persist_provider_rows(settings: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return updated settings when the live booking snapshot gained rows."""
+    global _pending_provider_rows
+    rows = list(_pending_provider_rows)
+    _pending_provider_rows = []
+    if not rows:
+        return None
+    compact = []
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("id"):
+            continue
+        compact.append({key: row.get(key) for key in _PROVIDER_ROW_KEYS})
+    prev = get_state(settings).get("provider_rows") or []
+    prev_ids = {
+        str(item.get("id") or "")
+        for item in prev
+        if isinstance(item, dict) and item.get("id")
+    }
+    new_ids = {str(item.get("id") or "") for item in compact}
+    if new_ids <= prev_ids and len(prev) >= len(compact):
+        prev_hotel = str(get_state(settings).get("provider_hotel_id") or "").strip()
+        if prev_hotel == str(get_hotel_id(settings) or "").strip():
+            return None
+    return update_state(
+        settings,
+        provider_rows=compact,
+        provider_hotel_id=str(get_hotel_id(settings) or "").strip(),
+    )
 
 
 def compute_kpis(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -922,11 +1214,15 @@ def filter_reservations(
             if d_from and d_to:
                 cin = _parse_iso(row.get("checkInDate"))
                 cout = _parse_iso(row.get("checkOutDate"))
-                if not cin or not cout:
+                if not cin:
                     continue
-                # Stay covers [from, to], including checkout day so CHECK OUT
-                # column dates for the selected day remain visible.
-                if not (cin <= d_to and cout >= d_from):
+                if cout:
+                    # Stay covers [from, to], including checkout day so CHECK OUT
+                    # column dates for the selected day remain visible.
+                    if not (cin <= d_to and cout >= d_from):
+                        continue
+                elif not (d_from <= cin <= d_to):
+                    # Incomplete vendor row: still show on the check-in date.
                     continue
         if needle:
             blob = " ".join(

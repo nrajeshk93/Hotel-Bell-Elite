@@ -129,6 +129,69 @@
     return el ? String(el.value || '').trim() : '';
   }
 
+  var MEAL_PLAN_CODES = ['EP', 'CP', 'MAP', 'AP', 'AI', 'BB'];
+  var MEAL_PLAN_LABELS = {
+    EP: 'EP · Room only',
+    CP: 'CP · Breakfast',
+    MAP: 'MAP · Breakfast & dinner',
+    AP: 'AP · All meals',
+    AI: 'AI · All inclusive',
+    BB: 'BB · Bed & breakfast'
+  };
+
+  function mealPlanCodeFromStored(value) {
+    var text = String(value || '').trim();
+    if (!text || text.indexOf(',') >= 0) return '';
+    var first = text.split('·')[0].trim().toUpperCase();
+    for (var i = 0; i < MEAL_PLAN_CODES.length; i++) {
+      if (first === MEAL_PLAN_CODES[i]) return MEAL_PLAN_CODES[i];
+    }
+    return '';
+  }
+
+  function fillMealPlanSelect(stored) {
+    var root = document.getElementById('hres-edit-meal-listbox');
+    var wrap =
+      (root && (root.querySelector('.ep-listbox-options') || root.querySelector('.se-filter-listbox'))) ||
+      null;
+    if (wrap) {
+      var extras = wrap.querySelectorAll('.se-filter-listbox-option[data-custom="1"]');
+      for (var i = 0; i < extras.length; i++) extras[i].remove();
+    }
+    var text = String(stored || '').trim();
+    if (!text) {
+      if (typeof window.resetEpListbox === 'function') {
+        window.resetEpListbox('hres-edit-meal', '', 'Select meal plan');
+      } else {
+        var empty = document.getElementById('hres-edit-meal');
+        if (empty) empty.value = '';
+      }
+      return;
+    }
+    var code = mealPlanCodeFromStored(text);
+    var value = code || text;
+    var label = (code && MEAL_PLAN_LABELS[code]) || text;
+    if (!code && wrap) {
+      var opt = document.createElement('button');
+      opt.type = 'button';
+      opt.className = 'se-filter-listbox-option';
+      opt.setAttribute('role', 'option');
+      opt.setAttribute('data-value', text);
+      opt.setAttribute('data-label', text);
+      opt.setAttribute('data-name', text.toLowerCase());
+      opt.setAttribute('data-custom', '1');
+      opt.setAttribute('aria-selected', 'false');
+      opt.textContent = text;
+      wrap.appendChild(opt);
+    }
+    if (typeof window.resetEpListbox === 'function') {
+      window.resetEpListbox('hres-edit-meal', value, label);
+    } else {
+      var hidden = document.getElementById('hres-edit-meal');
+      if (hidden) hidden.value = value;
+    }
+  }
+
   function dateFilterRange(root) {
     root = root || pageRoot();
     var fromEl =
@@ -303,7 +366,11 @@
       banner.removeAttribute('hidden');
       banner.classList.remove('is-error');
       banner.classList.add('is-ok', 'is-visible');
-      text.textContent = 'Last synced from Asia Tech at ' + syncedAt;
+      var coverage = String(sync.coverage || '').trim();
+      text.textContent =
+        'Last synced from Asia Tech at ' +
+        syncedAt +
+        (coverage ? '. ' + coverage : '');
       scheduleSyncBannerHide();
       return;
     }
@@ -312,7 +379,8 @@
       banner.removeAttribute('hidden');
       banner.classList.remove('is-error');
       banner.classList.add('is-ok', 'is-visible');
-      text.textContent = 'Last synced from Asia Tech';
+      text.textContent =
+        String(sync.coverage || '').trim() || 'Last synced from Asia Tech';
       scheduleSyncBannerHide();
       return;
     }
@@ -328,8 +396,18 @@
     if (!body) return;
     state.rows = Array.isArray(rows) ? rows : [];
     if (!state.rows.length) {
+      var q = filterValue('hres-search');
+      var needle = String(q || '').trim();
+      var idish = /FDR\d{6,}/i.test(needle) || /^\d{10,}$/.test(needle);
+      var emptyMsg = idish
+        ? 'Asia Tech did not send ' +
+          needle +
+          '. Their feed only includes bookings created or updated in the last 10 days. Open that booking in Asia Tech, save it once, then Refresh.'
+        : 'No reservations match these filters.';
       body.innerHTML =
-        '<tr class="hres-empty-row"><td colspan="6">No reservations match these filters.</td></tr>';
+        '<tr class="hres-empty-row"><td colspan="6">' +
+        escapeHtml(emptyMsg) +
+        '</td></tr>';
       return;
     }
     body.innerHTML = state.rows
@@ -492,10 +570,94 @@
       total + ' reservation' + (total === 1 ? '' : 's');
   }
 
+  function sameId(a, b) {
+    return String(a == null ? '' : a) === String(b == null ? '' : b);
+  }
+
+  function todayIso() {
+    var d = new Date();
+    var m = d.getMonth() + 1;
+    var day = d.getDate();
+    return (
+      d.getFullYear() +
+      '-' +
+      (m < 10 ? '0' : '') +
+      m +
+      '-' +
+      (day < 10 ? '0' : '') +
+      day
+    );
+  }
+
+  function stayWindow(stay) {
+    if (!stay || typeof stay !== 'object') return null;
+    var checkIn = String(stay.checkInDate || stay.check_in_date || '').slice(0, 10);
+    var checkOut = String(stay.checkOutDate || stay.check_out_date || '').slice(0, 10);
+    if (!checkIn) return null;
+    if (!checkOut) {
+      var parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(checkIn);
+      if (!parts) return { checkIn: checkIn, checkOut: checkIn };
+      var next = new Date(
+        Number(parts[1]),
+        Number(parts[2]) - 1,
+        Number(parts[3]) + 1
+      );
+      var nm = next.getMonth() + 1;
+      var nd = next.getDate();
+      checkOut =
+        next.getFullYear() +
+        '-' +
+        (nm < 10 ? '0' : '') +
+        nm +
+        '-' +
+        (nd < 10 ? '0' : '') +
+        nd;
+    }
+    return { checkIn: checkIn, checkOut: checkOut };
+  }
+
+  function rangesOverlap(aIn, aOut, bIn, bOut) {
+    return aIn && aOut && bIn && bOut && aIn <= bOut && bIn <= aOut;
+  }
+
+  function roomAvailableForReservation(room, reservation) {
+    if (!room || !reservation) return false;
+    var status = String(room.status || 'vacant').toLowerCase();
+    var cin = String(reservation.checkInDate || '').slice(0, 10);
+    var cout = String(reservation.checkOutDate || '').slice(0, 10);
+    if (!cin || !cout || cout <= cin) return false;
+    if (status === 'out_of_order') return false;
+    if (reservation.roomId && sameId(room.id, reservation.roomId)) return true;
+    if (status === 'dirty' && cin <= todayIso()) return false;
+    var stayWin = stayWindow(room.stay);
+    if (
+      stayWin &&
+      rangesOverlap(cin, cout, stayWin.checkIn, stayWin.checkOut)
+    ) {
+      return false;
+    }
+    var upcomingWin = stayWindow(room.upcomingStay || room.upcoming_stay);
+    if (
+      upcomingWin &&
+      rangesOverlap(cin, cout, upcomingWin.checkIn, upcomingWin.checkOut)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  function roomsForReservation(reservation) {
+    var all = state.vacantRooms || [];
+    if (!reservation) return all;
+    return all.filter(function (room) {
+      return roomAvailableForReservation(room, reservation);
+    });
+  }
+
   function findRow(id) {
     var i;
     for (i = 0; i < state.rows.length; i++) {
-      if (state.rows[i].id === id) return state.rows[i];
+      if (sameId(state.rows[i].id, id)) return state.rows[i];
     }
     return null;
   }
@@ -504,19 +666,25 @@
     var grid = document.getElementById('hres-room-grid');
     var assignBtn = document.getElementById('hres-assign-btn');
     if (!grid) return;
-    var rooms = state.vacantRooms || [];
+    var rooms = roomsForReservation(reservation);
+    var canAssign = reservation && reservation.status !== 'checked_out';
+    if (state.selectedRoomId) {
+      var stillValid = rooms.some(function (room) {
+        return sameId(room.id, state.selectedRoomId);
+      });
+      if (!stillValid) state.selectedRoomId = '';
+    }
     if (!rooms.length) {
       grid.innerHTML =
-        '<div class="hres-room-empty">No vacant rooms available right now.</div>';
+        '<div class="hres-room-empty">No rooms available for these dates.</div>';
       if (assignBtn) assignBtn.disabled = true;
       return;
     }
     grid.innerHTML = rooms
       .map(function (room) {
-        var selected =
-          state.selectedRoomId && state.selectedRoomId === room.id
-            ? ' is-selected'
-            : '';
+        var selected = sameId(state.selectedRoomId, room.id) ? ' is-selected' : '';
+        var status = String(room.status || 'vacant').toLowerCase();
+        var badge = status === 'vacant' ? 'VACANT' : 'AVAILABLE';
         return (
           '<button type="button" class="hres-room-option' +
           selected +
@@ -529,25 +697,83 @@
           '<span>' +
           escapeHtml(room.roomTypeLabel || room.roomType || 'Room') +
           '</span>' +
-          '<span class="hres-room-vacant">VACANT</span>' +
+          '<span class="hres-room-vacant">' +
+          escapeHtml(badge) +
+          '</span>' +
           '</button>'
         );
       })
       .join('');
     if (assignBtn) {
+      assignBtn.disabled = !(canAssign && state.selectedRoomId);
+    }
+    syncAssignRoomLabel(rooms);
+  }
+
+  function findRoomById(roomId) {
+    var rooms = state.vacantRooms || [];
+    var i;
+    for (i = 0; i < rooms.length; i++) {
+      if (sameId(rooms[i].id, roomId)) return rooms[i];
+    }
+    return null;
+  }
+
+  function syncAssignRoomLabel(rooms) {
+    var label = document.getElementById('hres-assign-room-label');
+    if (!label) return;
+    var list = rooms || state.vacantRooms || [];
+    var room = null;
+    var i;
+    for (i = 0; i < list.length; i++) {
+      if (sameId(list[i].id, state.selectedRoomId)) {
+        room = list[i];
+        break;
+      }
+    }
+    if (!room) room = findRoomById(state.selectedRoomId);
+    if (!room) {
+      label.textContent = 'Select a room';
+      return;
+    }
+    label.textContent =
+      'Room ' +
+      (room.number || '') +
+      (room.roomTypeLabel || room.roomType
+        ? ' · ' + (room.roomTypeLabel || room.roomType)
+        : '');
+  }
+
+  function openAssignModal() {
+    var modal = document.getElementById('hres-assign-modal');
+    if (!modal) return;
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    var assignBtn = document.getElementById('hres-assign-btn');
+    var row = findRow(state.selectedId);
+    if (assignBtn) {
       assignBtn.disabled = !(
         state.selectedRoomId &&
-        reservation &&
-        reservation.status !== 'checked_out'
+        row &&
+        row.status !== 'checked_out'
       );
     }
+    syncAssignRoomLabel(roomsForReservation(row));
+  }
+
+  function closeAssignModal() {
+    var modal = document.getElementById('hres-assign-modal');
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
   }
 
   function openDetail(row) {
     var panel = document.getElementById('hres-detail');
     if (!panel || !row) return;
+    closeAssignModal();
     state.selectedId = row.id;
-    state.selectedRoomId = row.roomId || '';
+    state.selectedRoomId = '';
     panel.hidden = false;
 
     var avatar = document.getElementById('hres-detail-avatar');
@@ -580,13 +806,18 @@
         ['Check In', formatDisplayDate(row.checkInDate) + ' ' + formatTime(row.checkInTime)],
         ['Check Out', formatDisplayDate(row.checkOutDate) + ' ' + formatTime(row.checkOutTime)],
         ['Nights', String(row.nights || 1)],
+        ['Meal Plan', row.mealPlan || '—'],
         ['Total Amount', formatInr(row.amount)],
-        ['Source', row.sourceLabel || row.source || '—']
+        ['Source', row.sourceLabel || row.source || '—'],
+        ['Special Notes', row.specialNotes || '—']
       ];
       dl.innerHTML = fields
         .map(function (pair) {
+          var span = pair[0] === 'Special Notes' ? ' class="hres-detail-span"' : '';
           return (
-            '<div><dt>' +
+            '<div' +
+            span +
+            '><dt>' +
             escapeHtml(pair[0]) +
             '</dt><dd>' +
             escapeHtml(pair[1]) +
@@ -602,6 +833,7 @@
   }
 
   function closeDetail() {
+    closeAssignModal();
     var panel = document.getElementById('hres-detail');
     if (panel) panel.hidden = true;
     state.selectedId = '';
@@ -707,6 +939,10 @@
     document.getElementById('hres-edit-status').value = isEdit
       ? row.status || 'upcoming'
       : 'upcoming';
+    fillMealPlanSelect(isEdit ? row.mealPlan : '');
+    document.getElementById('hres-edit-notes').value = isEdit
+      ? row.specialNotes || ''
+      : '';
     modal.hidden = false;
     modal.setAttribute('aria-hidden', 'false');
   }
@@ -714,6 +950,9 @@
   function closeEditModal() {
     var modal = document.getElementById('hres-edit-modal');
     if (!modal) return;
+    if (typeof window.closeAllEpListboxes === 'function') {
+      window.closeAllEpListboxes();
+    }
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
   }
@@ -732,7 +971,9 @@
       guests: Number(filterValue('hres-edit-guests') || 1),
       amount: Number(filterValue('hres-edit-amount') || 0),
       source: filterValue('hres-edit-source') || 'direct',
-      status: filterValue('hres-edit-status') || 'upcoming'
+      status: filterValue('hres-edit-status') || 'upcoming',
+      mealPlan: filterValue('hres-edit-meal'),
+      specialNotes: filterValue('hres-edit-notes')
     };
     if (!payload.guestName || !payload.checkInDate || !payload.checkOutDate) {
       showToast('Guest name and dates are required');
@@ -800,6 +1041,7 @@
           throw new Error((result.data && result.data.error) || 'Assign failed');
         }
         showToast('Room assigned');
+        closeAssignModal();
         loadReservations({ silent: true });
       })
       .catch(function (err) {
@@ -865,12 +1107,27 @@
         return;
       }
 
+      var assignClose = event.target.closest('[data-hres-assign-close]');
+      if (assignClose) {
+        event.preventDefault();
+        closeAssignModal();
+        return;
+      }
+
+      var assignOverlay = event.target.closest('#hres-assign-modal');
+      if (assignOverlay && event.target === assignOverlay) {
+        event.preventDefault();
+        closeAssignModal();
+        return;
+      }
+
       var roomOpt = event.target.closest('.hres-room-option[data-room-id]');
       if (roomOpt) {
         event.preventDefault();
         state.selectedRoomId = roomOpt.getAttribute('data-room-id') || '';
         var row = findRow(state.selectedId);
         renderRoomGrid(row);
+        openAssignModal();
         return;
       }
 
@@ -884,6 +1141,7 @@
       var editBtn = event.target.closest('#hres-edit-btn');
       if (editBtn) {
         event.preventDefault();
+        closeAssignModal();
         openEditModal(findRow(state.selectedId));
         return;
       }
@@ -907,6 +1165,14 @@
     });
 
     root.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') {
+        var assignModal = document.getElementById('hres-assign-modal');
+        if (assignModal && !assignModal.hidden) {
+          event.preventDefault();
+          closeAssignModal();
+          return;
+        }
+      }
       var kpiCard = event.target.closest('.hres-kpi[data-kpi]');
       if (
         kpiCard &&
@@ -921,32 +1187,6 @@
     var form = document.getElementById('hres-edit-form');
     if (form) form.addEventListener('submit', saveEditForm);
 
-    if (global.SalesDateRangePicker && typeof global.SalesDateRangePicker.init === 'function') {
-      global.SalesDateRangePicker.init({
-        wrapId: 'hres-date-range-wrap',
-        triggerId: 'hres-date-range-trigger',
-        backdropId: 'hres-date-range-backdrop',
-        panelId: 'hres-date-range-panel',
-        displayId: 'hres-date-range-display',
-        fromInputId: 'hres-date-from',
-        toInputId: 'hres-date-to',
-        applyId: 'hres-date-range-apply',
-        prevId: 'hres-cal-prev',
-        nextId: 'hres-cal-next',
-        title0Id: 'hres-cal-title0',
-        title1Id: 'hres-cal-title1',
-        grid0Id: 'hres-cal-grid0',
-        grid1Id: 'hres-cal-grid1',
-        emptyLabel: 'Select date…',
-        onApply: function () {
-          setDateRangeFilteredClass();
-          loadReservations({ silent: true });
-        }
-      });
-      if (typeof global.SalesDateRangePicker.syncChipDisplays === 'function') {
-        global.SalesDateRangePicker.syncChipDisplays();
-      }
-    }
     var clearBtn = document.getElementById('hres-date-range-clear');
     if (clearBtn && clearBtn.getAttribute('data-hres-clear-bound') !== '1') {
       clearBtn.setAttribute('data-hres-clear-bound', '1');
@@ -975,10 +1215,41 @@
     setDateRangeFilteredClass();
   }
 
+  function initDateRangePicker() {
+    if (!global.SalesDateRangePicker || typeof global.SalesDateRangePicker.init !== 'function') {
+      return;
+    }
+    global.SalesDateRangePicker.init({
+      wrapId: 'hres-date-range-wrap',
+      triggerId: 'hres-date-range-trigger',
+      backdropId: 'hres-date-range-backdrop',
+      panelId: 'hres-date-range-panel',
+      displayId: 'hres-date-range-display',
+      fromInputId: 'hres-date-from',
+      toInputId: 'hres-date-to',
+      applyId: 'hres-date-range-apply',
+      prevId: 'hres-cal-prev',
+      nextId: 'hres-cal-next',
+      title0Id: 'hres-cal-title0',
+      title1Id: 'hres-cal-title1',
+      grid0Id: 'hres-cal-grid0',
+      grid1Id: 'hres-cal-grid1',
+      emptyLabel: 'Select date…',
+      onApply: function () {
+        setDateRangeFilteredClass();
+        loadReservations({ silent: true });
+      }
+    });
+    if (typeof global.SalesDateRangePicker.syncChipDisplays === 'function') {
+      global.SalesDateRangePicker.syncChipDisplays();
+    }
+  }
+
   function initHotelReservationsPage() {
     var root = pageRoot();
     if (!root) return;
     bindOnce(root);
+    initDateRangePicker();
     bindTableSort(root);
     paintKpiActive();
     if (typeof global.initEpListboxes === 'function') {

@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=43">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=44">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
@@ -34,7 +34,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=43">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=44">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
@@ -57,7 +57,7 @@
         </div>
       </div>
       <div class="su-header-tools">
-        <a class="btn btn-primary" href="{{ purchase_ledger_report_url }}" download="purchase_ledger.xlsx">ledger Report</a>
+        <a class="btn btn-primary" href="{{ purchase_ledger_report_url }}" download="{{ purchase_ledger_export_filename }}">Export Excel</a>
         <button type="button" class="btn btn-primary" id="pl-open-add-purchase">Add Entry</button>
       </div>
     </div>
@@ -170,7 +170,7 @@
                 <div class="an-range-wrap an-range-wrap--sales" id="pl-date-range-wrap" data-max-date="{{ today_iso }}">
                   <button type="button" class="an-range-trigger se-filter-chip-trigger" id="pl-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="pl-date-range-panel" aria-labelledby="pl-date-range-label pl-date-range-display">
                     <span class="an-range-trigger-label">
-                      <span id="pl-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Select date…{% endif %}</span>
+                      <span id="pl-date-range-display">{% if active_date_filter %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Select date…{% endif %}</span>
                     </span>
                   </button>
                   <div class="an-range-backdrop" id="pl-date-range-backdrop" aria-hidden="true"></div>
@@ -310,7 +310,7 @@
               {% set status_label = credit_settlement_status_labels.get(entry.settlement_status, entry.settlement_status or '') %}
               {% set kind_label = ledger_entry_kind_labels.get(entry.entry_kind, entry.entry_kind or 'Expense') %}
               <tr class="pl-expense-row" data-search="{{ [entry.sales_date or '', entry.expense_code or '', kind_label, entry.description or '', cat_label, entry.invoice_number or '', entry.supplier_name or '', entry.supplier_gst or '', pay_label, status_label, entry.amount|string]|join(' ')|lower }}">
-                <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date }}</td>
+                <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date|report_dt }}</td>
                 <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
                 <td data-sort-value="{{ kind_label }}">
                   <span class="pl-kind-pill pl-kind-pill--{{ entry.entry_kind or 'expense' }}">{{ kind_label }}</span>
@@ -392,7 +392,7 @@
 </div>
 {% include 'partials/purchase_ledger_add_modal.html' %}
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=10"></script>
 {% include 'partials/purchase_ledger_filter_scripts.html' %}

@@ -18,6 +18,7 @@ from sales_report_parser import (
 )
 
 COLLECTIONS_SAMPLE = Path("/Users/rajesh/Downloads/report-collections.xlsx")
+COLLECTIONS_SAMPLE_AUG12 = Path("/Users/rajesh/Downloads/report-collections (2).xlsx")
 ORDER_INVOICE_SAMPLE = Path("/Users/rajesh/Downloads/report-order-invoice (1).xlsx")
 
 
@@ -119,6 +120,50 @@ class CollectionsReportParserTest(unittest.TestCase):
         self.assertEqual(result["meta"]["rows_bar"], 0)
         self.assertEqual(result["meta"]["rows_restaurant"], 0)
         self.assertIn("2026-08-06", result["meta"]["available_dates"])
+
+    def test_asia_tech_string_amounts_and_section_headers(self):
+        buf = _collections_workbook_bytes([
+            ["Cash", None, None, None, None, None, None, None, None, None, None],
+            ["12-Aug-2026", "INV/1746/2026-27", "IRISH LOUNGE BAR", None, "1", None, "Cash", "1568.00", "0.00", "0.00", "BAR"],
+            ["12-Aug-2026", "SPC/2044/2026-27", "SPICE MUTLICUSINE", None, "21", "OUT", "Cash", "341.00", "0.00", "0.00", "RESTAURANT"],
+            [None, None, None, None, None, None, None, "1909.00", "0.00", "0.00", None],
+            ["Company", None, None, None, None, None, None, None, None, None, None],
+            ["12-Aug-2026", "SPC/2048/2026-27", "SPICE MUTLICUSINE", None, "2", "swiggy", "SWIGGY", "1301.00", "0.00", "0.00", "RESTAURANT"],
+            ["Room Credit", None, None, None, None, None, None, None, None, None, None],
+            ["12-Aug-2026", "INV/1745/2026-27", "IRISH LOUNGE BAR", None, "Chair 1", None,
+             "Room Credit | Room - 201 | Folio - 616 - Mr. Prem Madugula", "126.00", "0.00", "0.00", "BAR"],
+        ])
+        result = parse_collections_report(buf, date(2026, 8, 13))
+        self.assertEqual(result["meta"]["rows_bar"], 0)
+        self.assertEqual(result["meta"]["available_dates"], ["2026-08-12"])
+
+        buf.seek(0)
+        result = parse_collections_report(buf, date(2026, 8, 12))
+        self.assertEqual(result[OUTLET_BAR]["cash"], 1568.0)
+        self.assertEqual(result[OUTLET_BAR]["room_credit"], 126.0)
+        self.assertEqual(result[OUTLET_RESTAURANT]["cash"], 341.0)
+        self.assertEqual(result[OUTLET_RESTAURANT]["online_order"], 1301.0)
+        self.assertEqual(result["meta"]["rows_bar"], 2)
+        self.assertEqual(result["meta"]["rows_restaurant"], 2)
+
+    @unittest.skipUnless(COLLECTIONS_SAMPLE_AUG12.exists(), "Aug 12 collections sample xlsx not available")
+    def test_collections_aug12_sample_totals(self):
+        with COLLECTIONS_SAMPLE_AUG12.open("rb") as fh:
+            result = parse_sales_report(fh, date(2026, 8, 13))
+        self.assertEqual(result["meta"]["available_dates"], ["2026-08-12"])
+        self.assertEqual(result[OUTLET_BAR]["total_sales"], 0.0)
+
+        with COLLECTIONS_SAMPLE_AUG12.open("rb") as fh:
+            result = parse_sales_report(fh, date(2026, 8, 12))
+        self.assertEqual(result[OUTLET_BAR]["total_sales"], 22429.0)
+        self.assertEqual(result[OUTLET_BAR]["cash"], 12279.0)
+        self.assertEqual(result[OUTLET_BAR]["upi"], 10024.0)
+        self.assertEqual(result[OUTLET_BAR]["room_credit"], 126.0)
+        self.assertEqual(result[OUTLET_RESTAURANT]["total_sales"], 7675.0)
+        self.assertEqual(result[OUTLET_RESTAURANT]["online_order"], 1301.0)
+        self.assertEqual(result["meta"]["rows_bar"], 9)
+        self.assertEqual(result["meta"]["rows_restaurant"], 10)
+        self.assertEqual(result["meta"]["rows_room_transfer"], 3)
 
 
 class OrderInvoiceReportParserTest(unittest.TestCase):

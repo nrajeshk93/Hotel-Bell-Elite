@@ -16,6 +16,7 @@ _USER_ACCESS_SUBMODULES = (
     {"key": "users", "label": "Users"},
     {"key": "add", "label": "Add User"},
     {"key": "roles", "label": "Roles"},
+    {"key": "logs", "label": "Logs"},
 )
 
 _PAYROLL_SUBMODULES = (
@@ -44,7 +45,7 @@ _STORES_SUBMODULES = (
     },
     {"key": "approvals", "label": "Approvals"},
     {"key": "purchase_requests", "label": "Stock Inward"},
-    {"key": "stock", "label": "Stock"},
+    {"key": "stock", "label": "Store"},
     {"key": "stock_audit", "label": "Stock Audit"},
 )
 
@@ -407,6 +408,7 @@ _STORES_ENDPOINT_GROUPS = {
     "stock": {
         "stores_stock",
         "stores_stock_export",
+        "stores_stock_transfer",
     },
     "stock_audit": {
         "stores_stock_audit",
@@ -442,6 +444,8 @@ _REPORTS_ENDPOINTS = {
     "reports",
     "sales_report_hotel",
     "sales_report_hotel_export",
+    "sales_report_manager_insight",
+    "sales_report_manager_insight_export",
     "sales_report_restaurant",
     "sales_report_restaurant_export",
     "sales_report_bar",
@@ -472,6 +476,7 @@ _PUBLIC_ENDPOINTS = {
 _OUTLET_WRITE_ENDPOINTS = {
     "save_sales_update",
     "upload_report",
+    "upload_sales_report",
     "add_expense",
     "edit_expense",
     "delete_expense",
@@ -540,6 +545,7 @@ _ACCESS_ENDPOINT_GROUPS = {
         "save_access_role",
         "delete_access_role",
     },
+    "logs": {"access_login_logs"},
 }
 _ACCESS_MANAGEMENT_ENDPOINTS = {
     "access_management",
@@ -549,6 +555,7 @@ _ACCESS_MANAGEMENT_ENDPOINTS = {
     "access_roles",
     "save_access_role",
     "delete_access_role",
+    "access_login_logs",
 }
 SUPER_ADMINISTRATOR_ROLE_NAME = "Super Administrator"
 _ADMINISTRATOR_ROLE_NAME = SUPER_ADMINISTRATOR_ROLE_NAME  # seeded full-authority role
@@ -1231,7 +1238,7 @@ def is_system_administrator(user):
     if not user:
         return False
     username = (user.get("username") or "").strip().lower()
-    return username == "admin"
+    return username in {"admin", "admin_rajeshkumar"}
 
 
 def user_can_edit_kot_sent_lines(user):

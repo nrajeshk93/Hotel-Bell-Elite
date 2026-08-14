@@ -88,7 +88,7 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Indent",
                 "Approvals",
                 "Stock Inward",
-                "Stock",
+                "Store",
                 "Stock Audit",
             ],
         )
@@ -118,7 +118,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         user_access = next(node for node in tree if node["label"] == "User & Access")
         self.assertEqual(
             [child["label"] for child in user_access["children"]],
-            ["Users", "Add User", "Roles"],
+            ["Users", "Add User", "Roles", "Logs"],
         )
         settings = next(node for node in tree if node["label"] == "Settings")
         self.assertEqual(settings["id"], "settings")
@@ -335,6 +335,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("reports"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_hotel"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_hotel_export"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_manager_insight"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_manager_insight_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_restaurant"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_restaurant_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_bar"), "reports")
@@ -350,6 +352,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_user_access_submodule("access_roles"), "roles")
         self.assertEqual(get_endpoint_user_access_submodule("save_access_role"), "roles")
         self.assertEqual(get_endpoint_user_access_submodule("delete_access_role"), "roles")
+        self.assertEqual(get_endpoint_user_access_submodule("access_login_logs"), "logs")
+        self.assertEqual(get_endpoint_dashboard_module("access_login_logs"), "access_management")
         self.assertEqual(get_endpoint_user_access_submodule("toggle_access_user_active"), "users")
         self.assertEqual(
             get_endpoint_dashboard_module("toggle_access_user_active"),
@@ -385,6 +389,7 @@ class RoleBasedAccessTests(unittest.TestCase):
         self.assertEqual(user["role_name"], "Super Administrator")
         self.assertTrue(user_can_access_dashboard(user, "settings"))
         self.assertTrue(user_can_access_user_access_submodule(user, "roles"))
+        self.assertTrue(user_can_access_user_access_submodule(user, "logs"))
 
     def test_only_super_administrator_role_can_have_full_authority(self):
         actor = {"id": 1, "is_admin": True, "user_access": {"roles"}}

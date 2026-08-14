@@ -37,6 +37,64 @@ body.su-module .st-audit-filter-form{
   flex:1 1 auto;
 }
 
+body.su-module .st-stock-filter-form .st-stock-place-host,
+body.su-module .st-audit-filter-form .st-stock-place-host{
+  flex:0 0 auto;
+  min-width:0;
+  position:relative;
+}
+body.su-module .st-stock-filter-form .st-stock-place-host > .se-filter-chip-label,
+body.su-module .st-audit-filter-form .st-stock-place-host > .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--txt2,#4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  text-align:left;
+}
+body.su-module .st-stock-filter-form .st-stock-place-tabs.cp-view-tabs,
+body.su-module .st-audit-filter-form .st-stock-place-tabs.cp-view-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  height:44px;
+  min-height:44px;
+  margin:0;
+  padding:4px;
+  box-sizing:border-box;
+  background:#F1F5F9;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:12px;
+}
+body.su-module .st-stock-filter-form .st-stock-place-tabs .st-stock-place-tab,
+body.su-module .st-audit-filter-form .st-stock-place-tabs .st-stock-place-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:36px;
+  min-height:36px;
+  padding:0 14px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:#64748B;
+  font:700 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+}
+body.su-module .st-stock-filter-form .st-stock-place-tabs .st-stock-place-tab:hover,
+body.su-module .st-audit-filter-form .st-stock-place-tabs .st-stock-place-tab:hover{
+  color:#0F172A;
+  background:rgba(255,255,255,.65);
+}
+body.su-module .st-stock-filter-form .st-stock-place-tabs .st-stock-place-tab.is-active,
+body.su-module .st-audit-filter-form .st-stock-place-tabs .st-stock-place-tab.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
 body.su-module .st-stock-filter-form .st-stock-search-chip,
 body.su-module .st-audit-filter-form .st-audit-search-chip{
   flex:1 1 auto;
@@ -469,7 +527,7 @@ body.su-module .st-outlet-filter-form:not(.st-product-filter-form):not(.st-stock
     flex:1 1 100%;
     max-width:none;
   }
-  body.su-module .st-product-filter-form .st-outlet-listbox,
+  body.su-module .st-stock-filter-form .st-stock-place-host,
   body.su-module .st-stock-filter-form .st-outlet-listbox,
   body.su-module .st-stock-filter-form .st-stock-filter-chip{
     flex:1 1 100%;
@@ -1790,12 +1848,256 @@ body.su-module .st-stock-inv-table{
 body.su-module .st-stock-inv-table--priced{
   min-width:820px;
 }
+body.su-module .st-stock-card-actions{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  flex-shrink:0;
+}
+body.su-module .st-stock-col-check{
+  width:44px;
+  text-align:center;
+  padding-left:14px !important;
+  padding-right:8px !important;
+}
+body.su-module .st-stock-check{
+  width:16px;
+  height:16px;
+  cursor:pointer;
+  accent-color:#2563EB;
+  vertical-align:middle;
+}
+body.su-module .st-stock-check:disabled{
+  cursor:not-allowed;
+  opacity:.45;
+}
+body.su-module .st-stock-inv-table tbody tr.is-selected{
+  background:#EFF6FF;
+}
 body.su-module .st-stock-col-product{width:28%}
 body.su-module .st-stock-col-category{width:18%}
 body.su-module .st-stock-col-qty{width:12%}
 body.su-module .st-stock-col-unit{width:10%}
 body.su-module .st-stock-col-status{width:14%}
 body.su-module .st-stock-col-value{width:12%}
+body.su-module .st-stock-transfer-item{
+  margin:0;
+  font:650 13px Inter,system-ui,sans-serif;
+  color:var(--txt,#0F172A);
+}
+#st-stock-transfer-modal td.st-stock-transfer-item{
+  white-space:nowrap;
+}
+body.su-module .st-stock-transfer-avail{
+  margin:0;
+  font:500 12px Inter,system-ui,sans-serif;
+  color:var(--txt2,#64748B);
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+  text-align:center;
+}
+#st-stock-transfer-modal .st-stock-transfer-dest{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px;
+  margin:0 0 14px;
+}
+#st-stock-transfer-modal .st-stock-transfer-dest > .se-filter-chip-label{
+  display:block;
+  font:700 11px Inter,system-ui,sans-serif;
+  color:var(--txt2,#4A5568);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+#st-stock-transfer-modal .st-stock-transfer-dest > .se-filter-chip-label::after{
+  content:' *';
+  color:#DC2626;
+}
+#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab:focus-visible{
+  outline:2px solid var(--acc,#2563EB);
+  outline-offset:1px;
+}
+#st-stock-transfer-modal #st-stock-transfer-submit:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+#st-stock-transfer-modal .st-stock-transfer-dest-tabs.cp-view-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  height:40px;
+  min-height:40px;
+  margin:0;
+  padding:4px;
+  box-sizing:border-box;
+  background:#F1F5F9;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:12px;
+}
+#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:32px;
+  min-height:32px;
+  padding:0 12px;
+  border:0;
+  border-radius:8px;
+  background:transparent;
+  color:var(--txt2,#475569);
+  font:650 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+}
+#st-stock-transfer-modal .st-stock-transfer-dest-tabs .cp-view-tab.is-active{
+  background:#fff;
+  color:var(--txt,#0F172A);
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+#st-stock-transfer-modal .st-stock-transfer-box,
+body.su-module .modal-box.st-stock-transfer-box{
+  width:640px;
+  max-width:calc(100vw - 32px);
+}
+#st-stock-transfer-modal .st-stock-transfer-table-wrap{
+  margin:0 0 14px;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:10px;
+  overflow:auto;
+  max-height:min(48vh, 360px);
+  background:#fff;
+}
+#st-stock-transfer-modal .st-stock-transfer-table{
+  width:100%;
+  min-width:560px;
+  border-collapse:collapse;
+  table-layout:auto;
+}
+#st-stock-transfer-modal .st-stock-transfer-col-product{width:auto}
+#st-stock-transfer-modal .st-stock-transfer-col-avail{width:130px}
+#st-stock-transfer-modal .st-stock-transfer-col-qty{width:200px}
+#st-stock-transfer-modal .st-stock-transfer-table th,
+#st-stock-transfer-modal .st-stock-transfer-table td{
+  padding:8px 12px;
+  vertical-align:middle;
+  box-sizing:border-box;
+}
+#st-stock-transfer-modal .st-stock-transfer-table th:nth-child(1),
+#st-stock-transfer-modal .st-stock-transfer-table td:nth-child(1){
+  text-align:left;
+}
+#st-stock-transfer-modal .st-stock-transfer-table th:nth-child(1){
+  text-align:center;
+}
+#st-stock-transfer-modal .st-stock-transfer-table th:nth-child(2),
+#st-stock-transfer-modal .st-stock-transfer-table td:nth-child(2){
+  width:130px;
+  min-width:130px;
+  white-space:nowrap;
+}
+#st-stock-transfer-modal .st-stock-transfer-table td:nth-child(2){
+  text-align:center;
+}
+#st-stock-transfer-modal .st-stock-transfer-table th:nth-child(2){
+  text-align:center;
+}
+#st-stock-transfer-modal .st-stock-transfer-table th:nth-child(3),
+#st-stock-transfer-modal .st-stock-transfer-table td:nth-child(3){
+  width:200px;
+  min-width:200px;
+}
+#st-stock-transfer-modal .st-stock-transfer-table td:nth-child(3){
+  text-align:left;
+}
+#st-stock-transfer-modal .st-stock-transfer-table th:nth-child(3){
+  text-align:center;
+}
+#st-stock-transfer-modal .st-stock-transfer-cols th{
+  position:sticky;
+  top:0;
+  z-index:1;
+  background:#F8FAFC;
+  border-bottom:1px solid var(--border,#E2E8F0);
+  font:650 11px Inter,system-ui,sans-serif;
+  color:#64748B;
+  text-transform:uppercase;
+  letter-spacing:.35px;
+  text-align:center;
+}
+#st-stock-transfer-modal .st-stock-transfer-line td{
+  border-bottom:1px solid #EEF2F6;
+  height:42px;
+}
+#st-stock-transfer-modal .st-stock-transfer-line:last-child td{
+  border-bottom:0;
+}
+#st-stock-transfer-modal .st-stock-transfer-qty-cell{
+  padding-left:12px;
+  padding-right:12px;
+  overflow:visible;
+}
+#st-stock-transfer-modal .st-stock-transfer-qty-wrap{
+  display:flex;
+  align-items:stretch;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:8px;
+  background:#fff;
+  overflow:hidden;
+  min-height:34px;
+  box-sizing:border-box;
+}
+#st-stock-transfer-modal .st-stock-transfer-qty-wrap:focus-within{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}
+#st-stock-transfer-modal .st-stock-transfer-line-qty{
+  flex:1 1 auto;
+  width:auto;
+  min-width:64px;
+  border:0;
+  border-radius:0;
+  box-shadow:none;
+  outline:none;
+  padding:6px 8px 6px 10px;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:var(--txt,#0F172A);
+  background:transparent;
+  box-sizing:border-box;
+  min-height:34px;
+  appearance:textfield;
+  -moz-appearance:textfield;
+}
+#st-stock-transfer-modal .st-stock-transfer-line-qty::-webkit-outer-spin-button,
+#st-stock-transfer-modal .st-stock-transfer-line-qty::-webkit-inner-spin-button{
+  -webkit-appearance:none;
+  margin:0;
+}
+#st-stock-transfer-modal .st-stock-transfer-qty-unit{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  flex-shrink:0;
+  min-width:48px;
+  padding:0 10px;
+  border-left:1px solid var(--border,#E2E8F0);
+  background:#F8FAFC;
+  color:var(--txt2,#64748B);
+  font:650 11px Inter,system-ui,sans-serif;
+  white-space:nowrap;
+}
+body.su-module .st-stock-move-pill--transfer{
+  background:#F5F3FF;
+  color:#6D28D9;
+}
+body.su-module .st-stock-move-pill--sale{
+  background:#FEF2F2;
+  color:#B91C1C;
+}
 body.su-module .st-stock-inv-table .st-stock-product-name,
 body.su-module .st-stock-movements-table .st-stock-product-name{
   overflow:hidden;
@@ -1815,11 +2117,6 @@ body.su-module .st-stock-qty{font-variant-numeric:tabular-nums}
 body.su-module .st-stock-updated{
   color:var(--txt3,#94A3B8);
   font-size:12px;
-}
-body.su-module .su-header-tools #st-stock-out-filter[aria-pressed="true"]{
-  border-color:#FECACA;
-  background:#FEF2F2;
-  color:#B91C1C;
 }
 body.su-module .st-audit-queue-actions{
   display:inline-flex;

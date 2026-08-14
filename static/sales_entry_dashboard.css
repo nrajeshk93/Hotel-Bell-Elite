@@ -294,9 +294,9 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
   font-size:10px;font-weight:700;letter-spacing:.02em;white-space:nowrap;
 }
 .se-panel-hdr-actions{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto}
-.se-panel-upload-label{cursor:pointer;margin:0;display:inline-flex}
+.se-panel-upload-label{cursor:pointer;margin:0;display:inline-flex;position:relative;overflow:hidden}
 .se-panel-upload-input{
-  position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;
+  position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0;z-index:1;
 }
 .se-panel-upload-btn{
   background:#eff6ff;border-color:#bfdbfe;color:#2563eb;min-height:32px;padding:7px 14px;

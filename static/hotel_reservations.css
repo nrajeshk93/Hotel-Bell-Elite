@@ -186,12 +186,13 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
 
 .hres-toolbar{
   display:flex;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
   align-items:flex-end;
   gap:12px;
   margin-bottom:16px;
   overflow:visible;
   width:100%;
+  min-height:0;
   box-sizing:border-box;
 }
 .hres-toolbar > .hres-search,
@@ -203,7 +204,8 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
   align-items:stretch;
   margin:0;
   box-sizing:border-box;
-  min-width:0;
+  height:auto;
+  max-height:none;
 }
 .hres-toolbar .hres-toolbar-date .hotel-date-label,
 .hres-toolbar .hotel-date .hotel-date-label{
@@ -226,11 +228,17 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
 /* Accounts / Purchase Ledger–style filter chips */
 .hres-filter-listbox{
   position:relative;
-  flex:0 1 160px;
-  width:160px;
-  min-width:140px;
-  max-width:180px;
+  flex:0 0 180px;
+  width:180px;
+  min-width:180px;
+  max-width:200px;
   z-index:20;
+}
+body.hotel-reservations-module .hres-toolbar > .hres-filter-listbox.ep-form-listbox{
+  flex:0 0 180px;
+  width:180px;
+  min-width:180px;
+  max-width:200px;
 }
 .hres-filter-listbox .se-filter-chip-label{
   display:block;
@@ -329,9 +337,9 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
 }
 .hres-search{
   position:relative;
-  flex:1 1 240px;
-  min-width:200px;
-  max-width:340px;
+  flex:1 1 auto;
+  min-width:180px;
+  max-width:none;
   padding:0;
   background:transparent;
   border:0;
@@ -383,10 +391,11 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
   flex:0 0 200px;
   width:200px;
   min-width:180px;
-  max-width:240px;
+  max-width:220px;
   margin-left:auto;
   z-index:25;
   overflow:visible;
+  height:auto;
 }
 .hres-toolbar .hres-date-range-host > .se-filter-chip-label{
   display:block;
@@ -401,6 +410,7 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
 }
 .hres-toolbar .hres-date-range-host .se-filter-chip--date-range{
   display:block;
+  flex:0 0 auto;
   width:100%;
   min-width:0;
   margin:0;
@@ -430,13 +440,21 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
   background:#fff !important;
 }
+.hres-toolbar .hres-date-range-host .se-filter-chip-control,
+.hres-toolbar .hres-date-range-host .an-range-wrap,
+.hres-toolbar .hres-date-range-host .an-range-trigger{
+  pointer-events:auto;
+}
 .hres-toolbar .hres-date-range-host .an-range-wrap{
   position:relative;
   flex:1 1 auto;
   min-width:0;
   width:auto;
-  height:100%;
+  height:44px;
+  min-height:44px;
   flex-shrink:1;
+  overflow:visible;
+  z-index:1;
 }
 .hres-toolbar .hres-date-range-host .an-range-trigger,
 .hres-toolbar .hres-date-range-host .an-range-trigger.se-filter-chip-trigger{
@@ -444,6 +462,8 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
   align-items:center;
   justify-content:flex-start;
   gap:8px;
+  position:relative;
+  z-index:2;
   min-width:0 !important;
   width:100% !important;
   max-width:none !important;
@@ -457,6 +477,7 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
   font:600 13px Inter,'Segoe UI',system-ui,sans-serif;
   color:var(--hres-text);
   cursor:pointer;
+  pointer-events:auto !important;
 }
 .hres-toolbar .hres-date-range-host .an-range-trigger:hover,
 .hres-toolbar .hres-date-range-host .an-range-trigger:focus{
@@ -480,7 +501,8 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
   align-items:center;
   justify-content:center;
   color:#94A3B8;
-  pointer-events:none;
+  pointer-events:auto;
+  cursor:pointer;
 }
 .hres-toolbar .hres-date-range-host .se-filter-chip-chev svg{
   width:16px;
@@ -500,12 +522,25 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
 #hotel-reservations-page #hres-date-range-wrap .an-range-panel[hidden],
 #hotel-reservations-page #hres-date-range-wrap:not(.open) .an-range-panel,
 body.hotel-reservations-module #hres-date-range-wrap .an-range-panel[hidden],
-body.hotel-reservations-module #hres-date-range-wrap:not(.open) .an-range-panel{
+body.hotel-reservations-module #hres-date-range-wrap:not(.open) .an-range-panel,
+.hres-toolbar .an-range-panel[hidden],
+.hres-toolbar .an-range-wrap:not(.open) .an-range-panel,
+#hotel-reservations-page #hres-date-range-wrap:not(.open) .an-range-backdrop,
+body.hotel-reservations-module #hres-date-range-wrap:not(.open) .an-range-backdrop,
+.hres-toolbar .an-range-wrap:not(.open) .an-range-backdrop{
   display:none !important;
+  pointer-events:none !important;
+  visibility:hidden !important;
+}
+.hres-toolbar .an-range-wrap .an-range-panel,
+.hres-toolbar .an-range-wrap .an-range-backdrop{
+  position:fixed !important;
 }
 #hotel-reservations-page #hres-date-range-wrap.open .an-range-panel,
 body.hotel-reservations-module #hres-date-range-wrap.open .an-range-panel{
   display:flex !important;
+  visibility:visible !important;
+  pointer-events:auto !important;
   flex-direction:column;
   position:fixed !important;
   z-index:120;
@@ -805,7 +840,7 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
 }
 .hres-detail-grid{
   display:grid;
-  grid-template-columns:minmax(240px,1fr) minmax(280px,1.4fr) minmax(200px,.9fr);
+  grid-template-columns:minmax(240px,1fr) minmax(280px,1.4fr);
   gap:14px;
   padding-right:28px;
 }
@@ -882,6 +917,9 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   font-weight:650;
   color:var(--hres-text);
   word-break:break-word;
+}
+.hres-detail-dl .hres-detail-span{
+  grid-column:1 / -1;
 }
 .hres-assign-icon svg{
   width:18px;height:18px;
@@ -974,6 +1012,18 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   gap:10px;
 }
 .hres-action-stack .btn{width:100%}
+.hres-assign-dialog{
+  width:min(360px,100%);
+}
+.hres-assign-dialog .hres-dialog-body{
+  padding:18px;
+}
+.hres-assign-room-label{
+  margin:0 0 16px;
+  font-size:13px;
+  font-weight:650;
+  color:var(--hres-text);
+}
 
 .hres-toast{
   position:fixed;
@@ -1006,6 +1056,15 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   box-shadow:0 24px 60px rgba(15,23,42,.25);
   overflow:hidden;
 }
+.hres-dialog:has(.ep-form-listbox.is-open){
+  overflow:visible;
+}
+#hres-edit-form .hres-edit-meal-listbox{
+  width:100%;
+}
+#hres-edit-form .hres-edit-meal-listbox .se-filter-chip-label{
+  color:var(--hres-muted);
+}
 .hres-dialog-head{
   display:flex;
   align-items:center;
@@ -1035,6 +1094,11 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   flex-direction:column;
   gap:12px;
   padding:16px 18px;
+  max-height:min(70vh, 560px);
+  overflow:auto;
+}
+.hres-dialog-body:has(.ep-form-listbox.is-open){
+  overflow:visible;
 }
 .hres-field-row{
   display:grid;
@@ -1050,7 +1114,8 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   color:var(--hres-muted);
 }
 .hres-field input,
-.hres-field select{
+.hres-field select,
+.hres-field textarea{
   min-height:38px;
   border:1px solid var(--hres-border);
   border-radius:10px;
@@ -1058,6 +1123,11 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   font:500 13px Inter,system-ui,sans-serif;
   color:var(--hres-text);
   background:#fff;
+}
+.hres-field textarea{
+  min-height:72px;
+  resize:vertical;
+  line-height:1.4;
 }
 .hres-dialog-foot{
   display:flex;
@@ -1071,7 +1141,6 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   .hres-detail-grid{
     grid-template-columns:1fr 1fr;
   }
-  .hres-actions-card{grid-column:1 / -1}
 }
 @media (max-width:720px){
   body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
@@ -1082,6 +1151,9 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
     gap:10px;
   }
   .hres-refresh-btn{margin-left:0;width:auto}
+  .hres-toolbar{
+    flex-wrap:wrap;
+  }
   .hres-toolbar .hres-toolbar-date,
   .hres-toolbar .hres-date-range-host,
   .hres-toolbar .hotel-date.hres-toolbar-date{
@@ -1093,10 +1165,13 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   .hres-toolbar .hres-search{
     flex:1 1 100%;
     max-width:none;
+    min-width:0;
   }
-  .hres-toolbar .hres-filter-listbox{
+  .hres-toolbar .hres-filter-listbox,
+  body.hotel-reservations-module .hres-toolbar > .hres-filter-listbox.ep-form-listbox{
     flex:1 1 calc(50% - 6px);
     width:auto;
+    min-width:0;
     max-width:none;
   }
   .hres-detail-grid{grid-template-columns:1fr}

@@ -1,0 +1,214 @@
+{% set de_soft_body_class = 'de-open su-module sales-report-module manager-insight-report-module' %}
+{% set de_soft_page_title = page_title ~ ' | Reports | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ page_title }} | Reports | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=4">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module sales-report-module manager-insight-report-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=4">
+{% endif %}
+
+<div class="main-wrapper" id="manager-insight-report-page"
+     data-manager-insight-report
+     data-report-kind="manager-insight">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn de-sidebar-pin-btn" type="button" onclick="toggleDeSidebarExpandedPin()" title="Pin sidebar expanded" aria-label="Pin sidebar expanded" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>{{ page_title }}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download="{{ sales_report_export_filename }}">Export Excel</a>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="mi-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Manager insight filters"
+              data-clear-url="{{ sales_report_clear_url }}"
+              data-today="{{ today_iso }}"
+              data-selected-period="{{ selected_period }}">
+          {% if preserve_from_hub %}
+          <input type="hidden" name="from_hub" value="reports">
+          {% endif %}
+          <input type="hidden" id="mi-period" name="period" value="{{ selected_period }}">
+          <input type="hidden" id="mi-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="mi-date-to" name="date_to" value="{{ date_to }}">
+
+          <div class="md-period-field pl-header-field" id="mi-period-field">
+            <span class="se-filter-chip-label md-period-label" id="mi-period-label">Period</span>
+            <div class="md-period-pills" role="group" aria-labelledby="mi-period-label">
+              {% for period_key, period_label in mi_periods %}
+              <button type="button"
+                      class="md-period-pill{% if selected_period == period_key %} is-active{% endif %}"
+                      data-mi-period="{{ period_key }}"
+                      aria-pressed="{{ 'true' if selected_period == period_key else 'false' }}">{{ period_label }}</button>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="mi-date-range-host">
+            <span class="se-filter-chip-label" id="mi-date-range-label">Duration</span>
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <div class="an-range-wrap an-range-wrap--sales" id="mi-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="mi-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="mi-date-range-panel" aria-labelledby="mi-date-range-label mi-date-range-display">
+                    <span class="an-range-trigger-label">
+                      <span id="mi-date-range-display">{% if active_date_filter %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Select date…{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="mi-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="mi-date-range-panel" role="dialog" aria-labelledby="mi-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="mi-date-range-panel-title">Date range</div>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="mi-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="mi-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="mi-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="mi-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="mi-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="mi-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="mi-date-range-today">Today</button>
+                      <button type="button" class="btn" id="mi-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="mi-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="{{ page_title }}">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+          <span>Manager Insight</span>
+        </div>
+        <span class="pl-count" id="mi-window-meta">{{ mtd_month_label }} {{ mtd_label }} · YTD {{ ytd_label }}</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        <div class="pl-table-wrap" tabindex="0" aria-label="{{ page_title }}, scroll for more">
+          <table class="pl-table" id="mi-table" aria-label="{{ page_title }} entries">
+            <colgroup>
+              <col class="mi-col-head">
+              <col class="mi-col-num">
+              <col class="mi-col-num">
+              <col class="mi-col-num">
+            </colgroup>
+            <thead>
+              <tr>
+                <th class="mi-col-head" scope="col">HEAD</th>
+                <th class="mi-col-num" scope="col">Duration</th>
+                <th class="mi-col-num" scope="col">{{ mtd_month_label }}</th>
+                <th class="mi-col-num" scope="col">YTD</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr class="mi-row" data-row-key="{{ row.key }}" data-row-kind="{{ row.kind }}">
+                <td class="mi-col-head">{{ row.label }}</td>
+                {% if row.kind == 'count' %}
+                <td class="mi-col-num">{{ row.duration|int }}</td>
+                <td class="mi-col-num">{{ row.mtd|int }}</td>
+                <td class="mi-col-num">{{ row.ytd|int }}</td>
+                {% elif row.kind == 'pct' %}
+                <td class="mi-col-num">{{ "%.2f"|format(row.duration) }}</td>
+                <td class="mi-col-num">{{ "%.2f"|format(row.mtd) }}</td>
+                <td class="mi-col-num">{{ "%.2f"|format(row.ytd) }}</td>
+                {% else %}
+                <td class="mi-col-num pl-amount" data-amount="{{ row.duration }}">{{ row.duration }}</td>
+                <td class="mi-col-num pl-amount" data-amount="{{ row.mtd }}">{{ row.mtd }}</td>
+                <td class="mi-col-num pl-amount" data-amount="{{ row.ytd }}">{{ row.ytd }}</td>
+                {% endif %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </article>
+  </section>
+</div>
+
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='manager_insight_report.js') }}?v=2"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

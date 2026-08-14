@@ -186,6 +186,7 @@ def parse_order_invoice_report(file_stream: BinaryIO, sales_date: date) -> dict:
         "skipped": 0,
         "sales_date": sales_date.isoformat(),
     }
+    found_dates = set()
 
     for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         if not row or len(row) < 15:
@@ -193,6 +194,8 @@ def parse_order_invoice_report(file_stream: BinaryIO, sales_date: date) -> dict:
             continue
 
         row_date = parse_row_date(row[0])
+        if row_date:
+            found_dates.add(row_date.isoformat())
         if row_date != sales_date:
             meta["skipped"] += 1
             continue
@@ -219,7 +222,7 @@ def parse_order_invoice_report(file_stream: BinaryIO, sales_date: date) -> dict:
         else:
             meta["rows_restaurant"] += 1
 
-    meta["available_dates"] = _collect_order_invoice_dates(ws)
+    meta["available_dates"] = sorted(found_dates)
     wb.close()
     return {
         OUTLET_BAR: totals[OUTLET_BAR],
@@ -256,6 +259,7 @@ def parse_collections_report(file_stream: BinaryIO, sales_date: date) -> dict:
         }
         room_transfer_lines = []
         room_sort_order = 0
+        found_dates = set()
 
         for row_idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
             if not _is_data_row(row):
@@ -263,6 +267,8 @@ def parse_collections_report(file_stream: BinaryIO, sales_date: date) -> dict:
                 continue
 
             row_date = parse_row_date(row[0])
+            if row_date:
+                found_dates.add(row_date.isoformat())
             if row_date != sales_date:
                 meta["skipped"] += 1
                 continue
@@ -311,7 +317,7 @@ def parse_collections_report(file_stream: BinaryIO, sales_date: date) -> dict:
                     "source_row": row_idx,
                 })
 
-        meta["available_dates"] = _collect_collections_dates(ws)
+        meta["available_dates"] = sorted(found_dates)
         return {
             OUTLET_BAR: totals[OUTLET_BAR],
             OUTLET_RESTAURANT: totals[OUTLET_RESTAURANT],

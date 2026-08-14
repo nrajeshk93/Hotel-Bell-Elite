@@ -504,6 +504,8 @@
         url.searchParams.set('line_id', String(lineId));
         var outlet = page.getAttribute('data-outlet');
         if (outlet) url.searchParams.set('outlet', outlet);
+        var place = page.getAttribute('data-place');
+        if (place) url.searchParams.set('place', place);
         window.history.replaceState({}, '', url.pathname + url.search);
       } catch (err) {
         /* ignore */
@@ -671,7 +673,11 @@
     var body = $('#st-audit-history-body', modal);
     if (!url || !body) return;
     var outlet = page.getAttribute('data-outlet') || '';
-    fetch(url + (outlet ? '?outlet=' + encodeURIComponent(outlet) : ''), {
+    var place = page.getAttribute('data-place') || '';
+    var qs = [];
+    if (outlet) qs.push('outlet=' + encodeURIComponent(outlet));
+    if (place) qs.push('place=' + encodeURIComponent(place));
+    fetch(url + (qs.length ? '?' + qs.join('&') : ''), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
     })
@@ -719,7 +725,10 @@
     if (!window.confirm('Complete the current audit and start a new queue from current stock?')) {
       return;
     }
-    postJson(url, { outlet: page.getAttribute('data-outlet') || '' })
+    postJson(url, {
+      outlet: page.getAttribute('data-outlet') || '',
+      place: page.getAttribute('data-place') || ''
+    })
       .then(function (result) {
         if (!result.ok || !result.data || !result.data.ok) {
           throw new Error(

@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard_analytics.css') }}?v=11">
 <script>
 (function(){
@@ -37,7 +37,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard_analytics.css') }}?v=11">
 {% endif %}
 <div class="main-wrapper" id="main-dashboard-page" data-main-dashboard>
@@ -325,24 +325,22 @@
     </article>
 
     <div class="rdx-grid-2 rdx-grid-dow-top">
-      <div class="rdx-dow-heat-stack">
-        <article class="rdx-card rdx-dow-card">
-          <div class="rdx-card-head"><div><h2>Day of week</h2><p>Average settled sales by weekday</p></div></div>
-          <div class="rdx-chart rdx-chart-sm" id="rdx-chart-dow"></div>
-        </article>
-        <article class="rdx-card rdx-sales-heatmap-card">
-          <div class="rdx-card-head"><div><h2>Sales heatmap (daily)</h2><p>Daily intensity across weeks</p></div></div>
-          <div class="rdx-heatmap-scroll">
-            <div class="rdx-heatmap" id="rdx-sales-heatmap" aria-label="Daily sales heatmap"></div>
-          </div>
-          <div class="rdx-heatmap-legend" aria-hidden="true">
-            <span class="rdx-heatmap-legend-label">Low sales</span>
-            <span class="rdx-heatmap-legend-bar"></span>
-            <span class="rdx-heatmap-legend-label">High sales</span>
-          </div>
-          <div class="rdx-heatmap-tooltip" id="rdx-heatmap-tooltip" role="tooltip" hidden></div>
-        </article>
-      </div>
+      <article class="rdx-card rdx-dow-card">
+        <div class="rdx-card-head"><div><h2>Day of week</h2><p>Average settled sales by weekday</p></div></div>
+        <div class="rdx-chart rdx-chart-sm" id="rdx-chart-dow"></div>
+      </article>
+      <article class="rdx-card rdx-sales-heatmap-card">
+        <div class="rdx-card-head"><div><h2>Sales heatmap (daily)</h2><p>Daily intensity across weeks</p></div></div>
+        <div class="rdx-heatmap-scroll">
+          <div class="rdx-heatmap" id="rdx-sales-heatmap" aria-label="Daily sales heatmap"></div>
+        </div>
+        <div class="rdx-heatmap-legend" aria-hidden="true">
+          <span class="rdx-heatmap-legend-label">Low sales</span>
+          <span class="rdx-heatmap-legend-bar"></span>
+          <span class="rdx-heatmap-legend-label">High sales</span>
+        </div>
+        <div class="rdx-heatmap-tooltip" id="rdx-heatmap-tooltip" role="tooltip" hidden></div>
+      </article>
       <article class="rdx-card rdx-top-items" data-md-top-items>
         <div class="rdx-card-head">
           <div>
@@ -376,7 +374,7 @@
 </div>
 <script id="md-dashboard-data" type="application/json">{{ dashboard | tojson }}</script>
 <script src="{{ url_for('static', filename='format_inr.js') }}?v=3"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=11"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='main_dashboard.js') }}?v=9" data-de-rerun="1"></script>
 <script src="{{ url_for('static', filename='main_dashboard_charts.js') }}?v=8" data-de-rerun="1"></script>

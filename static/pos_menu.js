@@ -1032,12 +1032,18 @@
   }
 
   function formatDateTime(value) {
+    if (typeof global.formatReportDatetime === 'function') {
+      return global.formatReportDatetime(value);
+    }
     if (!value) return '—';
     var s = String(value);
     return s.length > 16 ? s.slice(0, 16) : s;
   }
 
   function formatDateShort(value) {
+    if (typeof global.formatReportDate === 'function') {
+      return global.formatReportDate(value);
+    }
     if (!value) return '—';
     return String(value).slice(0, 10);
   }

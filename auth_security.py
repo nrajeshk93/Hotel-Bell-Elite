@@ -242,6 +242,75 @@ def record_unknown_user_failure() -> None:
     return None
 
 
+LOGIN_LOG_REASON_LABELS = {
+    "success": "Successful",
+    "invalid_password": "Wrong password",
+    "unknown_user": "Unknown username",
+    "locked": "Account locked",
+    "captcha": "CAPTCHA failed",
+    "throttled": "Too many attempts",
+}
+
+
+def record_login_attempt(
+    conn,
+    *,
+    username: str,
+    success: bool,
+    reason: str,
+    user_id: int | None = None,
+    ip: str = "",
+    user_agent: str = "",
+) -> None:
+    """Append one sign-in attempt (success or failure) for the Logs page."""
+    conn.execute(
+        """
+        INSERT INTO login_logs (
+            created_at, username, user_id, success, reason, ip_address, user_agent
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            sql_now(),
+            (username or "").strip()[:80],
+            int(user_id) if user_id else None,
+            1 if success else 0,
+            (reason or "").strip()[:40],
+            (ip or "").strip()[:64],
+            (user_agent or "").strip()[:250],
+        ),
+    )
+
+
+def fetch_login_logs(conn, *, result: str = "all", limit: int = 500) -> list[dict]:
+    """Newest-first login attempts for User & Access → Logs."""
+    try:
+        cap = max(1, min(int(limit), 2000))
+    except (TypeError, ValueError):
+        cap = 500
+    sql = """
+        SELECT id, created_at, username, user_id, success, reason, ip_address, user_agent
+          FROM login_logs
+    """
+    params: list = []
+    key = (result or "all").strip().lower()
+    if key == "success":
+        sql += " WHERE success = 1"
+    elif key == "failed":
+        sql += " WHERE success = 0"
+    sql += " ORDER BY id DESC LIMIT ?"
+    params.append(cap)
+    rows = []
+    for row in conn.execute(sql, params):
+        item = dict(row)
+        item["success"] = bool(item.get("success"))
+        item["reason_label"] = LOGIN_LOG_REASON_LABELS.get(
+            str(item.get("reason") or ""),
+            str(item.get("reason") or "Attempt"),
+        )
+        rows.append(item)
+    return rows
+
+
 # ── IP throttle ──────────────────────────────────────────────────────────────
 
 def client_ip_from_request(request) -> str:

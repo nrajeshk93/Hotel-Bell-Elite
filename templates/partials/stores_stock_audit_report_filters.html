@@ -94,7 +94,7 @@
         <div class="an-range-wrap an-range-wrap--sales" id="st-audit-report-date-range-wrap" data-max-date="{{ audit_report_today_iso }}">
           <button type="button" class="an-range-trigger se-filter-chip-trigger" id="st-audit-report-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="st-audit-report-date-range-panel" aria-labelledby="st-audit-report-date-range-label st-audit-report-date-range-display">
             <span class="an-range-trigger-label">
-              <span id="st-audit-report-date-range-display">{% if active_date_filter %}{{ date_from }}{% if date_to %} – {{ date_to }}{% endif %}{% else %}Select date…{% endif %}</span>
+              <span id="st-audit-report-date-range-display">{% if active_date_filter %}{{ date_from|report_date }}{% if date_to %} – {{ date_to|report_date }}{% endif %}{% else %}Select date…{% endif %}</span>
             </span>
           </button>
           <div class="an-range-backdrop" id="st-audit-report-date-range-backdrop" aria-hidden="true"></div>

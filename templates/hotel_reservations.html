@@ -1,5 +1,6 @@
 {% set de_soft_body_class = 'de-open hotel-reservations-module' %}
 {% set de_soft_page_title = 'Reservations | Hotel | Hotel Bell Elite' %}
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% if not is_partial_main %}
 <!DOCTYPE html>
 <html lang="en">
@@ -12,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=20">
 <script>
 (function(){
   try{
@@ -28,7 +29,7 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=20">
 {% endif %}
 
 <div class="de-main-inner hotel-reservations-page" id="hotel-reservations-page"
@@ -234,12 +235,30 @@
           </div>
           <div>
             <h2>Assign Room</h2>
+            <p>Click a room to confirm</p>
           </div>
         </header>
         <div class="hres-room-grid" id="hres-room-grid"></div>
       </article>
+    </div>
+  </section>
 
-      <article class="hres-detail-card hres-actions-card">
+  <div class="hres-toast" id="hres-toast" role="status" aria-live="polite" hidden></div>
+
+  <div class="hres-dialog-overlay" id="hres-assign-modal" hidden aria-hidden="true">
+    <article
+      class="hres-dialog hres-assign-dialog hres-actions-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="hres-assign-title"
+    >
+      <header class="hres-dialog-head">
+        <h2 id="hres-assign-title">Assign Room</h2>
+        <button type="button" class="hres-dialog-close" data-hres-assign-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="hres-dialog-body">
         <div class="hres-payment-block">
           <div class="hres-payment-label">Payment Status</div>
           <div class="hres-payment-row">
@@ -247,15 +266,14 @@
             <strong id="hres-detail-amount">₹0</strong>
           </div>
         </div>
+        <p class="hres-assign-room-label" id="hres-assign-room-label">Select a room</p>
         <div class="hres-action-stack">
           <button type="button" class="btn btn-primary" id="hres-assign-btn" disabled>Assign Room</button>
           <button type="button" class="btn" id="hres-edit-btn">Edit Reservation</button>
         </div>
-      </article>
-    </div>
-  </section>
-
-  <div class="hres-toast" id="hres-toast" role="status" aria-live="polite" hidden></div>
+      </div>
+    </article>
+  </div>
 
   <div class="hres-dialog-overlay" id="hres-edit-modal" hidden aria-hidden="true">
     <div class="hres-dialog" role="dialog" aria-modal="true" aria-labelledby="hres-edit-title">
@@ -324,6 +342,26 @@
             </select>
           </label>
         </div>
+        {{ ep_listbox(
+          'mealPlan',
+          'Meal plan',
+          [
+            ('EP', 'EP · Room only'),
+            ('CP', 'CP · Breakfast'),
+            ('MAP', 'MAP · Breakfast & dinner'),
+            ('AP', 'AP · All meals'),
+            ('AI', 'AI · All inclusive'),
+            ('BB', 'BB · Bed & breakfast'),
+          ],
+          '',
+          placeholder='Select meal plan',
+          field_id='hres-edit-meal',
+          extra_class='hres-edit-meal-listbox'
+        ) }}
+        <label class="hres-field">
+          <span>Notes</span>
+          <textarea id="hres-edit-notes" rows="3" placeholder="Special requests or guest notes"></textarea>
+        </label>
       </form>
       <footer class="hres-dialog-foot">
         <button type="button" class="btn" data-hres-edit-close>Cancel</button>
@@ -333,9 +371,9 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=12"></script>
-<script src="{{ url_for('static', filename='hotel_reservations.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=51"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=16"></script>
+<script src="{{ url_for('static', filename='hotel_reservations.js') }}?v=19"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

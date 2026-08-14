@@ -24,10 +24,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=20">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=23">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
 {% if mode is defined and mode == 'credits' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -66,9 +66,9 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=20">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=23">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
 {% if mode is defined and mode == 'credits' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -457,7 +457,7 @@
               <div class="an-range-wrap an-range-wrap--sales" id="ec-date-range-wrap" data-max-date="{{ today_iso|default('') }}">
                 <button type="button" class="an-range-trigger se-filter-chip-trigger" id="ec-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="ec-date-range-panel">
                   <span class="an-range-trigger-label">
-                    <span id="ec-date-range-display">{% if active_date_filter|default(false) %}{{ date_from }} – {{ date_to }}{% else %}Date{% endif %}</span>
+                    <span id="ec-date-range-display">{% if active_date_filter|default(false) %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Date{% endif %}</span>
                   </span>
                 </button>
                 <div class="an-range-backdrop" id="ec-date-range-backdrop" aria-hidden="true"></div>
@@ -1040,7 +1040,7 @@
           <div style="font-size:24px;font-weight:800;line-height:1;">{{ sel_date[-2:] }}</div>
         </div>
         <div>
-          <div style="font-size:17px;font-weight:700;color:var(--txt);">{{ day_name }}, {{ sel_date[8:10] }} {{ month_name }} {{ sel_year }}</div>
+          <div style="font-size:17px;font-weight:700;color:var(--txt);">{{ day_name }}, {{ sel_date|report_date }}</div>
           <div style="font-size:12px;color:var(--txt3);margin-top:2px;">
             {% if is_future %}<span style="color:var(--warn);font-weight:600;">⚠ Future date — read only</span>
             {% elif not can_modify_attendance_date %}<span style="color:var(--warn);font-weight:600;">{{ attendance_date_lock_message }}</span>
@@ -1071,7 +1071,7 @@
     <div class="card-hdr" style="flex-wrap:wrap;gap:8px;">
       <div class="card-title">
         <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        All Employees — {{ sel_date }}
+        All Employees — {{ sel_date|report_date }}
       </div>
       {% if can_modify_attendance_date %}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;">
@@ -1587,7 +1587,7 @@
           <tbody>
             {% for cr in credit_items %}
             <tr id="cr-row-{{ cr.id }}" data-sort-row>
-              <td class="pl-col-date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date }}</span></td>
+              <td class="pl-col-date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date|report_date }}</span></td>
               <td data-sort-value="{{ cr.description or '' }}"><div class="pl-name" style="font-weight:600;max-width:320px;">{{ cr.description or '—' }}</div></td>
               <td class="pl-col-amount pl-amount {% if cr.amount < 0 %}pl-amount--debt{% elif cr.amount > 0 %}pl-amount--ok{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ cr.amount }}">{{ cr.amount | inr(2) }}</td>
               <td class="pl-col-actions">
@@ -2410,7 +2410,7 @@
           <tbody>
             {% for cr in recent_credits %}
             <tr>
-              <td class="pl-col-date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date }}</span></td>
+              <td class="pl-col-date" data-sort-value="{{ cr.date }}"><span class="pl-meta" style="margin:0;">{{ cr.date|report_date }}</span></td>
               <td data-sort-value="{{ cr.emp_name }}"><div class="pl-name">{{ cr.emp_name }}</div></td>
               <td data-sort-value="{{ cr.description or '' }}"><div class="pl-name" style="font-weight:600;max-width:280px;">{{ cr.description or '—' }}</div></td>
               <td class="pl-col-amount pl-amount {% if cr.amount < 0 %}pl-amount--debt{% elif cr.amount > 0 %}pl-amount--warn{% else %}pl-amount--muted{% endif %}" data-sort-value="{{ cr.amount }}">{{ cr.amount | inr(2) }}</td>
@@ -2774,9 +2774,9 @@
 
 </main>
 </div><!-- /main-wrapper -->
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 {% if mode is defined and mode == 'credits' %}
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script>
 (function(){
   var form = document.getElementById('emp-credits-filter-form');

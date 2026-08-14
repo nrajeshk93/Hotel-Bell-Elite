@@ -569,6 +569,44 @@ class LoginSecurityTests(unittest.TestCase):
         self.assertEqual(again.status_code, 302)
         self.assertTrue(again.headers["Location"].endswith("/home"))
 
+    def test_failed_and_successful_logins_are_recorded(self):
+        self.client.post("/login", data={"username": "locke", "password": "wrong"})
+        self.client.post("/login", data={"username": "ghost", "password": "x"})
+        self.client.post("/login", data={"username": "locke", "password": "secret123"})
+        conn = db_mod.get_db()
+        try:
+            rows = list(
+                conn.execute(
+                    "SELECT username, success, reason FROM login_logs ORDER BY id"
+                )
+            )
+        finally:
+            conn.close()
+        self.assertEqual(
+            [(row["username"], int(row["success"]), row["reason"]) for row in rows],
+            [
+                ("locke", 0, "invalid_password"),
+                ("ghost", 0, "unknown_user"),
+                ("locke", 1, "success"),
+            ],
+        )
+
+    def test_logs_page_lists_attempts_for_admin(self):
+        self.client.post("/login", data={"username": "locke", "password": "wrong"})
+        self.client.post("/login", data={"username": "admin", "password": "admin"})
+        page = self.client.get("/access-management/logs")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Sign-in attempts", page.data)
+        self.assertIn(b"de-nav-access-logs", page.data)
+        self.assertIn(b"locke", page.data)
+        self.assertIn(b"Failed", page.data)
+        self.assertIn(b"Successful", page.data)
+
+    def test_logs_page_denied_for_non_admin(self):
+        self.client.post("/login", data={"username": "locke", "password": "secret123"})
+        page = self.client.get("/access-management/logs")
+        self.assertIn(page.status_code, (302, 303))
+
     def test_admin_seed_uses_argon2id(self):
         tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         tmp.close()

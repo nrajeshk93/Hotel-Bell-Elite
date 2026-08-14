@@ -6,10 +6,11 @@ body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form){
 }
 body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
   display:flex;
-  flex-wrap:nowrap;
+  flex-wrap:wrap;
   align-items:flex-end;
-  justify-content:flex-end;
+  justify-content:flex-start;
   gap:12px;
+  row-gap:14px;
   width:100%;
   max-width:100%;
   min-width:0;
@@ -20,8 +21,8 @@ body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
 /* Expense ledger header filters — match Add menu field listbox design */
 body.su-module #purchase-ledger-filter-form .pl-kind-filter-host{
   position:relative;
-  flex:0 0 auto;
-  min-width:0;
+  flex:1 1 auto;
+  min-width:min(100%, 220px);
   margin-right:auto;
 }
 body.su-module #purchase-ledger-filter-form .pl-kind-filter-host > .se-filter-chip-label{
@@ -155,10 +156,10 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox .se-filter-
 
 body.su-module #purchase-ledger-filter-form .pl-search-chip{
   position:relative;
-  flex:1 1 auto;
+  flex:1 1 160px;
   width:auto;
-  min-width:96px;
-  max-width:100%;
+  min-width:140px;
+  max-width:280px;
   z-index:20;
 }
 body.su-module #purchase-ledger-filter-form .pl-search-chip .pl-header-search,
@@ -193,7 +194,7 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-c
   text-overflow:ellipsis;
 }
 body.su-module .pl-date-range-host.pl-header-field{
-  flex:0 0 auto;
+  flex:0 1 auto;
   min-width:168px;
   z-index:30;
   margin-left:0;
@@ -228,19 +229,23 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
 }
 @media (max-width:1100px){
   body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
-    flex:0 1 auto;
+    flex:1 1 140px;
     width:auto;
-    min-width:104px;
-    max-width:160px;
+    min-width:120px;
+    max-width:200px;
   }
 }
 @media (max-width:900px){
   body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
     flex-wrap:wrap;
-    justify-content:stretch;
+    justify-content:flex-start;
+  }
+  body.su-module #purchase-ledger-filter-form .pl-kind-filter-host{
+    flex:1 1 100%;
+    margin-right:0;
   }
   body.su-module #purchase-ledger-filter-form .pl-search-chip{
-    flex:1 1 100%;
+    flex:1 1 calc(50% - 6px);
     max-width:none;
   }
   body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){

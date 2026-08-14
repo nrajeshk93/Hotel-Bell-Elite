@@ -289,6 +289,9 @@
     dirty: false,
     /* True after Generate Invoice (customer_bill_sent) — cart edits are locked. */
     invoiceGenerated: false,
+    /* Banquet-only CGST/UGST percent override; null = outlet Taxes settings. */
+    taxCgstPct: null,
+    taxUgstPct: null,
     adjDraft: {
       discount: 'pct',
       service: 'pct'
@@ -1350,6 +1353,106 @@
     return Math.max(0, base) * (n / 100);
   }
 
+  function isBanquetProductName(name) {
+    return String(name || '').replace(/\s+/g, ' ').trim().toLowerCase() === 'banquet';
+  }
+
+  function isBanquetOnlyCart() {
+    if (!state.lines.length) return false;
+    var i;
+    for (i = 0; i < state.lines.length; i++) {
+      if (!isBanquetProductName(state.lines[i].name)) return false;
+    }
+    return true;
+  }
+
+  function isPosAdminUser(page) {
+    var root = page || document.getElementById('pos-invoice-page');
+    return !!(root && root.getAttribute('data-pos-is-admin') === '1');
+  }
+
+  function canEditBanquetTax(page) {
+    return isPosAdminUser(page) && isBanquetOnlyCart() && !state.invoiceGenerated;
+  }
+
+  function clampTaxPct(raw) {
+    var n = Number(raw);
+    if (!isFinite(n) || n < 0) n = 0;
+    if (n > 100) n = 100;
+    return Math.round(n * 1000) / 1000;
+  }
+
+  function formatPctInputValue(pct) {
+    var text = String(clampTaxPct(pct));
+    if (text.indexOf('.') !== -1) {
+      text = text.replace(/\.?0+$/, '');
+    }
+    return text;
+  }
+
+  function rateFromOverridePct(pct, fallbackRate) {
+    if (pct == null || !isFinite(Number(pct))) return fallbackRate;
+    return clampTaxPct(pct) / 100;
+  }
+
+  function effectiveCgstRate() {
+    return rateFromOverridePct(state.taxCgstPct, CGST_RATE);
+  }
+
+  function effectiveUgstRate() {
+    return rateFromOverridePct(state.taxUgstPct, UGST_RATE);
+  }
+
+  function syncBanquetTaxState(page) {
+    if (!isBanquetOnlyCart()) {
+      state.taxCgstPct = null;
+      state.taxUgstPct = null;
+      return;
+    }
+    if (!canEditBanquetTax(page)) return;
+    if (state.taxCgstPct == null) state.taxCgstPct = clampTaxPct(CGST_RATE * 100);
+    if (state.taxUgstPct == null) state.taxUgstPct = clampTaxPct(UGST_RATE * 100);
+  }
+
+  function readInvoiceTaxPct(invoice, snakeKey, camelKey) {
+    if (!invoice) return null;
+    var raw = invoice[snakeKey];
+    if (raw == null) raw = invoice[camelKey];
+    if (raw == null || raw === '') return null;
+    var n = Number(raw);
+    return isFinite(n) ? clampTaxPct(n) : null;
+  }
+
+  function applyBanquetTaxPctInput(input, page) {
+    if (!input || !canEditBanquetTax(page)) return;
+    var raw = String(input.value || '').trim();
+    if (raw === '') return;
+    var pct = clampTaxPct(raw);
+    if (input.id === 'pos-inv-sum-ugst-pct') state.taxUgstPct = pct;
+    else state.taxCgstPct = pct;
+    renderSummary(page);
+    markOrderDirty(page);
+  }
+
+  function syncTaxRateEditors(page, editable) {
+    var summary = page && page.querySelector ? page.querySelector('.pos-inv-summary') : $('.pos-inv-summary', page);
+    if (summary) summary.classList.toggle('is-banquet-tax-edit', !!editable);
+    var cgstLabel = $('#pos-inv-sum-cgst-rate', page);
+    var ugstLabel = $('#pos-inv-sum-ugst-rate', page);
+    var cgstInput = $('#pos-inv-sum-cgst-pct', page);
+    var ugstInput = $('#pos-inv-sum-ugst-pct', page);
+    if (cgstLabel) cgstLabel.textContent = formatTaxRateLabel(effectiveCgstRate());
+    if (ugstLabel) ugstLabel.textContent = formatTaxRateLabel(effectiveUgstRate());
+    if (cgstInput && document.activeElement !== cgstInput) {
+      cgstInput.value = formatPctInputValue(effectiveCgstRate() * 100);
+      cgstInput.disabled = !editable;
+    }
+    if (ugstInput && document.activeElement !== ugstInput) {
+      ugstInput.value = formatPctInputValue(effectiveUgstRate() * 100);
+      ugstInput.disabled = !editable;
+    }
+  }
+
   function calcTotals(override) {
     var o = override || {};
     var discountType = o.discountType != null ? o.discountType : state.discountType;
@@ -1378,8 +1481,10 @@
     var barShare = subtotal > 0 ? barAlcoholSubtotal / subtotal : 0;
     var barAfter = afterDiscount * barShare;
     var foodAfter = Math.max(0, afterDiscount - barAfter);
-    var cgst = foodAfter * CGST_RATE;
-    var ugst = foodAfter * UGST_RATE;
+    var cgstRate = effectiveCgstRate();
+    var ugstRate = effectiveUgstRate();
+    var cgst = foodAfter * cgstRate;
+    var ugst = foodAfter * ugstRate;
     var gst = cgst + ugst;
     var vat = barAfter * VAT_RATE;
     var service = calcAdjAmount(afterDiscount, serviceType, serviceValue);
@@ -1431,6 +1536,7 @@
   }
 
   function renderSummary(page) {
+    syncBanquetTaxState(page);
     var t = calcTotals();
     var map = {
       'pos-inv-sum-subtotal': t.subtotal,
@@ -1447,12 +1553,9 @@
       var el = $('#' + id, page);
       if (el) el.textContent = money(map[id]);
     });
-    var cgstRateEl = $('#pos-inv-sum-cgst-rate', page);
-    if (cgstRateEl) cgstRateEl.textContent = formatTaxRateLabel(CGST_RATE);
-    var ugstRateEl = $('#pos-inv-sum-ugst-rate', page);
-    if (ugstRateEl) ugstRateEl.textContent = formatTaxRateLabel(UGST_RATE);
     var vatRateEl = $('#pos-inv-sum-vat-rate', page);
     if (vatRateEl) vatRateEl.textContent = formatTaxRateLabel(VAT_RATE);
+    syncTaxRateEditors(page, canEditBanquetTax(page));
     var discHint = $('#pos-inv-sum-discount-hint', page);
     if (discHint) {
       discHint.textContent = formatAdjHint(t.discountType, t.discountValue, t.discountItemCount);
@@ -2054,14 +2157,14 @@
         : '') +
       (Number(totals.cgst != null ? totals.cgst : Number(totals.gst || 0) / 2) > 0
         ? '<div><span>CGST (' +
-          CGST_RATE * 100 +
+          effectiveCgstRate() * 100 +
           '%)</span><span>' +
           money(totals.cgst != null ? totals.cgst : Number(totals.gst || 0) / 2) +
           '</span></div>'
         : '') +
       (Number(totals.ugst != null ? totals.ugst : Number(totals.gst || 0) / 2) > 0
         ? '<div><span>UGST (' +
-          UGST_RATE * 100 +
+          effectiveUgstRate() * 100 +
           '%)</span><span>' +
           money(totals.ugst != null ? totals.ugst : Number(totals.gst || 0) / 2) +
           '</span></div>'
@@ -3005,6 +3108,8 @@
     state.serviceValue = Number(invoice.service_value) || 0;
     state.tipAmount = Number(invoice.tip_amount) || 0;
     state.couponCode = invoice.coupon_code || '';
+    state.taxCgstPct = readInvoiceTaxPct(invoice, 'tax_cgst_pct', 'taxCgstPct');
+    state.taxUgstPct = readInvoiceTaxPct(invoice, 'tax_ugst_pct', 'taxUgstPct');
     state.lineSeq = 0;
     state.lines = (invoice.lines || []).map(function (line, idx) {
       var persistedUid = String(line.uid || line.line_uid || '').trim();
@@ -3418,6 +3523,8 @@
     state.tableForOrder = '';
     state.customerActiveIndex = -1;
     state.dirty = false;
+    state.taxCgstPct = null;
+    state.taxUgstPct = null;
     cancelAutosaveTimer();
     state.adjDraft = { discount: 'pct', service: 'pct' };
     initMeta(page);
@@ -4263,6 +4370,8 @@
       serviceValue: state.serviceValue,
       tipAmount: state.tipAmount,
       couponCode: state.couponCode,
+      taxCgstPct: isBanquetOnlyCart() && state.taxCgstPct != null ? state.taxCgstPct : null,
+      taxUgstPct: isBanquetOnlyCart() && state.taxUgstPct != null ? state.taxUgstPct : null,
       totals: totals
     };
   }
@@ -5248,6 +5357,9 @@
       }
       if (t.id === 'pos-inv-service-amount') updateAdjPreview(page, 'service');
       if (t.id === 'pos-inv-line-note-text') updateLineNoteCount(page);
+      if (t.id === 'pos-inv-sum-cgst-pct' || t.id === 'pos-inv-sum-ugst-pct') {
+        applyBanquetTaxPctInput(t, page);
+      }
     });
     page.addEventListener('change', function (e) {
       var t = e.target;
@@ -5255,6 +5367,9 @@
       if (t.id === 'pos-inv-discount-amount') {
         updateAdjPreview(page, 'discount');
         syncDiscountReasonUi(page);
+      }
+      if (t.id === 'pos-inv-sum-cgst-pct' || t.id === 'pos-inv-sum-ugst-pct') {
+        applyBanquetTaxPctInput(t, page);
       }
     });
     page.addEventListener('keyup', function (e) {

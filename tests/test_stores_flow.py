@@ -1259,6 +1259,13 @@ class StoresFlowTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(decide.status_code, 302)
+        po_id = self._generate_po_for_supplier(
+            indent_id,
+            supplier_id,
+            "bar",
+            line_ids,
+            rates={line_ids[0]: "30", line_ids[1]: "20"},
+        )
 
         page = self.client.get(
             f"/stores/purchase-requests?outlet=bar&indent={indent_id}",
@@ -1305,6 +1312,7 @@ class StoresFlowTests(unittest.TestCase):
             "/stores/purchase-requests/confirm-with-expense",
             json={
                 "indent_id": indent_id,
+                "po_id": po_id,
                 "notes": "Received evening delivery",
                 "lines": [
                     {"line_id": line_ids[0], "received_qty": 10},
@@ -1332,11 +1340,22 @@ class StoresFlowTests(unittest.TestCase):
             stock = {
                 (row["item_name"], row["unit"]): float(row["qty_on_hand"])
                 for row in conn.execute(
-                    "SELECT item_name, unit, qty_on_hand FROM store_stock_items WHERE outlet = 'bar'"
+                    """
+                    SELECT item_name, unit, qty_on_hand FROM store_stock_items
+                    WHERE outlet = 'bar' AND place = 'warehouse'
+                    """
                 ).fetchall()
             }
             self.assertEqual(stock[("Onion", "kg")], 10.0)
             self.assertEqual(stock[("Potato", "kg")], 24.0)
+            counter_count = conn.execute(
+                """
+                SELECT COUNT(*) AS c FROM store_stock_items
+                WHERE outlet = 'bar' AND place = 'counter'
+                  AND lower(item_name) IN ('onion', 'potato')
+                """
+            ).fetchone()["c"]
+            self.assertEqual(int(counter_count), 0)
             movement = conn.execute(
                 """
                 SELECT COUNT(*) AS c FROM store_stock_movements
@@ -1366,7 +1385,7 @@ class StoresFlowTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(gone.status_code, 200)
-        self.assertIn(b"No approved indents waiting", gone.data)
+        self.assertIn(b"No purchase orders yet", gone.data)
 
     def test_stock_inward_partial_keeps_remaining_on_page(self):
         from datetime import date
@@ -1422,12 +1441,20 @@ class StoresFlowTests(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertEqual(decide.status_code, 302)
+        po_id = self._generate_po_for_supplier(
+            indent_id,
+            supplier_id,
+            "bar",
+            line_ids,
+            rates={line_ids[0]: "30", line_ids[1]: "20"},
+        )
 
         # Receive only first line fully; leave Potato pending.
         partial = self.client.post(
             "/stores/purchase-requests/confirm-with-expense",
             json={
                 "indent_id": indent_id,
+                "po_id": po_id,
                 "notes": "First delivery",
                 "lines": [{"line_id": line_ids[0], "received_qty": 10}],
                 "date": date.today().isoformat(),
@@ -1475,6 +1502,7 @@ class StoresFlowTests(unittest.TestCase):
             "/stores/purchase-requests/confirm-with-expense",
             json={
                 "indent_id": indent_id,
+                "po_id": po_id,
                 "lines": [{"line_id": line_ids[1], "received_qty": 25}],
                 "date": date.today().isoformat(),
                 "description": "Too much",
@@ -1491,6 +1519,7 @@ class StoresFlowTests(unittest.TestCase):
             "/stores/purchase-requests/confirm-with-expense",
             json={
                 "indent_id": indent_id,
+                "po_id": po_id,
                 "lines": [{"line_id": line_ids[1], "received_qty": 24}],
                 "date": date.today().isoformat(),
                 "description": "Remainder stock inward",
@@ -1520,7 +1549,7 @@ class StoresFlowTests(unittest.TestCase):
             follow_redirects=True,
         )
         self.assertEqual(gone.status_code, 200)
-        self.assertIn(b"No approved indents waiting", gone.data)
+        self.assertIn(b"No purchase orders yet", gone.data)
 
     def test_stock_inward_confirms_into_stock_with_credit_expense(self):
         from datetime import date
@@ -3553,6 +3582,13 @@ class StoresFlowTests(unittest.TestCase):
         self._seed_stock_item(item_name="Onion", qty=0.0)
         page = self.client.get("/stores/stock?outlet=restaurant")
         self.assertEqual(page.status_code, 200)
+        self.assertIn(b'id="de-nav-stores-stock"', page.data)
+        self.assertIn(b">Store</a>", page.data)
+        self.assertIn(b"<h1>Store</h1>", page.data)
+        self.assertIn(b"id=\"st-stock-place-host\"", page.data)
+        self.assertIn(b">Warehouse</button>", page.data)
+        self.assertIn(b">Counter</button>", page.data)
+        self.assertIn(b">Stock Audit</a>", page.data)
         self.assertIn(b"/stores/stock/export", page.data)
         self.assertIn(b"Download Stock Report Excel", page.data)
 
@@ -3563,7 +3599,7 @@ class StoresFlowTests(unittest.TestCase):
             export.content_type,
         )
         self.assertTrue(export.data[:2] == b"PK")
-        self.assertIn(b"stock_report_", export.headers.get("Content-Disposition", "").encode())
+        self.assertIn(b"Hotel Bell Elite Store Warehouse.xlsx", export.headers.get("Content-Disposition", "").encode())
 
         from openpyxl import load_workbook
         import io
@@ -3571,7 +3607,7 @@ class StoresFlowTests(unittest.TestCase):
         wb = load_workbook(io.BytesIO(export.data))
         ws = wb.active
         self.assertEqual(ws.title, "Stock Report")
-        headers = [ws.cell(1, c).value for c in range(1, 9)]
+        headers = [ws.cell(1, c).value for c in range(1, 10)]
         self.assertEqual(
             headers,
             [
@@ -3583,6 +3619,7 @@ class StoresFlowTests(unittest.TestCase):
                 "Unit price",
                 "Value",
                 "Outlet",
+                "Place",
             ],
         )
         self.assertTrue(ws.cell(1, 1).font.bold)
@@ -3700,6 +3737,33 @@ class StoresFlowTests(unittest.TestCase):
             "supplier_id": supplier_id,
             "lines": lines,
         }
+
+    def _generate_po_for_supplier(self, indent_id, supplier_id, outlet, line_ids, rates=None):
+        """Assign lines to a supplier and generate a purchase order. Returns po id."""
+        data = {
+            "outlet": outlet,
+            "selectable_supplier": [str(supplier_id)],
+            "selected_supplier": [str(supplier_id)],
+        }
+        for lid in line_ids:
+            data[f"line_supplier_{lid}"] = str(supplier_id)
+            data[f"line_rate_{lid}"] = str((rates or {}).get(lid, "30"))
+        res = self.client.post(
+            f"/stores/orders/{indent_id}/lines/next",
+            data=data,
+            follow_redirects=False,
+        )
+        self.assertEqual(res.status_code, 302)
+        conn = db_mod.get_db()
+        try:
+            po = conn.execute(
+                "SELECT id FROM store_purchase_orders WHERE indent_id = ? AND supplier_id = ?",
+                (indent_id, supplier_id),
+            ).fetchone()
+            self.assertIsNotNone(po)
+            return int(po["id"])
+        finally:
+            conn.close()
 
     def test_po_groups_by_preferred_supplier(self):
         ids = self._create_approved_indent_for_po(notes="PO group test")
@@ -4266,7 +4330,7 @@ class StoresFlowTests(unittest.TestCase):
         # Purchase Orders tab lists every generated PO number.
         listing = self.client.get("/stores/orders?outlet=restaurant")
         self.assertEqual(listing.status_code, 200)
-        self.assertIn(b"Generated purchase orders", listing.data)
+        self.assertIn(b"Stock Inward - Pending", listing.data)
         self.assertIn(po_no.encode(), listing.data)
         self.assertIn(numbers[gamma_id].encode(), listing.data)
         self.assertIn(b"PO Alpha Traders", listing.data)

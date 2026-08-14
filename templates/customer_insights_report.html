@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=15">
 <link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=3">
 <script>
 (function(){
@@ -39,7 +39,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=15">
 <link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=3">
 {% endif %}
 
@@ -62,7 +62,7 @@
         </div>
       </div>
       <div class="su-header-tools">
-        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download>Export Excel</a>
+        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download="{{ sales_report_export_filename }}">Export Excel</a>
       </div>
     </div>
     <div class="se-sales-header-card">
@@ -126,7 +126,7 @@
                 <div class="an-range-wrap an-range-wrap--sales" id="cir-date-range-wrap" data-max-date="{{ today_iso }}">
                   <button type="button" class="an-range-trigger se-filter-chip-trigger" id="cir-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="cir-date-range-panel" aria-labelledby="cir-date-range-label cir-date-range-display">
                     <span class="an-range-trigger-label">
-                      <span id="cir-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Select date…{% endif %}</span>
+                      <span id="cir-date-range-display">{% if active_date_filter %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Select date…{% endif %}</span>
                     </span>
                   </button>
                   <div class="an-range-backdrop" id="cir-date-range-backdrop" aria-hidden="true"></div>
@@ -201,7 +201,7 @@
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Customers</div>
             <div class="pl-summary-value" id="cir-kpi-customers">{{ kpis.customer_count }}</div>
-            <div class="pl-summary-meta">With mobile on file</div>
+            <div class="pl-summary-meta">Unique customers</div>
           </div>
         </div>
       </article>
@@ -294,7 +294,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script src="{{ url_for('static', filename='customer_insights_report.js') }}?v=4"></script>
 {% include 'partials/de_workspace_shell_close.html' %}

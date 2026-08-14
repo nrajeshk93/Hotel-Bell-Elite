@@ -239,7 +239,7 @@
         <div class="pos-set-panel-head">
           <div>
             <h2>Asia Tech</h2>
-            <p>Read-only credentials for Hotel → Reservations. Prefer server env vars; settings are a local fallback. Never pushes inventory or rates to Asia Tech.</p>
+            <p>Read-only sync for Hotel → Reservations. JSON API credentials pull recent activity; Channel Manager login syncs Booking Reports by check-in date. Never pushes inventory or rates to Asia Tech.</p>
           </div>
         </div>
         <div class="pos-set-card">
@@ -250,7 +250,7 @@
             </label>
             <label class="pos-set-field">
               <span>Hotel ID</span>
-              <input type="text" data-hotel-set-field data-hotel-set-key="asia_tech_hotel_id" placeholder="e.g. 119" inputmode="numeric" autocomplete="off">
+              <input type="text" data-hotel-set-field data-hotel-set-key="asia_tech_hotel_id" placeholder="e.g. 4502" inputmode="numeric" autocomplete="off">
             </label>
             <label class="pos-set-field">
               <span>Password</span>
@@ -270,6 +270,21 @@
                 <option value="stub">Stub (local only)</option>
                 <option value="live">Live (Asia Tech API, read-only)</option>
               </select>
+            </label>
+          </div>
+          <p class="pos-set-help" style="margin:12px 0 8px;color:#64748b;font-size:13px;line-height:1.45">
+            Channel Manager login powers <strong>Bookings → Booking Reports → Check In → Date</strong> sync
+            (stays by check-in date, including older bookings the JSON API omits).
+            This is the email/password you use at asiatech.in admin — not the API username.
+          </p>
+          <div class="pos-set-fields pos-set-fields--inline pos-set-fields--2">
+            <label class="pos-set-field">
+              <span>CM admin email</span>
+              <input type="email" data-hotel-set-field data-hotel-set-key="asia_tech_cm_email" placeholder="Channel Manager login email" autocomplete="off">
+            </label>
+            <label class="pos-set-field">
+              <span>CM admin password</span>
+              <input type="password" data-hotel-set-field data-hotel-set-key="asia_tech_cm_password" placeholder="Channel Manager login password" autocomplete="new-password">
             </label>
           </div>
         </div>

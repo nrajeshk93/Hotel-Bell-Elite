@@ -112,7 +112,7 @@
                 <div class="an-range-wrap an-range-wrap--sales" id="pos-il-date-range-wrap" data-max-date="{{ today_iso }}">
                   <button type="button" class="an-range-trigger se-filter-chip-trigger" id="pos-il-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="pos-il-date-range-panel" aria-labelledby="pos-il-date-range-label pos-il-date-range-display">
                     <span class="an-range-trigger-label">
-                      <span id="pos-il-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Select…{% endif %}</span>
+                      <span id="pos-il-date-range-display">{% if active_date_filter %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Select…{% endif %}</span>
                     </span>
                   </button>
                   <div class="an-range-backdrop" id="pos-il-date-range-backdrop" aria-hidden="true"></div>
@@ -253,17 +253,9 @@
                   data-search="{{ [inv.order_no or '', inv.order_date or '', inv.saved_at or '', inv.customer_name or '', inv.customer_mobile or '', inv.order_type_label or '', inv.payment_mode_label or '', inv.table_label or '', inv.captain or '', inv.grand_total|string]|join(' ')|lower }}">
                 <td class="pl-col-code" data-sort-value="{{ inv.order_no or '' }}"><span class="pl-expense-code">{{ inv.order_no or '—' }}</span></td>
                 <td class="pl-col-date" data-sort-value="{{ inv.saved_at or inv.order_date or '' }}">
-                  {% set order_date_raw = (inv.order_date or '')[:10] %}
-                  {% if order_date_raw|length == 10 and order_date_raw[4] == '-' and order_date_raw[7] == '-' %}
-                    {% set y = order_date_raw[0:4] %}
-                    {% set m = order_date_raw[5:7]|int %}
-                    {% set d = order_date_raw[8:10]|int %}
-                    {% set month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'] %}
-                    <div class="pl-name">{{ d }} {{ month_names[m] }} {{ y[2:4] }}</div>
-                  {% else %}
-                    <div class="pl-name">{{ inv.order_date or '—' }}</div>
-                  {% endif %}
-                  {% if inv.saved_at %}<div class="pl-meta">{{ inv.saved_at[11:16] if inv.saved_at|length >= 16 else inv.saved_at }}</div>{% endif %}
+                  <div class="pl-name">{{ (inv.order_date or inv.saved_at)|report_date }}</div>
+                  {% set saved_time = inv.saved_at|report_time %}
+                  {% if saved_time %}<div class="pl-meta">{{ saved_time }}</div>{% endif %}
                 </td>
                 <td data-sort-value="{{ inv.customer_name or '' }}">
                   <div class="pl-name">{{ inv.customer_name or '—' }}</div>
@@ -345,8 +337,8 @@
 {% endif %}
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=13"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=19"></script>
 <script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=19"></script>
 {% include 'partials/de_workspace_shell_close.html' %}

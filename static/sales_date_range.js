@@ -64,21 +64,47 @@
 
   function init(cfg) {
     const wrap = document.getElementById(cfg.wrapId);
-    const trigger = document.getElementById(cfg.triggerId);
-    const backdrop = document.getElementById(cfg.backdropId);
-    const panel = document.getElementById(cfg.panelId);
-    const display = document.getElementById(cfg.displayId);
-    const form = cfg.formId ? document.getElementById(cfg.formId) : null;
-    const ff = document.getElementById(cfg.fromInputId);
-    const ft = document.getElementById(cfg.toInputId);
-    const cancelBtn = document.getElementById(cfg.cancelId);
-    const applyBtn = document.getElementById(cfg.applyId);
-    const btnPrev = document.getElementById(cfg.prevId);
-    const btnNext = document.getElementById(cfg.nextId);
-    const title0 = document.getElementById(cfg.title0Id);
-    const title1 = document.getElementById(cfg.title1Id);
-    const grid0 = document.getElementById(cfg.grid0Id);
-    const grid1 = document.getElementById(cfg.grid1Id);
+    if (!wrap) return;
+    const chip = wrap.closest('.se-filter-chip') || wrap.parentElement || wrap;
+    const page = wrap.closest('.de-main-inner') || wrap;
+    function pick(id) {
+      if (!id) return null;
+      try {
+        var sel = '#' + id;
+        return (
+          chip.querySelector(sel) ||
+          wrap.querySelector(sel) ||
+          page.querySelector(sel) ||
+          document.getElementById(id)
+        );
+      } catch (err) {
+        return document.getElementById(id);
+      }
+    }
+    const trigger = pick(cfg.triggerId);
+    const backdrop = pick(cfg.backdropId);
+    const panel = pick(cfg.panelId);
+    const display = pick(cfg.displayId);
+    // Prefer the enclosing form: pick() looks inside the chip first and can miss
+    // the filter form on pages that use .de-main-wrapper instead of .de-main-inner.
+    const form =
+      (cfg.formId && wrap.closest('#' + cfg.formId)) ||
+      wrap.closest('form') ||
+      (cfg.formId ? pick(cfg.formId) : null);
+    const ff =
+      pick(cfg.fromInputId) ||
+      (form && cfg.fromInputId && form.querySelector('#' + cfg.fromInputId));
+    const ft =
+      pick(cfg.toInputId) ||
+      (form && cfg.toInputId && form.querySelector('#' + cfg.toInputId));
+    const cancelBtn = pick(cfg.cancelId);
+    const applyBtn = pick(cfg.applyId);
+    const btnPrev = pick(cfg.prevId);
+    const btnNext = pick(cfg.nextId);
+    const title0 = pick(cfg.title0Id);
+    const title1 = pick(cfg.title1Id);
+    const grid0 = pick(cfg.grid0Id);
+    const grid1 = pick(cfg.grid1Id);
     const hasApplyHook = typeof cfg.onApply === 'function';
     if (
       !wrap ||
@@ -145,14 +171,10 @@
       viewM = initAnchor.mo - 1;
     }
 
-    const monthShort = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-    ];
     function fmt(iso) {
       if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '—';
       const p = parseISO(iso);
-      return p.d + ' ' + monthShort[p.mo - 1] + ', ' + p.y;
+      return p.d + ' ' + monthLong[p.mo - 1] + ' ' + String(p.y).slice(-2);
     }
     function compareIso(a, b) {
       if (!a || !b) return 0;
@@ -173,10 +195,10 @@
       const y = parseISO(hi);
       if (lo === hi) return fmt(lo);
       if (x.y === y.y && x.mo === y.mo) {
-        return x.d + ' – ' + y.d + ' ' + monthShort[x.mo - 1] + ', ' + x.y;
+        return x.d + ' – ' + y.d + ' ' + monthLong[x.mo - 1] + ' ' + String(x.y).slice(-2);
       }
       if (x.y === y.y) {
-        return x.d + ' ' + monthShort[x.mo - 1] + ' – ' + y.d + ' ' + monthShort[y.mo - 1] + ', ' + x.y;
+        return x.d + ' ' + monthLong[x.mo - 1] + ' – ' + y.d + ' ' + monthLong[y.mo - 1] + ' ' + String(x.y).slice(-2);
       }
       return fmt(lo) + ' – ' + fmt(hi);
     }
@@ -356,12 +378,33 @@
       renderCalendars();
     });
 
-    trigger.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
+    function togglePanel(e) {
+      if (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       if (wrap.classList.contains('open')) closePanel();
       else openPanel();
-    });
+    }
+    function eventInsidePicker(target) {
+      if (!target || typeof target.closest !== 'function') {
+        return !!(wrap && wrap.contains(target));
+      }
+      if (wrap.contains(target) || trigger.contains(target)) return true;
+      var host = wrap.closest(
+        '.se-filter-chip-control, .se-filter-chip, .se-filter-chip-date-host, .an-range-wrap'
+      );
+      return !!(host && host.contains(target));
+    }
+    trigger.addEventListener('click', togglePanel);
+    var control = wrap.closest('.se-filter-chip-control');
+    if (control && control.getAttribute('data-sdr-control-bound') !== '1') {
+      control.setAttribute('data-sdr-control-bound', '1');
+      control.addEventListener('click', function (e) {
+        if (e.target.closest('.an-range-trigger, .an-range-panel, .an-range-backdrop')) return;
+        togglePanel(e);
+      });
+    }
     if (backdrop) {
       backdrop.addEventListener('click', function (e) {
         e.preventDefault();
@@ -372,14 +415,17 @@
     // Outside click (backdrop may be clipped by overflow:hidden chip chrome).
     document.addEventListener('click', function (e) {
       if (!wrap.classList.contains('open')) return;
-      if (wrap.contains(e.target)) return;
+      if (eventInsidePicker(e.target)) return;
       // Ignore detached targets (e.g. day cell removed mid-bubble by re-render).
       if (!e.target || (e.target.isConnected === false)) return;
       closePanel();
     });
     if (cancelBtn) cancelBtn.addEventListener('click', closePanel);
     if (applyBtn) {
-      applyBtn.addEventListener('click', function () {
+      applyBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!selFrom) selFrom = (ff && ff.value) || '';
         if (!selFrom) return;
         if (!selTo) selTo = selFrom;
         let lo = selFrom;
@@ -390,6 +436,12 @@
         }
         ff.value = lo;
         ft.value = hi;
+        if (ff.name == null || ff.name === '') {
+          ff.setAttribute('name', 'date_from');
+        }
+        if (ft.name == null || ft.name === '') {
+          ft.setAttribute('name', 'date_to');
+        }
         openSnapshot = { from: lo, to: hi };
         selFrom = lo;
         selTo = hi;
@@ -415,7 +467,18 @@
         if (typeof cfg.onBeforeSubmit === 'function') {
           cfg.onBeforeSubmit(form);
         }
-        form.submit();
+        wrap.classList.remove('open');
+        trigger.setAttribute('aria-expanded', 'false');
+        panel.setAttribute('hidden', 'hidden');
+        clearPanelPosition(panel);
+        if (typeof global.deSoftSubmitForm === 'function' && form && global.deSoftSubmitForm(form)) {
+          return;
+        }
+        if (form && typeof form.requestSubmit === 'function') {
+          form.requestSubmit();
+          return;
+        }
+        if (form) form.submit();
       });
     }
     document.addEventListener('keydown', function (e) {
@@ -445,11 +508,14 @@
      * entry-date init is skipped or races a fullscreen soft-nav swap.
      */
     syncChipDisplays: function () {
-      var monthShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      var monthLong = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December',
+      ];
       function fmt(iso) {
         if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return '';
         var p = iso.split('-').map(Number);
-        return p[2] + ' ' + monthShort[p[1] - 1] + ', ' + p[0];
+        return p[2] + ' ' + monthLong[p[1] - 1] + ' ' + String(p[0]).slice(-2);
       }
       function setText(el, text) {
         if (el && text) el.textContent = text;
@@ -548,20 +614,20 @@
               ' – ' +
               mdToParts[2] +
               ' ' +
-              monthShort[mdFromParts[1] - 1] +
-              ', ' +
-              mdFromParts[0];
+              monthLong[mdFromParts[1] - 1] +
+              ' ' +
+              String(mdFromParts[0]).slice(-2);
           } else if (mdFromParts.length === 3 && mdToParts.length === 3 && mdFromParts[0] === mdToParts[0]) {
             mdLabel =
               mdFromParts[2] +
               ' ' +
-              monthShort[mdFromParts[1] - 1] +
+              monthLong[mdFromParts[1] - 1] +
               ' – ' +
               mdToParts[2] +
               ' ' +
-              monthShort[mdToParts[1] - 1] +
-              ', ' +
-              mdFromParts[0];
+              monthLong[mdToParts[1] - 1] +
+              ' ' +
+              String(mdFromParts[0]).slice(-2);
           } else {
             mdLabel = fmt(mdFromIso) + ' – ' + fmt(mdToIso);
           }

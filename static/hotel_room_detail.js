@@ -536,17 +536,22 @@
 
   function paintGuestPanels(root, room) {
     var stay = (room && room.stay) || null;
-    var occupied = mapStatus(room && room.status) === 'occupied' && !!stay;
+    var inventory = mapStatus(
+      (room && room.inventoryStatus) || (room && room.status)
+    );
+    var occupied = inventory === 'occupied' && !!stay;
+    var reserved = inventory === 'reserved' && !!stay;
+    var showGuest = occupied || reserved;
     var number = (room && room.number) || root.getAttribute('data-room-number') || '';
 
     var emptyGuest = $('#hrd-guest-empty', root);
     var guestFilled = $('#hrd-guest-filled', root);
-    setVisible(emptyGuest, !occupied);
-    setVisible(guestFilled, occupied);
+    setVisible(emptyGuest, !showGuest);
+    setVisible(guestFilled, showGuest);
 
     var guestCard = $('#hrd-guest-card', root);
     if (guestCard) {
-      if (occupied) {
+      if (showGuest) {
         guestCard.removeAttribute('data-action');
         guestCard.removeAttribute('role');
         guestCard.removeAttribute('tabindex');
@@ -558,17 +563,23 @@
         guestCard.setAttribute('aria-label', 'Start check-in');
       }
     }
-    setVisible($('#hrd-edit-guest', root), occupied);
+    setVisible($('#hrd-edit-guest', root), showGuest);
+    setVisible($('#hrd-start-checkout', root), occupied);
+    setVisible($('#hrd-start-checkin-reserved', root), reserved);
 
-    if (occupied && stay) {
+    if (showGuest && stay) {
       var nameEl = $('#hrd-guest-name', root);
       if (nameEl) nameEl.textContent = dash(stay.guestName || (stay.firstName + ' ' + stay.lastName));
       var metaEl = $('#hrd-guest-meta', root);
-      if (metaEl) metaEl.textContent = 'In-house · Room ' + number;
+      if (metaEl) {
+        metaEl.textContent = occupied
+          ? 'In-house · Room ' + number
+          : 'Reserved · Room ' + number;
+      }
       var bookingEl = $('#hrd-guest-booking', root);
       if (bookingEl) bookingEl.textContent = dash(stay.bookingNumber);
       var statusEl = $('#hrd-guest-status', root);
-      if (statusEl) statusEl.textContent = 'Checked in';
+      if (statusEl) statusEl.textContent = occupied ? 'Checked in' : 'Reserved';
       var mobileEl = $('#hrd-guest-mobile', root);
       if (mobileEl) {
         mobileEl.textContent = dash(
@@ -603,7 +614,7 @@
     }
 
     var hasId = !!(
-      occupied &&
+      showGuest &&
       stay &&
       (stay.idType || stay.idDocumentName || stay.idNumber)
     );
@@ -627,7 +638,7 @@
     var agencyAddress = root.querySelector('[data-agency-address]');
     var agencyBilling = root.querySelector('[data-agency-billing]');
     var hasAgency = !!(
-      occupied &&
+      showGuest &&
       stay &&
       (
         String(stay.agencyName || '').trim() ||
@@ -1167,8 +1178,10 @@
 
     var dirty = inventory === 'dirty' || status === 'dirty';
     var occupied = inventory === 'occupied' || status === 'occupied';
-    /* Prefer inventory Occupied so checked-in rooms never paint Vacant. */
-    var displayStatus = occupied ? 'occupied' : status;
+    var reserved = inventory === 'reserved' && !!(room && room.stay);
+    /* Prefer inventory Occupied so checked-in rooms never paint Vacant.
+       Future reserved stays stay Reserved on this page even when today is vacant. */
+    var displayStatus = occupied ? 'occupied' : reserved ? 'reserved' : status;
     var badge = $('[data-room-status-badge]', root);
     if (badge) {
       badge.textContent = STATUS_LABELS[displayStatus] || displayStatus;
@@ -6609,11 +6622,11 @@
   function initHotelRoomDetailPage() {
     bindDocumentDelegation();
     var root = pageRoot();
-    if (!root) return;
-    var main = root.closest('.de-main-wrapper');
+    var main = (root && root.closest('.de-main-wrapper')) || document.querySelector('.de-main-wrapper');
     if (main) main.classList.remove('is-soft-nav-loading');
     document.documentElement.classList.remove('de-soft-navigating');
-
+    if (!root) return;
+    try {
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();
     }
@@ -6624,7 +6637,21 @@
 
     bindDateChipPickers(root);
     var headerDate = $('#hrd-header-date', root);
-    if (headerDate && !String(headerDate.value || '').trim()) {
+    var dateFromQuery = '';
+    try {
+      dateFromQuery = toDateISO(
+        new URL(window.location.href).searchParams.get('date') || ''
+      );
+    } catch (err) {
+      dateFromQuery = '';
+    }
+    if (headerDate && dateFromQuery) {
+      if (typeof global.setHotelDateValue === 'function') {
+        global.setHotelDateValue(headerDate, dateFromQuery);
+      } else {
+        headerDate.value = dateFromQuery;
+      }
+    } else if (headerDate && !String(headerDate.value || '').trim()) {
       if (typeof global.setHotelDateValue === 'function') {
         global.setHotelDateValue(headerDate, todayISO());
       } else {
@@ -6647,7 +6674,11 @@
       number: root.getAttribute('data-room-number'),
       roomType: root.getAttribute('data-room-type'),
       roomTypeLabel: root.getAttribute('data-room-type-label'),
-      stay: lastRoom && lastRoom.id === root.getAttribute('data-room-id') ? lastRoom.stay : null
+      stay:
+        lastRoom &&
+        String(lastRoom.id || '') === String(root.getAttribute('data-room-id') || '')
+          ? lastRoom.stay
+          : null
     });
     loadRoomIfNeeded(root);
 
@@ -6659,6 +6690,11 @@
       mapStatus(root.getAttribute('data-room-status')) !== 'occupied'
     ) {
       openCheckinModal(root);
+    }
+    } catch (err) {
+      try {
+        console.error('hotel room detail init failed', err);
+      } catch (e2) {}
     }
   }
 

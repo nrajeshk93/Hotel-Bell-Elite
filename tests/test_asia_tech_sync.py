@@ -53,7 +53,16 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                 "adults": 6,
                 "guestemail": "rahul45@gmail.com",
                 "guestmobile": "099876543",
-                "room_detail": [{"rooms": 1, "roomid": 405, "roomname": "Standard Room"}],
+                "guestinfo": "Late arrival after 10 PM",
+                "room_detail": [
+                    {
+                        "rooms": 1,
+                        "roomid": 405,
+                        "roomname": "Standard Room",
+                        "mealplanid": 2,
+                        "mealplan": "CP",
+                    }
+                ],
             }
         )
         self.assertEqual(row["id"], "FDR01191785411888")
@@ -66,6 +75,8 @@ class AsiaTechNormalizerTests(unittest.TestCase):
         self.assertEqual(row["mobile"], "099876543")
         self.assertEqual(row["email"], "rahul45@gmail.com")
         self.assertEqual(row["guests"], 6)
+        self.assertEqual(row["mealPlan"], "CP · Breakfast")
+        self.assertEqual(row["specialNotes"], "Late arrival after 10 PM")
 
     def test_confirmed_stay_today_maps_to_checked_in(self):
         today = date.today()
@@ -541,6 +552,200 @@ class AsiaTechLiveListTests(unittest.TestCase):
         meta = asia_tech_client.get_last_sync_meta()
         self.assertIn("bookings endpoint not available", meta["error"])
 
+    def test_list_drops_persisted_rows_from_other_hotel(self):
+        settings = {
+            "panels": {
+                "asia_tech": {
+                    "values": {"asia_tech_mode": {"kind": "text", "value": "live"}}
+                }
+            },
+            "asia_tech_state": {
+                "provider_hotel_id": "119",
+                "provider_rows": [
+                    {
+                        "id": "FDR0119OLD",
+                        "guestName": "Demo Guest",
+                        "checkInDate": "2026-08-01",
+                        "checkOutDate": "2026-08-02",
+                        "status": "upcoming",
+                        "amount": 100,
+                    }
+                ],
+                "created": [],
+                "assignments": {},
+                "overrides": {},
+            },
+        }
+        os.environ["ASIA_TECH_HOTEL_ID"] = "4502"
+
+        with mock.patch.object(
+            asia_tech_client,
+            "fetch_bookings",
+            return_value=(
+                [
+                    {
+                        "bookingid": "FDR4502NEW",
+                        "guestname": "Bell Elite Guest",
+                        "checkin": "2026-08-12",
+                        "checkout": "2026-08-13",
+                        "status": "Confirmed",
+                        "total": 85000,
+                    }
+                ],
+                {
+                    "synced_at": "2026-08-12T10:00:00",
+                    "cached": False,
+                    "rooms_ok": True,
+                    "bookings_path": "/json/getbooking",
+                    "error": "",
+                    "base_url": "https://provider.asiatech.in",
+                },
+            ),
+        ):
+            rows = asia_tech_client.list_provider_reservations(settings)
+        ids = {r["id"] for r in rows}
+        self.assertIn("FDR4502NEW", ids)
+        self.assertNotIn("FDR0119OLD", ids)
+
+    def test_live_sync_meta_includes_asia_tech_lookback(self):
+        settings = {
+            "panels": {
+                "asia_tech": {
+                    "values": {"asia_tech_mode": {"kind": "text", "value": "live"}}
+                }
+            }
+        }
+        with mock.patch.object(
+            asia_tech_client,
+            "fetch_bookings",
+            return_value=(
+                [
+                    {
+                        "bookingid": "FDR4502NEW",
+                        "guestname": "Bell Elite Guest",
+                        "checkin": "2026-08-12",
+                        "checkout": "2026-08-13",
+                        "status": "Confirmed",
+                        "total": 1000,
+                    }
+                ],
+                {
+                    "synced_at": "2026-08-13T00:10:00",
+                    "cached": False,
+                    "rooms_ok": True,
+                    "bookings_path": "/json/getbooking",
+                    "error": "",
+                    "base_url": "https://provider.asiatech.in",
+                    "fromdate": "2026-08-04",
+                    "todate": "2026-08-13",
+                    "pulled": 1,
+                },
+            ),
+        ):
+            asia_tech_client.list_provider_reservations(settings)
+        meta = asia_tech_client.get_last_sync_meta()
+        self.assertEqual(meta["fromdate"], "2026-08-04")
+        self.assertEqual(meta["todate"], "2026-08-13")
+        self.assertEqual(meta["pulled"], 1)
+        self.assertIn("last 10 days", meta["coverage"])
+        self.assertIn("Channel Manager", meta["coverage"])
+
+    def test_cm_booking_report_rows_merge_into_live_list(self):
+        settings = {
+            "panels": {
+                "asia_tech": {
+                    "values": {
+                        "asia_tech_mode": {"kind": "text", "value": "live"},
+                        "asia_tech_cm_email": {
+                            "kind": "text",
+                            "value": "front@hotel.com",
+                        },
+                        "asia_tech_cm_password": {
+                            "kind": "text",
+                            "value": "cm-secret",
+                        },
+                    }
+                }
+            }
+        }
+        with mock.patch.object(
+            asia_tech_client,
+            "fetch_bookings",
+            return_value=(
+                [
+                    {
+                        "bookingid": "FDR4502API",
+                        "guestname": "Api Guest",
+                        "checkin": "2026-08-12",
+                        "checkout": "2026-08-13",
+                        "status": "Confirmed",
+                        "total": 1000,
+                    }
+                ],
+                {
+                    "synced_at": "2026-08-13T00:10:00",
+                    "cached": False,
+                    "rooms_ok": True,
+                    "bookings_path": "/json/getbooking",
+                    "error": "",
+                    "base_url": "https://provider.asiatech.in",
+                    "fromdate": "2026-08-04",
+                    "todate": "2026-08-13",
+                    "pulled": 1,
+                },
+            ),
+        ), mock.patch(
+            "asia_tech_cm.fetch_checkin_booking_reports",
+            return_value=(
+                [
+                    {
+                        "bookingid": "FDR45021785571083",
+                        "guestname": "Hemant Nathrao Reddy",
+                        "checkin": "2026-08-13",
+                        "checkout": "2026-08-14",
+                        "bookingstatus": "confirmed",
+                        "totalrate": 5000,
+                    }
+                ],
+                {"cm_ok": True, "cm_pulled": 1, "cm_error": "", "cm_days": 1},
+            ),
+        ):
+            rows = asia_tech_client.list_provider_reservations(settings)
+        ids = {r["id"] for r in rows}
+        self.assertIn("FDR4502API", ids)
+        self.assertIn("FDR45021785571083", ids)
+        meta = asia_tech_client.get_last_sync_meta()
+        self.assertTrue(meta.get("cm_ok"))
+        self.assertEqual(meta.get("cm_pulled"), 1)
+        self.assertIn("check-in date", meta.get("coverage", "").lower())
+
+
+class AsiaTechCMParseTests(unittest.TestCase):
+    def test_parse_booking_report_html_extracts_checkin_row(self):
+        import asia_tech_cm
+
+        html = """
+        <table>
+          <tr>
+            <th>Booking ID</th><th>Guest Name</th><th>Check-In</th><th>Check-Out</th><th>Total</th>
+          </tr>
+          <tr>
+            <td>FDR45021785571083</td>
+            <td>Hemant Nathrao Reddy</td>
+            <td>13-08-2026</td>
+            <td>14-08-2026</td>
+            <td>5,000</td>
+          </tr>
+        </table>
+        """
+        rows = asia_tech_cm.parse_booking_report_html(html)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["bookingid"], "FDR45021785571083")
+        self.assertEqual(rows[0]["guestname"], "Hemant Nathrao Reddy")
+        self.assertEqual(rows[0]["checkin"], "2026-08-13")
+        self.assertEqual(rows[0]["checkout"], "2026-08-14")
+        self.assertEqual(rows[0]["totalrate"], 5000.0)
+
 
 class AsiaTechSafetyTests(unittest.TestCase):
     def test_http_module_has_no_write_paths(self):
@@ -584,6 +789,70 @@ class AsiaTechSafetyTests(unittest.TestCase):
     def test_getbooking_included_in_candidates(self):
         self.assertEqual(asia_tech_http.GETBOOKING_PATH, "/json/getbooking")
         self.assertIn("/json/getbooking", asia_tech_http.BOOKING_PATH_CANDIDATES)
+
+    def test_merge_booking_rows_keeps_earlier_stays(self):
+        asia_tech_http.clear_caches()
+        first = asia_tech_http.merge_booking_rows(
+            [{"bookingid": "A", "checkin": "2026-08-24", "guestname": "Future"}]
+        )
+        self.assertEqual(len(first), 1)
+        second = asia_tech_http.merge_booking_rows(
+            [{"bookingid": "B", "checkin": "2026-08-12", "guestname": "Today"}]
+        )
+        ids = {row["bookingid"] for row in second}
+        self.assertEqual(ids, {"A", "B"})
+        asia_tech_http.clear_caches()
+        self.assertEqual(asia_tech_http.merge_booking_rows([]), [])
+
+    def test_merge_booking_rows_resets_when_hotel_changes(self):
+        asia_tech_http.clear_caches()
+        asia_tech_http.merge_booking_rows(
+            [{"bookingid": "FDR0119OLD", "guestname": "Demo"}],
+            cred_key="https://provider.asiatech.in|old|119",
+        )
+        second = asia_tech_http.merge_booking_rows(
+            [{"bookingid": "FDR4502NEW", "guestname": "Bell Elite"}],
+            cred_key="https://provider.asiatech.in|new|4502",
+        )
+        ids = {row["bookingid"] for row in second}
+        self.assertEqual(ids, {"FDR4502NEW"})
+        asia_tech_http.clear_caches()
+
+    def test_booking_date_window_stays_within_lookback(self):
+        start, end = asia_tech_http.booking_date_window(today=date(2026, 8, 12))
+        self.assertEqual(end, "2026-08-12")
+        self.assertEqual(start, "2026-08-03")
+
+
+class AsiaTechDateParseTests(unittest.TestCase):
+    def test_parse_iso_strips_time_and_dmy(self):
+        self.assertEqual(
+            asia_tech_client._parse_iso("24/08/2026 14:00:00").isoformat(),
+            "2026-08-24",
+        )
+        self.assertEqual(
+            asia_tech_client._parse_iso("2026-08-24T11:00:00").isoformat(),
+            "2026-08-24",
+        )
+
+    def test_filter_keeps_checkin_when_checkout_missing(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "open-checkout",
+                    "guestName": "No Checkout",
+                    "checkInDate": "2026-08-24",
+                    "checkOutDate": "",
+                    "status": "upcoming",
+                    "source": "direct",
+                    "amount": 100,
+                }
+            )
+        ]
+        filtered = asia_tech_client.filter_reservations(
+            rows, date_from="2026-08-24", date_to="2026-08-24"
+        )
+        self.assertEqual([row["id"] for row in filtered], ["open-checkout"])
 
 
 if __name__ == "__main__":

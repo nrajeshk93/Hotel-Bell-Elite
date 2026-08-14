@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=108">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=125">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -24,7 +24,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=51">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
 {% if page_key == 'purchase_orders' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=43">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=44">
 {% endif %}
 {% elif page_key == 'purchase_requests' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
@@ -49,7 +49,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=108">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=125">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -57,7 +57,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=51">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
 {% if page_key == 'purchase_orders' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=43">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=44">
 {% endif %}
 {% elif page_key == 'purchase_requests' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
@@ -95,16 +95,13 @@
         {% endif %}
         {% if page_key in ('stock', 'stock_audit') %}
         {% if page_key == 'stock' %}
-        <button type="button" class="btn btn-primary" id="st-stock-out-filter" aria-pressed="false" title="Show only out-of-stock items">Out of stock</button>
-        {% endif %}
-        {% if page_key == 'stock' %}
           {% if stock_export_url %}
           <a class="btn btn-primary" id="st-stock-export" href="{{ stock_export_url }}" download title="Download Stock Report Excel">Export</a>
           {% else %}
           <button type="button" class="btn btn-primary" disabled title="Nothing to export">Export</button>
           {% endif %}
         {% elif page_key == 'stock_audit' %}
-        <a class="btn btn-primary" href="{{ url_for('stores_stock', outlet=selected_outlet) }}" title="Export from Stock">Export</a>
+        <a class="btn btn-primary" href="{{ url_for('stores_stock', outlet=selected_outlet) }}" title="Export from Store">Export</a>
         {% endif %}
         <a class="btn btn-primary" href="{{ url_for('stores_purchase_requests', outlet='both') }}">Stock Inward</a>
         {% elif page_key == 'stock_audit_report' and audit_report_export_url %}
@@ -142,6 +139,22 @@
             </div>
           </div>
           {% elif page_key == 'stock' %}
+          <div class="st-stock-place-host pl-header-field" id="st-stock-place-host">
+            <span class="se-filter-chip-label" id="st-stock-place-label">Location</span>
+            <input type="hidden" id="st-stock-place" name="place" value="{{ stock_place|default('warehouse') }}">
+            <div class="cp-view-tabs st-stock-place-tabs" role="tablist" aria-labelledby="st-stock-place-label">
+              <button type="button"
+                      class="cp-view-tab st-stock-place-tab{% if stock_place|default('warehouse') == 'warehouse' %} is-active{% endif %}"
+                      role="tab"
+                      data-value="warehouse"
+                      aria-selected="{{ 'true' if stock_place|default('warehouse') == 'warehouse' else 'false' }}">Warehouse</button>
+              <button type="button"
+                      class="cp-view-tab st-stock-place-tab{% if stock_place|default('warehouse') == 'counter' %} is-active{% endif %}"
+                      role="tab"
+                      data-value="counter"
+                      aria-selected="{{ 'true' if stock_place|default('warehouse') == 'counter' else 'false' }}">Counter</button>
+            </div>
+          </div>
           <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field st-stock-search-chip" id="st-stock-search-chip">
             <label class="se-filter-chip-label" for="st-stock-search">Search</label>
             <div class="se-filter-chip-control">
@@ -211,6 +224,22 @@
           </div>
           {% endif %}
           {% if page_key == 'stock_audit' %}
+          <div class="st-stock-place-host pl-header-field" id="st-stock-place-host">
+            <span class="se-filter-chip-label" id="st-stock-place-label">Location</span>
+            <input type="hidden" id="st-stock-place" name="place" value="{{ stock_place|default('warehouse') }}">
+            <div class="cp-view-tabs st-stock-place-tabs" role="tablist" aria-labelledby="st-stock-place-label">
+              <button type="button"
+                      class="cp-view-tab st-stock-place-tab{% if stock_place|default('warehouse') == 'warehouse' %} is-active{% endif %}"
+                      role="tab"
+                      data-value="warehouse"
+                      aria-selected="{{ 'true' if stock_place|default('warehouse') == 'warehouse' else 'false' }}">Warehouse</button>
+              <button type="button"
+                      class="cp-view-tab st-stock-place-tab{% if stock_place|default('warehouse') == 'counter' %} is-active{% endif %}"
+                      role="tab"
+                      data-value="counter"
+                      aria-selected="{{ 'true' if stock_place|default('warehouse') == 'counter' else 'false' }}">Counter</button>
+            </div>
+          </div>
           <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field st-audit-search-chip" id="st-audit-search-chip">
             <label class="se-filter-chip-label" for="st-audit-search">Search</label>
             <div class="se-filter-chip-control">
@@ -441,17 +470,66 @@
     {% endif %}
   </section>
 </div>
+{% if page_key == 'stock' %}
+<div class="modal-overlay" id="st-stock-transfer-modal" role="dialog" aria-modal="true" aria-labelledby="st-stock-transfer-title">
+  <div class="modal-box st-stock-transfer-box">
+    <h3>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--acc,#2563EB)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>
+      </svg>
+      <span id="st-stock-transfer-title">Transfer to Counter</span>
+    </h3>
+    <div id="st-stock-transfer-err" class="st-product-modal-err" style="display:none;"></div>
+    <form id="st-stock-transfer-form">
+      <input type="hidden" name="direction" id="st-stock-transfer-direction">
+      <div class="st-stock-transfer-dest" id="st-stock-transfer-dest">
+        <span class="se-filter-chip-label" id="st-stock-transfer-dest-label">Transfer to</span>
+        <input type="hidden" id="st-stock-transfer-to-outlet" name="to_outlet" value="" required>
+        <div class="cp-view-tabs st-stock-transfer-dest-tabs" role="tablist" aria-labelledby="st-stock-transfer-dest-label" aria-required="true">
+          <button type="button" class="cp-view-tab" role="tab" data-value="restaurant" id="st-stock-transfer-dest-restaurant" aria-selected="false">Restaurant Counter</button>
+          <button type="button" class="cp-view-tab" role="tab" data-value="bar" id="st-stock-transfer-dest-bar" aria-selected="false">Bar Counter</button>
+        </div>
+      </div>
+      <div class="st-stock-transfer-table-wrap">
+        <table class="st-stock-transfer-table">
+          <colgroup>
+            <col class="st-stock-transfer-col-product">
+            <col class="st-stock-transfer-col-avail">
+            <col class="st-stock-transfer-col-qty">
+          </colgroup>
+          <thead>
+            <tr class="st-stock-transfer-cols">
+              <th scope="col">Product</th>
+              <th scope="col">Available</th>
+              <th scope="col">Qty</th>
+            </tr>
+          </thead>
+          <tbody id="st-stock-transfer-lines" class="st-stock-transfer-lines"></tbody>
+        </table>
+      </div>
+      <div class="st-product-modal-field">
+        <label for="st-stock-transfer-note">Note (optional)</label>
+        <input id="st-stock-transfer-note" type="text" name="note" maxlength="200" placeholder="Optional note">
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="st-stock-transfer-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="st-stock-transfer-submit" disabled>Transfer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=55"></script>
-<script src="{{ url_for('static', filename='stores.js') }}?v=101"></script>
+<script src="{{ url_for('static', filename='stores.js') }}?v=112"></script>
 {% if page_key == 'purchase_orders' %}
 <script src="{{ url_for('static', filename='stores_po.js') }}?v=35"></script>
 {% endif %}
 {% if page_key == 'stock_audit' %}
-<script src="{{ url_for('static', filename='stores_stock_audit.js') }}?v=28"></script>
+<script src="{{ url_for('static', filename='stores_stock_audit.js') }}?v=29"></script>
 {% endif %}
 {% if page_key == 'stock_audit_report' %}
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 {% include 'partials/stores_stock_audit_report_scripts.html' %}
 {% endif %}
 {% include 'partials/de_workspace_shell_close.html' %}

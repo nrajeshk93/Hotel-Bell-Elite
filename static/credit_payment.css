@@ -46,14 +46,28 @@ body.su-module .cp-view-tab.is-active{
   box-shadow:0 1px 2px rgba(15,23,42,.08);
 }
 
+body.su-module .se-sales-header-filters:has(#credit-payment-filter-form){
+  container-type:inline-size;
+  container-name:cp-filters;
+  flex-wrap:nowrap;
+}
 body.su-module #credit-payment-filter-form.sr-topbar-filters{
+  display:flex;
   align-items:flex-end;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
+  gap:12px;
+  width:100%;
+  min-width:0;
+}
+body.su-module #credit-payment-filter-form > .cp-view-tabs{
+  flex:0 1 auto;
+  min-width:0;
+  margin-right:0;
 }
 body.su-module .cp-search-chip{
-  flex:1 1 200px;
-  min-width:170px;
-  max-width:280px;
+  flex:1 1 140px;
+  min-width:120px;
+  max-width:none;
 }
 body.su-module .cp-search-chip .se-filter-chip-label{color:#64748B}
 body.su-module .cp-search-chip .se-filter-chip-control{
@@ -164,11 +178,16 @@ body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-
   color:#2563EB;
   transform:rotate(180deg);
 }
+body.su-module #credit-payment-filter-form .pl-supplier-filter-listbox{
+  flex:0 1 176px;
+  min-width:140px;
+  max-width:220px;
+}
 body.su-module .cp-date-range-host{
   flex:0 0 auto;
   min-width:0;
   z-index:30;
-  margin-left:auto;
+  margin-left:0;
 }
 body.su-module .cp-date-range-host .se-filter-chip--date-range{
   flex:none;
@@ -188,6 +207,32 @@ body.su-module .cp-date-range-host .an-range-actions{
   display:flex;
   justify-content:flex-end;
   gap:8px;
+}
+
+@container cp-filters (max-width:900px){
+  body.su-module #credit-payment-filter-form.sr-topbar-filters{
+    flex-wrap:wrap;
+  }
+  body.su-module #credit-payment-filter-form .cp-search-chip{
+    flex:1 1 160px;
+  }
+  body.su-module #credit-payment-filter-form .pl-supplier-filter-listbox,
+  body.su-module #credit-payment-filter-form .cp-date-range-host{
+    flex:1 1 160px;
+    max-width:none;
+  }
+}
+
+@container cp-filters (max-width:560px){
+  body.su-module #credit-payment-filter-form > .cp-view-tabs,
+  body.su-module #credit-payment-filter-form .cp-kind-filter-host,
+  body.su-module #credit-payment-filter-form .cp-search-chip,
+  body.su-module #credit-payment-filter-form .pl-supplier-filter-listbox,
+  body.su-module #credit-payment-filter-form .cp-date-range-host{
+    flex:1 1 100%;
+    max-width:none;
+    width:100%;
+  }
 }
 
 body.su-module .cp-panel-actions{

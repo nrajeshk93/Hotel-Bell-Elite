@@ -271,6 +271,9 @@
         if (inject.querySelector('#cm-category-modal') && typeof global.initCategoryMasterPage === 'function') {
           global.initCategoryMasterPage();
         }
+        if (inject.querySelector('#emp-main-table') && typeof global.initEmpMasterTableSort === 'function') {
+          global.initEmpMasterTableSort();
+        }
       } catch (err) {
         if (typeof global.console !== 'undefined' && global.console.error) {
           global.console.error('Stores product embed init failed', err);

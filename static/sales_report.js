@@ -1,6 +1,6 @@
 /**
- * Sales Report — client search, sort, date/status filters.
- * Soft-nav safe: window.initSalesReportPage / window.srStatusChanged.
+ * Sales Report — client search, sort, date/status/outlet filters.
+ * Soft-nav safe: window.initSalesReportPage / window.srStatusChanged / window.srOutletChanged.
  */
 (function (global) {
   'use strict';
@@ -58,6 +58,17 @@
       visible + ' entr' + (visible === 1 ? 'y' : 'ies');
   }
 
+  function syncGroupVisibility(page) {
+    $all('tr.sr-group-header', page).forEach(function (header) {
+      var gid = header.getAttribute('data-group') || '';
+      var items = $all('tr.sr-row[data-group="' + gid + '"]', page);
+      var anyVisible = items.some(function (row) {
+        return row.style.display !== 'none' && !row.hidden;
+      });
+      header.style.display = anyVisible ? '' : 'none';
+    });
+  }
+
   function bindClientSearch(page) {
     var input = $('#sr-search', page);
     if (!input || input.getAttribute('data-sr-bound') === '1') return;
@@ -71,6 +82,7 @@
         var match = !needle || hay.indexOf(needle) !== -1;
         row.style.display = match ? '' : 'none';
       });
+      syncGroupVisibility(page);
       updateVisibleCount(page);
     }
     input.addEventListener('input', apply);
@@ -111,8 +123,7 @@
         ascending = true;
       }
 
-      var rows = Array.prototype.slice.call(tbody.rows);
-      rows.sort(function (a, b) {
+      function compare(a, b) {
         var av = cellSortValue(a, colIndex, type);
         var bv = cellSortValue(b, colIndex, type);
         var cmp = 0;
@@ -124,10 +135,40 @@
           });
         }
         return ascending ? cmp : -cmp;
+      }
+
+      var groups = [];
+      var current = null;
+      Array.prototype.forEach.call(tbody.rows, function (row) {
+        if (row.classList.contains('sr-group-header')) {
+          current = { header: row, items: [] };
+          groups.push(current);
+          return;
+        }
+        if (row.classList.contains('sr-row')) {
+          if (!current) {
+            current = { header: null, items: [] };
+            groups.push(current);
+          }
+          current.items.push(row);
+        }
       });
-      rows.forEach(function (row) {
-        tbody.appendChild(row);
-      });
+
+      if (groups.length && groups[0].header) {
+        groups.forEach(function (group) {
+          group.items.sort(compare);
+          if (group.header) tbody.appendChild(group.header);
+          group.items.forEach(function (row) {
+            tbody.appendChild(row);
+          });
+        });
+      } else {
+        var rows = Array.prototype.slice.call(tbody.rows);
+        rows.sort(compare);
+        rows.forEach(function (row) {
+          tbody.appendChild(row);
+        });
+      }
       headers.forEach(function (h) {
         h.setAttribute('aria-sort', 'none');
       });
@@ -152,6 +193,10 @@
     var status = $('#sr-status', form);
     if (status && (status.value === 'all' || !status.value)) {
       status.removeAttribute('name');
+    }
+    var outlet = $('#sr-outlet', form);
+    if (outlet && (outlet.value === 'all' || !outlet.value)) {
+      outlet.removeAttribute('name');
     }
     var dateFrom = $('#sr-date-from', form);
     var dateTo = $('#sr-date-to', form);
@@ -209,8 +254,35 @@
         if (status && (status.value === 'all' || !status.value)) {
           status.removeAttribute('name');
         }
+        var outlet = $('#sr-outlet', form);
+        if (outlet && (outlet.value === 'all' || !outlet.value)) {
+          outlet.removeAttribute('name');
+        }
       }
     });
+
+    var todayBtn = $('#sr-date-range-today', page);
+    if (todayBtn && todayBtn.getAttribute('data-sr-today-bound') !== '1') {
+      todayBtn.setAttribute('data-sr-today-bound', '1');
+      todayBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var wrap = $('#sr-date-range-wrap', page);
+        var today = String(
+          (wrap && wrap.getAttribute('data-max-date')) || ''
+        ).trim();
+        if (!today) return;
+        if (dateFrom) {
+          dateFrom.value = today;
+          dateFrom.setAttribute('name', 'date_from');
+        }
+        if (dateTo) {
+          dateTo.value = today;
+          dateTo.setAttribute('name', 'date_to');
+        }
+        prepareAndSubmit(form);
+      });
+    }
 
     var clearBtn = $('#sr-date-range-clear', page);
     if (clearBtn && clearBtn.getAttribute('data-sr-clear-bound') !== '1') {
@@ -234,6 +306,11 @@
     if (form) prepareAndSubmit(form);
   }
 
+  function srOutletChanged() {
+    var form = document.getElementById('sr-filter-form');
+    if (form) prepareAndSubmit(form);
+  }
+
   function initSalesReportPage() {
     var page = document.getElementById('sales-report-page');
     if (!page) return;
@@ -249,6 +326,7 @@
   }
 
   global.srStatusChanged = srStatusChanged;
+  global.srOutletChanged = srOutletChanged;
   global.initSalesReportPage = initSalesReportPage;
 
   if (document.readyState === 'loading') {

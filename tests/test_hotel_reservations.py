@@ -82,6 +82,8 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertIn("pl-sortable", html)
         self.assertIn("hbe-scroll-panel", html)
         self.assertIn("Assign Room", html)
+        self.assertIn("hres-assign-modal", html)
+        self.assertIn("hres-actions-card", html)
         self.assertNotIn("hres-pagination-pages", html)
         self.assertNotIn("hres-page-size", html)
         self.assertIn("hotel_reservations.js", html)
@@ -90,6 +92,14 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertIn("hres-date-from", html)
         self.assertIn("hres-date-to", html)
         self.assertIn("sales_date_range.js", html)
+        self.assertIn("hotel_reservations.js?v=19", html)
+        js_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "hotel_reservations.js")
+        js = open(js_path, encoding="utf-8").read()
+        self.assertIn("function initDateRangePicker", js)
+        self.assertIn("initDateRangePicker();", js)
+        self.assertIn('id="hres-edit-meal"', html)
+        self.assertIn('id="hres-edit-meal-listbox"', html)
+        self.assertIn('id="hres-edit-notes"', html)
 
         rooms = self.client.get("/hotel/rooms")
         self.assertEqual(rooms.status_code, 200)
@@ -224,6 +234,143 @@ class HotelReservationsTests(unittest.TestCase):
         detail = self.client.get(f"/hotel/api/reservations/{unassigned['id']}")
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.get_json()["reservation"]["roomNumber"], room["number"])
+
+    def test_list_includes_occupied_rooms_free_for_future_dates(self):
+        occupied = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "In",
+                    "lastName": "House",
+                    "mobile": "9000099999",
+                    "checkInDate": "2026-08-12",
+                    "nights": 2,
+                    "roomRate": 4000,
+                },
+            },
+        )
+        self.assertEqual(occupied.status_code, 200, occupied.get_data(as_text=True))
+        self.assertEqual(occupied.get_json()["room"]["status"], "occupied")
+
+        listed = self.client.get("/hotel/api/reservations")
+        self.assertEqual(listed.status_code, 200, listed.get_data(as_text=True))
+        rooms = listed.get_json().get("vacantRooms") or []
+        occupied_row = next((r for r in rooms if r.get("id") == "room-101"), None)
+        self.assertIsNotNone(occupied_row)
+        self.assertEqual(occupied_row["status"], "occupied")
+        self.assertEqual((occupied_row.get("stay") or {}).get("checkInDate"), "2026-08-12")
+
+        vacant_only = [r for r in rooms if r.get("status") == "vacant"]
+        self.assertTrue(vacant_only)
+        self.assertGreater(len(rooms), len(vacant_only))
+
+    def test_assign_future_booking_onto_occupied_room(self):
+        occupied = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "In",
+                    "lastName": "House",
+                    "mobile": "9000099998",
+                    "checkInDate": "2026-08-12",
+                    "nights": 2,
+                    "roomRate": 4000,
+                },
+            },
+        )
+        self.assertEqual(occupied.status_code, 200, occupied.get_data(as_text=True))
+
+        create = self.client.post(
+            "/hotel/api/reservations",
+            json={
+                "guestName": "Later Guest",
+                "mobile": "9000011133",
+                "email": "later@example.com",
+                "checkInDate": "2026-09-10",
+                "checkOutDate": "2026-09-12",
+                "amount": 2500,
+                "source": "direct",
+                "status": "upcoming",
+            },
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        booking = create.get_json()["reservation"]
+
+        assign = self.client.post(
+            f"/hotel/api/reservations/{booking['id']}/assign",
+            json={"roomId": "room-102"},
+        )
+        self.assertEqual(assign.status_code, 200, assign.get_data(as_text=True))
+        payload = assign.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["room"]["status"], "occupied")
+        self.assertEqual(payload["room"]["stay"]["guestName"], "In House")
+        upcoming = payload["room"].get("upcomingStay") or {}
+        self.assertEqual(upcoming.get("guestName"), "Later Guest")
+        self.assertEqual(upcoming.get("checkInDate"), "2026-09-10")
+        self.assertEqual(upcoming.get("checkOutDate"), "2026-09-12")
+        self.assertTrue(payload["reservation"]["roomAssigned"])
+        self.assertEqual(payload["reservation"]["roomId"], "room-102")
+
+        overlap = self.client.post(
+            "/hotel/api/reservations",
+            json={
+                "guestName": "Overlap Guest",
+                "mobile": "9000011144",
+                "checkInDate": "2026-08-12",
+                "checkOutDate": "2026-08-14",
+                "amount": 1800,
+                "source": "direct",
+                "status": "upcoming",
+            },
+        )
+        self.assertEqual(overlap.status_code, 200, overlap.get_data(as_text=True))
+        blocked = self.client.post(
+            f"/hotel/api/reservations/{overlap.get_json()['reservation']['id']}/assign",
+            json={"roomId": "room-102"},
+        )
+        self.assertEqual(blocked.status_code, 400)
+        self.assertFalse(blocked.get_json()["ok"])
+        self.assertIn("not available", blocked.get_json()["error"].lower())
+
+    def test_hotel_room_available_for_stay_skips_overlap(self):
+        occupied = {
+            "status": "occupied",
+            "stay": {"checkInDate": "2026-08-12", "checkOutDate": "2026-08-14"},
+        }
+        self.assertTrue(
+            db_mod.hotel_room_available_for_stay(
+                occupied, "2026-08-15", "2026-08-16", today="2026-08-12"
+            )
+        )
+        self.assertFalse(
+            db_mod.hotel_room_available_for_stay(
+                occupied, "2026-08-13", "2026-08-15", today="2026-08-12"
+            )
+        )
+        self.assertFalse(
+            db_mod.hotel_room_available_for_stay(
+                {"status": "out_of_order"}, "2026-08-20", "2026-08-21"
+            )
+        )
+        self.assertFalse(
+            db_mod.hotel_room_available_for_stay(
+                {"status": "dirty"},
+                "2026-08-12",
+                "2026-08-13",
+                today="2026-08-12",
+            )
+        )
+        self.assertTrue(
+            db_mod.hotel_room_available_for_stay(
+                {"status": "dirty"},
+                "2026-08-20",
+                "2026-08-21",
+                today="2026-08-12",
+            )
+        )
 
     def test_list_api_total_kpi_follows_selected_date(self):
         rows = [
@@ -360,17 +507,41 @@ class HotelReservationsTests(unittest.TestCase):
                 "amount": 9000,
                 "source": "direct",
                 "status": "upcoming",
+                "mealPlan": "CP",
+                "specialNotes": "Late arrival after 10 PM",
             },
         )
         self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
         payload = resp.get_json()
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["reservation"]["guestName"], "Test Guest")
+        self.assertEqual(payload["reservation"]["mealPlan"], "CP · Breakfast")
+        self.assertEqual(payload["reservation"]["specialNotes"], "Late arrival after 10 PM")
         booking_id = payload["reservation"]["id"]
 
         found = self.client.get(f"/hotel/api/reservations/{booking_id}")
         self.assertEqual(found.status_code, 200)
         self.assertEqual(found.get_json()["reservation"]["mobile"], "9998887776")
+
+        updated = self.client.put(
+            f"/hotel/api/reservations/{booking_id}",
+            json={
+                "guestName": "Test Guest",
+                "mobile": "9998887776",
+                "email": "test@example.com",
+                "checkInDate": "2026-09-01",
+                "checkOutDate": "2026-09-03",
+                "amount": 9000,
+                "source": "direct",
+                "status": "upcoming",
+                "mealPlan": "MAP",
+                "specialNotes": "High floor if possible",
+            },
+        )
+        self.assertEqual(updated.status_code, 200, updated.get_data(as_text=True))
+        saved = updated.get_json()["reservation"]
+        self.assertEqual(saved["mealPlan"], "MAP · Breakfast & dinner")
+        self.assertEqual(saved["specialNotes"], "High floor if possible")
 
     def test_hotel_settings_page_has_asia_tech_section(self):
         page = self.client.get("/hotel/settings")

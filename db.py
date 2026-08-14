@@ -746,6 +746,10 @@ def ensure_pos_schema(conn):
         cursor.execute(
             "ALTER TABLE pos_invoices ADD COLUMN outlet TEXT NOT NULL DEFAULT 'restaurant'"
         )
+    if "tax_cgst_pct" not in invoice_cols:
+        cursor.execute("ALTER TABLE pos_invoices ADD COLUMN tax_cgst_pct REAL")
+    if "tax_ugst_pct" not in invoice_cols:
+        cursor.execute("ALTER TABLE pos_invoices ADD COLUMN tax_ugst_pct REAL")
     cursor.execute(
         """
         CREATE INDEX IF NOT EXISTS idx_pos_invoices_outlet_table_open
@@ -2970,6 +2974,49 @@ POS_DEFAULT_UGST_PCT = 2.5
 POS_DEFAULT_VAT_PCT = 10.0
 
 
+def _pos_line_name_is_banquet(name) -> bool:
+    return " ".join(str(name or "").split()).strip().casefold() == "banquet"
+
+
+def _pos_lines_are_banquet_only(lines) -> bool:
+    if not lines:
+        return False
+    for line in lines:
+        if isinstance(line, dict):
+            name = line.get("name")
+        elif hasattr(line, "keys") and "name" in line.keys():
+            name = line["name"]
+        else:
+            name = ""
+        if not _pos_line_name_is_banquet(name):
+            return False
+    return True
+
+
+def _parse_pos_tax_override_pct(raw):
+    if raw is None:
+        return None
+    if isinstance(raw, str) and str(raw).strip() == "":
+        return None
+    try:
+        n = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if n != n:
+        return None
+    if n < 0:
+        n = 0.0
+    if n > 100:
+        n = 100.0
+    return round(n, 4)
+
+
+def _row_tax_override_pct(row, key):
+    if not row or key not in row.keys() or row[key] is None:
+        return None
+    return _parse_pos_tax_override_pct(row[key])
+
+
 def _pos_settings_panel_values(settings, panel_key):
     """Return the values map for a settings panel (supports legacy array shape)."""
     if not isinstance(settings, dict):
@@ -3191,6 +3238,8 @@ def _pos_invoice_row_to_dict(conn, row, *, include_lines=False):
         "discount": _pos_money(row["discount_amount"]),
         "gst": _pos_money(row["gst_amount"]),
         "vat": _pos_money(row["vat_amount"]) if "vat_amount" in row.keys() else 0.0,
+        "tax_cgst_pct": _row_tax_override_pct(row, "tax_cgst_pct"),
+        "tax_ugst_pct": _row_tax_override_pct(row, "tax_ugst_pct"),
         "service": _pos_money(row["service_amount"]),
         "tip": _pos_money(row["tip"]),
         "round_off": _pos_money(row["round_off"]),
@@ -3513,7 +3562,7 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
     row = conn.execute(
         """
         SELECT id, outlet, discount_type, discount_value, service_type, service_value, tip, tip_amount,
-               discount_line_uids
+               discount_line_uids, tax_cgst_pct, tax_ugst_pct
         FROM pos_invoices
         WHERE id = ? AND is_active = 1
         """,
@@ -3524,7 +3573,7 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
 
     line_rows = conn.execute(
         """
-        SELECT l.rate, l.qty, l.menu_item_id, l.variant, l.line_uid, c.name AS category_name,
+        SELECT l.name, l.rate, l.qty, l.menu_item_id, l.variant, l.line_uid, c.name AS category_name,
                i.item_kind, i.menu_type, i.outlet AS menu_outlet
         FROM pos_invoice_lines l
         LEFT JOIN pos_menu_items i ON i.id = l.menu_item_id
@@ -3594,7 +3643,12 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
     food_after = max(0.0, after_discount - bar_after)
     inv_outlet = normalize_pos_outlet(row["outlet"] if "outlet" in row.keys() else None)
     rates = get_pos_tax_rates(conn, inv_outlet)
-    gst = _pos_money(food_after * (rates["cgst"] + rates["ugst"]))
+    banquet_only = _pos_lines_are_banquet_only(line_rows)
+    tax_cgst_pct = _row_tax_override_pct(row, "tax_cgst_pct") if banquet_only else None
+    tax_ugst_pct = _row_tax_override_pct(row, "tax_ugst_pct") if banquet_only else None
+    cgst_frac = (tax_cgst_pct / 100.0) if tax_cgst_pct is not None else rates["cgst"]
+    ugst_frac = (tax_ugst_pct / 100.0) if tax_ugst_pct is not None else rates["ugst"]
+    gst = _pos_money(food_after * (cgst_frac + ugst_frac))
     vat = _pos_money(bar_after * rates["vat"])
     if service_type == "inr":
         service = min(max(0.0, after_discount), max(0.0, service_value))
@@ -3619,6 +3673,8 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
             tip_amount = ?,
             round_off = ?,
             grand_total = ?,
+            tax_cgst_pct = ?,
+            tax_ugst_pct = ?,
             updated_at = {SQL_NOW}
         WHERE id = ?
         """,
@@ -3632,6 +3688,8 @@ def _recompute_pos_invoice_money_from_lines(conn, invoice_id):
             tip,
             round_off,
             grand_total,
+            tax_cgst_pct,
+            tax_ugst_pct,
             invoice_id,
         ),
     )
@@ -4455,7 +4513,7 @@ def import_settled_pos_invoice_snapshot(conn, snapshot):
     ``snapshot`` keys:
       order_no, outlet, order_type, order_date, saved_at, settled_at, customer_name,
       notes, subtotal, discount_amount, gst_amount, vat_amount, grand_total,
-      lines: [{name, rate, qty, line_total}],
+      lines: [{name, rate, qty, line_total, menu_item_id?}],
       payments: [{payment_method, amount, payment_date, transaction_id?, notes?}]
     """
     ensure_pos_schema(conn)
@@ -4504,9 +4562,17 @@ def import_settled_pos_invoice_snapshot(conn, snapshot):
             line_total = round(rate * qty, 2)
         if line_total <= 0 and rate <= 0:
             continue
+        menu_item_id = line.get("menu_item_id")
+        try:
+            menu_item_id = int(menu_item_id) if menu_item_id not in (None, "", 0, "0") else None
+        except (TypeError, ValueError):
+            menu_item_id = None
+        if menu_item_id is not None and menu_item_id <= 0:
+            menu_item_id = None
         lines.append(
             {
                 "sort_order": idx,
+                "menu_item_id": menu_item_id,
                 "name": name[:200],
                 "rate": rate if rate > 0 else line_total,
                 "qty": qty,
@@ -4690,11 +4756,12 @@ def import_settled_pos_invoice_snapshot(conn, snapshot):
             INSERT INTO pos_invoice_lines (
                 invoice_id, sort_order, menu_item_id, name, variant, rate, qty,
                 line_total, sent_qty, notes, line_uid
-            ) VALUES (?, ?, NULL, ?, '', ?, ?, ?, 0, 'import', ?)
+            ) VALUES (?, ?, ?, ?, '', ?, ?, ?, 0, 'import', ?)
             """,
             (
                 invoice_id,
                 line["sort_order"],
+                line.get("menu_item_id"),
                 line["name"],
                 line["rate"],
                 line["qty"],
@@ -4888,9 +4955,8 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
 
     Kitchen-sent quantities cannot be reduced below sent_qty and those lines
     cannot be removed unless allow_kot_cancel (Cancellation Access) is true.
-    actor_is_admin is accepted for call-site compatibility and does not bypass.
+    Banquet-only CGST/UGST percent overrides are stored only when actor_is_admin.
     """
-    del actor_is_admin
     ensure_pos_schema(conn)
     if not isinstance(payload, dict):
         raise ValueError("Invalid invoice payload.")
@@ -5039,13 +5105,22 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
         if effective_pct <= 15:
             discount_reason = ""
 
+    banquet_only = _pos_lines_are_banquet_only(normalized_lines)
+    posted_cgst_pct = _parse_pos_tax_override_pct(
+        payload.get("taxCgstPct", payload.get("tax_cgst_pct"))
+    )
+    posted_ugst_pct = _parse_pos_tax_override_pct(
+        payload.get("taxUgstPct", payload.get("tax_ugst_pct"))
+    )
+
     # A KOT send persists the order and marks lines as sent to the kitchen.
     # Occupancy is claimed on any dine-in save with a table (see below).
     kot_send = bool(payload.get("kotSend") or payload.get("kot_send"))
 
     existing = conn.execute(
         """
-        SELECT id, kot_sent, first_kot_at, customer_bill_sent, customer_bill_at, outlet
+        SELECT id, kot_sent, first_kot_at, customer_bill_sent, customer_bill_at, outlet,
+               tax_cgst_pct, tax_ugst_pct
         FROM pos_invoices
         WHERE order_no = ? AND is_active = 1
         LIMIT 1
@@ -5064,6 +5139,19 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
                 "Use a new order number or open that outlet's POS."
             )
         outlet = existing_outlet
+
+    if not banquet_only:
+        tax_cgst_pct = None
+        tax_ugst_pct = None
+    elif actor_is_admin:
+        tax_cgst_pct = posted_cgst_pct
+        tax_ugst_pct = posted_ugst_pct
+    elif existing:
+        tax_cgst_pct = _row_tax_override_pct(existing, "tax_cgst_pct")
+        tax_ugst_pct = _row_tax_override_pct(existing, "tax_ugst_pct")
+    else:
+        tax_cgst_pct = None
+        tax_ugst_pct = None
 
     # A brand-new dine-in bill must not be openable against a table the Tables
     # page already shows as occupied — same floor/tables source of truth used
@@ -5139,6 +5227,8 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
                 tip = ?,
                 round_off = ?,
                 grand_total = ?,
+                tax_cgst_pct = ?,
+                tax_ugst_pct = ?,
                 kot_sent = ?,
                 first_kot_at = ?,
                 customer_bill_sent = ?,
@@ -5172,6 +5262,8 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
                 tip,
                 round_off,
                 grand_total,
+                tax_cgst_pct,
+                tax_ugst_pct,
                 next_kot_sent,
                 first_kot_at,
                 next_bill_sent,
@@ -5189,7 +5281,7 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
                 discount_type, discount_value, service_type, service_value,
                 tip_amount, coupon_code, discount_line_uids, discount_reason,
                 subtotal, discount_amount, gst_amount, vat_amount, service_amount, tip,
-                round_off, grand_total, created_by, status, kot_sent, first_kot_at,
+                round_off, grand_total, tax_cgst_pct, tax_ugst_pct, created_by, status, kot_sent, first_kot_at,
                 customer_bill_sent, customer_bill_at, outlet,
                 is_active, created_at, updated_at
             ) VALUES (
@@ -5198,7 +5290,7 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
                 ?, ?, ?, ?,
                 ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, 'open', ?, ?,
+                ?, ?, ?, ?, ?, 'open', ?, ?,
                 ?, ?, ?,
                 1, {SQL_NOW}, {SQL_NOW}
             )
@@ -5229,6 +5321,8 @@ def save_pos_invoice(conn, payload, *, created_by="", allow_kot_cancel=False, ac
                 tip,
                 round_off,
                 grand_total,
+                tax_cgst_pct,
+                tax_ugst_pct,
                 creator,
                 next_kot_sent,
                 first_kot_at,
@@ -5586,7 +5680,7 @@ def list_pos_menu_sales(
     settlement=None,
     category_id=None,
 ):
-    """Item-wise POS sales: order count, qty sold, and sale value per menu item."""
+    """Item-wise POS sales: order count, qty sold, rate, and sale value per menu item."""
     ensure_pos_schema(conn)
     clauses, params = _pos_menu_sales_invoice_clauses(
         date_from=date_from,
@@ -5626,13 +5720,19 @@ def list_pos_menu_sales(
             COALESCE(c.id, 0),
             COALESCE(c.name, ''),
             i.outlet
-        ORDER BY sale_value DESC, item_name COLLATE NOCASE ASC, i.outlet ASC
+        ORDER BY
+            category_name COLLATE NOCASE ASC,
+            i.outlet ASC,
+            item_name COLLATE NOCASE ASC
         """,
         params,
     ).fetchall()
     results = []
     for row in rows:
         outlet_key = normalize_pos_outlet(row["outlet"])
+        qty_sold = float(row["qty_sold"] or 0)
+        sale_value = round(float(row["sale_value"] or 0), 2)
+        rate = round(sale_value / qty_sold, 2) if qty_sold > 0 else 0.0
         results.append(
             {
                 "menu_item_id": int(row["menu_item_id"] or 0),
@@ -5642,10 +5742,56 @@ def list_pos_menu_sales(
                 "outlet": outlet_key,
                 "outlet_label": _pos_outlet_display_label(outlet_key),
                 "order_count": int(row["order_count"] or 0),
-                "qty_sold": float(row["qty_sold"] or 0),
-                "sale_value": round(float(row["sale_value"] or 0), 2),
+                "qty_sold": qty_sold,
+                "rate": rate,
+                "sale_value": sale_value,
             }
         )
+    return results
+
+
+def _menu_sales_qty_display(qty):
+    value = float(qty or 0)
+    if abs(value - round(value)) > 0.0001:
+        return round(value, 3)
+    return int(round(value))
+
+
+def group_pos_menu_sales_by_category(rows, *, include_outlet_label=False):
+    """Group item-wise menu sales by category for the Item Wise Sales Report."""
+    groups_map = {}
+    order = []
+    for row in list(rows or []):
+        cat_id = int(row.get("category_id") or 0)
+        cat_name = str(row.get("category_name") or "").strip() or "Uncategorized"
+        outlet = str(row.get("outlet") or "")
+        outlet_label = str(row.get("outlet_label") or "").strip()
+        key = (outlet, cat_id, cat_name.casefold())
+        if key not in groups_map:
+            display = cat_name
+            if include_outlet_label and outlet_label:
+                display = f"{cat_name} ({outlet_label})"
+            groups_map[key] = {
+                "category_id": cat_id,
+                "category_name": display,
+                "outlet": outlet,
+                "outlet_label": outlet_label,
+                "item_rows": [],
+                "qty_sum": 0.0,
+                "sale_sum": 0.0,
+            }
+            order.append(key)
+        group = groups_map[key]
+        group["item_rows"].append(row)
+        group["qty_sum"] += float(row.get("qty_sold") or 0)
+        group["sale_sum"] += float(row.get("sale_value") or 0)
+
+    results = []
+    for key in order:
+        group = groups_map[key]
+        group["qty_sum"] = _menu_sales_qty_display(group["qty_sum"])
+        group["sale_sum"] = round(group["sale_sum"], 2)
+        results.append(group)
     return results
 
 
@@ -5701,6 +5847,15 @@ def _customer_insights_empty_row(mobile, name=""):
     }
 
 
+def _customer_insights_identity(mobile, name=""):
+    """Stable customer key: 10-digit mobile when present, else normalized name."""
+    digits = _normalize_customer_mobile(mobile)
+    display_name = " ".join(str(name or "").split()).strip() or "Guest"
+    if len(digits) == 10:
+        return f"m:{digits}", digits, display_name
+    return f"n:{display_name.casefold()}", "", display_name
+
+
 def list_customer_insights(
     conn,
     *,
@@ -5711,7 +5866,8 @@ def list_customer_insights(
 ):
     """Per-customer spend + top POS item across Restaurant, Bar, and Hotel.
 
-    Identity is a normalized 10-digit mobile. Incomplete mobiles are skipped.
+    Identity is a normalized 10-digit mobile when present. Imported POS bills
+    often have a guest name but no mobile — those still appear, grouped by name.
     """
     ensure_pos_schema(conn)
     ensure_customers_schema(conn)
@@ -5726,18 +5882,20 @@ def list_customer_insights(
     if channel_key in (POS_OUTLET_RESTAURANT, POS_OUTLET_BAR):
         pos_outlet = channel_key
 
-    by_mobile = {}
+    by_key = {}
 
     def _ensure(mobile, name=""):
-        key = _normalize_customer_mobile(mobile)
-        if len(key) != 10:
-            return None
-        row = by_mobile.get(key)
+        key, digits, display_name = _customer_insights_identity(mobile, name)
+        row = by_key.get(key)
         if row is None:
-            row = _customer_insights_empty_row(key, name)
-            by_mobile[key] = row
-        elif name and (not row["customer_name"] or row["customer_name"] == "Guest"):
-            row["customer_name"] = str(name).strip() or row["customer_name"]
+            row = _customer_insights_empty_row(digits, display_name)
+            by_key[key] = row
+        elif display_name and (
+            not row["customer_name"] or row["customer_name"] == "Guest"
+        ):
+            row["customer_name"] = display_name
+        if digits and not row["mobile"]:
+            row["mobile"] = digits
         return row
 
     if include_pos:
@@ -5748,7 +5906,6 @@ def list_customer_insights(
             settlement=settlement,
             category_id=None,
         )
-        clauses.append("LENGTH(TRIM(COALESCE(i.customer_mobile, ''))) >= 10")
         where = " AND ".join(clauses)
 
         inv_rows = conn.execute(
@@ -5761,15 +5918,15 @@ def list_customer_insights(
                 COALESCE(SUM(i.grand_total), 0) AS grand_total
             FROM pos_invoices i
             WHERE {where}
-            GROUP BY i.outlet, i.customer_mobile
+            GROUP BY
+                i.outlet,
+                TRIM(COALESCE(i.customer_mobile, '')),
+                lower(TRIM(COALESCE(i.customer_name, '')))
             """,
             params,
         ).fetchall()
         for row in inv_rows:
-            mobile = _normalize_customer_mobile(row["customer_mobile"])
-            bucket = _ensure(mobile, row["customer_name"] or "")
-            if not bucket:
-                continue
+            bucket = _ensure(row["customer_mobile"], row["customer_name"] or "")
             bucket["order_count"] += int(row["order_count"] or 0)
             outlet_key = normalize_pos_outlet(row["outlet"])
             value = round(float(row["grand_total"] or 0), 2)
@@ -5780,12 +5937,13 @@ def list_customer_insights(
                     bucket["restaurant_value"] + value, 2
                 )
 
-        # One top item per mobile (avoids shipping every item×customer combo).
+        # One top item per customer identity (avoids shipping every item×customer combo).
         item_rows = conn.execute(
             f"""
             WITH item_qty AS (
                 SELECT
-                    i.customer_mobile AS customer_mobile,
+                    TRIM(COALESCE(i.customer_mobile, '')) AS customer_mobile,
+                    TRIM(COALESCE(i.customer_name, '')) AS customer_name,
                     COALESCE(
                         NULLIF(TRIM(m.name), ''),
                         NULLIF(TRIM(l.name), ''),
@@ -5797,7 +5955,8 @@ def list_customer_insights(
                 LEFT JOIN pos_menu_items m ON m.id = l.menu_item_id
                 WHERE {where}
                 GROUP BY
-                    i.customer_mobile,
+                    TRIM(COALESCE(i.customer_mobile, '')),
+                    TRIM(COALESCE(i.customer_name, '')),
                     COALESCE(
                         NULLIF(TRIM(m.name), ''),
                         NULLIF(TRIM(l.name), ''),
@@ -5807,23 +5966,22 @@ def list_customer_insights(
             ranked AS (
                 SELECT
                     customer_mobile,
+                    customer_name,
                     item_name,
                     ROW_NUMBER() OVER (
-                        PARTITION BY customer_mobile
+                        PARTITION BY customer_mobile, lower(TRIM(customer_name))
                         ORDER BY qty_sold DESC, item_name COLLATE NOCASE ASC
                     ) AS rn
                 FROM item_qty
             )
-            SELECT customer_mobile, item_name
+            SELECT customer_mobile, customer_name, item_name
             FROM ranked
             WHERE rn = 1
             """,
             params,
         ).fetchall()
         for row in item_rows:
-            bucket = _ensure(row["customer_mobile"], "")
-            if not bucket:
-                continue
+            bucket = _ensure(row["customer_mobile"], row["customer_name"] or "")
             item_name = str(row["item_name"] or "Item").strip() or "Item"
             bucket["_top_item"] = item_name
 
@@ -5885,26 +6043,27 @@ def list_customer_insights(
                 continue
             guest = str(row["guest_name"] or "").strip() or "Guest"
             bucket = _ensure(mobile, guest)
-            if not bucket:
-                continue
             bucket["order_count"] += int(row["order_count"] or 0)
             value = round(float(row["hotel_value"] or 0), 2)
             bucket["hotel_value"] = round(bucket["hotel_value"] + value, 2)
 
     # Prefer Customer Master names when present.
-    if by_mobile:
-        placeholders = ",".join("?" for _ in by_mobile)
+    master_mobiles = [
+        row["mobile"] for row in by_key.values() if len(row.get("mobile") or "") == 10
+    ]
+    if master_mobiles:
+        placeholders = ",".join("?" for _ in master_mobiles)
         master_rows = conn.execute(
             f"""
             SELECT mobile, first_name
             FROM customers
             WHERE mobile IN ({placeholders})
             """,
-            list(by_mobile.keys()),
+            master_mobiles,
         ).fetchall()
         for row in master_rows:
             key = _normalize_customer_mobile(row["mobile"])
-            bucket = by_mobile.get(key)
+            bucket = by_key.get(f"m:{key}")
             if not bucket:
                 continue
             name = str(row["first_name"] or "").strip()
@@ -5912,7 +6071,7 @@ def list_customer_insights(
                 bucket["customer_name"] = name
 
     results = []
-    for mobile, bucket in by_mobile.items():
+    for bucket in by_key.values():
         top_item = str(bucket.pop("_top_item", "") or "").strip()
         total = round(
             float(bucket["restaurant_value"])
@@ -5922,7 +6081,7 @@ def list_customer_insights(
         )
         results.append(
             {
-                "mobile": mobile,
+                "mobile": bucket["mobile"],
                 "customer_name": bucket["customer_name"] or "Guest",
                 "order_count": int(bucket["order_count"] or 0),
                 "top_item": top_item,
@@ -6636,21 +6795,25 @@ def ensure_stores_schema(conn):
         CREATE TABLE IF NOT EXISTS store_stock_items (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             outlet      TEXT    NOT NULL,
+            place       TEXT    NOT NULL DEFAULT 'warehouse',
             item_name   TEXT    NOT NULL,
             unit        TEXT    NOT NULL DEFAULT 'pcs',
             qty_on_hand REAL    NOT NULL DEFAULT 0,
             updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
-            UNIQUE(outlet, item_name, unit)
+            UNIQUE(outlet, place, item_name, unit)
         )
     """)
+    migrated_stock_place = _migrate_store_stock_items_place(cursor)
+    cursor.execute("DROP INDEX IF EXISTS idx_store_stock_outlet")
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_stock_outlet
-        ON store_stock_items(outlet, item_name)
+        ON store_stock_items(outlet, place, item_name)
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_stock_movements (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             outlet        TEXT    NOT NULL,
+            place         TEXT    NOT NULL DEFAULT 'warehouse',
             item_name     TEXT    NOT NULL,
             unit          TEXT    NOT NULL DEFAULT 'pcs',
             qty_delta     REAL    NOT NULL,
@@ -6669,9 +6832,25 @@ def ensure_stores_schema(conn):
     }
     if "unit_cost" not in movement_cols:
         cursor.execute("ALTER TABLE store_stock_movements ADD COLUMN unit_cost REAL")
+    if "place" not in movement_cols:
+        cursor.execute(
+            "ALTER TABLE store_stock_movements ADD COLUMN place TEXT NOT NULL DEFAULT 'warehouse'"
+        )
+        cursor.execute(
+            """
+            UPDATE store_stock_movements
+            SET place = 'warehouse'
+            WHERE place IS NULL OR trim(place) = ''
+               OR lower(place) NOT IN ('warehouse', 'counter')
+            """
+        )
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_movements_outlet
         ON store_stock_movements(outlet, created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_movements_outlet_place
+        ON store_stock_movements(outlet, place, created_at DESC)
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_product_categories (
@@ -6791,6 +6970,7 @@ def ensure_stores_schema(conn):
         CREATE TABLE IF NOT EXISTS store_stock_audits (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             outlet       TEXT    NOT NULL,
+            place        TEXT    NOT NULL DEFAULT 'warehouse',
             status       TEXT    NOT NULL DEFAULT 'open',
             label        TEXT    NOT NULL DEFAULT '',
             started_at   TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
@@ -6799,9 +6979,28 @@ def ensure_stores_schema(conn):
             FOREIGN KEY (started_by) REFERENCES users(id)
         )
     """)
+    audit_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_stock_audits)").fetchall()
+    }
+    if "place" not in audit_cols:
+        cursor.execute(
+            "ALTER TABLE store_stock_audits ADD COLUMN place TEXT NOT NULL DEFAULT 'warehouse'"
+        )
+        cursor.execute(
+            """
+            UPDATE store_stock_audits
+            SET place = 'warehouse'
+            WHERE place IS NULL OR trim(place) = ''
+               OR lower(place) NOT IN ('warehouse', 'counter')
+            """
+        )
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_stock_audits_outlet_status
         ON store_stock_audits(outlet, status, started_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_store_stock_audits_outlet_place_status
+        ON store_stock_audits(outlet, place, status, started_at DESC)
     """)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS store_stock_audit_lines (
@@ -6810,6 +7009,7 @@ def ensure_stores_schema(conn):
             stock_item_id  INTEGER,
             item_name      TEXT    NOT NULL,
             unit           TEXT    NOT NULL DEFAULT 'pcs',
+            place          TEXT    NOT NULL DEFAULT 'warehouse',
             category_name  TEXT    NOT NULL DEFAULT '',
             system_qty     REAL    NOT NULL DEFAULT 0,
             actual_qty     REAL,
@@ -6825,11 +7025,228 @@ def ensure_stores_schema(conn):
             FOREIGN KEY (verified_by) REFERENCES users(id)
         )
     """)
+    audit_line_cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_stock_audit_lines)").fetchall()
+    }
+    if "place" not in audit_line_cols:
+        cursor.execute(
+            "ALTER TABLE store_stock_audit_lines ADD COLUMN place TEXT NOT NULL DEFAULT 'warehouse'"
+        )
+        cursor.execute(
+            """
+            UPDATE store_stock_audit_lines
+            SET place = COALESCE((
+                SELECT CASE
+                    WHEN lower(trim(coalesce(a.place, ''))) IN ('warehouse', 'counter')
+                    THEN lower(trim(a.place))
+                    ELSE 'warehouse'
+                END
+                FROM store_stock_audits a
+                WHERE a.id = store_stock_audit_lines.audit_id
+            ), 'warehouse')
+            WHERE place IS NULL OR trim(place) = ''
+               OR lower(place) NOT IN ('warehouse', 'counter')
+            """
+        )
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_store_stock_audit_lines_audit
         ON store_stock_audit_lines(audit_id, status, id)
     """)
+    _seed_store_place_demo(cursor, migrated_place=migrated_stock_place)
     conn.commit()
+
+
+def _store_stock_items_unique_includes_place(cursor) -> bool:
+    row = cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='store_stock_items'"
+    ).fetchone()
+    sql = (row[0] or "") if row else ""
+    compact = "".join(sql.lower().split())
+    return "unique(outlet,place,item_name,unit)" in compact
+
+
+def _migrate_store_stock_items_place(cursor) -> bool:
+    """Rebuild store_stock_items with UNIQUE(outlet, place, item_name, unit).
+
+    Existing on-hand becomes warehouse. Returns True when an old schema was rebuilt.
+    """
+    cols = {
+        row[1] for row in cursor.execute("PRAGMA table_info(store_stock_items)").fetchall()
+    }
+    if not cols:
+        return False
+    if "place" in cols and _store_stock_items_unique_includes_place(cursor):
+        return False
+    cursor.execute(
+        """
+        CREATE TABLE store_stock_items_new (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            outlet      TEXT    NOT NULL,
+            place       TEXT    NOT NULL DEFAULT 'warehouse',
+            item_name   TEXT    NOT NULL,
+            unit        TEXT    NOT NULL DEFAULT 'pcs',
+            qty_on_hand REAL    NOT NULL DEFAULT 0,
+            updated_at  TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            UNIQUE(outlet, place, item_name, unit)
+        )
+        """
+    )
+    if "place" in cols:
+        cursor.execute(
+            """
+            INSERT INTO store_stock_items_new
+                (id, outlet, place, item_name, unit, qty_on_hand, updated_at)
+            SELECT id, outlet,
+                   CASE
+                     WHEN lower(trim(coalesce(place, ''))) IN ('warehouse', 'counter')
+                     THEN lower(trim(place))
+                     ELSE 'warehouse'
+                   END,
+                   item_name, unit, qty_on_hand, updated_at
+            FROM store_stock_items
+            """
+        )
+    else:
+        cursor.execute(
+            """
+            INSERT INTO store_stock_items_new
+                (id, outlet, place, item_name, unit, qty_on_hand, updated_at)
+            SELECT id, outlet, 'warehouse', item_name, unit, qty_on_hand, updated_at
+            FROM store_stock_items
+            """
+        )
+    cursor.execute("DROP TABLE store_stock_items")
+    cursor.execute("ALTER TABLE store_stock_items_new RENAME TO store_stock_items")
+    return True
+
+
+def _demo_stock_ingredient_lines(cursor, tables: set[str], outlet: str, limit: int = 12):
+    """Real Product Master / recipe ingredients for an outlet (no invented names)."""
+    lines: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _add(name, unit):
+        item = str(name or "").strip()
+        stock_unit = str(unit or "").strip() or "pcs"
+        if not item:
+            return
+        key = (item.lower(), stock_unit.lower())
+        if key in seen:
+            return
+        seen.add(key)
+        lines.append((item, stock_unit))
+
+    if "pos_menu_recipe_lines" in tables and "pos_menu_items" in tables:
+        for row in cursor.execute(
+            """
+            SELECT DISTINCT p.name AS name, p.default_unit AS unit
+            FROM pos_menu_recipe_lines r
+            JOIN store_products p ON p.id = r.product_id
+            JOIN pos_menu_items m ON m.id = r.menu_item_id
+            WHERE p.is_active = 1
+              AND trim(p.name) != ''
+              AND (
+                lower(coalesce(p.outlet, '')) IN (?, 'both')
+                OR lower(coalesce(m.outlet, '')) = ?
+              )
+            ORDER BY lower(p.name)
+            LIMIT ?
+            """,
+            (outlet, outlet, limit),
+        ).fetchall():
+            name = row["name"] if hasattr(row, "keys") else row[0]
+            unit = row["unit"] if hasattr(row, "keys") else row[1]
+            _add(name, unit)
+            if len(lines) >= limit:
+                return lines
+    if len(lines) < limit:
+        for row in cursor.execute(
+            """
+            SELECT name, default_unit AS unit
+            FROM store_products
+            WHERE is_active = 1
+              AND trim(name) != ''
+              AND lower(coalesce(outlet, '')) IN (?, 'both')
+            ORDER BY sort_order ASC, lower(name)
+            LIMIT ?
+            """,
+            (outlet, limit),
+        ).fetchall():
+            name = row["name"] if hasattr(row, "keys") else row[0]
+            unit = row["unit"] if hasattr(row, "keys") else row[1]
+            _add(name, unit)
+            if len(lines) >= limit:
+                break
+    return lines[:limit]
+
+
+def _seed_store_place_demo(cursor, *, migrated_place: bool) -> None:
+    """Guarded warehouse/counter demo stock from the real catalogue.
+
+    Skipped during pytest. Seeds counter (and warehouse when the ledger is empty)
+    from Product Master / recipe ingredients only.
+    """
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    tables = {
+        row[0]
+        for row in cursor.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+        ).fetchall()
+    }
+    if "store_stock_items" not in tables or "store_products" not in tables:
+        return
+    product_row = cursor.execute(
+        """
+        SELECT COUNT(*) AS c FROM store_products
+        WHERE is_active = 1 AND trim(name) != ''
+        """
+    ).fetchone()
+    product_count = int((product_row["c"] if hasattr(product_row, "keys") else product_row[0]) or 0)
+    if product_count <= 0:
+        return
+    stock_row = cursor.execute("SELECT COUNT(*) AS c FROM store_stock_items").fetchone()
+    stock_count = int((stock_row["c"] if hasattr(stock_row, "keys") else stock_row[0]) or 0)
+    counter_row = cursor.execute(
+        "SELECT COUNT(*) AS c FROM store_stock_items WHERE lower(place) = 'counter'"
+    ).fetchone()
+    counter_count = int(
+        (counter_row["c"] if hasattr(counter_row, "keys") else counter_row[0]) or 0
+    )
+    warehouse_row = cursor.execute(
+        """
+        SELECT COUNT(*) AS c FROM store_stock_items
+        WHERE lower(coalesce(place, 'warehouse')) = 'warehouse'
+        """
+    ).fetchone()
+    warehouse_count = int(
+        (warehouse_row["c"] if hasattr(warehouse_row, "keys") else warehouse_row[0]) or 0
+    )
+    seed_empty = stock_count == 0
+    seed_counter_on_migrate = migrated_place and warehouse_count > 0 and counter_count == 0
+    if not seed_empty and not seed_counter_on_migrate:
+        return
+    seed_warehouse = seed_empty
+    for outlet in ("restaurant", "bar"):
+        candidates = _demo_stock_ingredient_lines(cursor, tables, outlet, limit=12)
+        for idx, (name, unit) in enumerate(candidates):
+            if seed_warehouse:
+                cursor.execute(
+                    """
+                    INSERT OR IGNORE INTO store_stock_items
+                        (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                    VALUES (?, 'warehouse', ?, ?, ?, datetime('now','localtime'))
+                    """,
+                    (outlet, name, unit, 12.0 if idx % 2 == 0 else 8.0),
+                )
+            cursor.execute(
+                """
+                INSERT OR IGNORE INTO store_stock_items
+                    (outlet, place, item_name, unit, qty_on_hand, updated_at)
+                VALUES (?, 'counter', ?, ?, ?, datetime('now','localtime'))
+                """,
+                (outlet, name, unit, 3.0 if idx % 2 == 0 else 1.5),
+            )
 
 
 def _seed_store_product_units(cursor):
@@ -10850,6 +11267,47 @@ def _hotel_date_ranges_overlap(a_in, a_out, b_in, b_out):
     return a_in <= b_out and b_in <= a_out
 
 
+def hotel_room_available_for_stay(
+    room, check_in, check_out, *, today=None
+) -> bool:
+    """True when the room can take a reservation for [check_in, check_out].
+
+    Occupied/reserved rooms are still available when the new window does not
+    overlap the current or upcoming stay (queued as upcomingStay on assign).
+    """
+    if not isinstance(room, dict):
+        return False
+    status = _normalize_hotel_room_status(room.get("status"))
+    cin = str(check_in or "").strip()[:10]
+    cout = str(check_out or "").strip()[:10]
+    if not cin or not cout or cout <= cin:
+        return False
+    if status == "out_of_order":
+        return False
+    if today is None:
+        today_iso = date.today().isoformat()
+    elif hasattr(today, "isoformat"):
+        today_iso = today.isoformat()
+    else:
+        today_iso = str(today).strip()[:10]
+    if status == "dirty" and cin <= today_iso:
+        return False
+    stay_in, stay_out = _hotel_stay_date_window(
+        room.get("stay") if isinstance(room.get("stay"), dict) else None
+    )
+    if stay_in and stay_out and _hotel_date_ranges_overlap(cin, cout, stay_in, stay_out):
+        return False
+    upcoming = room.get("upcomingStay")
+    if not isinstance(upcoming, dict):
+        upcoming = room.get("upcoming_stay")
+    up_in, up_out = _hotel_stay_date_window(
+        upcoming if isinstance(upcoming, dict) else None
+    )
+    if up_in and up_out and _hotel_date_ranges_overlap(cin, cout, up_in, up_out):
+        return False
+    return True
+
+
 def save_hotel_room_reservation(
     conn, room_id, check_in_date, check_out_date=None, stay_fields=None, replace=False
 ):
@@ -10905,8 +11363,8 @@ def save_hotel_room_reservation(
             "current guest's checkout."
         )
 
-    # New Reservation on an existing reserved room — reject overlapping window.
-    if status == "reserved" and replace and stay_overlaps:
+    # Reserved stay window — reject overlapping dates instead of merging guests.
+    if status == "reserved" and stay_existing and stay_overlaps:
         raise ValueError(
             "These dates are already reserved. Use Edit Reservation to update "
             "this booking, or choose dates after the current stay."
@@ -10989,8 +11447,11 @@ def save_hotel_room_reservation(
             stay["discountReason"] = ""
         return stay
 
-    # Occupied with a non-overlapping future window → queue as upcomingStay.
-    if status == "occupied" and stay_existing:
+    # Occupied, or reserved without replace, with a non-overlapping future
+    # window → queue as upcomingStay without clearing the current guest.
+    if stay_existing and (
+        status == "occupied" or (status == "reserved" and not replace)
+    ):
         upcoming = _normalize_hotel_room_stay(_build_reservation_stay({}, fresh=True))
         if not upcoming.get("bookingNumber"):
             upcoming["bookingNumber"] = f"BK{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -11001,7 +11462,7 @@ def save_hotel_room_reservation(
         for row in rooms:
             if not isinstance(row, dict):
                 continue
-            if row.get("id") == target or row.get("number") == target:
+            if str(row.get("id") or "") == target or str(row.get("number") or "") == target:
                 row["upcomingStay"] = upcoming
                 row.pop("upcoming_stay", None)
                 found = True
@@ -11010,7 +11471,7 @@ def save_hotel_room_reservation(
             raise ValueError("Room not found.")
         saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
         for row in saved.get("rooms") or []:
-            if row.get("id") == target or row.get("number") == target:
+            if str(row.get("id") or "") == target or str(row.get("number") or "") == target:
                 result = dict(row)
                 enrich_hotel_room_merge_fields(result, saved.get("rooms"))
                 return result
@@ -11026,7 +11487,7 @@ def save_hotel_room_reservation(
     for row in rooms:
         if not isinstance(row, dict):
             continue
-        if row.get("id") == target or row.get("number") == target:
+        if str(row.get("id") or "") == target or str(row.get("number") or "") == target:
             if "upcomingStay" in row or "upcoming_stay" in row:
                 row.pop("upcomingStay", None)
                 row.pop("upcoming_stay", None)
@@ -11035,7 +11496,7 @@ def save_hotel_room_reservation(
     if changed:
         saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
         for row in saved.get("rooms") or []:
-            if row.get("id") == target or row.get("number") == target:
+            if str(row.get("id") or "") == target or str(row.get("number") or "") == target:
                 return row
     return result
 
@@ -12360,6 +12821,22 @@ def init_db():
         )
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS login_logs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at  TEXT    NOT NULL,
+            username    TEXT    NOT NULL DEFAULT '',
+            user_id     INTEGER,
+            success     INTEGER NOT NULL DEFAULT 0,
+            reason      TEXT    NOT NULL DEFAULT '',
+            ip_address  TEXT    NOT NULL DEFAULT '',
+            user_agent  TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_login_logs_created ON login_logs(id DESC)"
+    )
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS user_permissions (
             user_id  INTEGER NOT NULL,
             scope    TEXT    NOT NULL,
@@ -12914,8 +13391,9 @@ def init_db():
         )
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    row = cursor.execute("SELECT id FROM users WHERE username = ?", ("admin",)).fetchone()
-    if not row:
+    # Seed only an empty users table. Do not recreate "admin" after it has been renamed.
+    any_user = cursor.execute("SELECT id FROM users LIMIT 1").fetchone()
+    if not any_user:
         cursor.execute(
             """INSERT INTO users (username, full_name, password_hash, is_admin, is_active, created_at, updated_at)
                VALUES (?, ?, ?, 1, 1, ?, ?)""",

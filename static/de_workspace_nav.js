@@ -184,6 +184,7 @@
     if(active){
       var group = active.closest('.de-nav-group');
       if(group){
+        closeOtherNavGroups(sidebar, group);
         group.classList.add('is-open');
         var toggle = group.querySelector('.de-nav-group-toggle');
         if(toggle) toggle.setAttribute('aria-expanded', 'true');
@@ -697,6 +698,33 @@
     return pinned;
   }
 
+  function closeOtherNavGroups(sidebar, exceptGroup){
+    if(!sidebar) return;
+    sidebar.querySelectorAll('.de-nav-group.is-open, .de-nav-group.is-flyout-active').forEach(function(other){
+      if(other === exceptGroup) return;
+      other.classList.remove('is-open', 'is-flyout-active');
+      var otherSub = other.querySelector('.de-nav-sub');
+      if(otherSub) markNavSubSettled(otherSub, false);
+      var otherToggle = other.querySelector('.de-nav-group-toggle');
+      if(otherToggle) otherToggle.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function persistOpenNavGroupIds(sidebar){
+    var ids = [];
+    var nodes = sidebar
+      ? sidebar.querySelectorAll('.de-nav-group.is-open')
+      : document.querySelectorAll('.de-sidebar .de-nav-group.is-open');
+    nodes.forEach(function(g){
+      if(g.id && ids.indexOf(g.id) === -1) ids.push(g.id);
+    });
+    /* Accordion: only one top-level module may stay expanded. */
+    if(ids.length > 1) ids = [ids[ids.length - 1]];
+    try{
+      sessionStorage.setItem('de-nav-open-groups', JSON.stringify(ids));
+    } catch(e){}
+  }
+
   function toggleDeNavGroup(event, groupId){
     if(event && typeof event.preventDefault === 'function') event.preventDefault();
     if(event && typeof event.stopPropagation === 'function') event.stopPropagation();
@@ -717,23 +745,13 @@
     var sidebarExpanded = isDeSidebarExpandedState(sidebar);
     var opening = !group.classList.contains('is-open');
 
-    // Accordion: only one module expanded at a time.
-    // Close siblings on the next frame so open/close max-height transitions both paint.
+    // Accordion: only one module expanded at a time. Close siblings first so
+    // their max-height can collapse while this group opens in the same turn.
     if(opening){
+      closeOtherNavGroups(sidebar, group);
       group.classList.add('is-open');
       group.classList.toggle('is-flyout-active', !sidebarExpanded);
-      var openSub = group.querySelector('.de-nav-sub');
-      if(openSub) settleOpenNavSub(group);
-      window.requestAnimationFrame(function(){
-        sidebar.querySelectorAll('.de-nav-group.is-open, .de-nav-group.is-flyout-active').forEach(function(other){
-          if(other === group) return;
-          other.classList.remove('is-open', 'is-flyout-active');
-          var otherSub = other.querySelector('.de-nav-sub');
-          if(otherSub) markNavSubSettled(otherSub, false);
-          var otherToggle = other.querySelector('.de-nav-group-toggle');
-          if(otherToggle) otherToggle.setAttribute('aria-expanded', 'false');
-        });
-      });
+      settleOpenNavSub(group);
     } else {
       group.classList.remove('is-open', 'is-flyout-active');
       var subEl = group.querySelector('.de-nav-sub');
@@ -748,13 +766,7 @@
         if(typeof toggle.focus === 'function') toggle.focus({ preventScroll: true });
       } catch(e){}
     }
-    try{
-      var openIds = [];
-      sidebar.querySelectorAll('.de-nav-group.is-open').forEach(function(g){
-        if(g.id) openIds.push(g.id);
-      });
-      sessionStorage.setItem('de-nav-open-groups', JSON.stringify(openIds));
-    } catch(e){}
+    persistOpenNavGroupIds(sidebar);
     if(opening){
       scheduleEnsureNavGroupVisible(group);
     } else {
@@ -912,13 +924,7 @@
   }
 
   function seedPersistedNavGroups(){
-    var ids = [];
-    document.querySelectorAll('.de-sidebar .de-nav-group.is-open').forEach(function(group){
-      if(group.id) ids.push(group.id);
-    });
-    try{
-      sessionStorage.setItem('de-nav-open-groups', JSON.stringify(ids));
-    } catch(e){}
+    persistOpenNavGroupIds();
   }
 
   function initDeWorkspaceSidebar(){
@@ -967,20 +973,32 @@
     } catch(e){
       ids = [];
     }
-    if(!Array.isArray(ids)) return;
-    var idSet = {};
-    ids.forEach(function(id){
-      if(id) idSet[id] = true;
-    });
-    document.querySelectorAll('.de-sidebar .de-nav-group').forEach(function(group){
-      if(!group.id) return;
-      var shouldOpen = !!idSet[group.id] || group.classList.contains('is-child-active');
-      group.classList.toggle('is-open', shouldOpen);
-      if(!shouldOpen) group.classList.remove('is-flyout-active');
-      var sub = group.querySelector('.de-nav-sub');
-      if(sub) markNavSubSettled(sub, shouldOpen);
-      var toggle = group.querySelector('.de-nav-group-toggle');
-      if(toggle) toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+    if(!Array.isArray(ids)) ids = [];
+
+    document.querySelectorAll('.de-sidebar').forEach(function(sidebar){
+      var activeGroup = sidebar.querySelector('.de-nav-group.is-child-active');
+      var preferredId = activeGroup && activeGroup.id ? activeGroup.id : '';
+      if(!preferredId){
+        for(var i = ids.length - 1; i >= 0; i--){
+          if(!ids[i]) continue;
+          var persisted = null;
+          try{ persisted = sidebar.querySelector('#' + ids[i]); } catch(e2){ persisted = null; }
+          if(persisted && persisted.classList.contains('de-nav-group')){
+            preferredId = ids[i];
+            break;
+          }
+        }
+      }
+      sidebar.querySelectorAll('.de-nav-group').forEach(function(group){
+        if(!group.id) return;
+        var shouldOpen = !!preferredId && group.id === preferredId;
+        group.classList.toggle('is-open', shouldOpen);
+        if(!shouldOpen) group.classList.remove('is-flyout-active');
+        var sub = group.querySelector('.de-nav-sub');
+        if(sub) markNavSubSettled(sub, shouldOpen);
+        var toggle = group.querySelector('.de-nav-group-toggle');
+        if(toggle) toggle.setAttribute('aria-expanded', shouldOpen ? 'true' : 'false');
+      });
     });
   }
 

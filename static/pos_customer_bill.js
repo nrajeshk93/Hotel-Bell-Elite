@@ -44,6 +44,27 @@
     };
   }
 
+  function invoiceTaxRates(invoice) {
+    var base = activeTaxRates();
+    if (!invoice) return base;
+    var cgstPct = invoice.tax_cgst_pct != null ? invoice.tax_cgst_pct : invoice.taxCgstPct;
+    var ugstPct = invoice.tax_ugst_pct != null ? invoice.tax_ugst_pct : invoice.taxUgstPct;
+    if (cgstPct != null && isFinite(Number(cgstPct))) base.cgst = Number(cgstPct) / 100;
+    if (ugstPct != null && isFinite(Number(ugstPct))) base.ugst = Number(ugstPct) / 100;
+    return base;
+  }
+
+  function formatBillTaxPct(rate) {
+    var pct = Number(rate) * 100;
+    if (!isFinite(pct) || pct < 0) pct = 0;
+    pct = Math.round(pct * 1000) / 1000;
+    var text = String(pct);
+    if (text.indexOf('.') !== -1) {
+      text = text.replace(/\.?0+$/, '');
+    }
+    return text;
+  }
+
   /* Correct known typo still embedded in soft-nav / cached receipt JSON. */
   var GST_NUMBER_CORRECTIONS = {
     '35AAANFH8592H1ZS': '35AANFH8592H1ZS'
@@ -266,14 +287,14 @@
         : '') +
       (Number(totals.cgst) > 0
         ? '<div><span>CGST (' +
-          activeTaxRates().cgst * 100 +
+          formatBillTaxPct(invoiceTaxRates(invoice).cgst) +
           '%)</span><span>' +
           formatLegacyMoney(totals.cgst) +
           '</span></div>'
         : '') +
       (Number(totals.ugst) > 0
         ? '<div><span>UGST (' +
-          activeTaxRates().ugst * 100 +
+          formatBillTaxPct(invoiceTaxRates(invoice).ugst) +
           '%)</span><span>' +
           formatLegacyMoney(totals.ugst) +
           '</span></div>'
@@ -460,14 +481,14 @@
         : '') +
       (Number(totals.cgst) > 0
         ? '<div><span>CGST @ ' +
-          activeTaxRates().cgst * 100 +
+          formatBillTaxPct(invoiceTaxRates(invoice).cgst) +
           '%</span><span>' +
           formatThermalAmount(totals.cgst) +
           '</span></div>'
         : '') +
       (Number(totals.ugst) > 0
         ? '<div><span>UGST @ ' +
-          activeTaxRates().ugst * 100 +
+          formatBillTaxPct(invoiceTaxRates(invoice).ugst) +
           '%</span><span>' +
           formatThermalAmount(totals.ugst) +
           '</span></div>'

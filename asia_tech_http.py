@@ -47,6 +47,11 @@ BOOKING_PATH_CANDIDATES = (
 _discovered_bookings_path: Optional[str] = None
 _discovery_attempted = False
 _list_cache: Dict[str, Any] = {"key": "", "at": 0.0, "rows": [], "meta": {}}
+# Keep every booking we have successfully pulled. Vendor getbooking only
+# returns ~240h of activity, so a later narrower/failed fetch must not
+# drop future stays that were already seen.
+_merged_bookings: Dict[str, Dict[str, Any]] = {}
+_merged_cred_key = ""
 LIST_CACHE_TTL_S = 60.0
 
 
@@ -96,10 +101,52 @@ def auth_body(
 
 
 def booking_date_window(today: Optional[date] = None) -> Tuple[str, str]:
-    """Return (fromdate, todate) ISO strings within Asia Tech's ~240h lookback."""
+    """Return (fromdate, todate) ISO strings the vendor will accept.
+
+    ``fromdate`` must not be in the future and not older than ~240 hours.
+    Always use the full allowed lookback through today so recently booked
+    *future* stays (check-in after today) are still included; the UI then
+    filters by stay date.
+    """
     end = today or date.today()
     start = end - timedelta(days=BOOKING_LOOKBACK_DAYS)
     return start.isoformat(), end.isoformat()
+
+
+def _row_booking_id(row: Dict[str, Any]) -> str:
+    return str(
+        row.get("bookingid")
+        or row.get("bookingId")
+        or row.get("BookingId")
+        or row.get("id")
+        or ""
+    ).strip()
+
+
+def _bind_merged_cred(cred_key: str) -> None:
+    """Drop in-memory bookings when username/hotel/base URL changes."""
+    global _merged_bookings, _merged_cred_key
+    key = str(cred_key or "").strip()
+    if key != _merged_cred_key:
+        _merged_bookings = {}
+        _merged_cred_key = key
+
+
+def merge_booking_rows(
+    rows: List[Dict[str, Any]], *, cred_key: str = ""
+) -> List[Dict[str, Any]]:
+    """Upsert vendor rows by booking id and return the full merged set."""
+    global _merged_bookings
+    if cred_key:
+        _bind_merged_cred(cred_key)
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        bid = _row_booking_id(row)
+        if not bid:
+            continue
+        _merged_bookings[bid] = row
+    return list(_merged_bookings.values())
 
 
 def post_json(
@@ -317,6 +364,7 @@ def fetch_bookings(
     global _list_cache
     base = _normalize_base(base_url)
     cred_key = f"{base}|{username}|{hotel_id}"
+    _bind_merged_cred(cred_key)
     now = time.monotonic()
     if (
         not force_refresh
@@ -365,7 +413,17 @@ def fetch_bookings(
     )
     if not get_err:
         meta["bookings_path"] = GETBOOKING_PATH
+        meta["pulled"] = len(rows)
         _discovered_bookings_path_set(GETBOOKING_PATH)
+        rows = merge_booking_rows(rows, cred_key=cred_key)
+        _list_cache = {"key": cred_key, "at": now, "rows": rows, "meta": meta}
+        return rows, meta
+    if _merged_bookings and "240" in (get_err or "").lower():
+        # Future/out-of-window fromdate fails the vendor call; keep stays we
+        # already pulled instead of showing an empty table.
+        meta["bookings_path"] = GETBOOKING_PATH
+        meta["error"] = ""
+        rows = list(_merged_bookings.values())
         _list_cache = {"key": cred_key, "at": now, "rows": rows, "meta": meta}
         return rows, meta
 
@@ -403,6 +461,10 @@ def fetch_bookings(
             meta["error"] = err_text or f"bookings HTTP {status}"
             rows = []
 
+    if rows:
+        rows = merge_booking_rows(rows, cred_key=cred_key)
+    elif _merged_bookings:
+        rows = list(_merged_bookings.values())
     _list_cache = {"key": cred_key, "at": now, "rows": rows, "meta": meta}
     return rows, meta
 
@@ -415,6 +477,9 @@ def _discovered_bookings_path_set(path: str) -> None:
 
 def clear_caches() -> None:
     global _discovered_bookings_path, _discovery_attempted, _list_cache
+    global _merged_bookings, _merged_cred_key
     _discovered_bookings_path = None
     _discovery_attempted = False
     _list_cache = {"key": "", "at": 0.0, "rows": [], "meta": {}}
+    _merged_bookings = {}
+    _merged_cred_key = ""

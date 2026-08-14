@@ -10,11 +10,12 @@
   class="st-audit-page"
   id="st-audit-page"
   data-outlet="{{ selected_outlet }}"
+  data-place="{{ stock_place|default('warehouse') }}"
   data-verify-url="{{ audit_verify_url }}"
   data-skip-url="{{ audit_skip_url }}"
   data-new-url="{{ audit_new_url }}"
   data-history-url="{{ audit_history_url }}"
-  data-page-url="{{ url_for('stores_stock_audit', outlet=selected_outlet) }}"
+  data-page-url="{{ url_for('stores_stock_audit', outlet=selected_outlet, place=stock_place|default('warehouse')) }}"
 >
   <div class="pl-summary-row st-audit-kpi-row" id="st-audit-kpi-row" aria-label="Audit summary" role="toolbar">
     <button type="button" class="card pl-summary-card hbe-kpi-card st-audit-kpi is-active" data-kpi="total" aria-pressed="true" aria-label="Show all products">

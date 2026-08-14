@@ -12,6 +12,11 @@ from flask import Blueprint, has_request_context, jsonify, redirect, render_temp
 
 from db import SQL_NOW, get_db
 from embed_helpers import is_embed_request
+from reports import (
+    SALARY_PAYMENT_NAME,
+    report_export_filename,
+    report_export_month_filename,
+)
 from workspace_access import user_can_access_payroll_submodule
 
 payroll_bp = Blueprint("payroll", __name__)
@@ -3267,7 +3272,7 @@ def export_employees():
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f'payroll_{calendar.month_abbr[month].lower()}_{year}.xlsx'
+    fname = report_export_month_filename("Monthly Payroll Report", year, month)
     return send_file(buf, as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
@@ -3417,7 +3422,7 @@ def export_employee_master():
     ws.title = _DEFAULT_COMPANY[:31]
     _fill_sheet(ws, rows)
 
-    return _xl_send(wb, 'employee_master.xlsx')
+    return _xl_send(wb, report_export_filename("Employee Master"))
 
 
 @payroll_bp.route('/export/attendance_report')
@@ -3675,7 +3680,7 @@ def export_attendance_register():
 
     conn.close()
 
-    fname = f'attendance_register_{calendar.month_abbr[month].lower()}_{year}.xlsx'
+    fname = report_export_month_filename("Attendance Register", year, month)
     return _xl_send(wb, fname)
 
 
@@ -4095,7 +4100,7 @@ def export_credits_report():
     _xl_col_widths(ws2, [14, 26, 12, 14, 16, 34, 14, 12])
     ws2.freeze_panes = 'A3'
 
-    fname = f'credit_advance_{date.today().strftime("%Y%m%d")}.xlsx'
+    fname = report_export_month_filename("Credit Advance", year, month)
     return _xl_send(wb, fname)
 
 
@@ -4201,6 +4206,9 @@ def bank_report():
         month_name=calendar.month_name[month],
         report=report,
         bank_report_url=url_for("export_bank_report", year=year, month=month),
+        bank_report_export_filename=report_export_month_filename(
+            SALARY_PAYMENT_NAME, year, month
+        ),
         filter_form_action=url_for("bank_report"),
         back_href=url_for("reports"),
         back_label="Back to Reports",
@@ -4270,7 +4278,7 @@ def export_bank_report():
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    fname = f'bank_report_{calendar.month_abbr[month].lower()}_{year}.xlsx'
+    fname = report_export_month_filename(SALARY_PAYMENT_NAME, year, month)
     return send_file(
         buf,
         as_attachment=True,

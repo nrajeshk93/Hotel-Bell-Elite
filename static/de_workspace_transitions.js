@@ -37,6 +37,24 @@
   /** @type {AbortController|null} */
   var softNavAbort = null;
   var overlayHideToken = 0;
+  var __deNavDbg = { t0: 0, url: '', prefetch: false };
+
+  // #region agent log
+  function __deDbg(hypothesisId, location, message, data){
+    fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6fd'},
+      body:JSON.stringify({
+        sessionId:'85c6fd',
+        hypothesisId:hypothesisId,
+        location:location,
+        message:message,
+        data:data || {},
+        timestamp:Date.now()
+      })
+    }).catch(function(){});
+  }
+  // #endregion
 
   function prefersReducedMotion(){
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -718,7 +736,7 @@
         }
         /* Roles list mutates on create/edit/delete — a pre-create prefetch
            makes custom roles look like they vanished after navigating away. */
-        if(path === '/access-management/roles'){
+        if(path === '/access-management/roles' || path === '/access-management/logs'){
           prefetchCache.delete(key);
           return null;
         }
@@ -760,7 +778,7 @@
           if(path === '/communication-hub'){
             return null;
           }
-          if(path === '/access-management/roles'){
+          if(path === '/access-management/roles' || path === '/access-management/logs'){
             return null;
           }
           if(path === '/stores/indent' || path === '/stores/inward'){
@@ -892,7 +910,8 @@
         return !!main.querySelector(
           '#sales-report-page, [data-sales-report], '
           + '#menu-sales-report-page, [data-menu-sales-report], '
-          + '#customer-insights-report-page, [data-customer-insights-report]'
+          + '#customer-insights-report-page, [data-customer-insights-report], '
+          + '#manager-insight-report-page, [data-manager-insight-report]'
         );
       }
       if(path === '/settings') return !!main.querySelector('#settings-page, [data-settings], #sd-settings-sections');
@@ -949,7 +968,7 @@
         return !!main.querySelector('[data-st-po-page], .st-po-page');
       }
       if(path === '/stores/purchase-requests') return !!main.querySelector('#st-inward-page, #st-inward-indent, #st-inward-indent-listbox, #st-inward-direct-lines');
-      if(path === '/stores/stock') return !!main.querySelector('#st-stock-search, #st-stock-out-filter');
+      if(path === '/stores/stock') return !!main.querySelector('#st-stock-search, #st-stock-page');
       if(path === '/stores/stock-audit') return !!main.querySelector('#st-audit-page, #st-audit-queue, #st-audit-search');
       if(path === '/stores/stock-audit/report') return !!main.querySelector('#st-audit-report-page, #st-audit-report-filter-form');
     } catch(e){}
@@ -1091,10 +1110,20 @@
         }, 20);
       });
     }
-    return Promise.race([
-      Promise.all(links.map(waitOne)),
-      new Promise(function(resolve){ setTimeout(resolve, limit); })
-    ]);
+    var cssT0 = Date.now();
+    var allReady = Promise.all(links.map(waitOne)).then(function(){ return 'ready'; });
+    var timedOut = new Promise(function(resolve){ setTimeout(function(){ resolve('timeout'); }, limit); });
+    return Promise.race([allReady, timedOut]).then(function(winner){
+      // #region agent log
+      __deDbg('B', 'de_workspace_transitions.js:waitForStylesheets', 'css wait done', {
+        winner: winner,
+        linkCount: links.length,
+        cssWaitMs: Date.now() - cssT0,
+        sheetsReady: links.filter(sheetReady).length,
+        url: __deNavDbg.url
+      });
+      // #endregion
+    });
   }
 
   function scriptPathname(src){
@@ -1167,6 +1196,13 @@
         index++;
       }
       if(index >= scriptNodes.length){
+        // #region agent log
+        __deDbg('C', 'de_workspace_transitions.js:runScriptNodes', 'scripts finished', {
+          scriptCount: (scriptNodes || []).length,
+          scriptsMs: Date.now() - (__deNavDbg.scriptsT0 || Date.now()),
+          url: __deNavDbg.url
+        });
+        // #endregion
         done();
         return;
       }
@@ -1387,6 +1423,8 @@
     sidebar.querySelectorAll('.de-nav-group.is-open').forEach(function(group){
       if(group.id) ids.push(group.id);
     });
+    /* Accordion: only one top-level module may stay expanded. */
+    if(ids.length > 1) ids = [ids[ids.length - 1]];
     try{
       sessionStorage.setItem(OPEN_NAV_GROUPS_KEY, JSON.stringify(ids));
     } catch(e){}
@@ -1918,6 +1956,7 @@
 
   function applySoftSwap(doc, url, done, sidebarScroll, navToken){
     if(!isCurrentSoftNav(navToken)) return;
+    __deNavDbg.swapT0 = Date.now();
     if(typeof window.closeMasterModal === 'function'){
       window.closeMasterModal();
     }
@@ -1956,6 +1995,18 @@
         /* Paint DOM immediately. Do NOT preloadExternalScripts before runScriptNodes —
            that marks src as loaded and makes runScriptNodes skip waiting, so page
            inits (e.g. initPosTablesPage) can run before the script exists. */
+        // #region agent log
+        var mainKids = nextMain ? nextMain.children.length : 0;
+        var emptyish = !nextMain || !String(nextMain.textContent || '').replace(/\s+/g, '').length;
+        __deDbg('B', 'de_workspace_transitions.js:finishSwap', 'dom swap start', {
+          cssToSwapMs: Date.now() - (__deNavDbg.swapT0 || Date.now()),
+          totalMs: Date.now() - (__deNavDbg.t0 || Date.now()),
+          mainChildCount: mainKids,
+          emptyMain: emptyish,
+          navigatingClass: document.documentElement.classList.contains('de-soft-navigating'),
+          url: url
+        });
+        // #endregion
         document.documentElement.classList.add('de-soft-navigating');
         if(nextTitle) document.title = nextTitle;
         if(nextBodyClass) document.body.className = nextBodyClass;
@@ -1979,11 +2030,21 @@
             try{ history.replaceState({ deSoftNav: true }, '', syncUrl); } catch(err){}
           }
         }
+        __deNavDbg.scriptsT0 = Date.now();
         runScriptNodes(content.scripts, function(){
           if(!isCurrentSoftNav(navToken)) return;
           try{
+            var finT0 = Date.now();
             finalizeSoftNav();
             restoreSidebarScrollAfterLayout(sidebarScroll);
+            // #region agent log
+            __deDbg('D', 'de_workspace_transitions.js:finalizeSoftNav', 'reinit done', {
+              finalizeMs: Date.now() - finT0,
+              scriptsMs: Date.now() - (__deNavDbg.scriptsT0 || Date.now()),
+              totalMs: Date.now() - (__deNavDbg.t0 || Date.now()),
+              url: url
+            });
+            // #endregion
           } catch(err){
             try{ console.error('de soft-nav finalize failed', err); } catch(eLog){}
           } finally {
@@ -2082,6 +2143,7 @@
     var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
     markMainLoading(true);
+    __deNavDbg = { t0: Date.now(), url: String(url || ''), prefetch: false };
     /* First soft-nav in a session previously lacked this class until after reveal,
        so opacity:0 enter styles could still paint a plain box on first module open. */
     document.documentElement.classList.add('de-soft-nav-session');
@@ -2092,6 +2154,14 @@
     }
 
     var prefetched = takePrefetchedHtml(url);
+    __deNavDbg.prefetch = !!prefetched;
+    // #region agent log
+    __deDbg('A', 'de_workspace_transitions.js:softNavigate', 'nav start', {
+      url: url,
+      prefetchHit: !!prefetched,
+      fromPath: (window.location && window.location.pathname) || ''
+    });
+    // #endregion
     var fetchOpts = {
       credentials: 'same-origin',
       headers: {
@@ -2138,6 +2208,14 @@
       var payload = results[0];
       var html = typeof payload === 'string' ? payload : (payload && payload.html);
       var swapUrl = (payload && typeof payload === 'object' && payload.url) ? payload.url : url;
+      // #region agent log
+      __deDbg('A', 'de_workspace_transitions.js:softNavigate', 'html ready', {
+        url: swapUrl,
+        prefetchHit: !!prefetched,
+        htmlBytes: html ? html.length : 0,
+        fetchMs: Date.now() - (__deNavDbg.t0 || Date.now())
+      });
+      // #endregion
       if(!html) throw new Error('empty soft nav html');
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
@@ -2516,6 +2594,9 @@
     if(typeof window.initCustomerInsightsReportPage === 'function'){
       window.initCustomerInsightsReportPage();
     }
+    if(typeof window.initManagerInsightReportPage === 'function'){
+      window.initManagerInsightReportPage();
+    }
     if(typeof window.initStockAuditReportPage === 'function'){
       window.initStockAuditReportPage();
     }
@@ -2575,19 +2656,19 @@
         '/static/sales_update_premium.css?v=22',
         '/static/de_workspace_shell.css?v=45',
         '/static/stores.css?v=75',
-        '/static/ep_form_listbox.css?v=21',
+        '/static/ep_form_listbox.css?v=23',
         '/static/pos_tables.css?v=54',
         '/static/pos_invoice.css?v=55',
-        '/static/purchase_ledger.css?v=29',
+        '/static/purchase_ledger.css?v=44',
         '/static/communication_hub.css?v=12',
         '/static/hotel_rooms.css?v=60',
-        '/static/hotel_reservations.css?v=1',
+        '/static/hotel_reservations.css?v=20',
         '/static/hotel_date_picker.css?v=9',
         '/static/access_management_premium.css?v=29',
         '/static/hbe_home_premium.css?v=19',
-        '/static/sales_report.css?v=12',
+        '/static/sales_report.css?v=19',
         '/static/sales_date_range.css?v=2',
-        '/static/reports_page_scroll.css?v=3'
+        '/static/reports_page_scroll.css?v=4'
       ].forEach(function(href){
         try{
           var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]')).some(function(el){

@@ -14,7 +14,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=18">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
 <script>
 (function(){
   try{
@@ -101,7 +101,7 @@
                 <div class="an-range-wrap an-range-wrap--sales" id="cl-date-range-wrap" data-max-date="{{ today_iso }}">
                   <button type="button" class="an-range-trigger se-filter-chip-trigger" id="cl-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="cl-date-range-panel">
                     <span class="an-range-trigger-label">
-                      <span id="cl-date-range-display">{% if date_filter_active %}{{ date_from }} – {{ date_to }}{% else %}Date{% endif %}</span>
+                      <span id="cl-date-range-display">{% if date_filter_active %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Date{% endif %}</span>
                     </span>
                   </button>
                   <div class="an-range-backdrop" id="cl-date-range-backdrop" aria-hidden="true"></div>
@@ -247,7 +247,7 @@
               {% set type_label = cash_ledger_entry_labels.get(entry.entry_type, entry.entry_type) %}
               <tr class="cl-ledger-row" data-entry-type="{{ entry.entry_type }}" data-source-id="{{ entry.source_id }}"
                   data-search="{{ [entry.entry_date or '', type_label, entry.detail or '', entry.expense_code or '', entry.description or '', entry.signed_amount|string]|join(' ')|lower }}">
-                <td class="pl-col-date" data-sort-value="{{ entry.entry_date or '' }}">{{ entry.entry_date }}</td>
+                <td class="pl-col-date" data-sort-value="{{ entry.entry_date or '' }}">{{ entry.entry_date|report_dt }}</td>
                 <td data-sort-value="{{ type_label }}">
                   <span class="cl-type-pill cl-type-pill--{{ entry.entry_type }}">{{ type_label }}</span>
                 </td>
@@ -381,7 +381,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=10"></script>
 {% include 'partials/sales_update_filter_listbox_scripts.html' %}
 {% include 'partials/cash_ledger_scripts.html' %}

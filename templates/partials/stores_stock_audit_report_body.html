@@ -73,6 +73,7 @@
             <tr>
               <th scope="col">Verified</th>
               <th scope="col">Outlet</th>
+              <th scope="col">Place</th>
               <th scope="col">Product</th>
               <th scope="col">Category</th>
               <th scope="col">Unit</th>
@@ -88,9 +89,10 @@
           <tbody>
             {% for row in rows %}
             <tr class="st-audit-report-row"
-                data-search="{{ [row.item_name or '', row.category_name or '', row.outlet_label or '', row.reason_label or '', row.remarks or '', row.verified_by_name or '', row.audit_label or '', row.unit or '']|join(' ')|lower }}">
-              <td class="pl-col-date">{{ stores_dt(row.verified_at) if row.verified_at else '—' }}</td>
+                data-search="{{ [row.item_name or '', row.category_name or '', row.outlet_label or '', row.place_label or '', row.reason_label or '', row.remarks or '', row.verified_by_name or '', row.audit_label or '', row.unit or '']|join(' ')|lower }}">
+              <td class="pl-col-date">{{ row.verified_at|report_dt if row.verified_at else '—' }}</td>
               <td>{{ row.outlet_label }}</td>
+              <td>{{ row.place_label or '—' }}</td>
               <td>
                 <div class="pl-name">{{ row.item_name }}</div>
                 {% if row.audit_label %}<div class="pl-meta">{{ row.audit_label }}</div>{% endif %}
