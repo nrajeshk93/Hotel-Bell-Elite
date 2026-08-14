@@ -9132,14 +9132,19 @@ def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
         primary_stay["billingRoomId"] = ""
         primary["stay"] = primary_stay
         primary["mergePrimary"] = True
+        keep_reserved = _normalize_hotel_room_status(primary.get("status")) == "reserved"
         force_occupied = any(
             _hotel_room_has_inhouse_stay(r)
             or _hotel_stay_guest_richness(r.get("stay")) > 0
             for r in peers
         ) or _hotel_stay_guest_richness(primary_stay) > 0
-        if force_occupied:
+        if force_occupied and not keep_reserved:
             primary["status"] = "occupied"
-        elif _normalize_hotel_room_status(primary.get("status")) == "occupied":
+        elif (
+            not keep_reserved
+            and _normalize_hotel_room_status(primary.get("status")) == "occupied"
+            and not force_occupied
+        ):
             primary["status"] = "vacant"
 
         for room in peers:
@@ -9163,7 +9168,7 @@ def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
             room["mergePrimary"] = False
             room["mergeGroupId"] = primary.get("mergeGroupId")
             if force_occupied:
-                room["status"] = "occupied"
+                room["status"] = "reserved" if keep_reserved else "occupied"
             elif _normalize_hotel_room_status(room.get("status")) == "occupied":
                 room["status"] = "vacant"
 
@@ -12167,11 +12172,16 @@ def merge_hotel_room_billing(conn, from_room_id, to_room_id, note=""):
 
     primary_stay = _normalize_hotel_room_stay(primary_stay)
     primary["stay"] = primary_stay
+    prev_status = _normalize_hotel_room_status(primary.get("status"))
     occupy = (
         _hotel_stay_guest_richness(primary_stay) > 0
         or _hotel_room_has_inhouse_stay({"stay": primary_stay, "status": "occupied"})
     )
-    primary["status"] = "occupied" if occupy else "vacant"
+    if occupy:
+        next_status = "reserved" if prev_status == "reserved" else "occupied"
+    else:
+        next_status = "vacant"
+    primary["status"] = next_status
 
     group_id = primary_group or source_group or _new_hotel_merge_group_id()
     primary["mergeGroupId"] = group_id
@@ -12187,11 +12197,12 @@ def merge_hotel_room_billing(conn, from_room_id, to_room_id, note=""):
         member_room["stay"] = _hotel_member_stay_from_occupied(mstay, primary.get("id"))
         member_room["mergeGroupId"] = group_id
         member_room["mergePrimary"] = False
-        member_room["status"] = "occupied" if occupy else "vacant"
+        member_room["status"] = next_status
 
     _hotel_sync_merge_group_shared_data(
         rooms, tariff_rates=get_hotel_tariff_rates(conn)
     )
+    _hotel_snapshot_merge_rooms_on_stay(primary, rooms)
 
     saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
     primary_out = get_hotel_room(conn, primary.get("id"))
@@ -13337,6 +13348,30 @@ def init_db():
             month     INTEGER NOT NULL,
             locked_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
             PRIMARY KEY (year, month)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS payroll_month_employee_off (
+            year         INTEGER NOT NULL,
+            month        INTEGER NOT NULL,
+            employee_id  INTEGER NOT NULL,
+            total_off    INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (year, month, employee_id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS payroll_month_employee_wages (
+            year          INTEGER NOT NULL,
+            month         INTEGER NOT NULL,
+            employee_id   INTEGER NOT NULL,
+            gross_salary  REAL,
+            basic_salary  REAL,
+            epf_amount    REAL,
+            esic_amount   REAL,
+            epf_exempt    INTEGER,
+            esic_exempt   INTEGER,
+            total_off     INTEGER,
+            PRIMARY KEY (year, month, employee_id)
         )
     """)
     cursor.execute("""

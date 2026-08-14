@@ -175,12 +175,13 @@
       var rank = escapeHtml(row.rank || '');
       return (
         '<div class="rdx-ti-row">'
+        + '<div class="rdx-ti-product">'
         + '<span class="rdx-ti-rank">' + rank + '</span>'
-        + '<div class="rdx-ti-main"><span class="rdx-ti-name">' + name + '</span></div>'
-        + '<div class="rdx-ti-values" title="Total sales ' + sale + '">'
-        + '<span class="rdx-ti-sale">' + sale + '</span>'
+        + '<span class="rdx-ti-name">' + name + '</span>'
+        + '</div>'
         + '<span class="rdx-ti-qty">' + qty + '</span>'
-        + '</div></div>'
+        + '<span class="rdx-ti-sale" title="Total sales ' + sale + '">' + sale + '</span>'
+        + '</div>'
       );
     }).join('');
   }

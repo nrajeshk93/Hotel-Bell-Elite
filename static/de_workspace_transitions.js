@@ -979,7 +979,7 @@
       /* Sales analytics */
       if(path === '/sales_update/hotel') return softNavSalesLocation(main) === 'hotel';
       if(path === '/sales_update/bar') return softNavSalesLocation(main) === 'bar';
-      if(path === '/sales_update/restaurant') return softNavSalesLocation(main) === 'restaurant';
+      if(path === '/sales_update/restaurant' || path === '/point-of-sale/sales-update') return softNavSalesLocation(main) === 'restaurant';
       if(path === '/sales_update/room_transfer'){
         return !!main.querySelector('#room-transfer-page') && /room transfer/i.test(h1);
       }
@@ -2760,21 +2760,21 @@
         '/static/sales_entry_dashboard.css?v=33',
         '/static/sales_update_header.css?v=9',
         '/static/sales_update_premium.css?v=22',
-        '/static/de_workspace_shell.css?v=48',
+        '/static/de_workspace_shell.css?v=50',
         '/static/stores.css?v=75',
-        '/static/ep_form_listbox.css?v=23',
+        '/static/ep_form_listbox.css?v=25',
         '/static/pos_tables.css?v=54',
         '/static/pos_invoice.css?v=55',
-        '/static/purchase_ledger.css?v=44',
+        '/static/purchase_ledger.css?v=45',
         '/static/communication_hub.css?v=12',
         '/static/hotel_rooms.css?v=60',
-        '/static/hotel_reservations.css?v=20',
+        '/static/hotel_reservations.css?v=29',
         '/static/hotel_date_picker.css?v=9',
         '/static/access_management_premium.css?v=32',
         '/static/hbe_home_premium.css?v=19',
         '/static/sales_report.css?v=19',
         '/static/sales_date_range.css?v=2',
-        '/static/reports_page_scroll.css?v=4'
+        '/static/reports_page_scroll.css?v=5'
       ].forEach(function(href){
         try{
           var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).some(function(el){

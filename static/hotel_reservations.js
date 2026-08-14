@@ -9,7 +9,7 @@
     page: 1,
     pageSize: 'all',
     selectedId: '',
-    selectedRoomId: '',
+    selectedRoomIds: [],
     rows: [],
     vacantRooms: [],
     pagination: null,
@@ -690,45 +690,174 @@
     return null;
   }
 
+  function reservationTotalRooms(row) {
+    var n = Number(row && row.totalRooms);
+    if (!isFinite(n) || n < 1) return 1;
+    return Math.floor(n);
+  }
+
+  function assignedRoomIds(row) {
+    var ids = [];
+    var seen = {};
+    function push(id) {
+      var text = String(id == null ? '' : id).trim();
+      if (!text || seen[text]) return;
+      seen[text] = true;
+      ids.push(text);
+    }
+    var list = (row && row.roomIds) || [];
+    if (Array.isArray(list)) {
+      list.forEach(push);
+    }
+    if (row && row.roomId) push(row.roomId);
+    return ids;
+  }
+
+  function assignedRoomCount(row) {
+    var ids = assignedRoomIds(row);
+    if (ids.length) return ids.length;
+    var numbers = [];
+    var seen = {};
+    function pushNum(value) {
+      var text = String(value == null ? '' : value).trim();
+      if (!text || seen[text]) return;
+      seen[text] = true;
+      numbers.push(text);
+    }
+    var list = (row && row.roomNumbers) || [];
+    if (Array.isArray(list)) {
+      list.forEach(pushNum);
+    }
+    if (row && row.roomNumber) pushNum(row.roomNumber);
+    return numbers.length;
+  }
+
+  function reservationRoomCap(row) {
+    return Math.max(0, reservationTotalRooms(row) - assignedRoomCount(row));
+  }
+
+  function selectedRoomIds() {
+    return Array.isArray(state.selectedRoomIds) ? state.selectedRoomIds : [];
+  }
+
+  function pruneSelectedRoomIds(rooms) {
+    var list = rooms || [];
+    state.selectedRoomIds = selectedRoomIds().filter(function (id) {
+      return list.some(function (room) {
+        return sameId(room.id, id);
+      });
+    });
+    return selectedRoomIds();
+  }
+
+  function toggleSelectedRoom(roomId, reservation) {
+    var cap = reservationRoomCap(reservation);
+    if (cap <= 0) {
+      showToast('All rooms for this booking are already assigned.');
+      return false;
+    }
+    var ids = selectedRoomIds().slice();
+    var idx = -1;
+    var i;
+    for (i = 0; i < ids.length; i++) {
+      if (sameId(ids[i], roomId)) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= 0) {
+      ids.splice(idx, 1);
+    } else if (ids.length >= cap) {
+      if (cap === 1 && assignedRoomCount(reservation) === 0) {
+        ids = [roomId];
+      } else {
+        showToast(
+          cap <= 0
+            ? 'All rooms for this booking are already assigned.'
+            : 'You can select at most ' + cap + ' more rooms.'
+        );
+        return false;
+      }
+    } else {
+      ids.push(roomId);
+    }
+    state.selectedRoomIds = ids;
+    return true;
+  }
+
+  function setAssignButtonsDisabled(disabled) {
+    var enabled = !disabled;
+    document.querySelectorAll('#hres-assign-btn, .hres-assign-submit').forEach(function (btn) {
+      btn.disabled = !!disabled;
+    });
+    var headerBtn = document.getElementById('hres-assign-card-btn');
+    if (headerBtn) {
+      headerBtn.hidden = !enabled;
+      if (enabled) headerBtn.removeAttribute('hidden');
+      else headerBtn.setAttribute('hidden', 'hidden');
+    }
+  }
+
   function renderRoomGrid(reservation) {
     var grid = document.getElementById('hres-room-grid');
-    var assignBtn = document.getElementById('hres-assign-btn');
     var assignCard = document.querySelector('.hres-assign-card');
     if (!grid) return;
     var canAssign = canAssignReservation(reservation);
+    var remaining = reservationRoomCap(reservation);
+    var totalRooms = reservationTotalRooms(reservation);
+    var assignedCount = assignedRoomCount(reservation);
     if (assignCard) {
       assignCard.hidden = !canAssign;
       assignCard.setAttribute('aria-hidden', canAssign ? 'false' : 'true');
     }
     if (!canAssign) {
       grid.innerHTML = '';
-      if (assignBtn) assignBtn.disabled = true;
-      state.selectedRoomId = '';
+      setAssignButtonsDisabled(true);
+      state.selectedRoomIds = [];
+      return;
+    }
+    if (remaining <= 0) {
+      grid.innerHTML =
+        '<div class="hres-room-empty">All ' +
+        totalRooms +
+        ' rooms are assigned</div>';
+      setAssignButtonsDisabled(true);
+      state.selectedRoomIds = [];
+      syncAssignRoomLabel([], reservation);
       return;
     }
     var rooms = roomsForReservation(reservation);
-    if (state.selectedRoomId) {
-      var stillValid = rooms.some(function (room) {
-        return sameId(room.id, state.selectedRoomId);
-      });
-      if (!stillValid) state.selectedRoomId = '';
-    }
+    var ids = pruneSelectedRoomIds(rooms);
     if (!rooms.length) {
       grid.innerHTML =
         '<div class="hres-room-empty">No rooms available for these dates.</div>';
-      if (assignBtn) assignBtn.disabled = true;
+      setAssignButtonsDisabled(true);
       return;
     }
     grid.innerHTML = rooms
       .map(function (room) {
-        var selected = sameId(state.selectedRoomId, room.id) ? ' is-selected' : '';
+        var selected = ids.some(function (id) {
+          return sameId(id, room.id);
+        })
+          ? ' is-selected'
+          : '';
+        var primary =
+          assignedCount === 0 && ids.length && sameId(ids[0], room.id)
+            ? ' is-primary'
+            : '';
         var status = String(room.status || 'vacant').toLowerCase();
         var badge = status === 'vacant' ? 'VACANT' : 'AVAILABLE';
+        var primaryBadge = primary
+          ? '<span class="hres-room-primary">PRIMARY</span>'
+          : '';
         return (
           '<button type="button" class="hres-room-option' +
           selected +
+          primary +
           '" data-room-id="' +
           escapeAttr(room.id) +
+          '" aria-pressed="' +
+          (selected ? 'true' : 'false') +
           '">' +
           '<strong>' +
           escapeHtml(room.number || '') +
@@ -739,14 +868,47 @@
           '<span class="hres-room-vacant">' +
           escapeHtml(badge) +
           '</span>' +
+          primaryBadge +
           '</button>'
         );
       })
       .join('');
-    if (assignBtn) {
-      assignBtn.disabled = !(canAssign && state.selectedRoomId);
+    setAssignButtonsDisabled(!(canAssign && ids.length));
+    syncAssignRoomLabel(rooms, reservation);
+  }
+
+  function paintRoomSelection(reservation) {
+    var grid = document.getElementById('hres-room-grid');
+    var row = reservation || findRow(state.selectedId);
+    var ids = selectedRoomIds();
+    if (grid) {
+      grid.querySelectorAll('.hres-room-option[data-room-id]').forEach(function (btn) {
+        var id = btn.getAttribute('data-room-id') || '';
+        var isSel = ids.some(function (item) {
+          return sameId(item, id);
+        });
+        var isPrimary = !!(
+          assignedRoomCount(row) === 0 &&
+          isSel &&
+          ids.length &&
+          sameId(ids[0], id)
+        );
+        btn.classList.toggle('is-selected', isSel);
+        btn.classList.toggle('is-primary', isPrimary);
+        btn.setAttribute('aria-pressed', isSel ? 'true' : 'false');
+        var badge = btn.querySelector('.hres-room-primary');
+        if (isPrimary && !badge) {
+          badge = document.createElement('span');
+          badge.className = 'hres-room-primary';
+          badge.textContent = 'PRIMARY';
+          btn.appendChild(badge);
+        } else if (!isPrimary && badge) {
+          badge.parentNode.removeChild(badge);
+        }
+      });
     }
-    syncAssignRoomLabel(rooms);
+    setAssignButtonsDisabled(!(canAssignReservation(row) && ids.length));
+    syncAssignRoomLabel(null, row);
   }
 
   function findRoomById(roomId) {
@@ -758,29 +920,80 @@
     return null;
   }
 
-  function syncAssignRoomLabel(rooms) {
-    var label = document.getElementById('hres-assign-room-label');
-    if (!label) return;
-    var list = rooms || state.vacantRooms || [];
-    var room = null;
-    var i;
-    for (i = 0; i < list.length; i++) {
-      if (sameId(list[i].id, state.selectedRoomId)) {
-        room = list[i];
-        break;
+  function syncAssignRoomLabel(rooms, reservation) {
+    var labels = [
+      document.getElementById('hres-assign-room-label'),
+      document.getElementById('hres-assign-summary')
+    ].filter(Boolean);
+    var hint = document.getElementById('hres-assign-hint');
+    var row = reservation || findRow(state.selectedId);
+    var totalRooms = reservationTotalRooms(row);
+    var assignedCount = assignedRoomCount(row);
+    var cap = reservationRoomCap(row);
+    var ids = selectedRoomIds();
+    if (hint) {
+      if (assignedCount > 0 && cap <= 0) {
+        hint.textContent = 'All ' + totalRooms + ' rooms are assigned';
+      } else if (assignedCount > 0) {
+        hint.textContent =
+          assignedCount +
+          ' of ' +
+          totalRooms +
+          ' rooms assigned · select up to ' +
+          cap +
+          ' more';
+      } else {
+        hint.textContent =
+          cap > 1
+            ? 'Select up to ' + cap + ' rooms, then Assign Room'
+            : 'Select a room, then Assign Room';
       }
     }
-    if (!room) room = findRoomById(state.selectedRoomId);
-    if (!room) {
-      label.textContent = 'Select a room';
+    if (!labels.length) return;
+    if (assignedCount > 0 && cap <= 0) {
+      labels.forEach(function (el) {
+        el.textContent = 'All ' + totalRooms + ' rooms are assigned';
+      });
       return;
     }
-    label.textContent =
-      'Room ' +
-      (room.number || '') +
-      (room.roomTypeLabel || room.roomType
-        ? ' · ' + (room.roomTypeLabel || room.roomType)
-        : '');
+    if (!ids.length) {
+      labels.forEach(function (el) {
+        el.textContent =
+          assignedCount > 0
+            ? 'Select up to ' + cap + ' more'
+            : cap > 1
+              ? 'Select rooms'
+              : 'Select a room';
+      });
+      return;
+    }
+    var list = rooms || roomsForReservation(row) || state.vacantRooms || [];
+    var primary = null;
+    var i;
+    if (assignedCount === 0) {
+      for (i = 0; i < list.length; i++) {
+        if (sameId(list[i].id, ids[0])) {
+          primary = list[i];
+          break;
+        }
+      }
+      if (!primary) primary = findRoomById(ids[0]);
+    }
+    var text =
+      assignedCount > 0
+        ? ids.length + ' of ' + cap + ' more selected'
+        : ids.length + ' of ' + cap + ' rooms selected';
+    if (primary) {
+      text +=
+        ' · Primary: Room ' +
+        (primary.number || '') +
+        (primary.roomTypeLabel || primary.roomType
+          ? ' · ' + (primary.roomTypeLabel || primary.roomType)
+          : '');
+    }
+    labels.forEach(function (el) {
+      el.textContent = text;
+    });
   }
 
   function openAssignModal() {
@@ -794,11 +1007,10 @@
     }
     modal.hidden = false;
     modal.setAttribute('aria-hidden', 'false');
-    var assignBtn = document.getElementById('hres-assign-btn');
-    if (assignBtn) {
-      assignBtn.disabled = !(state.selectedRoomId && canAssignReservation(row));
-    }
-    syncAssignRoomLabel(roomsForReservation(row));
+    setAssignButtonsDisabled(
+      !(selectedRoomIds().length && canAssignReservation(row))
+    );
+    syncAssignRoomLabel(roomsForReservation(row), row);
   }
 
   function closeAssignModal() {
@@ -813,7 +1025,7 @@
     if (!panel || !row) return;
     closeAssignModal();
     state.selectedId = row.id;
-    state.selectedRoomId = '';
+    state.selectedRoomIds = [];
     panel.hidden = false;
 
     var avatar = document.getElementById('hres-detail-avatar');
@@ -849,6 +1061,7 @@
         ['Meal Plan', row.mealPlan || '—'],
         ['Total Amount', formatInr(row.amount)],
         ['Source', row.sourceLabel || row.source || '—'],
+        ['Total Room', String(row.totalRooms || 1)],
         ['Special Notes', row.specialNotes || '—']
       ];
       dl.innerHTML = fields
@@ -877,7 +1090,7 @@
     var panel = document.getElementById('hres-detail');
     if (panel) panel.hidden = true;
     state.selectedId = '';
-    state.selectedRoomId = '';
+    state.selectedRoomIds = [];
     document.querySelectorAll('#hres-table-body tr.is-selected').forEach(function (tr) {
       tr.classList.remove('is-selected');
     });
@@ -976,6 +1189,9 @@
     document.getElementById('hres-edit-source').value = isEdit
       ? row.source || 'direct'
       : 'direct';
+    document.getElementById('hres-edit-total-rooms').value = isEdit
+      ? row.totalRooms || 1
+      : 1;
     document.getElementById('hres-edit-status').value = isEdit
       ? row.status || 'upcoming'
       : 'upcoming';
@@ -1011,6 +1227,7 @@
       guests: Number(filterValue('hres-edit-guests') || 1),
       amount: Number(filterValue('hres-edit-amount') || 0),
       source: filterValue('hres-edit-source') || 'direct',
+      totalRooms: Number(filterValue('hres-edit-total-rooms') || 1),
       status: filterValue('hres-edit-status') || 'upcoming',
       mealPlan: filterValue('hres-edit-meal'),
       specialNotes: filterValue('hres-edit-notes')
@@ -1053,15 +1270,15 @@
 
   function assignSelectedRoom() {
     var root = pageRoot();
-    if (!root || !state.selectedId || !state.selectedRoomId) return;
+    var ids = selectedRoomIds();
+    if (!root || !state.selectedId || !ids.length) return;
     var row = findRow(state.selectedId);
     if (!canAssignReservation(row)) {
       showToast('Cancelled reservations cannot be assigned a room.');
       closeAssignModal();
       return;
     }
-    var assignBtn = document.getElementById('hres-assign-btn');
-    if (assignBtn) assignBtn.disabled = true;
+    setAssignButtonsDisabled(true);
     fetch(
       apiBase(root) +
         '/' +
@@ -1074,7 +1291,7 @@
           Accept: 'application/json',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ roomId: state.selectedRoomId })
+        body: JSON.stringify({ roomIds: ids, roomId: ids[0] })
       }
     )
       .then(function (resp) {
@@ -1092,7 +1309,7 @@
       })
       .catch(function (err) {
         showToast((err && err.message) || 'Could not assign room');
-        if (assignBtn) assignBtn.disabled = false;
+        setAssignButtonsDisabled(false);
       });
   }
 
@@ -1175,28 +1392,14 @@
         return;
       }
 
-      var roomOpt = event.target.closest('.hres-room-option[data-room-id]');
-      if (roomOpt) {
-        event.preventDefault();
-        var selectedRow = findRow(state.selectedId);
-        if (!canAssignReservation(selectedRow)) {
-          showToast('Cancelled reservations cannot be assigned a room.');
-          return;
-        }
-        state.selectedRoomId = roomOpt.getAttribute('data-room-id') || '';
-        renderRoomGrid(selectedRow);
-        openAssignModal();
-        return;
-      }
-
-      var assignBtn = event.target.closest('#hres-assign-btn');
+      var assignBtn = event.target.closest('#hres-assign-btn, .hres-assign-submit');
       if (assignBtn) {
         event.preventDefault();
         assignSelectedRoom();
         return;
       }
 
-      var editBtn = event.target.closest('#hres-edit-btn');
+      var editBtn = event.target.closest('#hres-edit-btn, .hres-edit-submit');
       if (editBtn) {
         event.preventDefault();
         closeAssignModal();
@@ -1312,9 +1515,41 @@
     }
   }
 
+  function onRoomGridClickCapture(event) {
+    var roomOpt =
+      event.target &&
+      event.target.closest &&
+      event.target.closest('.hres-room-option[data-room-id]');
+    if (!roomOpt) return;
+    var root = pageRoot();
+    if (!root || !root.contains(roomOpt)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof event.stopImmediatePropagation === 'function') {
+      event.stopImmediatePropagation();
+    }
+    closeAssignModal();
+    var selectedRow = findRow(state.selectedId);
+    if (!canAssignReservation(selectedRow)) {
+      showToast('Cancelled reservations cannot be assigned a room.');
+      return;
+    }
+    toggleSelectedRoom(roomOpt.getAttribute('data-room-id') || '', selectedRow);
+    paintRoomSelection(selectedRow);
+  }
+
+  function bindRoomGridCapture() {
+    if (global._hresRoomCapture) {
+      document.removeEventListener('click', global._hresRoomCapture, true);
+    }
+    global._hresRoomCapture = onRoomGridClickCapture;
+    document.addEventListener('click', onRoomGridClickCapture, true);
+  }
+
   function initHotelReservationsPage() {
     var root = pageRoot();
     if (!root) return;
+    bindRoomGridCapture();
     bindOnce(root);
     initDateRangePicker();
     bindTableSort(root);

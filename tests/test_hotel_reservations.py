@@ -92,7 +92,7 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertIn("hres-date-from", html)
         self.assertIn("hres-date-to", html)
         self.assertIn("sales_date_range.js", html)
-        self.assertIn("hotel_reservations.js?v=19", html)
+        self.assertIn("hotel_reservations.js?v=27", html)
         js_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "hotel_reservations.js")
         js = open(js_path, encoding="utf-8").read()
         self.assertIn("function initDateRangePicker", js)
@@ -100,6 +100,8 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertIn('id="hres-edit-meal"', html)
         self.assertIn('id="hres-edit-meal-listbox"', html)
         self.assertIn('id="hres-edit-notes"', html)
+        self.assertIn('id="hres-edit-total-rooms"', html)
+        self.assertIn("['Total Room'", js)
 
         rooms = self.client.get("/hotel/rooms")
         self.assertEqual(rooms.status_code, 200)
@@ -271,6 +273,160 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertFalse(payload.get("ok"))
         self.assertIn("cancelled", str(payload.get("error") or "").lower())
 
+    def test_assign_rooms_as_merge_group_up_to_total_rooms(self):
+        create = self.client.post(
+            "/hotel/api/reservations",
+            json={
+                "guestName": "Group Guest",
+                "mobile": "9000011155",
+                "email": "group@example.com",
+                "checkInDate": "2026-10-10",
+                "checkOutDate": "2026-10-12",
+                "amount": 8000,
+                "source": "direct",
+                "status": "upcoming",
+                "totalRooms": 2,
+            },
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        booking = create.get_json()["reservation"]
+        self.assertEqual(booking.get("totalRooms"), 2)
+
+        rooms_resp = self.client.get("/hotel/api/rooms")
+        self.assertEqual(rooms_resp.status_code, 200)
+        vacant = [
+            r
+            for r in rooms_resp.get_json().get("rooms") or []
+            if str(r.get("status") or "").lower() == "vacant"
+        ]
+        self.assertGreaterEqual(len(vacant), 2)
+        primary = vacant[0]
+        member = vacant[1]
+
+        assign = self.client.post(
+            f"/hotel/api/reservations/{booking['id']}/assign",
+            json={"roomIds": [primary["id"], member["id"]]},
+        )
+        self.assertEqual(assign.status_code, 200, assign.get_data(as_text=True))
+        payload = assign.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["reservation"]["roomId"], primary["id"])
+        self.assertEqual(payload["reservation"]["roomIds"], [primary["id"], member["id"]])
+        self.assertTrue(payload["reservation"]["roomAssigned"])
+        self.assertEqual(payload["room"]["status"], "reserved")
+        self.assertTrue(payload["room"].get("isMergePrimary"))
+        merge_numbers = payload["room"].get("stay", {}).get("mergeRoomNumbers") or []
+        self.assertIn(str(primary.get("number") or ""), merge_numbers)
+        self.assertIn(str(member.get("number") or ""), merge_numbers)
+
+        member_resp = self.client.get(f"/hotel/api/rooms/{member['id']}")
+        self.assertEqual(member_resp.status_code, 200, member_resp.get_data(as_text=True))
+        member_room = member_resp.get_json()["room"]
+        self.assertTrue(member_room.get("isMergeMember"))
+        self.assertEqual((member_room.get("stay") or {}).get("billingRoomId"), primary["id"])
+        self.assertEqual((member_room.get("stay") or {}).get("mergeRole"), "member")
+        self.assertEqual(member_room.get("status"), "reserved")
+
+    def test_assign_rejects_more_rooms_than_total_rooms(self):
+        create = self.client.post(
+            "/hotel/api/reservations",
+            json={
+                "guestName": "Cap Guest",
+                "mobile": "9000011166",
+                "checkInDate": "2026-10-20",
+                "checkOutDate": "2026-10-22",
+                "amount": 6000,
+                "source": "direct",
+                "status": "upcoming",
+                "totalRooms": 2,
+            },
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        booking = create.get_json()["reservation"]
+
+        rooms_resp = self.client.get("/hotel/api/rooms")
+        vacant = [
+            r
+            for r in rooms_resp.get_json().get("rooms") or []
+            if str(r.get("status") or "").lower() == "vacant"
+        ]
+        self.assertGreaterEqual(len(vacant), 3)
+
+        blocked = self.client.post(
+            f"/hotel/api/reservations/{booking['id']}/assign",
+            json={"roomIds": [vacant[0]["id"], vacant[1]["id"], vacant[2]["id"]]},
+        )
+        self.assertEqual(blocked.status_code, 400, blocked.get_data(as_text=True))
+        payload = blocked.get_json()
+        self.assertFalse(payload.get("ok"))
+        self.assertIn("at most 2", str(payload.get("error") or "").lower())
+
+    def test_assign_second_visit_uses_remaining_total_rooms(self):
+        create = self.client.post(
+            "/hotel/api/reservations",
+            json={
+                "guestName": "Remain Guest",
+                "mobile": "9000011177",
+                "checkInDate": "2026-11-10",
+                "checkOutDate": "2026-11-12",
+                "amount": 7000,
+                "source": "direct",
+                "status": "upcoming",
+                "totalRooms": 2,
+            },
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        booking = create.get_json()["reservation"]
+
+        rooms_resp = self.client.get("/hotel/api/rooms")
+        vacant = [
+            r
+            for r in rooms_resp.get_json().get("rooms") or []
+            if str(r.get("status") or "").lower() == "vacant"
+        ]
+        self.assertGreaterEqual(len(vacant), 3)
+        first = vacant[0]
+        second = vacant[1]
+        third = vacant[2]
+
+        first_assign = self.client.post(
+            f"/hotel/api/reservations/{booking['id']}/assign",
+            json={"roomId": first["id"]},
+        )
+        self.assertEqual(first_assign.status_code, 200, first_assign.get_data(as_text=True))
+        first_payload = first_assign.get_json()
+        self.assertEqual(first_payload["reservation"]["roomId"], first["id"])
+        self.assertEqual(first_payload["room"]["status"], "reserved")
+
+        second_assign = self.client.post(
+            f"/hotel/api/reservations/{booking['id']}/assign",
+            json={"roomIds": [second["id"]]},
+        )
+        self.assertEqual(second_assign.status_code, 200, second_assign.get_data(as_text=True))
+        payload = second_assign.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["reservation"]["roomId"], first["id"])
+        self.assertEqual(
+            payload["reservation"]["roomIds"], [first["id"], second["id"]]
+        )
+        self.assertTrue(payload["room"].get("isMergePrimary"))
+        self.assertEqual(payload["room"]["id"], first["id"])
+
+        member_resp = self.client.get(f"/hotel/api/rooms/{second['id']}")
+        self.assertEqual(member_resp.status_code, 200, member_resp.get_data(as_text=True))
+        member_room = member_resp.get_json()["room"]
+        self.assertTrue(member_room.get("isMergeMember"))
+        self.assertEqual((member_room.get("stay") or {}).get("billingRoomId"), first["id"])
+
+        blocked = self.client.post(
+            f"/hotel/api/reservations/{booking['id']}/assign",
+            json={"roomIds": [third["id"]]},
+        )
+        self.assertEqual(blocked.status_code, 400, blocked.get_data(as_text=True))
+        blocked_payload = blocked.get_json()
+        self.assertFalse(blocked_payload.get("ok"))
+        self.assertIn("already has 2 of 2", str(blocked_payload.get("error") or "").lower())
+
     def test_list_includes_occupied_rooms_free_for_future_dates(self):
         occupied = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -356,7 +512,7 @@ class HotelReservationsTests(unittest.TestCase):
                 "guestName": "Overlap Guest",
                 "mobile": "9000011144",
                 "checkInDate": "2026-08-12",
-                "checkOutDate": "2026-08-14",
+                "checkOutDate": "2026-08-16",
                 "amount": 1800,
                 "source": "direct",
                 "status": "upcoming",

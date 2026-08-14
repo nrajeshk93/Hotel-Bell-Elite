@@ -196,6 +196,59 @@ a.sr-kpi-menu {
   color: #94A3B8;
 }
 
+/* Purchase / expense KPI layout on Sales Update (keep % vs yesterday). */
+button.hbe-kpi-card,
+button.pl-summary-card {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  color: inherit;
+}
+
+button.hbe-kpi-card:focus-visible {
+  outline: 2px solid #2563EB;
+  outline-offset: 2px;
+}
+
+button.hbe-kpi-card.sr-kpi-card--active {
+  border-color: #F59E0B;
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.22), 0 8px 30px rgba(15, 23, 42, 0.04);
+}
+
+body.su-module .hbe-kpi-card .sr-kpi-foot {
+  margin-top: 8px;
+}
+
+.hbe-kpi-card:has(.hbe-kpi-icon--green) .sr-kpi-trend {
+  color: #16A34A;
+  background: #ECFDF5;
+}
+
+.hbe-kpi-card:has(.hbe-kpi-icon--blue) .sr-kpi-trend {
+  color: #2563EB;
+  background: #EFF6FF;
+}
+
+.hbe-kpi-card:has(.hbe-kpi-icon--orange) .sr-kpi-trend {
+  color: #D97706;
+  background: #FFFBEB;
+}
+
+.hbe-kpi-card:has(.hbe-kpi-icon--red) .sr-kpi-trend {
+  color: #DC2626;
+  background: #FEF2F2;
+}
+
+.hbe-kpi-card:has(.hbe-kpi-icon--purple) .sr-kpi-trend {
+  color: #7C3AED;
+  background: #F5F3FF;
+}
+
 .sr-kpi-accent {
   position: absolute;
   right: 0;
@@ -279,37 +332,6 @@ a.sr-kpi-menu {
 
 .sr-kpi-card--violet .sr-kpi-accent {
   background: #7C3AED;
-}
-
-/* Footer pill */
-.sr-kpi-note {
-  display: flex;
-  justify-content: center;
-  margin: 18px 0 8px;
-}
-
-.sr-kpi-note-pill {
-  display: inline-flex;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #94A3B8;
-  background: #fff;
-  border: 1px solid #E8ECF1;
-  border-radius: 999px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.sr-kpi-note-pill svg {
-  flex-shrink: 0;
-  width: 15px;
-  height: 15px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 2;
-  color: #94A3B8;
 }
 
 /* Page canvas behind KPI row */

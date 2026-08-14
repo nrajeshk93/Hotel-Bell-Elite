@@ -2,16 +2,16 @@
 {# Soft-nav fetches main-only HTML. Include a hidden sidebar snapshot so
    mergeMissingSidebarLinks can add modules introduced mid-session (e.g. Settings)
    without a full page reload. #}
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
 <div hidden data-de-soft-nav-merge-root="1" aria-hidden="true">
 {% include 'partials/de_workspace_sidebar.html' %}
 </div>
 <div class="de-main-wrapper" data-de-partial="main"{% if de_soft_body_class is defined and de_soft_body_class %} data-de-body-class="{{ de_soft_body_class }}"{% endif %}{% if de_soft_page_title is defined and de_soft_page_title %} data-de-page-title="{{ de_soft_page_title }}"{% endif %}>
 {% else %}
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=4">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=10">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_app_toast.css') }}?v=1">
 <div id="page-transition"></div>
 {% include 'partials/de_fullscreen_script.html' %}

@@ -276,6 +276,14 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertTrue(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
         user["sales_analytics_access"] = {"room_transfer"}
         self.assertFalse(user_can_access_endpoint_sales_analytics(user, "save_sales_update"))
+        pos_user = {
+            "id": 4,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale"},
+            "sales_analytics_access": set(),
+        }
+        self.assertTrue(user_can_access_endpoint_sales_analytics(pos_user, "save_sales_update"))
+        self.assertTrue(user_can_access_endpoint_sales_analytics(pos_user, "sales_update_add_tip"))
 
     def test_set_user_permissions_auto_adds_parent_module(self):
         conn = _FakeConn()
@@ -322,6 +330,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_invoice"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_invoice_ledger"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_sales_update"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("export_pos_invoice_ledger_report"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_settings"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_floor"), "point_of_sale")

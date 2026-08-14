@@ -12,12 +12,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard_analytics.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard_analytics.css') }}?v=13">
 <script>
 (function(){
   try{
@@ -37,8 +37,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard_analytics.css') }}?v=11">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard.css') }}?v=30">
+<link rel="stylesheet" href="{{ url_for('static', filename='main_dashboard_analytics.css') }}?v=13">
 {% endif %}
 <div class="main-wrapper" id="main-dashboard-page" data-main-dashboard>
   <header class="se-sales-header su-header" id="se-sales-header">
@@ -352,17 +352,20 @@
             <button type="button" class="rdx-ti-sort-btn" data-md-ti-sort="revenue" aria-pressed="false">Revenue</button>
           </div>
         </div>
+        <div class="rdx-ti-cols" aria-hidden="true">
+          <span class="rdx-ti-col rdx-ti-col--name">Product Name</span>
+          <span class="rdx-ti-col rdx-ti-col--qty">Quantity sold</span>
+          <span class="rdx-ti-col rdx-ti-col--price">Price</span>
+        </div>
         <div class="rdx-ti-list" data-md-ti-list>
           {% for row in dashboard.top_selling_items %}
           <div class="rdx-ti-row">
-            <span class="rdx-ti-rank">{{ row.rank }}</span>
-            <div class="rdx-ti-main">
+            <div class="rdx-ti-product">
+              <span class="rdx-ti-rank">{{ row.rank }}</span>
               <span class="rdx-ti-name">{{ row.name }}</span>
             </div>
-            <div class="rdx-ti-values" title="Total sales {{ row.sale_value_compact }}">
-              <span class="rdx-ti-sale">{{ row.sale_value_compact }}</span>
-              <span class="rdx-ti-qty">{{ row.qty_display }}</span>
-            </div>
+            <span class="rdx-ti-qty">{{ row.qty_display }}</span>
+            <span class="rdx-ti-sale" title="Total sales {{ row.sale_value_compact }}">{{ row.sale_value_compact }}</span>
           </div>
           {% else %}
           <p class="rdx-ti-empty">No menu sales in this period.</p>
@@ -376,7 +379,7 @@
 <script src="{{ url_for('static', filename='format_inr.js') }}?v=3"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
-<script src="{{ url_for('static', filename='main_dashboard.js') }}?v=9" data-de-rerun="1"></script>
+<script src="{{ url_for('static', filename='main_dashboard.js') }}?v=10" data-de-rerun="1"></script>
 <script src="{{ url_for('static', filename='main_dashboard_charts.js') }}?v=8" data-de-rerun="1"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}

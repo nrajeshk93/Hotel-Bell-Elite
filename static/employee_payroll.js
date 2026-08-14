@@ -123,10 +123,33 @@
     setText('pv-esic', fmt(esic, 0));
     setText('pv-cr', fmt(creditRepay, 0));
     setText('pv-net', fmt(net, 0));
-    setText('pv-basic-label', epfExempt ? 'Basic (EPF exempt)' : (customBasic > 0 ? 'Basic (custom)' : 'Basic (auto)'));
-    setText('pv-epf-label', epfExempt ? 'EPF (exempt ₹0)' : (customEpf > 0 ? 'EPF (custom, max ₹1,800)' : 'EPF (12% of Gross, max ₹1,800)'));
-    setText('pv-esic-label', esicLabel);
-    setText('pv-cr-label', creditRepay > 0 ? 'Credit Repay' : 'Credit Repay (0)');
+    var setStat = function (id, shortText, fullText) {
+      var el = byId(id);
+      if (!el) return;
+      el.textContent = shortText;
+      var card = el.closest('.ep-emp-stat');
+      if (card) card.setAttribute('title', fullText || shortText);
+    };
+    setStat(
+      'pv-basic-label',
+      customBasic > 0 ? 'Basic · custom' : (epfExempt ? 'Basic · exempt' : 'Basic'),
+      epfExempt ? 'Basic (EPF exempt)' : (customBasic > 0 ? 'Basic (custom)' : 'Basic (auto from gross)')
+    );
+    setStat(
+      'pv-epf-label',
+      epfExempt ? 'EPF · exempt' : (customEpf > 0 ? 'EPF · custom' : 'EPF'),
+      epfExempt ? 'EPF exempt ₹0' : (customEpf > 0 ? 'EPF custom, max ₹1,800' : 'EPF 12% of gross, max ₹1,800')
+    );
+    setStat(
+      'pv-esic-label',
+      esicExempt ? 'ESIC · exempt' : (customEsic > 0 ? 'ESIC · custom' : (gross > 21000 ? 'ESIC · fixed' : 'ESIC')),
+      esicLabel
+    );
+    setStat(
+      'pv-cr-label',
+      'Credit',
+      creditRepay > 0 ? 'Credit repayment' : 'Credit repayment ₹0'
+    );
     var warnings = [];
     if (customBasic > 0 && customBasic > gross) warnings.push('Basic Pay exceeds Gross Salary');
     if (!epfExempt) {

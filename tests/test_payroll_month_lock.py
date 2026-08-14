@@ -8,10 +8,15 @@ from employee_payroll import (
     _annotate_payroll_state_for_user,
     _can_modify_attendance_record,
     _employee_has_locked_month_data,
+    _freeze_employee_total_off_for_locked_months,
+    _freeze_employee_wages_for_locked_months,
+    _get_month_total_off,
+    _get_month_wages,
     _get_payroll_month_state,
     _is_credit_date_locked,
     _is_payroll_month_locked,
     _payroll_month_frozen_message,
+    _snapshot_month_total_off,
     _wage_fields_changed,
 )
 
@@ -26,6 +31,13 @@ def _memory_conn():
             month INTEGER NOT NULL,
             locked_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
             PRIMARY KEY (year, month)
+        );
+        CREATE TABLE payroll_month_employee_off (
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            employee_id INTEGER NOT NULL,
+            total_off INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (year, month, employee_id)
         );
         CREATE TABLE employees (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +78,10 @@ def _memory_conn():
 class PayrollMonthLockTests(unittest.TestCase):
     def setUp(self):
         self.conn = _memory_conn()
-        self.conn.execute("INSERT INTO employees (name, gross_salary) VALUES (?, ?)", ("Asha", 20000))
+        self.conn.execute(
+            "INSERT INTO employees (name, gross_salary, total_off) VALUES (?, ?, ?)",
+            ("Asha", 20000, 2),
+        )
         self.conn.commit()
 
     def tearDown(self):
@@ -141,6 +156,64 @@ class PayrollMonthLockTests(unittest.TestCase):
             "esic_exempt": 0,
             "total_off": 4,
         }))
+        self.assertFalse(_wage_fields_changed(existing, {
+            "gross_salary": 20000,
+            "basic_salary": 0,
+            "epf_amount": 0,
+            "esic_amount": 0,
+            "epf_exempt": 0,
+            "esic_exempt": 0,
+            "total_off": 6,
+        }))
+
+    def test_locked_month_keeps_old_total_off_after_master_change(self):
+        self.conn.execute("INSERT INTO payroll_month_locks (year, month) VALUES (2026, 7)")
+        emp = dict(self.conn.execute("SELECT * FROM employees WHERE id=1").fetchone())
+        _snapshot_month_total_off(self.conn, 2026, 7)
+        self.assertEqual(_get_month_total_off(self.conn, emp, 2026, 7), 2)
+
+        _freeze_employee_total_off_for_locked_months(self.conn, 1, 2)
+        self.conn.execute("UPDATE employees SET total_off=6 WHERE id=1")
+        emp = dict(self.conn.execute("SELECT * FROM employees WHERE id=1").fetchone())
+        self.assertEqual(emp["total_off"], 6)
+        self.assertEqual(_get_month_total_off(self.conn, emp, 2026, 7), 2)
+        self.assertEqual(_get_month_total_off(self.conn, emp, 2026, 8), 6)
+
+    def test_freeze_without_prior_snapshot_uses_old_total_off(self):
+        self.conn.execute("INSERT INTO payroll_month_locks (year, month) VALUES (2026, 7)")
+        _freeze_employee_total_off_for_locked_months(self.conn, 1, 2)
+        self.conn.execute("UPDATE employees SET total_off=6 WHERE id=1")
+        emp = dict(self.conn.execute("SELECT * FROM employees WHERE id=1").fetchone())
+        self.assertEqual(_get_month_total_off(self.conn, emp, 2026, 7), 2)
+        self.assertEqual(_get_month_total_off(self.conn, emp, 2026, 8), 6)
+
+    def test_locked_month_keeps_old_wages_after_master_change(self):
+        self.conn.execute("INSERT INTO payroll_month_locks (year, month) VALUES (2026, 7)")
+        emp = dict(self.conn.execute("SELECT * FROM employees WHERE id=1").fetchone())
+        _snapshot_month_total_off(self.conn, 2026, 7)
+        self.assertEqual(_get_month_wages(self.conn, emp, 2026, 7)["gross_salary"], 20000)
+
+        _freeze_employee_wages_for_locked_months(self.conn, 1, emp)
+        self.conn.execute(
+            "UPDATE employees SET gross_salary=25000, epf_exempt=1 WHERE id=1"
+        )
+        emp = dict(self.conn.execute("SELECT * FROM employees WHERE id=1").fetchone())
+        self.assertEqual(emp["gross_salary"], 25000)
+        locked = _get_month_wages(self.conn, emp, 2026, 7)
+        future = _get_month_wages(self.conn, emp, 2026, 8)
+        self.assertEqual(locked["gross_salary"], 20000)
+        self.assertEqual(locked["epf_exempt"], 0)
+        self.assertEqual(future["gross_salary"], 25000)
+        self.assertEqual(future["epf_exempt"], 1)
+
+    def test_freeze_without_prior_snapshot_uses_old_wages(self):
+        self.conn.execute("INSERT INTO payroll_month_locks (year, month) VALUES (2026, 7)")
+        emp = dict(self.conn.execute("SELECT * FROM employees WHERE id=1").fetchone())
+        _freeze_employee_wages_for_locked_months(self.conn, 1, emp)
+        self.conn.execute("UPDATE employees SET gross_salary=25000 WHERE id=1")
+        emp = dict(self.conn.execute("SELECT * FROM employees WHERE id=1").fetchone())
+        self.assertEqual(_get_month_wages(self.conn, emp, 2026, 7)["gross_salary"], 20000)
+        self.assertEqual(_get_month_wages(self.conn, emp, 2026, 8)["gross_salary"], 25000)
 
     def test_frozen_message_mentions_modules(self):
         msg = _payroll_month_frozen_message(2026, 7).lower()

@@ -6,13 +6,13 @@
 <title>{{ page_title|default('Sales Update') }} | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=35">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=4">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=37">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report_kpi.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
 <script>
 (function(){
@@ -53,7 +53,7 @@
 {%- elif field_key == 'online_order' -%}
 <svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
 {%- elif field_key == 'tips' -%}
-<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7v10"/><path d="M9 10h6"/><path d="M9 14h6"/></svg>
+<svg viewBox="0 0 24 24"><circle cx="16.5" cy="6.5" r="2.6"/><path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17"/><path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.8-2.9l-4.2 3.9"/><path d="M2 16v5h5"/></svg>
 {%- elif field_key == 'actual_cash' -%}
 <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M7 9v.01M17 15v.01"/></svg>
 {%- elif field_key == 'upi' -%}
@@ -92,30 +92,39 @@
         {% include 'partials/sales_update_kpi_default_row.html' %}
       {% endwith %}
 
-      <div class="sr-kpi-row sr-kpi-row--cash" id="sr-kpi-row-cash" hidden aria-label="Cash summary">
-        <article class="sr-kpi-card sr-kpi-card--emerald">
-          <div class="sr-kpi-top"><div class="sr-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="12" r="2"/></svg></div></div>
-          <div class="sr-kpi-main">
-            <div class="sr-kpi-label">Cash collected</div>
-            <div class="sr-kpi-value" id="cash-kpi-collected">{{ sales_record.cash_available | inr(0) }}</div>
+      <div class="pl-summary-row hbe-kpi-row sr-kpi-row sr-kpi-row--cash" id="sr-kpi-row-cash" hidden aria-label="Cash summary">
+        <article class="card pl-summary-card hbe-kpi-card" aria-label="Cash collected">
+          <div class="card-body pl-summary-body">
+            <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="8" cy="12" r="2"/></svg>
+            </div>
+            <div class="hbe-kpi-text">
+              <div class="pl-summary-label">Cash collected</div>
+              <div class="pl-summary-value" id="cash-kpi-collected">{{ sales_record.cash_available | inr(0) }}</div>
+            </div>
           </div>
-          <div class="sr-kpi-accent" aria-hidden="true"></div>
         </article>
-        <article class="sr-kpi-card sr-kpi-card--blue">
-          <div class="sr-kpi-top"><div class="sr-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div></div>
-          <div class="sr-kpi-main">
-            <div class="sr-kpi-label">Transferred</div>
-            <div class="sr-kpi-value" id="cash-kpi-transferred">{{ sales_record.cash_transfer_total | inr(0) }}</div>
+        <article class="card pl-summary-card hbe-kpi-card" aria-label="Transferred">
+          <div class="card-body pl-summary-body">
+            <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div class="hbe-kpi-text">
+              <div class="pl-summary-label">Transferred</div>
+              <div class="pl-summary-value" id="cash-kpi-transferred">{{ sales_record.cash_transfer_total | inr(0) }}</div>
+            </div>
           </div>
-          <div class="sr-kpi-accent" aria-hidden="true"></div>
         </article>
-        <article class="sr-kpi-card sr-kpi-card--amber">
-          <div class="sr-kpi-top"><div class="sr-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M14 10h6M14 14h4"/></svg></div></div>
-          <div class="sr-kpi-main">
-            <div class="sr-kpi-label">Available Cash</div>
-            <div class="sr-kpi-value" id="cash-kpi-available">{{ sales_record.cash_unallocated | inr(0) }}</div>
+        <article class="card pl-summary-card hbe-kpi-card" aria-label="Available cash">
+          <div class="card-body pl-summary-body">
+            <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M14 10h6M14 14h4"/></svg>
+            </div>
+            <div class="hbe-kpi-text">
+              <div class="pl-summary-label">Available Cash</div>
+              <div class="pl-summary-value" id="cash-kpi-available">{{ sales_record.cash_unallocated | inr(0) }}</div>
+            </div>
           </div>
-          <div class="sr-kpi-accent" aria-hidden="true"></div>
         </article>
       </div>
 
@@ -130,6 +139,7 @@
         data-cash-collected="{{ cash_transfer_day_collected }}"
         data-sales-admin="{{ '1' if sales_update_is_admin else '0' }}"
         data-save-url="{{ url_for('save_sales_update') }}"
+        data-preserve-import="{{ '1' if preserve_import|default(false) else '0' }}"
         data-tip-add-url="{{ url_for('sales_update_add_tip') }}"
         data-tip-edit-url="{{ url_for('sales_update_edit_tip') }}"
         data-tip-delete-url="{{ url_for('sales_update_delete_tip') }}"
@@ -147,9 +157,14 @@
           <div class="card-title se-panel-title">
             <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 14 3-3 3 2 5-6"/></svg>
             <span>Sales Entry - {{ outlet }}</span>
+            {% if hide_collections_upload|default(false) %}
+            <span class="se-panel-report-tag">From restaurant invoices</span>
+            {% else %}
             <span class="se-panel-report-tag">Upload Collections Report</span>
+            {% endif %}
           </div>
           <div class="se-panel-hdr-actions">
+            {% if not hide_collections_upload|default(false) %}
             <label class="se-panel-upload-label" for="se-upload-{{ outlet_slug }}"{% if outlet_record.sales_entry_locked %} hidden{% endif %}>
               <input type="file" id="se-upload-{{ outlet_slug }}" class="se-panel-upload-input" accept=".xlsx,.xls" data-upload-outlet="{{ outlet }}">
               <span class="btn se-panel-upload-btn">
@@ -157,6 +172,7 @@
                 Upload
               </span>
             </label>
+            {% endif %}
             <button type="button" class="btn se-clear-sales-entry-btn" id="se-clear-sales-entry-{{ outlet_slug }}" data-clear-outlet="{{ outlet }}" title="Clear all amounts in Sales Entry for {{ outlet }}" aria-label="Clear {{ outlet }} sales entry"{% if outlet_record.sales_entry_locked %} hidden{% endif %}>Clear</button>
           </div>
           <span class="se-panel-upload-status" id="se-upload-status-{{ outlet_slug }}" role="status" aria-live="polite"></span>
@@ -572,7 +588,6 @@ SalesDateRangePicker.init({
   const cashReportBackBtn = document.getElementById('se-cash-report-back');
   const kpiRowDefault = document.getElementById('sr-kpi-row-default');
   const kpiRowCash = document.getElementById('sr-kpi-row-cash');
-  const kpiNoteDefault = document.getElementById('sr-kpi-note-default');
   const cashKpiCollectedEl = document.getElementById('cash-kpi-collected');
   const cashKpiTransferredEl = document.getElementById('cash-kpi-transferred');
   const cashKpiAvailableEl = document.getElementById('cash-kpi-available');
@@ -905,10 +920,17 @@ SalesDateRangePicker.init({
       if (totalEl) totalEl.textContent = formatKpiNum(total);
     });
   }
+  function updateDifferenceKpi(){
+    if (!differenceKpi) return;
+    const cash = sumAcrossOutlets('cash');
+    const actualCash = sumAcrossOutlets('actual_cash');
+    differenceKpi.textContent = formatKpiInr(cash - actualCash);
+  }
   function updateSalesEntries(){
-    // Refresh entry-side cash sync only. Top KPI row is invoice-backed (server).
+    // Invoice-backed cards stay server-rendered; Difference tracks cash vs actual cash.
     updateCashDenominations();
     calculateActualSales();
+    updateDifferenceKpi();
   }
   function attachZeroClearBehavior(input){
     if (input.readOnly) return;
@@ -957,6 +979,7 @@ SalesDateRangePicker.init({
           sales_entries: buildSalesEntries(location),
           petty_cash_counts: buildCounts(location),
         };
+        if (widget.dataset.preserveImport === '1') payload.preserve_import = true;
         const resp = await fetch(widget.dataset.saveUrl, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
@@ -1131,7 +1154,6 @@ SalesDateRangePicker.init({
     if (kpiRowCash) kpiRowCash.hidden = !cashOpen;
     if (kpiRowCash && cashOpen) kpiRowCash.removeAttribute('hidden');
     if (kpiRowCash && !cashOpen) kpiRowCash.setAttribute('hidden', '');
-    if (kpiNoteDefault) kpiNoteDefault.hidden = cashOpen;
     if (entryDateWrap) entryDateWrap.hidden = cashOpen;
     const cashDateHost = document.getElementById('se-cash-date-range-host');
     if (cashDateHost) {

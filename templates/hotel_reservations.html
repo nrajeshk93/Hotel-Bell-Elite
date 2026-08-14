@@ -10,10 +10,10 @@
 <title>Reservations | Hotel | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=23">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=29">
 <script>
 (function(){
   try{
@@ -29,7 +29,7 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=23">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=29">
 {% endif %}
 
 <div class="de-main-inner hotel-reservations-page" id="hotel-reservations-page"
@@ -257,10 +257,15 @@
           </div>
           <div>
             <h2>Assign Room</h2>
-            <p>Click a room to confirm</p>
+            <p id="hres-assign-hint">Select rooms, then assign</p>
           </div>
+          <button type="button" class="btn btn-primary hres-assign-submit hres-assign-header-btn" id="hres-assign-card-btn" hidden disabled>Assign Room</button>
         </header>
         <div class="hres-room-grid" id="hres-room-grid"></div>
+        <p class="hres-assign-summary" id="hres-assign-summary">Select a room</p>
+        <div class="hres-assign-card-actions hres-action-stack">
+          <button type="button" class="btn hres-edit-submit" id="hres-edit-card-btn">Edit Reservation</button>
+        </div>
       </article>
     </div>
   </section>
@@ -290,8 +295,8 @@
         </div>
         <p class="hres-assign-room-label" id="hres-assign-room-label">Select a room</p>
         <div class="hres-action-stack">
-          <button type="button" class="btn btn-primary" id="hres-assign-btn" disabled>Assign Room</button>
-          <button type="button" class="btn" id="hres-edit-btn">Edit Reservation</button>
+          <button type="button" class="btn btn-primary hres-assign-submit" id="hres-assign-btn" disabled>Assign Room</button>
+          <button type="button" class="btn hres-edit-submit" id="hres-edit-btn">Edit Reservation</button>
         </div>
       </div>
     </article>
@@ -355,6 +360,12 @@
             </select>
           </label>
           <label class="hres-field">
+            <span>Total Room</span>
+            <input type="number" id="hres-edit-total-rooms" min="1" max="99" value="1">
+          </label>
+        </div>
+        <div class="hres-field-row">
+          <label class="hres-field">
             <span>Status</span>
             <select id="hres-edit-status">
               <option value="upcoming">Upcoming</option>
@@ -395,7 +406,7 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=51"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=16"></script>
-<script src="{{ url_for('static', filename='hotel_reservations.js') }}?v=22"></script>
+<script src="{{ url_for('static', filename='hotel_reservations.js') }}?v=27"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

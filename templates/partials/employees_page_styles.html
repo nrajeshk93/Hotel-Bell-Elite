@@ -524,7 +524,7 @@ body.ep-module .se-sales-header-filters .ep-search-chip .se-filter-chip-icon{
   padding-top:var(--att-module-gap);
   padding-bottom:24px;
 }
-#attendance-list-page .kpi-grid{margin-bottom:var(--att-module-gap)}
+#attendance-list-page .pl-summary-row{margin-bottom:var(--att-module-gap)}
 #attendance-list-page .emp-list-panel.hbe-scroll-panel{
   margin-bottom:0;width:100%;
 }
@@ -578,14 +578,14 @@ body.ep-module .se-sales-header-filters .ep-search-chip .se-filter-chip-icon{
   font-variant-numeric:tabular-nums;
 }
 /* KPI cards — equal gap between each module */
-#attendance-list-page .kpi-grid{
+#attendance-list-page .pl-summary-row{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
   gap:var(--att-module-gap);
-  margin:0;
+  margin:0 0 var(--att-module-gap);
   width:100%;
 }
-#attendance-list-page .kpi-grid .kpi-card{
+#attendance-list-page .pl-summary-row .hbe-kpi-card{
   margin:0;
   min-width:0;
   width:100%;
@@ -593,12 +593,12 @@ body.ep-module .se-sales-header-filters .ep-search-chip .se-filter-chip-icon{
 }
 @media(max-width:1100px){
   #attendance-list-page #emp-attendance-overview-table{min-width:900px;table-layout:fixed}
-  #attendance-list-page .kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #attendance-list-page .pl-summary-row{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
 @media(max-width:760px){
   #attendance-list-page{--att-module-gap:12px}
   #attendance-list-page > main.content.se-content{padding-bottom:32px}
   #attendance-list-page #emp-attendance-overview-table{min-width:820px;table-layout:fixed}
-  #attendance-list-page .kpi-grid{grid-template-columns:1fr}
+  #attendance-list-page .pl-summary-row{grid-template-columns:1fr}
 }
 </style>

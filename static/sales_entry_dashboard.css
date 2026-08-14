@@ -626,8 +626,8 @@ body.se-cash-mode .content.se-content.sr-kpi-canvas{
 .se-cash-summary-value{display:block;font-size:18px;font-weight:800;color:var(--txt)}
 .se-cash-report-actions{margin-bottom:16px}
 .se-cash-transfer-history{margin-top:4px}
-.sr-kpi-row--cash .sr-kpi-card{cursor:default}
-.sr-kpi-row--cash .sr-kpi-card:hover{transform:none}
+.sr-kpi-row--cash .hbe-kpi-card{cursor:default}
+.sr-kpi-row--cash .hbe-kpi-card:hover{transform:none}
 
 /* .sr-kpi-row { display:grid } overrides the [hidden] attribute — cash UI is toggled via body.se-cash-mode */
 body:not(.se-cash-mode) #sr-kpi-row-cash,
@@ -636,7 +636,6 @@ body:not(.se-cash-mode) #se-cash-report-panel{
   display:none !important;
 }
 body.se-cash-mode #sr-kpi-row-default,
-body.se-cash-mode #sr-kpi-note-default,
 body.se-cash-mode #se-date-entry-wrap,
 body.se-cash-mode #se-entry-panel,
 body.se-cash-mode .se-page-header{

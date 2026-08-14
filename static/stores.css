@@ -2180,7 +2180,7 @@ body.su-module .st-stock-page .pl-empty strong{
 body.su-module.st-audit-shell .st-audit-page{margin-top:4px}
 body.su-module .pl-summary-row.st-audit-kpi-row{
   margin-bottom:16px;
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
 }
 body.su-module .st-audit-kpi-row .st-audit-kpi{
   appearance:none;

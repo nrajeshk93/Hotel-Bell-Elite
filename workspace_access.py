@@ -295,6 +295,7 @@ _POINT_OF_SALE_ENDPOINTS = {
     "point_of_sale",
     "point_of_sale_invoice",
     "point_of_sale_invoice_ledger",
+    "point_of_sale_sales_update",
     "point_of_sale_menu",
     "point_of_sale_settings",
     "export_pos_invoice_ledger_report",
@@ -489,6 +490,17 @@ _OUTLET_WRITE_ENDPOINTS = {
     "add_cash_transfer",
     "delete_cash_transfer",
     "send_whatsapp_report",
+}
+
+_POS_RESTAURANT_SALES_WRITE_ENDPOINTS = {
+    "save_sales_update",
+    "sales_update_add_tip",
+    "sales_update_edit_tip",
+    "sales_update_delete_tip",
+    "add_cash_transfer",
+    "delete_cash_transfer",
+    "sales_update_add_cash_transfer",
+    "sales_update_delete_cash_transfer",
 }
 
 _SALES_ANALYTICS_ENDPOINT_GROUPS = {
@@ -1226,6 +1238,11 @@ def get_endpoint_sales_analytics_submodules(endpoint):
 def user_can_access_endpoint_sales_analytics(user, endpoint):
     submodules = get_endpoint_sales_analytics_submodules(endpoint)
     if not submodules:
+        return True
+    if (
+        endpoint in _POS_RESTAURANT_SALES_WRITE_ENDPOINTS
+        and user_can_access_dashboard(user, "point_of_sale")
+    ):
         return True
     if len(submodules) == 1:
         return user_can_access_sales_analytics_submodule(user, submodules[0])

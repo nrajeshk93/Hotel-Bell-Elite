@@ -2,7 +2,7 @@
 /* Beat shared .pl-summary-row 4-col from hbe_kpi.css (room transfer has 3 KPIs) */
 body.su-module .pl-summary-row.rt-summary-row,
 body.su-module .rt-summary-row{
-  grid-template-columns:repeat(3,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
 }
 body.su-module .rt-summary-card--unpaid .pl-summary-value{color:#C2410C}
 body.su-module .rt-col-status{min-width:110px;white-space:nowrap}

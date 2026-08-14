@@ -142,8 +142,8 @@ class SalesUploadReportTests(unittest.TestCase):
         self.assertIn('value="3419', html)
         self.assertIn("₹9,265", html)
         self.assertIn("₹5,846", html)
-        self.assertIn("All values are from the sales entry (12 Aug 2026).", html)
-        self.assertNotIn("All values are from invoices (12 Aug 2026)", html)
+        self.assertNotIn("All values are from the sales entry", html)
+        self.assertNotIn("All values are from invoices", html)
 
         conn = db_mod.get_db()
         try:
@@ -267,8 +267,8 @@ class SalesUploadReportTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn("₹6,700", html)
-        self.assertIn("All values are from the sales entry (12 Aug 2026).", html)
-        self.assertNotIn("All values are from invoices (12 Aug 2026)", html)
+        self.assertNotIn("All values are from the sales entry", html)
+        self.assertNotIn("All values are from invoices", html)
 
 
 if __name__ == "__main__":

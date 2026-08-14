@@ -12,13 +12,13 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=23">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=10">
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=26">
 <style>
 #employee-master-page{box-sizing:border-box;}
@@ -76,11 +76,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=18">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=23">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=10">
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=26">
 <style>
 #employee-master-page{box-sizing:border-box;}
@@ -130,6 +130,7 @@
   {% include 'partials/master_embed/employees.html' %}
 </div>
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
 <script>
 (function(){

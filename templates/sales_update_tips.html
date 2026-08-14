@@ -8,11 +8,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=11">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='tips_analytics.css') }}?v=15">
+<link rel="stylesheet" href="{{ url_for('static', filename='tips_analytics.css') }}?v=16">
 <script>
 (function(){
   try{
@@ -147,7 +147,7 @@
   </header>
 
   <section class="content se-content">
-    <div class="cl-summary-row tips-summary-row">
+    <div class="pl-summary-row tips-summary-row">
       <article class="card pl-summary-card hbe-kpi-card" aria-label="Total tips">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
@@ -156,6 +156,7 @@
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Total Tips</div>
             <div class="pl-summary-value pl-amount" data-amount="{{ tips_grand_total }}">{{ tips_grand_total }}</div>
+            <div class="pl-summary-meta">{{ tips_employees|length }} employee{{ '' if tips_employees|length == 1 else 's' }}</div>
           </div>
         </div>
       </article>
@@ -167,6 +168,7 @@
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Hotel</div>
             <div class="pl-summary-value pl-amount" data-amount="{{ tips_hotel_total }}">{{ tips_hotel_total }}</div>
+            <div class="pl-summary-meta">Hotel outlet</div>
           </div>
         </div>
       </article>
@@ -178,6 +180,7 @@
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Bar</div>
             <div class="pl-summary-value pl-amount" data-amount="{{ tips_bar_total }}">{{ tips_bar_total }}</div>
+            <div class="pl-summary-meta">Bar outlet</div>
           </div>
         </div>
       </article>
@@ -189,6 +192,7 @@
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Restaurant</div>
             <div class="pl-summary-value pl-amount" data-amount="{{ tips_restaurant_total }}">{{ tips_restaurant_total }}</div>
+            <div class="pl-summary-meta">Restaurant outlet</div>
           </div>
         </div>
       </article>

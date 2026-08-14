@@ -1,0 +1,225 @@
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
+{% set form = form|default({}) %}
+{% set emp_list_url = emp_list_url|default(url_for('employees')) %}
+{% set emp_return_from = emp_return_from|default('employees') %}
+{% set emp_return_from_hub = emp_return_from_hub|default('') %}
+{% set employee_form_embed = employee_form_embed|default(false) %}
+{% set save_label = 'Update Employee' if mode == 'edit' else 'Add Employee' %}
+{% if errors is defined and errors %}
+<div class="ep-emp-form-errors" role="alert">
+  <strong>Please fix the following:</strong>
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+<form method="POST"
+      class="ep-emp-form"
+      id="employee-form"
+      action="{% if mode == 'edit' %}{{ url_for('edit_employee', emp_id=form['id']) }}{% else %}{{ url_for('add_employee') }}{% endif %}"
+      {% if employee_form_embed %}data-md-full-nav="1"{% endif %}>
+  <input type="hidden" name="from" value="{{ emp_return_from }}">
+  {% if emp_return_from_hub %}<input type="hidden" name="from_hub" value="{{ emp_return_from_hub }}">{% endif %}
+  <input type="hidden" name="company" value="{{ form.get('company', 'Hotel Bell Elite') or 'Hotel Bell Elite' }}">
+
+  <section class="ep-emp-form-section" aria-labelledby="ep-emp-sec-basic">
+    <h2 class="ep-emp-form-sec" id="ep-emp-sec-basic">Basic information</h2>
+    <div class="staff-grid ep-emp-form-grid">
+      <div class="staff-field staff-field--inline">
+        <label for="emp_code">Employee ID</label>
+        <input type="text" class="staff-input" id="emp_code" name="emp_code" value="{{ form.get('emp_code', '') }}" readonly title="Auto-generated unique ID">
+        <p class="ep-emp-form-hint">{% if mode == 'add' %}Auto-generated next ID — assigned uniquely on save.{% else %}System-assigned — cannot be changed.{% endif %}</p>
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="name">Full name *</label>
+        <input type="text" class="staff-input" id="name" name="name" value="{{ form.get('name', '') }}" required placeholder="Employee full name">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="mobile">Mobile number *</label>
+        <input type="text" class="staff-input" id="mobile" name="mobile" value="{{ form.get('mobile', '') }}" required placeholder="10-digit number" maxlength="10" pattern="\d{10}">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="guardian_mobile">Guardian mobile number</label>
+        <input type="text" class="staff-input" id="guardian_mobile" name="guardian_mobile" value="{{ form.get('guardian_mobile', '') }}" placeholder="Optional 10-digit number" maxlength="10" pattern="\d{10}">
+      </div>
+      <div class="staff-field staff-field--inline">
+        {% set sex_options = [('', 'Select sex'), ('Male', 'Male'), ('Female', 'Female')] %}
+        {{ ep_listbox('sex', 'Sex', sex_options, form.get('sex', ''), placeholder='Select sex') }}
+      </div>
+      <div class="staff-field staff-field--inline">
+        {% set location_ns = namespace(options=[('', 'Select department')]) %}
+        {% for l in locations %}{% set location_ns.options = location_ns.options + [(l, l)] %}{% endfor %}
+        {{ ep_listbox('location', 'Department', location_ns.options, form.get('location', ''), searchable=true, placeholder='Select department') }}
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="total_off">Total Off</label>
+        <input type="number" class="staff-input" id="total_off" name="total_off" value="{{ form.get('total_off', 0) }}" placeholder="e.g. 4" min="0" max="31" step="1">
+      </div>
+      <div class="staff-field staff-field--inline">
+        {% set status_options = [('active', 'Active'), ('inactive', 'Inactive')] %}
+        {{ ep_listbox('status', 'Status', status_options, form.get('status', 'active')) }}
+      </div>
+    </div>
+  </section>
+
+  <section class="ep-emp-form-section" aria-labelledby="ep-emp-sec-salary">
+    <h2 class="ep-emp-form-sec" id="ep-emp-sec-salary">Salary details</h2>
+    <div class="staff-grid ep-emp-form-grid">
+      <div class="staff-field staff-field--inline">
+        <label for="gross_salary">Gross salary (monthly) *</label>
+        <input type="number" class="staff-input" id="gross_salary" name="gross_salary" value="{{ form.get('gross_salary', '') }}" required placeholder="e.g. 25000" min="0" step="0.01" oninput="calcPreview()">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="basic_salary">Basic pay (0 = auto from gross)</label>
+        <input type="number" class="staff-input" id="basic_salary" name="basic_salary" value="{{ form.get('basic_salary', 0) or '' }}" placeholder="Auto-derived" min="0" step="0.01" oninput="calcPreview()">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <div class="ep-emp-form-label-row">
+          <label for="epf_amount">EPF amount</label>
+          <label class="ep-emp-exempt" for="epf_exempt">
+            <input type="checkbox" id="epf_exempt" name="epf_exempt" value="1"
+                   {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}checked{% endif %}
+                   onchange="toggleExempt('epf')">
+            No EPF
+          </label>
+        </div>
+        <input type="number" class="staff-input" id="epf_amount" name="epf_amount"
+               value="{{ form.get('epf_amount', 0) or '' }}"
+               placeholder="Auto (max ₹1,800)" min="0" max="1800" step="0.01" oninput="calcPreview()"
+               {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}disabled{% endif %}>
+      </div>
+      <div class="staff-field staff-field--inline">
+        <div class="ep-emp-form-label-row">
+          <label for="esic_amount">ESIC amount</label>
+          <label class="ep-emp-exempt" for="esic_exempt">
+            <input type="checkbox" id="esic_exempt" name="esic_exempt" value="1"
+                   {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}checked{% endif %}
+                   onchange="toggleExempt('esic')">
+            No ESIC
+          </label>
+        </div>
+        <input type="number" class="staff-input" id="esic_amount" name="esic_amount"
+               value="{{ form.get('esic_amount', 0) or '' }}"
+               placeholder="Auto" min="0" step="0.01" oninput="calcPreview()"
+               {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}disabled{% endif %}>
+      </div>
+    </div>
+    <div id="salary-preview" class="ep-emp-preview" style="display:none;" aria-label="Salary preview">
+      <article class="ep-emp-stat">
+        <div class="ep-emp-stat-icon ep-emp-stat-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+        </div>
+        <div class="ep-emp-stat-text">
+          <div class="ep-emp-stat-label">Gross</div>
+          <div class="ep-emp-stat-value" id="pv-gross">0</div>
+        </div>
+      </article>
+      <article class="ep-emp-stat">
+        <div class="ep-emp-stat-icon ep-emp-stat-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 8h14"/><path d="M5 16h14"/></svg>
+        </div>
+        <div class="ep-emp-stat-text">
+          <div class="ep-emp-stat-label" id="pv-basic-label">Basic</div>
+          <div class="ep-emp-stat-value" id="pv-basic">0</div>
+        </div>
+      </article>
+      <article class="ep-emp-stat">
+        <div class="ep-emp-stat-icon ep-emp-stat-icon--orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="7" cy="7" r="2.5"/><circle cx="17" cy="17" r="2.5"/><path d="M6 18L18 6"/></svg>
+        </div>
+        <div class="ep-emp-stat-text">
+          <div class="ep-emp-stat-label" id="pv-epf-label">EPF</div>
+          <div class="ep-emp-stat-value" id="pv-epf">0</div>
+        </div>
+      </article>
+      <article class="ep-emp-stat">
+        <div class="ep-emp-stat-icon ep-emp-stat-icon--purple" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 3l8 4v6c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V7z"/></svg>
+        </div>
+        <div class="ep-emp-stat-text">
+          <div class="ep-emp-stat-label" id="pv-esic-label">ESIC</div>
+          <div class="ep-emp-stat-value" id="pv-esic">0</div>
+        </div>
+      </article>
+      <article class="ep-emp-stat" id="pv-cr-item">
+        <div class="ep-emp-stat-icon ep-emp-stat-icon--red" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>
+        </div>
+        <div class="ep-emp-stat-text">
+          <div class="ep-emp-stat-label" id="pv-cr-label">Credit</div>
+          <div class="ep-emp-stat-value" id="pv-cr">0</div>
+        </div>
+      </article>
+      <article class="ep-emp-stat ep-emp-stat--net">
+        <div class="ep-emp-stat-icon ep-emp-stat-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="ep-emp-stat-text">
+          <div class="ep-emp-stat-label">Net</div>
+          <div class="ep-emp-stat-value" id="pv-net">0</div>
+        </div>
+      </article>
+    </div>
+    <div id="salary-warning" class="ep-emp-form-warn" style="display:none;"></div>
+  </section>
+
+  <section class="ep-emp-form-section" aria-labelledby="ep-emp-sec-id">
+    <h2 class="ep-emp-form-sec" id="ep-emp-sec-id">Identity documents</h2>
+    <div class="staff-grid ep-emp-form-grid">
+      <div class="staff-field staff-field--inline">
+        <label for="aadhar">Aadhar number</label>
+        <input type="text" class="staff-input" id="aadhar" name="aadhar" value="{{ form.get('aadhar', '') }}" placeholder="12-digit Aadhar" maxlength="12" pattern="\d{12}">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="pan">PAN card</label>
+        <input type="text" class="staff-input" id="pan" name="pan" value="{{ form.get('pan', '') }}" placeholder="e.g. ABCDE1234F" maxlength="10" style="text-transform:uppercase;">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="epf_number">EPF account number</label>
+        <input type="text" class="staff-input" id="epf_number" name="epf_number" value="{{ form.get('epf_number', '') }}" placeholder="EPF number">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="esic_number">ESIC number</label>
+        <input type="text" class="staff-input" id="esic_number" name="esic_number" value="{{ form.get('esic_number', '') }}" placeholder="ESIC number">
+      </div>
+      <div class="staff-field staff-field--inline staff-field--full">
+        <label for="address">Address</label>
+        <textarea class="staff-input ep-emp-form-textarea" id="address" name="address" placeholder="Full address">{{ form.get('address', '') }}</textarea>
+      </div>
+    </div>
+  </section>
+
+  <section class="ep-emp-form-section" aria-labelledby="ep-emp-sec-bank">
+    <h2 class="ep-emp-form-sec" id="ep-emp-sec-bank">Bank details</h2>
+    <div class="staff-grid ep-emp-form-grid ep-emp-form-grid--two">
+      <div class="staff-field staff-field--inline">
+        <label for="bank_name">Bank name</label>
+        <input type="text" class="staff-input" id="bank_name" name="bank_name" value="{{ form.get('bank_name', '') }}" placeholder="e.g. State Bank of India">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="account_holder_name">Account holder name</label>
+        <input type="text" class="staff-input" id="account_holder_name" name="account_holder_name" value="{{ form.get('account_holder_name', '') }}" placeholder="As per bank records">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="account_number">Account number</label>
+        <input type="text" class="staff-input" id="account_number" name="account_number" value="{{ form.get('account_number', '') }}" placeholder="Bank account number" inputmode="numeric">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="ifsc_code">IFSC code</label>
+        <input type="text" class="staff-input" id="ifsc_code" name="ifsc_code" value="{{ form.get('ifsc_code', '') }}" placeholder="e.g. SBIN0001234" maxlength="11" style="text-transform:uppercase;">
+      </div>
+    </div>
+  </section>
+
+  <div class="staff-credit-actions ep-emp-form-actions">
+    <a href="{{ emp_list_url }}" class="btn btn-secondary staff-secondary">Cancel</a>
+    <button type="submit" class="btn btn-primary staff-primary">{{ save_label }}</button>
+  </div>
+</form>
+<script>
+(function(){
+  if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+  if (typeof window.calcPreview === 'function') {
+    var gross = document.getElementById('gross_salary');
+    if (gross && gross.value) window.calcPreview();
+  }
+})();
+</script>

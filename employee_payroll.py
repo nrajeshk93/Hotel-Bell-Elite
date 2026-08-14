@@ -4,6 +4,7 @@ import calendar
 import io
 import os
 import re
+import sqlite3
 import tempfile
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
@@ -378,12 +379,260 @@ def _user_can_access_attendance_employee(conn, emp_id, user=None):
     if scope['locations'] and row['location'] not in scope['locations']:
         return False
     return True
+
+
 def _is_payroll_month_locked(conn, year, month):
-    row = conn.execute(
-        "SELECT 1 FROM payroll_month_locks WHERE year=? AND month=?",
-        (year, month)
-    ).fetchone()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM payroll_month_locks WHERE year=? AND month=?",
+            (year, month)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return False
     return bool(row)
+
+
+_PAYROLL_WAGE_KEYS = (
+    'gross_salary',
+    'basic_salary',
+    'epf_amount',
+    'esic_amount',
+    'epf_exempt',
+    'esic_exempt',
+    'total_off',
+)
+
+
+def _ensure_payroll_month_employee_off(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payroll_month_employee_off (
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            employee_id INTEGER NOT NULL,
+            total_off INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (year, month, employee_id)
+        )
+        """
+    )
+    _ensure_payroll_month_employee_wages(conn)
+
+
+def _ensure_payroll_month_employee_wages(conn):
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS payroll_month_employee_wages (
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            employee_id INTEGER NOT NULL,
+            gross_salary REAL,
+            basic_salary REAL,
+            epf_amount REAL,
+            esic_amount REAL,
+            epf_exempt INTEGER,
+            esic_exempt INTEGER,
+            total_off INTEGER,
+            PRIMARY KEY (year, month, employee_id)
+        )
+        """
+    )
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO payroll_month_employee_wages
+                (year, month, employee_id, total_off)
+            SELECT year, month, employee_id, total_off
+            FROM payroll_month_employee_off
+            """
+        )
+    except sqlite3.OperationalError:
+        pass
+
+
+def _wage_number(value, default=0, as_int=False):
+    try:
+        if value is None or value == '':
+            return int(default) if as_int else float(default)
+        return int(value) if as_int else float(value)
+    except (TypeError, ValueError):
+        return int(default) if as_int else float(default)
+
+
+def _wages_from_employee(employee):
+    emp = dict(employee) if not isinstance(employee, dict) else dict(employee)
+    return {
+        'gross_salary': _wage_number(emp.get('gross_salary')),
+        'basic_salary': _wage_number(emp.get('basic_salary')),
+        'epf_amount': _wage_number(emp.get('epf_amount')),
+        'esic_amount': _wage_number(emp.get('esic_amount')),
+        'epf_exempt': _wage_number(emp.get('epf_exempt'), as_int=True),
+        'esic_exempt': _wage_number(emp.get('esic_exempt'), as_int=True),
+        'total_off': _wage_number(emp.get('total_off'), as_int=True),
+    }
+
+
+def _frozen_month_wages(conn, emp_id, year, month):
+    _ensure_payroll_month_employee_wages(conn)
+    row = conn.execute(
+        """
+        SELECT gross_salary, basic_salary, epf_amount, esic_amount,
+               epf_exempt, esic_exempt, total_off
+        FROM payroll_month_employee_wages
+        WHERE year=? AND month=? AND employee_id=?
+        """,
+        (year, month, emp_id),
+    ).fetchone()
+    if row is None:
+        return None
+    frozen = dict(row)
+    out = {}
+    for key in _PAYROLL_WAGE_KEYS:
+        if frozen.get(key) is None:
+            continue
+        out[key] = _wage_number(frozen.get(key), as_int=key in ('epf_exempt', 'esic_exempt', 'total_off'))
+    return out or None
+
+
+def _get_month_wages(conn, employee, year, month):
+    """Live wages for open months; frozen snapshot for locked months."""
+    live = _wages_from_employee(employee)
+    emp = dict(employee) if not isinstance(employee, dict) else dict(employee)
+    if not _is_payroll_month_locked(conn, year, month):
+        return live
+    frozen = _frozen_month_wages(conn, emp.get('id'), year, month)
+    if not frozen:
+        return live
+    merged = dict(live)
+    merged.update(frozen)
+    return merged
+
+
+def _get_month_total_off(conn, employee, year, month):
+    return int(_get_month_wages(conn, employee, year, month).get('total_off') or 0)
+
+
+def _freeze_employee_wages_for_locked_months(conn, emp_id, wages):
+    """Keep locked months on the previous wage snapshot when master values change."""
+    _ensure_payroll_month_employee_wages(conn)
+    snap = _wages_from_employee(wages)
+    try:
+        locks = conn.execute("SELECT year, month FROM payroll_month_locks").fetchall()
+    except sqlite3.OperationalError:
+        return
+    for lock in locks:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO payroll_month_employee_wages
+                (year, month, employee_id, gross_salary, basic_salary, epf_amount,
+                 esic_amount, epf_exempt, esic_exempt, total_off)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                lock['year'],
+                lock['month'],
+                emp_id,
+                snap['gross_salary'],
+                snap['basic_salary'],
+                snap['epf_amount'],
+                snap['esic_amount'],
+                snap['epf_exempt'],
+                snap['esic_exempt'],
+                snap['total_off'],
+            ),
+        )
+        conn.execute(
+            """
+            UPDATE payroll_month_employee_wages
+            SET gross_salary = COALESCE(gross_salary, ?),
+                basic_salary = COALESCE(basic_salary, ?),
+                epf_amount = COALESCE(epf_amount, ?),
+                esic_amount = COALESCE(esic_amount, ?),
+                epf_exempt = COALESCE(epf_exempt, ?),
+                esic_exempt = COALESCE(esic_exempt, ?),
+                total_off = COALESCE(total_off, ?)
+            WHERE year=? AND month=? AND employee_id=?
+            """,
+            (
+                snap['gross_salary'],
+                snap['basic_salary'],
+                snap['epf_amount'],
+                snap['esic_amount'],
+                snap['epf_exempt'],
+                snap['esic_exempt'],
+                snap['total_off'],
+                lock['year'],
+                lock['month'],
+                emp_id,
+            ),
+        )
+
+
+def _freeze_employee_total_off_for_locked_months(conn, emp_id, total_off):
+    """Keep locked months on the previous Total Off when the master value changes."""
+    _ensure_payroll_month_employee_wages(conn)
+    try:
+        off = max(0, int(total_off or 0))
+    except (TypeError, ValueError):
+        off = 0
+    try:
+        locks = conn.execute("SELECT year, month FROM payroll_month_locks").fetchall()
+    except sqlite3.OperationalError:
+        return
+    for lock in locks:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO payroll_month_employee_wages
+                (year, month, employee_id, total_off)
+            VALUES (?, ?, ?, ?)
+            """,
+            (lock['year'], lock['month'], emp_id, off),
+        )
+        conn.execute(
+            """
+            UPDATE payroll_month_employee_wages
+            SET total_off = COALESCE(total_off, ?)
+            WHERE year=? AND month=? AND employee_id=?
+            """,
+            (off, lock['year'], lock['month'], emp_id),
+        )
+
+
+def _snapshot_month_wages(conn, year, month):
+    """Freeze every employee's wages when a payroll month is locked."""
+    _ensure_payroll_month_employee_wages(conn)
+    rows = conn.execute(
+        """
+        SELECT id, gross_salary, basic_salary, epf_amount, esic_amount,
+               epf_exempt, esic_exempt, total_off
+        FROM employees
+        """
+    ).fetchall()
+    for row in rows:
+        snap = _wages_from_employee(row)
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO payroll_month_employee_wages
+                (year, month, employee_id, gross_salary, basic_salary, epf_amount,
+                 esic_amount, epf_exempt, esic_exempt, total_off)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                year,
+                month,
+                row['id'],
+                snap['gross_salary'],
+                snap['basic_salary'],
+                snap['epf_amount'],
+                snap['esic_amount'],
+                snap['epf_exempt'],
+                snap['esic_exempt'],
+                snap['total_off'],
+            ),
+        )
+
+
+def _snapshot_month_total_off(conn, year, month):
+    _snapshot_month_wages(conn, year, month)
 
 
 def _payroll_month_frozen_message(year, month):
@@ -672,7 +921,6 @@ def _wage_fields_changed(existing, new_vals):
         or abs(_f('esic_amount') - float(new_vals.get('esic_amount') or 0)) > 1e-9
         or _i('epf_exempt') != int(new_vals.get('epf_exempt') or 0)
         or _i('esic_exempt') != int(new_vals.get('esic_exempt') or 0)
-        or _i('total_off') != int(new_vals.get('total_off') or 0)
     )
 
 
@@ -956,39 +1204,41 @@ def _employee_month_salary(conn, employee, year, month, credit_repayment=None, t
     )
     att = _get_month_attendance(conn, emp['id'], year, month)
     calendar_days = int(att.get('num_days', 0) or 0)
-    total_off = int(emp.get('total_off') or 0)
+    wages = _get_month_wages(conn, emp, year, month)
+    total_off = int(wages.get('total_off') or 0)
     if att['tracked']:
         salary = _calc_salary(
-            emp['gross_salary'],
+            wages['gross_salary'],
             calendar_days=calendar_days,
             weekday_leave_days=att.get('weekday_leave_days', att.get('absent', 0)),
             total_off=total_off,
             tracked=True,
-            custom_basic=emp.get('basic_salary', 0),
-            custom_epf=emp.get('epf_amount', 0),
-            custom_esic=emp.get('esic_amount', 0),
+            custom_basic=wages.get('basic_salary', 0),
+            custom_epf=wages.get('epf_amount', 0),
+            custom_esic=wages.get('esic_amount', 0),
             credit_repayment=credit_repayment,
             sunday_incentive_days=0,
             sunday_shift='',
-            epf_exempt=bool(emp.get('epf_exempt', 0)),
-            esic_exempt=bool(emp.get('esic_exempt', 0)),
+            epf_exempt=bool(wages.get('epf_exempt', 0)),
+            esic_exempt=bool(wages.get('esic_exempt', 0)),
             tip_incentive=tip_incentive,
         )
     else:
         salary = _calc_salary(
-            emp['gross_salary'],
+            wages['gross_salary'],
             calendar_days=calendar_days,
             tracked=False,
-            custom_basic=emp.get('basic_salary', 0),
-            custom_epf=emp.get('epf_amount', 0),
-            custom_esic=emp.get('esic_amount', 0),
+            custom_basic=wages.get('basic_salary', 0),
+            custom_epf=wages.get('epf_amount', 0),
+            custom_esic=wages.get('esic_amount', 0),
             credit_repayment=credit_repayment,
             sunday_incentive_days=0,
             sunday_shift='',
-            epf_exempt=bool(emp.get('epf_exempt', 0)),
-            esic_exempt=bool(emp.get('esic_exempt', 0)),
+            epf_exempt=bool(wages.get('epf_exempt', 0)),
+            esic_exempt=bool(wages.get('esic_exempt', 0)),
             tip_incentive=tip_incentive,
         )
+    salary.update(wages)
     salary['credit_repayment'] = _round_half_up(credit_repayment, 2)
     salary['tip_incentive'] = _round_half_up(tip_incentive, 2)
     return att, salary
@@ -1903,19 +2153,6 @@ def edit_employee(emp_id):
             sunday_shift = ''
 
         payroll_fields_locked = _employee_has_locked_month_data(conn, emp_id)
-        if payroll_fields_locked and _wage_fields_changed(existing, {
-            'gross_salary': salary_val,
-            'basic_salary': basic_val,
-            'epf_amount': epf_val,
-            'esic_amount': esic_val,
-            'epf_exempt': epf_exempt,
-            'esic_exempt': esic_exempt,
-            'total_off': total_off_val,
-        }):
-            errors.append(
-                'This employee has data in a locked payroll month. '
-                'Salary, statutory, and Total Off fields cannot be changed.'
-            )
 
         ret = _employee_return_target()
         if errors:
@@ -1953,6 +2190,22 @@ def edit_employee(emp_id):
                 employee_return_from=ret["from"],
                 employee_return_from_hub=ret["from_hub"],
             )
+
+        new_wage_vals = {
+            'gross_salary': salary_val,
+            'basic_salary': basic_val,
+            'epf_amount': epf_val,
+            'esic_amount': esic_val,
+            'epf_exempt': epf_exempt,
+            'esic_exempt': esic_exempt,
+            'total_off': total_off_val,
+        }
+        try:
+            old_off = int(existing['total_off'] or 0)
+        except (TypeError, ValueError, KeyError, IndexError):
+            old_off = 0
+        if _wage_fields_changed(existing, new_wage_vals) or old_off != total_off_val:
+            _freeze_employee_wages_for_locked_months(conn, emp_id, existing)
 
         conn.execute(
             f"UPDATE employees SET emp_code=?, name=?, company=?, location=?, mobile=?, guardian_mobile=?, sex=?, address=?, aadhar=?, pan=?, epf_number=?, esic_number=?, gross_salary=?, basic_salary=?, epf_amount=?, esic_amount=?, credit_repayment=?, epf_exempt=?, esic_exempt=?, weekday_shift=?, sunday_shift=?, bank_name=?, account_holder_name=?, account_number=?, ifsc_code=?, total_off=?, status=?, updated_at={SQL_NOW} WHERE id=?",
@@ -4313,6 +4566,7 @@ def lock_payroll_month():
                     "INSERT INTO payroll_month_locks (year, month) VALUES (?, ?)",
                     (year, month)
                 )
+                _snapshot_month_total_off(conn, year, month)
                 conn.commit()
     finally:
         conn.close()

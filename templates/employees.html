@@ -22,12 +22,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=23">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=48">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=23">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=10">
 {% if mode is defined and mode == 'credits' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -41,34 +41,46 @@
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox, ep_toolbar_listbox %}
 {% set ep_month_names = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
 {% set ep_month_opts = namespace(options=[]) %}
-{% for m in range(1, 13) %}
+{% set _ep_start_m = (sel_month|default(1))|int %}
+{% for i in range(12) %}
+  {% set m = ((_ep_start_m - 1 + i) % 12) + 1 %}
   {% set ep_month_opts.options = ep_month_opts.options + [(m|string, ep_month_names[m])] %}
 {% endfor %}
 {% set ep_year_opts = namespace(options=[]) %}
 {% set _ep_year_now = (today_year|default(sel_year|default(2026)))|int %}
+{% set _ep_year_vals = namespace(items=[]) %}
 {% for y in range(_ep_year_now - 5, _ep_year_now + 4) %}
-  {% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}
+  {% set _ep_year_vals.items = _ep_year_vals.items + [y] %}
 {% endfor %}
 {% if sel_year is defined %}
   {% set _ep_year_has_sel = namespace(found=false) %}
-  {% for opt in ep_year_opts.options %}
-    {% if opt[0] == sel_year|string %}{% set _ep_year_has_sel.found = true %}{% endif %}
+  {% for y in _ep_year_vals.items %}
+    {% if y == sel_year|int %}{% set _ep_year_has_sel.found = true %}{% endif %}
   {% endfor %}
   {% if not _ep_year_has_sel.found %}
-    {% set ep_year_opts.options = [(sel_year|string, sel_year|string)] + ep_year_opts.options %}
+    {% set _ep_year_vals.items = [sel_year|int] + _ep_year_vals.items %}
   {% endif %}
 {% endif %}
+{% set _ep_year_start = (sel_year|default(_ep_year_now))|int %}
+{% set _ep_year_idx = namespace(i=0) %}
+{% for y in _ep_year_vals.items %}
+  {% if y == _ep_year_start %}{% set _ep_year_idx.i = loop.index0 %}{% endif %}
+{% endfor %}
+{% for i in range(_ep_year_vals.items|length) %}
+  {% set y = _ep_year_vals.items[(_ep_year_idx.i + i) % (_ep_year_vals.items|length)] %}
+  {% set ep_year_opts.options = ep_year_opts.options + [(y|string, y|string)] %}
+{% endfor %}
 {% set ep_location_opts = namespace(options=[('', 'All Departments')]) %}
 {% if locations is defined %}{% for l in locations %}{% set ep_location_opts.options = ep_location_opts.options + [(l, l)] %}{% endfor %}{% endif %}
 
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=15">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=23">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=7">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=23">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=10">
 {% if mode is defined and mode == 'credits' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -76,7 +88,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 {% endif %}
-<div class="main-wrapper"{% if mode is defined and mode == 'attendance_list' %} id="attendance-list-page"{% endif %}>
+<div class="main-wrapper"{% if mode is defined and mode == 'attendance_list' %} id="attendance-list-page"{% elif mode is not defined %} id="employees-page"{% endif %}>
 
 
 <!-- ── Top bar ── -->
@@ -510,14 +522,14 @@
     </div>
   </div>
 
-  {% elif mode is defined and mode == 'add' %}
+  {% elif mode is defined and mode in ('add', 'edit') %}
   {% set emp_list_url = employee_list_url|default(url_for('employees')) %}
   {% set emp_list_label = employee_list_label|default('Employees') %}
   {% set emp_return_from = employee_return_from|default('employees') %}
   {% set emp_return_from_hub = employee_return_from_hub|default('') %}
   {% set back_href = emp_list_url %}
   {% set back_label = back_label|default('Back to ' ~ emp_list_label) %}
-  <div class="su-header-top ep-att-header">
+  <div class="su-header-top">
     <div class="su-header-left">
       <div class="su-header-nav">
         {% include 'partials/su_page_back.html' with context %}
@@ -525,37 +537,26 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
       </div>
-      <div class="topbar-breadcrumb">
-        <a href="{{ emp_list_url }}">{{ emp_list_label }}</a>
-        <span class="bc-sep">›</span>
-        <span class="bc-cur">Add Employee</span>
+      <div class="su-title">
+        <div class="su-title-row">
+          <div class="su-title-icon" aria-hidden="true">
+            {% if mode == 'add' %}
+            <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            {% else %}
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            {% endif %}
+          </div>
+          <h1>{% if mode == 'add' %}Add Employee{% else %}Edit Employee{% endif %}</h1>
+        </div>
+        {% if mode == 'edit' and form.get('name') %}
+        <p>{{ form['name'] }}{% if form.get('emp_code') %} · {{ form['emp_code'] }}{% endif %}</p>
+        {% endif %}
       </div>
     </div>
-    <div class="su-header-tools"></div>
-  </div>
-
-  {% elif mode is defined and mode == 'edit' %}
-  {% set emp_list_url = employee_list_url|default(url_for('employees')) %}
-  {% set emp_list_label = employee_list_label|default('Employees') %}
-  {% set emp_return_from = employee_return_from|default('employees') %}
-  {% set emp_return_from_hub = employee_return_from_hub|default('') %}
-  {% set back_href = emp_list_url %}
-  {% set back_label = back_label|default('Back to ' ~ emp_list_label) %}
-  <div class="su-header-top ep-att-header">
-    <div class="su-header-left">
-      <div class="su-header-nav">
-        {% include 'partials/su_page_back.html' with context %}
-        <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-      </div>
-      <div class="topbar-breadcrumb">
-        <a href="{{ emp_list_url }}">{{ emp_list_label }}</a>
-        <span class="bc-sep">›</span>
-        <span class="bc-cur">{% if form.get('name') %}{{ form['name'] }}{% else %}Edit Employee{% if form.get('id') %} #{{ form['id'] }}{% endif %}{% endif %}</span>
-      </div>
+    <div class="su-header-tools">
+      <a class="btn btn-secondary" href="{{ emp_list_url }}">Cancel</a>
+      <button type="submit" class="btn btn-primary" form="employee-form">{% if mode == 'edit' %}Update Employee{% else %}Add Employee{% endif %}</button>
     </div>
-    <div class="su-header-tools"></div>
   </div>
 
   {% elif mode is defined and mode == 'credits_dashboard' %}
@@ -806,7 +807,7 @@
 </header>
 
 <!-- ── Content area ── -->
-<main class="content{% if mode is defined and mode in ('credits_dashboard', 'credits', 'attendance_list') %} se-content{% endif %}">
+<main class="content{% if mode is defined and mode in ('credits_dashboard', 'credits', 'attendance_list', 'add', 'edit') %} se-content{% endif %}">
 {% if auth_notice %}
   <div class="card" style="margin-bottom:14px;background:#EFF6FF;border-color:rgba(24,119,242,.18);">
     <div class="card-body" style="padding:12px 18px;color:var(--acc);font-weight:700;">{{ auth_notice }}</div>
@@ -845,47 +846,51 @@
 {% if mode is defined and mode == 'attendance_list' %}
 
   <!-- KPI summary -->
-  <div class="kpi-grid">
-    <div class="kpi-card">
-      <div class="kpi-icon blue">
-        <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+  <div class="pl-summary-row" aria-label="Attendance summary">
+    <article class="card pl-summary-card hbe-kpi-card" aria-label="Total employees">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Total Employees</div>
+          <div class="pl-summary-value">{{ employees|length }}</div>
+        </div>
       </div>
-      <div class="kpi-body">
-        <div class="kpi-lbl">Total Employees</div>
-        <div class="kpi-val">{{ employees|length }}</div>
-        <div class="kpi-meta">Active — {{ month_name }}</div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" aria-label="Attendance tracked">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Attendance Tracked</div>
+          <div class="pl-summary-value">{{ tracked_count }}</div>
+        </div>
       </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon green">
-        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" aria-label="Total present days">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Total Present Days</div>
+          <div class="pl-summary-value">{{ total_present }}</div>
+        </div>
       </div>
-      <div class="kpi-body">
-        <div class="kpi-lbl">Attendance Tracked</div>
-        <div class="kpi-val">{{ tracked_count }}</div>
-        <div class="kpi-meta">of {{ employees|length }} employees</div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" aria-label="Total absent days">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--red" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Total Absent Days</div>
+          <div class="pl-summary-value">{{ total_absent }}</div>
+        </div>
       </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon orange">
-        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      </div>
-      <div class="kpi-body">
-        <div class="kpi-lbl">Total Present Days</div>
-        <div class="kpi-val">{{ total_present }}</div>
-        <div class="kpi-meta">Across all employees</div>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-icon red">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-      </div>
-      <div class="kpi-body">
-        <div class="kpi-lbl">Total Absent Days</div>
-        <div class="kpi-val">{{ total_absent }}</div>
-        <div class="kpi-meta">{% if total_half %}Half days marked: {{ total_half }} · {% endif %}After Total Off</div>
-      </div>
-    </div>
+    </article>
   </div>
 
   <!-- Attendance table (Purchase Ledger layout) -->
@@ -1723,199 +1728,9 @@
    ADD / EDIT FORM
 ══════════════════════════════════════════════════════ #}
 {% elif mode is defined and mode in ('add', 'edit') %}
-
-  <div class="card">
-    <div class="card-hdr">
-      <div class="card-title">
-        {% if mode == 'add' %}
-          <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-          Add New Employee
-        {% else %}
-          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          Edit Employee{% if form.get('name') %} <span style="color:var(--txt3);font-weight:400;">— {{ form['name'] }}</span>{% elif form.get('id') %} <span style="color:var(--txt3);font-weight:400;">#{{ form['id'] }}</span>{% endif %}
-        {% endif %}
-      </div>
-    </div>
-    <div class="card-body">
-      {% if errors is defined and errors %}
-      <div class="alert-error">
-        <strong>Please fix the following:</strong>
-        <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
-      </div>
-      {% endif %}
-
-      {% set emp_list_url = employee_list_url|default(url_for('employees')) %}
-      {% set emp_return_from = employee_return_from|default('employees') %}
-      {% set emp_return_from_hub = employee_return_from_hub|default('') %}
-      <form method="POST" id="employee-form" action="{% if mode == 'edit' %}{{ url_for('edit_employee', emp_id=form['id']) }}{% else %}{{ url_for('add_employee') }}{% endif %}">
-        <input type="hidden" name="from" value="{{ emp_return_from }}">
-        {% if emp_return_from_hub %}<input type="hidden" name="from_hub" value="{{ emp_return_from_hub }}">{% endif %}
-
-        <div class="form-sec-title">Basic Information</div>
-        <input type="hidden" name="company" value="{{ form.get('company', 'Hotel Bell Elite') or 'Hotel Bell Elite' }}">
-        <div class="form-grid three" style="margin-bottom:16px;">
-          <div>
-            <label for="emp_code">Employee ID</label>
-            <input type="text" id="emp_code" name="emp_code" value="{{ form.get('emp_code', '') }}" readonly
-                   style="background:var(--bg2,#f3f4f6);color:var(--txt2,#4b5563);cursor:default;"
-                   title="Auto-generated unique ID">
-            <div style="margin-top:5px;font-size:10.5px;color:var(--txt3);">
-              {% if mode == 'add' %}Auto-generated next ID — assigned uniquely on save.{% else %}System-assigned — cannot be changed.{% endif %}
-            </div>
-          </div>
-          <div>
-            <label for="name">Full Name *</label>
-            <input type="text" id="name" name="name" value="{{ form.get('name', '') }}" required placeholder="Employee full name">
-          </div>
-          <div>
-            <label for="mobile">Mobile Number *</label>
-            <input type="text" id="mobile" name="mobile" value="{{ form.get('mobile', '') }}" required placeholder="10-digit number" maxlength="10" pattern="\d{10}">
-          </div>
-          <div>
-            <label for="guardian_mobile">Guardian Mobile Number</label>
-            <input type="text" id="guardian_mobile" name="guardian_mobile" value="{{ form.get('guardian_mobile', '') }}" placeholder="10-digit number (optional)" maxlength="10" pattern="\d{10}">
-          </div>
-          <div>
-            {% set sex_options = [('', '— Select —'), ('Male', 'Male'), ('Female', 'Female')] %}
-            {{ ep_listbox('sex', 'Sex', sex_options, form.get('sex', '')) }}
-          </div>
-          <div>
-            {% set location_ns = namespace(options=[('', 'Select department...')]) %}
-            {% for l in locations %}{% set location_ns.options = location_ns.options + [(l, l)] %}{% endfor %}
-            {{ ep_listbox('location', 'Department', location_ns.options, form.get('location', ''), searchable=true) }}
-          </div>
-          <div>
-            <label for="total_off">Total Off</label>
-            <input type="number" id="total_off" name="total_off" value="{{ form.get('total_off', 0) }}" placeholder="e.g. 4" min="0" max="31" step="1"{% if payroll_fields_locked|default(false) %} disabled title="Locked payroll month — wage fields are read-only"{% endif %}>
-            {% if payroll_fields_locked|default(false) %}<input type="hidden" name="total_off" value="{{ form.get('total_off', 0) }}">{% endif %}
-            <div style="margin-top:5px;font-size:10.5px;color:var(--txt3);">{% if payroll_fields_locked|default(false) %}Locked payroll month — Total Off cannot be changed.{% else %}Paid weekday leave days per month. Extra leave is deducted at daily gross rate.{% endif %}</div>
-          </div>
-          <div>
-            {% set status_options = [('active', 'Active'), ('inactive', 'Inactive')] %}
-            {{ ep_listbox('status', 'Status', status_options, form.get('status', 'active')) }}
-          </div>
-        </div>
-
-        <div class="form-sec-title">Salary Details</div>
-        {% if payroll_fields_locked|default(false) %}
-        <div style="margin-bottom:12px;padding:10px 14px;background:var(--warn-bg);border:1px solid rgba(217,119,6,.25);color:var(--warn);border-radius:var(--rs);font-size:12px;font-weight:600;">
-          This employee has data in a locked payroll month. Salary, statutory, and Total Off fields are read-only — including for administrators.
-        </div>
-        {% endif %}
-        <div class="form-grid three" style="margin-bottom:16px;">
-          <div>
-            <label for="gross_salary">Gross Salary (Monthly) *</label>
-            <input type="number" id="gross_salary" name="gross_salary" value="{{ form.get('gross_salary', '') }}" required placeholder="e.g. 25000" min="0" step="0.01" oninput="calcPreview()"{% if payroll_fields_locked|default(false) %} disabled{% endif %}>
-            {% if payroll_fields_locked|default(false) %}<input type="hidden" name="gross_salary" value="{{ form.get('gross_salary', '') }}">{% endif %}
-          </div>
-          <div>
-            <label for="basic_salary">Basic Pay (0 = auto from Gross)</label>
-            <input type="number" id="basic_salary" name="basic_salary" value="{{ form.get('basic_salary', 0) or '' }}" placeholder="Auto-derived" min="0" step="0.01" oninput="calcPreview()"{% if payroll_fields_locked|default(false) %} disabled{% endif %}>
-            {% if payroll_fields_locked|default(false) %}<input type="hidden" name="basic_salary" value="{{ form.get('basic_salary', 0) or '' }}">{% endif %}
-          </div>
-          <div>
-            <label for="epf_amount" style="display:flex;justify-content:space-between;align-items:center;">
-              <span>EPF Amount (0 = auto 12% of Actual Gross, max ₹1,800)</span>
-              <label style="font-weight:400;font-size:11px;color:var(--err);cursor:pointer;display:flex;align-items:center;gap:4px;">
-                <input type="checkbox" id="epf_exempt" name="epf_exempt" value="1"
-                       {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}checked{% endif %}
-                       onchange="toggleExempt('epf')"{% if payroll_fields_locked|default(false) %} disabled{% endif %}>
-                No EPF (exempt)
-              </label>
-            </label>
-            <input type="number" id="epf_amount" name="epf_amount"
-                   value="{{ form.get('epf_amount', 0) or '' }}"
-                   placeholder="Auto: 12% of Actual Gross (max ₹1,800)" min="0" max="1800" step="0.01" oninput="calcPreview()"
-                   {% if payroll_fields_locked|default(false) or (form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','')) %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
-            {% if payroll_fields_locked|default(false) %}
-            <input type="hidden" name="epf_amount" value="{{ form.get('epf_amount', 0) or '' }}">
-            {% if form.get('epf_exempt') and form.get('epf_exempt')|string not in ('0','False','') %}<input type="hidden" name="epf_exempt" value="1">{% endif %}
-            {% endif %}
-          </div>
-          <div>
-            <label for="esic_amount" style="display:flex;justify-content:space-between;align-items:center;">
-              <span>ESIC Amount (0 = auto 0.75% / ₹158 above ₹21k)</span>
-              <label style="font-weight:400;font-size:11px;color:var(--err);cursor:pointer;display:flex;align-items:center;gap:4px;">
-                <input type="checkbox" id="esic_exempt" name="esic_exempt" value="1"
-                       {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}checked{% endif %}
-                       onchange="toggleExempt('esic')"{% if payroll_fields_locked|default(false) %} disabled{% endif %}>
-                No ESIC (exempt)
-              </label>
-            </label>
-            <input type="number" id="esic_amount" name="esic_amount"
-                   value="{{ form.get('esic_amount', 0) or '' }}"
-                   placeholder="Auto: 0.75% of Gross (₹158 if Gross > ₹21,000)" min="0" step="0.01" oninput="calcPreview()"
-                   {% if payroll_fields_locked|default(false) or (form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','')) %}disabled style="opacity:.45;background:var(--bg);"{% endif %}>
-            {% if payroll_fields_locked|default(false) %}
-            <input type="hidden" name="esic_amount" value="{{ form.get('esic_amount', 0) or '' }}">
-            {% if form.get('esic_exempt') and form.get('esic_exempt')|string not in ('0','False','') %}<input type="hidden" name="esic_exempt" value="1">{% endif %}
-            {% endif %}
-          </div>
-        </div>
-
-        <!-- Live preview -->
-        <div id="salary-preview" class="sal-preview" style="display:none;">
-          <div class="sp-item"><div class="sp-lbl">Gross</div><div class="sp-val" id="pv-gross">0</div></div>
-          <div class="sp-item"><div class="sp-lbl" id="pv-basic-label">Basic Pay</div><div class="sp-val blue" id="pv-basic">0</div></div>
-          <div class="sp-item"><div class="sp-lbl" id="pv-epf-label">EPF</div><div class="sp-val orange" id="pv-epf">0</div></div>
-          <div class="sp-item"><div class="sp-lbl" id="pv-esic-label">ESIC</div><div class="sp-val purple" id="pv-esic">0</div></div>
-          <div class="sp-item" id="pv-cr-item"><div class="sp-lbl" id="pv-cr-label">Credit Repay</div><div class="sp-val red" id="pv-cr">0</div></div>
-          <div class="sp-item"><div class="sp-lbl">Net Salary</div><div class="sp-val green" id="pv-net">0</div></div>
-        </div>
-        <div id="salary-warning" style="display:none;margin-top:10px;padding:10px 14px;background:var(--err-bg);border:1px solid rgba(220,38,38,.3);color:var(--err);border-radius:var(--rs);font-size:12px;"></div>
-        <div style="margin-top:8px;font-size:11px;color:var(--txt3);">Gross = Basic + EPF + ESIC. Net = Gross − EPF − ESIC.</div>
-
-        <div class="form-sec-title" style="margin-top:20px;">Identity Documents</div>
-        <div class="form-grid three" style="margin-bottom:16px;">
-          <div>
-            <label for="aadhar">Aadhar Number</label>
-            <input type="text" id="aadhar" name="aadhar" value="{{ form.get('aadhar', '') }}" placeholder="12-digit Aadhar" maxlength="12" pattern="\d{12}">
-          </div>
-          <div>
-            <label for="pan">PAN Card</label>
-            <input type="text" id="pan" name="pan" value="{{ form.get('pan', '') }}" placeholder="e.g. ABCDE1234F" maxlength="10" style="text-transform:uppercase;">
-          </div>
-          <div>
-            <label for="epf_number">EPF Account Number</label>
-            <input type="text" id="epf_number" name="epf_number" value="{{ form.get('epf_number', '') }}" placeholder="EPF number">
-          </div>
-          <div>
-            <label for="esic_number">ESIC Number</label>
-            <input type="text" id="esic_number" name="esic_number" value="{{ form.get('esic_number', '') }}" placeholder="ESIC number">
-          </div>
-          <div class="form-full">
-            <label for="address">Address</label>
-            <textarea id="address" name="address" placeholder="Full address">{{ form.get('address', '') }}</textarea>
-          </div>
-        </div>
-
-        <div class="form-sec-title" style="margin-top:20px;">Bank Details</div>
-        <div class="form-grid two" style="margin-bottom:16px;">
-          <div>
-            <label for="bank_name">Bank Name</label>
-            <input type="text" id="bank_name" name="bank_name" value="{{ form.get('bank_name', '') }}" placeholder="e.g. State Bank of India">
-          </div>
-          <div>
-            <label for="account_holder_name">Account Holder Name</label>
-            <input type="text" id="account_holder_name" name="account_holder_name" value="{{ form.get('account_holder_name', '') }}" placeholder="As per bank records">
-          </div>
-          <div>
-            <label for="account_number">Account Number</label>
-            <input type="text" id="account_number" name="account_number" value="{{ form.get('account_number', '') }}" placeholder="Bank account number" inputmode="numeric">
-          </div>
-          <div>
-            <label for="ifsc_code">IFSC Code</label>
-            <input type="text" id="ifsc_code" name="ifsc_code" value="{{ form.get('ifsc_code', '') }}" placeholder="e.g. SBIN0001234" maxlength="11" style="text-transform:uppercase;">
-          </div>
-        </div>
-
-        <div class="form-actions">
-          <button type="submit" class="btn btn-primary">{{ 'Update Employee' if mode == 'edit' else 'Add Employee' }}</button>
-          <a href="{{ emp_list_url }}" class="btn btn-secondary">Cancel</a>
-        </div>
-      </form>
-    </div>
-  </div>
+  <article class="ep-emp-form-panel" aria-label="{{ 'Edit employee' if mode == 'edit' else 'Add employee' }}">
+    {% include 'partials/employee_form_fields.html' %}
+  </article>
 
 
 {# ══════════════════════════════════════════════════════
@@ -2546,7 +2361,6 @@
       <div class="kpi-body">
         <div class="kpi-lbl">Total Active Employees</div>
         <div class="kpi-val">{{ total_employees }}</div>
-        <div class="kpi-meta">{{ employees|length }} shown with current filters</div>
       </div>
     </article>
     <article class="card emp-summary-card kpi-card" aria-label="Attendance tracked">
@@ -2556,7 +2370,6 @@
       <div class="kpi-body">
         <div class="kpi-lbl">Attendance Tracked</div>
         <div class="kpi-val">{{ kpi_att_pct }}%</div>
-        <div class="kpi-meta">{{ kpi_att_tracked }} of {{ total_employees }} active — {{ month_name }}</div>
       </div>
     </article>
     <article class="card emp-summary-card kpi-card" aria-label="Total credit balance">
@@ -2566,7 +2379,6 @@
       <div class="kpi-body">
         <div class="kpi-lbl">Total Credit Balance</div>
         <div class="kpi-val pl-amount">{{ kpi_credits | inr }}</div>
-        <div class="kpi-meta">Outstanding advance / credit</div>
       </div>
     </article>
     <article class="card emp-summary-card kpi-card" aria-label="Total net payable">
@@ -2576,13 +2388,12 @@
       <div class="kpi-body">
         <div class="kpi-lbl">Total Net Payable</div>
         <div class="kpi-val pl-amount">{{ kpi_net | inr }}</div>
-        <div class="kpi-meta">Net salary — {{ month_name }} {{ sel_year }}</div>
       </div>
     </article>
   </div>
 
   <!-- Employee table -->
-  <article class="card emp-list-panel emp-list-panel--scroll hbe-scroll-panel" aria-label="Employee records">
+  <article class="card pl-list-panel pl-list-panel--scroll emp-list-panel emp-list-panel--scroll hbe-scroll-panel" aria-label="Employee records">
     <div class="card-hdr">
       <div class="card-title">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
@@ -2592,7 +2403,7 @@
     </div>
     {% if employees %}
     <div class="card-body emp-card-body--flush">
-      <div class="emp-table-wrap" tabindex="0" aria-label="Employee records, scroll for more">
+      <div class="pl-table-wrap emp-table-wrap" tabindex="0" aria-label="Employee records, scroll for more">
         <table id="emp-main-table" class="emp-pl-table" aria-label="Employee records">
           <thead>
             <tr>
@@ -2774,7 +2585,7 @@
 
 </main>
 </div><!-- /main-wrapper -->
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=58"></script>
 {% if mode is defined and mode == 'credits' %}
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script>
@@ -2964,7 +2775,7 @@
   </div>
 </div>
 <script type="application/json" id="ep-page-config">{"year":{{ sel_year|default('')|tojson }},"month":{{ sel_month|default('')|tojson }},"lockUrl":{{ url_for('lock_payroll_month')|tojson }}}</script>
-<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=6"></script>
+<script src="{{ url_for('static', filename='employee_payroll.js') }}?v=7"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

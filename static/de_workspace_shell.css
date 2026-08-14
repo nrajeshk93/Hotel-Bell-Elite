@@ -159,7 +159,7 @@ html.de-soft-nav-session .de-main-wrapper #st-approvals-open.st-approvals-open--
   }
 }
 html.de-sidebar-wide-boot .de-sidebar{
-  width:var(--de-sidebar-expanded)!important;min-width:var(--de-sidebar-expanded)!important;max-width:var(--de-sidebar-expanded)!important;
+  flex-basis:var(--de-sidebar-expanded)!important;width:var(--de-sidebar-expanded)!important;min-width:var(--de-sidebar-expanded)!important;max-width:var(--de-sidebar-expanded)!important;
   transition:none!important;
 }
 html.de-sidebar-wide-boot .de-sidebar .sb-brand-text,
@@ -227,11 +227,12 @@ body.de-open.ep-module{overflow:auto;}
     top:0;
     height:100vh;
     z-index:10;
+    flex:0 0 var(--de-sidebar-collapsed);
     width:var(--de-sidebar-collapsed);
     min-width:var(--de-sidebar-collapsed);
     max-width:var(--de-sidebar-collapsed);
     align-self:start;
-    transition:width var(--de-sb-rail-ms) var(--de-sb-ease),min-width var(--de-sb-rail-ms) var(--de-sb-ease),max-width var(--de-sb-rail-ms) var(--de-sb-ease),transform var(--de-sb-rail-ms) var(--de-sb-ease);
+    transition:width var(--de-sb-rail-ms) var(--de-sb-ease),min-width var(--de-sb-rail-ms) var(--de-sb-ease),max-width var(--de-sb-rail-ms) var(--de-sb-ease),flex-basis var(--de-sb-rail-ms) var(--de-sb-ease),transform var(--de-sb-rail-ms) var(--de-sb-ease);
     overflow-x:hidden;
     overflow-y:hidden;
     scrollbar-gutter:stable;
@@ -253,6 +254,7 @@ body.de-open.ep-module{overflow:auto;}
   #dashboard.de-module .de-sidebar.de-sidebar--preflight-hidden{
     visibility:hidden!important;
     pointer-events:none!important;
+    flex-basis:var(--de-sidebar-collapsed)!important;
     width:var(--de-sidebar-collapsed)!important;
     min-width:var(--de-sidebar-collapsed)!important;
     max-width:var(--de-sidebar-collapsed)!important;
@@ -260,36 +262,28 @@ body.de-open.ep-module{overflow:auto;}
   }
   /* Width expands via .is-expanded / .is-pinned (JS) and :hover (pointer over rail).
      Unpinned + not hovered must collapse — syncDeSidebarPointerState clears sticky is-expanded. */
-  #main-app.de-module .de-sidebar:hover,
-  #ep-workspace.de-module .de-sidebar:hover,
-  #dashboard.de-module .de-sidebar:hover,
+  #main-app.de-module .de-sidebar:hover:not(.de-sidebar--suppress-hover),
+  #ep-workspace.de-module .de-sidebar:hover:not(.de-sidebar--suppress-hover),
+  #dashboard.de-module .de-sidebar:hover:not(.de-sidebar--suppress-hover),
   #main-app.de-module .de-sidebar.is-expanded,
   #ep-workspace.de-module .de-sidebar.is-expanded,
   #dashboard.de-module .de-sidebar.is-expanded,
   #main-app.de-module .de-sidebar.is-pinned,
   #ep-workspace.de-module .de-sidebar.is-pinned,
   #dashboard.de-module .de-sidebar.is-pinned{
+    flex-basis:var(--de-sidebar-expanded);
     width:var(--de-sidebar-expanded);
     min-width:var(--de-sidebar-expanded);
     max-width:var(--de-sidebar-expanded);
     box-shadow:none;
     z-index:20;
   }
-  /* Unpinned hover/expand overlays the main pane. In-flow grow moves header
-     Back (~left 92) by 180px; the pointer then leaves the rail and it
-     collapses — the chevron reads as shaking. */
-  #main-app.de-module .de-sidebar:not(.is-pinned):is(:hover, .is-expanded),
-  #ep-workspace.de-module .de-sidebar:not(.is-pinned):is(:hover, .is-expanded),
-  #dashboard.de-module .de-sidebar:not(.is-pinned):is(:hover, .is-expanded){
-    margin-right:calc(var(--de-sidebar-collapsed) - var(--de-sidebar-expanded));
-    z-index:40;
-    box-shadow:8px 0 24px rgba(15,23,42,.08);
-  }
-  /* After soft-nav (Back beside the rail), block CSS :hover expand so the rail
-     does not flash wide then collapse when the cursor sits at ~left:120. */
-  #main-app.de-module .de-sidebar.de-sidebar--suppress-hover:not(.is-pinned):not(.is-expanded),
-  #ep-workspace.de-module .de-sidebar.de-sidebar--suppress-hover:not(.is-pinned):not(.is-expanded),
-  #dashboard.de-module .de-sidebar.de-sidebar--suppress-hover:not(.is-pinned):not(.is-expanded){
+  /* After unpin / soft-nav, block CSS :hover expand so the rail collapses
+     even while the cursor is still on Pin sidebar. */
+  #main-app.de-module .de-sidebar.de-sidebar--suppress-hover:not(.is-pinned),
+  #ep-workspace.de-module .de-sidebar.de-sidebar--suppress-hover:not(.is-pinned),
+  #dashboard.de-module .de-sidebar.de-sidebar--suppress-hover:not(.is-pinned){
+    flex-basis:var(--de-sidebar-collapsed)!important;
     width:var(--de-sidebar-collapsed)!important;
     min-width:var(--de-sidebar-collapsed)!important;
     max-width:var(--de-sidebar-collapsed)!important;
@@ -548,9 +542,9 @@ body.de-open.ep-module{overflow:auto;}
     outline:2px solid rgba(37,99,235,.35);
     outline-offset:2px;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item{
     width:52px;
     min-width:52px;
     max-width:52px;
@@ -758,9 +752,9 @@ body.de-open.ep-module{overflow:auto;}
     transform:rotate(0deg);
     flex-shrink:0;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle{
     gap:0;
     justify-content:center;
     align-items:center;
@@ -772,9 +766,9 @@ body.de-open.ep-module{overflow:auto;}
     padding:0;
     margin:0 auto;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle .de-nav-chevron{
     visibility:hidden;
     opacity:0;
     max-width:0;
@@ -859,9 +853,9 @@ body.de-open.ep-module{overflow:auto;}
     position:relative;
     z-index:2;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-sub,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-sub,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-sub{
     display:none!important;
     position:absolute;
     left:calc(100% + 8px);
@@ -882,35 +876,35 @@ body.de-open.ep-module{overflow:auto;}
     opacity:1;
     transform:none;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub::before,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub::before,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-sub::before{display:none}
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-sub::before,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-sub::before,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-sub::before{display:none}
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group{
     position:relative;
     width:52px;
     margin:0 auto;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group.is-flyout-active .de-nav-sub,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group.is-flyout-active .de-nav-sub,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group.is-flyout-active .de-nav-sub{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group.is-flyout-active .de-nav-sub,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group.is-flyout-active .de-nav-sub,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group.is-flyout-active .de-nav-sub{
     display:flex!important;
     animation:de-scale-in var(--de-motion-fast, 180ms) var(--de-ease-out, cubic-bezier(0.2, 0, 0, 1)) both;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem{
     padding:8px 12px;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem.is-active,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem.is-active,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem.is-active{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem.is-active,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem.is-active,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem.is-active{
     padding:8px 12px;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem::before,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem::before,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-subitem::before{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem::before,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem::before,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-subitem::before{
     display:none;
   }
   #main-app.de-module .de-nav-subitem,
@@ -984,52 +978,52 @@ body.de-open.ep-module{overflow:auto;}
     padding-top:16px;
     border-top:1px solid #F1F5F9;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned),
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned),
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned){
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned),
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned),
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned){
     padding-left:12px;
     padding-right:12px;
     scrollbar-gutter:auto;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .sb-brand,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .sb-brand,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .sb-brand{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .sb-brand,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .sb-brand,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .sb-brand{
     justify-content:center;
     padding-left:0;
     padding-right:0;
     gap:0;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .sb-brand-text,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .sb-brand-text,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .sb-brand-text{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .sb-brand-text,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .sb-brand-text,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .sb-brand-text{
     display:none;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sb-nav,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sb-nav,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sb-nav{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sb-nav,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sb-nav,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sb-nav{
     align-items:center;
     width:100%;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item span,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item span,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item span,
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn span,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn span,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn span{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item span,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item span,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item span,
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle span:not(.de-nav-icon-mask),
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-chevron,
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn span,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn span,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn span{
     display:none;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-item,
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-item,
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group-toggle{
     width:52px;
     min-width:52px;
     max-width:52px;
@@ -1042,9 +1036,9 @@ body.de-open.ep-module{overflow:auto;}
     justify-content:center;
     align-items:center;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn{
     width:52px;
     min-width:52px;
     max-width:52px;
@@ -1057,23 +1051,23 @@ body.de-open.ep-module{overflow:auto;}
     justify-content:center;
     align-items:center;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-nav-group{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-nav-group{
     width:52px;
     margin-left:auto;
     margin-right:auto;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-help,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-help,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-help{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-help,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-help,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-help{
     display:flex;
     justify-content:center;
     width:100%;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn svg,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn svg,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn svg{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn svg,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn svg,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn svg{
     width:18px;
     height:18px;
   }
@@ -1141,14 +1135,14 @@ body.de-open.ep-module{overflow:auto;}
   #dashboard.de-module .de-sidebar.is-pinned .de-sidebar-pin-btn{
     justify-content:flex-start;width:100%;margin:0;padding:0 10px;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-pin-btn{
     width:52px;height:44px;margin-left:auto;margin-right:auto;padding:0;justify-content:center;
   }
-  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-footer,
-  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-footer,
-  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch):not(.is-expanded):not(.is-pinned) .de-sidebar-footer{
+  #main-app.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-footer,
+  #ep-workspace.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-footer,
+  #dashboard.de-module .de-sidebar:is(:not(:hover), .de-sidebar--touch, .de-sidebar--suppress-hover):not(.is-expanded):not(.is-pinned) .de-sidebar-footer{
     border-top-color:transparent;padding-top:10px;
   }
   #main-app.de-module .de-sidebar:hover .de-sidebar-pin-btn span,

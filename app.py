@@ -152,6 +152,7 @@ from workspace_access import (
     _DASHBOARD_MODULES,
     _PUBLIC_ENDPOINTS,
     _PAYROLL_SUBMODULE_LABELS,
+    _POS_RESTAURANT_SALES_WRITE_ENDPOINTS,
     _SALES_ANALYTICS_SUBMODULE_LABELS,
     _STORES_SUBMODULE_LABELS,
     _USER_ACCESS_SUBMODULE_LABELS,
@@ -710,7 +711,12 @@ def enforce_access():
             }
             and user_can_access_customer_master(user)
         )
-        if not agency_ok and not customer_ok:
+        pos_restaurant_sales_ok = (
+            required_dashboard == "sales_analytics"
+            and endpoint in _POS_RESTAURANT_SALES_WRITE_ENDPOINTS
+            and user_can_access_dashboard(user, "point_of_sale")
+        )
+        if not agency_ok and not customer_ok and not pos_restaurant_sales_ok:
             label = _DASHBOARD_MODULE_LABELS.get(required_dashboard, "requested")
             return _permission_denied_response(f"You do not have access to {label}.")
 
@@ -3466,9 +3472,13 @@ def _invoice_sales_kpi_bundle(conn, company=None, location=None, date_from=None,
     }
 
 
-def _kpi_current_from_sales_entries(entries):
+def _kpi_current_from_sales_entries(entries, difference_mode=None):
     """Build Sales Update KPI cards from the same values shown in Sales Entry."""
     values = entries or {}
+    if difference_mode == "cash_actual":
+        difference = get_cash_actual_difference(values)
+    else:
+        difference = get_difference(values)
     return {
         "actual_sales": parse_money(values.get("total_sales")),
         "digital_transactions": get_digital_transactions(values),
@@ -3476,13 +3486,15 @@ def _kpi_current_from_sales_entries(entries):
         "room_credit": parse_money(values.get("room_credit")),
         "tips": parse_money(values.get("tips")),
         "expense": parse_money(values.get("expense")),
-        "difference": get_difference(values),
+        "difference": difference,
     }
 
 
-def _kpi_bundle_from_sales_entries(current_entries, previous_entries, date_from, date_to):
-    current = _kpi_current_from_sales_entries(current_entries)
-    previous = _kpi_current_from_sales_entries(previous_entries)
+def _kpi_bundle_from_sales_entries(
+    current_entries, previous_entries, date_from, date_to, difference_mode=None
+):
+    current = _kpi_current_from_sales_entries(current_entries, difference_mode)
+    previous = _kpi_current_from_sales_entries(previous_entries, difference_mode)
     trends = {
         key: _pct_change_vs_previous(current[key], previous[key])
         for key in (
@@ -3504,21 +3516,40 @@ def _kpi_bundle_from_sales_entries(current_entries, previous_entries, date_from,
     }
 
 
-def _outlet_sales_update_kpi_bundle(conn, company, location, date_from, date_to, user=None, current_entries=None):
+def _outlet_sales_update_kpi_bundle(
+    conn, company, location, date_from, date_to, user=None, current_entries=None, overlay_invoices=False
+):
     """KPI cards that match the Sales Entry / ledger figures on this page."""
     today_iso = date.today().isoformat()
     user = user or {}
     if current_entries is None:
         current_row = _load_outlet_entry_bundle(
-            conn, user, company, location, date_from.isoformat(), today_iso
+            conn,
+            user,
+            company,
+            location,
+            date_from.isoformat(),
+            today_iso,
+            overlay_invoices=overlay_invoices,
         )
         current_entries = current_row["sales_entry_values"]
     prev_date = (date_from - timedelta(days=1)).isoformat()
     prev_row = _load_outlet_entry_bundle(
-        conn, user, company, location, prev_date, today_iso
+        conn,
+        user,
+        company,
+        location,
+        prev_date,
+        today_iso,
+        overlay_invoices=overlay_invoices,
     )
+    difference_mode = "cash_actual" if location not in HOTEL_LOCATIONS else None
     return _kpi_bundle_from_sales_entries(
-        current_entries, prev_row["sales_entry_values"], date_from, date_to
+        current_entries,
+        prev_row["sales_entry_values"],
+        date_from,
+        date_to,
+        difference_mode=difference_mode,
     )
 
 
@@ -6759,24 +6790,40 @@ def hotel_reservation_detail_api(reservation_id):
         conn.close()
 
 
+def _assign_room_ids_from_payload(data):
+    payload = data if isinstance(data, dict) else {}
+    raw = payload.get("roomIds")
+    if raw is None:
+        raw = payload.get("room_ids")
+    ids = []
+    seen = set()
+    if isinstance(raw, list):
+        for item in raw:
+            rid = str(item or "").strip()
+            if rid and rid not in seen:
+                seen.add(rid)
+                ids.append(rid)
+    if ids:
+        return ids
+    fallback = str(payload.get("roomId") or payload.get("room_id") or "").strip()
+    return [fallback] if fallback else []
+
+
 @app.route(
     "/hotel/api/reservations/<reservation_id>/assign",
     methods=["POST"],
     endpoint="hotel_reservation_assign_api",
 )
 def hotel_reservation_assign_api(reservation_id):
-    """Assign a local hotel room to an Asia Tech reservation."""
+    """Assign local hotel rooms to an Asia Tech reservation as a merge group."""
     conn = get_db()
     try:
         ensure_hotel_rooms_schema(conn)
         settings = get_hotel_settings(conn)
         data = request.get_json(silent=True) or {}
-        room_id = str(data.get("roomId") or data.get("room_id") or "").strip()
-        if not room_id:
+        room_ids = _assign_room_ids_from_payload(data)
+        if not room_ids:
             return jsonify({"ok": False, "error": "roomId is required."}), 400
-        room = get_hotel_room(conn, room_id)
-        if not room:
-            return jsonify({"ok": False, "error": "Room not found."}), 404
 
         reservation = asia_tech_client.get_reservation(settings, reservation_id)
         if not reservation:
@@ -6789,36 +6836,102 @@ def hotel_reservation_assign_api(reservation_id):
             return jsonify(
                 {"ok": False, "error": "Cannot assign a room to a cancelled reservation."}
             ), 400
-        already_this_room = str(reservation.get("roomId") or "") == str(room_id)
-        if not already_this_room and not hotel_room_available_for_stay(
-            room,
-            reservation.get("checkInDate"),
-            reservation.get("checkOutDate"),
-        ):
+        total_rooms = asia_tech_client.reservation_total_rooms(reservation)
+        existing_ids = asia_tech_client.assigned_room_ids(reservation)
+        assigned_count = asia_tech_client.assigned_room_count(reservation)
+        remaining = max(0, total_rooms - assigned_count)
+        if remaining <= 0:
             return jsonify(
-                {"ok": False, "error": "This room is not available for these dates."}
+                {
+                    "ok": False,
+                    "error": (
+                        f"This booking already has {assigned_count} of "
+                        f"{total_rooms} rooms assigned."
+                    ),
+                }
+            ), 400
+        existing_set = set(existing_ids)
+        new_ids = [rid for rid in room_ids if rid not in existing_set]
+        if not new_ids:
+            return jsonify(
+                {"ok": False, "error": "Those rooms are already assigned to this booking."}
+            ), 400
+        if assigned_count + len(new_ids) > total_rooms:
+            if assigned_count:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": (
+                            f"This booking already has {assigned_count} of "
+                            f"{total_rooms} rooms assigned."
+                        ),
+                    }
+                ), 400
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": f"This booking allows at most {total_rooms} rooms.",
+                }
             ), 400
 
+        rooms = []
+        for rid in new_ids:
+            room = get_hotel_room(conn, rid)
+            if not room:
+                return jsonify({"ok": False, "error": "Room not found."}), 404
+            if not hotel_room_available_for_stay(
+                room,
+                reservation.get("checkInDate"),
+                reservation.get("checkOutDate"),
+            ):
+                return jsonify(
+                    {"ok": False, "error": "This room is not available for these dates."}
+                ), 400
+            rooms.append(room)
+
+        existing_primary_id = existing_ids[0] if existing_ids else ""
+        if existing_primary_id:
+            primary = get_hotel_room(conn, existing_primary_id)
+            if not primary:
+                return jsonify({"ok": False, "error": "Room not found."}), 404
+            extras = rooms
+        else:
+            primary = rooms[0]
+            extras = rooms[1:]
         try:
             updated, next_settings = asia_tech_client.assign_room_local(
                 settings,
                 reservation_id,
-                room_id=room_id,
-                room_number=str(room.get("number") or ""),
-                room_type_label=str(room.get("roomTypeLabel") or room.get("roomType") or ""),
+                room_id=primary.get("id"),
+                room_number=str(primary.get("number") or ""),
+                room_type_label=str(
+                    primary.get("roomTypeLabel") or primary.get("roomType") or ""
+                ),
+                room_ids=[str(room.get("id") or "") for room in rooms],
+                room_numbers=[str(room.get("number") or "") for room in rooms],
             )
-            saved_room = save_hotel_room_reservation(
-                conn,
-                room_id,
-                updated.get("checkInDate"),
-                updated.get("checkOutDate"),
-                stay_fields={
-                    "guestName": updated.get("guestName") or "",
-                    "mobile": updated.get("mobile") or "",
-                    "email": updated.get("email") or "",
-                },
-                replace=False,
-            )
+            saved_room = primary
+            if not existing_primary_id:
+                saved_room = save_hotel_room_reservation(
+                    conn,
+                    primary.get("id"),
+                    updated.get("checkInDate"),
+                    updated.get("checkOutDate"),
+                    stay_fields={
+                        "guestName": updated.get("guestName") or "",
+                        "mobile": updated.get("mobile") or "",
+                        "email": updated.get("email") or "",
+                    },
+                    replace=False,
+                )
+            for member in extras:
+                merge_hotel_room_billing(
+                    conn,
+                    from_room_id=member.get("id"),
+                    to_room_id=primary.get("id"),
+                )
+            if extras or existing_primary_id:
+                saved_room = get_hotel_room(conn, primary.get("id")) or saved_room
         except ValueError as exc:
             conn.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 400
@@ -11166,7 +11279,9 @@ def clear_hotel_ledger():
     })
 
 
-def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_iso):
+def _load_outlet_entry_bundle(
+    conn, user, company, location, sales_date, today_iso, overlay_invoices=False
+):
     is_future = sales_date > today_iso
     row = None if is_future else load_sales_row(company, location, sales_date)
     sales_entry_locked = _sales_entry_locked_for_user(user, row)
@@ -11190,13 +11305,14 @@ def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_i
         expense_entries = _sales_expense_entries(conn, company, location, sales_date)
     else:
         sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
-        # Collections upload writes these fields. Do not replace them with empty
-        # in-app POS totals or the Upload button looks like it did nothing.
-        saved_import = any(parse_money(sales_entries.get(key)) for key in IMPORT_FIELD_KEYS)
-        if not is_future and not saved_import:
-            invoice_entries = pos_sales_entry_from_invoices(conn, location, sales_date)
-            for key in IMPORT_FIELD_KEYS:
-                sales_entries[key] = parse_money(invoice_entries.get(key))
+        if not is_future:
+            saved_import = any(parse_money(sales_entries.get(key)) for key in IMPORT_FIELD_KEYS)
+            # Invoice Sales Update always overlays POS totals. Collections pages keep
+            # a saved Excel import so the Upload button is not wiped by live invoices.
+            if overlay_invoices or not saved_import:
+                invoice_entries = pos_sales_entry_from_invoices(conn, location, sales_date)
+                for key in IMPORT_FIELD_KEYS:
+                    sales_entries[key] = parse_money(invoice_entries.get(key))
         expense_entries = []
         expense_total = 0.0
     if location in TIP_OUTLET_LOCATIONS:
@@ -11219,7 +11335,7 @@ def _load_outlet_entry_bundle(conn, user, company, location, sales_date, today_i
     return bundle
 
 
-def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
+def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint, **page_opts):
     selected_company = request.args.get("company", DEFAULT_COMPANY)
     selected_date = request.args.get("date", date.today().isoformat())
     today_iso = date.today().isoformat()
@@ -11232,12 +11348,28 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
 
     selected_location = outlet
     selected_locations = [outlet]
+    overlay_invoices = bool(page_opts.get("overlay_invoices", False))
+    hide_collections_upload = bool(page_opts.get("hide_collections_upload", False))
+    preserve_import = bool(page_opts.get("preserve_import", overlay_invoices))
+    if overlay_invoices:
+        default_subtitle = "Totals update from restaurant invoices. Record actual cash, tips, and petty cash."
+    else:
+        default_subtitle = f"Upload reports and record daily {outlet} sales."
+    page_subtitle = page_opts.get("page_subtitle") or default_subtitle
+    nav_section = page_opts.get("de_nav_section") or "analytics"
+    pos_view = page_opts.get("de_nav_pos_view") or ""
 
     conn = get_db()
     try:
         outlet_records = {
             outlet: _load_outlet_entry_bundle(
-                conn, user, selected_company, outlet, selected_date, today_iso
+                conn,
+                user,
+                selected_company,
+                outlet,
+                selected_date,
+                today_iso,
+                overlay_invoices=overlay_invoices,
             )
         }
         cash_transfer_entries = _sales_cash_transfer_entries(conn, selected_company, selected_location, selected_date)
@@ -11252,6 +11384,7 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
             entry_date,
             user=user,
             current_entries=outlet_records[outlet]["sales_entry_values"],
+            overlay_invoices=overlay_invoices,
         )
     finally:
         conn.close()
@@ -11281,9 +11414,10 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
     return render_template(
         "sales_update.html",
         page_title=f"Sales Update - {outlet}",
-        page_subtitle=f"Upload reports and record daily {outlet} sales.",
+        page_subtitle=page_subtitle,
         filter_form_action=url_for(filter_endpoint),
         hide_location_filter=True,
+        hide_collections_upload=hide_collections_upload,
         selected_company=selected_company,
         selected_company_label=SALES_COMPANY_LOCATIONS[selected_company]["label"],
         selected_location=selected_location,
@@ -11315,10 +11449,12 @@ def _render_sales_update_outlet(user, outlet, sales_view, filter_endpoint):
         whatsapp_sales_report_configured=False,
         whatsapp_sales_report_company=None,
         sales_entry_total=sales_entry_total,
-        de_nav_section="analytics",
+        de_nav_section=nav_section,
         de_nav_sales_view=sales_view,
+        de_nav_pos_view=pos_view,
         kpi_fourth_metric="room_transfer",
         manual_sales_entry_keys=MANUAL_SALES_ENTRY_KEYS,
+        preserve_import=preserve_import,
     )
 
 
@@ -11337,7 +11473,32 @@ def sales_update_bar():
 @app.route("/sales_update/restaurant")
 def sales_update_restaurant():
     user = get_current_user()
-    return _render_sales_update_outlet(user, OUTLET_RESTAURANT, "restaurant", "sales_update_restaurant")
+    return _render_sales_update_outlet(
+        user,
+        OUTLET_RESTAURANT,
+        "restaurant",
+        "sales_update_restaurant",
+        overlay_invoices=False,
+        hide_collections_upload=False,
+        page_subtitle="Upload reports and record daily Restaurant sales.",
+    )
+
+
+@app.route("/point-of-sale/sales-update")
+def point_of_sale_sales_update():
+    user = get_current_user()
+    return _render_sales_update_outlet(
+        user,
+        OUTLET_RESTAURANT,
+        "restaurant",
+        "point_of_sale_sales_update",
+        de_nav_section="pos",
+        de_nav_pos_view="sales_update",
+        overlay_invoices=True,
+        hide_collections_upload=True,
+        preserve_import=True,
+        page_subtitle="Totals update from restaurant invoices. Record actual cash, tips, and petty cash.",
+    )
 
 
 def _render_room_transfer_receivables_page(
@@ -11698,6 +11859,7 @@ def save_sales_update():
     petty_cash_counts = data.get("petty_cash_counts", {})
     cash_denomination_counts = data.get("cash_denomination_counts", {})
     sales_only = bool(data.get("sales_only"))
+    preserve_import = bool(data.get("preserve_import"))
 
     lock_error = _check_sales_date_lock(user, company, location, sales_date)
     if lock_error:
@@ -11721,7 +11883,11 @@ def save_sales_update():
     elif not cash_denomination_counts:
         cash_denomination_counts = (existing_row or {}).get("cash_denomination_counts", {})
 
-    if cash_denomination_counts:
+    if preserve_import:
+        existing_values = (existing_row or {}).get("sales_entry_values", {}) or {}
+        for key in IMPORT_FIELD_KEYS:
+            sales_entries[key] = parse_money(existing_values.get(key))
+    elif cash_denomination_counts:
         cash_total = get_denomination_total(cash_denomination_counts)
         if cash_total > 0:
             sales_entries["cash"] = round_half_up(cash_total, 2)

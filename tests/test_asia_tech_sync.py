@@ -38,6 +38,46 @@ class AsiaTechNormalizerTests(unittest.TestCase):
         self.assertEqual(row["roomTypeLabel"], "Deluxe Sea View")
         self.assertEqual(row["mobile"], "9876543210")
         self.assertEqual(row["guests"], 2)
+        self.assertEqual(row["totalRooms"], 1)
+
+    def test_normalize_total_rooms_from_count_and_room_detail(self):
+        from_count = asia_tech_client._normalize_reservation(
+            {
+                "id": "RM-17",
+                "guestName": "Group",
+                "checkInDate": "2026-08-14",
+                "checkOutDate": "2026-08-15",
+                "NoOfRooms": 17,
+            }
+        )
+        self.assertEqual(from_count["totalRooms"], 17)
+        from_detail = asia_tech_client._normalize_reservation(
+            {
+                "id": "RM-3",
+                "guestName": "Family",
+                "checkInDate": "2026-08-14",
+                "checkOutDate": "2026-08-15",
+                "room_detail": [{"roomname": "Deluxe"}, {"roomname": "Deluxe"}, {"roomname": "Suite"}],
+            }
+        )
+        self.assertEqual(from_detail["totalRooms"], 3)
+
+    def test_assigned_room_count_from_ids_and_numbers(self):
+        self.assertEqual(asia_tech_client.assigned_room_count({}), 0)
+        self.assertEqual(
+            asia_tech_client.assigned_room_count({"roomId": "room-101", "totalRooms": 17}),
+            1,
+        )
+        self.assertEqual(
+            asia_tech_client.assigned_room_ids(
+                {"roomId": "room-101", "roomIds": ["room-101", "room-103"]}
+            ),
+            ["room-101", "room-103"],
+        )
+        self.assertEqual(
+            asia_tech_client.assigned_room_count({"roomNumber": "101", "roomNumbers": ["101"]}),
+            1,
+        )
 
     def test_normalize_getbooking_payload(self):
         row = asia_tech_client._normalize_reservation(

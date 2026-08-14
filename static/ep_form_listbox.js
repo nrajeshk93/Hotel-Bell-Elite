@@ -321,6 +321,40 @@
     return false;
   }
 
+  var COMPACT_PERIOD_ROWS = 4;
+
+  function isCompactPeriodListbox(root){
+    if (!root) return false;
+    return !!(
+      root.querySelector('input[type="hidden"][name="month"]') ||
+      root.querySelector('input[type="hidden"][name="year"]')
+    );
+  }
+
+  function rotateSelectedFirst(list){
+    if (!list) return;
+    var wrap = list.querySelector('.ep-listbox-options') || list;
+    var selected = wrap.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
+    if (!selected) return;
+    var opts = Array.prototype.slice.call(wrap.querySelectorAll('.se-filter-listbox-option'));
+    var idx = opts.indexOf(selected);
+    if (idx <= 0) return;
+    var i;
+    for (i = idx; i < opts.length; i++) wrap.appendChild(opts[i]);
+    for (i = 0; i < idx; i++) wrap.appendChild(opts[i]);
+  }
+
+  function compactPeriodMaxHeight(list){
+    var opt = list.querySelector('.se-filter-listbox-option:not(.is-filtered-out)');
+    var optH = (opt && opt.offsetHeight) ? opt.offsetHeight : 40;
+    var pad = 12;
+    try {
+      var cs = global.getComputedStyle(list);
+      pad = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    } catch (err) {}
+    return Math.round(pad + COMPACT_PERIOD_ROWS * optH);
+  }
+
   function positionFixedListbox(root, list){
     if (!root || !list || !shouldUseFixedListbox(root)) return;
     portalFixedListbox(root, list);
@@ -330,8 +364,15 @@
     var left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 8));
     var spaceBelow = window.innerHeight - rect.bottom - 12;
     var spaceAbove = rect.top - 12;
-    var openUp = spaceBelow < 220 && spaceAbove > spaceBelow;
-    var maxHeight = Math.min(320, Math.max(160, openUp ? spaceAbove : spaceBelow));
+    var compactPicker = isCompactPeriodListbox(root);
+    if (compactPicker) rotateSelectedFirst(list);
+    var openUp = compactPicker
+      ? (spaceBelow < 180 && spaceAbove > spaceBelow)
+      : (spaceBelow < 220 && spaceAbove > spaceBelow);
+    var maxHeight = compactPicker
+      ? Math.min(compactPeriodMaxHeight(list), Math.max(80, openUp ? spaceAbove : spaceBelow))
+      : Math.min(320, Math.max(160, openUp ? spaceAbove : spaceBelow));
+    list.classList.toggle('ep-period-compact', compactPicker);
     list.style.position = 'fixed';
     list.style.left = left + 'px';
     list.style.right = 'auto';
@@ -360,6 +401,7 @@
     list.style.maxHeight = '';
     list.style.zIndex = '';
     list.style.paddingBottom = '';
+    list.classList.remove('ep-period-compact', 'ep-month-compact');
     list.scrollTop = 0;
   }
 
@@ -372,6 +414,16 @@
   /** Keep the selected row in view without hiding earlier options above the fold. */
   function scrollSelectedToTop(list){
     if (!list) return;
+    var root = list.__epPortalRoot;
+    if (isCompactPeriodListbox(root)) {
+      rotateSelectedFirst(list);
+      list.style.paddingBottom = '';
+      var periodCap = compactPeriodMaxHeight(list);
+      var periodContent = list.scrollHeight;
+      list.style.maxHeight = (periodContent <= periodCap + 1 ? periodContent : periodCap) + 'px';
+      list.scrollTop = 0;
+      return;
+    }
     var selected = list.querySelector('.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]');
     if (!selected || selected.classList.contains('is-filtered-out')) {
       resetListboxPanelSize(list);
@@ -458,6 +510,7 @@
     if (list) {
       list.hidden = false;
       resetListboxPanelSize(list);
+      if (isCompactPeriodListbox(root)) rotateSelectedFirst(list);
       if (shouldUseFixedListbox(root)) {
         positionFixedListbox(root, list);
       } else {

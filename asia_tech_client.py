@@ -82,6 +82,82 @@ def _nights(check_in: str, check_out: str) -> int:
     return (b - a).days
 
 
+def _total_rooms_from_raw(raw: Dict[str, Any]) -> int:
+    explicit = _pick(
+        raw,
+        "totalRooms",
+        "total_rooms",
+        "noofrooms",
+        "no_of_rooms",
+        "NoOfRooms",
+        "roomcount",
+        "room_count",
+        "rooms_count",
+    )
+    try:
+        count = int(float(explicit or 0))
+    except (TypeError, ValueError):
+        count = 0
+    rooms_val = raw.get("rooms")
+    if count < 1 and isinstance(rooms_val, (int, float)) and not isinstance(rooms_val, bool):
+        count = int(rooms_val)
+    if count < 1:
+        detail = raw.get("room_detail") or raw.get("roomdetail") or rooms_val
+        if isinstance(detail, list) and detail:
+            count = len(detail)
+        elif isinstance(detail, dict) and detail:
+            count = 1
+    return max(1, count)
+
+
+def _id_list_from_raw(value: Any) -> List[str]:
+    items = value if isinstance(value, list) else []
+    out: List[str] = []
+    seen = set()
+    for item in items:
+        text = str(item or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def assigned_room_ids(reservation: Any) -> List[str]:
+    """Local room ids already on the booking, primary first."""
+    row = reservation if isinstance(reservation, dict) else {}
+    ids = _id_list_from_raw(row.get("roomIds") or row.get("room_ids"))
+    primary = str(row.get("roomId") or row.get("room_id") or "").strip()
+    if primary and primary not in ids:
+        ids = [primary] + ids
+    return ids
+
+
+def assigned_room_numbers(reservation: Any) -> List[str]:
+    row = reservation if isinstance(reservation, dict) else {}
+    numbers = _id_list_from_raw(row.get("roomNumbers") or row.get("room_numbers"))
+    number = str(row.get("roomNumber") or row.get("room_number") or "").strip()
+    if number and number not in numbers:
+        numbers = [number] + numbers
+    return numbers
+
+
+def assigned_room_count(reservation: Any) -> int:
+    ids = assigned_room_ids(reservation)
+    if ids:
+        return len(ids)
+    return len(assigned_room_numbers(reservation))
+
+
+def reservation_total_rooms(reservation: Any) -> int:
+    row = reservation if isinstance(reservation, dict) else {}
+    try:
+        count = int(float(row.get("totalRooms") or 1))
+    except (TypeError, ValueError):
+        count = 1
+    return max(1, count)
+
+
 def _initials(name: str) -> str:
     parts = [p for p in re.split(r"\s+", str(name or "").strip()) if p]
     if not parts:
@@ -775,6 +851,13 @@ def _normalize_reservation(raw: Dict[str, Any]) -> Dict[str, Any]:
         _pick(raw, "roomNumber", "room_number", "RoomNumber", "assigned_room", default="")
     ).strip()
     room_label = _room_label_from_raw(raw)
+    room_id = str(_pick(raw, "roomId", "room_id", default="") or "").strip()
+    room_ids = _id_list_from_raw(raw.get("roomIds") or raw.get("room_ids"))
+    if room_id and room_id not in room_ids:
+        room_ids = [room_id] + room_ids
+    room_numbers = _id_list_from_raw(raw.get("roomNumbers") or raw.get("room_numbers"))
+    if room_number and room_number not in room_numbers:
+        room_numbers = [room_number] + room_numbers
     payment = _map_payment(
         _pick(raw, "paymentStatus", "payment_status", "PaymentStatus", "paymentstatus", default="pending")
     )
@@ -817,10 +900,13 @@ def _normalize_reservation(raw: Dict[str, Any]) -> Dict[str, Any]:
             _pick(raw, "checkOutTime", "check_out_time", default="11:00") or "11:00"
         ),
         "nights": nights,
-        "roomId": str(_pick(raw, "roomId", "room_id", default="") or "").strip(),
+        "totalRooms": _total_rooms_from_raw(raw),
+        "roomId": room_id,
+        "roomIds": room_ids,
         "roomNumber": room_number,
+        "roomNumbers": room_numbers,
         "roomTypeLabel": room_label,
-        "roomAssigned": bool(room_number),
+        "roomAssigned": bool(room_number or room_ids),
         "amount": amount,
         "status": status,
         "statusLabel": STATUS_LABELS.get(status, status.title()),
@@ -859,7 +945,11 @@ def _apply_local_state(
             continue
         merged = dict(base)
         merged["roomId"] = assignment.get("roomId") or merged.get("roomId")
+        merged["roomIds"] = assignment.get("roomIds") or merged.get("roomIds") or []
         merged["roomNumber"] = assignment.get("roomNumber") or merged.get("roomNumber")
+        merged["roomNumbers"] = (
+            assignment.get("roomNumbers") or merged.get("roomNumbers") or []
+        )
         merged["roomTypeLabel"] = (
             assignment.get("roomTypeLabel") or merged.get("roomTypeLabel") or ""
         )
@@ -1017,11 +1107,14 @@ _PROVIDER_ROW_KEYS = (
     "roomTypeLabel",
     "roomNumber",
     "roomId",
+    "roomIds",
     "paymentStatus",
     "nights",
+    "totalRooms",
     "mealPlan",
     "specialNotes",
     "provider",
+    "roomNumbers",
 )
 
 
@@ -1354,6 +1447,8 @@ def assign_room_local(
     room_id: str,
     room_number: str,
     room_type_label: str = "",
+    room_ids: Optional[List[str]] = None,
+    room_numbers: Optional[List[str]] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     current = get_reservation(settings, reservation_id)
     if not current:
@@ -1362,11 +1457,52 @@ def assign_room_local(
         raise ValueError("Cannot assign a room to a checked-out reservation.")
     state = get_state(settings)
     assignments = dict(state.get("assignments") or {})
-    assignments[current["id"]] = {
-        "roomId": str(room_id or "").strip(),
-        "roomNumber": str(room_number or "").strip(),
-        "roomTypeLabel": str(room_type_label or "").strip(),
+    existing_ids = assigned_room_ids(current)
+    existing_numbers = assigned_room_numbers(current)
+    incoming_ids = _id_list_from_raw(room_ids)
+    incoming_primary = str(room_id or "").strip()
+    if incoming_primary and incoming_primary not in incoming_ids:
+        incoming_ids = [incoming_primary] + incoming_ids
+    incoming_numbers = _id_list_from_raw(room_numbers)
+    incoming_number = str(room_number or "").strip()
+    if incoming_number and incoming_number not in incoming_numbers:
+        incoming_numbers = [incoming_number] + incoming_numbers
+
+    if existing_ids:
+        primary_id = existing_ids[0]
+        ids = list(existing_ids)
+        for rid in incoming_ids:
+            if rid not in ids:
+                ids.append(rid)
+        primary_number = str(current.get("roomNumber") or "").strip() or incoming_number
+        label = str(current.get("roomTypeLabel") or "").strip() or str(
+            room_type_label or ""
+        ).strip()
+    else:
+        primary_id = incoming_primary or (incoming_ids[0] if incoming_ids else "")
+        ids = list(incoming_ids)
+        if primary_id and primary_id not in ids:
+            ids = [primary_id] + ids
+        primary_number = incoming_number
+        label = str(room_type_label or "").strip()
+
+    numbers = list(existing_numbers)
+    for num in incoming_numbers:
+        if num not in numbers:
+            numbers.append(num)
+    if primary_number and primary_number not in numbers:
+        numbers = [primary_number] + numbers
+
+    assignment = {
+        "roomId": primary_id,
+        "roomNumber": primary_number,
+        "roomTypeLabel": label,
     }
+    if ids:
+        assignment["roomIds"] = ids
+    if numbers:
+        assignment["roomNumbers"] = numbers
+    assignments[current["id"]] = assignment
     next_settings = update_state(settings, assignments=assignments)
     updated = get_reservation(next_settings, current["id"])
     return updated or current, next_settings

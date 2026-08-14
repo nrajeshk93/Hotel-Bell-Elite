@@ -542,5 +542,281 @@ body.ep-module .sb-overlay{background:rgba(15,23,42,.32)}
 }
 body.ep-module .su-header-tools .btn{
   display:inline-flex;align-items:center;gap:8px;
+  height:40px;padding:0 16px;border-radius:10px;font-weight:700;font-size:13px;
+}
+
+/* Employee add/edit — Purchase & Expense form language */
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-panel{
+  background:#fff;
+  border:1px solid #EEF2F7;
+  border-radius:20px;
+  box-shadow:0 8px 30px rgba(15,23,42,.04);
+  padding:24px 26px 22px;
+  overflow:visible;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form{
+  margin:0;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-section{
+  margin:0 0 28px;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-section:last-of-type{
+  margin-bottom:8px;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-sec{
+  margin:0 0 16px;
+  padding:0 0 10px;
+  border-bottom:1px solid #EEF2F7;
+  font:800 12px/1.2 Inter,system-ui,sans-serif;
+  color:#64748B;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-grid.ep-emp-form-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px 16px;
+  margin-bottom:0;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-grid.ep-emp-form-grid--two{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-field{
+  margin-bottom:0;
+  min-width:0;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-field--full{
+  grid-column:1/-1;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-field > label,
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .ep-emp-form-label-row > label[for]{
+  display:block;
+  margin:0 0 6px;
+  font:700 11px/1 Inter,system-ui,sans-serif;
+  color:#4A5568;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-input{
+  width:100%;
+  height:44px;
+  box-sizing:border-box;
+  background:#fff;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+  padding:0 14px;
+  color:#111827;
+  font:600 14px Inter,system-ui,sans-serif;
+  outline:none;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-input::placeholder{
+  color:#94A3B8;
+  font-weight:500;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-input:focus{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.14);
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-input[readonly],
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-input:disabled{
+  background:#F8FAFC;
+  color:#64748B;
+  cursor:default;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .ep-emp-form-textarea{
+  height:auto;
+  min-height:84px;
+  padding:12px 14px;
+  resize:vertical;
+  line-height:1.45;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-hint{
+  margin:6px 0 0;
+  font-size:12px;
+  font-weight:500;
+  color:#94A3B8;
+  line-height:1.4;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-label-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:6px;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-label-row > label[for]{
+  margin:0;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-exempt{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  margin:0;
+  font:600 12px Inter,system-ui,sans-serif;
+  color:#DC2626;
+  text-transform:none;
+  letter-spacing:0;
+  cursor:pointer;
+  white-space:nowrap;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-exempt input{
+  width:16px;
+  height:16px;
+  margin:0;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-errors{
+  margin:0 0 16px;
+  padding:12px 14px;
+  background:#FEF2F2;
+  border:1px solid rgba(220,38,38,.22);
+  color:#B91C1C;
+  border-radius:12px;
+  font-size:13px;
+  font-weight:600;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-errors ul{
+  margin:8px 0 0;
+  padding-left:18px;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-warn{
+  margin:12px 0 0;
+  padding:12px 14px;
+  background:#FEF2F2;
+  border:1px solid rgba(220,38,38,.22);
+  color:#B91C1C;
+  border-radius:12px;
+  font-size:13px;
+  font-weight:600;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-preview{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  gap:10px;
+  margin-top:16px;
+  padding:0;
+  background:transparent;
+  border:0;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  min-width:0;
+  padding:10px 12px;
+  background:#fff;
+  border:1px solid #EEF2F7;
+  border-radius:14px;
+  box-shadow:0 4px 16px rgba(15,23,42,.03);
+  box-sizing:border-box;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-icon{
+  width:32px;
+  height:32px;
+  border-radius:9px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-icon svg{
+  width:16px;
+  height:16px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-icon--blue{background:#EEF5FF;color:#1877F2}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-icon--orange{background:#FFFBEB;color:#D97706}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-icon--purple{background:#F5F3FF;color:#7C3AED}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-icon--red{background:#FEF2F2;color:#DC2626}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-icon--green{background:#F0FDF4;color:#16A34A}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-text{
+  min-width:0;
+  flex:1 1 auto;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-label{
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.35px;
+  color:#94A3B8;
+  line-height:1.2;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat-value{
+  margin-top:2px;
+  font:800 16px/1.15 Inter,system-ui,sans-serif;
+  color:#111827;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-stat--net .ep-emp-stat-value{
+  color:#16A34A;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .ep-form-listbox{
+  width:100%;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .ep-form-listbox .se-filter-chip-label{
+  display:block;
+  margin-bottom:6px;
+  font:700 11px/1 Inter,system-ui,sans-serif;
+  color:#4A5568;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .ep-form-listbox .se-filter-chip-control{
+  min-height:44px;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+  background:#fff;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:8px;
+  padding-top:18px;
+  border-top:1px solid #EEF2F7;
+}
+:is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-actions .btn{
+  min-height:40px;
+  padding:0 16px;
+  border-radius:10px;
+  font-weight:700;
+}
+@media(max-width:980px){
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-grid.ep-emp-form-grid,
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-grid.ep-emp-form-grid--two{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-preview{
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  }
+}
+@media(max-width:640px){
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-panel{
+    padding:18px 16px 16px;
+    border-radius:16px;
+  }
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-grid.ep-emp-form-grid,
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form .staff-grid.ep-emp-form-grid--two{
+    grid-template-columns:1fr;
+  }
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-preview{
+    grid-template-columns:1fr 1fr;
+  }
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-actions{
+    flex-wrap:wrap;
+  }
+  :is(body.ep-module, body.master-module, .md-master-embed--employee-form) .ep-emp-form-actions .btn{
+    flex:1 1 auto;
+  }
 }
 

@@ -6,24 +6,24 @@ body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form){
 }
 body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
   display:flex;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
   align-items:flex-end;
   justify-content:flex-start;
   gap:12px;
-  row-gap:14px;
   width:100%;
   max-width:100%;
   min-width:0;
   margin-left:0;
   flex:1 1 auto;
+  overflow-x:auto;
 }
 
 /* Expense ledger header filters — match Add menu field listbox design */
 body.su-module #purchase-ledger-filter-form .pl-kind-filter-host{
   position:relative;
-  flex:1 1 auto;
-  min-width:min(100%, 220px);
-  margin-right:auto;
+  flex:0 0 auto;
+  min-width:0;
+  margin-right:0;
 }
 body.su-module #purchase-ledger-filter-form .pl-kind-filter-host > .se-filter-chip-label{
   display:block;
@@ -156,10 +156,10 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox .se-filter-
 
 body.su-module #purchase-ledger-filter-form .pl-search-chip{
   position:relative;
-  flex:1 1 160px;
+  flex:1 1 0;
   width:auto;
-  min-width:140px;
-  max-width:280px;
+  min-width:72px;
+  max-width:180px;
   z-index:20;
 }
 body.su-module #purchase-ledger-filter-form .pl-search-chip .pl-header-search,
@@ -194,8 +194,10 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-c
   text-overflow:ellipsis;
 }
 body.su-module .pl-date-range-host.pl-header-field{
-  flex:0 1 auto;
-  min-width:168px;
+  flex:0 0 auto;
+  min-width:0;
+  width:auto;
+  max-width:none;
   z-index:30;
   margin-left:0;
   overflow:visible;
@@ -213,9 +215,9 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip--date-range .
 }
 body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
 body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
-  min-width:168px;
+  min-width:0;
   width:auto;
-  max-width:min(300px,42vw);
+  max-width:220px;
   min-height:52px;
   height:52px;
   padding:0 12px 0 14px;
@@ -228,36 +230,72 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
   background:#fff !important;
 }
 @media (max-width:1100px){
+  body.su-module #purchase-ledger-filter-form .pl-search-chip{
+    flex:1 1 0;
+    min-width:64px;
+    max-width:140px;
+  }
   body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
-    flex:1 1 140px;
+    flex:0 1 110px;
     width:auto;
-    min-width:120px;
-    max-width:200px;
+    min-width:88px;
+    max-width:140px;
   }
 }
 @media (max-width:900px){
   body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
-    flex-wrap:wrap;
+    flex-wrap:nowrap;
     justify-content:flex-start;
   }
   body.su-module #purchase-ledger-filter-form .pl-kind-filter-host{
-    flex:1 1 100%;
+    flex:0 0 auto;
+    min-width:0;
     margin-right:0;
   }
   body.su-module #purchase-ledger-filter-form .pl-search-chip{
-    flex:1 1 calc(50% - 6px);
-    max-width:none;
+    flex:1 1 0;
+    min-width:56px;
+    max-width:120px;
   }
   body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
-    flex:1 1 calc(50% - 6px);
-    max-width:none;
+    flex:0 1 96px;
+    min-width:80px;
+    max-width:120px;
   }
   body.su-module .pl-date-range-host.pl-header-field{
-    flex:1 1 100%;
+    flex:0 0 auto;
+    width:auto;
+    min-width:0;
   }
-  body.su-module .pl-date-range-host.pl-header-field .an-range-trigger{
-    max-width:none;
+  body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
+  body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
+    min-width:0;
+    width:auto;
+    max-width:180px;
+  }
+}
+@media (max-width:720px){
+  body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form),
+  body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form) .sr-topbar-filters,
+  body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
+    flex-direction:row;
+    flex-wrap:nowrap;
+    align-items:flex-end;
     width:100%;
+  }
+  body.su-module #purchase-ledger-filter-form .se-filter-chip,
+  body.su-module #purchase-ledger-filter-form .se-filter-chip--date,
+  body.su-module #purchase-ledger-filter-form .se-filter-chip-date-host,
+  body.su-module #purchase-ledger-filter-form .pl-date-range-host.pl-header-field{
+    flex:0 0 auto;
+    width:auto;
+    max-width:none;
+  }
+  body.su-module #purchase-ledger-filter-form .pl-search-chip{
+    flex:1 1 0;
+    min-width:48px;
+    max-width:110px;
+    width:auto;
   }
 }
 body.su-module .pl-date-range-host .an-range-actions{

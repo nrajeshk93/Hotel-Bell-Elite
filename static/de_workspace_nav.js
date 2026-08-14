@@ -258,6 +258,30 @@
     return Date.now() < (window.__deSidebarHoverSuppressUntil || 0);
   }
 
+  function suppressSidebarHoverUntilPointerLeave(){
+    window.__deSidebarHoverSuppressUntil = Date.now() + 15000;
+    getAllSidebars().forEach(function(sb){
+      sb.classList.add('de-sidebar--suppress-hover');
+      if(!isDeSidebarPinned(sb)){
+        sb.classList.remove('is-expanded');
+        endSidebarSnapMeasure(sb);
+      }
+      if(sb.__deUnpinLeaveBound) return;
+      sb.__deUnpinLeaveBound = true;
+      sb.addEventListener('pointerleave', function onLeave(){
+        sb.removeEventListener('pointerleave', onLeave);
+        sb.__deUnpinLeaveBound = false;
+        if(isDeSidebarPinned(sb)){
+          sb.classList.remove('de-sidebar--suppress-hover');
+          return;
+        }
+        sb.classList.remove('de-sidebar--suppress-hover', 'is-expanded');
+        window.__deSidebarHoverSuppressUntil = 0;
+        endSidebarSnapMeasure(sb);
+      });
+    });
+  }
+
   function suppressSidebarHoverExpand(ms){
     ms = typeof ms === 'number' ? ms : 1200;
     window.__deSidebarHoverSuppressUntil = Date.now() + ms;
@@ -272,6 +296,7 @@
     window.__deSidebarHoverSuppressTimer = setTimeout(function(){
       window.__deSidebarHoverSuppressTimer = null;
       document.querySelectorAll('.de-sidebar.de-sidebar--suppress-hover').forEach(function(sb){
+        if(sb.__deUnpinLeaveBound) return;
         sb.classList.remove('de-sidebar--suppress-hover');
       });
     }, ms);
@@ -589,7 +614,13 @@
       if(sidebar.matches(':hover')) return true;
     } catch(e){}
     var activeEl = document.activeElement;
-    if(activeEl && sidebar.contains(activeEl)) return true;
+    if(activeEl && sidebar.contains(activeEl)){
+      /* Pin control focus must not keep the rail expanded after Unpin. */
+      if(activeEl.closest && activeEl.closest('.de-sidebar-pin-btn, #de-sidebar-pin-btn')){
+        return false;
+      }
+      return true;
+    }
     return false;
   }
 
@@ -673,10 +704,11 @@
       sb.classList.toggle('is-pinned', pinned);
       if(pinned){
         sb.classList.add('is-expanded');
+        sb.classList.remove('de-sidebar--suppress-hover');
         sb.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(group){
           group.classList.remove('is-flyout-active');
         });
-      } else if(!isPointerOverSidebar(sb)){
+      } else {
         sb.classList.remove('is-expanded');
         endSidebarSnapMeasure(sb);
       }
@@ -693,6 +725,13 @@
     if(pinned){
       expandSidebarAndSnap(sidebar, { ensureVisible: true });
     } else {
+      try{
+        document.querySelectorAll('.de-sidebar-pin-btn').forEach(function(btn){
+          if(typeof btn.blur === 'function') btn.blur();
+        });
+      } catch(eBlur){}
+      document.documentElement.classList.remove('de-sidebar-wide-boot');
+      suppressSidebarHoverUntilPointerLeave();
       syncDeSidebarPointerState();
     }
     return pinned;
@@ -906,7 +945,10 @@
       scheduleDeSidebarCollapse(deSidebar);
     });
 
-    deSidebar.addEventListener('focusin', function(){
+    deSidebar.addEventListener('focusin', function(event){
+      if(event.target && event.target.closest && event.target.closest('.de-sidebar-pin-btn, #de-sidebar-pin-btn')){
+        return;
+      }
       clearDeSidebarCollapseTimer();
       expandSidebarAndSnap(deSidebar);
     });

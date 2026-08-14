@@ -417,7 +417,11 @@ body.main-dashboard-module #main-dashboard-page .rdx-sales-heatmap-card {
   grid-area: heat;
   width: 100%;
   max-width: 100%;
-  align-self: start;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-grid-dow-top > .rdx-top-items {
@@ -528,6 +532,38 @@ body.main-dashboard-module #main-dashboard-page .rdx-ti-sort-btn:focus-visible {
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
 }
 
+body.main-dashboard-module #main-dashboard-page .rdx-ti-cols,
+body.main-dashboard-module #main-dashboard-page .rdx-ti-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(88px, 0.7fr) minmax(72px, 0.55fr);
+  gap: 12px;
+  align-items: center;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-cols {
+  padding: 0 0 8px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-col {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #94a3b8;
+  line-height: 1.2;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-col--qty,
+body.main-dashboard-module #main-dashboard-page .rdx-ti-qty {
+  text-align: center;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-col--price,
+body.main-dashboard-module #main-dashboard-page .rdx-ti-sale {
+  text-align: right;
+}
+
 body.main-dashboard-module #main-dashboard-page .rdx-ti-list {
   display: flex;
   flex-direction: column;
@@ -537,10 +573,6 @@ body.main-dashboard-module #main-dashboard-page .rdx-ti-list {
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-ti-row {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
   padding: 12px 0;
   border-bottom: 1px solid #f1f5f9;
 }
@@ -548,6 +580,13 @@ body.main-dashboard-module #main-dashboard-page .rdx-ti-row {
 body.main-dashboard-module #main-dashboard-page .rdx-ti-row:last-child {
   border-bottom: none;
   padding-bottom: 0;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-ti-product {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-ti-rank {
@@ -563,10 +602,7 @@ body.main-dashboard-module #main-dashboard-page .rdx-ti-rank {
   font-size: 12px;
   font-weight: 700;
   color: #64748b;
-}
-
-body.main-dashboard-module #main-dashboard-page .rdx-ti-main {
-  min-width: 0;
+  flex-shrink: 0;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-ti-name {
@@ -578,15 +614,7 @@ body.main-dashboard-module #main-dashboard-page .rdx-ti-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-body.main-dashboard-module #main-dashboard-page .rdx-ti-values {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  text-align: right;
-  min-width: 5.5rem;
+  min-width: 0;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-ti-sale {
@@ -600,9 +628,9 @@ body.main-dashboard-module #main-dashboard-page .rdx-ti-sale {
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-ti-qty {
-  font-size: 12px;
-  font-weight: 500;
-  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   line-height: 1.3;
@@ -667,17 +695,22 @@ body.main-dashboard-module #main-dashboard-page .rdx-co-foot {
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-body {
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: minmax(120px, 148px) minmax(0, 1fr);
+  gap: 16px;
   align-items: center;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-chart-wrap {
-  max-width: 220px;
+  max-width: 148px;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-chart {
-  min-height: 200px;
+  min-height: 148px;
+}
+
+body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-list {
+  min-width: 0;
+  width: 100%;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-row {
@@ -687,22 +720,26 @@ body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-row {
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-row-top {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
+  align-items: start;
+  gap: 8px;
   margin-bottom: 4px;
   min-width: 0;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.3;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-pct {
-  font-size: 18px;
+  font-size: 16px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 body.main-dashboard-module #main-dashboard-page .rdx-sales-contrib .rdx-sc-insight {

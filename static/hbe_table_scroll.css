@@ -2,7 +2,7 @@
  * Shared dense-table panel behavior:
  * - ~10 visible rows, vertical scroll for the rest
  * - sticky header
- * - edge cue while horizontal auto-scroll runs (JS)
+ * - edge cue while cursor auto-scroll runs (JS)
  */
 .hbe-scroll-panel .pl-table-wrap,
 .hbe-scroll-panel .emp-table-wrap,
@@ -35,6 +35,26 @@
 .emp-list-panel--scroll .emp-table-wrap.is-edge-scroll-left,
 .sm-list-panel--scroll .sm-table-wrap.is-edge-scroll-left{
   box-shadow:inset 18px 0 16px -16px rgba(15,23,42,.22);
+}
+
+.hbe-scroll-panel .pl-table-wrap.is-edge-scroll-top,
+.hbe-scroll-panel .emp-table-wrap.is-edge-scroll-top,
+.hbe-scroll-panel .sm-table-wrap.is-edge-scroll-top,
+.hbe-scroll-panel .hres-table-wrap.is-edge-scroll-top,
+.pl-list-panel--scroll .pl-table-wrap.is-edge-scroll-top,
+.emp-list-panel--scroll .emp-table-wrap.is-edge-scroll-top,
+.sm-list-panel--scroll .sm-table-wrap.is-edge-scroll-top{
+  box-shadow:inset 0 18px 16px -16px rgba(15,23,42,.22);
+}
+
+.hbe-scroll-panel .pl-table-wrap.is-edge-scroll-bottom,
+.hbe-scroll-panel .emp-table-wrap.is-edge-scroll-bottom,
+.hbe-scroll-panel .sm-table-wrap.is-edge-scroll-bottom,
+.hbe-scroll-panel .hres-table-wrap.is-edge-scroll-bottom,
+.pl-list-panel--scroll .pl-table-wrap.is-edge-scroll-bottom,
+.emp-list-panel--scroll .emp-table-wrap.is-edge-scroll-bottom,
+.sm-list-panel--scroll .sm-table-wrap.is-edge-scroll-bottom{
+  box-shadow:inset 0 -18px 16px -16px rgba(15,23,42,.22);
 }
 
 .hbe-scroll-panel .pl-table thead th,

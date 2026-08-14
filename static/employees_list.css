@@ -67,6 +67,9 @@
   table-layout:auto;
   border-collapse:collapse;
 }
+:is(body.ep-module, #md-master-modal .md-master-embed--employee) #emp-main-table.emp-pl-table{
+  min-width:1480px;
+}
 :is(body.ep-module, #md-master-modal .md-master-embed--employee) #credit-emp-table.emp-pl-table,
 :is(body.ep-module, #md-master-modal .md-master-embed--employee) #credit-recent-table.emp-pl-table{
   min-width:780px;

@@ -145,13 +145,15 @@ body.ep-module .kpi-lbl,
 body.hotel-reservations-module .hbe-kpi-label,
 body.hotel-reservations-module .pl-summary-label,
 .kpi-lbl{
-  font-size:11px;
+  font-size:12px;
   font-weight:700;
   text-transform:uppercase;
-  letter-spacing:.5px;
+  letter-spacing:.4px;
+  line-height:1.3;
   color:var(--txt3,#94A3B8);
   margin:0 0 6px;
   overflow-wrap:anywhere;
+  white-space:normal;
 }
 
 body.su-module .hbe-kpi-value,
@@ -163,7 +165,7 @@ body.hotel-reservations-module .hbe-kpi-value,
 body.hotel-reservations-module .pl-summary-value,
 .kpi-val{
   margin:0;
-  font-size:clamp(13px,7.5cqi,28px);
+  font-size:clamp(18px,10cqi,26px);
   font-weight:800;
   color:var(--txt,#1A202C);
   line-height:1.15;
@@ -184,9 +186,11 @@ body.hotel-reservations-module .pl-summary-meta,
 .kpi-meta{
   margin-top:8px;
   font-size:12px;
+  line-height:1.35;
   color:var(--txt3,#94A3B8);
   font-weight:600;
   overflow-wrap:anywhere;
+  white-space:normal;
 }
 
 body.ep-module .kpi-val.kpi-val--action,
@@ -216,7 +220,7 @@ body.ep-module .kpi-val.kpi-val--action,
   .hbe-kpi-value,
   .pl-summary-value,
   .kpi-val{
-    font-size:clamp(12px,8.5cqi,22px);
+    font-size:clamp(16px,11cqi,22px);
   }
   .kpi-val.kpi-val--action{font-size:inherit}
 }
