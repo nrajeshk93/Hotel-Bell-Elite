@@ -48,10 +48,12 @@ html.de-soft-nav-session .de-main-wrapper,
 html.de-soft-nav-session .de-main-wrapper *{
   animation:none!important;
 }
-/* Allow one-shot post-swap reveal on the main shell only (not nested card keyframes). */
+/* Never fade the main pane on module switch — a 240ms fade-up reads as lag. */
 html.de-soft-navigating .de-main-wrapper.de-main-enter,
 html.de-soft-nav-session .de-main-wrapper.de-main-enter{
-  animation:de-fade-up var(--de-motion, 240ms) var(--de-ease-soft, cubic-bezier(0.25, 1, 0.5, 1)) both!important;
+  animation:none!important;
+  opacity:1!important;
+  transform:none!important;
 }
 html.de-soft-navigating .de-main-wrapper .db-home-card,
 html.de-soft-nav-session .de-main-wrapper .db-home-card,
@@ -139,11 +141,11 @@ html.de-soft-nav-session .de-main-wrapper #st-approvals-open.st-approvals-open--
 .de-overlay-enter{
   animation:de-overlay-fade var(--de-motion-fast) var(--de-ease-material) both;
 }
-/* Soft-nav: animate main content only after swap (never while loading empty shells). */
+/* Soft-nav: keep the destination pane fully painted. No enter fade. */
 .de-main-wrapper.de-main-enter{
-  animation:de-fade-up var(--de-motion) var(--de-ease-soft) both;
-  backface-visibility:hidden;
-  transform:translateZ(0);
+  animation:none;
+  opacity:1;
+  transform:none;
 }
 @media (prefers-reduced-motion: reduce){
   .de-motion-fade-up,
@@ -195,7 +197,14 @@ html.de-sidebar-wide-boot .de-sidebar .de-help-expanded{display:block!important}
 #dashboard.de-module .de-nav-item.is-navigating{opacity:1}
 body.de-open.ep-module{overflow:auto;}
 #ep-workspace.de-module .de-main-wrapper{flex:1;min-width:0;overflow:auto;height:100vh;background:#F4F6F9;}
-#ep-workspace.de-module .main-wrapper{margin-left:0;min-height:100vh;}
+#ep-workspace.de-module .main-wrapper{margin-left:0;min-height:100vh;transition:none;}
+/* Hide legacy header pin on all de-module pages (not only ≤760px). */
+#main-app.de-module .de-sb-pin-btn,
+#ep-workspace.de-module .de-sb-pin-btn,
+#dashboard.de-module .de-sb-pin-btn,
+#main-app.de-module .sb-pin-btn.de-sb-pin-btn,
+#ep-workspace.de-module .sb-pin-btn.de-sb-pin-btn,
+#dashboard.de-module .sb-pin-btn.de-sb-pin-btn{display:none!important;}
 /* Shared workspace sidebar + shell */
   #main-app.de-module .de-app-shell,
   #ep-workspace.de-module .de-app-shell,
@@ -247,6 +256,7 @@ body.de-open.ep-module{overflow:auto;}
     width:var(--de-sidebar-collapsed)!important;
     min-width:var(--de-sidebar-collapsed)!important;
     max-width:var(--de-sidebar-collapsed)!important;
+    margin-right:0!important;
   }
   /* Width expands via .is-expanded / .is-pinned (JS) and :hover (pointer over rail).
      Unpinned + not hovered must collapse — syncDeSidebarPointerState clears sticky is-expanded. */
@@ -265,6 +275,16 @@ body.de-open.ep-module{overflow:auto;}
     box-shadow:none;
     z-index:20;
   }
+  /* Unpinned hover/expand overlays the main pane. In-flow grow moves header
+     Back (~left 92) by 180px; the pointer then leaves the rail and it
+     collapses — the chevron reads as shaking. */
+  #main-app.de-module .de-sidebar:not(.is-pinned):is(:hover, .is-expanded),
+  #ep-workspace.de-module .de-sidebar:not(.is-pinned):is(:hover, .is-expanded),
+  #dashboard.de-module .de-sidebar:not(.is-pinned):is(:hover, .is-expanded){
+    margin-right:calc(var(--de-sidebar-collapsed) - var(--de-sidebar-expanded));
+    z-index:40;
+    box-shadow:8px 0 24px rgba(15,23,42,.08);
+  }
   /* After soft-nav (Back beside the rail), block CSS :hover expand so the rail
      does not flash wide then collapse when the cursor sits at ~left:120. */
   #main-app.de-module .de-sidebar.de-sidebar--suppress-hover:not(.is-pinned):not(.is-expanded),
@@ -273,6 +293,7 @@ body.de-open.ep-module{overflow:auto;}
     width:var(--de-sidebar-collapsed)!important;
     min-width:var(--de-sidebar-collapsed)!important;
     max-width:var(--de-sidebar-collapsed)!important;
+    margin-right:0!important;
     /* Keep nav links clickable — only hover-expand is suppressed in JS. */
   }
   #main-app.de-module .sb-brand-text,
@@ -1469,6 +1490,7 @@ body.de-open.sb-off #ep-workspace.de-module .de-sb-pin-btn svg{
     width:var(--de-sidebar-expanded);
     min-width:var(--de-sidebar-expanded);
     max-width:var(--de-sidebar-expanded);
+    margin-right:0;
     transform:translateX(calc(-1 * (var(--de-sidebar-expanded) + 12px)));
     z-index:50;
     padding-top:env(safe-area-inset-top, 0px);
@@ -1495,9 +1517,3 @@ body.de-open.sb-off #ep-workspace.de-module .de-sb-pin-btn svg{
 #main-app.de-module .de-help-expanded,#ep-workspace.de-module .de-help-expanded,#dashboard.de-module .de-help-expanded{display:block;}
 body.de-open.sb-off #main-app.de-module .de-sidebar,body.de-open.sb-off #ep-workspace.de-module .de-sidebar,body.sb-off #dashboard.de-module .de-sidebar{transform:translateX(calc(-1 * (var(--de-sidebar-expanded) + 12px)));}
 }
-  #main-app.de-module .de-sb-pin-btn,
-  #ep-workspace.de-module .de-sb-pin-btn,
-  #dashboard.de-module .de-sb-pin-btn,
-  #main-app.de-module .sb-pin-btn.de-sb-pin-btn,
-  #ep-workspace.de-module .sb-pin-btn.de-sb-pin-btn,
-  #dashboard.de-module .sb-pin-btn.de-sb-pin-btn{display:none!important;}

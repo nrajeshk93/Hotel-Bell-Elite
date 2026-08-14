@@ -47,6 +47,20 @@ class LoginSecurityTests(unittest.TestCase):
                 """,
                 ("locke", "Locke User", "locke@example.com", generate_password_hash("secret123")),
             )
+            conn.execute(
+                """INSERT INTO access_roles
+                   (name, description, is_admin, is_active, created_at, updated_at)
+                   VALUES (?, ?, 0, 1, datetime('now','localtime'), datetime('now','localtime'))""",
+                ("Staff", "Test staff role"),
+            )
+            staff_role_id = conn.execute(
+                "SELECT id FROM access_roles WHERE name = ?",
+                ("Staff",),
+            ).fetchone()["id"]
+            conn.execute(
+                "UPDATE users SET role_id = ? WHERE username = ?",
+                (staff_role_id, "locke"),
+            )
             conn.commit()
             self.user_id = conn.execute(
                 "SELECT id FROM users WHERE username = 'locke'"
@@ -601,6 +615,22 @@ class LoginSecurityTests(unittest.TestCase):
         self.assertIn(b"locke", page.data)
         self.assertIn(b"Failed", page.data)
         self.assertIn(b"Successful", page.data)
+        self.assertIn(b'data-am-logs-filter="all"', page.data)
+        self.assertIn(b'data-am-logs-filter="success"', page.data)
+        self.assertIn(b'data-am-logs-filter="failed"', page.data)
+        self.assertIn(b'data-am-logs-user', page.data)
+        self.assertIn(b'data-username="locke"', page.data)
+        self.assertIn(b'data-success="0"', page.data)
+        self.assertIn(b'data-success="1"', page.data)
+        self.assertNotIn(b'href="/access-management/logs?result=', page.data)
+
+    def test_logs_page_failed_query_still_includes_all_rows(self):
+        self.client.post("/login", data={"username": "locke", "password": "wrong"})
+        self.client.post("/login", data={"username": "admin", "password": "admin"})
+        page = self.client.get("/access-management/logs?result=failed")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'data-success="0"', page.data)
+        self.assertIn(b'data-success="1"', page.data)
 
     def test_logs_page_denied_for_non_admin(self):
         self.client.post("/login", data={"username": "locke", "password": "secret123"})
@@ -630,6 +660,120 @@ class LoginSecurityTests(unittest.TestCase):
                 os.unlink(path)
             except OSError:
                 pass
+
+    def test_logout_prefetch_does_not_clear_admin_session(self):
+        login = self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 302)
+        home = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(home.status_code, 200)
+        self.assertIn(b"db-avatar", home.data)
+        self.assertIn(b"Administrator", home.data)
+
+        prefetch = self.client.get(
+            "/logout",
+            headers={
+                "X-De-Partial": "main",
+                "X-Requested-With": "XMLHttpRequest",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+            },
+            follow_redirects=False,
+        )
+        self.assertEqual(prefetch.status_code, 204)
+
+        again = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(again.status_code, 200)
+        self.assertIn(b"Administrator", again.data)
+        self.assertIn("no-store", (again.headers.get("Cache-Control") or "").lower())
+
+    def test_real_logout_still_clears_session(self):
+        self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        resp = self.client.get("/logout", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        home = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(home.status_code, 302)
+        self.assertTrue((home.headers.get("Location") or "").endswith("/"))
+
+    def test_home_requires_login(self):
+        home = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(home.status_code, 302)
+        self.assertTrue((home.headers.get("Location") or "").endswith("/"))
+
+    def test_http_session_cookie_is_not_secure(self):
+        login = self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        self.assertEqual(login.status_code, 302)
+        cookie = login.headers.get("Set-Cookie") or ""
+        flags = {part.strip().lower() for part in cookie.split(";")}
+        self.assertNotIn("secure", flags)
+        home = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(home.status_code, 200)
+        self.assertIn(b"Administrator", home.data)
+        again = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(again.status_code, 200)
+        self.assertIn(b"Administrator", again.data)
+
+    def test_login_rejected_without_access_role(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """INSERT INTO users
+                   (username, full_name, email, password_hash, is_admin, role_id,
+                    is_active, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, 0, NULL, 1, datetime('now','localtime'), datetime('now','localtime'))""",
+                (
+                    "norole",
+                    "No Role",
+                    "norole@example.com",
+                    generate_password_hash("secret123"),
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        resp = self.client.post(
+            "/login",
+            data={"username": "norole", "password": "secret123"},
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn(b"assign a role", resp.data)
+        home = self.client.get("/home", follow_redirects=False)
+        self.assertEqual(home.status_code, 302)
+
+    def test_home_profile_shows_access_role_not_generic_user(self):
+        self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        home = self.client.get("/home")
+        self.assertEqual(home.status_code, 200)
+        self.assertIn(b'db-profile-role', home.data)
+        self.assertIn(b"Super Administrator", home.data)
+        self.assertNotIn(b">User</div>", home.data)
+
+        self.client.get("/logout", follow_redirects=False)
+        self.client.post(
+            "/login",
+            data={"username": "locke", "password": "secret123"},
+            follow_redirects=False,
+        )
+        staff_home = self.client.get("/home")
+        self.assertEqual(staff_home.status_code, 200)
+        self.assertIn(b">Staff</div>", staff_home.data)
+        self.assertNotIn(b">User</div>", staff_home.data)
 
 
 if __name__ == "__main__":

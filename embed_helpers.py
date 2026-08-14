@@ -26,3 +26,20 @@ def is_partial_main_request() -> bool:
     if request.args.get("partial") == "main":
         return True
     return (request.headers.get("X-De-Partial") or "").strip().lower() == "main"
+
+
+def is_background_fetch_request() -> bool:
+    """True for fetch()/XHR, not a top-level document navigation.
+
+    Soft-nav prefetch of /logout must not clear the session — that left the
+    home avatar looking signed in as Administrator until the next refresh.
+    """
+    if is_partial_main_request():
+        return True
+    if (request.headers.get("X-Requested-With") or "").strip() == "XMLHttpRequest":
+        return True
+    dest = (request.headers.get("Sec-Fetch-Dest") or "").strip().lower()
+    if dest in {"empty", "cors"}:
+        return True
+    mode = (request.headers.get("Sec-Fetch-Mode") or "").strip().lower()
+    return mode == "cors"

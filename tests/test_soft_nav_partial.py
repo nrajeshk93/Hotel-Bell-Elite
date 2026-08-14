@@ -3,7 +3,7 @@
 import re
 import unittest
 
-from embed_helpers import is_partial_main_request
+from embed_helpers import is_background_fetch_request, is_partial_main_request
 
 
 class PartialMainHelpersTest(unittest.TestCase):
@@ -24,6 +24,30 @@ class PartialMainHelpersTest(unittest.TestCase):
             headers={"X-De-Partial": "main"},
         ):
             self.assertTrue(is_partial_main_request())
+
+    def test_background_fetch_detects_prefetch_headers(self):
+        from app import app
+
+        with app.test_request_context("/logout"):
+            self.assertFalse(is_background_fetch_request())
+
+        with app.test_request_context(
+            "/logout",
+            headers={"X-De-Partial": "main"},
+        ):
+            self.assertTrue(is_background_fetch_request())
+
+        with app.test_request_context(
+            "/logout",
+            headers={"Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors"},
+        ):
+            self.assertTrue(is_background_fetch_request())
+
+        with app.test_request_context(
+            "/logout",
+            headers={"Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate"},
+        ):
+            self.assertFalse(is_background_fetch_request())
 
     def test_shell_partial_includes_hidden_sidebar_merge_source(self):
         from flask import render_template_string, url_for

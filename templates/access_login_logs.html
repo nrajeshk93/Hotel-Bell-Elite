@@ -5,14 +5,40 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Logs | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+{# Critical first: kill legacy margin/pin FOUC before sheet cascade (title-row shake). #}
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --card:#FFFFFF;--border:#E2E8F0;--border-s:#EEF2F7;
+  --txt:#111827;--txt2:#4B5563;--txt3:#9CA3AF;
+  --ok:#16A34A;--ok-bg:#F0FDF4;--err:#DC2626;--err-bg:#FEF2F2;
+  --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);--r:10px;
+  --sw:0px;
+}
+html,body{min-height:100%;font-size:14px;line-height:1.5}
+a{text-decoration:none;color:inherit}
+body.am-module .main-wrapper,
+#access-login-logs-page.main-wrapper{
+  margin-left:0!important;
+  transition:none!important;
+}
+body.am-module .sb-pin-btn.de-sb-pin-btn,
+body.am-module .de-sb-pin-btn,
+#access-login-logs-page .sb-pin-btn.de-sb-pin-btn{
+  display:none!important;
+}
+.card{overflow:hidden;margin-bottom:0}
+.card-hdr{padding:18px 22px;border-bottom:1px solid var(--border-s);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1;white-space:nowrap;font-family:inherit;border:none}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=optional" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=23">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=30">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=45">
+<link rel="stylesheet" href="{{ url_for('static', filename='access_management_premium.css') }}?v=34">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=48">
 <script>
 (function(){
   try{
@@ -21,20 +47,6 @@
   }catch(e){}
 })();
 </script>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --card:#FFFFFF;--border:#E2E8F0;--border-s:#EEF2F7;
-  --txt:#111827;--txt2:#4B5563;--txt3:#9CA3AF;
-  --ok:#16A34A;--ok-bg:#F0FDF4;--err:#DC2626;--err-bg:#FEF2F2;
-  --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);--r:10px;
-}
-html,body{min-height:100%;font-size:14px;line-height:1.5}
-a{text-decoration:none;color:inherit}
-.card{overflow:hidden;margin-bottom:0}
-.card-hdr{padding:18px 22px;border-bottom:1px solid var(--border-s);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;transition:all .15s;text-decoration:none;line-height:1;white-space:nowrap;font-family:inherit;border:none}
-</style>
 <link rel="stylesheet" href="{{ url_for('static', filename='app_dates.css') }}">
 </head>
 <body class="de-open am-module ep-module su-module">
@@ -58,10 +70,78 @@ a{text-decoration:none;color:inherit}
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <div class="sr-topbar-filters" aria-label="Login log filters">
-          <a class="btn{% if result_filter == 'all' %} btn-primary{% endif %}" href="{{ url_for('access_login_logs') }}">All</a>
-          <a class="btn{% if result_filter == 'success' %} btn-primary{% endif %}" href="{{ url_for('access_login_logs', result='success') }}">Successful</a>
-          <a class="btn{% if result_filter == 'failed' %} btn-primary{% endif %}" href="{{ url_for('access_login_logs', result='failed') }}">Failed</a>
+        <div id="am-logs-filter-form" class="sr-topbar-filters" aria-label="Login log filters">
+          <div class="pl-kind-filter-host pl-header-field am-logs-result-host" id="am-logs-result-host">
+            <span class="se-filter-chip-label" id="am-logs-result-label">Result</span>
+            <div class="cp-view-tabs pl-kind-filter-tabs am-logs-result-tabs" role="tablist" aria-labelledby="am-logs-result-label">
+              <button type="button"
+                      class="cp-view-tab pl-kind-filter-tab am-logs-tab{% if result_filter == 'all' %} is-active{% endif %}"
+                      role="tab"
+                      data-am-logs-filter="all"
+                      aria-selected="{{ 'true' if result_filter == 'all' else 'false' }}"
+                      aria-pressed="{{ 'true' if result_filter == 'all' else 'false' }}">All</button>
+              <button type="button"
+                      class="cp-view-tab pl-kind-filter-tab am-logs-tab{% if result_filter == 'success' %} is-active{% endif %}"
+                      role="tab"
+                      data-am-logs-filter="success"
+                      aria-selected="{{ 'true' if result_filter == 'success' else 'false' }}"
+                      aria-pressed="{{ 'true' if result_filter == 'success' else 'false' }}">Successful</button>
+              <button type="button"
+                      class="cp-view-tab pl-kind-filter-tab am-logs-tab{% if result_filter == 'failed' %} is-active{% endif %}"
+                      role="tab"
+                      data-am-logs-filter="failed"
+                      aria-selected="{{ 'true' if result_filter == 'failed' else 'false' }}"
+                      aria-pressed="{{ 'true' if result_filter == 'failed' else 'false' }}">Failed</button>
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field am-logs-search-chip" id="am-logs-search-chip">
+            <label class="se-filter-chip-label" for="am-logs-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="am-logs-search" class="pl-search-input pl-header-search" data-am-logs-search placeholder="Username, IP, detail…" autocomplete="off" aria-label="Search login logs">
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field am-logs-user-chip"
+               data-se-listbox
+               data-se-listbox-change="amLogsUserChanged"
+               id="am-logs-user-listbox">
+            <span class="se-filter-chip-label" id="am-logs-user-label">User</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="am-logs-user" data-am-logs-user value="{{ selected_user }}">
+              <button type="button"
+                      class="se-filter-chip-trigger"
+                      id="am-logs-user-trigger"
+                      aria-haspopup="listbox"
+                      aria-expanded="false"
+                      aria-controls="am-logs-user-list"
+                      aria-labelledby="am-logs-user-label am-logs-user-value">
+                <span class="se-filter-chip-value" id="am-logs-user-value">{{ selected_user_label }}</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="am-logs-user-list" role="listbox" aria-labelledby="am-logs-user-label" hidden>
+              <button type="button"
+                      class="se-filter-listbox-option{% if not selected_user %} is-selected{% endif %}"
+                      role="option"
+                      data-value=""
+                      data-name="all users"
+                      data-label="All users"
+                      aria-selected="{{ 'true' if not selected_user else 'false' }}">All users</button>
+              {% for name in log_usernames %}
+              <button type="button"
+                      class="se-filter-listbox-option{% if selected_user == name %} is-selected{% endif %}"
+                      role="option"
+                      data-value="{{ name }}"
+                      data-name="{{ name|lower }}"
+                      data-label="{{ name }}"
+                      aria-selected="{{ 'true' if selected_user == name else 'false' }}">{{ name }}</button>
+              {% endfor %}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -75,11 +155,11 @@ a{text-decoration:none;color:inherit}
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
             <span>Sign-in attempts</span>
           </div>
-          <span class="pl-count">{{ logs|length }} shown{% if result_filter == 'all' %} · {{ success_count }} successful · {{ failed_count }} failed{% endif %}</span>
+          {% set initial_shown = logs|length if result_filter == 'all' else (success_count if result_filter == 'success' else failed_count) %}
+          <span class="pl-count" id="am-logs-count">{{ initial_shown }} shown{% if result_filter == 'all' and logs %} · {{ success_count }} successful · {{ failed_count }} failed{% endif %}</span>
         </div>
         <div class="card-body" style="padding:0">
-          {% if logs %}
-          <div class="pl-table-wrap">
+          <div class="pl-table-wrap" id="am-logs-table-wrap"{% if initial_shown == 0 %} hidden{% endif %}>
             <table class="pl-table am-users-table" aria-label="Login attempts">
               <thead>
                 <tr>
@@ -90,9 +170,9 @@ a{text-decoration:none;color:inherit}
                   <th>IP</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody data-filter="{{ result_filter }}">
                 {% for row in logs %}
-                <tr class="pl-expense-row">
+                <tr class="pl-expense-row" data-success="{{ '1' if row.success else '0' }}" data-username="{{ (row.username or '')|e }}" data-search="{{ ((row.username or '') ~ ' ' ~ (row.reason_label or '') ~ ' ' ~ (row.ip_address or '') ~ ' ' ~ (row.created_at or '') ~ ' ' ~ ('successful' if row.success else 'failed'))|lower|e }}">
                   <td class="am-logs-meta">{{ row.created_at }}</td>
                   <td>
                     <div class="pl-name am-user-name">{{ row.username or '—' }}</div>
@@ -111,16 +191,16 @@ a{text-decoration:none;color:inherit}
               </tbody>
             </table>
           </div>
-          {% else %}
-          <div class="am-users-empty pl-empty">
-            <p>{% if result_filter == 'success' %}No successful sign-ins recorded yet.{% elif result_filter == 'failed' %}No failed sign-in attempts recorded yet.{% else %}No sign-in attempts recorded yet.{% endif %}</p>
+          <div class="am-users-empty pl-empty" id="am-logs-empty"{% if initial_shown %} hidden{% endif %}>
+            <p id="am-logs-empty-text">{% if result_filter == 'success' %}No successful sign-ins recorded yet.{% elif result_filter == 'failed' %}No failed sign-in attempts recorded yet.{% else %}No sign-in attempts recorded yet.{% endif %}</p>
           </div>
-          {% endif %}
         </div>
       </article>
     </div>
   </section>
 </div>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
+<script src="{{ url_for('static', filename='access_login_logs.js') }}?v=7" data-de-rerun="1"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

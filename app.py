@@ -28,6 +28,7 @@ from flask import (
     session,
     url_for,
 )
+from flask.sessions import SecureCookieSessionInterface
 
 import auth_security
 from mailer import app_base_url, send_account_unlock_email, smtp_configured
@@ -194,11 +195,16 @@ from workspace_access import (
     user_can_access_user_access_submodule,
     user_can_edit_kot_sent_lines,
     user_can_approve_transactions,
+    user_has_assigned_access_role,
     validate_access_role_form,
     validate_access_user_form,
 )
 from employee_payroll import register_employee_payroll
-from embed_helpers import is_embed_request, is_partial_main_request
+from embed_helpers import (
+    is_background_fetch_request,
+    is_embed_request,
+    is_partial_main_request,
+)
 from hotel_id_documents import process_uploaded_id_document, resolve_stored_id_document
 from user_photos import (
     delete_stored_user_photo,
@@ -218,6 +224,7 @@ from reports import (
 from manager_insight import build_manager_insight
 from stores import register_stores
 from communication_hub import register_communication_hub
+from seo_privacy import register_seo_privacy
 from main_dashboard_data import (
     build_dow_avg,
     build_outlet_boards,
@@ -246,7 +253,31 @@ _secure_cookies = (
 )
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = bool(_secure_cookies)
+app.config["SESSION_COOKIE_SECURE"] = False
+
+
+def _request_is_https():
+    if request.is_secure:
+        return True
+    proto = (request.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip()
+    return proto.lower() == "https"
+
+
+class _HttpsAwareSessionInterface(SecureCookieSessionInterface):
+    """Emit Secure cookies on HTTPS only.
+
+    A production .env with SESSION_COOKIE_SECURE=1 used over http://127.0.0.1
+    let login paint Administrator, then refresh dropped the cookie.
+    """
+
+    def get_cookie_secure(self, app):
+        try:
+            return bool(_secure_cookies) and _request_is_https()
+        except RuntimeError:
+            return False
+
+
+app.session_interface = _HttpsAwareSessionInterface()
 
 init_db()
 
@@ -491,6 +522,9 @@ def get_current_user():
     if user and user.get("is_locked"):
         session.pop(AUTH_USER_SESSION_KEY, None)
         user = None
+    if user and not user_has_assigned_access_role(user):
+        session.pop(AUTH_USER_SESSION_KEY, None)
+        user = None
     g.current_user = user
     return user
 
@@ -528,6 +562,7 @@ register_communication_hub(
     pop_auth_notice=_pop_auth_notice,
     get_user=get_current_user,
 )
+register_seo_privacy(app)
 
 
 def _access_nav_view():
@@ -590,8 +625,19 @@ def _write_login_log(conn, *, username, success, reason, user_id=None):
 
 def _user_display_name(user):
     if not user:
-        return "User"
-    return (user.get("full_name") or user.get("username") or "User").strip()
+        return ""
+    return (user.get("full_name") or user.get("username") or "").strip()
+
+
+def _user_role_label(user):
+    if not user:
+        return ""
+    name = (user.get("role_name") or "").strip()
+    if name:
+        return name
+    if user.get("is_admin"):
+        return SUPER_ADMINISTRATOR_ROLE_NAME
+    return ""
 
 
 def _user_avatar_text(user):
@@ -619,6 +665,8 @@ def enforce_access():
     if (
         endpoint == "service_worker"
         or request.path == "/sw.js"
+        or request.path == "/robots.txt"
+        or request.path == "/sitemap.xml"
         or request.path.startswith("/static/")
         or request.path.startswith("/webhook/")
         or request.path == "/communication-hub/api/mirror-export"
@@ -723,6 +771,7 @@ def inject_auth_context():
         "current_user": user,
         "user_can_access_dashboard": user_can_access_dashboard,
         "display_name": _user_display_name(user),
+        "role_label": _user_role_label(user),
         "avatar_text": _user_avatar_text(user),
         "dashboard_modules_meta": _DASHBOARD_MODULES,
         "access_module_tree": access_module_tree(),
@@ -3868,6 +3917,21 @@ def login():
                 username=username,
             )
 
+        user = build_user_context(conn, row)
+        if not user_has_assigned_access_role(user):
+            _write_login_log(
+                conn,
+                username=username,
+                success=False,
+                reason="no_access_role",
+                user_id=int(row["id"]),
+            )
+            conn.commit()
+            return _login_page(
+                error="This account is not in User & Access. Ask an administrator to assign a role.",
+                username=username,
+            )
+
         auth_security.clear_login_failures(conn, int(row["id"]))
         _write_login_log(
             conn,
@@ -3888,7 +3952,7 @@ def login():
 
     auth_security.clear_captcha_challenge(session)
     session.clear()
-    session[AUTH_USER_SESSION_KEY] = row["id"]
+    session[AUTH_USER_SESSION_KEY] = int(row["id"])
     if bool(row["must_change_password"]):
         return redirect(url_for("change_password"))
     return redirect(url_for("home"))
@@ -4015,6 +4079,11 @@ def unlock_account():
 
 @app.route("/logout")
 def logout():
+    # Prefetch / soft-nav GET must not destroy the session. Idle prefetch of
+    # the home Logout link was signing Administrator out while the avatar
+    # still showed AD; refresh then loaded a limited user (or the login page).
+    if is_background_fetch_request():
+        return Response(status=204)
     session.pop(AUTH_USER_SESSION_KEY, None)
     return redirect(url_for("index"))
 
@@ -6715,6 +6784,10 @@ def hotel_reservation_assign_api(reservation_id):
         if str(reservation.get("status") or "") == "checked_out":
             return jsonify(
                 {"ok": False, "error": "Cannot assign a room to a checked-out reservation."}
+            ), 400
+        if str(reservation.get("status") or "").strip().lower() == "cancelled":
+            return jsonify(
+                {"ok": False, "error": "Cannot assign a room to a cancelled reservation."}
             ), 400
         already_this_room = str(reservation.get("roomId") or "") == str(room_id)
         if not already_this_room and not hotel_room_available_for_stay(
@@ -13741,21 +13814,35 @@ def access_login_logs():
     result = (request.args.get("result") or "all").strip().lower()
     if result not in {"all", "success", "failed"}:
         result = "all"
+    selected_user = (request.args.get("user") or "").strip()
 
     conn = get_db()
     try:
-        logs = auth_security.fetch_login_logs(conn, result=result, limit=500)
+        logs = auth_security.fetch_login_logs(conn, result="all", limit=500)
     finally:
         conn.close()
 
     success_count = sum(1 for item in logs if item.get("success"))
     failed_count = len(logs) - success_count
+    usernames = sorted(
+        {
+            str(item.get("username") or "").strip()
+            for item in logs
+            if str(item.get("username") or "").strip()
+        },
+        key=lambda value: value.lower(),
+    )
+    if selected_user and selected_user not in usernames:
+        selected_user = ""
     return _am_logs_page_render(
         "access_login_logs.html",
         logs=logs,
         result_filter=result,
         success_count=success_count,
         failed_count=failed_count,
+        log_usernames=usernames,
+        selected_user=selected_user,
+        selected_user_label=selected_user or "All users",
     )
 
 

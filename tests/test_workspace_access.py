@@ -29,6 +29,7 @@ from workspace_access import (
     user_can_access_user_access_submodule,
     user_can_approve_transactions,
     user_can_edit_kot_sent_lines,
+    user_has_assigned_access_role,
     validate_access_role_form,
 )
 
@@ -495,6 +496,71 @@ class RoleBasedAccessTests(unittest.TestCase):
         self.assertFalse(bool(row["is_admin"]))
         self.assertFalse(is_built_in_administrator_role(dict(row)))
 
+    def test_user_is_admin_not_stripped_by_non_admin_role(self):
+        role_id, _ = save_access_role_record(
+            self.conn,
+            role_id=None,
+            name="Desk Administrator",
+            description="",
+            is_admin=False,
+            is_active=True,
+            dashboard_modules=["reports"],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        admin_id = self.conn.execute(
+            "SELECT id FROM users WHERE username = ?",
+            ("admin",),
+        ).fetchone()["id"]
+        self.conn.execute(
+            "UPDATE users SET role_id = ?, is_admin = 1 WHERE id = ?",
+            (role_id, admin_id),
+        )
+        row = self.conn.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (admin_id,),
+        ).fetchone()
+        user = build_user_context(self.conn, row)
+        self.assertTrue(user["is_admin"])
+        self.assertTrue(user_can_access_dashboard(user, "settings"))
+        self.assertTrue(user_can_access_dashboard(user, "access_management"))
+
+    def test_ensure_schema_reattaches_admin_users_to_super_admin_role(self):
+        role_id, _ = save_access_role_record(
+            self.conn,
+            role_id=None,
+            name="Desk Administrator",
+            description="",
+            is_admin=False,
+            is_active=True,
+            dashboard_modules=["reports"],
+            sales_analytics_modules=[],
+            user_access_modules=[],
+            sql_now="datetime('now','localtime')",
+        )
+        admin_id = self.conn.execute(
+            "SELECT id FROM users WHERE username = ?",
+            ("admin",),
+        ).fetchone()["id"]
+        self.conn.execute(
+            "UPDATE users SET role_id = ?, is_admin = 1 WHERE id = ?",
+            (role_id, admin_id),
+        )
+        ensure_access_roles_schema(self.conn)
+        row = self.conn.execute(
+            """
+            SELECT r.name, r.is_admin AS role_is_admin, u.is_admin
+              FROM users u
+              JOIN access_roles r ON r.id = u.role_id
+             WHERE u.id = ?
+            """,
+            (admin_id,),
+        ).fetchone()
+        self.assertEqual(row["name"], "Super Administrator")
+        self.assertTrue(bool(row["role_is_admin"]))
+        self.assertTrue(bool(row["is_admin"]))
+
     def test_approval_module_only_super_admin_can_grant(self):
         non_admin = {"id": 9, "is_admin": False, "user_access": {"roles"}}
         admin = {"id": 1, "is_admin": True, "user_access": {"roles"}}
@@ -638,6 +704,7 @@ class RoleBasedAccessTests(unittest.TestCase):
         ).fetchone()
         user = build_user_context(self.conn, row)
         self.assertIsNone(user["role_id"])
+        self.assertFalse(user_has_assigned_access_role(user))
         self.assertFalse(user_can_access_dashboard(user, "sales_analytics"))
         self.assertFalse(user_can_access_dashboard(user, "access_management"))
 

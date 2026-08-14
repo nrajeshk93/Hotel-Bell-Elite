@@ -228,6 +228,15 @@
       if (!card) return;
       var val = card.querySelector('[data-kpi-value]');
       if (val) val.textContent = map[key];
+      var meta = card.querySelector('[data-kpi-meta]');
+      if (!meta) return;
+      if (key === 'revenue' || key === 'total') {
+        meta.textContent = 'selected date';
+        return;
+      }
+      var n = parseInt(map[key], 10);
+      if (isNaN(n)) n = 0;
+      meta.textContent = n + (n === 1 ? ' reservation' : ' reservations');
     });
   }
 
@@ -391,6 +400,19 @@
     return 'is-' + String(status || 'upcoming').replace(/\s+/g, '_');
   }
 
+  function reservationStatusKey(row) {
+    return String((row && row.status) || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '_');
+  }
+
+  function canAssignReservation(row) {
+    if (!row) return false;
+    var status = reservationStatusKey(row);
+    return status !== 'cancelled' && status !== 'checked_out';
+  }
+
   function renderRows(rows) {
     var body = document.getElementById('hres-table-body');
     if (!body) return;
@@ -414,11 +436,15 @@
       .map(function (row) {
         var selected =
           state.selectedId && state.selectedId === row.id ? ' is-selected' : '';
+        var statusKey = reservationStatusKey(row);
+        var cancelled = statusKey === 'cancelled';
         return (
           '<tr data-res-id="' +
           escapeAttr(row.id) +
+          '" data-status="' +
+          escapeAttr(statusKey || 'upcoming') +
           '" data-sort-row class="' +
-          selected.trim() +
+          (selected.trim() + (cancelled ? ' is-cancelled' : '')).trim() +
           '">' +
           '<td data-sort-value="' +
           escapeAttr(String(row.guestName || '').toLowerCase()) +
@@ -464,7 +490,9 @@
           escapeAttr(String(row.statusLabel || row.status || '').toLowerCase()) +
           '"><span class="hres-status-pill ' +
           statusClass(row.status) +
-          '">' +
+          '"' +
+          (cancelled ? ' aria-disabled="true"' : '') +
+          '>' +
           escapeHtml(row.statusLabel || row.status) +
           '</span></td>' +
           '<td><div class="hres-row-actions">' +
@@ -665,9 +693,20 @@
   function renderRoomGrid(reservation) {
     var grid = document.getElementById('hres-room-grid');
     var assignBtn = document.getElementById('hres-assign-btn');
+    var assignCard = document.querySelector('.hres-assign-card');
     if (!grid) return;
+    var canAssign = canAssignReservation(reservation);
+    if (assignCard) {
+      assignCard.hidden = !canAssign;
+      assignCard.setAttribute('aria-hidden', canAssign ? 'false' : 'true');
+    }
+    if (!canAssign) {
+      grid.innerHTML = '';
+      if (assignBtn) assignBtn.disabled = true;
+      state.selectedRoomId = '';
+      return;
+    }
     var rooms = roomsForReservation(reservation);
-    var canAssign = reservation && reservation.status !== 'checked_out';
     if (state.selectedRoomId) {
       var stillValid = rooms.some(function (room) {
         return sameId(room.id, state.selectedRoomId);
@@ -747,16 +786,17 @@
   function openAssignModal() {
     var modal = document.getElementById('hres-assign-modal');
     if (!modal) return;
+    var row = findRow(state.selectedId);
+    if (!canAssignReservation(row)) {
+      closeAssignModal();
+      showToast('Cancelled reservations cannot be assigned a room.');
+      return;
+    }
     modal.hidden = false;
     modal.setAttribute('aria-hidden', 'false');
     var assignBtn = document.getElementById('hres-assign-btn');
-    var row = findRow(state.selectedId);
     if (assignBtn) {
-      assignBtn.disabled = !(
-        state.selectedRoomId &&
-        row &&
-        row.status !== 'checked_out'
-      );
+      assignBtn.disabled = !(state.selectedRoomId && canAssignReservation(row));
     }
     syncAssignRoomLabel(roomsForReservation(row));
   }
@@ -1014,6 +1054,12 @@
   function assignSelectedRoom() {
     var root = pageRoot();
     if (!root || !state.selectedId || !state.selectedRoomId) return;
+    var row = findRow(state.selectedId);
+    if (!canAssignReservation(row)) {
+      showToast('Cancelled reservations cannot be assigned a room.');
+      closeAssignModal();
+      return;
+    }
     var assignBtn = document.getElementById('hres-assign-btn');
     if (assignBtn) assignBtn.disabled = true;
     fetch(
@@ -1060,9 +1106,17 @@
     };
 
     var search = document.getElementById('hres-search');
+    var searchChip = document.getElementById('hres-search-chip');
     if (search) {
       var searchTimer = null;
+      var syncSearchChip = function () {
+        if (searchChip) {
+          searchChip.classList.toggle('is-active', !!(search.value || '').trim());
+        }
+      };
+      syncSearchChip();
       search.addEventListener('input', function () {
+        syncSearchChip();
         clearTimeout(searchTimer);
         searchTimer = setTimeout(function () {
           loadReservations({ silent: true });
@@ -1124,9 +1178,13 @@
       var roomOpt = event.target.closest('.hres-room-option[data-room-id]');
       if (roomOpt) {
         event.preventDefault();
+        var selectedRow = findRow(state.selectedId);
+        if (!canAssignReservation(selectedRow)) {
+          showToast('Cancelled reservations cannot be assigned a room.');
+          return;
+        }
         state.selectedRoomId = roomOpt.getAttribute('data-room-id') || '';
-        var row = findRow(state.selectedId);
-        renderRoomGrid(row);
+        renderRoomGrid(selectedRow);
         openAssignModal();
         return;
       }
@@ -1143,6 +1201,15 @@
         event.preventDefault();
         closeAssignModal();
         openEditModal(findRow(state.selectedId));
+        return;
+      }
+
+      var cancelledStatus = event.target.closest(
+        '.hres-status-pill.is-cancelled, tr.is-cancelled td[data-sort-value="cancelled"]'
+      );
+      if (cancelledStatus && !event.target.closest('[data-hres-view], [data-hres-more]')) {
+        event.preventDefault();
+        event.stopPropagation();
         return;
       }
 

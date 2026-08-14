@@ -235,6 +235,42 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.get_json()["reservation"]["roomNumber"], room["number"])
 
+    def test_assign_room_rejected_for_cancelled_reservation(self):
+        create = self.client.post(
+            "/hotel/api/reservations",
+            json={
+                "guestName": "Cancelled Guest",
+                "mobile": "9000011133",
+                "email": "cancelled@example.com",
+                "checkInDate": "2026-09-20",
+                "checkOutDate": "2026-09-22",
+                "amount": 4000,
+                "source": "direct",
+                "status": "cancelled",
+            },
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        reservation = create.get_json()["reservation"]
+        self.assertEqual(str(reservation.get("status") or "").lower(), "cancelled")
+
+        rooms_resp = self.client.get("/hotel/api/rooms")
+        self.assertEqual(rooms_resp.status_code, 200)
+        vacant = [
+            r
+            for r in rooms_resp.get_json().get("rooms") or []
+            if str(r.get("status") or "").lower() == "vacant"
+        ]
+        self.assertTrue(vacant)
+
+        assign = self.client.post(
+            f"/hotel/api/reservations/{reservation['id']}/assign",
+            json={"roomId": vacant[0]["id"]},
+        )
+        self.assertEqual(assign.status_code, 400, assign.get_data(as_text=True))
+        payload = assign.get_json()
+        self.assertFalse(payload.get("ok"))
+        self.assertIn("cancelled", str(payload.get("error") or "").lower())
+
     def test_list_includes_occupied_rooms_free_for_future_dates(self):
         occupied = self.client.put(
             "/hotel/api/rooms/room-101",

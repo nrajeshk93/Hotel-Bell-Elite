@@ -468,9 +468,10 @@ _PUBLIC_ENDPOINTS = {
     "unlock_account",
     "logout",
     "static",
-    "home",
     "favicon",
     "whatsapp_webhook",
+    "robots_txt",
+    "sitemap_xml",
 }
 
 _OUTLET_WRITE_ENDPOINTS = {
@@ -894,7 +895,7 @@ def build_user_context(conn, row):
         if user["is_locked"]
         else ("active" if user["is_active"] else "inactive")
     )
-    user["display_name"] = (user.get("full_name") or user.get("username") or "User").strip()
+    user["display_name"] = (user.get("full_name") or user.get("username") or "").strip()
     user["photo_path"] = (user.get("photo_path") or "").strip()
     user["avatar_tone"] = avatar_accent_index(user.get("id") or user.get("username"))
 
@@ -909,8 +910,12 @@ def build_user_context(conn, row):
     if role:
         user["role_id"] = int(role["id"])
         user["role_name"] = (role["name"] or "").strip()
+        user["role_is_active"] = bool(role["is_active"])
         user["role_tone"] = role_accent_index(user["role_name"])
-        if bool(role["is_admin"]):
+        # Never let a non-admin role strip users.is_admin — a mismatched
+        # "Administrator" role was turning Super Admin into a limited user
+        # on the next full render (refresh).
+        if bool(role["is_admin"]) or user["is_admin"]:
             user["is_admin"] = True
             _apply_permission_sets(user, _empty_permission_sets())
         else:
@@ -919,13 +924,27 @@ def build_user_context(conn, row):
     else:
         user["role_id"] = None
         user["role_name"] = None
+        user["role_is_active"] = False
         user["role_tone"] = role_accent_index("unassigned")
-        if user["is_admin"]:
-            _apply_permission_sets(user, _empty_permission_sets())
-        else:
-            # Legacy fallback until a role is assigned.
-            _apply_permission_sets(user, load_user_permissions(conn, user["id"]))
+        _apply_permission_sets(user, _empty_permission_sets())
     return user
+
+
+def user_has_assigned_access_role(user):
+    """True when the person is a User & Access account with an assigned role.
+
+    There is no generic User identity. Unassigned or inactive-role staff
+    cannot sign in or keep a session.
+    """
+    if not user:
+        return False
+    if user.get("is_admin"):
+        return True
+    if not user.get("role_id") or not (user.get("role_name") or "").strip():
+        return False
+    if user.get("role_is_active") is False:
+        return False
+    return True
 
 
 def user_can_access_dashboard(user, module_key):
@@ -1639,6 +1658,20 @@ def ensure_access_roles_schema(conn):
     admin_role_id = int(admin_role["id"])
     conn.execute(
         "UPDATE access_roles SET is_admin = 1 WHERE id = ?",
+        (admin_role_id,),
+    )
+    # Keep users.is_admin=1 on Super Administrator even if they were assigned
+    # a custom non-admin role (e.g. one named "Administrator").
+    conn.execute(
+        """
+        UPDATE users
+           SET role_id = ?, is_admin = 1
+         WHERE is_admin = 1
+           AND (
+               role_id IS NULL
+               OR role_id NOT IN (SELECT id FROM access_roles WHERE is_admin = 1)
+           )
+        """,
         (admin_role_id,),
     )
 

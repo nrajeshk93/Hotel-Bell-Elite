@@ -6,7 +6,7 @@
   var NAV_FLAG = 'de-nav-transition';
   var FS_KEY = 'de-fullscreen-active';
   var PREFETCH_TTL_MS = 90000;
-  var PREFETCH_MAX = 20;
+  var PREFETCH_MAX = 48;
   var IDLE_PREFETCH_PATHS = [
     '/home',
     '/main-dashboard',
@@ -39,22 +39,22 @@
   var overlayHideToken = 0;
   var __deNavDbg = { t0: 0, url: '', prefetch: false };
 
-  // #region agent log
   function __deDbg(hypothesisId, location, message, data){
+    // #region agent log
     fetch('http://127.0.0.1:7764/ingest/3c15e9d7-8289-4a1b-877f-c72ceeda0753',{
       method:'POST',
-      headers:{'Content-Type':'application/json','X-Debug-Session-Id':'85c6fd'},
+      headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7ee333'},
       body:JSON.stringify({
-        sessionId:'85c6fd',
-        hypothesisId:hypothesisId,
+        sessionId:'7ee333',
+        hypothesisId:hypothesisId || '',
         location:location,
         message:message,
         data:data || {},
         timestamp:Date.now()
       })
     }).catch(function(){});
+    // #endregion
   }
-  // #endregion
 
   function prefersReducedMotion(){
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -263,14 +263,16 @@
     if(!link) return;
     /* Hover-prefetch sidebar + report hub cards (pointerdown still warms everything). */
     if(link.closest && !link.closest('.de-sidebar, .sidebar') && event.type === 'mouseover'){
-      if(!link.classList.contains('rd-report-card')) return;
+      if(!link.classList.contains('rd-report-card') && !link.closest('.db-home-card, .db-home')) return;
     }
     var rawHref = link.getAttribute('href') || '';
     if(!rawHref || rawHref.indexOf('javascript:') === 0) return;
+    if(link.hasAttribute('data-de-no-soft-nav')) return;
     if(!isSameOriginLink(link)) return;
     if(isFileDownloadLink(link)) return;
     if(isMasterModalLink(link)) return;
     if(isEmbedFragmentUrl(link.href || rawHref)) return;
+    if(isLogoutUrl(link.href || rawHref)) return;
     prefetchSoftNav(withSalesScope(link.href));
   }
 
@@ -649,12 +651,21 @@
   }
 
   function storePrefetchHtml(key, html){
+    if(!html || htmlLooksLikeAuthShell(html)){
+      prefetchCache.delete(key);
+      return;
+    }
     prefetchCache.set(key, { html: html, ts: Date.now() });
     prunePrefetchCache();
     /* Warm destination stylesheets early so soft-nav does not paint before CSS. */
     try{
       warmStylesheetsFromHtml(html);
     } catch(e){}
+  }
+
+  function htmlLooksLikeAuthShell(html){
+    if(!html) return true;
+    return html.indexOf('login-page') !== -1 || html.indexOf('id="login-form"') !== -1;
   }
 
   function warmStylesheetsFromHtml(html){
@@ -667,7 +678,13 @@
       var href = hrefMatch[1];
       if(!href || href.indexOf('/static/') === -1) continue;
       var exists = Array.from(document.querySelectorAll('link[rel="stylesheet"], link[rel="preload"][as="style"]')).some(function(el){
-        return (el.getAttribute('href') || '') === href;
+        var current = el.getAttribute('href') || '';
+        if(current === href) return true;
+        try{
+          return new URL(current, window.location.href).pathname === new URL(href, window.location.href).pathname;
+        } catch(err){
+          return false;
+        }
       });
       if(exists) continue;
       /* Apply as stylesheet (not preload-only) so soft-nav merge finds a ready sheet. */
@@ -681,6 +698,7 @@
   function prefetchSoftNav(url){
     if(!url || !shouldSoftNavigate()) return;
     if(isEmbedFragmentUrl(url)) return;
+    if(isLogoutUrl(url)) return;
     url = withSalesScope(url);
     url = urlWithPosSettingsSection(url);
     if(sameAppUrl(url, window.location.href)) return;
@@ -703,7 +721,8 @@
         'Accept': 'text/html',
         'X-De-Partial': 'main'
       },
-      redirect: 'follow'
+      redirect: 'follow',
+      cache: 'no-store'
     }).then(function(response){
       if(!response.ok) throw new Error('prefetch failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
@@ -720,10 +739,29 @@
     prefetchCache.set(key, { promise: promise, ts: Date.now() });
   }
 
+  function prefetchHtmlReady(url){
+    try{
+      var key = navCacheKey(withSalesScope(urlWithPosSettingsSection(url)));
+      var entry = prefetchCache.get(key);
+      return !!(entry && entry.html && (Date.now() - entry.ts) < PREFETCH_TTL_MS);
+    } catch(e){
+      return false;
+    }
+  }
+
   function takePrefetchedHtml(url){
     var key = navCacheKey(url);
     var entry = prefetchCache.get(key);
-    if(!entry) return null;
+    if(!entry){
+      // #region agent log
+      __deDbg('A', 'de_workspace_transitions.js:takePrefetchedHtml', 'prefetch miss', {
+        url: url,
+        cacheSize: prefetchCache.size,
+        reason: 'no-entry'
+      });
+      // #endregion
+      return null;
+    }
     if(entry.html && (Date.now() - entry.ts) < PREFETCH_TTL_MS){
       /* Keep cache entry so Back / re-open stays instant within TTL. */
       try{
@@ -732,12 +770,18 @@
            while a stale empty prefetch would wipe the conversation list. */
         if(path === '/communication-hub'){
           prefetchCache.delete(key);
+          // #region agent log
+          __deDbg('E', 'de_workspace_transitions.js:takePrefetchedHtml', 'prefetch skipped', {url: url, reason: 'fresh-required'});
+          // #endregion
           return null;
         }
         /* Roles list mutates on create/edit/delete — a pre-create prefetch
            makes custom roles look like they vanished after navigating away. */
         if(path === '/access-management/roles' || path === '/access-management/logs'){
           prefetchCache.delete(key);
+          // #region agent log
+          __deDbg('E', 'de_workspace_transitions.js:takePrefetchedHtml', 'prefetch skipped', {url: url, reason: 'fresh-required'});
+          // #endregion
           return null;
         }
         /* Indent / inward forms embed Product Master packs — stale prefetch
@@ -1080,10 +1124,9 @@
 
   function waitForStylesheets(links, timeoutMs){
     if(!links || !links.length) return Promise.resolve();
-    /* Wait for destination CSS before swapping DOM. A short 180ms race caused
-       FOUC on AWS (plain HTML flash) when module sheets (e.g. access_management)
-       arrived after the swap. Cap high enough for CF RTT but not forever. */
-    var limit = timeoutMs == null ? 2000 : timeoutMs;
+    /* Destination CSS is warmed as real stylesheets during prefetch. Cap the
+       swap wait so a cold sheet cannot freeze the old module for seconds. */
+    var limit = timeoutMs == null ? 160 : timeoutMs;
     function sheetReady(link){
       try{
         if(link.sheet) return true;
@@ -1873,9 +1916,20 @@
   }
 
   function clearNavigatingLinks(){
-    document.querySelectorAll('.de-sidebar a.is-navigating, .sidebar a.is-navigating').forEach(function(el){
+    document.querySelectorAll('a.is-navigating').forEach(function(el){
       el.classList.remove('is-navigating');
     });
+  }
+
+  /** Session-ending routes must hard-nav — soft-nav + auth abort would history.back()
+   *  and leave a zombie shell with is-navigating stuck on Logout. */
+  function isLogoutUrl(url){
+    try{
+      var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+      return path === '/logout';
+    } catch(e){
+      return false;
+    }
   }
 
   function finalizeSoftNav(){
@@ -1926,32 +1980,7 @@
   }
 
   function playMainEnterReveal(main){
-    if(!main || prefersReducedMotion()) return;
-    /* Soft-nav already painted the destination HTML. A second opacity:0 → 1
-       fade reads as "page opened then refreshed" (esp. on AWS RTT). Skip. */
-    if(document.documentElement.classList.contains('de-soft-nav-session')
-      || document.documentElement.classList.contains('de-soft-navigating')
-      || window.__deSoftNavInProgress){
-      main.classList.remove('de-main-enter');
-      return;
-    }
-    main.classList.remove('de-main-enter');
-    /* Force reflow so re-adding the class retriggers the animation. */
-    void main.offsetWidth;
-    main.classList.add('de-main-enter');
-    var done = false;
-    function clear(){
-      if(done) return;
-      done = true;
-      main.classList.remove('de-main-enter');
-      main.removeEventListener('animationend', onEnd);
-    }
-    function onEnd(ev){
-      if(ev && ev.target !== main) return;
-      clear();
-    }
-    main.addEventListener('animationend', onEnd);
-    window.setTimeout(clear, MAIN_ENTER_MS + 80);
+    if(main) main.classList.remove('de-main-enter');
   }
 
   function applySoftSwap(doc, url, done, sidebarScroll, navToken){
@@ -2058,26 +2087,7 @@
         });
       };
 
-      waitForStylesheets(addedLinks).then(function(){
-        /* If the wait timed out with sheets still pending, hold the previous
-           styled page until those loads finish — never paint unstyled HTML. */
-        var pending = (addedLinks || []).filter(function(link){
-          try{ return !link.sheet; } catch(e){ return true; }
-        });
-        if(!pending.length){
-          finishSwap();
-          return;
-        }
-        Promise.all(pending.map(function(link){
-          return new Promise(function(resolve){
-            try{ if(link.sheet){ resolve(); return; } } catch(e){}
-            var done = function(){ resolve(); };
-            link.addEventListener('load', done, { once: true });
-            link.addEventListener('error', done, { once: true });
-            setTimeout(done, 2500);
-          });
-        })).then(finishSwap);
-      });
+      waitForStylesheets(addedLinks).then(finishSwap);
       return;
     }
 
@@ -2155,10 +2165,15 @@
 
     var prefetched = takePrefetchedHtml(url);
     __deNavDbg.prefetch = !!prefetched;
+    __deNavDbg.leaveMs = 0;
+    __deNavDbg.floorMs = 0;
     // #region agent log
     __deDbg('A', 'de_workspace_transitions.js:softNavigate', 'nav start', {
       url: url,
       prefetchHit: !!prefetched,
+      prefetchKind: prefetched ? (typeof prefetched.then === 'function' ? 'promise' : 'html') : 'miss',
+      cacheReady: prefetchHtmlReady(url),
+      cacheSize: prefetchCache.size,
       fromPath: (window.location && window.location.pathname) || ''
     });
     // #endregion
@@ -2166,14 +2181,20 @@
       credentials: 'same-origin',
       headers: {
         'Accept': 'text/html',
+        'X-Requested-With': 'XMLHttpRequest',
         'X-De-Partial': 'main'
       },
-      redirect: 'follow'
+      redirect: 'follow',
+      cache: 'no-store'
     };
     if(!prefetched && nav.signal) fetchOpts.signal = nav.signal;
 
     /* Start leave saves immediately so they overlap the destination HTML fetch. */
-    var leavePromise = runBeforeSoftNavHandlers();
+    var leaveT0 = Date.now();
+    var leavePromise = runBeforeSoftNavHandlers().then(function(v){
+      __deNavDbg.leaveMs = Date.now() - leaveT0;
+      return v;
+    });
     /* Tables: warm floor snapshot in parallel with HTML so first paint is not empty SSR. */
     var floorOutlet = (function(){
       try{
@@ -2183,7 +2204,11 @@
         return 'restaurant';
       }
     })();
-    var floorPromise = isPosTablesUrl(url) ? warmPosFloorSnapshot(nav.signal, floorOutlet) : Promise.resolve(null);
+    var floorT0 = Date.now();
+    var floorPromise = (isPosTablesUrl(url) ? warmPosFloorSnapshot(nav.signal, floorOutlet) : Promise.resolve(null)).then(function(v){
+      __deNavDbg.floorMs = Date.now() - floorT0;
+      return v;
+    });
 
     var htmlPromise = prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
@@ -2193,8 +2218,9 @@
       }
       /* Follow redirects to the final document URL (e.g. finished Generate PO bounce). */
       var finalUrl = stripPartialParam(response.url || url);
+      var redirected = !!response.redirected;
       return response.text().then(function(html){
-        return { html: html, url: finalUrl };
+        return { html: html, url: finalUrl, redirected: redirected };
       });
     });
 
@@ -2208,19 +2234,41 @@
       var payload = results[0];
       var html = typeof payload === 'string' ? payload : (payload && payload.html);
       var swapUrl = (payload && typeof payload === 'object' && payload.url) ? payload.url : url;
+      var redirected = !!(payload && typeof payload === 'object' && payload.redirected);
       // #region agent log
       __deDbg('A', 'de_workspace_transitions.js:softNavigate', 'html ready', {
         url: swapUrl,
+        requestedUrl: url,
+        redirected: redirected,
         prefetchHit: !!prefetched,
         htmlBytes: html ? html.length : 0,
-        fetchMs: Date.now() - (__deNavDbg.t0 || Date.now())
+        hasMain: !!(html && html.indexOf('de-main-wrapper') !== -1),
+        looksAuth: !!(html && (html.indexOf('login-page') !== -1 || html.indexOf('Sign In') !== -1)),
+        fetchMs: Date.now() - (__deNavDbg.t0 || Date.now()),
+        leaveMs: __deNavDbg.leaveMs || 0,
+        floorMs: __deNavDbg.floorMs || 0
       });
       // #endregion
       if(!html) throw new Error('empty soft nav html');
       var parser = new DOMParser();
       var doc = parser.parseFromString(html, 'text/html');
-      if(!doc.querySelector('.de-main-wrapper')){
-        throw new Error('missing main wrapper for soft nav');
+      var authShell = false;
+      try{
+        var finalPath = new URL(swapUrl, window.location.href).pathname.replace(/\/$/, '') || '/';
+        if(finalPath === '/' || finalPath === '/login') authShell = true;
+      } catch(ePath){}
+      if(!authShell && (doc.body && doc.body.classList.contains('login-page'))) authShell = true;
+      if(authShell || !doc.querySelector('.de-main-wrapper')){
+        // #region agent log
+        __deDbg('F', 'de_workspace_transitions.js:softNavigate', 'auth or missing main', {
+          requestedUrl: url,
+          swapUrl: swapUrl,
+          redirected: redirected,
+          authShell: authShell,
+          hasMain: !!doc.querySelector('.de-main-wrapper')
+        });
+        // #endregion
+        throw new Error(authShell ? 'auth-shell' : 'missing main wrapper for soft nav');
       }
       applySoftSwap(doc, swapUrl, done, sidebarScroll, nav.token);
     }).catch(function(err){
@@ -2247,6 +2295,22 @@
       /* Disarm hard-nav #page-transition veil — soft-nav failure must not flash blank. */
       try{ sessionStorage.removeItem(NAV_FLAG); } catch(e){}
       if(typeof done === 'function') done();
+      var errMsg = String(err && err.message || err || '');
+      var authFail = errMsg.indexOf('auth-shell') !== -1;
+      // #region agent log
+      __deDbg('D', 'de_workspace_transitions.js:softNavigate', authFail ? 'soft-nav auth abort' : 'soft-nav failed hard reload', {
+        url: url,
+        err: errMsg,
+        authFail: authFail,
+        totalMs: Date.now() - (__deNavDbg.t0 || Date.now())
+      });
+      // #endregion
+      /* Auth redirect: do NOT hard-nav to the target (that paints Sign In and looks like logout).
+         Restore the previous history entry so the user stays on the last good page. */
+      if(authFail){
+        try{ history.back(); } catch(eBack){}
+        return;
+      }
       // Soft-nav already pushState'd the target URL. Failing silently leaves a stale
       // page (month/year filters look broken until a manual refresh). Always hard-nav.
       window.location.href = url;
@@ -2299,6 +2363,11 @@
       window.location.href = stripEmbedParam(url);
       return;
     }
+    /* Logout must clear the session via a real navigation (never soft-nav/prefetch). */
+    if(isLogoutUrl(url)){
+      window.location.href = url;
+      return;
+    }
     url = withSalesScope(url);
     url = urlWithPosSettingsSection(url);
     if(isPosInvoiceAppUrl(url)){
@@ -2311,6 +2380,15 @@
       sessionStorage.setItem(NAV_FLAG, '1');
     } catch(e){}
 
+    // #region agent log
+    __deDbg('D', 'de_workspace_transitions.js:navigateWithTransition', 'click navigate', {
+      url: url,
+      soft: shouldSoftNavigate(),
+      cacheReady: prefetchHtmlReady(url),
+      cacheSize: prefetchCache.size,
+      fromPath: (window.location && window.location.pathname) || ''
+    });
+    // #endregion
     if(shouldSoftNavigate()){
       // Mark soft-nav BEFORE any fullscreen churn so exit events keep the preference.
       setSoftNavFlag(true);
@@ -2329,7 +2407,7 @@
       }
       // Immediate sidebar feedback — old main stays visible until HTML arrives (no blank veil).
       try{ syncSidebarActiveFromUrl(url); } catch(e){}
-      showSoftNavProgress();
+      if(!prefetchHtmlReady(url)) showSoftNavProgress();
       softNavigate(url, hideSoftNavProgress);
       return;
     }
@@ -2357,6 +2435,7 @@
     if(!rawHref || rawHref.indexOf('javascript:') === 0) return false;
     if(event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return false;
     if(!isSameOriginLink(link)) return false;
+    if(link.hasAttribute('data-de-no-soft-nav') || isLogoutUrl(link.href || rawHref)) return false;
     var url = withSalesScope(link.href);
     if(!url) return false;
     if(isPosInvoiceAppUrl(url)){
@@ -2411,6 +2490,7 @@
   function handleWorkspaceLink(event, link){
     if(link.closest('.de-sidebar, .sidebar')) return false;
     if(link.hasAttribute('data-de-no-soft-nav')) return false;
+    if(isLogoutUrl(link.href || link.getAttribute('href') || '')) return false;
     if(isMasterModalLink(link)) return false;
     if(isEmbedFragmentUrl(link.href || link.getAttribute('href') || '')) return false;
     if(isFileDownloadLink(link)) return false;
@@ -2509,7 +2589,7 @@
       }
       try{ syncSidebarActiveFromUrl(url); } catch(e){}
     }
-    showSoftNavProgress();
+    if(!prefetchHtmlReady(url)) showSoftNavProgress();
     softNavigate(url, hideSoftNavProgress);
   };
   window.deInvalidateSoftNavCache = invalidatePrefetch;
@@ -2542,6 +2622,9 @@
     }
     if(typeof window.initAccessUsersList === 'function'){
       window.initAccessUsersList();
+    }
+    if(typeof window.initAccessLoginLogs === 'function'){
+      window.initAccessLoginLogs();
     }
     if(typeof window.initPosTablesPage === 'function'){
       window.initPosTablesPage();
@@ -2617,6 +2700,13 @@
   };
 
   window.addEventListener('popstate', function(){
+    // #region agent log
+    __deDbg('C', 'de_workspace_transitions.js:popstate', 'popstate', {
+      path: location.pathname,
+      search: location.search,
+      deSoftNav: !!(history.state && history.state.deSoftNav)
+    });
+    // #endregion
     if(history.state && history.state.deSoftNav){
       if(typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
       else window.location.reload();
@@ -2637,24 +2727,40 @@
     if(idlePrefetchScheduled) return;
     idlePrefetchScheduled = true;
     var schedule = window.requestIdleCallback || function(cb){
-      return setTimeout(function(){ cb({ didTimeout: false, timeRemaining: function(){ return 0; } }); }, 400);
+      return setTimeout(function(){ cb({ didTimeout: false, timeRemaining: function(){ return 0; } }); }, 50);
     };
     schedule(function(){
       idlePrefetchScheduled = false;
+      var seen = {};
+      function queue(href){
+        if(!href || seen[href]) return;
+        seen[href] = 1;
+        prefetchSoftNav(href);
+      }
+      document.querySelectorAll('.de-sidebar a[href], .sidebar a[href], .db-home a[href], a.rd-report-card[href]').forEach(function(link){
+        var raw = link.getAttribute('href') || '';
+        if(!raw || raw.indexOf('javascript:') === 0) return;
+        if(link.hasAttribute('data-de-no-soft-nav')) return;
+        if(!isSameOriginLink(link)) return;
+        if(isFileDownloadLink(link)) return;
+        if(isMasterModalLink(link)) return;
+        if(isLogoutUrl(link.href || raw)) return;
+        queue(withSalesScope(link.href || raw));
+      });
       IDLE_PREFETCH_PATHS.forEach(function(path){
         try{
-          var abs = new URL(path, window.location.origin).toString();
-          prefetchSoftNav(withSalesScope(abs));
+          queue(withSalesScope(new URL(path, window.location.origin).toString()));
         } catch(e){}
       });
       prefetchRestaurantGroup();
-      /* Warm CSS so first soft-nav does not inject cold sheets over AWS RTT. */
+      prefetchBarPosGroup();
+      /* Apply module CSS now so the first click does not wait on a cold sheet. */
       [
         '/static/masters_dashboard.css?v=26',
         '/static/sales_entry_dashboard.css?v=33',
         '/static/sales_update_header.css?v=9',
         '/static/sales_update_premium.css?v=22',
-        '/static/de_workspace_shell.css?v=45',
+        '/static/de_workspace_shell.css?v=48',
         '/static/stores.css?v=75',
         '/static/ep_form_listbox.css?v=23',
         '/static/pos_tables.css?v=54',
@@ -2664,25 +2770,30 @@
         '/static/hotel_rooms.css?v=60',
         '/static/hotel_reservations.css?v=20',
         '/static/hotel_date_picker.css?v=9',
-        '/static/access_management_premium.css?v=29',
+        '/static/access_management_premium.css?v=32',
         '/static/hbe_home_premium.css?v=19',
         '/static/sales_report.css?v=19',
         '/static/sales_date_range.css?v=2',
         '/static/reports_page_scroll.css?v=4'
       ].forEach(function(href){
         try{
-          var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]')).some(function(el){
-            return (el.getAttribute('href') || '') === href;
+          var exists = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).some(function(el){
+            var current = el.getAttribute('href') || '';
+            if(current === href) return true;
+            try{
+              return new URL(current, window.location.href).pathname === new URL(href, window.location.href).pathname;
+            } catch(err){
+              return false;
+            }
           });
           if(exists) return;
           var link = document.createElement('link');
-          link.rel = 'preload';
-          link.as = 'style';
+          link.rel = 'stylesheet';
           link.href = href;
           document.head.appendChild(link);
         } catch(e){}
       });
-    }, { timeout: 1800 });
+    }, { timeout: 200 });
   }
 
   /**
