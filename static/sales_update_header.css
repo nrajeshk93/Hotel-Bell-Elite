@@ -531,7 +531,7 @@ body.se-cash-mode #se-cash-date-range-host {
 }
 
 .se-sales-header .sr-topbar-filters {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 @media (max-width: 900px) {
@@ -671,6 +671,7 @@ body.se-cash-mode #se-cash-date-range-host {
 .se-sales-header-filters .st-product-search-chip.is-active .se-filter-chip-control,
 .se-sales-header-filters .st-stock-search-chip.is-active .se-filter-chip-control,
 .se-sales-header-filters .st-audit-search-chip.is-active .se-filter-chip-control,
+.se-sales-header-filters .pos-menu-search-chip.is-active .se-filter-chip-control,
 .se-sales-header-filters .se-filter-chip--date-range.is-filtered .se-filter-chip-control {
   border-color: #93C5FD !important;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);

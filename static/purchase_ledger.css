@@ -6,7 +6,7 @@ body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form){
 }
 body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
   display:flex;
-  flex-wrap:nowrap;
+  flex-wrap:wrap;
   align-items:flex-end;
   justify-content:flex-start;
   gap:12px;
@@ -15,7 +15,7 @@ body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
   min-width:0;
   margin-left:0;
   flex:1 1 auto;
-  overflow-x:auto;
+  overflow:visible;
 }
 
 /* Expense ledger header filters — match Add menu field listbox design */
@@ -156,10 +156,10 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox .se-filter-
 
 body.su-module #purchase-ledger-filter-form .pl-search-chip{
   position:relative;
-  flex:1 1 0;
+  flex:1 1 160px;
   width:auto;
-  min-width:72px;
-  max-width:180px;
+  min-width:140px;
+  max-width:220px;
   z-index:20;
 }
 body.su-module #purchase-ledger-filter-form .pl-search-chip .pl-header-search,
@@ -184,10 +184,34 @@ body.su-module #purchase-ledger-filter-form .pl-search-chip .pl-search-input{
 body.su-module #purchase-ledger-filter-form .pl-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
 body.su-module #purchase-ledger-filter-form .pl-search-input::placeholder{color:#94A3B8;font-weight:500}
 body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
-  flex:0 1 auto;
-  width:clamp(120px,12vw,180px);
-  min-width:112px;
+  flex:1 1 150px;
+  width:auto;
+  min-width:140px;
   max-width:200px;
+}
+body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox.pl-header-field-listbox{
+  flex:1 1 260px;
+  min-width:220px;
+  max-width:min(360px,100%);
+}
+/* Compact chips — short labels; free space for supplier + date */
+body.su-module #purchase-ledger-filter-form #purchase-ledger-payment-listbox.pl-header-field-listbox,
+body.su-module #purchase-ledger-filter-form #purchase-ledger-category-listbox.pl-header-field-listbox{
+  flex:0 1 auto;
+  width:max-content;
+  min-width:0;
+  max-width:150px;
+}
+body.su-module #purchase-ledger-filter-form #purchase-ledger-payment-listbox .se-filter-chip-trigger,
+body.su-module #purchase-ledger-filter-form #purchase-ledger-category-listbox .se-filter-chip-trigger{
+  padding:0 2px 0 10px;
+  min-width:0;
+}
+body.su-module #purchase-ledger-filter-form #purchase-ledger-payment-listbox .se-filter-chip-chev,
+body.su-module #purchase-ledger-filter-form #purchase-ledger-category-listbox .se-filter-chip-chev{
+  width:28px;
+  min-width:28px;
+  flex:0 0 28px;
 }
 body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip) .se-filter-chip-value{
   overflow:hidden;
@@ -210,19 +234,20 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip--date-range{
 }
 body.su-module .pl-date-range-host.pl-header-field .se-filter-chip--date-range .se-filter-chip-control{
   overflow:visible;
-  min-height:52px;
-  height:52px;
+  min-height:44px;
+  height:44px;
 }
 body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
 body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
   min-width:0;
   width:auto;
-  max-width:220px;
-  min-height:52px;
-  height:52px;
+  max-width:none;
+  min-height:44px;
+  height:44px;
   padding:0 12px 0 14px;
-  font-size:14px;
+  font-size:13px;
   font-weight:600;
+  white-space:nowrap;
 }
 body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .se-filter-chip-control{
   border-color:#93C5FD !important;
@@ -231,20 +256,32 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
 }
 @media (max-width:1100px){
   body.su-module #purchase-ledger-filter-form .pl-search-chip{
-    flex:1 1 0;
-    min-width:64px;
-    max-width:140px;
+    flex:1 1 150px;
+    min-width:140px;
+    max-width:200px;
   }
   body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
-    flex:0 1 110px;
+    flex:1 1 140px;
     width:auto;
-    min-width:88px;
+    min-width:130px;
+    max-width:180px;
+  }
+  body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox.pl-header-field-listbox{
+    flex:1 1 240px;
+    min-width:200px;
+    max-width:min(320px,100%);
+  }
+  body.su-module #purchase-ledger-filter-form #purchase-ledger-payment-listbox.pl-header-field-listbox,
+  body.su-module #purchase-ledger-filter-form #purchase-ledger-category-listbox.pl-header-field-listbox{
+    flex:0 1 auto;
+    width:max-content;
+    min-width:0;
     max-width:140px;
   }
 }
 @media (max-width:900px){
   body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
-    flex-wrap:nowrap;
+    flex-wrap:wrap;
     justify-content:flex-start;
   }
   body.su-module #purchase-ledger-filter-form .pl-kind-filter-host{
@@ -253,25 +290,37 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
     margin-right:0;
   }
   body.su-module #purchase-ledger-filter-form .pl-search-chip{
-    flex:1 1 0;
-    min-width:56px;
-    max-width:120px;
+    flex:1 1 160px;
+    min-width:140px;
+    max-width:none;
   }
   body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
-    flex:0 1 96px;
-    min-width:80px;
-    max-width:120px;
+    flex:1 1 150px;
+    min-width:140px;
+    max-width:none;
+  }
+  body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox.pl-header-field-listbox{
+    flex:1 1 240px;
+    min-width:200px;
+    max-width:none;
+  }
+  body.su-module #purchase-ledger-filter-form #purchase-ledger-payment-listbox.pl-header-field-listbox,
+  body.su-module #purchase-ledger-filter-form #purchase-ledger-category-listbox.pl-header-field-listbox{
+    flex:0 1 auto;
+    width:max-content;
+    min-width:0;
+    max-width:150px;
   }
   body.su-module .pl-date-range-host.pl-header-field{
-    flex:0 0 auto;
+    flex:1 1 200px;
     width:auto;
-    min-width:0;
+    min-width:180px;
   }
   body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
   body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
     min-width:0;
-    width:auto;
-    max-width:180px;
+    width:100%;
+    max-width:none;
   }
 }
 @media (max-width:720px){
@@ -279,7 +328,7 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
   body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form) .sr-topbar-filters,
   body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
     flex-direction:row;
-    flex-wrap:nowrap;
+    flex-wrap:wrap;
     align-items:flex-end;
     width:100%;
   }
@@ -287,14 +336,19 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
   body.su-module #purchase-ledger-filter-form .se-filter-chip--date,
   body.su-module #purchase-ledger-filter-form .se-filter-chip-date-host,
   body.su-module #purchase-ledger-filter-form .pl-date-range-host.pl-header-field{
-    flex:0 0 auto;
+    flex:1 1 160px;
     width:auto;
+    min-width:140px;
+    max-width:none;
+  }
+  body.su-module #purchase-ledger-filter-form .pl-kind-filter-host{
+    flex:1 1 100%;
     max-width:none;
   }
   body.su-module #purchase-ledger-filter-form .pl-search-chip{
-    flex:1 1 0;
-    min-width:48px;
-    max-width:110px;
+    flex:1 1 160px;
+    min-width:140px;
+    max-width:none;
     width:auto;
   }
 }
@@ -319,6 +373,9 @@ body.su-module .pl-date-input::-webkit-calendar-picker-indicator{cursor:pointer}
 /* Supplier combobox — type-to-search in the chip (same as Purchase Verification) */
 body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control{
   background:#fff !important;
+  gap:0;
+  padding:0;
+  overflow:hidden;
 }
 body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox.is-open .se-filter-chip-control,
 body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-control:focus-within{
@@ -327,14 +384,29 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox
   background:#fff !important;
 }
 body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
   min-height:44px;
   font-size:13px;
   font-weight:600;
-  padding:0 0 0 12px;
+  padding:0 4px 0 12px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox:focus{
+  text-overflow:clip;
 }
 body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
   color:#94A3B8;
   font-weight:500;
+}
+body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox .se-filter-chip-chev{
+  flex:0 0 34px;
+  width:34px;
+  min-width:34px;
+  align-self:stretch;
 }
 body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox.is-open{
   z-index:100;

@@ -187,21 +187,57 @@
     var overstayNights = overstayNightsFromStay(stay);
     var billableNights = billableNightsFromStay(stay);
     var roomRate = Math.max(0, Number(stay.roomRate || 0));
+    var nightlyRates = Array.isArray(stay.nightlyRates) ? stay.nightlyRates : [];
     var roomLabel =
       (room && (room.roomTypeLabel || room.roomType)) || 'Room Charges';
     roomLabel = String(roomLabel).replace(/_/g, ' ');
-    if (roomRate > 0) {
+
+    function sliceNightlySum(startIdx, count) {
+      if (!nightlyRates.length || !(count > 0)) return null;
+      var sum = 0;
+      var last = roomRate;
+      for (var i = 0; i < count; i++) {
+        var idx = startIdx + i;
+        var row =
+          idx < nightlyRates.length
+            ? nightlyRates[idx]
+            : nightlyRates[nightlyRates.length - 1];
+        if (row && row.roomRate != null) last = Math.max(0, Number(row.roomRate || 0));
+        sum += last;
+      }
+      return round2(sum);
+    }
+
+    var bookedAmount = sliceNightlySum(0, bookedNights);
+    var overstayAmount = sliceNightlySum(
+      bookedNights,
+      Math.max(0, billableNights - bookedNights)
+    );
+    if (bookedAmount == null && roomRate > 0) {
+      bookedAmount = round2(roomRate * bookedNights);
+    }
+    if (overstayAmount == null && roomRate > 0 && overstayNights > 0) {
+      overstayAmount = round2(roomRate * overstayNights);
+    }
+
+    if (bookedAmount > 0) {
+      var bookedRate =
+        nightlyRates.length && bookedNights
+          ? round2(bookedAmount / bookedNights)
+          : roomRate;
       lines.push({
         key: 'room',
         label: roomLabel,
         qty: bookedNights,
-        rate: roomRate,
-        amount: round2(roomRate * bookedNights),
+        rate: bookedRate,
+        amount: bookedAmount,
         canEdit: true,
         canDelete: false,
         nameEditable: false
       });
-      if (overstayNights > 0 && billableNights > bookedNights) {
+      if (overstayAmount > 0 && billableNights > bookedNights) {
+        var overRate =
+          overstayNights > 0 ? round2(overstayAmount / overstayNights) : roomRate;
         lines.push({
           key: 'overstay',
           label:
@@ -211,8 +247,8 @@
             (overstayNights === 1 ? '' : 's') +
             ')',
           qty: overstayNights,
-          rate: roomRate,
-          amount: round2(roomRate * overstayNights),
+          rate: overRate,
+          amount: overstayAmount,
           canEdit: false,
           canDelete: false,
           nameEditable: false

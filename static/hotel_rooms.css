@@ -96,37 +96,36 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   color:#fff;
 }
 
+/* Purchase / Expense Ledger–style KPI summary (shared hbe_kpi.css grid + cards) */
+body.hotel-rooms-module .hotel-rooms-kpis.pl-summary-row,
 .hotel-rooms-kpis{
-  display:flex;
-  flex-wrap:nowrap;
-  align-items:stretch;
-  gap:12px;
-  margin-bottom:20px;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
+  gap:14px;
+  margin-bottom:18px;
   width:100%;
   min-width:0;
+  align-items:stretch;
 }
 .hotel-kpi{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  flex:1 1 0;
-  min-width:0;
-  padding:14px 16px;
-  background:var(--hotel-card);
-  border:1px solid var(--hotel-border);
-  border-radius:16px;
-  box-shadow:var(--hotel-shadow);
+  margin:0;
+  width:100%;
   cursor:pointer;
-  transition:border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
+  transition:border-color .15s ease, background-color .15s ease, box-shadow .15s ease, transform .2s ease;
 }
 /* Author display:flex beats the UA [hidden] rule — keep hide reliable */
 .hotel-kpi[hidden]{
   display:none !important;
 }
-.hotel-kpi.is-active{
+body.hotel-rooms-module .hotel-kpi.hbe-kpi-card:hover{
+  border-color:rgba(37,99,235,.28);
+  transform:translateY(-1px);
+}
+.hotel-kpi.is-active,
+body.hotel-rooms-module .hotel-kpi.hbe-kpi-card.is-active{
   border-color:rgba(37,99,235,.42);
   background:#F8FBFF;
-  box-shadow:0 0 0 1px rgba(37,99,235,.1), var(--hotel-shadow);
+  box-shadow:0 0 0 1px rgba(37,99,235,.1), 0 8px 30px rgba(15,23,42,.04);
 }
 .hotel-kpi:focus{
   outline:none;
@@ -134,49 +133,6 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
 .hotel-kpi:focus-visible{
   outline:2px solid var(--hotel-primary);
   outline-offset:2px;
-}
-.hotel-kpi-icon{
-  width:42px;
-  height:42px;
-  border-radius:12px;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  flex:0 0 auto;
-}
-.hotel-kpi-icon svg{
-  width:22px;
-  height:22px;
-  stroke:currentColor;
-  fill:none;
-  stroke-width:1.8;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.hotel-kpi-icon--blue{background:rgba(37,99,235,.1);color:var(--hotel-primary)}
-.hotel-kpi-icon--green{background:var(--hotel-green-soft);color:var(--hotel-green)}
-.hotel-kpi-icon--orange{background:var(--hotel-orange-soft);color:var(--hotel-orange)}
-.hotel-kpi-icon--rose{background:var(--hotel-rose-soft);color:var(--hotel-rose)}
-.hotel-kpi-icon--purple{background:var(--hotel-purple-soft);color:var(--hotel-purple)}
-.hotel-kpi-icon--amber{background:#FEF3C7;color:#D97706}
-.hotel-kpi-icon--teal{background:#CCFBF1;color:#0F766E}
-.hotel-kpi-label{
-  font-size:12px;
-  font-weight:650;
-  color:var(--hotel-muted);
-  letter-spacing:.01em;
-  line-height:1.25;
-  max-width:none;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-.hotel-kpi-value{
-  margin-top:2px;
-  font-size:clamp(18px, 1.6vw + 12px, 24px);
-  font-weight:750;
-  letter-spacing:-.03em;
-  font-variant-numeric:tabular-nums;
 }
 
 /* Toolbar — same filter card shell as Restaurant → Tables. */
@@ -533,10 +489,17 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   -webkit-box-orient:vertical;
   line-clamp:2;
 }
-#hotel-rooms-floor[data-view="list"] .hotel-room-badge{
+#hotel-rooms-floor[data-view="list"] .hotel-room-tile-foot{
   grid-column:3;
   grid-row:1 / -1;
   align-self:center;
+  margin-top:0;
+  width:auto;
+}
+#hotel-rooms-floor[data-view="list"] .hotel-room-tile-foot::before{
+  display:none;
+}
+#hotel-rooms-floor[data-view="list"] .hotel-room-badge{
   margin-top:0;
 }
 
@@ -809,6 +772,7 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   justify-content:center;
   background:var(--hotel-green-soft);
   color:var(--hotel-green);
+  flex:0 0 auto;
 }
 .hotel-room-icon svg{
   width:18px;
@@ -923,9 +887,37 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   font-weight:650;
   color:var(--hotel-text);
 }
-.hotel-room-badge{
+.hotel-room-tile-foot{
+  display:grid;
+  grid-template-columns:0fr auto;
+  align-items:center;
+  column-gap:0;
+  justify-content:unset;
+  gap:unset;
   margin-top:auto;
-  align-self:flex-start;
+  min-height:26px;
+  width:100%;
+  position:relative;
+  overflow:visible;
+  transition:grid-template-columns .85s cubic-bezier(.22,1,.36,1);
+}
+/* Status pill glides left → right on hover (same trail motion as home cards). */
+.hotel-room-tile-foot::before{
+  content:"";
+  display:block;
+  min-width:0;
+  overflow:hidden;
+  height:1px;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile:hover .hotel-room-tile-foot,
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile:focus-visible .hotel-room-tile-foot{
+  grid-template-columns:1fr auto;
+}
+.hotel-room-badge{
+  margin-top:0;
+  align-self:auto;
+  flex:unset;
+  justify-self:start;
   display:inline-flex;
   align-items:center;
   height:26px;
@@ -936,6 +928,17 @@ body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
   text-transform:uppercase;
   background:var(--hotel-green-soft);
   color:var(--hotel-green);
+  position:relative;
+  z-index:1;
+}
+@media (prefers-reduced-motion: reduce){
+  .hotel-room-tile-foot{
+    transition:none;
+  }
+  #hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile:hover .hotel-room-tile-foot,
+  #hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile:focus-visible .hotel-room-tile-foot{
+    grid-template-columns:0fr auto;
+  }
 }
 
 .hotel-room-tile--vacant{background:linear-gradient(180deg,#FFFFFF 0%,#F8FFFB 100%);border-color:#BBF7D0}
@@ -1057,12 +1060,16 @@ html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room
   text-align:center;
   margin-top:8px;
 }
-#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-badge{
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-tile-foot{
   grid-column:1;
   grid-row:5;
   margin-top:0;
   align-self:end;
   justify-self:start;
+  width:100%;
+}
+#hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-badge{
+  margin-top:0;
 }
 #hotel-rooms-floor:not([data-view="list"]) .hotel-room-tile--merged .hotel-room-merge-tag{
   grid-column:2;
@@ -1772,25 +1779,6 @@ body.hr-board-reserve-open{overflow:hidden}
 }
 
 @media (max-width:1100px){
-  .hotel-rooms-kpis{
-    gap:10px;
-  }
-  .hotel-kpi{
-    gap:10px;
-    padding:12px 12px;
-  }
-  .hotel-kpi-icon{
-    width:36px;
-    height:36px;
-    border-radius:10px;
-  }
-  .hotel-kpi-icon svg{
-    width:18px;
-    height:18px;
-  }
-  .hotel-kpi-label{
-    font-size:11px;
-  }
   .hotel-rooms-search{min-width:160px;max-width:none}
   .hotel-toolbar-right .hotel-filter-listbox{
     min-width:140px;
@@ -1896,13 +1884,6 @@ body.hr-board-reserve-open{overflow:hidden}
 @media (max-width:720px){
   body.hotel-rooms-module .de-main-inner.hotel-rooms-page{
     padding:20px 16px 32px;
-  }
-  .hotel-rooms-kpis{
-    flex-wrap:wrap;
-  }
-  .hotel-kpi{
-    flex:1 1 calc(50% - 6px);
-    min-width:140px;
   }
   .hotel-view-toggle{flex:0 0 auto}
   .hotel-rooms-search{flex:1 1 100%;width:100%}

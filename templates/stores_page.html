@@ -10,13 +10,13 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=126">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=130">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -44,12 +44,12 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=22">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=26">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=126">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=130">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
@@ -520,7 +520,7 @@
 </div>
 {% endif %}
 {# Keep page scripts inside .de-main-wrapper so soft-nav loads them. #}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=55"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='stores.js') }}?v=112"></script>
 {% if page_key == 'purchase_orders' %}
 <script src="{{ url_for('static', filename='stores_po.js') }}?v=35"></script>

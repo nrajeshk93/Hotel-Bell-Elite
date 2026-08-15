@@ -10,7 +10,7 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=62">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 <script>
@@ -26,7 +26,7 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=62">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
 {% endif %}
@@ -438,7 +438,7 @@
 {% if pos_receipt_config %}
 <script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
 {% endif %}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='pos_offline.js') }}?v=4"></script>
 <script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=13"></script>
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=7"></script>

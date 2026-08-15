@@ -128,6 +128,8 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(room["status"], "reserved")
         self.assertEqual(room["stay"]["checkInDate"], "2026-07-31")
         self.assertEqual(room["stay"]["checkOutDate"], "2026-08-01")
+        # Reservation without an explicit rate seeds the room-type tariff.
+        self.assertGreater(float(room["stay"]["roomRate"]), 0)
         self.assertEqual(payload["counts"]["reserved"], 1)
 
     def test_rooms_page_renders(self):
@@ -155,6 +157,7 @@ class HotelRoomsTests(unittest.TestCase):
             "guestName": "Board Guest",
             "mobile": "9876543210",
             "email": "board@example.com",
+            "additionalRequests": "Late arrival after 10 PM",
         }
         dates = {
             "action": "reserve",
@@ -167,6 +170,11 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertTrue(room_a.get_json()["ok"])
         self.assertEqual(room_a.get_json()["room"]["status"], "reserved")
         self.assertEqual(room_a.get_json()["room"]["stay"]["checkInDate"], "2026-09-10")
+        self.assertGreater(float(room_a.get_json()["room"]["stay"]["roomRate"]), 0)
+        self.assertEqual(
+            room_a.get_json()["room"]["stay"]["additionalRequests"],
+            "Late arrival after 10 PM",
+        )
 
         room_b = self.client.put("/hotel/api/rooms/room-202", json=dates)
         self.assertEqual(room_b.status_code, 200)
@@ -713,7 +721,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(healed.get("statusLabel"), "Occupied")
 
     def test_mark_clean_blocked_when_merge_member_occupied(self):
-        """Mark Clean on a merge primary must not vacate while a member is occupied."""
+        """Vacant billing primary stays vacant; only the occupied room is blocked."""
         self.client.put(
             "/hotel/api/rooms/room-101",
             json={
@@ -739,24 +747,31 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
         primary = merged.get_json()["primaryRoom"]
         self.assertEqual(primary["id"], "room-106")
-        self.assertEqual(primary["status"], "occupied")
+        self.assertEqual(primary["status"], "vacant")
+        member = merged.get_json()["memberRoom"]
+        self.assertEqual(member["id"], "room-101")
+        self.assertEqual(member["status"], "occupied")
+
+        allowed = self.client.put(
+            "/hotel/api/rooms/room-106",
+            json={"status": "vacant"},
+        )
+        self.assertEqual(allowed.status_code, 200, allowed.get_data(as_text=True))
+        self.assertEqual(allowed.get_json()["room"]["status"], "vacant")
 
         blocked = self.client.put(
-            "/hotel/api/rooms/room-106",
+            "/hotel/api/rooms/room-101",
             json={"status": "vacant"},
         )
         self.assertEqual(blocked.status_code, 400, blocked.get_data(as_text=True))
         err = blocked.get_json().get("error", "").lower()
-        self.assertTrue(
-            "checked in" in err or "merged" in err,
-            err,
-        )
+        self.assertIn("checked in", err)
 
-        still = self.client.get("/hotel/api/rooms/room-106").get_json()["room"]
+        still = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
         self.assertEqual(still["status"], "occupied")
 
     def test_heals_vacant_merge_primary_when_member_occupied(self):
-        """Stale vacant primary with an occupied member is corrected on load."""
+        """Vacant billing primary stays vacant when a member is occupied."""
         import json
 
         conn = db_mod.get_db()
@@ -785,6 +800,7 @@ class HotelRoomsTests(unittest.TestCase):
                 "checkInDate": "2026-07-29",
                 "nights": 1,
                 "roomRate": 2000,
+                "checkedInAt": "2026-07-29 14:00:00",
                 "mergeRole": "member",
                 "billingRoomId": "room-106",
             }
@@ -808,8 +824,9 @@ class HotelRoomsTests(unittest.TestCase):
             conn.close()
 
         healed = self.client.get("/hotel/api/rooms/room-106").get_json()["room"]
-        self.assertEqual(healed["status"], "occupied")
-        self.assertEqual(healed.get("statusLabel"), "Occupied")
+        self.assertEqual(healed["status"], "vacant")
+        member_healed = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        self.assertEqual(member_healed["status"], "occupied")
 
     def test_room_detail_404(self):
         resp = self.client.get("/hotel/rooms/room-999")
@@ -1970,6 +1987,93 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertAlmostEqual(
             float(primary["stay"].get("estimatedTotal") or 0), 13000.0, places=2
         )
+        self.assertEqual(primary["status"], "occupied")
+        self.assertEqual(member["status"], "vacant")
+
+    def test_checkin_on_reserved_merge_member_occupies_only_that_room(self):
+        """Check-in on a reserved merge member occupies that room only."""
+        check_in, check_out = self._stay_window(nights=1)
+        stay = {
+            "guestName": "Manoj Vijayan",
+            "firstName": "Manoj",
+            "lastName": "Vijayan",
+            "mobile": "9876500101",
+        }
+        for room_id in ("room-101", "room-103"):
+            reserved = self.client.put(
+                f"/hotel/api/rooms/{room_id}",
+                json={
+                    "action": "reserve",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "stay": stay,
+                },
+            )
+            self.assertEqual(reserved.status_code, 200, reserved.get_data(as_text=True))
+            self.assertEqual(reserved.get_json()["room"]["status"], "reserved")
+        merged = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-101",
+                "toRoomId": "room-103",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+        checked = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Manoj",
+                    "lastName": "Vijayan",
+                    "mobile": "9876500101",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 4500,
+                },
+            },
+        )
+        self.assertEqual(checked.status_code, 200, checked.get_data(as_text=True))
+        member = checked.get_json()["room"]
+        self.assertEqual(member["id"], "room-101")
+        self.assertEqual(member["status"], "occupied", member)
+        primary = self.client.get("/hotel/api/rooms/room-103").get_json()["room"]
+        self.assertEqual(primary["status"], "reserved", primary)
+        self.assertTrue(member.get("stay", {}).get("checkedInAt"))
+        self.assertFalse(primary.get("stay", {}).get("checkedInAt"))
+
+        primary_in = self.client.put(
+            "/hotel/api/rooms/room-103",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Manoj",
+                    "lastName": "Vijayan",
+                    "mobile": "9876500101",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 4500,
+                },
+            },
+        )
+        self.assertEqual(primary_in.status_code, 200, primary_in.get_data(as_text=True))
+        primary = primary_in.get_json()["room"]
+        self.assertEqual(primary["status"], "occupied")
+        member = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        self.assertEqual(member["status"], "occupied")
+
+        closed = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+        self.assertEqual(closed.get_json()["room"]["status"], "dirty")
+        still_primary = self.client.get("/hotel/api/rooms/room-103").get_json()["room"]
+        self.assertEqual(still_primary["status"], "occupied")
+        self.assertTrue(still_primary.get("isMergePrimary") or not still_primary.get("mergeGroupId"))
 
     def test_merged_checkin_uses_per_room_type_tariffs(self):
         """Suite primary + Deluxe member bill each type's settings tariff."""
@@ -2148,7 +2252,10 @@ class HotelRoomsTests(unittest.TestCase):
         primary = next((r for r in rooms if r.get("id") == "room-106"), None)
         self.assertIsNotNone(primary)
         self.assertTrue(primary.get("isMergePrimary"))
-        self.assertEqual(primary.get("status"), "occupied")
+        self.assertEqual(primary.get("status"), "vacant")
+        member = next((r for r in rooms if r.get("id") == "room-101"), None)
+        self.assertIsNotNone(member)
+        self.assertEqual(member.get("status"), "occupied")
         stay = primary.get("stay") or {}
         self.assertIn("Neha", stay.get("guestName") or stay.get("firstName") or "")
         self.assertEqual(stay.get("mobile"), "9000000077")
@@ -2359,11 +2466,12 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
         self.assertEqual(closed.get_json()["room"]["status"], "dirty")
         other = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
-        self.assertEqual(other["status"], "dirty")
-        self.assertNotIn("stay", other)
+        self.assertEqual(other["status"], "occupied")
+        self.assertIn("stay", other)
+        self.assertFalse(other.get("isMergeMember"))
 
     def test_merged_invoice_snapshots_both_rooms_and_survives_checkout(self):
-        """Merged bill prints both room numbers; checkout demerges to dirty."""
+        """Merged bill prints both room numbers; checkout of primary leaves member occupied."""
         self._checkin_with_charges("room-101", advance=0)
         self.client.put(
             "/hotel/api/rooms/room-102",
@@ -2431,10 +2539,9 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertNotIn("stay", primary_after)
 
         member_after = self.client.get("/hotel/api/rooms/room-102").get_json()["room"]
-        self.assertEqual(member_after["status"], "dirty")
-        self.assertFalse(member_after.get("mergeGroupId"))
-        self.assertFalse(member_after.get("isMergeMember"))
-        self.assertNotIn("stay", member_after)
+        self.assertEqual(member_after["status"], "occupied")
+        self.assertTrue(member_after.get("isMergePrimary") or not member_after.get("isMergeMember"))
+        self.assertIn("stay", member_after)
 
         api = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}")
         self.assertEqual(api.status_code, 200, api.get_data(as_text=True))
@@ -2442,10 +2549,78 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertTrue(body["ok"])
         ledger_room = body["room"]
         ledger_stay = ledger_room["stay"]
-        self.assertEqual(ledger_stay.get("mergeRoomNumbers"), ["101", "102"])
-        self.assertEqual(ledger_stay.get("mergeRoomLabel"), "101 + 102")
-        self.assertEqual(body["invoice"]["room_number"], "101 + 102")
+        self.assertCountEqual(ledger_stay.get("mergeRoomNumbers") or [], ["101", "102"])
+        self.assertCountEqual(
+            [p.strip() for p in str(ledger_stay.get("mergeRoomLabel") or "").split("+") if p.strip()],
+            ["101", "102"],
+        )
+        self.assertCountEqual(
+            [p.strip() for p in str(body["invoice"]["room_number"] or "").split("+") if p.strip()],
+            ["101", "102"],
+        )
         self.assertIn("102", ledger_room.get("mergeRoomLabel") or "")
+
+    def test_normalize_nightly_rates_sum_and_fill(self):
+        stay = db_mod._normalize_hotel_room_stay(
+            {
+                "firstName": "Nightly",
+                "checkInDate": "2026-08-15",
+                "checkOutDate": "2026-08-17",
+                "nights": 2,
+                "roomRate": 5000,
+                "ratePlan": "EP",
+                "nightlyRates": [
+                    {"date": "2026-08-15", "roomRate": 5000, "ratePlan": "AP"},
+                    {"date": "2026-08-16", "roomRate": 4500, "ratePlan": "CP"},
+                ],
+            }
+        )
+        self.assertEqual(stay["totalRate"], 9500.0)
+        self.assertEqual(stay["roomRate"], 5000.0)
+        self.assertEqual(stay["ratePlan"], "AP")
+        self.assertEqual(len(stay["nightlyRates"]), 2)
+        self.assertEqual(stay["nightlyRates"][1]["ratePlan"], "CP")
+
+        filled = db_mod._normalize_hotel_room_stay(
+            {
+                "firstName": "Fill",
+                "checkInDate": "2026-08-15",
+                "nights": 3,
+                "roomRate": 4000,
+                "ratePlan": "EP",
+                "nightlyRates": [
+                    {"date": "2026-08-15", "roomRate": 5000, "ratePlan": "AP"},
+                    {"date": "2026-08-17", "roomRate": 4500, "ratePlan": "CP"},
+                ],
+            }
+        )
+        self.assertEqual(
+            [row["roomRate"] for row in filled["nightlyRates"]],
+            [5000.0, 5000.0, 4500.0],
+        )
+        self.assertEqual(filled["totalRate"], 14500.0)
+        self.assertEqual(
+            [row["ratePlan"] for row in filled["nightlyRates"]],
+            ["AP", "AP", "CP"],
+        )
+
+    def test_normalize_legacy_flat_rate_without_nightly(self):
+        stay = db_mod._normalize_hotel_room_stay(
+            {
+                "firstName": "Legacy",
+                "checkInDate": "2026-08-15",
+                "checkOutDate": "2026-08-17",
+                "nights": 2,
+                "roomRate": 5000,
+                "ratePlan": "EP",
+            }
+        )
+        self.assertEqual(stay.get("nightlyRates"), [])
+        self.assertEqual(stay["totalRate"], 10000.0)
+        self.assertEqual(
+            db_mod._hotel_stay_room_charges_amount(stay),
+            10000.0,
+        )
 
 
 if __name__ == "__main__":

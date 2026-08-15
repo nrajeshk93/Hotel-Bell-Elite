@@ -34,34 +34,69 @@
   </div>
   {% endif %}
 
-  <div class="st-stock-kpi-row" id="st-stock-kpi-row" aria-label="Stock summary">
-    <div class="st-stock-kpi" data-kpi="items">
-      <div class="st-stock-kpi-label">Total Items</div>
-      <div class="st-stock-kpi-value" id="st-stock-kpi-items">{{ stock_items|length }}</div>
-      <div class="st-stock-kpi-meta">SKUs on hand</div>
-    </div>
-    <div class="st-stock-kpi" data-kpi="available">
-      <div class="st-stock-kpi-label">Available Stock</div>
-      <div class="st-stock-kpi-value" id="st-stock-kpi-available">{{ '%.2f'|format(ns.total_qty)|replace('.00','') }}</div>
-      <div class="st-stock-kpi-meta">Total quantity</div>
-    </div>
-    <div class="st-stock-kpi st-stock-kpi--warn" data-kpi="low">
-      <div class="st-stock-kpi-label">Low Stock</div>
-      <div class="st-stock-kpi-value" id="st-stock-kpi-low">{{ ns.low }}</div>
-      <div class="st-stock-kpi-meta">≤ {{ low_threshold }} units</div>
-    </div>
-    <div class="st-stock-kpi st-stock-kpi--danger" data-kpi="out">
-      <div class="st-stock-kpi-label">Out of Stock</div>
-      <div class="st-stock-kpi-value" id="st-stock-kpi-out">{{ ns.out }}</div>
-      <div class="st-stock-kpi-meta">Zero on hand</div>
-    </div>
-    <div class="st-stock-kpi" data-kpi="value">
-      <div class="st-stock-kpi-label">Inventory Value</div>
-      <div class="st-stock-kpi-value" id="st-stock-kpi-value">
-        {% if ns.value_known %}₹{{ '%.0f'|format(ns.value) }}{% else %}—{% endif %}
+  <div class="pl-summary-row st-stock-kpi-row" id="st-stock-kpi-row" aria-label="Stock summary">
+    <article class="card pl-summary-card hbe-kpi-card" data-kpi="items" aria-label="Total items">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Total Items</div>
+          <div class="pl-summary-value" id="st-stock-kpi-items">{{ stock_items|length }}</div>
+          <div class="pl-summary-meta">SKUs on hand</div>
+        </div>
       </div>
-      <div class="st-stock-kpi-meta">{% if stock_has_inward_prices|default(false) %}At inward cost + tax{% elif ns.value_known %}Approx. from product prices{% else %}No prices linked{% endif %}</div>
-    </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" data-kpi="available" aria-label="Available stock">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3 9l1-4h16l1 4"/><path d="M4 9v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/><path d="M10 13h4"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Available Stock</div>
+          <div class="pl-summary-value" id="st-stock-kpi-available">{{ '%.2f'|format(ns.total_qty)|replace('.00','') }}</div>
+          <div class="pl-summary-meta">Total quantity</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" data-kpi="low" aria-label="Low stock">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Low Stock</div>
+          <div class="pl-summary-value" id="st-stock-kpi-low">{{ ns.low }}</div>
+          <div class="pl-summary-meta">≤ {{ low_threshold }} units</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" data-kpi="out" aria-label="Out of stock">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--red" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6"/><path d="M9 9l6 6"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Out of Stock</div>
+          <div class="pl-summary-value" id="st-stock-kpi-out">{{ ns.out }}</div>
+          <div class="pl-summary-meta">Zero on hand</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card" data-kpi="value" aria-label="Inventory value">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Inventory Value</div>
+          <div class="pl-summary-value" id="st-stock-kpi-value">
+            {% if ns.value_known %}₹{{ '%.0f'|format(ns.value) }}{% else %}—{% endif %}
+          </div>
+          <div class="pl-summary-meta">{% if stock_has_inward_prices|default(false) %}At inward cost + tax{% elif ns.value_known %}Approx. from product prices{% else %}No prices linked{% endif %}</div>
+        </div>
+      </div>
+    </article>
   </div>
 
   <div class="st-stock-layout">
@@ -86,20 +121,20 @@
           <div class="pl-table-wrap" id="st-stock-table-wrap" tabindex="0" aria-label="Current stock items, scroll for more">
             <table class="pl-table st-stock-inv-table{% if stock_has_prices|default(false) %} st-stock-inv-table--priced{% endif %}" id="st-stock-table" aria-label="Current stock items">
               <colgroup>
-                <col class="st-stock-col-check">
-                <col class="st-stock-col-product">
-                <col class="st-stock-col-category">
-                <col class="st-stock-col-qty">
-                <col class="st-stock-col-unit">
-                <col class="st-stock-col-status">
-                {% if stock_has_prices|default(false) %}<col class="st-stock-col-value">{% endif %}
+                <col class="st-stock-col-check-w">
+                <col class="st-stock-col-product-w">
+                <col class="st-stock-col-category-w">
+                <col class="st-stock-col-qty-w">
+                <col class="st-stock-col-unit-w">
+                <col class="st-stock-col-status-w">
+                {% if stock_has_prices|default(false) %}<col class="st-stock-col-value-w">{% endif %}
               </colgroup>
               <thead>
                 <tr>
                   <th class="st-stock-col-check" scope="col">
                     <input type="checkbox" id="st-stock-select-all" class="st-stock-check" aria-label="Select all stock items">
                   </th>
-                  <th class="pl-sortable" data-sort="product" scope="col" tabindex="0" aria-sort="none">Product</th>
+                  <th class="pl-sortable st-stock-col-product" data-sort="product" scope="col" tabindex="0" aria-sort="none">Product</th>
                   <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
                   <th class="pl-sortable pl-col-amount" data-sort="qty" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">On hand</th>
                   <th class="pl-sortable" data-sort="unit" scope="col" tabindex="0" aria-sort="none">Unit</th>

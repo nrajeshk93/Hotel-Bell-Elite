@@ -320,6 +320,7 @@ _POINT_OF_SALE_BAR_ENDPOINTS = {
     "bar_point_of_sale",
     "bar_point_of_sale_invoice",
     "bar_point_of_sale_invoice_ledger",
+    "bar_point_of_sale_sales_update",
     "bar_point_of_sale_menu",
     "bar_point_of_sale_settings",
     "bar_export_pos_invoice_ledger_report",
@@ -358,6 +359,7 @@ _HOTEL_ROOMS_ENDPOINTS = {
     "hotel_invoice_ledger_export",
     "hotel_invoice_ledger_api",
     "hotel_invoice_ledger_settle_api",
+    "hotel_sales_update",
     "hotel_settings",
     "hotel_settings_api",
 }

@@ -4,6 +4,7 @@
   max-width:100%;
   display:block;
   box-sizing:border-box;
+  background:#F8FAFC;
 }
 #de-fs-app:fullscreen,
 #de-fs-app:-webkit-full-screen,
@@ -182,6 +183,9 @@ body.am-module .am-header > .de-fullscreen-slot--corner,
 .de-fullscreen-toast.is-visible{
   opacity:1;
   transform:translateY(0);
+}
+.modal-backdrop:not(.open):not(.active){
+  display:none !important;
 }
 .de-confirm-backdrop{
   position:fixed;

@@ -1793,40 +1793,10 @@ body.su-module .st-due{
 body.su-module .st-due--late{background:#FEF2F2;color:#B91C1C}
 body.su-module .st-due--ok{background:#ECFDF5;color:#047857}
 
-body.su-module .st-stock-kpi-row{
-  display:grid;
-  grid-template-columns:repeat(5,minmax(0,1fr));
-  gap:14px;
+body.su-module .pl-summary-row.st-stock-kpi-row{
+  margin-bottom:16px;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));
 }
-body.su-module .st-stock-kpi{
-  background:#fff;
-  border:1px solid #E5E7EB;
-  border-radius:16px;
-  box-shadow:0 1px 2px rgba(15,23,42,.04);
-  padding:18px 20px;
-  min-width:0;
-  text-align:center;
-}
-body.su-module .st-stock-kpi-label{
-  font:600 12px/1.2 Inter,system-ui,sans-serif;
-  color:#64748B;
-  letter-spacing:.02em;
-}
-body.su-module .st-stock-kpi-value{
-  margin-top:8px;
-  font:700 26px/1.15 Inter,system-ui,sans-serif;
-  color:#0F172A;
-  letter-spacing:-.03em;
-  word-break:break-word;
-  text-align:center;
-}
-body.su-module .st-stock-kpi-meta{
-  margin-top:6px;
-  font:500 12px/1.3 Inter,system-ui,sans-serif;
-  color:#94A3B8;
-}
-body.su-module .st-stock-kpi--warn .st-stock-kpi-value{color:#C2410C}
-body.su-module .st-stock-kpi--danger .st-stock-kpi-value{color:#B91C1C}
 
 body.su-module .st-stock-layout{
   display:block;
@@ -1854,11 +1824,22 @@ body.su-module .st-stock-card-actions{
   gap:10px;
   flex-shrink:0;
 }
-body.su-module .st-stock-col-check{
+body.su-module .st-stock-inv-table col.st-stock-col-check-w{width:44px}
+body.su-module .st-stock-inv-table col.st-stock-col-product-w{width:auto}
+body.su-module .st-stock-inv-table col.st-stock-col-category-w{width:18%}
+body.su-module .st-stock-inv-table col.st-stock-col-qty-w{width:12%}
+body.su-module .st-stock-inv-table col.st-stock-col-unit-w{width:10%}
+body.su-module .st-stock-inv-table col.st-stock-col-status-w{width:14%}
+body.su-module .st-stock-inv-table col.st-stock-col-value-w{width:12%}
+body.su-module .st-stock-inv-table th.st-stock-col-check,
+body.su-module .st-stock-inv-table td.st-stock-col-check{
   width:44px;
+  max-width:44px;
+  min-width:44px;
   text-align:center;
-  padding-left:14px !important;
-  padding-right:8px !important;
+  padding-left:12px !important;
+  padding-right:4px !important;
+  box-sizing:border-box;
 }
 body.su-module .st-stock-check{
   width:16px;
@@ -1874,12 +1855,12 @@ body.su-module .st-stock-check:disabled{
 body.su-module .st-stock-inv-table tbody tr.is-selected{
   background:#EFF6FF;
 }
-body.su-module .st-stock-col-product{width:28%}
-body.su-module .st-stock-col-category{width:18%}
-body.su-module .st-stock-col-qty{width:12%}
-body.su-module .st-stock-col-unit{width:10%}
-body.su-module .st-stock-col-status{width:14%}
-body.su-module .st-stock-col-value{width:12%}
+body.su-module .st-stock-inv-table th.st-stock-col-product,
+body.su-module .st-stock-inv-table th[data-sort="product"],
+body.su-module .st-stock-inv-table td.st-stock-product-name{
+  text-align:left;
+  padding-left:8px !important;
+}
 body.su-module .st-stock-transfer-item{
   margin:0;
   font:650 13px Inter,system-ui,sans-serif;
@@ -2163,17 +2144,10 @@ body.su-module .st-stock-page .pl-empty strong{
   color:var(--txt,#0F172A);
 }
 
-@media (max-width:1100px){
-  body.su-module .st-stock-kpi-row{grid-template-columns:repeat(3,minmax(0,1fr))}
-}
 @media (max-width:720px){
-  body.su-module .st-stock-kpi-row{grid-template-columns:repeat(2,minmax(0,1fr))}
   body.su-module .st-stock-inv-table{min-width:640px}
   body.su-module .st-stock-inv-table--priced{min-width:740px}
   body.su-module .st-stock-movements-table{min-width:600px}
-}
-@media (max-width:480px){
-  body.su-module .st-stock-kpi-row{grid-template-columns:1fr}
 }
 
 /* —— Stock Audit —— */

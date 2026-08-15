@@ -646,7 +646,7 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
 .hres-table{
   width:100%;
   border-collapse:collapse;
-  min-width:920px;
+  min-width:1020px;
 }
 .hres-table th{
   text-align:left;
@@ -744,7 +744,67 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
-  max-width:260px;
+  max-width:min(420px, 100%);
+}
+.hres-guest-meta.is-unassigned{
+  color:var(--hres-rose, #BE123C);
+  font-weight:650;
+}
+.hres-guest-meta.is-partial{
+  color:#B45309;
+  font-weight:650;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  max-width:none;
+  line-height:1.35;
+  word-break:break-word;
+}
+.hres-guest-meta.is-assigned{
+  color:#047857;
+  font-weight:650;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:clip;
+  max-width:none;
+  line-height:1.35;
+  word-break:break-word;
+}
+.hres-group-row td{
+  padding:10px 14px 6px;
+  background:transparent;
+  border-bottom:0;
+}
+.hres-group-label{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:var(--hres-muted);
+}
+.hres-group-count{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:20px;
+  height:18px;
+  padding:0 6px;
+  border-radius:999px;
+  background:#EEF2FF;
+  color:#3730A3;
+  font-size:10px;
+  font-weight:800;
+}
+tr.hres-group-row[data-hres-group="assigned"] .hres-group-count{
+  background:#ECFDF5;
+  color:#047857;
+}
+tr.hres-group-row[data-hres-group="partial"] .hres-group-count{
+  background:#FFFBEB;
+  color:#B45309;
 }
 .hres-datetime{
   display:flex;
@@ -753,12 +813,40 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
 }
 .hres-datetime strong{font-weight:650}
 .hres-datetime span{font-size:11px;color:var(--hres-muted)}
+.hres-rooms{
+  font-size:13px;
+  text-align:center;
+}
+.hres-rooms strong{font-weight:700}
+.hres-table th[data-sort="rooms"]{
+  width:4.5rem;
+  text-align:center;
+}
 .hres-room-cell.is-unassigned{
   color:var(--hres-rose);
   font-weight:650;
 }
-.hres-price strong{display:block;font-weight:700}
-.hres-price span{font-size:11px;color:var(--hres-muted)}
+.hres-price{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:7.5rem;
+  white-space:nowrap;
+}
+.hres-price strong{
+  display:block;
+  font-weight:700;
+  white-space:nowrap;
+}
+.hres-price span{
+  font-size:11px;
+  color:var(--hres-muted);
+  white-space:nowrap;
+}
+.hres-table th[data-sort="price"]{
+  min-width:7.5rem;
+  white-space:nowrap;
+}
 
 .hres-status-pill{
   display:inline-flex;
@@ -807,36 +895,21 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   stroke-linecap:round;stroke-linejoin:round;
 }
 
-.hres-detail{
-  position:relative;
-  margin-top:18px;
-  padding:18px;
-  background:var(--hres-card);
-  border:1px solid var(--hres-border);
-  border-radius:18px;
-  box-shadow:var(--hres-shadow);
+.hres-dialog.hres-detail-dialog{
+  width:min(900px,100%);
+  max-height:min(92vh,900px);
+  display:flex;
+  flex-direction:column;
 }
-.hres-detail[hidden]{display:none !important}
-.hres-detail-close{
-  position:absolute;
-  top:14px;right:14px;
-  width:32px;height:32px;
-  border:0;border-radius:8px;
-  background:#F1F5F9;
-  display:grid;place-items:center;
-  cursor:pointer;
-  color:var(--hres-muted);
+.hres-detail-dialog-title{
+  margin:0;
+  font-size:16px;
+  font-weight:720;
 }
-.hres-detail-close svg{
-  width:16px;height:16px;
-  stroke:currentColor;fill:none;stroke-width:2;
-}
-.hres-detail-grid{
-  display:grid;
-  grid-template-columns:minmax(240px,1fr) minmax(280px,1.4fr);
-  gap:14px;
-  padding-right:28px;
-  align-items:stretch;
+.hres-detail-dialog-body{
+  overflow:auto;
+  max-height:none;
+  padding:16px 18px 18px;
 }
 .hres-detail-card{
   border:1px solid var(--hres-border);
@@ -845,11 +918,67 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   background:#fff;
   min-height:0;
 }
-.hres-assign-card{
+.hres-assign-panel{
+  position:relative;
+  margin-top:18px;
+  padding:18px;
+  background:var(--hres-card);
+  border:1px solid var(--hres-border);
+  border-radius:18px;
+  box-shadow:var(--hres-shadow);
+}
+.hres-assign-panel[hidden]{display:none !important}
+.hres-assign-split{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:16px;
+  align-items:stretch;
+  min-width:0;
+}
+.hres-assign-detail{
   display:flex;
   flex-direction:column;
-  height:100%;
   min-height:0;
+  max-height:min(560px,70vh);
+  overflow:auto;
+  padding-right:12px;
+}
+.hres-assign-detail-payment{
+  margin:0 0 14px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--hres-border);
+}
+.hres-assign-detail .hres-detail-dl{
+  flex:1 1 auto;
+  min-height:0;
+}
+.hres-assign-panel-close{
+  position:absolute;
+  top:14px;right:14px;
+  width:32px;height:32px;
+  border:0;border-radius:8px;
+  background:#F1F5F9;
+  display:grid;place-items:center;
+  cursor:pointer;
+  color:var(--hres-muted);
+  z-index:1;
+}
+.hres-assign-panel-close svg{
+  width:16px;height:16px;
+  stroke:currentColor;fill:none;stroke-width:2;
+}
+.hres-assign-panel .hres-assign-card{
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+  max-height:min(560px,70vh);
+  padding-right:28px;
+  height:auto;
+}
+.hres-assign-panel .hres-room-grid{
+  grid-template-columns:repeat(auto-fill,minmax(110px,1fr));
+  max-height:none;
+  flex:1 1 auto;
 }
 .hres-detail-card-head{
   display:flex;
@@ -1101,14 +1230,236 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   box-shadow:0 24px 60px rgba(15,23,42,.25);
   overflow:hidden;
 }
-.hres-dialog:has(.ep-form-listbox.is-open){
+.hres-dialog.hres-edit-dialog{
+  width:min(680px,96vw);
+  max-height:calc(100vh - 48px);
+  display:flex;
+  flex-direction:column;
+  border-radius:14px;
+  padding:0;
+  overflow:visible;
+  box-shadow:0 20px 60px rgba(0,0,0,.18);
+}
+.hres-edit-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:20px 26px 8px;
+  flex:0 0 auto;
+}
+.hres-edit-head-main{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-width:0;
+  font-size:16px;
+  font-weight:800;
+  color:var(--hres-text);
+}
+.hres-edit-head-main svg{
+  width:18px;
+  height:18px;
+  stroke:#2563EB;
+  stroke-width:2;
+  fill:none;
+  flex:0 0 auto;
+}
+.hres-edit-head .hres-dialog-close{
+  flex:0 0 auto;
+}
+.hres-edit-form{
+  display:flex;
+  flex-direction:column;
+  gap:0;
+  padding:8px 26px 4px;
+  overflow:auto;
+  max-height:min(70vh, 640px);
+  min-height:0;
+}
+.hres-edit-dialog:has(.ep-form-listbox.is-open) .hres-edit-form{
   overflow:visible;
 }
-#hres-edit-form .hres-edit-meal-listbox{
-  width:100%;
+.hres-edit-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-bottom:14px;
 }
-#hres-edit-form .hres-edit-meal-listbox .se-filter-chip-label{
+.hres-edit-grid--guest{
+  grid-template-columns:minmax(112px,132px) minmax(0,1fr);
+}
+.hres-edit-field{
+  margin-bottom:14px;
+  min-width:0;
+}
+.hres-edit-grid > .hres-edit-field{
+  margin-bottom:0;
+}
+.hres-edit-field > label{
+  display:block;
+  font-size:11px;
+  font-weight:700;
   color:var(--hres-muted);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  margin-bottom:5px;
+}
+.hres-edit-input{
+  width:100%;
+  height:44px;
+  box-sizing:border-box;
+  background:#fff;
+  border:1px solid var(--hres-border);
+  border-radius:10px;
+  padding:0 14px;
+  color:var(--hres-text);
+  font:600 14px Inter,system-ui,sans-serif;
+  outline:none;
+}
+.hres-edit-input::placeholder{color:#94A3B8}
+.hres-edit-input:focus{
+  border-color:#2563EB;
+  box-shadow:0 0 0 3px rgba(37,99,235,.08);
+}
+.hres-edit-textarea{
+  height:auto;
+  min-height:88px;
+  padding:12px 14px;
+  resize:vertical;
+  line-height:1.45;
+}
+.hres-edit-form .ep-form-listbox{
+  width:100%;
+  position:relative;
+}
+.hres-edit-form .ep-form-listbox .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:var(--hres-muted);
+  text-transform:uppercase;
+  letter-spacing:.4px;
+  line-height:1.2;
+}
+.hres-edit-form .ep-form-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:44px;
+  background:#fff;
+  border:1px solid var(--hres-border, #E2E8F0);
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  overflow:hidden;
+  transition:border-color .15s, box-shadow .15s;
+}
+.hres-edit-form .ep-form-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  min-height:44px;
+  display:flex;
+  align-items:center;
+  padding:0 8px 0 12px;
+  border:0;
+  background:transparent;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  color:var(--hres-text);
+  text-align:left;
+  cursor:pointer;
+}
+.hres-edit-form .ep-form-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.hres-edit-form .ep-form-listbox .se-filter-chip-value.is-placeholder{
+  color:#94A3B8;
+  font-weight:500;
+}
+.hres-edit-form .ep-form-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  align-self:stretch;
+  color:#94A3B8;
+  transition:transform .15s ease, color .15s ease;
+}
+.hres-edit-form .ep-form-listbox .se-filter-chip-chev svg{
+  width:16px;
+  height:16px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+}
+.hres-edit-form .ep-form-listbox.is-open{
+  z-index:80;
+}
+.hres-edit-form .ep-form-listbox.is-open .se-filter-chip-control,
+.hres-edit-form .ep-form-listbox .se-filter-chip-control:focus-within{
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff;
+}
+.hres-edit-form .ep-form-listbox.is-open .se-filter-chip-chev{
+  color:#2563EB;
+  transform:rotate(180deg);
+}
+.hres-edit-form .ep-form-listbox .se-filter-listbox{
+  left:0;
+  right:0;
+  top:calc(100% + 6px);
+  bottom:auto;
+  min-width:100%;
+  padding:6px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  box-shadow:0 8px 24px rgba(15,23,42,.1);
+  z-index:90;
+}
+.hres-edit-form .ep-form-listbox .se-filter-listbox-option{
+  padding:10px 12px;
+  border-radius:8px;
+  font-size:13px;
+  font-weight:500;
+}
+.hres-edit-form .ep-form-listbox .se-filter-listbox-option.is-selected,
+.hres-edit-form .ep-form-listbox .se-filter-listbox-option[aria-selected="true"]{
+  background:rgba(37,99,235,.08);
+  color:#2563EB;
+  font-weight:600;
+}
+.hres-edit-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:8px;
+  padding:16px 26px 24px;
+  border-top:1px solid var(--hres-border);
+  flex:0 0 auto;
+}
+.hres-edit-btn-secondary,
+.hres-edit-btn-primary{
+  min-height:36px;
+  padding:8px 16px;
+}
+#hres-edit-save[hidden]{
+  display:none !important;
+}
+@media (max-width:640px){
+  .hres-edit-grid,
+  .hres-edit-grid--guest{
+    grid-template-columns:1fr;
+  }
+}
+.hres-dialog:has(.ep-form-listbox.is-open){
+  overflow:visible;
 }
 .hres-dialog-head{
   display:flex;
@@ -1182,11 +1533,20 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
   border-top:1px solid var(--hres-border);
 }
 
-@media (max-width:1100px){
-  .hres-detail-grid{
-    grid-template-columns:1fr 1fr;
+@media (max-width:900px){
+  .hres-assign-split{
+    grid-template-columns:minmax(0,1fr);
+  }
+  .hres-assign-detail,
+  .hres-assign-panel .hres-assign-card{
+    max-height:none;
+  }
+  .hres-assign-panel .hres-room-grid{
+    grid-template-columns:repeat(auto-fill,minmax(120px,1fr));
+    max-height:min(420px,50vh);
   }
 }
+
 @media (max-width:720px){
   body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
     padding:20px 16px 32px;
@@ -1220,8 +1580,6 @@ body.hotel-reservations-module #hres-date-range-wrap .an-cal-pane + .an-cal-pane
     min-width:0;
     max-width:none;
   }
-  .hres-detail-grid{grid-template-columns:1fr}
-  .hres-assign-card{height:auto}
   .hres-room-grid{max-height:min(420px, 50vh)}
   .hres-field-row{grid-template-columns:1fr}
 }

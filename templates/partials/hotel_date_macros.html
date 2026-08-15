@@ -73,9 +73,9 @@
 {% endmacro %}
 
 {# Smooth hotel time pill + custom clock panel (check-in). Stores HH:MM 24h. #}
-{% macro hotel_time_field(name, label, required=false, value='', field_id='', extra_class='', panel_title='Select time', empty_label='--:-- --', show_clock_icon=true, show_now=true) %}
+{% macro hotel_time_field(name, label, required=false, value='', field_id='', extra_class='', panel_title='Select time', empty_label='--:-- --', show_clock_icon=true, show_now=true, show_caret=true) %}
 {% set fid = field_id or name %}
-<div class="hotel-time hotel-date hotel-filter-date{% if extra_class %} {{ extra_class }}{% endif %}{% if not show_clock_icon %} hotel-time--no-clock{% endif %}" id="{{ fid }}-chip" data-hotel-time>
+<div class="hotel-time hotel-date hotel-filter-date{% if extra_class %} {{ extra_class }}{% endif %}{% if not show_clock_icon %} hotel-time--no-clock hotel-date--no-cal{% endif %}{% if not show_caret %} hotel-date--no-caret{% endif %}" id="{{ fid }}-chip" data-hotel-time>
   <span class="hotel-date-label" id="{{ fid }}-label">{{ label }}{% if required %} *{% endif %}</span>
   <div class="hotel-date-control">
     <button
@@ -87,9 +87,11 @@
       aria-controls="{{ fid }}-panel"
       aria-labelledby="{{ fid }}-label {{ fid }}-value"
     >
+      {% if show_caret %}
       <span class="hotel-date-caret" aria-hidden="true">
         <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
       </span>
+      {% endif %}
       <span class="hotel-date-value is-placeholder" id="{{ fid }}-value">{{ empty_label }}</span>
       {% if show_clock_icon %}
       <span class="hotel-date-cal-icon hotel-time-clock-icon" aria-hidden="true">

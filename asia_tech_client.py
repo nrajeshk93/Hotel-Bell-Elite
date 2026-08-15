@@ -596,30 +596,38 @@ def _map_status(raw: Any) -> str:
     return mapped
 
 
+def _is_local_status_source(raw: Any) -> bool:
+    if not isinstance(raw, dict):
+        return False
+    return (
+        str(raw.get("statusSource") or raw.get("status_source") or "")
+        .strip()
+        .lower()
+        == "local"
+    )
+
+
 def _derive_operational_status(
     status: str,
     check_in: str,
     check_out: str,
     *,
     today: Optional[date] = None,
+    allow_local_status: bool = False,
 ) -> str:
     """
     Asia Tech getbooking often returns only confirmed/cancelled.
-    Infer checked_in / checked_out / upcoming from the stay window vs today.
+
+    Checked In and Checked Out are owned by this app (FO check-in / checkout /
+    local edit). Provider status and stay dates alone never set them.
     """
     if status == "cancelled":
         return "cancelled"
-    if status in ("checked_in", "checked_out"):
-        return status
-    today = today or date.today()
-    cin = _parse_iso(check_in)
-    cout = _parse_iso(check_out)
-    if not cin or not cout:
-        return status if status in STATUS_LABELS else "upcoming"
-    if cin <= today < cout:
-        return "checked_in"
-    if cout <= today:
-        return "checked_out"
+    if status == "checked_out":
+        return "checked_out" if allow_local_status else "upcoming"
+    if status == "checked_in":
+        return "checked_in" if allow_local_status else "upcoming"
+    _ = (check_in, check_out, today)  # dates do not drive operational status
     return "upcoming"
 
 
@@ -683,6 +691,37 @@ MEAL_PLAN_LABELS = {
     "ai": "All inclusive",
     "bb": "Bed & breakfast",
 }
+
+# Hotel check-in rate-plan listbox codes (aliases map into these).
+_RATE_PLAN_CODES = ("EP", "CP", "MAP", "AP")
+_MEAL_PLAN_TO_RATE = {
+    "EP": "EP",
+    "CP": "CP",
+    "MAP": "MAP",
+    "AP": "AP",
+    "AI": "AP",
+    "BB": "CP",
+}
+
+
+def meal_plan_to_rate_plan(value: Any) -> str:
+    """Extract EP/CP/MAP/AP from API mealPlan text like ``CP · Breakfast``."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    # Multi-room comma lists — take the first code only.
+    first_chunk = text.split(",")[0].strip()
+    token = first_chunk.split("·")[0].strip().upper()
+    if not token:
+        token = first_chunk.upper()
+    # Bare labels without a code prefix.
+    if token not in _MEAL_PLAN_TO_RATE:
+        lowered = first_chunk.lower()
+        for code, label in MEAL_PLAN_LABELS.items():
+            if lowered == label.lower() or lowered == code:
+                token = code.upper()
+                break
+    return _MEAL_PLAN_TO_RATE.get(token, "")
 
 
 def _format_meal_plan(code: str) -> str:
@@ -815,7 +854,13 @@ def _normalize_reservation(raw: Dict[str, Any]) -> Dict[str, Any]:
             "BookingStatus",
         )
     )
-    status = _derive_operational_status(status, check_in, check_out)
+    local_status = _is_local_status_source(raw)
+    status = _derive_operational_status(
+        status,
+        check_in,
+        check_out,
+        allow_local_status=local_status,
+    )
     source = _map_source(
         _pick(
             raw,
@@ -910,6 +955,7 @@ def _normalize_reservation(raw: Dict[str, Any]) -> Dict[str, Any]:
         "amount": amount,
         "status": status,
         "statusLabel": STATUS_LABELS.get(status, status.title()),
+        "statusSource": "local" if local_status else "",
         "source": source,
         "sourceLabel": SOURCE_LABELS.get(source, source.replace("_", " ").title()),
         "paymentStatus": payment,
@@ -928,7 +974,9 @@ def _apply_local_state(
     for item in state.get("created") or []:
         if not isinstance(item, dict):
             continue
-        normalized = _normalize_reservation(item)
+        created_row = dict(item)
+        created_row.setdefault("statusSource", "local")
+        normalized = _normalize_reservation(created_row)
         by_id[normalized["id"]] = normalized
     for res_id, override in (state.get("overrides") or {}).items():
         if not isinstance(override, dict):
@@ -936,11 +984,19 @@ def _apply_local_state(
         base = by_id.get(str(res_id)) or {"id": str(res_id), "bookingId": str(res_id)}
         merged = dict(base)
         merged.update(override)
+        if "status" in override:
+            merged["statusSource"] = "local"
         by_id[str(res_id)] = _normalize_reservation(merged)
     for res_id, assignment in (state.get("assignments") or {}).items():
         if not isinstance(assignment, dict):
             continue
-        base = by_id.get(str(res_id))
+        key = str(res_id or "").strip()
+        base = by_id.get(key)
+        if not base:
+            for row in list(by_id.values()):
+                if str(row.get("id") or "") == key or str(row.get("bookingId") or "") == key:
+                    base = row
+                    break
         if not base:
             continue
         merged = dict(base)
@@ -953,8 +1009,341 @@ def _apply_local_state(
         merged["roomTypeLabel"] = (
             assignment.get("roomTypeLabel") or merged.get("roomTypeLabel") or ""
         )
-        by_id[str(res_id)] = _normalize_reservation(merged)
+        normalized = _normalize_reservation(merged)
+        # Assignment is authoritative for local room linkage.
+        if assignment.get("roomId"):
+            normalized["roomId"] = str(assignment.get("roomId") or "").strip()
+        if assignment.get("roomIds"):
+            normalized["roomIds"] = _id_list_from_raw(assignment.get("roomIds"))
+        if assignment.get("roomNumber"):
+            normalized["roomNumber"] = str(assignment.get("roomNumber") or "").strip()
+        if assignment.get("roomNumbers"):
+            normalized["roomNumbers"] = _id_list_from_raw(assignment.get("roomNumbers"))
+        if assignment.get("roomTypeLabel"):
+            normalized["roomTypeLabel"] = str(
+                assignment.get("roomTypeLabel") or ""
+            ).strip()
+        normalized["roomAssigned"] = bool(
+            normalized.get("roomNumber")
+            or normalized.get("roomIds")
+            or normalized.get("roomNumbers")
+        )
+        by_id[str(normalized.get("id") or key)] = normalized
     return list(by_id.values())
+
+
+def _guest_name_tokens(name: Any) -> set:
+    text = str(name or "").lower()
+    tokens = set(re.findall(r"[a-z0-9]+", text))
+    stop = {"mr", "mrs", "ms", "miss", "dr", "and", "the", "with"}
+    return {t for t in tokens if len(t) > 1 and t not in stop}
+
+
+def _guest_names_compatible(reservation_name: Any, stay_name: Any) -> bool:
+    """True when names overlap, or either side lacks usable tokens."""
+    left = _guest_name_tokens(reservation_name)
+    right = _guest_name_tokens(stay_name)
+    if not left or not right:
+        return True
+    return bool(left & right)
+
+
+def enrich_reservations_from_hotel_rooms(
+    rows: List[Dict[str, Any]], rooms: Any
+) -> List[Dict[str, Any]]:
+    """Set roomAssigned from live reserved/occupied hotel rooms only.
+
+    Stale Asia Tech assignment cache is ignored when no matching room stay
+    remains (e.g. rooms were cancelled / cleared on the Rooms board).
+    Occupied rooms whose guest name does not overlap the booking guest list
+    are ignored so a wrong reservationId stamp cannot mark another booking.
+
+    Checked-in bookings also match occupied rooms by guest name when the stay
+    lost its reservationId, so in-house guests stay under Room assigned.
+    """
+    if not isinstance(rows, list):
+        return []
+    room_list = rooms if isinstance(rooms, list) else []
+    by_res: Dict[str, List[Dict[str, Any]]] = {}
+    occupied_candidates: List[Dict[str, Any]] = []
+
+    def _stay_reservation_keys(stay: Dict[str, Any]) -> List[str]:
+        keys: List[str] = []
+        for key in (
+            "reservationId",
+            "reservation_id",
+            "reservationBookingId",
+            "reservation_booking_id",
+            "bookingId",
+            "booking_id",
+        ):
+            val = str(stay.get(key) or "").strip()
+            if val and val not in keys:
+                keys.append(val)
+        return keys
+
+    def _room_match(room: Dict[str, Any], stay: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "id": str(room.get("id") or "").strip(),
+            "number": str(room.get("number") or "").strip(),
+            "roomTypeLabel": str(
+                room.get("roomTypeLabel") or room.get("roomType") or ""
+            ).strip(),
+            "guestName": str(
+                stay.get("guestName") or stay.get("guest_name") or ""
+            ).strip(),
+        }
+
+    for room in room_list:
+        if not isinstance(room, dict):
+            continue
+        status = (
+            str(room.get("status") or "")
+            .strip()
+            .lower()
+            .replace(" ", "_")
+            .replace("-", "_")
+        )
+        if status not in ("reserved", "occupied"):
+            continue
+        stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+        if not stay:
+            continue
+        keys = _stay_reservation_keys(stay)
+        match = _room_match(room, stay)
+        if keys:
+            for key in keys:
+                by_res.setdefault(key, []).append(match)
+        if status == "occupied":
+            occupied_candidates.append(
+                {
+                    "match": match,
+                    "keys": keys,
+                }
+            )
+    out: List[Dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        item = dict(row)
+        rid = str(item.get("id") or "").strip()
+        bid = str(item.get("bookingId") or "").strip()
+        guest = str(item.get("guestName") or "").strip()
+        row_status = (
+            str(item.get("status") or "")
+            .strip()
+            .lower()
+            .replace(" ", "_")
+            .replace("-", "_")
+        )
+        matches = list(by_res.get(rid) or [])
+        if bid and bid != rid:
+            for extra in by_res.get(bid) or []:
+                if extra not in matches:
+                    matches.append(extra)
+        matches = [
+            m
+            for m in matches
+            if _guest_names_compatible(guest, m.get("guestName"))
+        ]
+        if not matches and row_status == "checked_in":
+            # Recover in-house rooms that lost reservationId on the stay.
+            seen_ids = set()
+            for candidate in occupied_candidates:
+                match = candidate["match"]
+                mid = str(match.get("id") or "").strip()
+                if mid and mid in seen_ids:
+                    continue
+                keys = candidate["keys"]
+                if keys and rid not in keys and (not bid or bid not in keys):
+                    continue
+                if not _guest_names_compatible(guest, match.get("guestName")):
+                    continue
+                matches.append(match)
+                if mid:
+                    seen_ids.add(mid)
+        if matches:
+            numbers: List[str] = []
+            ids: List[str] = []
+            label = ""
+            for match in matches:
+                num = str(match.get("number") or "").strip()
+                mid = str(match.get("id") or "").strip()
+                if num and num not in numbers:
+                    numbers.append(num)
+                if mid and mid not in ids:
+                    ids.append(mid)
+                if not label:
+                    label = str(match.get("roomTypeLabel") or "").strip()
+            item["roomNumbers"] = numbers
+            item["roomNumber"] = numbers[0] if numbers else ""
+            item["roomIds"] = ids
+            item["roomId"] = ids[0] if ids else ""
+            if label:
+                item["roomTypeLabel"] = label
+            item["roomAssigned"] = True
+        else:
+            # Live board has no reserved/occupied rooms for this booking.
+            item["roomAssigned"] = False
+            item["roomNumber"] = ""
+            item["roomNumbers"] = []
+            item["roomId"] = ""
+            item["roomIds"] = []
+        out.append(item)
+    return out
+
+
+def heal_assigned_reservation_ids_on_rooms(
+    settings: Dict[str, Any], rooms: Any
+) -> bool:
+    """Stamp reservationId onto reserved stays that lost the link.
+
+    Occupied rooms are skipped so an in-house guest is never linked to another
+    booking from a stale assignment cache entry.
+    """
+    state = get_state(settings)
+    assignments = state.get("assignments") or {}
+    if not isinstance(assignments, dict) or not assignments:
+        return False
+    room_list = rooms if isinstance(rooms, list) else []
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for room in room_list:
+        if isinstance(room, dict) and room.get("id"):
+            by_id[str(room.get("id"))] = room
+    changed = False
+    for res_id, assignment in assignments.items():
+        if not isinstance(assignment, dict):
+            continue
+        key = str(res_id or "").strip()
+        if not key:
+            continue
+        candidate_ids = _id_list_from_raw(
+            assignment.get("roomIds") or assignment.get("room_ids")
+        )
+        primary = str(assignment.get("roomId") or "").strip()
+        if primary and primary not in candidate_ids:
+            candidate_ids = [primary] + candidate_ids
+        for room_id in candidate_ids:
+            room = by_id.get(room_id)
+            if not room:
+                continue
+            status = (
+                str(room.get("status") or "")
+                .strip()
+                .lower()
+                .replace(" ", "_")
+                .replace("-", "_")
+            )
+            if status != "reserved":
+                continue
+            stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+            if not stay:
+                continue
+            existing = str(
+                stay.get("reservationId")
+                or stay.get("reservation_id")
+                or stay.get("reservationBookingId")
+                or stay.get("reservation_booking_id")
+                or ""
+            ).strip()
+            if existing:
+                continue
+            stay = dict(stay)
+            stay["reservationId"] = key
+            stay["reservationBookingId"] = key
+            room["stay"] = stay
+            changed = True
+    return changed
+
+
+def prune_stale_room_assignments(
+    settings: Dict[str, Any], rooms: Any
+) -> Optional[Dict[str, Any]]:
+    """Drop assignment cache entries that no longer match reserved/occupied rooms."""
+    state = get_state(settings)
+    assignments = dict(state.get("assignments") or {})
+    if not assignments:
+        return None
+    room_list = rooms if isinstance(rooms, list) else []
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for room in room_list:
+        if not isinstance(room, dict):
+            continue
+        rid = str(room.get("id") or "").strip()
+        if rid:
+            by_id[rid] = room
+
+    def _stay_reservation_keys(stay: Dict[str, Any]) -> List[str]:
+        keys: List[str] = []
+        for key in (
+            "reservationId",
+            "reservation_id",
+            "reservationBookingId",
+            "reservation_booking_id",
+            "bookingId",
+            "booking_id",
+        ):
+            val = str(stay.get(key) or "").strip()
+            if val and val not in keys:
+                keys.append(val)
+        return keys
+
+    next_assignments: Dict[str, Any] = {}
+    for res_id, assignment in assignments.items():
+        if not isinstance(assignment, dict):
+            continue
+        key = str(res_id or "").strip()
+        if not key:
+            continue
+        live_ids: List[str] = []
+        live_numbers: List[str] = []
+        label = str(assignment.get("roomTypeLabel") or "").strip()
+        candidate_ids = _id_list_from_raw(
+            assignment.get("roomIds") or assignment.get("room_ids")
+        )
+        primary = str(assignment.get("roomId") or "").strip()
+        if primary and primary not in candidate_ids:
+            candidate_ids = [primary] + candidate_ids
+        for room_id in candidate_ids:
+            room = by_id.get(room_id)
+            if not room:
+                continue
+            status = (
+                str(room.get("status") or "")
+                .strip()
+                .lower()
+                .replace(" ", "_")
+                .replace("-", "_")
+            )
+            if status not in ("reserved", "occupied"):
+                continue
+            stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+            if not stay:
+                continue
+            stay_keys = _stay_reservation_keys(stay)
+            if key not in stay_keys:
+                # Vacant/cleared, or room no longer linked to this booking.
+                continue
+            live_ids.append(room_id)
+            number = str(room.get("number") or "").strip()
+            if number and number not in live_numbers:
+                live_numbers.append(number)
+            if not label:
+                label = str(
+                    room.get("roomTypeLabel") or room.get("roomType") or ""
+                ).strip()
+        if not live_ids:
+            continue
+        next_assignments[key] = {
+            "roomId": live_ids[0],
+            "roomNumber": live_numbers[0] if live_numbers else "",
+            "roomTypeLabel": label,
+            "roomIds": live_ids,
+            "roomNumbers": live_numbers,
+        }
+    if next_assignments == assignments:
+        return None
+    return update_state(settings, assignments=next_assignments)
 
 
 def list_provider_reservations(
@@ -1057,14 +1446,26 @@ def list_provider_reservations(
             )
 
         seed = [_normalize_reservation(r) for r in raw_rows if isinstance(r, dict)]
-        by_id = {row["id"]: row for row in seed if row.get("id")}
+        cancelled_live_ids = {
+            str(row.get("id") or "")
+            for row in seed
+            if row.get("id") and row.get("status") == "cancelled"
+        }
+        by_id = {
+            row["id"]: row
+            for row in seed
+            if row.get("id") and row.get("status") != "cancelled"
+        }
         for item in prior_raw:
             if not isinstance(item, dict):
                 continue
             normalized = _normalize_reservation(item)
             rid = str(normalized.get("id") or "")
-            if rid and rid not in by_id:
-                by_id[rid] = normalized
+            if not rid or rid in by_id or rid in cancelled_live_ids:
+                continue
+            if normalized.get("status") == "cancelled":
+                continue
+            by_id[rid] = normalized
         seed = list(by_id.values())
         if meta.get("cm_ok") and int(meta.get("cm_pulled") or 0) > 0:
             meta["coverage"] = (
@@ -1129,6 +1530,8 @@ def persist_provider_rows(settings: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     for row in rows:
         if not isinstance(row, dict) or not row.get("id"):
             continue
+        if str(row.get("status") or "").strip().lower() == "cancelled":
+            continue
         compact.append({key: row.get(key) for key in _PROVIDER_ROW_KEYS})
     prev = get_state(settings).get("provider_rows") or []
     prev_ids = {
@@ -1149,11 +1552,12 @@ def persist_provider_rows(settings: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def compute_kpis(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-    total = len(rows)
-    checked_in = sum(1 for r in rows if r.get("status") == "checked_in")
-    upcoming = sum(1 for r in rows if r.get("status") == "upcoming")
-    checked_out = sum(1 for r in rows if r.get("status") == "checked_out")
-    revenue = round(sum(_money(r.get("amount")) for r in rows), 2)
+    active = [r for r in rows if str(r.get("status") or "").strip().lower() != "cancelled"]
+    total = len(active)
+    checked_in = sum(1 for r in active if r.get("status") == "checked_in")
+    upcoming = sum(1 for r in active if r.get("status") == "upcoming")
+    checked_out = sum(1 for r in active if r.get("status") == "checked_out")
+    revenue = round(sum(_money(r.get("amount")) for r in active), 2)
     return {
         "total": total,
         "checked_in": checked_in,
@@ -1288,21 +1692,24 @@ def filter_reservations(
     )
     out: List[Dict[str, Any]] = []
     for row in rows:
+        row_status = str(row.get("status") or "").strip().lower()
+        # Default list is confirmed/active stays only — cancelled never appears
+        # unless the caller explicitly filters status=cancelled.
+        if row_status == "cancelled" and status != "cancelled":
+            continue
         if source != "all" and row.get("source") != source:
             continue
         if checkout_only:
             # Match the Checked Out KPI: expected departures on the selected
             # date(s), including in-house guests leaving that day.
             if d_from and d_to:
-                if row.get("status") == "cancelled":
-                    continue
                 cout = _parse_iso(row.get("checkOutDate"))
                 if not cout or not (d_from <= cout <= d_to):
                     continue
-            elif row.get("status") != "checked_out":
+            elif row_status != "checked_out":
                 continue
         else:
-            if status != "all" and row.get("status") != status:
+            if status != "all" and row_status != status:
                 continue
             if d_from and d_to:
                 cin = _parse_iso(row.get("checkInDate"))
@@ -1383,9 +1790,27 @@ def paginate(
 
 def get_reservation(settings: Dict[str, Any], reservation_id: str) -> Optional[Dict[str, Any]]:
     rid = str(reservation_id or "").strip()
+    if not rid:
+        return None
     for row in list_provider_reservations(settings):
         if row.get("id") == rid or row.get("bookingId") == rid:
             return row
+    # Live list may omit older bookings; still resolve from persisted cache / local creates.
+    state = get_state(settings)
+    for raw in list(state.get("provider_rows") or []) + list(state.get("created") or []):
+        if not isinstance(raw, dict):
+            continue
+        row = _normalize_reservation(raw)
+        if row.get("id") == rid or row.get("bookingId") == rid:
+            return row
+    overrides = state.get("overrides") or {}
+    if isinstance(overrides, dict) and rid in overrides:
+        merged = dict(overrides[rid]) if isinstance(overrides[rid], dict) else {}
+        merged.setdefault("id", rid)
+        merged.setdefault("bookingId", rid)
+        if "status" in merged:
+            merged["statusSource"] = "local"
+        return _normalize_reservation(merged)
     return None
 
 
@@ -1404,6 +1829,7 @@ def create_reservation(
             "id": booking_id,
             "bookingId": booking_id,
             "status": payload.get("status") or "upcoming",
+            "statusSource": "local",
             "source": payload.get("source") or "direct",
             "provider": "asia_tech",
         }
@@ -1422,6 +1848,8 @@ def update_reservation(
     merged = dict(current)
     if isinstance(payload, dict):
         merged.update(payload)
+        if "status" in payload:
+            merged["statusSource"] = "local"
     merged["id"] = current["id"]
     merged["bookingId"] = current["bookingId"]
     normalized = _normalize_reservation(merged)

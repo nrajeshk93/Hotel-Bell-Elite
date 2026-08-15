@@ -7,10 +7,11 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='reports_dashboard.css') }}?v=8">
 <script>
 (function(){
@@ -57,41 +58,53 @@
       </label>
     </div>
 
-    <div class="md-kpi-row" aria-label="Report summary">
-      <article class="md-kpi-card">
-        <div class="md-kpi-icon md-kpi-icon--blue" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-        </div>
-        <div class="md-kpi-text">
-          <div class="md-kpi-value">{{ "{:,}".format(reports_kpis.total_reports) }}</div>
-          <div class="md-kpi-label">Total Reports</div>
-        </div>
-      </article>
-      <article class="md-kpi-card">
-        <div class="md-kpi-icon md-kpi-icon--green" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        </div>
-        <div class="md-kpi-text">
-          <div class="md-kpi-value">{{ "{:,}".format(reports_kpis.downloadable) }}</div>
-          <div class="md-kpi-label">Downloadable</div>
+    <div class="pl-summary-row md-kpi-row hbe-kpi-row" aria-label="Report summary">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total reports">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Total Reports</div>
+            <div class="pl-summary-value">{{ "{:,}".format(reports_kpis.total_reports) }}</div>
+            <div class="pl-summary-meta">Available packs</div>
+          </div>
         </div>
       </article>
-      <article class="md-kpi-card">
-        <div class="md-kpi-icon md-kpi-icon--slate" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        </div>
-        <div class="md-kpi-text">
-          <div class="md-kpi-value">{{ "{:,}".format(reports_kpis.modules) }}</div>
-          <div class="md-kpi-label">Modules Covered</div>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Downloadable reports">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Downloadable</div>
+            <div class="pl-summary-value">{{ "{:,}".format(reports_kpis.downloadable) }}</div>
+            <div class="pl-summary-meta">Export ready</div>
+          </div>
         </div>
       </article>
-      <article class="md-kpi-card">
-        <div class="md-kpi-icon md-kpi-icon--amber" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Modules covered">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Modules Covered</div>
+            <div class="pl-summary-value">{{ "{:,}".format(reports_kpis.modules) }}</div>
+            <div class="pl-summary-meta">Business areas</div>
+          </div>
         </div>
-        <div class="md-kpi-text">
-          <div class="md-kpi-value">{{ "{:,}".format(reports_kpis.categories) }}</div>
-          <div class="md-kpi-label">Categories</div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Categories">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Categories</div>
+            <div class="pl-summary-value">{{ "{:,}".format(reports_kpis.categories) }}</div>
+            <div class="pl-summary-meta">Filter groups</div>
+          </div>
         </div>
       </article>
     </div>

@@ -84,19 +84,19 @@
       </button>
       <div class="de-nav-sub" id="de-nav-sales-analytics-sub">
         {% if has_sales_analytics_access('hotel') %}
-        <a class="de-nav-subitem{% if sales_view == 'hotel' %} is-active{% endif %}" href="{{ url_for('sales_update_hotel', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_hotel') }}"{% if sales_view == 'hotel' %} aria-current="page"{% endif %}>Sales Update - Hotel</a>
+        <a class="de-nav-subitem{% if analytics_open and sales_view == 'hotel' %} is-active{% endif %}" href="{{ url_for('sales_update_hotel', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_hotel') }}"{% if analytics_open and sales_view == 'hotel' %} aria-current="page"{% endif %}>Sales Update - Hotel</a>
         {% endif %}
         {% if has_sales_analytics_access('bar') %}
-        <a class="de-nav-subitem{% if sales_view == 'bar' %} is-active{% endif %}" href="{{ url_for('sales_update_bar', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_bar') }}"{% if sales_view == 'bar' %} aria-current="page"{% endif %}>Sales Update - Bar</a>
+        <a class="de-nav-subitem{% if analytics_open and sales_view == 'bar' %} is-active{% endif %}" href="{{ url_for('sales_update_bar', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_bar') }}"{% if analytics_open and sales_view == 'bar' %} aria-current="page"{% endif %}>Sales Update - Bar</a>
         {% endif %}
         {% if has_sales_analytics_access('restaurant') %}
-        <a class="de-nav-subitem{% if sales_view == 'restaurant' %} is-active{% endif %}" href="{{ url_for('sales_update_restaurant', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_restaurant') }}"{% if sales_view == 'restaurant' %} aria-current="page"{% endif %}>Sales Update - Restaurant</a>
+        <a class="de-nav-subitem{% if analytics_open and sales_view == 'restaurant' %} is-active{% endif %}" href="{{ url_for('sales_update_restaurant', date=nav_date, company=nav_company) if nav_date else url_for('sales_update_restaurant') }}"{% if analytics_open and sales_view == 'restaurant' %} aria-current="page"{% endif %}>Sales Update - Restaurant</a>
         {% endif %}
         {% if has_sales_analytics_access('room_transfer') %}
-        <a class="de-nav-subitem{% if sales_view == 'room_transfer' %} is-active{% endif %}" href="{{ url_for('sales_update_room_transfer', company=nav_company) if nav_company else url_for('sales_update_room_transfer') }}"{% if sales_view == 'room_transfer' %} aria-current="page"{% endif %}>Room Transfer</a>
+        <a class="de-nav-subitem{% if analytics_open and sales_view == 'room_transfer' %} is-active{% endif %}" href="{{ url_for('sales_update_room_transfer', company=nav_company) if nav_company else url_for('sales_update_room_transfer') }}"{% if analytics_open and sales_view == 'room_transfer' %} aria-current="page"{% endif %}>Room Transfer</a>
         {% endif %}
         {% if has_sales_analytics_access('credit') %}
-        <a class="de-nav-subitem{% if sales_view == 'credit' %} is-active{% endif %}" id="de-nav-sales-credit" href="{{ url_for('sales_update_credit', company=nav_company) if nav_company else url_for('sales_update_credit') }}"{% if sales_view == 'credit' %} aria-current="page"{% endif %}>Credit</a>
+        <a class="de-nav-subitem{% if analytics_open and sales_view == 'credit' %} is-active{% endif %}" id="de-nav-sales-credit" href="{{ url_for('sales_update_credit', company=nav_company) if nav_company else url_for('sales_update_credit') }}"{% if analytics_open and sales_view == 'credit' %} aria-current="page"{% endif %}>Credit</a>
         {% endif %}
       </div>
     </div>
@@ -154,6 +154,7 @@
         <a class="de-nav-subitem{% if bar_pos_open and (pos_view == 'tables' or pos_view == 'home') %} is-active{% endif %}" id="de-nav-bar-pos-tables" href="{{ url_for('bar_point_of_sale') }}"{% if bar_pos_open and (pos_view == 'tables' or pos_view == 'home') %} aria-current="page"{% endif %}>Tables</a>
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'invoice' %} is-active{% endif %}" id="de-nav-bar-pos-invoice" href="{{ url_for('bar_point_of_sale_invoice') }}"{% if bar_pos_open and pos_view == 'invoice' %} aria-current="page"{% endif %}>POS</a>
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-bar-pos-invoice-ledger" href="{{ url_for('bar_point_of_sale_invoice_ledger') }}"{% if bar_pos_open and pos_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+        <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'sales_update' %} is-active{% endif %}" id="de-nav-bar-pos-sales-update" href="{{ url_for('bar_point_of_sale_sales_update', date=nav_date, company=nav_company) if nav_date else url_for('bar_point_of_sale_sales_update') }}"{% if bar_pos_open and pos_view == 'sales_update' %} aria-current="page"{% endif %}>Sales Update</a>
         <a class="de-nav-subitem{% if bar_pos_open and pos_view == 'menu' %} is-active{% endif %}" id="de-nav-bar-pos-menu" href="{{ url_for('bar_point_of_sale_menu') }}"{% if bar_pos_open and pos_view == 'menu' %} aria-current="page"{% endif %}>Menu</a>
       </div>
     </div>
@@ -170,6 +171,7 @@
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'rooms' %} is-active{% endif %}" id="de-nav-hotel-rooms" href="{{ url_for('hotel_rooms') }}"{% if hotel_open and hotel_view == 'rooms' %} aria-current="page"{% endif %}>Rooms</a>
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'reservations' %} is-active{% endif %}" id="de-nav-hotel-reservations" href="{{ url_for('hotel_reservations') }}"{% if hotel_open and hotel_view == 'reservations' %} aria-current="page"{% endif %}>Reservations</a>
         <a class="de-nav-subitem{% if hotel_open and hotel_view == 'invoice_ledger' %} is-active{% endif %}" id="de-nav-hotel-invoice-ledger" href="{{ url_for('hotel_invoice_ledger') }}"{% if hotel_open and hotel_view == 'invoice_ledger' %} aria-current="page"{% endif %}>Invoice Ledger</a>
+        <a class="de-nav-subitem{% if hotel_open and hotel_view == 'sales_update' %} is-active{% endif %}" id="de-nav-hotel-sales-update" href="{{ url_for('hotel_sales_update', date=nav_date, company=nav_company) if nav_date else url_for('hotel_sales_update') }}"{% if hotel_open and hotel_view == 'sales_update' %} aria-current="page"{% endif %}>Sales Update</a>
       </div>
     </div>
     {% endif %}

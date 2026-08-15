@@ -118,7 +118,14 @@ class AsiaTechNormalizerTests(unittest.TestCase):
         self.assertEqual(row["mealPlan"], "CP · Breakfast")
         self.assertEqual(row["specialNotes"], "Late arrival after 10 PM")
 
-    def test_confirmed_stay_today_maps_to_checked_in(self):
+    def test_meal_plan_to_rate_plan_extracts_codes(self):
+        self.assertEqual(asia_tech_client.meal_plan_to_rate_plan("CP · Breakfast"), "CP")
+        self.assertEqual(asia_tech_client.meal_plan_to_rate_plan("AP · All meals"), "AP")
+        self.assertEqual(asia_tech_client.meal_plan_to_rate_plan("MAP"), "MAP")
+        self.assertEqual(asia_tech_client.meal_plan_to_rate_plan("bb"), "CP")
+        self.assertEqual(asia_tech_client.meal_plan_to_rate_plan(""), "")
+
+    def test_provider_status_stays_upcoming_until_local_checkin(self):
         today = date.today()
         row = asia_tech_client._normalize_reservation(
             {
@@ -130,7 +137,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                 "totalrate": 1000,
             }
         )
-        self.assertEqual(row["status"], "checked_in")
+        self.assertEqual(row["status"], "upcoming")
         future = asia_tech_client._normalize_reservation(
             {
                 "bookingid": "FUT-1",
@@ -152,10 +159,58 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                 "totalrate": 1000,
             }
         )
-        self.assertEqual(past["status"], "checked_out")
-        kpis = asia_tech_client.compute_kpis([row, future, past])
+        self.assertEqual(past["status"], "upcoming")
+        local_in = asia_tech_client._normalize_reservation(
+            {
+                "bookingid": "LOCAL-IN-1",
+                "guestname": "Local In",
+                "checkin": today.isoformat(),
+                "checkout": (today + timedelta(days=1)).isoformat(),
+                "status": "checked_in",
+                "statusSource": "local",
+                "totalrate": 1000,
+            }
+        )
+        self.assertEqual(local_in["status"], "checked_in")
+        departed = asia_tech_client._normalize_reservation(
+            {
+                "bookingid": "OUT-1",
+                "guestname": "Departed",
+                "checkin": (today - timedelta(days=5)).isoformat(),
+                "checkout": (today - timedelta(days=2)).isoformat(),
+                "status": "checked_out",
+                "statusSource": "local",
+                "totalrate": 1000,
+            }
+        )
+        self.assertEqual(departed["status"], "checked_out")
+        ignored_api_out = asia_tech_client._normalize_reservation(
+            {
+                "bookingid": "API-OUT-1",
+                "guestname": "Api Out",
+                "checkin": (today - timedelta(days=5)).isoformat(),
+                "checkout": (today - timedelta(days=2)).isoformat(),
+                "bookingstatus": "checkedout",
+                "totalrate": 1000,
+            }
+        )
+        self.assertEqual(ignored_api_out["status"], "upcoming")
+        ignored_api_in = asia_tech_client._normalize_reservation(
+            {
+                "bookingid": "API-IN-1",
+                "guestname": "Api In",
+                "checkin": today.isoformat(),
+                "checkout": (today + timedelta(days=1)).isoformat(),
+                "bookingstatus": "checkedin",
+                "totalrate": 1000,
+            }
+        )
+        self.assertEqual(ignored_api_in["status"], "upcoming")
+        kpis = asia_tech_client.compute_kpis(
+            [row, future, past, local_in, departed, ignored_api_out, ignored_api_in]
+        )
         self.assertEqual(kpis["checked_in"], 1)
-        self.assertEqual(kpis["upcoming"], 1)
+        self.assertEqual(kpis["upcoming"], 5)
         self.assertEqual(kpis["checked_out"], 1)
 
     def test_count_checkouts_for_selected_date(self):
@@ -167,6 +222,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-12",
                     "status": "checked_out",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 100,
                 }
@@ -178,6 +234,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-01",
                     "checkOutDate": "2026-08-05",
                     "status": "checked_out",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 200,
                 }
@@ -189,6 +246,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-14",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 300,
                 }
@@ -200,6 +258,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-14",
                     "status": "checked_out",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 50,
                 }
@@ -211,6 +270,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-12",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 75,
                 }
@@ -236,6 +296,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-12",
                     "status": "checked_out",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 100,
                 }
@@ -247,6 +308,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-01",
                     "checkOutDate": "2026-08-05",
                     "status": "checked_out",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 200,
                 }
@@ -258,6 +320,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-14",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 300,
                 }
@@ -269,6 +332,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-12",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 75,
                 }
@@ -334,6 +398,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-14",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 300,
                 }
@@ -343,7 +408,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
             asia_tech_client.count_upcoming_for_date(
                 rows, date_from="2026-08-12", date_to="2026-08-12"
             ),
-            0,
+            1,
         )
         self.assertEqual(
             asia_tech_client.count_upcoming_for_date(
@@ -353,7 +418,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
         )
         self.assertEqual(
             asia_tech_client.count_upcoming_for_date(rows, date_from="", date_to=""),
-            1,
+            2,
         )
 
     def test_count_checked_in_for_selected_date(self):
@@ -365,6 +430,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-14",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 100,
                 }
@@ -376,6 +442,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-18",
                     "checkOutDate": "2026-08-19",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 200,
                 }
@@ -387,6 +454,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-12",
                     "status": "checked_out",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 300,
                 }
@@ -423,6 +491,7 @@ class AsiaTechNormalizerTests(unittest.TestCase):
                     "checkInDate": "2026-09-02",
                     "checkOutDate": "2026-09-04",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "expedia",
                     "amount": 200,
                 }
@@ -432,6 +501,285 @@ class AsiaTechNormalizerTests(unittest.TestCase):
         self.assertEqual([r["id"] for r in filtered], ["2"])
         found = asia_tech_client.filter_reservations(rows, q="alpha")
         self.assertEqual([r["id"] for r in found], ["1"])
+
+    def test_filter_hides_cancelled_unless_explicit(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "ok",
+                    "guestName": "Confirmed Guest",
+                    "checkInDate": "2026-09-01",
+                    "checkOutDate": "2026-09-03",
+                    "status": "upcoming",
+                    "source": "direct",
+                    "amount": 100,
+                }
+            ),
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "cx",
+                    "guestName": "Cancelled Guest",
+                    "checkInDate": "2026-09-01",
+                    "checkOutDate": "2026-09-03",
+                    "bookingstatus": "cancelled",
+                    "source": "direct",
+                    "amount": 50,
+                }
+            ),
+        ]
+        self.assertEqual(rows[1]["status"], "cancelled")
+        shown = asia_tech_client.filter_reservations(rows, status="all")
+        self.assertEqual([r["id"] for r in shown], ["ok"])
+        only_cx = asia_tech_client.filter_reservations(rows, status="cancelled")
+        self.assertEqual([r["id"] for r in only_cx], ["cx"])
+        kpis = asia_tech_client.compute_kpis(rows)
+        self.assertEqual(kpis["total"], 1)
+        self.assertEqual(kpis["upcoming"], 1)
+
+    def test_enrich_reservations_from_hotel_rooms_marks_assigned(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "FDR45021786516297",
+                    "guestName": "Mr. Nelson Fernandes",
+                    "checkInDate": "2026-08-15",
+                    "checkOutDate": "2026-08-16",
+                    "status": "upcoming",
+                    "source": "asia_tech",
+                    "amount": 5000,
+                }
+            )
+        ]
+        self.assertFalse(rows[0].get("roomAssigned"))
+        enriched = asia_tech_client.enrich_reservations_from_hotel_rooms(
+            rows,
+            [
+                {
+                    "id": "room-102",
+                    "number": "102",
+                    "status": "reserved",
+                    "roomTypeLabel": "Premium Room",
+                    "stay": {
+                        "reservationId": "FDR45021786516297",
+                        "guestName": "Mr. Nelson Fernandes",
+                    },
+                }
+            ],
+        )
+        self.assertTrue(enriched[0]["roomAssigned"])
+        self.assertEqual(enriched[0]["roomNumber"], "102")
+        self.assertEqual(enriched[0]["roomTypeLabel"], "Premium Room")
+
+    def test_enrich_clears_stale_assignment_when_rooms_vacant(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "FDR45021786686378",
+                    "guestName": "Group Guest",
+                    "checkInDate": "2026-08-14",
+                    "checkOutDate": "2026-08-15",
+                    "status": "upcoming",
+                    "source": "asia_tech",
+                    "amount": 85000,
+                    "roomNumber": "103",
+                    "roomNumbers": ["103", "101", "104"],
+                    "roomIds": ["room-103", "room-101", "room-104"],
+                    "roomAssigned": True,
+                }
+            )
+        ]
+        enriched = asia_tech_client.enrich_reservations_from_hotel_rooms(
+            rows,
+            [
+                {
+                    "id": "room-103",
+                    "number": "103",
+                    "status": "vacant",
+                    "stay": None,
+                },
+                {
+                    "id": "room-101",
+                    "number": "101",
+                    "status": "vacant",
+                },
+            ],
+        )
+        self.assertFalse(enriched[0]["roomAssigned"])
+        self.assertEqual(enriched[0]["roomNumbers"], [])
+        self.assertEqual(enriched[0]["roomNumber"], "")
+
+    def test_enrich_partial_assignment_keeps_matched_rooms_only(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "FDR45021786686378",
+                    "guestName": "Group Guest",
+                    "checkInDate": "2026-08-14",
+                    "checkOutDate": "2026-08-15",
+                    "status": "upcoming",
+                    "source": "asia_tech",
+                    "amount": 85000,
+                    "totalRooms": 17,
+                }
+            )
+        ]
+        enriched = asia_tech_client.enrich_reservations_from_hotel_rooms(
+            rows,
+            [
+                {
+                    "id": "room-101",
+                    "number": "101",
+                    "status": "reserved",
+                    "roomTypeLabel": "Deluxe with Balcony",
+                    "stay": {
+                        "reservationId": "FDR45021786686378",
+                        "guestName": "Group Guest",
+                    },
+                },
+                {
+                    "id": "room-102",
+                    "number": "102",
+                    "status": "vacant",
+                },
+            ],
+        )
+        self.assertTrue(enriched[0]["roomAssigned"])
+        self.assertEqual(enriched[0]["roomNumbers"], ["101"])
+        self.assertEqual(enriched[0]["totalRooms"], 17)
+
+    def test_enrich_ignores_occupied_room_with_mismatched_guest(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "FDR45021786686378",
+                    "guestName": "Manoj Vijayan Antony Kibson",
+                    "checkInDate": "2026-08-14",
+                    "checkOutDate": "2026-08-15",
+                    "status": "upcoming",
+                    "source": "asia_tech",
+                    "amount": 85000,
+                    "totalRooms": 17,
+                }
+            )
+        ]
+        enriched = asia_tech_client.enrich_reservations_from_hotel_rooms(
+            rows,
+            [
+                {
+                    "id": "room-101",
+                    "number": "101",
+                    "status": "occupied",
+                    "roomTypeLabel": "Deluxe with Balcony",
+                    "stay": {
+                        "reservationId": "FDR45021786686378",
+                        "guestName": "Ratnesh",
+                    },
+                }
+            ],
+        )
+        self.assertFalse(enriched[0]["roomAssigned"])
+        self.assertEqual(enriched[0]["roomNumbers"], [])
+
+    def test_enrich_checked_in_matches_occupied_room_by_guest(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "FDR45021786516084",
+                    "guestName": "Mr. Hakam Singh",
+                    "checkInDate": "2026-08-15",
+                    "checkOutDate": "2026-08-16",
+                    "status": "checked_in",
+                    "statusSource": "local",
+                    "source": "asia_tech",
+                    "amount": 5000,
+                    "totalRooms": 1,
+                }
+            )
+        ]
+        enriched = asia_tech_client.enrich_reservations_from_hotel_rooms(
+            rows,
+            [
+                {
+                    "id": "room-201",
+                    "number": "201",
+                    "status": "occupied",
+                    "roomTypeLabel": "Deluxe",
+                    "stay": {
+                        "guestName": "Mr. Hakam Singh",
+                        "reservationId": "",
+                    },
+                }
+            ],
+        )
+        self.assertTrue(enriched[0]["roomAssigned"])
+        self.assertEqual(enriched[0]["roomNumbers"], ["201"])
+
+    def test_heal_skips_occupied_rooms(self):
+        settings = {
+            "asia_tech_state": {
+                "assignments": {
+                    "FDR45021786686378": {
+                        "roomId": "room-101",
+                        "roomNumber": "101",
+                        "roomIds": ["room-101"],
+                        "roomNumbers": ["101"],
+                    }
+                }
+            }
+        }
+        rooms = [
+            {
+                "id": "room-101",
+                "number": "101",
+                "status": "occupied",
+                "stay": {
+                    "guestName": "Ratnesh",
+                    "reservationId": "",
+                },
+            }
+        ]
+        changed = asia_tech_client.heal_assigned_reservation_ids_on_rooms(
+            settings, rooms
+        )
+        self.assertFalse(changed)
+        self.assertEqual(rooms[0]["stay"].get("reservationId") or "", "")
+
+    def test_prune_stale_room_assignments_drops_vacant_links(self):
+        settings = {
+            "asia_tech_state": {
+                "assignments": {
+                    "FDR45021786686378": {
+                        "roomId": "room-103",
+                        "roomNumber": "103",
+                        "roomIds": ["room-103", "room-101"],
+                        "roomNumbers": ["103", "101"],
+                        "roomTypeLabel": "Deluxe with Balcony",
+                    },
+                    "FDR45021786516297": {
+                        "roomId": "room-102",
+                        "roomNumber": "102",
+                        "roomIds": ["room-102"],
+                        "roomNumbers": ["102"],
+                        "roomTypeLabel": "Premium Room",
+                    },
+                }
+            }
+        }
+        rooms = [
+            {"id": "room-103", "number": "103", "status": "vacant"},
+            {"id": "room-101", "number": "101", "status": "vacant"},
+            {
+                "id": "room-102",
+                "number": "102",
+                "status": "reserved",
+                "stay": {"reservationId": "FDR45021786516297"},
+            },
+        ]
+        nxt = asia_tech_client.prune_stale_room_assignments(settings, rooms)
+        self.assertIsNotNone(nxt)
+        assignments = asia_tech_client.get_state(nxt).get("assignments") or {}
+        self.assertNotIn("FDR45021786686378", assignments)
+        self.assertEqual(assignments["FDR45021786516297"]["roomNumbers"], ["102"])
 
     def test_filter_by_date_range(self):
         rows = [

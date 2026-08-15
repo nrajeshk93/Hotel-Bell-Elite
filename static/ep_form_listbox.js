@@ -209,6 +209,8 @@
       label = hidden ? String(hidden.value || '').trim() : '';
     }
     input.value = label;
+    if (label) input.setAttribute('title', label);
+    else input.setAttribute('title', input.getAttribute('placeholder') || '');
   }
 
   function listboxRoots(selector){
@@ -590,6 +592,9 @@
       // Keep real labels in the value; never copy placeholder text into the input.
       combo.value = value ? (label || '') : '';
       combo.classList.toggle('is-placeholder', !value);
+      var tip = value ? (label || '') : (combo.getAttribute('placeholder') || '');
+      if (tip) combo.setAttribute('title', tip);
+      else combo.removeAttribute('title');
     }
     if (valueEl) {
       valueEl.textContent = label;
@@ -900,6 +905,9 @@
     if (combo) {
       combo.value = value ? (label || '') : '';
       combo.classList.toggle('is-placeholder', !value);
+      var tip = value ? (label || '') : (combo.getAttribute('placeholder') || '');
+      if (tip) combo.setAttribute('title', tip);
+      else combo.removeAttribute('title');
     }
     var valueEl = root.querySelector('.se-filter-chip-value');
     if (valueEl) {

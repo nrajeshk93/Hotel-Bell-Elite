@@ -281,10 +281,118 @@ class PosSalesUpdateTests(unittest.TestCase):
                 "2026-08-12",
                 "2026-08-13",
             )
+            overlay = self.app_mod._load_outlet_entry_bundle(
+                conn,
+                self.user,
+                self.app_mod.DEFAULT_COMPANY,
+                "Bar",
+                "2026-08-12",
+                "2026-08-13",
+                overlay_invoices=True,
+            )
         finally:
             conn.close()
         self.assertEqual(bundle["sales_entry_values"]["total_sales"], 111.0)
         self.assertEqual(bundle["sales_entry_values"]["cash"], 111.0)
+        self.assertEqual(overlay["sales_entry_values"]["total_sales"], 900.0)
+        self.assertEqual(overlay["sales_entry_values"]["cash"], 900.0)
+
+    def test_bar_pos_route_overlays_invoices_and_highlights_bar_nav(self):
+        self.user["dashboard_access"] = {"point_of_sale_bar"}
+        page = self.client.get("/bar-point-of-sale/sales-update")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('id="de-nav-bar-pos-group"', html)
+        self.assertRegex(html, r'de-nav-subitem is-active"[^>]*id="de-nav-bar-pos-sales-update"')
+        self.assertIn("Sales Update - Bar", html)
+        self.assertIn("from bar invoices", html.lower())
+        self.assertNotIn("Upload Collections Report", html)
+        self.assertIn('data-preserve-import="1"', html)
+        self.assertNotRegex(
+            html,
+            r'class="de-nav-group is-open[^"]*" id="de-nav-sales-analytics-group"',
+        )
+
+    def test_hotel_analytics_prefers_fo_ledger_module_overlays_invoices(self):
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_hotel_room_invoices_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO hotel_room_invoices (
+                    invoice_number, room_id, room_number, room_type_label,
+                    guest_name, booking_number, check_in_date, check_out_date,
+                    invoice_generated_at, estimated_total, advance_paid,
+                    balance_amount, status, payload_json
+                ) VALUES (?, 'r101', '101', 'Deluxe', 'Guest', '',
+                          '2026-08-12', '2026-08-13', ?, ?, 0, 0, 'settled', ?)
+                """,
+                (
+                    "HBE/RM/SU/1",
+                    "2026-08-12 10:00:00",
+                    800.0,
+                    json.dumps({
+                        "id": "r101",
+                        "number": "101",
+                        "stay": {
+                            "payments": [{"method": "upi", "amount": 800.0}],
+                        },
+                    }),
+                ),
+            )
+            self.app_mod.replace_hotel_ledger_entries(
+                conn,
+                self.app_mod.DEFAULT_COMPANY,
+                self.app_mod.OUTLET_HOTEL,
+                "2026-08-12",
+                [{
+                    "invoice_number": "FO-1",
+                    "amount": 50.0,
+                    "payment_mode": "cash",
+                    "sort_order": 1,
+                    "source_row": 1,
+                }],
+            )
+            conn.commit()
+            analytics = self.app_mod._load_outlet_entry_bundle(
+                conn,
+                self.user,
+                self.app_mod.DEFAULT_COMPANY,
+                self.app_mod.OUTLET_HOTEL,
+                "2026-08-12",
+                "2026-08-13",
+                overlay_invoices=False,
+            )
+            module = self.app_mod._load_outlet_entry_bundle(
+                conn,
+                self.user,
+                self.app_mod.DEFAULT_COMPANY,
+                self.app_mod.OUTLET_HOTEL,
+                "2026-08-12",
+                "2026-08-13",
+                overlay_invoices=True,
+            )
+        finally:
+            conn.close()
+        self.assertEqual(analytics["sales_entry_values"]["total_sales"], 50.0)
+        self.assertEqual(analytics["sales_entry_values"]["cash"], 50.0)
+        self.assertEqual(module["sales_entry_values"]["total_sales"], 800.0)
+        self.assertEqual(module["sales_entry_values"]["upi"], 800.0)
+
+    def test_hotel_module_route_hides_fo_upload_and_highlights_hotel_nav(self):
+        self.user["dashboard_access"] = {"hotel_rooms"}
+        page = self.client.get("/hotel/sales-update")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('id="de-nav-hotel-group"', html)
+        self.assertRegex(html, r'de-nav-subitem is-active"[^>]*id="de-nav-hotel-sales-update"')
+        self.assertIn("from hotel room invoices", html.lower())
+        self.assertNotIn("Upload FO Invoice Tax Report", html)
+        self.assertNotIn('id="se-upload-hotel"', html)
+        self.assertNotRegex(
+            html,
+            r'class="de-nav-group is-open[^"]*" id="de-nav-sales-analytics-group"',
+        )
 
     def test_pos_route_allowed_and_highlights_restaurant_nav(self):
         page = self.client.get("/point-of-sale/sales-update")
@@ -299,6 +407,27 @@ class PosSalesUpdateTests(unittest.TestCase):
         self.assertIn("From restaurant invoices", html)
         self.assertNotIn("Upload Collections Report", html)
         self.assertIn('data-preserve-import="1"', html)
+
+    def test_pos_sales_update_does_not_activate_analytics_restaurant(self):
+        self.user["dashboard_access"] = {"point_of_sale", "sales_analytics"}
+        self.user["sales_analytics_access"] = {"restaurant"}
+        page = self.client.get("/point-of-sale/sales-update")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertRegex(
+            html,
+            r'class="de-nav-group is-open is-child-active" id="de-nav-pos-group"',
+        )
+        self.assertRegex(html, r'de-nav-subitem is-active"[^>]*id="de-nav-pos-sales-update"')
+        self.assertIn("Sales Update - Restaurant", html)
+        self.assertNotRegex(
+            html,
+            r'class="de-nav-group is-open[^"]*" id="de-nav-sales-analytics-group"',
+        )
+        self.assertNotRegex(
+            html,
+            r'class="de-nav-subitem is-active"[^>]*>\s*Sales Update - Restaurant',
+        )
 
     def test_analytics_restaurant_shows_collections_upload(self):
         self.user["sales_analytics_access"] = {"restaurant"}

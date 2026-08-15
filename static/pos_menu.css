@@ -48,7 +48,7 @@ body.pos-menu-module .pos-menu-header-actions{
   flex-wrap:wrap;
 }
 
-/* —— Filter row (mirror Expense Ledger / purchase_ledger search chips) —— */
+/* —— Filter row (match purchase/expense header chips: 44px controls) —— */
 body.su-module .se-sales-header-filters:has(#pos-menu-filter-form),
 body.su-module .se-sales-header-filters:has(.pos-menu-filter-form),
 #md-master-modal .se-sales-header-filters:has(#pos-menu-filter-form){
@@ -79,30 +79,20 @@ body.su-module #pos-menu-filter-form .pos-menu-search-chip,
   max-width:100%;
   z-index:20;
 }
-body.su-module #pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-label,
-.pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-label,
-#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-label,
-#pos-menu-page .pos-menu-search-chip .se-filter-chip-label{
-  color:#6B7280;
-  text-align:left;
-  text-transform:none;
-  letter-spacing:0;
-  font-size:12px;
-  font-weight:500;
-  margin-bottom:6px;
-}
-body.su-module #pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-control,
-#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-control,
-#pos-menu-page .pos-menu-search-chip .se-filter-chip-control{
-  min-height:48px;
-  border-radius:12px;
-  border:1px solid #E5E7EB !important;
+body.su-module #pos-menu-filter-form .pos-menu-header-field .se-filter-chip-control,
+.pos-menu-filter-form .pos-menu-header-field .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-header-field .se-filter-chip-control,
+#pos-menu-page .pos-menu-header-field .se-filter-chip-control{
+  width:100%;
+  height:44px;
+  min-height:44px;
+  max-height:44px;
+  border-radius:8px;
+  border:1px solid var(--border, #E2E8F0) !important;
   background:#fff !important;
   display:flex;
   align-items:center;
-  overflow:visible;
-  width:100%;
+  overflow:hidden;
   box-sizing:border-box;
   box-shadow:none;
 }
@@ -110,9 +100,7 @@ body.su-module #pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-icon,
 .pos-menu-filter-form .pos-menu-search-chip .se-filter-chip-icon,
 #md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-icon,
 #pos-menu-page .pos-menu-search-chip .se-filter-chip-icon{
-  width:44px;
-  color:var(--mmc-acc, #2563EB);
-  flex-shrink:0;
+  display:none;
 }
 /* Kill nested “input inside chip” look (browser default search border). */
 body.su-module #pos-menu-filter-form .pl-search-input,
@@ -123,16 +111,21 @@ body.su-module #pos-menu-filter-form .pl-search-input,
   flex:1 1 auto;
   min-width:0;
   width:100%;
-  height:48px;
+  height:44px;
+  min-height:44px;
+  max-height:44px;
   border:none !important;
   background:transparent !important;
-  font:500 14px Inter,system-ui,sans-serif;
+  font:inherit;
+  font-size:13px;
+  font-weight:500;
   color:#111827;
-  padding:0 12px 0 4px;
+  padding:0 12px;
   outline:none;
   box-shadow:none !important;
   appearance:none;
   -webkit-appearance:none;
+  box-sizing:border-box;
 }
 body.su-module #pos-menu-filter-form .pl-search-input::-webkit-search-cancel-button,
 .pos-menu-filter-form .pl-search-input::-webkit-search-cancel-button,
@@ -147,23 +140,21 @@ body.su-module #pos-menu-filter-form .pl-search-input::placeholder,
   color:#94A3B8;
   font-weight:500;
 }
-body.su-module #pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-control,
-#md-master-modal #pos-menu-page .pos-menu-search-chip.is-active .se-filter-chip-control,
-#pos-menu-page .pos-menu-search-chip.is-active .se-filter-chip-control,
-#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-control:focus-within,
-#pos-menu-page .pos-menu-search-chip .se-filter-chip-control:focus-within{
+body.su-module #pos-menu-filter-form .pos-menu-header-field.is-active .se-filter-chip-control,
+.pos-menu-filter-form .pos-menu-header-field.is-active .se-filter-chip-control,
+body.su-module #pos-menu-filter-form .pos-menu-header-field.is-open .se-filter-chip-control,
+.pos-menu-filter-form .pos-menu-header-field.is-open .se-filter-chip-control,
+body.su-module #pos-menu-filter-form .pos-menu-header-field.is-filtered .se-filter-chip-control,
+.pos-menu-filter-form .pos-menu-header-field.is-filtered .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-header-field.is-active .se-filter-chip-control,
+#pos-menu-page .pos-menu-header-field.is-active .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-header-field.is-open .se-filter-chip-control,
+#pos-menu-page .pos-menu-header-field.is-open .se-filter-chip-control,
+#md-master-modal #pos-menu-page .pos-menu-header-field .se-filter-chip-control:focus-within,
+#pos-menu-page .pos-menu-header-field .se-filter-chip-control:focus-within{
   border-color:#93C5FD !important;
-  background:#EFF6FF !important;
+  background:#fff !important;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
-}
-body.su-module #pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-icon,
-.pos-menu-filter-form .pos-menu-search-chip.is-active .se-filter-chip-icon,
-#md-master-modal #pos-menu-page .pos-menu-search-chip.is-active .se-filter-chip-icon,
-#pos-menu-page .pos-menu-search-chip.is-active .se-filter-chip-icon,
-#md-master-modal #pos-menu-page .pos-menu-search-chip .se-filter-chip-control:focus-within .se-filter-chip-icon,
-#pos-menu-page .pos-menu-search-chip .se-filter-chip-control:focus-within .se-filter-chip-icon{
-  color:#2563EB;
 }
 
 body.su-module #pos-menu-filter-form .pos-menu-filter-listbox,
@@ -175,46 +166,27 @@ body.su-module #pos-menu-filter-form .pos-menu-filter-listbox,
   max-width:200px;
   z-index:25;
 }
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-label,
-.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-label,
-#md-master-modal #pos-menu-page .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-label{
-  color:#6B7280;
-  text-align:left;
-  text-transform:none;
-  letter-spacing:0;
-  font-size:12px;
-  font-weight:500;
-}
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-control,
-#md-master-modal #pos-menu-page .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-control{
-  min-height:48px;
-  border-radius:12px;
-  border:1px solid #E5E7EB !important;
-  background:#fff !important;
-  overflow:visible;
-}
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-trigger,
-.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-trigger{
-  height:48px;
-  font:600 14px Inter,system-ui,sans-serif;
+body.su-module #pos-menu-filter-form .pos-menu-header-field .se-filter-chip-trigger,
+.pos-menu-filter-form .pos-menu-header-field .se-filter-chip-trigger,
+#md-master-modal #pos-menu-page .pos-menu-header-field .se-filter-chip-trigger,
+#pos-menu-page .pos-menu-header-field .se-filter-chip-trigger{
+  height:44px;
+  min-height:44px;
+  max-height:44px;
+  padding:0 8px 0 12px;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
   color:#111827;
-  padding:0 4px 0 0;
+  box-sizing:border-box;
 }
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-value,
-.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-value,
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-value.is-placeholder,
-.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox) .se-filter-chip-value.is-placeholder{
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-value,
+.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-value,
+body.su-module #pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-value.is-placeholder,
+.pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-value.is-placeholder{
   color:#111827;
   overflow:hidden;
   text-overflow:ellipsis;
-}
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox).is-filtered .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox).is-filtered .se-filter-chip-control,
-body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox).is-open .se-filter-chip-control,
-.pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-field-listbox).is-open .se-filter-chip-control{
-  border-color:#93C5FD !important;
-  background:#EFF6FF !important;
 }
 
 /* Settings embed toolbar */
@@ -254,19 +226,21 @@ body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-fiel
   letter-spacing:0;
 }
 #pos-set-panel-menu .pos-menu-filter-form .se-filter-chip-control{
-  min-height:48px;
-  border-radius:12px;
+  min-height:44px;
+  height:44px;
+  max-height:44px;
+  border-radius:8px;
   border:1px solid #E5E7EB;
   background:#fff;
   display:flex;
   align-items:center;
-  overflow:visible;
+  overflow:hidden;
   width:100%;
   box-sizing:border-box;
 }
 #pos-set-panel-menu .pos-menu-filter-form .se-filter-chip-icon{
-  width:44px;
-  height:48px;
+  width:34px;
+  height:44px;
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -283,10 +257,15 @@ body.su-module #pos-menu-filter-form .pos-menu-filter-listbox:not(.pos-menu-fiel
   stroke-linejoin:round;
 }
 #pos-set-panel-menu .pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-trigger{
-  height:48px;
-  font:600 14px Inter,system-ui,sans-serif;
+  height:44px;
+  min-height:44px;
+  max-height:44px;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
   color:#111827;
-  padding:0 4px 0 0;
+  padding:0 8px 0 12px;
+  box-sizing:border-box;
 }
 #pos-set-panel-menu .pos-menu-filter-form .pos-menu-filter-listbox .se-filter-chip-chev{
   width:34px;
@@ -751,19 +730,24 @@ body.pos-settings-module #pos-set-panel-menu .pos-menu-toolbar{
 }
 :is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-control{
   width:100%;
+  height:44px;
   min-height:44px;
+  max-height:44px;
   background:#fff;
   border:1px solid var(--border, #E2E8F0);
   border-radius:8px;
   display:flex;
   align-items:center;
   overflow:hidden;
+  box-sizing:border-box;
 }
 :is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-trigger{
   flex:1 1 auto;
   min-width:0;
   width:100%;
+  height:44px;
   min-height:44px;
+  max-height:44px;
   display:flex;
   align-items:center;
   padding:0 8px 0 12px;
@@ -774,6 +758,7 @@ body.pos-settings-module #pos-set-panel-menu .pos-menu-toolbar{
   font-weight:600;
   text-align:left;
   cursor:pointer;
+  box-sizing:border-box;
 }
 :is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-chip-value{
   display:block;
@@ -834,19 +819,21 @@ body.pos-settings-module #pos-set-panel-menu .pos-menu-toolbar{
   flex:1 1 auto;
   min-width:0;
   width:100%;
-  height:100%;
+  height:44px;
   min-height:44px;
+  max-height:44px;
   border:0 !important;
   background:transparent !important;
   box-shadow:none !important;
   outline:none;
-  padding:0;
+  padding:0 12px;
   font:inherit;
   font-size:13px;
   font-weight:500;
   color:#111827;
   appearance:none;
   -webkit-appearance:none;
+  box-sizing:border-box;
 }
 :is(#pos-menu-page, #pos-settings-page, #md-master-modal #pos-menu-page) .pos-menu-search-chip.pos-menu-field-listbox .pl-search-input::placeholder{
   color:#94A3B8;
@@ -1135,11 +1122,11 @@ body.pos-menu-module #pos-menu-details-modal.modal-overlay.active{
   min-width:160px;
 }
 
-/* —— KPI strip (pl-summary / hbe_kpi) —— */
+/* —— KPI strip (shared hbe_kpi / pl-summary chrome) —— */
 .pos-md-kpis,
 .pos-md-kpis.pl-summary-row{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));
   gap:14px;
   padding:14px 22px;
   margin:0;
@@ -1150,41 +1137,15 @@ body.pos-menu-module #pos-menu-details-modal.modal-overlay.active{
   border-bottom:1px solid var(--pos-md-border-s);
 }
 .pos-md-kpi{
-  display:flex;
-  gap:14px;
-  align-items:flex-start;
-  padding:16px 18px;
-  background:var(--pos-md-card);
-  border:1px solid #EEF2F7;
-  border-radius:20px;
-  box-shadow:0 8px 30px rgba(15,23,42,.04);
+  margin:0;
+  width:100%;
   min-width:0;
-  box-sizing:border-box;
-}
-.pos-md-kpi-icon{
-  width:40px;height:40px;border-radius:9px;
-  display:inline-flex;align-items:center;justify-content:center;
-  background:var(--pos-md-acc-bg);color:var(--pos-md-acc);flex-shrink:0;
-}
-.pos-md-kpi-icon--blue{background:var(--pos-md-acc-bg);color:var(--pos-md-acc)}
-.pos-md-kpi-icon--green{background:var(--pos-md-ok-bg);color:var(--pos-md-ok)}
-.pos-md-kpi-icon--orange{background:var(--pos-md-warn-bg);color:var(--pos-md-warn)}
-.pos-md-kpi-icon--red{background:var(--pos-md-err-bg);color:var(--pos-md-err)}
-.pos-md-kpi-icon svg{
-  width:19px;height:19px;
-  stroke:currentColor;fill:none;stroke-width:1.8;
-  stroke-linecap:round;stroke-linejoin:round;
 }
 .pos-md-kpi-icon .pos-md-kpi-rupee{
   font-size:17px;
   font-weight:800;
   line-height:1;
   letter-spacing:-.02em;
-}
-.pos-md-kpi-body{
-  min-width:0;
-  flex:1 1 auto;
-  overflow:hidden;
 }
 .pos-md-kpi-label{
   display:block;

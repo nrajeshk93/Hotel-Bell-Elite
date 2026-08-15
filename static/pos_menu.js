@@ -1183,30 +1183,34 @@
     var kpis = $('#pos-md-kpis');
     if (kpis) {
       kpis.innerHTML =
-        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon pos-md-kpi-icon--blue">' +
+        '<article class="card pl-summary-card hbe-kpi-card pos-md-kpi"><div class="card-body pl-summary-body">' +
+        '<div class="hbe-kpi-icon hbe-kpi-icon--blue pos-md-kpi-icon" aria-hidden="true">' +
         kpiIcon('price') +
-        '</span><span class="pos-md-kpi-body"><span class="pos-md-kpi-label">Selling Price</span><span class="pos-md-kpi-value">' +
+        '</div><div class="hbe-kpi-text"><div class="pl-summary-label">Selling Price</div><div class="pl-summary-value pos-md-kpi-value">' +
         escapeHtml(formatMoney(item.rate)) +
-        '</span><span class="pos-md-kpi-sub">Menu rate</span></span></div>' +
-        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon pos-md-kpi-icon--orange">' +
+        '</div><div class="pl-summary-meta">Menu rate</div></div></div></article>' +
+        '<article class="card pl-summary-card hbe-kpi-card pos-md-kpi"><div class="card-body pl-summary-body">' +
+        '<div class="hbe-kpi-icon hbe-kpi-icon--orange pos-md-kpi-icon" aria-hidden="true">' +
         kpiIcon('cost') +
-        '</span><span class="pos-md-kpi-body"><span class="pos-md-kpi-label">Food Cost (FIFO)</span><span class="pos-md-kpi-value">' +
+        '</div><div class="hbe-kpi-text"><div class="pl-summary-label">Food Cost (FIFO)</div><div class="pl-summary-value pos-md-kpi-value">' +
         escapeHtml(formatMoney(displayCost)) +
-        '</span><span class="pos-md-kpi-sub">' +
+        '</div><div class="pl-summary-meta">' +
         escapeHtml(costSource) +
-        ' recipe cost</span></span></div>' +
-        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon pos-md-kpi-icon--green">' +
+        ' recipe cost</div></div></div></article>' +
+        '<article class="card pl-summary-card hbe-kpi-card pos-md-kpi"><div class="card-body pl-summary-body">' +
+        '<div class="hbe-kpi-icon hbe-kpi-icon--green pos-md-kpi-icon" aria-hidden="true">' +
         kpiIcon('margin') +
-        '</span><span class="pos-md-kpi-body"><span class="pos-md-kpi-label">Gross Margin</span><span class="pos-md-kpi-value">' +
+        '</div><div class="hbe-kpi-text"><div class="pl-summary-label">Gross Margin</div><div class="pl-summary-value pos-md-kpi-value">' +
         escapeHtml(formatMoney(item.gross_margin != null ? item.gross_margin : analysis.gross_profit)) +
-        '</span><span class="pos-md-kpi-sub">Price − food cost</span></span></div>' +
-        '<div class="pos-md-kpi"><span class="pos-md-kpi-icon pos-md-kpi-icon--blue">' +
+        '</div><div class="pl-summary-meta">Price − food cost</div></div></div></article>' +
+        '<article class="card pl-summary-card hbe-kpi-card pos-md-kpi"><div class="card-body pl-summary-body">' +
+        '<div class="hbe-kpi-icon hbe-kpi-icon--blue pos-md-kpi-icon" aria-hidden="true">' +
         kpiIcon('pct') +
-        '</span><span class="pos-md-kpi-body"><span class="pos-md-kpi-label">Margin %</span><span class="pos-md-kpi-value">' +
+        '</div><div class="hbe-kpi-text"><div class="pl-summary-label">Margin %</div><div class="pl-summary-value pos-md-kpi-value">' +
         escapeHtml(formatPct(item.margin_pct != null ? item.margin_pct : analysis.margin_pct)) +
-        '</span><span class="pos-md-kpi-sub">' +
+        '</div><div class="pl-summary-meta">' +
         escapeHtml(marginStatusLabel(item.margin_status || analysis.margin_status)) +
-        '</span></span></div>';
+        '</div></div></div></article>';
     }
 
     renderOverviewFields(item);

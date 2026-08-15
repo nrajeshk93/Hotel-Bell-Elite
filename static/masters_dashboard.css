@@ -118,68 +118,15 @@ body.master-module .su-header-tools .btn svg {
   stroke-linejoin: round;
 }
 
-/* KPI row */
-.md-kpi-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.md-kpi-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  padding: 20px 22px;
-  background: #fff;
-  border: 1px solid var(--md-card-border);
-  border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.md-kpi-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.md-kpi-icon svg {
-  width: 20px;
-  height: 20px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.8;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.md-kpi-icon--blue { background: #EFF6FF; color: #2563EB; }
-.md-kpi-icon--green { background: #F0FDF4; color: #16A34A; }
-.md-kpi-icon--slate { background: #F8FAFC; color: #475569; }
-.md-kpi-icon--amber { background: #FFFBEB; color: #D97706; }
-
-.md-kpi-text {
-  min-width: 0;
-}
-
-.md-kpi-value {
-  font-size: 24px;
-  font-weight: 700;
-  color: #111827;
-  line-height: 1.15;
-  font-variant-numeric: tabular-nums;
-}
-
-.md-kpi-label {
-  margin-top: 4px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--md-text-muted);
+/* KPI row — shared purchase/expense chrome via hbe_kpi.css */
+body.su-module .md-kpi-row.pl-summary-row,
+.md-kpi-row.pl-summary-row,
+.md-kpi-row{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
+  gap:14px;
+  margin-bottom:24px;
+  width:100%;
 }
 
 /* Category pills */
@@ -1589,21 +1536,15 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 }
 
 @media (max-width: 1100px) {
-  .md-kpi-row,
   .md-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
-  .md-kpi-row,
   .md-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 20px;
-  }
-
-  .md-kpi-value {
-    font-size: 22px;
   }
 
   body.master-module .su-header-tools .btn svg {

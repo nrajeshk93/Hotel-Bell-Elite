@@ -20,7 +20,8 @@
     sortKey: '',
     sortAsc: true,
     kpiFilter: 'total',
-    checkoutOnly: false
+    checkoutOnly: false,
+    editBaseline: ''
   };
 
   var KPI_FILTERS = {
@@ -84,13 +85,13 @@
     var n = Number(amount) || 0;
     try {
       return (
-        '₹ ' +
+        '₹\u00a0' +
         n.toLocaleString('en-IN', {
           maximumFractionDigits: 0
         })
       );
     } catch (e) {
-      return '₹ ' + String(Math.round(n));
+      return '₹\u00a0' + String(Math.round(n));
     }
   }
 
@@ -147,6 +148,64 @@
       if (first === MEAL_PLAN_CODES[i]) return MEAL_PLAN_CODES[i];
     }
     return '';
+  }
+
+  function splitGuestTitleName(full) {
+    var text = String(full || '').trim().replace(/\s+/g, ' ');
+    if (!text) return { title: '', name: '' };
+    var m = /^(Mr|Mrs|Ms|Miss|Dr|Mx)\.?\s+(.+)$/i.exec(text);
+    if (!m) return { title: '', name: text };
+    var key = String(m[1] || '').toLowerCase();
+    var titleMap = {
+      mr: 'Mr',
+      mrs: 'Mrs',
+      ms: 'Ms',
+      miss: 'Ms',
+      dr: 'Dr',
+      mx: 'Mx'
+    };
+    return {
+      title: titleMap[key] || '',
+      name: String(m[2] || '').trim()
+    };
+  }
+
+  function joinGuestTitleName(title, name) {
+    var guest = String(name || '').trim().replace(/\s+/g, ' ');
+    var honorific = String(title || '').trim();
+    if (!honorific) return guest;
+    if (!guest) return honorific;
+    return honorific + '. ' + guest;
+  }
+
+  function fillGuestTitleSelect(title) {
+    var value = String(title || '').trim();
+    var label = value || 'Select';
+    if (typeof window.resetEpListbox === 'function') {
+      window.resetEpListbox('hres-edit-guest-title', value, label);
+      return;
+    }
+    var hidden = document.getElementById('hres-edit-guest-title');
+    if (hidden) hidden.value = value;
+  }
+
+  var STATUS_EDIT_LABELS = {
+    upcoming: 'Upcoming',
+    checked_in: 'Checked In',
+    checked_out: 'Checked Out',
+    cancelled: 'Cancelled'
+  };
+
+  function fillEditListbox(fieldId, value, labels, emptyLabel) {
+    var key = String(value || '').trim();
+    var label = (key && labels[key]) || emptyLabel || 'Select';
+    if (!key) key = '';
+    if (typeof window.resetEpListbox === 'function') {
+      window.resetEpListbox(fieldId, key, label);
+      return;
+    }
+    var hidden = document.getElementById(fieldId);
+    if (hidden) hidden.value = key;
   }
 
   function fillMealPlanSelect(stored) {
@@ -413,6 +472,200 @@
     return status !== 'cancelled' && status !== 'checked_out';
   }
 
+  function reservationIsAssigned(row) {
+    if (!row) return false;
+    if (reservationStatusKey(row) === 'checked_in') return true;
+    if (row.roomAssigned) return true;
+    if (row.roomNumber) return true;
+    if (Array.isArray(row.roomNumbers) && row.roomNumbers.length) return true;
+    if (Array.isArray(row.roomIds) && row.roomIds.length) return true;
+    if (row.roomId) return true;
+    return false;
+  }
+
+  function reservationAssignmentBucket(row) {
+    var assigned = assignedRoomCount(row);
+    var total = reservationTotalRooms(row);
+    var status = reservationStatusKey(row);
+    // In-house guests always belong under Room assigned / partial — never Needs room.
+    if (status === 'checked_in' && assigned <= 0) return 'assigned';
+    if (assigned <= 0) return 'unassigned';
+    if (assigned < total) return 'partial';
+    return 'assigned';
+  }
+
+  function reservationRoomLabel(row) {
+    var numbers = [];
+    var seen = {};
+    function pushNum(value) {
+      var text = String(value || '').trim();
+      if (!text || seen[text]) return;
+      seen[text] = true;
+      numbers.push(text);
+    }
+    if (Array.isArray(row && row.roomNumbers)) {
+      row.roomNumbers.forEach(pushNum);
+    }
+    pushNum(row && row.roomNumber);
+    numbers.sort(function (a, b) {
+      var na = parseInt(a, 10);
+      var nb = parseInt(b, 10);
+      if (isFinite(na) && isFinite(nb) && String(na) === a && String(nb) === b) {
+        return na - nb;
+      }
+      return String(a).localeCompare(String(b), undefined, {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    });
+    var typeLabel = String((row && (row.roomTypeLabel || row.roomType)) || '').trim();
+    var total = reservationTotalRooms(row);
+    var assigned = numbers.length || assignedRoomCount(row);
+    var prefix = '';
+    if (assigned > 0 && assigned < total) {
+      prefix = assigned + ' of ' + total + ' rooms · ';
+    }
+    if (numbers.length) {
+      var roomsText =
+        numbers.length === 1
+          ? 'Room ' + numbers[0]
+          : numbers.length + ' rooms · ' + numbers.join(', ');
+      return prefix + roomsText + (typeLabel ? ' · ' + typeLabel : '');
+    }
+    if (typeLabel) return prefix + typeLabel;
+    if (prefix) return prefix.replace(/\s·\s$/, '');
+    return reservationIsAssigned(row) ? 'Room assigned' : '';
+  }
+
+  function guestMetaLabel(row) {
+    var bucket = reservationAssignmentBucket(row);
+    if (bucket === 'assigned' || bucket === 'partial') {
+      return (
+        reservationRoomLabel(row) ||
+        (bucket === 'partial'
+          ? 'Partially assigned'
+          : reservationStatusKey(row) === 'checked_in'
+            ? 'Checked in'
+            : 'Room assigned')
+      );
+    }
+    var mobile = String((row && row.mobile) || '').trim();
+    var email = String((row && row.email) || '').trim();
+    if (/^n\/?a$/i.test(mobile)) mobile = '';
+    if (/^n\/?a$/i.test(email)) email = '';
+    if (mobile && email) return mobile + ' · ' + email;
+    if (mobile) return mobile;
+    if (email) return email;
+    return 'Unassigned';
+  }
+
+  function renderRowHtml(row) {
+    var selected =
+      state.selectedId && state.selectedId === row.id ? ' is-selected' : '';
+    var statusKey = reservationStatusKey(row);
+    var cancelled = statusKey === 'cancelled';
+    var bucket = reservationAssignmentBucket(row);
+    var meta = guestMetaLabel(row);
+    var metaClass =
+      bucket === 'assigned'
+        ? ' is-assigned'
+        : bucket === 'partial'
+          ? ' is-partial'
+          : ' is-unassigned';
+    var rowClass =
+      bucket === 'assigned'
+        ? ' is-assigned'
+        : bucket === 'partial'
+          ? ' is-partial'
+          : ' is-unassigned';
+    return (
+      '<tr data-res-id="' +
+      escapeAttr(row.id) +
+      '" data-status="' +
+      escapeAttr(statusKey || 'upcoming') +
+      '" data-assigned="' +
+      escapeAttr(bucket) +
+      '" data-sort-row class="' +
+      (selected.trim() + (cancelled ? ' is-cancelled' : '') + rowClass).trim() +
+      '">' +
+      '<td data-sort-value="' +
+      escapeAttr(String(row.guestName || '').toLowerCase()) +
+      '"><div class="hres-guest">' +
+      '<div class="hres-avatar">' +
+      escapeHtml(row.initials || '?') +
+      '</div>' +
+      '<div class="hres-guest-copy">' +
+      '<div class="hres-guest-name">' +
+      escapeHtml(row.guestName || 'Guest') +
+      '</div>' +
+      '<div class="hres-guest-id">#' +
+      escapeHtml(row.bookingId || row.id) +
+      '</div>' +
+      '<div class="hres-guest-meta' +
+      metaClass +
+      '" title="' +
+      escapeAttr(meta) +
+      '">' +
+      escapeHtml(meta) +
+      '</div></div></div></td>' +
+      '<td data-sort-value="' +
+      escapeAttr(String(reservationTotalRooms(row))) +
+      '"><div class="hres-rooms"><strong>' +
+      escapeHtml(String(reservationTotalRooms(row))) +
+      '</strong></div></td>' +
+      '<td data-sort-value="' +
+      escapeAttr(String(row.checkInDate || '') + ' ' + String(row.checkInTime || '')) +
+      '"><div class="hres-datetime"><strong>' +
+      escapeHtml(formatDisplayDate(row.checkInDate)) +
+      '</strong><span>' +
+      escapeHtml(formatTime(row.checkInTime)) +
+      '</span></div></td>' +
+      '<td data-sort-value="' +
+      escapeAttr(String(row.checkOutDate || '') + ' ' + String(row.checkOutTime || '')) +
+      '"><div class="hres-datetime"><strong>' +
+      escapeHtml(formatDisplayDate(row.checkOutDate)) +
+      '</strong><span>' +
+      escapeHtml(formatTime(row.checkOutTime)) +
+      '</span></div></td>' +
+      '<td data-sort-value="' +
+      escapeAttr(String(row.amount == null ? 0 : row.amount)) +
+      '"><div class="hres-price"><strong>' +
+      escapeHtml(formatInr(row.amount)) +
+      '</strong><span>' +
+      escapeHtml(String(row.nights || 1)) +
+      ' Night' +
+      (Number(row.nights) === 1 ? '' : 's') +
+      '</span></div></td>' +
+      '<td data-sort-value="' +
+      escapeAttr(String(row.statusLabel || row.status || '').toLowerCase()) +
+      '"><span class="hres-status-pill ' +
+      statusClass(row.status) +
+      '"' +
+      (cancelled ? ' aria-disabled="true"' : '') +
+      '>' +
+      escapeHtml(row.statusLabel || row.status) +
+      '</span></td>' +
+      '<td><div class="hres-row-actions">' +
+      '<button type="button" class="hres-icon-btn" data-hres-view title="View">' +
+      '<svg viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>' +
+      '</button>' +
+      '</div></td></tr>'
+    );
+  }
+
+  function renderGroupHeader(label, count, groupKey) {
+    return (
+      '<tr class="hres-group-row" data-hres-group="' +
+      escapeAttr(groupKey) +
+      '" aria-hidden="false">' +
+      '<td colspan="7"><div class="hres-group-label">' +
+      escapeHtml(label) +
+      '<span class="hres-group-count">' +
+      escapeHtml(String(count)) +
+      '</span></div></td></tr>'
+    );
+  }
+
   function renderRows(rows) {
     var body = document.getElementById('hres-table-body');
     if (!body) return;
@@ -427,85 +680,34 @@
           '. Their feed only includes bookings created or updated in the last 10 days. Open that booking in Asia Tech, save it once, then Refresh.'
         : 'No reservations match these filters.';
       body.innerHTML =
-        '<tr class="hres-empty-row"><td colspan="6">' +
+        '<tr class="hres-empty-row"><td colspan="7">' +
         escapeHtml(emptyMsg) +
         '</td></tr>';
       return;
     }
-    body.innerHTML = state.rows
-      .map(function (row) {
-        var selected =
-          state.selectedId && state.selectedId === row.id ? ' is-selected' : '';
-        var statusKey = reservationStatusKey(row);
-        var cancelled = statusKey === 'cancelled';
-        return (
-          '<tr data-res-id="' +
-          escapeAttr(row.id) +
-          '" data-status="' +
-          escapeAttr(statusKey || 'upcoming') +
-          '" data-sort-row class="' +
-          (selected.trim() + (cancelled ? ' is-cancelled' : '')).trim() +
-          '">' +
-          '<td data-sort-value="' +
-          escapeAttr(String(row.guestName || '').toLowerCase()) +
-          '"><div class="hres-guest">' +
-          '<div class="hres-avatar">' +
-          escapeHtml(row.initials || '?') +
-          '</div>' +
-          '<div class="hres-guest-copy">' +
-          '<div class="hres-guest-name">' +
-          escapeHtml(row.guestName || 'Guest') +
-          '</div>' +
-          '<div class="hres-guest-id">#' +
-          escapeHtml(row.bookingId || row.id) +
-          '</div>' +
-          '<div class="hres-guest-meta">' +
-          escapeHtml(row.mobile || '') +
-          (row.email ? ' · ' + escapeHtml(row.email) : '') +
-          '</div></div></div></td>' +
-          '<td data-sort-value="' +
-          escapeAttr(String(row.checkInDate || '') + ' ' + String(row.checkInTime || '')) +
-          '"><div class="hres-datetime"><strong>' +
-          escapeHtml(formatDisplayDate(row.checkInDate)) +
-          '</strong><span>' +
-          escapeHtml(formatTime(row.checkInTime)) +
-          '</span></div></td>' +
-          '<td data-sort-value="' +
-          escapeAttr(String(row.checkOutDate || '') + ' ' + String(row.checkOutTime || '')) +
-          '"><div class="hres-datetime"><strong>' +
-          escapeHtml(formatDisplayDate(row.checkOutDate)) +
-          '</strong><span>' +
-          escapeHtml(formatTime(row.checkOutTime)) +
-          '</span></div></td>' +
-          '<td data-sort-value="' +
-          escapeAttr(String(row.amount == null ? 0 : row.amount)) +
-          '"><div class="hres-price"><strong>' +
-          escapeHtml(formatInr(row.amount)) +
-          '</strong><span>' +
-          escapeHtml(String(row.nights || 1)) +
-          ' Night' +
-          (Number(row.nights) === 1 ? '' : 's') +
-          '</span></div></td>' +
-          '<td data-sort-value="' +
-          escapeAttr(String(row.statusLabel || row.status || '').toLowerCase()) +
-          '"><span class="hres-status-pill ' +
-          statusClass(row.status) +
-          '"' +
-          (cancelled ? ' aria-disabled="true"' : '') +
-          '>' +
-          escapeHtml(row.statusLabel || row.status) +
-          '</span></td>' +
-          '<td><div class="hres-row-actions">' +
-          '<button type="button" class="hres-icon-btn" data-hres-view title="View">' +
-          '<svg viewBox="0 0 24 24"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>' +
-          '</button>' +
-          '<button type="button" class="hres-icon-btn" data-hres-more title="More">' +
-          '<svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>' +
-          '</button>' +
-          '</div></td></tr>'
-        );
-      })
-      .join('');
+    var unassigned = [];
+    var partial = [];
+    var assigned = [];
+    state.rows.forEach(function (row) {
+      var bucket = reservationAssignmentBucket(row);
+      if (bucket === 'assigned') assigned.push(row);
+      else if (bucket === 'partial') partial.push(row);
+      else unassigned.push(row);
+    });
+    var html = '';
+    if (unassigned.length) {
+      html += renderGroupHeader('Needs room', unassigned.length, 'unassigned');
+      html += unassigned.map(renderRowHtml).join('');
+    }
+    if (partial.length) {
+      html += renderGroupHeader('Partially assigned', partial.length, 'partial');
+      html += partial.map(renderRowHtml).join('');
+    }
+    if (assigned.length) {
+      html += renderGroupHeader('Room assigned', assigned.length, 'assigned');
+      html += assigned.map(renderRowHtml).join('');
+    }
+    body.innerHTML = html;
     applyTableSort(false);
   }
 
@@ -541,19 +743,54 @@
     var type = th.getAttribute('data-sort-type') || 'text';
     var colIndex = Array.prototype.indexOf.call(th.parentNode.children, th);
     if (colIndex < 0) return;
-    var rows = Array.prototype.slice.call(tbody.querySelectorAll('tr[data-sort-row]'));
     var ascending = state.sortAsc;
-    rows.sort(function (a, b) {
-      var av = cellSortValue(a, colIndex, type);
-      var bv = cellSortValue(b, colIndex, type);
-      var cmp = 0;
-      if (type === 'number') cmp = av - bv;
-      else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
-      return ascending ? cmp : -cmp;
+    function sortRows(list) {
+      list.sort(function (a, b) {
+        var av = cellSortValue(a, colIndex, type);
+        var bv = cellSortValue(b, colIndex, type);
+        var cmp = 0;
+        if (type === 'number') cmp = av - bv;
+        else
+          cmp = String(av).localeCompare(String(bv), undefined, {
+            numeric: true,
+            sensitivity: 'base'
+          });
+        return ascending ? cmp : -cmp;
+      });
+      return list;
+    }
+    var unassignedHeader = tbody.querySelector('tr.hres-group-row[data-hres-group="unassigned"]');
+    var partialHeader = tbody.querySelector('tr.hres-group-row[data-hres-group="partial"]');
+    var assignedHeader = tbody.querySelector('tr.hres-group-row[data-hres-group="assigned"]');
+    var unassigned = sortRows(
+      Array.prototype.slice.call(
+        tbody.querySelectorAll('tr[data-sort-row][data-assigned="unassigned"]')
+      )
+    );
+    var partial = sortRows(
+      Array.prototype.slice.call(
+        tbody.querySelectorAll('tr[data-sort-row][data-assigned="partial"]')
+      )
+    );
+    var assigned = sortRows(
+      Array.prototype.slice.call(
+        tbody.querySelectorAll('tr[data-sort-row][data-assigned="assigned"]')
+      )
+    );
+    var frag = document.createDocumentFragment();
+    if (unassignedHeader) frag.appendChild(unassignedHeader);
+    unassigned.forEach(function (row) {
+      frag.appendChild(row);
     });
-    rows.forEach(function (row) {
-      tbody.appendChild(row);
+    if (partialHeader) frag.appendChild(partialHeader);
+    partial.forEach(function (row) {
+      frag.appendChild(row);
     });
+    if (assignedHeader) frag.appendChild(assignedHeader);
+    assigned.forEach(function (row) {
+      frag.appendChild(row);
+    });
+    tbody.appendChild(frag);
     headers.forEach(function (header) {
       header.classList.remove('is-sorted-asc', 'is-sorted-desc');
       header.setAttribute('aria-sort', 'none');
@@ -1020,21 +1257,15 @@
     modal.setAttribute('aria-hidden', 'true');
   }
 
-  function openDetail(row) {
-    var panel = document.getElementById('hres-detail');
-    if (!panel || !row) return;
-    closeAssignModal();
-    state.selectedId = row.id;
-    state.selectedRoomIds = [];
-    panel.hidden = false;
-
-    var avatar = document.getElementById('hres-detail-avatar');
-    var guest = document.getElementById('hres-detail-guest');
-    var booking = document.getElementById('hres-detail-booking');
-    var status = document.getElementById('hres-detail-status');
-    var dl = document.getElementById('hres-detail-dl');
-    var payment = document.getElementById('hres-detail-payment');
-    var amount = document.getElementById('hres-detail-amount');
+  function paintReservationDetail(row, ids) {
+    if (!row || !ids) return;
+    var avatar = document.getElementById(ids.avatar);
+    var guest = document.getElementById(ids.guest);
+    var booking = document.getElementById(ids.booking);
+    var status = document.getElementById(ids.status);
+    var dl = document.getElementById(ids.dl);
+    var payment = document.getElementById(ids.payment);
+    var amount = document.getElementById(ids.amount);
 
     if (avatar) avatar.textContent = row.initials || '?';
     if (guest) guest.textContent = row.guestName || 'Guest';
@@ -1062,6 +1293,10 @@
         ['Total Amount', formatInr(row.amount)],
         ['Source', row.sourceLabel || row.source || '—'],
         ['Total Room', String(row.totalRooms || 1)],
+        [
+          'Assigned Room',
+          reservationIsAssigned(row) ? reservationRoomLabel(row) || 'Assigned' : 'Unassigned'
+        ],
         ['Special Notes', row.specialNotes || '—']
       ];
       dl.innerHTML = fields
@@ -1079,7 +1314,36 @@
         })
         .join('');
     }
-    renderRoomGrid(row);
+  }
+
+  var DETAIL_MODAL_IDS = {
+    avatar: 'hres-detail-avatar',
+    guest: 'hres-detail-guest',
+    booking: 'hres-detail-booking',
+    status: 'hres-detail-status',
+    dl: 'hres-detail-dl',
+    payment: 'hres-detail-payment',
+    amount: 'hres-detail-amount'
+  };
+
+  var ASSIGN_DETAIL_IDS = {
+    avatar: 'hres-assign-avatar',
+    guest: 'hres-assign-guest',
+    booking: 'hres-assign-booking',
+    status: 'hres-assign-status',
+    dl: 'hres-assign-dl',
+    payment: 'hres-assign-payment',
+    amount: 'hres-assign-amount'
+  };
+
+  function openDetail(row) {
+    var panel = document.getElementById('hres-detail');
+    if (!panel || !row) return;
+    closeAssignModal();
+    state.selectedId = row.id;
+    panel.hidden = false;
+    panel.setAttribute('aria-hidden', 'false');
+    paintReservationDetail(row, DETAIL_MODAL_IDS);
     document.querySelectorAll('#hres-table-body tr[data-res-id]').forEach(function (tr) {
       tr.classList.toggle('is-selected', tr.getAttribute('data-res-id') === row.id);
     });
@@ -1088,6 +1352,41 @@
   function closeDetail() {
     closeAssignModal();
     var panel = document.getElementById('hres-detail');
+    if (panel) {
+      panel.hidden = true;
+      panel.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function openAssignPanel(row, opts) {
+    var panel = document.getElementById('hres-assign-panel');
+    if (!panel || !row) return;
+    opts = opts || {};
+    closeDetail();
+    closeAssignModal();
+    state.selectedId = row.id;
+    state.selectedRoomIds = [];
+    panel.hidden = false;
+    paintReservationDetail(row, ASSIGN_DETAIL_IDS);
+    /* Keep modal payment chips in sync when assign modal is used later */
+    paintReservationDetail(row, {
+      payment: 'hres-detail-payment',
+      amount: 'hres-detail-amount'
+    });
+    renderRoomGrid(row);
+    document.querySelectorAll('#hres-table-body tr[data-res-id]').forEach(function (tr) {
+      tr.classList.toggle('is-selected', tr.getAttribute('data-res-id') === row.id);
+    });
+    if (opts.scroll !== false) {
+      requestAnimationFrame(function () {
+        panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }
+
+  function closeAssignPanel() {
+    closeAssignModal();
+    var panel = document.getElementById('hres-assign-panel');
     if (panel) panel.hidden = true;
     state.selectedId = '';
     state.selectedRoomIds = [];
@@ -1122,7 +1421,7 @@
     var body = document.getElementById('hres-table-body');
     if (body && !opts.silent) {
       body.innerHTML =
-        '<tr class="hres-empty-row"><td colspan="6">Loading reservations…</td></tr>';
+        '<tr class="hres-empty-row"><td colspan="7">Loading reservations…</td></tr>';
     }
 
     fetch(apiBase(root) + '?' + params.toString(), {
@@ -1149,15 +1448,34 @@
         renderPagination(result.data.pagination || null);
         if (state.selectedId) {
           var row = findRow(state.selectedId);
-          if (row) openDetail(row);
-          else closeDetail();
+          var assignPanel = document.getElementById('hres-assign-panel');
+          var detailPanel = document.getElementById('hres-detail');
+          if (row) {
+            if (assignPanel && !assignPanel.hidden) {
+              openAssignPanel(row, { scroll: false });
+            } else if (detailPanel && !detailPanel.hidden) {
+              openDetail(row);
+            } else {
+              document
+                .querySelectorAll('#hres-table-body tr[data-res-id]')
+                .forEach(function (tr) {
+                  tr.classList.toggle(
+                    'is-selected',
+                    tr.getAttribute('data-res-id') === row.id
+                  );
+                });
+            }
+          } else {
+            closeAssignPanel();
+            closeDetail();
+          }
         }
       })
       .catch(function () {
         if (gen !== state.loadGen) return;
         if (body) {
           body.innerHTML =
-            '<tr class="hres-empty-row"><td colspan="6">Could not load reservations.</td></tr>';
+            '<tr class="hres-empty-row"><td colspan="7">Could not load reservations.</td></tr>';
         }
         paintSyncBanner(
           { error: 'Could not load reservations from the server.' },
@@ -1168,6 +1486,47 @@
       });
   }
 
+  function sanitizeContactDisplay(value) {
+    var text = String(value || '').trim();
+    if (!text || /^n\/?a$/i.test(text)) return '';
+    return text;
+  }
+
+  function collectEditFormSnapshot() {
+    return [
+      filterValue('hres-edit-guest-title'),
+      filterValue('hres-edit-guest'),
+      filterValue('hres-edit-mobile'),
+      filterValue('hres-edit-email'),
+      filterValue('hres-edit-checkin'),
+      filterValue('hres-edit-checkout'),
+      filterValue('hres-edit-guests'),
+      filterValue('hres-edit-amount'),
+      filterValue('hres-edit-source'),
+      filterValue('hres-edit-total-rooms'),
+      filterValue('hres-edit-status'),
+      filterValue('hres-edit-meal'),
+      filterValue('hres-edit-notes')
+    ].join('\u0001');
+  }
+
+  function syncEditSaveVisibility() {
+    var btn = document.getElementById('hres-edit-save');
+    if (!btn) return;
+    var dirty = collectEditFormSnapshot() !== state.editBaseline;
+    if (dirty) {
+      btn.hidden = false;
+      btn.removeAttribute('aria-hidden');
+    } else {
+      btn.hidden = true;
+      btn.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  global.hresEditFormChanged = function () {
+    syncEditSaveVisibility();
+  };
+
   function openEditModal(row) {
     var modal = document.getElementById('hres-edit-modal');
     var title = document.getElementById('hres-edit-title');
@@ -1175,9 +1534,15 @@
     var isEdit = !!(row && row.id);
     if (title) title.textContent = isEdit ? 'Edit Reservation' : 'New Reservation';
     document.getElementById('hres-edit-id').value = isEdit ? row.id : '';
-    document.getElementById('hres-edit-guest').value = isEdit ? row.guestName || '' : '';
-    document.getElementById('hres-edit-mobile').value = isEdit ? row.mobile || '' : '';
-    document.getElementById('hres-edit-email').value = isEdit ? row.email || '' : '';
+    var parts = splitGuestTitleName(isEdit ? row.guestName || '' : '');
+    fillGuestTitleSelect(parts.title);
+    document.getElementById('hres-edit-guest').value = parts.name;
+    document.getElementById('hres-edit-mobile').value = isEdit
+      ? sanitizeContactDisplay(row.mobile)
+      : '';
+    document.getElementById('hres-edit-email').value = isEdit
+      ? sanitizeContactDisplay(row.email)
+      : '';
     document.getElementById('hres-edit-checkin').value = isEdit
       ? String(row.checkInDate || '').slice(0, 10)
       : '';
@@ -1192,13 +1557,18 @@
     document.getElementById('hres-edit-total-rooms').value = isEdit
       ? row.totalRooms || 1
       : 1;
-    document.getElementById('hres-edit-status').value = isEdit
-      ? row.status || 'upcoming'
-      : 'upcoming';
+    fillEditListbox(
+      'hres-edit-status',
+      isEdit ? row.status || 'upcoming' : 'upcoming',
+      STATUS_EDIT_LABELS,
+      'Select status'
+    );
     fillMealPlanSelect(isEdit ? row.mealPlan : '');
     document.getElementById('hres-edit-notes').value = isEdit
       ? row.specialNotes || ''
       : '';
+    state.editBaseline = collectEditFormSnapshot();
+    syncEditSaveVisibility();
     modal.hidden = false;
     modal.setAttribute('aria-hidden', 'false');
   }
@@ -1211,6 +1581,8 @@
     }
     modal.hidden = true;
     modal.setAttribute('aria-hidden', 'true');
+    state.editBaseline = '';
+    syncEditSaveVisibility();
   }
 
   function saveEditForm(event) {
@@ -1219,7 +1591,10 @@
     if (!root) return;
     var id = filterValue('hres-edit-id');
     var payload = {
-      guestName: filterValue('hres-edit-guest'),
+      guestName: joinGuestTitleName(
+        filterValue('hres-edit-guest-title'),
+        filterValue('hres-edit-guest')
+      ),
       mobile: filterValue('hres-edit-mobile'),
       email: filterValue('hres-edit-email'),
       checkInDate: filterValue('hres-edit-checkin'),
@@ -1232,7 +1607,7 @@
       mealPlan: filterValue('hres-edit-meal'),
       specialNotes: filterValue('hres-edit-notes')
     };
-    if (!payload.guestName || !payload.checkInDate || !payload.checkOutDate) {
+    if (!filterValue('hres-edit-guest') || !payload.checkInDate || !payload.checkOutDate) {
       showToast('Guest name and dates are required');
       return;
     }
@@ -1305,7 +1680,11 @@
         }
         showToast('Room assigned');
         closeAssignModal();
-        loadReservations({ silent: true });
+        if (typeof global.deNavigateWithTransition === 'function') {
+          global.deNavigateWithTransition('/hotel/rooms');
+        } else {
+          global.location.href = '/hotel/rooms';
+        }
       })
       .catch(function (err) {
         showToast((err && err.message) || 'Could not assign room');
@@ -1371,6 +1750,20 @@
         return;
       }
 
+      var closeAssignPanelBtn = event.target.closest('#hres-assign-panel-close');
+      if (closeAssignPanelBtn) {
+        event.preventDefault();
+        closeAssignPanel();
+        return;
+      }
+
+      var detailOverlay = event.target.closest('#hres-detail');
+      if (detailOverlay && event.target === detailOverlay) {
+        event.preventDefault();
+        closeDetail();
+        return;
+      }
+
       var editClose = event.target.closest('[data-hres-edit-close]');
       if (editClose) {
         event.preventDefault();
@@ -1410,26 +1803,48 @@
       var cancelledStatus = event.target.closest(
         '.hres-status-pill.is-cancelled, tr.is-cancelled td[data-sort-value="cancelled"]'
       );
-      if (cancelledStatus && !event.target.closest('[data-hres-view], [data-hres-more]')) {
+      if (cancelledStatus && !event.target.closest('[data-hres-view]')) {
         event.preventDefault();
         event.stopPropagation();
         return;
       }
 
       var viewBtn = event.target.closest('[data-hres-view]');
-      var moreBtn = event.target.closest('[data-hres-more]');
+      if (viewBtn) {
+        var viewTr = viewBtn.closest('tr[data-res-id]');
+        var viewId = (viewTr && viewTr.getAttribute('data-res-id')) || '';
+        if (viewId) {
+          event.preventDefault();
+          event.stopPropagation();
+          var viewRow = findRow(viewId);
+          if (viewRow) openDetail(viewRow);
+        }
+        return;
+      }
+
       var tr = event.target.closest('tr[data-res-id]');
-      if (viewBtn || moreBtn || tr) {
-        var id =
-          (tr && tr.getAttribute('data-res-id')) ||
-          (viewBtn &&
-            viewBtn.closest('tr') &&
-            viewBtn.closest('tr').getAttribute('data-res-id')) ||
-          '';
+      if (tr) {
+        var id = tr.getAttribute('data-res-id') || '';
         if (id) {
           event.preventDefault();
           var found = findRow(id);
-          if (found) openDetail(found);
+          if (!found) return;
+          if (reservationAssignmentBucket(found) === 'assigned') {
+            closeDetail();
+            closeAssignPanel();
+            state.selectedId = found.id;
+            document
+              .querySelectorAll('#hres-table-body tr[data-res-id]')
+              .forEach(function (rowEl) {
+                rowEl.classList.toggle(
+                  'is-selected',
+                  rowEl.getAttribute('data-res-id') === found.id
+                );
+              });
+            openEditModal(found);
+          } else {
+            openAssignPanel(found);
+          }
         }
       }
     });
@@ -1440,6 +1855,18 @@
         if (assignModal && !assignModal.hidden) {
           event.preventDefault();
           closeAssignModal();
+          return;
+        }
+        var editModal = document.getElementById('hres-edit-modal');
+        if (editModal && !editModal.hidden) {
+          event.preventDefault();
+          closeEditModal();
+          return;
+        }
+        var detailModal = document.getElementById('hres-detail');
+        if (detailModal && !detailModal.hidden) {
+          event.preventDefault();
+          closeDetail();
           return;
         }
       }
@@ -1455,7 +1882,11 @@
     });
 
     var form = document.getElementById('hres-edit-form');
-    if (form) form.addEventListener('submit', saveEditForm);
+    if (form) {
+      form.addEventListener('submit', saveEditForm);
+      form.addEventListener('input', syncEditSaveVisibility);
+      form.addEventListener('change', syncEditSaveVisibility);
+    }
 
     var clearBtn = document.getElementById('hres-date-range-clear');
     if (clearBtn && clearBtn.getAttribute('data-hres-clear-bound') !== '1') {

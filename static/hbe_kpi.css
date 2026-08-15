@@ -12,6 +12,10 @@ body.ep-module .kpi-grid,
 body.ep-module .emp-summary-row,
 body.hotel-reservations-module .hbe-kpi-row,
 body.hotel-reservations-module .pl-summary-row,
+body.hotel-rooms-module .hbe-kpi-row,
+body.hotel-rooms-module .pl-summary-row,
+body.pos-module .hbe-kpi-row,
+body.pos-module .pl-summary-row,
 .kpi-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
@@ -34,6 +38,10 @@ body.ep-module .kpi-card,
 body.ep-module .emp-summary-card,
 body.hotel-reservations-module .hbe-kpi-card,
 body.hotel-reservations-module .pl-summary-card,
+body.hotel-rooms-module .hbe-kpi-card,
+body.hotel-rooms-module .pl-summary-card,
+body.pos-module .hbe-kpi-card,
+body.pos-module .pl-summary-card,
 .kpi-card{
   background:var(--card,#fff);
   border:1px solid #EEF2F7;
@@ -61,7 +69,11 @@ body.su-module .pl-summary-body,
 body.ep-module .hbe-kpi-body,
 body.ep-module .pl-summary-body,
 body.hotel-reservations-module .hbe-kpi-body,
-body.hotel-reservations-module .pl-summary-body{
+body.hotel-reservations-module .pl-summary-body,
+body.hotel-rooms-module .hbe-kpi-body,
+body.hotel-rooms-module .pl-summary-body,
+body.pos-module .hbe-kpi-body,
+body.pos-module .pl-summary-body{
   display:flex;
   align-items:flex-start;
   gap:14px;
@@ -75,6 +87,8 @@ body.su-module .hbe-kpi-icon,
 body.ep-module .hbe-kpi-icon,
 body.ep-module .kpi-icon,
 body.hotel-reservations-module .hbe-kpi-icon,
+body.hotel-rooms-module .hbe-kpi-icon,
+body.pos-module .hbe-kpi-icon,
 .kpi-icon{
   width:40px;
   height:40px;
@@ -90,6 +104,8 @@ body.su-module .hbe-kpi-icon svg,
 body.ep-module .hbe-kpi-icon svg,
 body.ep-module .kpi-icon svg,
 body.hotel-reservations-module .hbe-kpi-icon svg,
+body.hotel-rooms-module .hbe-kpi-icon svg,
+body.pos-module .hbe-kpi-icon svg,
 .kpi-icon svg{
   width:19px;
   height:19px;
@@ -104,32 +120,44 @@ body.su-module .hbe-kpi-icon--blue,
 body.ep-module .hbe-kpi-icon--blue,
 body.ep-module .kpi-icon.blue,
 body.hotel-reservations-module .hbe-kpi-icon--blue,
+body.hotel-rooms-module .hbe-kpi-icon--blue,
+body.pos-module .hbe-kpi-icon--blue,
 .kpi-icon.blue{background:var(--acc-bg,#EEF5FF);color:var(--acc,#1877F2)}
 body.su-module .hbe-kpi-icon--green,
 body.ep-module .hbe-kpi-icon--green,
 body.ep-module .kpi-icon.green,
 body.hotel-reservations-module .hbe-kpi-icon--green,
+body.hotel-rooms-module .hbe-kpi-icon--green,
+body.pos-module .hbe-kpi-icon--green,
 .kpi-icon.green{background:var(--ok-bg,#F0FDF4);color:var(--ok,#16A34A)}
 body.su-module .hbe-kpi-icon--orange,
 body.ep-module .hbe-kpi-icon--orange,
 body.ep-module .kpi-icon.orange,
 body.hotel-reservations-module .hbe-kpi-icon--orange,
+body.hotel-rooms-module .hbe-kpi-icon--orange,
+body.pos-module .hbe-kpi-icon--orange,
 .kpi-icon.orange{background:var(--warn-bg,#FFFBEB);color:var(--warn,#D97706)}
 body.su-module .hbe-kpi-icon--purple,
 body.ep-module .hbe-kpi-icon--purple,
 body.ep-module .kpi-icon.purple,
 body.hotel-reservations-module .hbe-kpi-icon--purple,
+body.hotel-rooms-module .hbe-kpi-icon--purple,
+body.pos-module .hbe-kpi-icon--purple,
 .kpi-icon.purple{background:var(--pur-bg,#F5F3FF);color:var(--pur,#7C3AED)}
 body.su-module .hbe-kpi-icon--red,
 body.ep-module .hbe-kpi-icon--red,
 body.ep-module .kpi-icon.red,
 body.hotel-reservations-module .hbe-kpi-icon--red,
+body.hotel-rooms-module .hbe-kpi-icon--red,
+body.pos-module .hbe-kpi-icon--red,
 .kpi-icon.red{background:var(--err-bg,#FEF2F2);color:var(--err,#DC2626)}
 
 body.su-module .hbe-kpi-text,
 body.ep-module .hbe-kpi-text,
 body.ep-module .kpi-body,
 body.hotel-reservations-module .hbe-kpi-text,
+body.hotel-rooms-module .hbe-kpi-text,
+body.pos-module .hbe-kpi-text,
 .kpi-body{
   flex:1 1 auto;
   min-width:0;
@@ -144,6 +172,10 @@ body.ep-module .pl-summary-label,
 body.ep-module .kpi-lbl,
 body.hotel-reservations-module .hbe-kpi-label,
 body.hotel-reservations-module .pl-summary-label,
+body.hotel-rooms-module .hbe-kpi-label,
+body.hotel-rooms-module .pl-summary-label,
+body.pos-module .hbe-kpi-label,
+body.pos-module .pl-summary-label,
 .kpi-lbl{
   font-size:12px;
   font-weight:700;
@@ -163,6 +195,10 @@ body.ep-module .pl-summary-value,
 body.ep-module .kpi-val,
 body.hotel-reservations-module .hbe-kpi-value,
 body.hotel-reservations-module .pl-summary-value,
+body.hotel-rooms-module .hbe-kpi-value,
+body.hotel-rooms-module .pl-summary-value,
+body.pos-module .hbe-kpi-value,
+body.pos-module .pl-summary-value,
 .kpi-val{
   margin:0;
   font-size:clamp(18px,10cqi,26px);
@@ -183,14 +219,12 @@ body.ep-module .pl-summary-meta,
 body.ep-module .kpi-meta,
 body.hotel-reservations-module .hbe-kpi-meta,
 body.hotel-reservations-module .pl-summary-meta,
+body.hotel-rooms-module .hbe-kpi-meta,
+body.hotel-rooms-module .pl-summary-meta,
+body.pos-module .hbe-kpi-meta,
+body.pos-module .pl-summary-meta,
 .kpi-meta{
-  margin-top:8px;
-  font-size:12px;
-  line-height:1.35;
-  color:var(--txt3,#94A3B8);
-  font-weight:600;
-  overflow-wrap:anywhere;
-  white-space:normal;
+  display:none !important;
 }
 
 body.ep-module .kpi-val.kpi-val--action,

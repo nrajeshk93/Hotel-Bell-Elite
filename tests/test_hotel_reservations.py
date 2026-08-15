@@ -92,15 +92,31 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertIn("hres-date-from", html)
         self.assertIn("hres-date-to", html)
         self.assertIn("sales_date_range.js", html)
-        self.assertIn("hotel_reservations.js?v=27", html)
-        js_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "hotel_reservations.js")
-        js = open(js_path, encoding="utf-8").read()
+        self.assertIn("hotel_reservations.js?v=45", html)
+        self.assertIn('id="hres-edit-guest-title"', html)
+        self.assertIn("hres-edit-dialog", html)
+        self.assertNotIn("hres-edit-source-listbox", html)
+        self.assertIn("hres-edit-status-listbox", html)
+        self.assertNotIn("<select id=\"hres-edit-status\"", html)
+        self.assertIn("hresEditFormChanged", html)
+        self.assertIn('id="hres-edit-save"', html)
+        js_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "static", "hotel_reservations.js"
+        )
+        with open(js_path, encoding="utf-8") as js_file:
+            js = js_file.read()
+        self.assertIn("syncEditSaveVisibility", js)
+        self.assertIn("splitGuestTitleName", js)
+        self.assertIn("Partially assigned", js)
+        self.assertIn("reservationAssignmentBucket", js)
         self.assertIn("function initDateRangePicker", js)
         self.assertIn("initDateRangePicker();", js)
         self.assertIn('id="hres-edit-meal"', html)
         self.assertIn('id="hres-edit-meal-listbox"', html)
         self.assertIn('id="hres-edit-notes"', html)
         self.assertIn('id="hres-edit-total-rooms"', html)
+        self.assertIn('id="hres-edit-source"', html)
+        self.assertIn('id="hres-edit-status"', html)
         self.assertIn("['Total Room'", js)
 
         rooms = self.client.get("/hotel/rooms")
@@ -204,6 +220,7 @@ class HotelReservationsTests(unittest.TestCase):
                 "amount": 5000,
                 "source": "direct",
                 "status": "upcoming",
+                "mealPlan": "CP · Breakfast",
             },
         )
         self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
@@ -232,6 +249,14 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertEqual(payload["room"]["status"], "reserved")
         stay = payload["room"].get("stay") or {}
         self.assertEqual(stay.get("guestName"), unassigned["guestName"])
+        self.assertEqual(stay.get("reservationId"), unassigned["id"])
+        self.assertEqual(
+            stay.get("reservationBookingId"),
+            unassigned.get("bookingId") or unassigned["id"],
+        )
+        # mealPlan "CP · Breakfast" must map to check-in ratePlan CP
+        self.assertEqual(stay.get("ratePlan"), "CP")
+        self.assertEqual(float(stay.get("roomRate") or 0), 2500.0)
 
         detail = self.client.get(f"/hotel/api/reservations/{unassigned['id']}")
         self.assertEqual(detail.status_code, 200)
@@ -573,6 +598,7 @@ class HotelReservationsTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-14",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 1000,
                 }
@@ -595,6 +621,7 @@ class HotelReservationsTests(unittest.TestCase):
                     "checkInDate": "2026-08-10",
                     "checkOutDate": "2026-08-12",
                     "status": "checked_out",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 800,
                 }
@@ -606,6 +633,7 @@ class HotelReservationsTests(unittest.TestCase):
                     "checkInDate": "2026-08-01",
                     "checkOutDate": "2026-08-05",
                     "status": "checked_out",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 400,
                 }
@@ -617,6 +645,7 @@ class HotelReservationsTests(unittest.TestCase):
                     "checkInDate": "2026-08-18",
                     "checkOutDate": "2026-08-19",
                     "status": "checked_in",
+                    "statusSource": "local",
                     "source": "direct",
                     "amount": 500,
                 }

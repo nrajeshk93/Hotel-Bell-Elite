@@ -10,17 +10,18 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=51">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=105">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=15">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=23">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=35">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
 <script>
 (function(){
@@ -36,16 +37,17 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=20">
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=51">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=105">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=15">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=23">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_menu.css') }}?v=35">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
 {% endif %}
 <div class="main-wrapper">
@@ -87,41 +89,53 @@
       </label>
     </div>
 
-    <div class="md-kpi-row" aria-label="Master summary">
-      <article class="md-kpi-card">
-        <div class="md-kpi-icon md-kpi-icon--blue" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg>
-        </div>
-        <div class="md-kpi-text">
-          <div class="md-kpi-value" data-md-kpi="total_masters">{{ "{:,}".format(masters_kpis.total_masters) }}</div>
-          <div class="md-kpi-label">Total Masters</div>
-        </div>
-      </article>
-      <article class="md-kpi-card">
-        <div class="md-kpi-icon md-kpi-icon--green" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
-        </div>
-        <div class="md-kpi-text">
-          <div class="md-kpi-value" data-md-kpi="active_masters">{{ "{:,}".format(masters_kpis.active_masters) }}</div>
-          <div class="md-kpi-label">Active Masters</div>
+    <div class="pl-summary-row md-kpi-row hbe-kpi-row" aria-label="Master summary">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total masters">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M16.5 9.4 7.55 4.24"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" y1="22" x2="12" y2="12"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Total Masters</div>
+            <div class="pl-summary-value" data-md-kpi="total_masters">{{ "{:,}".format(masters_kpis.total_masters) }}</div>
+            <div class="pl-summary-meta">Catalog modules</div>
+          </div>
         </div>
       </article>
-      <article class="md-kpi-card">
-        <div class="md-kpi-icon md-kpi-icon--slate" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        </div>
-        <div class="md-kpi-text">
-          <div class="md-kpi-value" data-md-kpi="total_records">{{ "{:,}".format(masters_kpis.total_records) }}</div>
-          <div class="md-kpi-label">Total Records</div>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Active masters">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Active Masters</div>
+            <div class="pl-summary-value" data-md-kpi="active_masters">{{ "{:,}".format(masters_kpis.active_masters) }}</div>
+            <div class="pl-summary-meta">Openable now</div>
+          </div>
         </div>
       </article>
-      <article class="md-kpi-card">
-        <div class="md-kpi-icon md-kpi-icon--amber" aria-hidden="true">
-          <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total records">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Total Records</div>
+            <div class="pl-summary-value" data-md-kpi="total_records">{{ "{:,}".format(masters_kpis.total_records) }}</div>
+            <div class="pl-summary-meta">Across all masters</div>
+          </div>
         </div>
-        <div class="md-kpi-text">
-          <div class="md-kpi-value" data-md-kpi="recently_updated">{{ "{:,}".format(masters_kpis.recently_updated) }}</div>
-          <div class="md-kpi-label">Recently Updated</div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Recently updated">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Recently Updated</div>
+            <div class="pl-summary-value" data-md-kpi="recently_updated">{{ "{:,}".format(masters_kpis.recently_updated) }}</div>
+            <div class="pl-summary-meta">Changed recently</div>
+          </div>
         </div>
       </article>
     </div>
@@ -218,9 +232,9 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=55"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='stores.js') }}?v=100"></script>
-<script src="{{ url_for('static', filename='pos_menu.js') }}?v=38"></script>
+<script src="{{ url_for('static', filename='pos_menu.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='employee_payroll.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='supplier_master.js') }}?v=2"></script>
 <script src="{{ url_for('static', filename='category_master.js') }}?v=1"></script>

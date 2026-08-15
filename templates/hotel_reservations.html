@@ -11,9 +11,9 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=44">
 <script>
 (function(){
   try{
@@ -27,9 +27,9 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=22">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=44">
 {% endif %}
 
 <div class="de-main-inner hotel-reservations-page" id="hotel-reservations-page"
@@ -146,7 +146,6 @@
           <button type="button" class="se-filter-listbox-option" role="option" data-value="upcoming" data-label="Upcoming" aria-selected="false">Upcoming</button>
           <button type="button" class="se-filter-listbox-option" role="option" data-value="checked_in" data-label="Checked In" aria-selected="false">Checked In</button>
           <button type="button" class="se-filter-listbox-option" role="option" data-value="checked_out" data-label="Checked Out" aria-selected="false">Checked Out</button>
-          <button type="button" class="se-filter-listbox-option" role="option" data-value="cancelled" data-label="Cancelled" aria-selected="false">Cancelled</button>
         </div>
       </div>
       <div class="se-filter-chip-date-host hres-date-range-host hres-toolbar-date pl-header-field" id="hres-date-range-host">
@@ -219,6 +218,7 @@
         <thead>
           <tr>
             <th class="pl-sortable" data-sort="guest" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Guest Details</th>
+            <th class="pl-sortable" data-sort="rooms" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Rooms</th>
             <th class="pl-sortable" data-sort="check_in" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Check In</th>
             <th class="pl-sortable" data-sort="check_out" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Check Out</th>
             <th class="pl-sortable" data-sort="price" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Price</th>
@@ -227,29 +227,35 @@
           </tr>
         </thead>
         <tbody id="hres-table-body">
-          <tr class="hres-empty-row"><td colspan="6">Loading reservations…</td></tr>
+          <tr class="hres-empty-row"><td colspan="7">Loading reservations…</td></tr>
         </tbody>
       </table>
     </div>
   </div>
 
-  <section class="hres-detail" id="hres-detail" hidden aria-label="Reservation details">
-    <button type="button" class="hres-detail-close" id="hres-detail-close" aria-label="Close details">
+  <section class="hres-assign-panel" id="hres-assign-panel" hidden aria-label="Assign room">
+    <button type="button" class="hres-assign-panel-close" id="hres-assign-panel-close" aria-label="Close assign room">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
     </button>
-    <div class="hres-detail-grid">
-      <article class="hres-detail-card" id="hres-detail-info">
+    <div class="hres-assign-split">
+      <article class="hres-detail-card hres-assign-detail" id="hres-assign-detail" aria-label="Reservation details">
         <header class="hres-detail-card-head">
-          <div class="hres-detail-avatar" id="hres-detail-avatar">?</div>
+          <div class="hres-detail-avatar" id="hres-assign-avatar">?</div>
           <div>
-            <h2 id="hres-detail-guest">Guest</h2>
-            <p id="hres-detail-booking">#—</p>
+            <h2 id="hres-assign-guest">Guest</h2>
+            <p id="hres-assign-booking">#—</p>
           </div>
-          <span class="hres-status-pill" id="hres-detail-status">Upcoming</span>
+          <span class="hres-status-pill" id="hres-assign-status">Upcoming</span>
         </header>
-        <dl class="hres-detail-dl" id="hres-detail-dl"></dl>
+        <div class="hres-assign-detail-payment">
+          <div class="hres-payment-label">Payment Status</div>
+          <div class="hres-payment-row">
+            <span class="hres-payment-pill" id="hres-assign-payment">Paid</span>
+            <strong id="hres-assign-amount">₹0</strong>
+          </div>
+        </div>
+        <dl class="hres-detail-dl" id="hres-assign-dl"></dl>
       </article>
-
       <article class="hres-detail-card hres-assign-card">
         <header class="hres-detail-card-head">
           <div class="hres-assign-icon" aria-hidden="true">
@@ -271,6 +277,35 @@
   </section>
 
   <div class="hres-toast" id="hres-toast" role="status" aria-live="polite" hidden></div>
+
+  <div class="hres-dialog-overlay" id="hres-detail" hidden aria-hidden="true">
+    <article
+      class="hres-dialog hres-detail-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="hres-detail-guest"
+    >
+      <header class="hres-dialog-head">
+        <h2 class="hres-detail-dialog-title">Reservation details</h2>
+        <button type="button" class="hres-dialog-close" id="hres-detail-close" aria-label="Close details">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </header>
+      <div class="hres-dialog-body hres-detail-dialog-body">
+        <article class="hres-detail-card" id="hres-detail-info">
+          <header class="hres-detail-card-head">
+            <div class="hres-detail-avatar" id="hres-detail-avatar">?</div>
+            <div>
+              <h2 id="hres-detail-guest">Guest</h2>
+              <p id="hres-detail-booking">#—</p>
+            </div>
+            <span class="hres-status-pill" id="hres-detail-status">Upcoming</span>
+          </header>
+          <dl class="hres-detail-dl" id="hres-detail-dl"></dl>
+        </article>
+      </div>
+    </article>
+  </div>
 
   <div class="hres-dialog-overlay" id="hres-assign-modal" hidden aria-hidden="true">
     <article
@@ -303,110 +338,131 @@
   </div>
 
   <div class="hres-dialog-overlay" id="hres-edit-modal" hidden aria-hidden="true">
-    <div class="hres-dialog" role="dialog" aria-modal="true" aria-labelledby="hres-edit-title">
-      <header class="hres-dialog-head">
-        <h2 id="hres-edit-title">New Reservation</h2>
+    <div class="hres-dialog hres-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="hres-edit-title">
+      <div class="hres-edit-head">
+        <div class="hres-edit-head-main">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M16 11h6"/></svg>
+          <span id="hres-edit-title">New Reservation</span>
+        </div>
         <button type="button" class="hres-dialog-close" data-hres-edit-close aria-label="Close">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
-      </header>
-      <form class="hres-dialog-body" id="hres-edit-form" novalidate>
+      </div>
+      <form class="hres-edit-form" id="hres-edit-form" novalidate>
         <input type="hidden" id="hres-edit-id" value="">
-        <label class="hres-field">
-          <span>Guest name *</span>
-          <input type="text" id="hres-edit-guest" required autocomplete="name">
-        </label>
-        <div class="hres-field-row">
-          <label class="hres-field">
-            <span>Mobile</span>
-            <input type="tel" id="hres-edit-mobile" inputmode="numeric" maxlength="10" autocomplete="tel">
-          </label>
-          <label class="hres-field">
-            <span>Email</span>
-            <input type="email" id="hres-edit-email" autocomplete="email">
-          </label>
+        <input type="hidden" id="hres-edit-source" value="direct">
+        <div class="hres-edit-grid hres-edit-grid--guest">
+          <div class="hres-edit-field hres-edit-field--title">
+            {{ ep_listbox(
+              'guestTitle',
+              'Title',
+              [
+                ('', 'Select'),
+                ('Mr', 'Mr'),
+                ('Mrs', 'Mrs'),
+                ('Ms', 'Ms'),
+                ('Dr', 'Dr'),
+              ],
+              '',
+              placeholder='Select',
+              field_id='hres-edit-guest-title',
+              change_handler='hresEditFormChanged',
+              extra_class='hres-edit-title-listbox hres-edit-field-listbox'
+            ) }}
+          </div>
+          <div class="hres-edit-field hres-edit-field--name">
+            <label for="hres-edit-guest">Guest name *</label>
+            <input class="hres-edit-input" type="text" id="hres-edit-guest" required autocomplete="name" placeholder="e.g. Nelson Fernandes">
+          </div>
         </div>
-        <div class="hres-field-row">
-          <label class="hres-field">
-            <span>Check in *</span>
-            <input type="date" id="hres-edit-checkin" required>
-          </label>
-          <label class="hres-field">
-            <span>Check out *</span>
-            <input type="date" id="hres-edit-checkout" required>
-          </label>
+        <div class="hres-edit-grid">
+          <div class="hres-edit-field">
+            <label for="hres-edit-mobile">Mobile</label>
+            <input class="hres-edit-input" type="tel" id="hres-edit-mobile" inputmode="numeric" maxlength="10" autocomplete="tel" placeholder="10-digit mobile">
+          </div>
+          <div class="hres-edit-field">
+            <label for="hres-edit-email">Email</label>
+            <input class="hres-edit-input" type="email" id="hres-edit-email" autocomplete="email" placeholder="guest@email.com">
+          </div>
         </div>
-        <div class="hres-field-row">
-          <label class="hres-field">
-            <span>Guests</span>
-            <input type="number" id="hres-edit-guests" min="1" max="12" value="2">
-          </label>
-          <label class="hres-field">
-            <span>Amount (₹)</span>
-            <input type="number" id="hres-edit-amount" min="0" step="1" value="0">
-          </label>
+        <div class="hres-edit-grid">
+          <div class="hres-edit-field">
+            <label for="hres-edit-checkin">Check in *</label>
+            <input class="hres-edit-input" type="date" id="hres-edit-checkin" required>
+          </div>
+          <div class="hres-edit-field">
+            <label for="hres-edit-checkout">Check out *</label>
+            <input class="hres-edit-input" type="date" id="hres-edit-checkout" required>
+          </div>
         </div>
-        <div class="hres-field-row">
-          <label class="hres-field">
-            <span>Source</span>
-            <select id="hres-edit-source">
-              <option value="direct">Direct</option>
-              <option value="asia_tech">Asia Tech</option>
-              <option value="booking_com">Booking.com</option>
-              <option value="makemytrip">MakeMyTrip</option>
-              <option value="expedia">Expedia</option>
-              <option value="goibibo">Goibibo</option>
-              <option value="walk_in">Walk-in</option>
-            </select>
-          </label>
-          <label class="hres-field">
-            <span>Total Room</span>
-            <input type="number" id="hres-edit-total-rooms" min="1" max="99" value="1">
-          </label>
+        <div class="hres-edit-grid">
+          <div class="hres-edit-field">
+            <label for="hres-edit-guests">Guests</label>
+            <input class="hres-edit-input" type="number" id="hres-edit-guests" min="1" max="12" value="2">
+          </div>
+          <div class="hres-edit-field">
+            <label for="hres-edit-amount">Amount (₹)</label>
+            <input class="hres-edit-input" type="number" id="hres-edit-amount" min="0" step="1" value="0" placeholder="e.g. 5000">
+          </div>
         </div>
-        <div class="hres-field-row">
-          <label class="hres-field">
-            <span>Status</span>
-            <select id="hres-edit-status">
-              <option value="upcoming">Upcoming</option>
-              <option value="checked_in">Checked In</option>
-              <option value="checked_out">Checked Out</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </label>
+        <div class="hres-edit-grid">
+          <div class="hres-edit-field">
+            <label for="hres-edit-total-rooms">Total Room</label>
+            <input class="hres-edit-input" type="number" id="hres-edit-total-rooms" min="1" max="99" value="1">
+          </div>
+          <div class="hres-edit-field">
+            {{ ep_listbox(
+              'status',
+              'Status',
+              [
+                ('upcoming', 'Upcoming'),
+                ('checked_in', 'Checked In'),
+                ('checked_out', 'Checked Out'),
+                ('cancelled', 'Cancelled'),
+              ],
+              'upcoming',
+              placeholder='Select status',
+              field_id='hres-edit-status',
+              change_handler='hresEditFormChanged',
+              extra_class='hres-edit-status-listbox hres-edit-field-listbox'
+            ) }}
+          </div>
         </div>
-        {{ ep_listbox(
-          'mealPlan',
-          'Meal plan',
-          [
-            ('EP', 'EP · Room only'),
-            ('CP', 'CP · Breakfast'),
-            ('MAP', 'MAP · Breakfast & dinner'),
-            ('AP', 'AP · All meals'),
-            ('AI', 'AI · All inclusive'),
-            ('BB', 'BB · Bed & breakfast'),
-          ],
-          '',
-          placeholder='Select meal plan',
-          field_id='hres-edit-meal',
-          extra_class='hres-edit-meal-listbox'
-        ) }}
-        <label class="hres-field">
-          <span>Notes</span>
-          <textarea id="hres-edit-notes" rows="3" placeholder="Special requests or guest notes"></textarea>
-        </label>
+        <div class="hres-edit-field">
+          {{ ep_listbox(
+            'mealPlan',
+            'Meal plan',
+            [
+              ('EP', 'EP · Room only'),
+              ('CP', 'CP · Breakfast'),
+              ('MAP', 'MAP · Breakfast & dinner'),
+              ('AP', 'AP · All meals'),
+              ('AI', 'AI · All inclusive'),
+              ('BB', 'BB · Bed & breakfast'),
+            ],
+            '',
+            placeholder='Select meal plan',
+            field_id='hres-edit-meal',
+            change_handler='hresEditFormChanged',
+            extra_class='hres-edit-meal-listbox hres-edit-field-listbox'
+          ) }}
+        </div>
+        <div class="hres-edit-field">
+          <label for="hres-edit-notes">Notes</label>
+          <textarea class="hres-edit-input hres-edit-textarea" id="hres-edit-notes" rows="3" placeholder="Special requests or guest notes"></textarea>
+        </div>
       </form>
-      <footer class="hres-dialog-foot">
-        <button type="button" class="btn" data-hres-edit-close>Cancel</button>
-        <button type="submit" form="hres-edit-form" class="btn btn-primary" id="hres-edit-save">Save</button>
-      </footer>
+      <div class="hres-edit-actions">
+        <button type="button" class="btn hres-edit-btn-secondary" data-hres-edit-close>Cancel</button>
+        <button type="submit" form="hres-edit-form" class="btn btn-primary hres-edit-btn-primary" id="hres-edit-save" hidden aria-hidden="true">Save</button>
+      </div>
     </div>
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=51"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=16"></script>
-<script src="{{ url_for('static', filename='hotel_reservations.js') }}?v=27"></script>
+<script src="{{ url_for('static', filename='hotel_reservations.js') }}?v=46"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

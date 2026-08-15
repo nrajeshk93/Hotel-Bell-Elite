@@ -12,9 +12,10 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=66">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
 <script>
 (function(){
   try{
@@ -28,9 +29,10 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=66">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
 {% endif %}
 
 <div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers">
@@ -41,50 +43,65 @@
     <div class="hotel-rooms-header-actions" aria-label="Page tools"></div>
   </header>
 
-  <section class="hotel-rooms-kpis" aria-label="Room status summary">
-    <article class="hotel-kpi is-active" data-kpi="total" role="button" tabindex="0" aria-pressed="true" aria-label="Show all rooms">
-      <div class="hotel-kpi-icon hotel-kpi-icon--blue" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6"/></svg>
-      </div>
-      <div>
-        <div class="hotel-kpi-label">Total rooms</div>
-        <div class="hotel-kpi-value" data-kpi-value>0</div>
-      </div>
-    </article>
-    <article class="hotel-kpi" data-kpi="vacant" role="button" tabindex="0" aria-pressed="false" aria-label="Filter vacant rooms">
-      <div class="hotel-kpi-icon hotel-kpi-icon--green" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>
-      </div>
-      <div>
-        <div class="hotel-kpi-label">Vacant</div>
-        <div class="hotel-kpi-value" data-kpi-value>0</div>
+  <section class="hotel-rooms-kpis pl-summary-row" aria-label="Room status summary">
+    <article class="card pl-summary-card hbe-kpi-card hotel-kpi is-active" data-kpi="total" role="button" tabindex="0" aria-pressed="true" aria-label="Show all rooms">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Total rooms</div>
+          <div class="pl-summary-value" data-kpi-value>0</div>
+          <div class="pl-summary-meta" data-kpi-meta>On property</div>
+        </div>
       </div>
     </article>
-    <article class="hotel-kpi" data-kpi="occupied" role="button" tabindex="0" aria-pressed="false" aria-label="Filter occupied rooms">
-      <div class="hotel-kpi-icon hotel-kpi-icon--orange" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
-      </div>
-      <div>
-        <div class="hotel-kpi-label">Occupied</div>
-        <div class="hotel-kpi-value" data-kpi-value>0</div>
-      </div>
-    </article>
-    <article class="hotel-kpi" data-kpi="dirty" role="button" tabindex="0" aria-pressed="false" aria-label="Filter dirty rooms" hidden>
-      <div class="hotel-kpi-icon hotel-kpi-icon--rose" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20V10l6-4 6 4v10"/><path d="M10 14h4v6h-4z"/></svg>
-      </div>
-      <div>
-        <div class="hotel-kpi-label">Dirty</div>
-        <div class="hotel-kpi-value" data-kpi-value>0</div>
+    <article class="card pl-summary-card hbe-kpi-card hotel-kpi" data-kpi="vacant" role="button" tabindex="0" aria-pressed="false" aria-label="Filter vacant rooms">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.5 2.5 4.5-5"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Vacant</div>
+          <div class="pl-summary-value" data-kpi-value>0</div>
+          <div class="pl-summary-meta" data-kpi-meta>0 rooms · ready to sell</div>
+        </div>
       </div>
     </article>
-    <article class="hotel-kpi" data-kpi="expected_checkout" role="button" tabindex="0" aria-pressed="false" aria-label="Filter rooms with expected check-out on selected date">
-      <div class="hotel-kpi-icon hotel-kpi-icon--rose" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
+    <article class="card pl-summary-card hbe-kpi-card hotel-kpi" data-kpi="occupied" role="button" tabindex="0" aria-pressed="false" aria-label="Filter occupied rooms">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Occupied</div>
+          <div class="pl-summary-value" data-kpi-value>0</div>
+          <div class="pl-summary-meta" data-kpi-meta>0 rooms · in house</div>
+        </div>
       </div>
-      <div>
-        <div class="hotel-kpi-label">Expected Check Out</div>
-        <div class="hotel-kpi-value" data-kpi-value>0</div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card hotel-kpi" data-kpi="dirty" role="button" tabindex="0" aria-pressed="false" aria-label="Filter dirty rooms" hidden>
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--red" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20V10l6-4 6 4v10"/><path d="M10 14h4v6h-4z"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Dirty</div>
+          <div class="pl-summary-value" data-kpi-value>0</div>
+          <div class="pl-summary-meta" data-kpi-meta>0 rooms · housekeeping</div>
+        </div>
+      </div>
+    </article>
+    <article class="card pl-summary-card hbe-kpi-card hotel-kpi" data-kpi="expected_checkout" role="button" tabindex="0" aria-pressed="false" aria-label="Filter rooms with expected check-out on selected date">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label">Expected Check Out</div>
+          <div class="pl-summary-value" data-kpi-value>0</div>
+          <div class="pl-summary-meta" data-kpi-meta>Selected date</div>
+        </div>
       </div>
     </article>
   </section>
@@ -388,6 +405,11 @@
           </div>
         </section>
 
+        <label class="hr-field">
+          <span>Notes</span>
+          <textarea name="additionalRequests" id="hr-board-reserve-notes" rows="2" placeholder="Special requests or guest notes"></textarea>
+        </label>
+
         <div class="hr-field hr-board-rooms-field">
           <span>Select rooms *</span>
           <div class="hr-board-rooms-select" id="hr-board-reserve-rooms-select">
@@ -422,9 +444,9 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=84"></script>
+<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=90"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

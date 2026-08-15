@@ -300,6 +300,17 @@
     var overstayNights = overstayNightsFromStay(stay, room);
     var billableNights = billableNightsFromStay(stay, room);
     var roomRate = Math.max(0, Number(stay.roomRate || 0));
+    var nightlyRates = Array.isArray(stay.nightlyRates) ? stay.nightlyRates : [];
+    var nightlyByDate = {};
+    nightlyRates.forEach(function (row) {
+      if (!row) return;
+      var day = toDateISO(row.date);
+      if (!day) return;
+      nightlyByDate[day] = {
+        roomRate: Math.max(0, Number(row.roomRate != null ? row.roomRate : 0)),
+        ratePlan: String(row.ratePlan || '').trim()
+      };
+    });
     var roomLabel =
       (room && (room.roomTypeLabel || room.roomType)) ||
       'Room Tariff';
@@ -310,16 +321,49 @@
       roomLabel = roomLabel + (roomLabel ? ' ' : '') + 'Tariff';
     }
 
-    if (roomRate > 0 && checkIn) {
+    function nightRateFor(index, nightDate) {
+      if (nightDate && nightlyByDate[nightDate]) {
+        return nightlyByDate[nightDate].roomRate;
+      }
+      if (nightlyRates.length) {
+        var row =
+          index < nightlyRates.length
+            ? nightlyRates[index]
+            : nightlyRates[nightlyRates.length - 1];
+        if (row) return Math.max(0, Number(row.roomRate || 0));
+      }
+      return roomRate;
+    }
+
+    function nightPlanFor(index, nightDate) {
+      if (nightDate && nightlyByDate[nightDate] && nightlyByDate[nightDate].ratePlan) {
+        return nightlyByDate[nightDate].ratePlan;
+      }
+      if (nightlyRates.length) {
+        var row =
+          index < nightlyRates.length
+            ? nightlyRates[index]
+            : nightlyRates[nightlyRates.length - 1];
+        if (row && row.ratePlan) return String(row.ratePlan);
+      }
+      return String(stay.ratePlan || '').trim();
+    }
+
+    if ((roomRate > 0 || nightlyRates.length) && checkIn) {
       for (var i = 0; i < billableNights; i++) {
         var nightDate = addDaysISO(checkIn, i);
         var isOverstay = i >= nights;
+        var nightRate = nightRateFor(i, nightDate);
+        if (!(nightRate > 0)) continue;
+        var plan = nightPlanFor(i, nightDate);
+        var desc = isOverstay ? roomLabel + ' (Overstay)' : roomLabel;
+        if (plan) desc += ' · ' + plan;
         lines.push({
-          description: isOverstay ? roomLabel + ' (Overstay)' : roomLabel,
+          description: desc,
           date: nightDate,
           qty: 1,
-          rate: roomRate,
-          amount: roomRate
+          rate: nightRate,
+          amount: nightRate
         });
       }
     } else if (roomRate > 0) {

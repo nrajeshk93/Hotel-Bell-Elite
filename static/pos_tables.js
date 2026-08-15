@@ -1650,10 +1650,12 @@
       (mergeLabel
         ? '<div class="pos-table-merge-tag">' + escapeHtml(mergeLabel) + '</div>'
         : '') +
+      '<div class="pos-table-tile-foot">' +
       '<div class="pos-table-badge pos-table-badge--' +
       escapeHtml(status) +
       '">' +
       escapeHtml(STATUS_LABELS[status] || status) +
+      '</div>' +
       '</div>' +
       '</article>'
     );

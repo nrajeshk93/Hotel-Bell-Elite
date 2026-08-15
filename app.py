@@ -6629,6 +6629,16 @@ def hotel_reservations_api():
             force_refresh = str(
                 request.args.get("refresh") or request.args.get("force") or ""
             ).strip().lower() in ("1", "true", "yes")
+            layout = get_hotel_rooms_layout(conn)
+            rooms = layout.get("rooms") or []
+            if asia_tech_client.heal_assigned_reservation_ids_on_rooms(settings, rooms):
+                save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+                layout = get_hotel_rooms_layout(conn)
+                rooms = layout.get("rooms") or []
+            pruned = asia_tech_client.prune_stale_room_assignments(settings, rooms)
+            if pruned is not None:
+                save_hotel_settings(conn, pruned)
+                settings = pruned
             rows = asia_tech_client.list_provider_reservations(
                 settings, force_refresh=force_refresh
             )
@@ -6636,6 +6646,7 @@ def hotel_reservations_api():
             if patched is not None:
                 save_hotel_settings(conn, patched)
                 settings = patched
+            rows = asia_tech_client.enrich_reservations_from_hotel_rooms(rows, rooms)
             sync = asia_tech_client.get_last_sync_meta()
             checkout_only = str(
                 request.args.get("checkout_only") or ""
@@ -6790,6 +6801,85 @@ def hotel_reservation_detail_api(reservation_id):
         conn.close()
 
 
+def _reservation_id_from_stay(stay):
+    if not isinstance(stay, dict):
+        return ""
+    for key in (
+        "reservationId",
+        "reservation_id",
+        "reservationBookingId",
+        "reservation_booking_id",
+        "bookingId",
+        "booking_id",
+    ):
+        value = str(stay.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _stay_matches_reservation(stay, reservation_id):
+    rid = str(reservation_id or "").strip()
+    if not rid or not isinstance(stay, dict):
+        return False
+    for key in (
+        "reservationId",
+        "reservation_id",
+        "reservationBookingId",
+        "reservation_booking_id",
+        "bookingId",
+        "booking_id",
+    ):
+        if str(stay.get(key) or "").strip() == rid:
+            return True
+    return False
+
+
+def _rooms_still_hold_reservation(conn, reservation_id, exclude_room_id=None):
+    """True when another occupied room still carries this reservation id."""
+    rid = str(reservation_id or "").strip()
+    if not rid:
+        return False
+    exclude = str(exclude_room_id or "").strip()
+    layout = get_hotel_rooms_layout(conn)
+    for room in layout.get("rooms") or []:
+        if exclude and str(room.get("id") or "").strip() == exclude:
+            continue
+        status = str(room.get("status") or "").strip().lower().replace(" ", "_")
+        if status != "occupied":
+            continue
+        stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+        if stay and _stay_matches_reservation(stay, rid):
+            return True
+    return False
+
+
+def _sync_reservation_status_from_room(conn, *, stay, status, exclude_room_id=None):
+    """Persist Checked In / Checked Out from FO actions onto the local reservation."""
+    reservation_id = _reservation_id_from_stay(stay)
+    if not reservation_id:
+        return
+    next_status = str(status or "").strip().lower()
+    if next_status not in ("checked_in", "checked_out"):
+        return
+    if next_status == "checked_out" and _rooms_still_hold_reservation(
+        conn, reservation_id, exclude_room_id=exclude_room_id
+    ):
+        return
+    settings = get_hotel_settings(conn)
+    if not asia_tech_client.get_reservation(settings, reservation_id):
+        return
+    try:
+        _item, next_settings = asia_tech_client.update_reservation(
+            settings,
+            reservation_id,
+            {"status": next_status, "statusSource": "local"},
+        )
+    except ValueError:
+        return
+    save_hotel_settings(conn, next_settings)
+
+
 def _assign_room_ids_from_payload(data):
     payload = data if isinstance(data, dict) else {}
     raw = payload.get("roomIds")
@@ -6912,6 +7002,30 @@ def hotel_reservation_assign_api(reservation_id):
             )
             saved_room = primary
             if not existing_primary_id:
+                amount = 0.0
+                try:
+                    amount = float(updated.get("amount") or 0)
+                except (TypeError, ValueError):
+                    amount = 0.0
+                nights = max(1, int(updated.get("nights") or 1))
+                nightly = round(amount / nights, 2) if amount > 0 else 0.0
+                meal = str(updated.get("mealPlan") or updated.get("meal_plan") or "").strip()
+                rate_plan = asia_tech_client.meal_plan_to_rate_plan(meal)
+                notes = str(
+                    updated.get("specialNotes")
+                    or updated.get("special_notes")
+                    or updated.get("notes")
+                    or ""
+                ).strip()
+                reservation_id_val = str(
+                    updated.get("id") or reservation_id or ""
+                ).strip()
+                reservation_booking_id = str(
+                    updated.get("bookingId")
+                    or updated.get("booking_id")
+                    or reservation_id_val
+                    or ""
+                ).strip()
                 saved_room = save_hotel_room_reservation(
                     conn,
                     primary.get("id"),
@@ -6921,6 +7035,11 @@ def hotel_reservation_assign_api(reservation_id):
                         "guestName": updated.get("guestName") or "",
                         "mobile": updated.get("mobile") or "",
                         "email": updated.get("email") or "",
+                        "roomRate": nightly,
+                        "ratePlan": rate_plan,
+                        "additionalRequests": notes,
+                        "reservationId": reservation_id_val,
+                        "reservationBookingId": reservation_booking_id,
                     },
                     replace=False,
                 )
@@ -7632,11 +7751,36 @@ def hotel_room_detail_api(room_id):
                         )
                 except Exception:
                     pass
+                try:
+                    live_stay = (room or {}).get("stay") if isinstance(room, dict) else None
+                    _sync_reservation_status_from_room(
+                        conn,
+                        stay=live_stay or stay,
+                        status="checked_in",
+                        exclude_room_id=None,
+                    )
+                except Exception:
+                    pass
                 conn.commit()
                 return jsonify({"ok": True, "room": room})
 
             if action == "checkout":
+                before = get_hotel_room(conn, room_id)
+                before_stay = (
+                    before.get("stay")
+                    if isinstance(before, dict) and isinstance(before.get("stay"), dict)
+                    else None
+                )
                 clear_hotel_room_stay(conn, room_id, status="dirty")
+                try:
+                    _sync_reservation_status_from_room(
+                        conn,
+                        stay=before_stay,
+                        status="checked_out",
+                        exclude_room_id=room_id,
+                    )
+                except Exception:
+                    pass
                 room = get_hotel_room(conn, room_id)
                 conn.commit()
                 return jsonify({"ok": True, "room": room})
@@ -11073,10 +11217,43 @@ def credit_payment_detail(payment_id):
 @app.route("/sales_update/hotel")
 def sales_update_hotel():
     user = get_current_user()
+    return _render_sales_update_hotel(
+        user,
+        filter_endpoint="sales_update_hotel",
+        de_nav_section="analytics",
+        de_nav_sales_view="hotel",
+        overlay_invoices=False,
+        hide_collections_upload=False,
+        page_subtitle="Upload reports and record daily hotel sales.",
+    )
+
+
+@app.route("/hotel/sales-update", endpoint="hotel_sales_update")
+def hotel_sales_update():
+    user = get_current_user()
+    return _render_sales_update_hotel(
+        user,
+        filter_endpoint="hotel_sales_update",
+        de_nav_section="hotel",
+        de_nav_hotel_view="sales_update",
+        overlay_invoices=True,
+        hide_collections_upload=True,
+        page_subtitle="Totals update from hotel room invoices. Record actual cash, tips, and expenses.",
+    )
+
+
+def _render_sales_update_hotel(user, **page_opts):
     selected_company = request.args.get("company", DEFAULT_COMPANY)
     selected_location = request.args.get("location", OUTLET_HOTEL)
     selected_date = request.args.get("date", date.today().isoformat())
     today_iso = date.today().isoformat()
+    overlay_invoices = bool(page_opts.get("overlay_invoices", False))
+    hide_collections_upload = bool(page_opts.get("hide_collections_upload", False))
+    page_subtitle = page_opts.get("page_subtitle") or "Upload reports and record daily hotel sales."
+    nav_section = page_opts.get("de_nav_section") or "analytics"
+    sales_view = page_opts.get("de_nav_sales_view") or ""
+    hotel_view = page_opts.get("de_nav_hotel_view") or ""
+    filter_endpoint = page_opts.get("filter_endpoint") or "sales_update_hotel"
 
     if selected_company not in SALES_COMPANY_LOCATIONS:
         selected_company = DEFAULT_COMPANY
@@ -11088,7 +11265,13 @@ def sales_update_hotel():
         entry_date = _parse_sales_date(selected_date)
         outlet_records = {
             OUTLET_HOTEL: _load_outlet_entry_bundle(
-                conn, user, selected_company, OUTLET_HOTEL, selected_date, today_iso
+                conn,
+                user,
+                selected_company,
+                OUTLET_HOTEL,
+                selected_date,
+                today_iso,
+                overlay_invoices=overlay_invoices,
             )
         }
         kpi_bundle = _outlet_sales_update_kpi_bundle(
@@ -11099,6 +11282,7 @@ def sales_update_hotel():
             entry_date,
             user=user,
             current_entries=outlet_records[OUTLET_HOTEL]["sales_entry_values"],
+            overlay_invoices=overlay_invoices,
         )
         suppliers = _all_suppliers(conn)
         tip_employees = _active_employees_for_tips(conn)
@@ -11109,6 +11293,9 @@ def sales_update_hotel():
     hotel_outlet = outlet_records[OUTLET_HOTEL]
     return render_template(
         "sales_update_hotel.html",
+        page_subtitle=page_subtitle,
+        filter_form_action=url_for(filter_endpoint),
+        hide_collections_upload=hide_collections_upload,
         selected_company=selected_company,
         selected_company_label=SALES_COMPANY_LOCATIONS[selected_company]["label"],
         selected_location=selected_location,
@@ -11134,8 +11321,9 @@ def sales_update_hotel():
         kpi_trends=kpi_bundle["trends"],
         kpi_vs_label=kpi_bundle["vs_label"],
         kpi_note=kpi_bundle.get("note"),
-        de_nav_section="analytics",
-        de_nav_sales_view="hotel",
+        de_nav_section=nav_section,
+        de_nav_sales_view=sales_view,
+        de_nav_hotel_view=hotel_view,
     )
 
 
@@ -11290,14 +11478,14 @@ def _load_outlet_entry_bundle(
     tip_total = 0.0
     if location in HOTEL_LOCATIONS:
         sales_entries = build_hotel_sales_entry_values(sales_entries)
-        # Prefer FO ledger rollup when present; otherwise fill from room invoices.
+        # Module Sales Update always overlays room invoices. Analytics prefers FO ledger.
         ledger_entries = [] if is_future else load_hotel_ledger_entries(
             conn, company, location, sales_date
         )
-        if ledger_entries:
-            invoice_entries = rollup_hotel_ledger_entries(ledger_entries)
-        else:
+        if overlay_invoices or not ledger_entries:
             invoice_entries = hotel_sales_entry_from_invoices(conn, sales_date)
+        else:
+            invoice_entries = rollup_hotel_ledger_entries(ledger_entries)
         for key in HOTEL_IMPORT_FIELD_KEYS:
             sales_entries[key] = parse_money(invoice_entries.get(key))
         expense_total = _sales_expense_total(conn, company, location, sales_date)
@@ -11490,7 +11678,7 @@ def point_of_sale_sales_update():
     return _render_sales_update_outlet(
         user,
         OUTLET_RESTAURANT,
-        "restaurant",
+        "",
         "point_of_sale_sales_update",
         de_nav_section="pos",
         de_nav_pos_view="sales_update",
@@ -11498,6 +11686,23 @@ def point_of_sale_sales_update():
         hide_collections_upload=True,
         preserve_import=True,
         page_subtitle="Totals update from restaurant invoices. Record actual cash, tips, and petty cash.",
+    )
+
+
+@app.route("/bar-point-of-sale/sales-update", endpoint="bar_point_of_sale_sales_update")
+def bar_point_of_sale_sales_update():
+    user = get_current_user()
+    return _render_sales_update_outlet(
+        user,
+        OUTLET_BAR,
+        "",
+        "bar_point_of_sale_sales_update",
+        de_nav_section="bar_pos",
+        de_nav_pos_view="sales_update",
+        overlay_invoices=True,
+        hide_collections_upload=True,
+        preserve_import=True,
+        page_subtitle="Totals update from bar invoices. Record actual cash, tips, and petty cash.",
     )
 
 

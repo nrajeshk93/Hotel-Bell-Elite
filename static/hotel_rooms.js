@@ -466,6 +466,11 @@
 
   function paintKpis(root, counts) {
     var data = counts || {};
+    var metaHint = {
+      vacant: 'ready to sell',
+      occupied: 'in house',
+      dirty: 'housekeeping'
+    };
     $all('.hotel-kpi', root).forEach(function (card) {
       var key = card.getAttribute('data-kpi');
       var el = card.querySelector('[data-kpi-value]');
@@ -473,6 +478,16 @@
       var n = Number(data[key] != null ? data[key] : 0);
       if (!isFinite(n) || n < 0) n = 0;
       el.textContent = String(n);
+      var meta = card.querySelector('[data-kpi-meta]');
+      if (meta) {
+        if (key === 'total') {
+          meta.textContent = 'On property';
+        } else if (key === 'expected_checkout') {
+          meta.textContent = 'Selected date';
+        } else if (metaHint[key]) {
+          meta.textContent = n + (n === 1 ? ' room · ' : ' rooms · ') + metaHint[key];
+        }
+      }
       if (key === 'dirty') {
         card.hidden = n <= 0;
         if (n <= 0 && card.classList.contains('is-active')) {
@@ -1106,9 +1121,11 @@
           escapeHtml(mergeTagText) +
           '</div>'
         : '') +
+      '<div class="hotel-room-tile-foot">' +
       '<span class="hotel-room-badge">' +
       escapeHtml(STATUS_LABELS[status] || status) +
       '</span>' +
+      '</div>' +
       (guestName ? guestTipHtml(tipStay, guestName) : '') +
       '</article>'
     );
@@ -2191,6 +2208,9 @@
       showToast('Agency name is required for agency billing.', true);
       return;
     }
+    var additionalRequests = form.elements.additionalRequests
+      ? String(form.elements.additionalRequests.value || '').trim()
+      : '';
 
     var names = splitGuestName(guestRaw);
     var stay = {
@@ -2205,7 +2225,8 @@
       agencyName: agencyName,
       agencyGst: agencyGst,
       agencyAddress: agencyAddress,
-      agencyBilling: agencyBilling
+      agencyBilling: agencyBilling,
+      additionalRequests: additionalRequests
     };
     if (agencyBilling && agencyName) {
       stay.invoiceTo = agencyName;

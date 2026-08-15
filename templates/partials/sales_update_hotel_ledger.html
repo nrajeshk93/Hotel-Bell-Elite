@@ -42,9 +42,14 @@
     <div class="card-title se-panel-title">
       <svg viewBox="0 0 24 24"><path d="M4 19V5"/><path d="M4 19h16"/><path d="m7 14 3-3 3 2 5-6"/></svg>
       <span>Sales Entry - Hotel</span>
+      {% if hide_collections_upload|default(false) %}
+      <span class="se-panel-report-tag">From hotel room invoices</span>
+      {% else %}
       <span class="se-panel-report-tag">Upload FO Invoice Tax Report</span>
+      {% endif %}
     </div>
     <div class="se-panel-hdr-actions">
+      {% if not hide_collections_upload|default(false) %}
       <label class="se-panel-upload-label" for="se-upload-hotel"{% if sales_entry_locked %} hidden{% endif %}>
         <input type="file" id="se-upload-hotel" class="se-panel-upload-input se-hotel-upload-input" accept=".xlsx,.xls" data-upload-outlet="Hotel">
         <span class="btn se-panel-upload-btn">
@@ -53,8 +58,11 @@
         </span>
       </label>
       <button type="button" class="btn se-clear-sales-entry-btn" id="se-clear-hotel-ledger" data-clear-hotel-ledger{% if sales_entry_locked %} hidden{% endif %}>Clear</button>
+      {% endif %}
     </div>
+    {% if not hide_collections_upload|default(false) %}
     <span class="se-panel-upload-status" id="se-upload-status-hotel" role="status" aria-live="polite"></span>
+    {% endif %}
   </div>
   <div class="card-body se-panel-body">
     <div class="entry-wrap">

@@ -14,10 +14,11 @@
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=40">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=84">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=103">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <script>
 (function(){
@@ -32,10 +33,11 @@
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=40">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=84">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=103">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 {% endif %}
 
@@ -96,7 +98,7 @@
           <button type="button" class="hrd-more-item" role="menuitem" data-set-status="out_of_order" id="hrd-menu-status-out_of_order">Out of order</button>
         </div>
       </div>
-      {{ hotel_date_field('headerDate', 'Date', value=today_iso|default(''), field_id='hrd-header-date', extra_class='hrd-header-date', panel_title='Select date', empty_label='Select date', hint='', show_cal_icon=false) }}
+      {{ hotel_date_field('headerDate', 'Date', value=today_iso|default(''), field_id='hrd-header-date', extra_class='hrd-header-date hrd-header-date--fixed', panel_title='Select date', empty_label='Select date', hint='', show_cal_icon=false, show_caret=false) }}
       {% if room_status != 'occupied' %}
       <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-reserve" data-action="reserve">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
@@ -107,7 +109,7 @@
         New Reservation
       </button>
       {% else %}
-      <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-reserve" data-action="reserve" hidden>
+      <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-reserve" data-action="reserve">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 5V3M16 5V3M3 10h18"/></svg>
         Reserve
       </button>
@@ -155,17 +157,20 @@
     </button>
   </aside>
 
-  <section class="hrd-kpis" aria-label="Room summary">
-    <article class="hrd-kpi">
-      <div class="hrd-kpi-icon hrd-kpi-icon--green" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M3 12h18v7H3z"/><path d="M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/></svg>
-      </div>
-      <div>
-        <div class="hrd-kpi-label">Room Status</div>
-        <div class="hrd-kpi-value" data-kpi-status>{{ status_label }}</div>
+  <section class="hrd-kpis pl-summary-row hbe-kpi-row" aria-label="Room summary">
+    <article class="card pl-summary-card hbe-kpi-card hrd-kpi" aria-label="Room status">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--green hrd-kpi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M3 12h18v7H3z"/><path d="M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label hrd-kpi-label">Room Status</div>
+          <div class="pl-summary-value hrd-kpi-value" data-kpi-status>{{ status_label }}</div>
+          <div class="pl-summary-meta">Current board state</div>
+        </div>
       </div>
     </article>
-    <article class="hrd-kpi hrd-kpi--hk">
+    <article class="card pl-summary-card hbe-kpi-card hrd-kpi hrd-kpi--hk" aria-label="Housekeeping">
       <div class="hrd-hk-corner">
         <button
           type="button"
@@ -188,34 +193,39 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3"/><path d="M7 9c1.5 2 3 3 5 3s3.5-1 5-3"/><path d="M6 21h12"/><path d="M8 21c0-3 1.5-6 4-8 2.5 2 4 5 4 8"/><circle cx="9" cy="13.5" r=".8"/><circle cx="15" cy="15" r=".8"/></svg>
         </button>
       </div>
-      <div class="hrd-kpi-icon hrd-kpi-icon--{{ 'rose' if housekeeping_dirty else 'green' }}" aria-hidden="true" data-hk-icon>
-        <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20V10l6-4 6 4v10"/><path d="M10 14h4v6h-4z"/></svg>
-      </div>
-      <div class="hrd-kpi-hk">
-        <div class="hrd-kpi-hk-copy">
-          <div class="hrd-kpi-label">Housekeeping</div>
-          <div class="hrd-kpi-value" data-kpi-hk>{{ housekeeping_status }}</div>
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--{{ 'red' if housekeeping_dirty else 'green' }} hrd-kpi-icon" aria-hidden="true" data-hk-icon>
+          <svg viewBox="0 0 24 24"><path d="M4 20h16"/><path d="M6 20V10l6-4 6 4v10"/><path d="M10 14h4v6h-4z"/></svg>
+        </div>
+        <div class="hbe-kpi-text hrd-kpi-hk-copy">
+          <div class="pl-summary-label hrd-kpi-label">Housekeeping</div>
+          <div class="pl-summary-value hrd-kpi-value" data-kpi-hk>{{ housekeeping_status }}</div>
+          <div class="pl-summary-meta">Room cleanliness</div>
         </div>
       </div>
     </article>
-    <article class="hrd-kpi">
-      <div class="hrd-kpi-icon hrd-kpi-icon--purple" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
-      </div>
-      <div>
-        <div class="hrd-kpi-label">Guest Count</div>
-        <div class="hrd-kpi-value" data-kpi-guests>{% if room_status == 'occupied' and room.stay %}{{ (room.stay.adults|default(1)|int) + (room.stay.children|default(0)|int) }}{% else %}0{% endif %}</div>
-        <div class="hrd-kpi-sub" data-kpi-guests-sub>{% if room_status == 'occupied' and room.stay %}Adults {{ room.stay.adults|default(1) }} · Children {{ room.stay.children|default(0) }}{% else %}No guests in-house{% endif %}</div>
+    <article class="card pl-summary-card hbe-kpi-card hrd-kpi" aria-label="Guest count">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--purple hrd-kpi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label hrd-kpi-label">Guest Count</div>
+          <div class="pl-summary-value hrd-kpi-value" data-kpi-guests>{% if room_status == 'occupied' and room.stay %}{{ (room.stay.adults|default(1)|int) + (room.stay.children|default(0)|int) }}{% else %}0{% endif %}</div>
+          <div class="pl-summary-meta hrd-kpi-sub" data-kpi-guests-sub>{% if room_status == 'occupied' and room.stay %}Adults {{ room.stay.adults|default(1) }} · Children {{ room.stay.children|default(0) }}{% else %}No guests in-house{% endif %}</div>
+        </div>
       </div>
     </article>
-    <article class="hrd-kpi">
-      <div class="hrd-kpi-icon hrd-kpi-icon--orange" aria-hidden="true">
-        <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-      </div>
-      <div>
-        <div class="hrd-kpi-label">Check Out Room Count</div>
-        <div class="hrd-kpi-value" data-kpi-checkout>0</div>
-        <div class="hrd-kpi-sub" data-kpi-checkout-sub>No checkout due</div>
+    <article class="card pl-summary-card hbe-kpi-card hrd-kpi" aria-label="Check out room count">
+      <div class="card-body pl-summary-body">
+        <div class="hbe-kpi-icon hbe-kpi-icon--orange hrd-kpi-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        </div>
+        <div class="hbe-kpi-text">
+          <div class="pl-summary-label hrd-kpi-label">Check Out Room Count</div>
+          <div class="pl-summary-value hrd-kpi-value" data-kpi-checkout>0</div>
+          <div class="pl-summary-meta hrd-kpi-sub" data-kpi-checkout-sub>No checkout due</div>
+        </div>
       </div>
     </article>
   </section>
@@ -399,7 +409,7 @@
       <div class="hrd-modal-body">
       <div class="hrd-modal-cols">
         <div class="hrd-modal-col">
-          <section class="hrd-form-section">
+          <section class="hrd-form-section" id="hrd-ci-personal">
             <header class="hrd-form-section-head">
               <span class="hrd-form-section-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
@@ -433,7 +443,7 @@
             </div>
             <div class="hrd-form-grid hrd-form-grid--3">
               {{ ep_listbox('gender', 'Gender', [('', 'Select'), ('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')], '', placeholder='Select', field_id='hrd-ci-gender', extra_class='hrd-form-listbox') }}
-              {{ hotel_date_field('dateOfBirth', 'Date of Birth', field_id='hrd-ci-dob', extra_class='hrd-date-chip', panel_title='Date of birth', show_today=false, hint='', show_cal_icon=false) }}
+              {{ hotel_date_field('dateOfBirth', 'Date of Birth', field_id='hrd-ci-dob', extra_class='hrd-date-chip', panel_title='Date of birth', show_today=false, hint='', show_cal_icon=false, show_caret=false) }}
               {{ ep_listbox('nationality', 'Nationality', [('Indian', 'Indian'), ('Other', 'Other')], 'Indian', placeholder='Select', field_id='hrd-ci-nationality', extra_class='hrd-form-listbox') }}
             </div>
             <div class="hrd-form-grid hrd-form-grid--1">
@@ -572,7 +582,7 @@
         </div>
 
         <div class="hrd-modal-col hrd-modal-col--side">
-          <section class="hrd-form-section">
+          <section class="hrd-form-section" id="hrd-ci-booking">
             <header class="hrd-form-section-head">
               <span class="hrd-form-section-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/></svg>
@@ -584,11 +594,16 @@
                 <span>Booking Number</span>
                 <input type="text" name="bookingNumber" value="Auto generated" readonly>
               </label>
-              {{ hotel_date_field('bookingDate', 'Booking Date', field_id='hrd-ci-booking-date', extra_class='hrd-date-chip', panel_title='Booking date', show_cal_icon=false) }}
-              {{ hotel_date_field('checkInDate', 'Check-In Date', required=true, field_id='hrd-ci-checkin-date', extra_class='hrd-date-chip', panel_title='Check-in date', show_cal_icon=false, max_date='today') }}
-              {{ hotel_time_field('checkInTime', 'Check-In Time', field_id='hrd-ci-checkin-time', extra_class='hrd-date-chip', panel_title='Check-in time', show_clock_icon=false) }}
-              {{ hotel_date_field('checkOutDate', 'Expected Check-Out', field_id='hrd-ci-checkout-date', extra_class='hrd-date-chip', panel_title='Check-out date', show_cal_icon=false) }}
-              {{ hotel_time_field('checkOutTime', 'Check-Out Time', field_id='hrd-ci-checkout-time', extra_class='hrd-date-chip', panel_title='Check-out time', show_clock_icon=false, show_now=false) }}
+              <label class="hrd-field" id="hrd-ci-reservation-id-field" hidden>
+                <span>Reservation ID</span>
+                <input type="hidden" name="reservationId" id="hrd-ci-reservation-id-internal" value="">
+                <input type="text" name="reservationBookingId" id="hrd-ci-reservation-id" readonly>
+              </label>
+              {{ hotel_date_field('bookingDate', 'Booking Date', field_id='hrd-ci-booking-date', extra_class='hrd-date-chip', panel_title='Booking date', show_cal_icon=false, show_caret=false) }}
+              {{ hotel_date_field('checkInDate', 'Check-In Date', required=true, field_id='hrd-ci-checkin-date', extra_class='hrd-date-chip', panel_title='Check-in date', show_cal_icon=false, show_caret=false, max_date='today', hint='') }}
+              {{ hotel_time_field('checkInTime', 'Check-In Time', field_id='hrd-ci-checkin-time', extra_class='hrd-date-chip', panel_title='Check-in time', show_clock_icon=false, show_caret=false) }}
+              {{ hotel_date_field('checkOutDate', 'Expected Check-Out', field_id='hrd-ci-checkout-date', extra_class='hrd-date-chip', panel_title='Check-out date', show_cal_icon=false, show_caret=false, hint='') }}
+              {{ hotel_time_field('checkOutTime', 'Check-Out Time', field_id='hrd-ci-checkout-time', extra_class='hrd-date-chip', panel_title='Check-out time', show_clock_icon=false, show_caret=false, show_now=false) }}
               <label class="hrd-field">
                 <span>Number of Nights</span>
                 <input type="number" name="nights" min="1" value="1">
@@ -839,6 +854,11 @@
           </div>
         </div>
       </section>
+
+      <label class="hrd-field">
+        <span>Notes</span>
+        <textarea name="additionalRequests" id="hrd-reserve-notes" rows="2" placeholder="Special requests or guest notes"></textarea>
+      </label>
     </form>
     <footer class="hrd-dialog-foot">
       <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-reserve-close>Cancel</button>
@@ -1052,10 +1072,10 @@
 </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=50"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=15"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=108"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=16"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=130"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

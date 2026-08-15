@@ -106,7 +106,7 @@ body.su-module .su-title-icon i svg{
 body.su-module .su-title h1{font-size:34px;line-height:1.15;font-weight:700;color:#111827;letter-spacing:-.03em;margin:0}
 body.su-module .su-title p{margin-top:8px;font-size:16px;font-weight:400;color:#6B7280;line-height:1.5;max-width:62ch}
 body.su-module .su-header-tools{
-  display:flex;align-items:center;gap:10px;
+  display:flex;align-items:flex-end;gap:10px;
   flex:0 0 auto;flex-wrap:nowrap;margin-left:auto;
   max-width:100%;min-width:0;justify-content:flex-end;
 }
@@ -116,6 +116,107 @@ body.su-module .su-header-tools .btn{
 }
 body.su-module .su-header-tools .de-fullscreen-btn{
   flex-shrink:0;
+  align-self:flex-end;
+}
+body.su-module .su-header-tools .su-header-date{
+  flex:0 0 auto;
+  width:168px;
+  min-width:150px;
+  margin:0;
+  position:relative;
+  z-index:40;
+}
+body.su-module .su-header-tools .su-header-date > .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:#6B7280;
+  text-transform:none;
+  letter-spacing:0;
+  line-height:1.2;
+}
+body.su-module .su-header-tools .su-header-date .se-filter-chip--date{
+  margin:0;
+  width:100%;
+}
+body.su-module .su-header-tools .su-header-date .se-filter-chip-control{
+  min-height:42px;
+  height:42px;
+  border-radius:999px;
+  border:1px solid #E5E7EB !important;
+  background:#fff !important;
+  overflow:visible;
+}
+body.su-module .su-header-tools .su-header-date .an-range-wrap{
+  flex:1 1 auto;
+  width:100%;
+  min-width:0;
+}
+body.su-module .su-header-tools .su-header-date .an-range-trigger{
+  height:42px;
+  min-height:42px;
+  font:600 14px Inter,system-ui,sans-serif;
+  color:#0F172A;
+  justify-content:center;
+  text-align:center;
+  padding-left:12px;
+  padding-right:12px;
+}
+body.su-module .su-header-tools .su-header-date .an-range-trigger-label,
+body.su-module .su-header-tools .su-header-date #se-date-range-display{
+  width:100%;
+  text-align:center;
+  justify-content:center;
+}
+body.su-module .su-header-tools .su-header-date .se-filter-chip-chev{
+  display:none !important;
+}
+body.su-module .su-header-filter-form{
+  display:contents;
+}
+body.su-module .su-header-filter-form > script{
+  display:none;
+}
+body.su-module .su-header-tools .su-header-location,
+body.su-module .su-header-tools .su-header-cash-date{
+  flex:0 0 auto;
+  width:168px;
+  min-width:150px;
+  margin:0;
+  position:relative;
+  z-index:40;
+}
+body.su-module .su-header-tools .su-header-cash-date{
+  width:220px;
+  min-width:180px;
+}
+body.su-module .su-header-tools .su-header-location > .se-filter-chip-label,
+body.su-module .su-header-tools .su-header-cash-date > .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:#6B7280;
+  text-transform:none;
+  letter-spacing:0;
+  line-height:1.2;
+}
+body.su-module .su-header-tools .su-header-location .se-filter-chip-control,
+body.su-module .su-header-tools .su-header-cash-date .se-filter-chip-control{
+  min-height:42px;
+  height:42px;
+  border-radius:999px;
+  border:1px solid #E5E7EB !important;
+  background:#fff !important;
+  overflow:visible;
+}
+body.su-module .su-header-tools .su-header-location .se-filter-chip-trigger,
+body.su-module .su-header-tools .su-header-cash-date .an-range-trigger{
+  height:42px;
+  min-height:42px;
+  font:600 14px Inter,system-ui,sans-serif;
+  color:#0F172A;
 }
 body.su-module .su-home-btn{
   display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;
@@ -135,29 +236,10 @@ body.su-module header.se-sales-header.su-header{
   min-width:0;
 }
 body.su-module .se-sales-header-hero{display:none}
-body.su-module .se-sales-header-card{
-  background:#fff;border:1px solid #EEF2F7;border-radius:20px;
-  box-shadow:0 8px 30px rgba(15,23,42,.04);overflow:visible;
-  width:100%;
-}
 body.su-module .se-filter-listbox-option.is-selected{background:var(--acc-bg);color:var(--acc)}
 body.su-module .se-filter-listbox-option.is-selected:hover,
 body.su-module .se-filter-listbox-option.is-selected:focus{background:rgba(37,99,235,.12)}
 body.su-module .se-filter-chip--listbox.is-open .se-filter-chip-control{border-color:#93C5FD}
-body.su-module .se-sales-header-filters{padding:20px 24px 24px;width:100%;box-sizing:border-box}
-body.su-module .se-sales-header-filters:has(#se-date-entry-wrap, #se-cash-date-range-host){
-  justify-content:flex-end;
-}
-body.su-module .se-sales-header-filters:has(#se-date-entry-wrap, #se-cash-date-range-host) .sr-topbar-filters{
-  width:auto;
-  flex:0 0 auto;
-}
-body.su-module .se-sales-header-filters #se-date-entry-wrap,
-body.su-module .se-sales-header-filters #se-cash-date-range-host{
-  margin-left:auto;
-  flex:0 0 auto;
-}
-body.su-module .sr-topbar-filters{width:100%}
 body.su-module .se-filter-chip-label{text-transform:none;letter-spacing:0;font-size:12px;font-weight:500;color:#6B7280}
 body.su-module .se-filter-chip--company .se-filter-chip-label,
 body.su-module .se-filter-chip--location .se-filter-chip-label{color:#6B7280}
@@ -522,13 +604,21 @@ body.su-module .se-sales-outlet-panel .entry-table thead th .se-particulars-head
   body.su-module header.se-sales-header.su-header{padding:24px 16px 0}
   body.su-module .su-header-top{flex-direction:column;gap:16px;flex-wrap:nowrap}
   body.su-module .su-header-tools{
-    align-self:stretch;justify-content:flex-start;margin-left:0;
+    align-self:stretch;justify-content:flex-end;margin-left:0;
     flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;
     max-width:100%;
   }
+  body.su-module .su-header-tools .su-header-date,
+  body.su-module .su-header-tools .su-header-location,
+  body.su-module .su-header-tools .su-header-cash-date{
+    width:min(168px, 58vw);
+    min-width:140px;
+  }
+  body.su-module .su-header-tools .su-header-cash-date{
+    width:min(220px, 70vw);
+  }
   body.su-module .su-title h1{font-size:28px}
   body.su-module .content.se-content{padding:16px 16px 32px}
-  body.su-module .se-sales-header-filters{padding:16px}
 }
 @media(max-width:640px){
   body.su-module .su-title-icon{display:none}

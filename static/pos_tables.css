@@ -150,13 +150,35 @@ body.pos-module .de-main-inner.pos-tables-page{
   cursor:not-allowed;
 }
 
-/* KPIs */
+/* KPIs — purchase/expense card chrome via hbe_kpi.css; keep POS grid + unsettled behavior */
+body.pos-module .pl-summary-row.pos-tables-kpis,
 .pos-tables-kpis{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:12px;
+  gap:14px;
   margin-bottom:18px;
   animation:posFadeUp .5s ease .04s both;
+}
+.pos-tables-kpis .pos-kpi{
+  margin:0;
+  width:100%;
+  transition:transform .2s ease, box-shadow .2s ease, border-color .15s ease;
+}
+.pos-tables-kpis .pos-kpi:hover{
+  transform:translateY(-2px);
+  box-shadow:0 12px 28px rgba(15,23,42,.07);
+}
+.pos-kpi[data-kpi="unsettled"][hidden]{display:none !important}
+.pos-kpi[data-kpi="unsettled"].is-clickable{
+  cursor:pointer;
+}
+.pos-kpi[data-kpi="unsettled"].is-clickable:focus-visible{
+  outline:2px solid var(--pos-primary);
+  outline-offset:2px;
+}
+body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
+.pos-tables-kpis.has-unsettled-kpi{
+  grid-template-columns:repeat(5,minmax(0,1fr));
 }
 
 /* Kitchen Orders Pending — soft orange alert above the floor toolbar.
@@ -1134,80 +1156,7 @@ body.pos-module .de-main-inner.pos-tables-page{
   .pos-kot-modal-send-all{width:100%;justify-content:center}
 }
 
-.pos-kpi{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  padding:14px 16px;
-  background:var(--pos-card);
-  border:1px solid var(--pos-border);
-  border-radius:18px;
-  box-shadow:var(--pos-shadow);
-  transition:transform .2s ease, box-shadow .2s ease;
-}
-.pos-kpi:hover{
-  transform:translateY(-2px);
-  box-shadow:0 12px 28px rgba(15,23,42,.07);
-}
-.pos-kpi-icon{
-  width:40px;height:40px;
-  border-radius:12px;
-  display:grid;place-items:center;
-  flex:0 0 auto;
-}
-.pos-kpi-icon svg{
-  width:18px;height:18px;
-  stroke:currentColor;fill:none;stroke-width:2;
-  stroke-linecap:round;stroke-linejoin:round;
-}
-.pos-kpi-icon--blue{background:var(--pos-primary-soft);color:var(--pos-primary)}
-.pos-kpi-icon--green{background:var(--pos-green-soft);color:var(--pos-green)}
-.pos-kpi-icon--orange{background:var(--pos-orange-soft);color:var(--pos-orange)}
-.pos-kpi-icon--purple{background:var(--pos-purple-soft);color:var(--pos-purple)}
-.pos-kpi-icon--rose{background:var(--pos-rose-soft);color:var(--pos-rose)}
-.pos-kpi-icon--gray{background:var(--pos-gray-soft);color:var(--pos-gray)}
-.pos-kpi-icon--rupee{
-  font-size:18px;
-  font-weight:750;
-  line-height:1;
-  letter-spacing:-.02em;
-}
-.pos-kpi-label{
-  font-size:12px;
-  font-weight:600;
-  color:var(--pos-muted);
-  letter-spacing:.01em;
-}
-.pos-kpi-value{
-  margin-top:2px;
-  font-size:22px;
-  font-weight:750;
-  letter-spacing:-.03em;
-  color:var(--pos-text);
-  line-height:1.1;
-}
-.pos-kpi-meta{
-  margin-top:4px;
-  font-size:11px;
-  font-weight:600;
-  color:var(--pos-muted);
-  letter-spacing:.01em;
-}
-.pos-kpi[data-kpi="sales"] .pos-kpi-value,
-.pos-kpi[data-kpi="unsettled"] .pos-kpi-value{
-  font-size:20px;
-}
-.pos-kpi[data-kpi="unsettled"][hidden]{display:none !important}
-.pos-kpi[data-kpi="unsettled"].is-clickable{
-  cursor:pointer;
-}
-.pos-kpi[data-kpi="unsettled"].is-clickable:focus-visible{
-  outline:2px solid var(--pos-primary);
-  outline-offset:2px;
-}
-.pos-tables-kpis.has-unsettled-kpi{
-  grid-template-columns:repeat(5,minmax(0,1fr));
-}
+/* legacy pos-kpi chrome removed — cards use hbe_kpi / pl-summary styles */
 
 /* Toolbar */
 .pos-tables-toolbar{
@@ -1489,11 +1438,18 @@ body.pos-module .de-main-inner.pos-tables-page{
   text-align:left;
   width:auto;
 }
-.pos-floor[data-view="list"] .pos-table-badge{
+.pos-floor[data-view="list"] .pos-table-tile-foot{
   grid-column:3;
   grid-row:1 / span 2;
   margin:0;
   align-self:center;
+  width:auto;
+}
+.pos-floor[data-view="list"] .pos-table-tile-foot::before{
+  display:none;
+}
+.pos-floor[data-view="list"] .pos-table-badge{
+  margin:0;
 }
 .pos-floor[data-view="list"] .pos-table-merge-tag{
   grid-column:4;
@@ -1524,9 +1480,10 @@ body.pos-module .de-main-inner.pos-tables-page{
   cursor:pointer;
   transition:transform .2s ease, box-shadow .2s ease, border-color .2s ease;
 }
-.pos-table-tile .pos-table-badge{
+.pos-table-tile .pos-table-tile-foot{
   margin-top:auto;
-  align-self:center;
+  align-self:stretch;
+  width:100%;
 }
 .pos-table-tile:hover{
   transform:translateY(-3px);
@@ -1556,9 +1513,13 @@ body.pos-module .de-main-inner.pos-tables-page{
   pointer-events:none;
   white-space:nowrap;
 }
-.pos-table-tile--merged .pos-table-badge{
-  align-self:flex-start;
+.pos-table-tile--merged .pos-table-tile-foot{
+  align-self:stretch;
   margin-top:auto;
+}
+.pos-table-tile--merged .pos-table-badge{
+  align-self:auto;
+  margin-top:0;
 }
 .pos-floor[data-view="list"] .pos-table-merge-tag{
   position:static;
@@ -1670,19 +1631,57 @@ body.pos-module .de-main-inner.pos-tables-page{
   text-align:center;
   width:100%;
 }
+.pos-table-tile-foot{
+  display:flex;
+  align-items:center;
+  justify-content:flex-start;
+  gap:0;
+  margin-top:auto;
+  min-height:26px;
+  width:100%;
+  position:relative;
+  overflow:visible;
+}
+/* Status pill glides left → right on hover (same as hotel room tiles). */
+.pos-table-tile-foot::before{
+  content:"";
+  display:block;
+  flex:0 0 auto;
+  width:0;
+  height:1px;
+  transition:width .85s cubic-bezier(.22,1,.36,1);
+}
+.pos-floor:not([data-view="list"]) .pos-table-tile:hover .pos-table-tile-foot::before,
+.pos-floor:not([data-view="list"]) .pos-table-tile:focus-visible .pos-table-tile-foot::before{
+  /* Leave room for longest status label (“Cleaning” / “Inactive”). */
+  width:calc(100% - 5.75rem);
+}
 .pos-table-badge{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  align-self:center;
-  margin-top:14px;
+  align-self:auto;
+  flex:0 0 auto;
+  margin-top:0;
   min-height:26px;
+  height:26px;
   padding:0 10px;
   border-radius:999px;
   font:700 11px/1 Inter,system-ui,sans-serif;
   letter-spacing:.02em;
   text-align:center;
   box-sizing:border-box;
+  position:relative;
+  z-index:1;
+}
+@media (prefers-reduced-motion: reduce){
+  .pos-table-tile-foot::before{
+    transition:none;
+  }
+  .pos-floor:not([data-view="list"]) .pos-table-tile:hover .pos-table-tile-foot::before,
+  .pos-floor:not([data-view="list"]) .pos-table-tile:focus-visible .pos-table-tile-foot::before{
+    width:0;
+  }
 }
 .pos-table-badge--available{background:#DCFCE7;color:#15803D}
 .pos-table-badge--occupied{background:#FFEDD5;color:#C2410C}
@@ -2076,6 +2075,8 @@ body.pos-module .de-main-inner.pos-tables-page{
 }
 
 @media (max-width:1180px){
+  body.pos-module .pl-summary-row.pos-tables-kpis,
+  body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   .pos-tables-kpis,
   .pos-tables-kpis.has-unsettled-kpi{grid-template-columns:repeat(3,minmax(0,1fr))}
   .pos-quick-actions-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
@@ -2086,6 +2087,8 @@ body.pos-module .de-main-inner.pos-tables-page{
   .pos-tables-header-actions{justify-content:stretch}
   .pos-tables-btn-primary,
   .pos-tables-btn-ghost{width:100%;justify-content:center}
+  body.pos-module .pl-summary-row.pos-tables-kpis,
+  body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   .pos-tables-kpis,
   .pos-tables-kpis.has-unsettled-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pos-quick-actions-grid{grid-template-columns:1fr}

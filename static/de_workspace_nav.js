@@ -1018,8 +1018,24 @@
     if(!Array.isArray(ids)) ids = [];
 
     document.querySelectorAll('.de-sidebar').forEach(function(sidebar){
-      var activeGroup = sidebar.querySelector('.de-nav-group.is-child-active');
-      var preferredId = activeGroup && activeGroup.id ? activeGroup.id : '';
+      var preferredId = '';
+      try{
+        var locPath = window.location.pathname || '';
+        sidebar.querySelectorAll('a.de-nav-subitem.is-active, a.de-nav-subitem[aria-current="page"]').forEach(function(link){
+          if(preferredId) return;
+          var hrefPath = '';
+          try{ hrefPath = new URL(link.getAttribute('href') || '', window.location.origin).pathname; }
+          catch(eHref){ hrefPath = String(link.getAttribute('href') || '').split('?')[0]; }
+          if(hrefPath === locPath){
+            var matchedGroup = link.closest('.de-nav-group');
+            if(matchedGroup && matchedGroup.id) preferredId = matchedGroup.id;
+          }
+        });
+      } catch(ePref){}
+      if(!preferredId){
+        var activeGroup = sidebar.querySelector('.de-nav-group.is-child-active');
+        preferredId = activeGroup && activeGroup.id ? activeGroup.id : '';
+      }
       if(!preferredId){
         for(var i = ids.length - 1; i >= 0; i--){
           if(!ids[i]) continue;
