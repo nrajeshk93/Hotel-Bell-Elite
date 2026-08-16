@@ -372,6 +372,9 @@ body.ep-module .ep-combobox-listbox .se-filter-chip-chev svg, body.su-module .ep
   stroke-linecap:round;
   stroke-linejoin:round;
 }
+body.ep-module .ep-combobox-listbox.has-value:not(.is-open) .se-filter-chip-chev, body.su-module .ep-combobox-listbox.has-value:not(.is-open) .se-filter-chip-chev, body.pos-module .ep-combobox-listbox.has-value:not(.is-open) .se-filter-chip-chev, body.hotel-rooms-module .ep-combobox-listbox.has-value:not(.is-open) .se-filter-chip-chev, body.hotel-room-detail-module .ep-combobox-listbox.has-value:not(.is-open) .se-filter-chip-chev, body.hotel-reservations-module .ep-combobox-listbox.has-value:not(.is-open) .se-filter-chip-chev{
+  display:none;
+}
 body.ep-module .ep-combobox-listbox.is-open, body.su-module .ep-combobox-listbox.is-open, body.pos-module .ep-combobox-listbox.is-open, body.hotel-rooms-module .ep-combobox-listbox.is-open, body.hotel-room-detail-module .ep-combobox-listbox.is-open, body.hotel-reservations-module .ep-combobox-listbox.is-open{
   z-index:80;
 }

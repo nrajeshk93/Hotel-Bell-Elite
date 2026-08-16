@@ -18,6 +18,41 @@ body.su-module #purchase-ledger-filter-form.sr-topbar-filters{
   overflow:visible;
 }
 
+/* One control height for Type / Search / Supplier / Category / Payment / Date */
+body.su-module #purchase-ledger-filter-form{
+  --pl-filter-control-h:44px;
+}
+body.su-module #purchase-ledger-filter-form .pl-kind-filter-tabs.cp-view-tabs,
+body.su-module #purchase-ledger-filter-form .se-filter-chip-control{
+  box-sizing:border-box;
+  height:var(--pl-filter-control-h);
+  min-height:var(--pl-filter-control-h);
+  max-height:var(--pl-filter-control-h);
+  border-radius:8px;
+  overflow:hidden;
+}
+body.su-module #purchase-ledger-filter-form .pl-kind-filter-tabs.cp-view-tabs{
+  border-radius:8px;
+}
+body.su-module #purchase-ledger-filter-form .se-filter-chip-trigger,
+body.su-module #purchase-ledger-filter-form .pl-search-input,
+body.su-module #purchase-ledger-filter-form .an-range-wrap,
+body.su-module #purchase-ledger-filter-form .an-range-trigger{
+  box-sizing:border-box;
+  height:100%;
+  min-height:0;
+  max-height:100%;
+  line-height:1.2;
+  padding-top:0;
+  padding-bottom:0;
+}
+body.su-module #purchase-ledger-filter-form .an-range-wrap{
+  display:flex;
+  align-items:stretch;
+  width:max-content;
+  min-width:0;
+}
+
 /* Expense ledger header filters — match Add menu field listbox design */
 body.su-module #purchase-ledger-filter-form .pl-kind-filter-host{
   position:relative;
@@ -46,7 +81,7 @@ body.su-module #purchase-ledger-filter-form .pl-kind-filter-tabs.cp-view-tabs{
   box-sizing:border-box;
   background:#F1F5F9;
   border:1px solid var(--border,#E2E8F0);
-  border-radius:12px;
+  border-radius:8px;
 }
 body.su-module #purchase-ledger-filter-form .pl-kind-filter-tabs .pl-kind-filter-tab{
   display:inline-flex;
@@ -83,7 +118,9 @@ body.su-module #purchase-ledger-filter-form .pl-header-field .se-filter-chip-lab
 }
 body.su-module #purchase-ledger-filter-form .pl-header-field-listbox .se-filter-chip-control{
   width:100%;
-  min-height:44px;
+  height:var(--pl-filter-control-h);
+  min-height:var(--pl-filter-control-h);
+  max-height:var(--pl-filter-control-h);
   background:#fff !important;
   border:1px solid var(--border,#E2E8F0) !important;
   border-radius:8px;
@@ -95,7 +132,8 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox .se-filter-
   flex:1 1 auto;
   min-width:0;
   width:100%;
-  min-height:44px;
+  height:100%;
+  min-height:0;
   display:flex;
   align-items:center;
   padding:0 8px 0 12px;
@@ -156,10 +194,10 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox .se-filter-
 
 body.su-module #purchase-ledger-filter-form .pl-search-chip{
   position:relative;
-  flex:1 1 160px;
+  flex:1 1 180px;
   width:auto;
   min-width:140px;
-  max-width:220px;
+  max-width:none;
   z-index:20;
 }
 body.su-module #purchase-ledger-filter-form .pl-search-chip .pl-header-search,
@@ -168,7 +206,7 @@ body.su-module #purchase-ledger-filter-form .pl-search-chip .pl-search-input{
   min-width:0;
   width:100%;
   height:100%;
-  min-height:44px;
+  min-height:0;
   border:0 !important;
   background:transparent !important;
   box-shadow:none !important;
@@ -192,7 +230,7 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-c
 body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox.pl-header-field-listbox{
   flex:1 1 260px;
   min-width:220px;
-  max-width:min(360px,100%);
+  max-width:none;
 }
 /* Compact chips — short labels; free space for supplier + date */
 body.su-module #purchase-ledger-filter-form #purchase-ledger-payment-listbox.pl-header-field-listbox,
@@ -220,34 +258,39 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-c
 body.su-module .pl-date-range-host.pl-header-field{
   flex:0 0 auto;
   min-width:0;
-  width:auto;
-  max-width:none;
+  width:max-content;
+  max-width:100%;
   z-index:30;
   margin-left:0;
   overflow:visible;
 }
 body.su-module .pl-date-range-host.pl-header-field .se-filter-chip--date-range{
   flex:none;
+  display:block;
   min-width:0;
-  width:auto;
-  max-width:none;
+  width:max-content;
+  max-width:100%;
 }
 body.su-module .pl-date-range-host.pl-header-field .se-filter-chip--date-range .se-filter-chip-control{
   overflow:visible;
-  min-height:44px;
-  height:44px;
+  width:max-content;
+  max-width:100%;
+  height:var(--pl-filter-control-h);
+  min-height:var(--pl-filter-control-h);
+  max-height:var(--pl-filter-control-h);
 }
 body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
 body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
   min-width:0;
-  width:auto;
-  max-width:none;
-  min-height:44px;
-  height:44px;
+  width:max-content;
+  max-width:100%;
+  height:100%;
+  min-height:0;
   padding:0 12px 0 14px;
   font-size:13px;
   font-weight:600;
   white-space:nowrap;
+  justify-content:flex-start;
 }
 body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .se-filter-chip-control{
   border-color:#93C5FD !important;
@@ -258,7 +301,7 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
   body.su-module #purchase-ledger-filter-form .pl-search-chip{
     flex:1 1 150px;
     min-width:140px;
-    max-width:200px;
+    max-width:none;
   }
   body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
     flex:1 1 140px;
@@ -269,7 +312,7 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
   body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox.pl-header-field-listbox{
     flex:1 1 240px;
     min-width:200px;
-    max-width:min(320px,100%);
+    max-width:none;
   }
   body.su-module #purchase-ledger-filter-form #purchase-ledger-payment-listbox.pl-header-field-listbox,
   body.su-module #purchase-ledger-filter-form #purchase-ledger-category-listbox.pl-header-field-listbox{
@@ -312,15 +355,16 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
     max-width:150px;
   }
   body.su-module .pl-date-range-host.pl-header-field{
-    flex:1 1 200px;
-    width:auto;
-    min-width:180px;
+    flex:0 0 auto;
+    width:max-content;
+    min-width:0;
+    max-width:100%;
   }
   body.su-module .pl-date-range-host.pl-header-field .an-range-trigger,
   body.su-module #purchase-ledger-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger{
     min-width:0;
-    width:100%;
-    max-width:none;
+    width:max-content;
+    max-width:100%;
   }
 }
 @media (max-width:720px){
@@ -332,14 +376,12 @@ body.su-module .pl-date-range-host.pl-header-field .se-filter-chip.is-filtered .
     align-items:flex-end;
     width:100%;
   }
-  body.su-module #purchase-ledger-filter-form .se-filter-chip,
-  body.su-module #purchase-ledger-filter-form .se-filter-chip--date,
   body.su-module #purchase-ledger-filter-form .se-filter-chip-date-host,
   body.su-module #purchase-ledger-filter-form .pl-date-range-host.pl-header-field{
-    flex:1 1 160px;
-    width:auto;
-    min-width:140px;
-    max-width:none;
+    flex:0 0 auto;
+    width:max-content;
+    min-width:0;
+    max-width:100%;
   }
   body.su-module #purchase-ledger-filter-form .pl-kind-filter-host{
     flex:1 1 100%;
@@ -387,7 +429,8 @@ body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox
   flex:1 1 auto;
   min-width:0;
   width:100%;
-  min-height:44px;
+  height:100%;
+  min-height:0;
   font-size:13px;
   font-weight:600;
   padding:0 4px 0 12px;
@@ -414,9 +457,15 @@ body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox.is
 body.su-module #purchase-ledger-filter-form #purchase-ledger-supplier-listbox .se-filter-listbox{
   z-index:100;
 }
-body.su-module #purchase-ledger-filter-form .pl-header-field-listbox.ep-combobox-listbox.is-open .se-filter-chip-chev{
-  color:#2563EB;
-  transform:rotate(180deg);
+body.su-module #purchase-ledger-filter-form .se-filter-chip-chev,
+body.su-module #purchase-ledger-filter-form .an-range-chev{
+  display:none !important;
+}
+body.su-module #purchase-ledger-filter-form input.se-filter-chip-combobox::-webkit-search-decoration,
+body.su-module #purchase-ledger-filter-form input.se-filter-chip-combobox::-webkit-search-results-button,
+body.su-module #purchase-ledger-filter-form input.se-filter-chip-combobox::-webkit-search-results-decoration{
+  display:none;
+  -webkit-appearance:none;
 }
 body.su-module .pl-supplier-filter-listbox .se-filter-listbox{
   padding:6px;
@@ -772,7 +821,17 @@ body.su-module .pl-add-category-row{margin-bottom:14px}
 body.su-module .pl-add-category-row .staff-field--inline{margin-bottom:0;min-width:0}
 body.su-module .pl-add-category-row .se-filter-chip{width:100%}
 body.su-module #pl-add-purchase-modal .se-filter-chip{width:100%}
-body.su-module #pl-add-purchase-modal .se-filter-chip-control{width:100%}
+body.su-module #pl-add-purchase-modal .se-filter-chip-control{width:100%;position:relative}
+body.su-module #pl-add-purchase-modal .ep-combobox-listbox .se-filter-chip-chev{
+  display:none !important;
+}
+body.su-module #pl-add-purchase-modal input.se-filter-chip-combobox::-webkit-search-decoration,
+body.su-module #pl-add-purchase-modal input.se-filter-chip-combobox::-webkit-search-results-button,
+body.su-module #pl-add-purchase-modal input.se-filter-chip-combobox::-webkit-search-results-decoration,
+body.su-module #pl-add-purchase-modal input.se-filter-chip-combobox::-webkit-search-cancel-button{
+  display:none;
+  -webkit-appearance:none;
+}
 body.su-module #pl-add-purchase-modal .se-filter-listbox{
   left:0;
   right:0;

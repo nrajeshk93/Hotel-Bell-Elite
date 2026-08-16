@@ -138,6 +138,44 @@
     return root.querySelector('input.se-filter-chip-trigger, input.se-filter-chip-combobox');
   }
 
+  function optionDisplayLabel(option){
+    if (!option) return '';
+    var labelled = String(option.getAttribute('data-label') || '').trim();
+    if (labelled) return labelled;
+    var title = option.querySelector(
+      '.ep-listbox-option-title, .staff-supplier-option-name'
+    );
+    if (title) {
+      var titled = String(title.textContent || '').replace(/\s+/g, ' ').trim();
+      if (titled) return titled;
+    }
+    return String(option.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function selectedOption(root){
+    var list = listEl(root);
+    if (list) {
+      return (
+        list.querySelector('.se-filter-listbox-option.is-selected') ||
+        list.querySelector('.se-filter-listbox-option[aria-selected="true"]')
+      );
+    }
+    return root
+      ? root.querySelector('.se-filter-listbox-option.is-selected')
+      : null;
+  }
+
+  function optionMatchingValue(root, value){
+    var list = listEl(root);
+    if (!list || value == null || value === '') return null;
+    var wanted = String(value);
+    var opts = list.querySelectorAll('.se-filter-listbox-option');
+    for (var i = 0; i < opts.length; i++) {
+      if (String(opts[i].getAttribute('data-value') || '') === wanted) return opts[i];
+    }
+    return null;
+  }
+
   function searchEl(root){
     var list = listEl(root);
     return (list && list.querySelector('.ep-listbox-search')) ||
@@ -212,15 +250,18 @@
   function restoreComboboxLabel(root){
     var input = comboboxInput(root);
     if (!input) return;
-    var selected = root.querySelector('.se-filter-listbox-option.is-selected');
-    var label = selected
-      ? (selected.getAttribute('data-label') || selected.textContent || '').trim()
-      : '';
+    var hidden = root.querySelector('input[type="hidden"]');
+    var hiddenVal = hidden ? String(hidden.value || '').trim() : '';
+    var selected = selectedOption(root) || optionMatchingValue(root, hiddenVal);
+    var label = optionDisplayLabel(selected);
     if (!label) {
-      var hidden = root.querySelector('input[type="hidden"]');
-      label = hidden ? String(hidden.value || '').trim() : '';
+      var current = String(input.value || '').trim();
+      /* Never show the stored id (e.g. "37") as the combobox caption. */
+      label = current && current !== hiddenVal ? current : '';
     }
     input.value = label;
+    input.classList.toggle('is-placeholder', !hiddenVal);
+    if (root) root.classList.toggle('has-value', !!hiddenVal);
     if (label) input.setAttribute('title', label);
     else input.setAttribute('title', input.getAttribute('placeholder') || '');
   }
@@ -635,6 +676,7 @@
         valueEl.classList.add('is-placeholder', 'staff-supplier-placeholder');
       }
     }
+    if (root) root.classList.toggle('has-value', !!value);
   }
 
   function isOptionDisabled(option){
@@ -651,7 +693,7 @@
     ) return;
     var list = listEl(root);
     var value = option.getAttribute('data-value') || '';
-    var label = (option.getAttribute('data-label') || option.textContent || '').trim();
+    var label = optionDisplayLabel(option);
     updateDisplay(root, label, value);
     if (list) {
       list.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
@@ -711,6 +753,7 @@
     root.__epListboxBound = true;
 
     if (combo) {
+      restoreComboboxLabel(root);
       combo.addEventListener('mousedown', function(e){
         e.stopPropagation();
         if (!root.classList.contains('is-open')) {
@@ -934,12 +977,22 @@
     if (input) input.value = value;
     var combo = comboboxInput(root);
     if (combo) {
-      combo.value = value ? (label || '') : '';
+      var display = '';
+      if (value) {
+        display = String(label || '').trim();
+        if (!display || display === String(value)) {
+          display = optionDisplayLabel(optionMatchingValue(root, value)) || (
+            display !== String(value) ? display : ''
+          );
+        }
+      }
+      combo.value = display;
       combo.classList.toggle('is-placeholder', !value);
-      var tip = value ? (label || '') : (combo.getAttribute('placeholder') || '');
+      var tip = display || combo.getAttribute('placeholder') || '';
       if (tip) combo.setAttribute('title', tip);
       else combo.removeAttribute('title');
     }
+    root.classList.toggle('has-value', !!value);
     var valueEl = root.querySelector('.se-filter-chip-value');
     if (valueEl) {
       valueEl.textContent = label;
