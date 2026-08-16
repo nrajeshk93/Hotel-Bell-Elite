@@ -49,6 +49,13 @@ body.hotel-room-detail-module .de-content{
   font:var(--hrd-value-font, 600 14px Inter,system-ui,sans-serif);
   color:var(--hrd-value-color, #0F172A);
 }
+#hrd-checkin-modal .hrd-input-split > input[type="tel"],
+#hotel-room-detail-page .hrd-input-split > input[type="tel"]{
+  font:600 14px Inter,system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.02em;
+  padding:9px 12px;
+}
 #hrd-checkin-modal .hotel-date-value.is-placeholder,
 #hrd-checkin-modal .ep-form-listbox .se-filter-chip-value.is-placeholder,
 #hrd-transfer-modal .ep-form-listbox .se-filter-chip-value.is-placeholder{
@@ -750,16 +757,6 @@ body.hotel-room-detail-module .de-content{
   font:500 13px Inter,system-ui,sans-serif;
   color:#6B7280;
 }
-.hrd-guest-status-pill{
-  display:inline-flex;
-  align-items:center;
-  min-height:26px;
-  padding:0 10px;
-  border-radius:999px;
-  background:#ECFDF5;
-  color:#047857;
-  font:500 12px Inter,system-ui,sans-serif;
-}
 .hrd-btn--block{
   width:100%;
 }
@@ -821,6 +818,14 @@ body.hotel-room-detail-module .de-content{
 .hrd-dl--guest-meta{
   padding-bottom:20px;
   border-bottom:1px solid var(--hrd-border);
+}
+#hrd-guest-reservation-wrap[hidden]{
+  display:none !important;
+}
+#hrd-guest-booking,
+#hrd-guest-reservation{
+  overflow-wrap:anywhere;
+  word-break:break-word;
 }
 .hrd-dl--guest-stay{
   padding-top:4px;
@@ -1595,6 +1600,15 @@ body.hrd-transfer-open .sidebar{
   font:500 12px Inter,system-ui,sans-serif;
   color:#64748B;
 }
+.hrd-ci-room-tariff{
+  margin:0;
+  padding:10px 12px;
+  border-radius:10px;
+  background:#F8FAFC;
+  border:1px solid #E2E8F0;
+  font:600 14px Inter,system-ui,sans-serif;
+  color:#0F172A;
+}
 .hrd-ci-nightly-list{
   display:flex;
   flex-direction:column;
@@ -1763,7 +1777,27 @@ button.hrd-ci-nightly-date:focus-visible{
 }
 .hrd-form-grid--1{grid-template-columns:1fr}
 .hrd-form-grid--2{grid-template-columns:repeat(2, minmax(0, 1fr))}
+.hrd-form-grid--mobile-email{
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 1100px){
+  .hrd-form-grid--mobile-email{
+    grid-template-columns:1fr;
+  }
+}
 .hrd-form-grid--3{grid-template-columns:repeat(3, minmax(0, 1fr))}
+#hrd-checkin-modal .hrd-field.hrd-field--grow,
+#hrd-reserve-modal .hrd-field.hrd-field--grow{
+  grid-column:1 / -1;
+}
+.hrd-field-autosize-sizer{
+  position:absolute;
+  left:-9999px;
+  top:0;
+  white-space:pre;
+  visibility:hidden;
+  pointer-events:none;
+}
 .hrd-field{
   display:flex;
   flex-direction:column;
@@ -1818,9 +1852,11 @@ button.hrd-ci-nightly-date:focus-visible{
 }
 .hrd-input-split{
   display:grid;
-  grid-template-columns:96px minmax(0, 1fr);
+  grid-template-columns:80px minmax(12ch, 1fr);
   gap:8px;
   align-items:end;
+  min-width:0;
+  overflow:visible;
 }
 .hrd-input-split .hrd-form-listbox--code .se-filter-chip-label{
   position:absolute;
@@ -1837,10 +1873,143 @@ button.hrd-ci-nightly-date:focus-visible{
   align-self:stretch;
   width:100%;
   min-width:0;
+  overflow:visible;
 }
 .hrd-input-split .hrd-form-listbox--code .se-filter-chip-control{
   min-height:44px;
   height:44px;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .se-filter-listbox,
+#hrd-ci-mobile-country-list.ep-listbox-portaled{
+  left:0;
+  right:auto;
+  width:320px;
+  min-width:320px;
+  max-width:min(320px, calc(100vw - 24px));
+  padding:8px;
+  overflow:hidden;
+  max-height:none;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .ep-listbox-search-wrap,
+#hrd-ci-mobile-country-list .ep-listbox-search-wrap{
+  padding:0 0 8px;
+  margin:0 0 6px;
+  border-bottom:1px solid #EEF2F7;
+  background:#fff;
+  position:sticky;
+  top:0;
+  z-index:2;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .ep-listbox-search,
+#hrd-ci-mobile-country-list .ep-listbox-search{
+  width:100%;
+  height:40px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  padding:0 12px;
+  font:500 14px Inter,system-ui,sans-serif;
+  color:#111827;
+  background:#F8FAFC;
+  outline:none;
+  box-sizing:border-box;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .ep-listbox-search:focus,
+#hrd-ci-mobile-country-list .ep-listbox-search:focus{
+  border-color:#2563EB;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .ep-listbox-options,
+#hrd-ci-mobile-country-list .ep-listbox-options{
+  max-height:min(240px, 40vh);
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .se-filter-listbox-option:not(.is-filtered-out),
+#hrd-ci-mobile-country-list .se-filter-listbox-option:not(.is-filtered-out){
+  display:flex !important;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:2px;
+  padding:10px 12px;
+  text-align:left;
+  white-space:normal;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .se-filter-listbox-option.is-filtered-out,
+#hrd-ci-mobile-country-list .se-filter-listbox-option.is-filtered-out{
+  display:none !important;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .ep-listbox-option-title,
+#hrd-ci-mobile-country-list .ep-listbox-option-title{
+  display:block;
+  width:100%;
+  font:600 14px Inter,system-ui,sans-serif;
+  color:#111827;
+  line-height:1.35;
+}
+#hrd-checkin-modal .hrd-form-listbox--code .ep-listbox-option-meta,
+#hrd-ci-mobile-country-list .ep-listbox-option-meta{
+  display:block;
+  width:100%;
+  font:500 12px Inter,system-ui,sans-serif;
+  color:#64748B;
+  line-height:1.3;
+}
+#hrd-checkin-modal .hrd-form-listbox--countries .se-filter-listbox,
+#hrd-ci-nationality-list.ep-listbox-portaled,
+#hrd-ci-country-list.ep-listbox-portaled{
+  left:0;
+  right:auto;
+  width:320px;
+  min-width:320px;
+  max-width:min(320px, calc(100vw - 24px));
+  padding:8px;
+  overflow:hidden;
+  max-height:none;
+}
+#hrd-checkin-modal .hrd-form-listbox--countries .ep-listbox-search-wrap,
+#hrd-ci-nationality-list .ep-listbox-search-wrap,
+#hrd-ci-country-list .ep-listbox-search-wrap{
+  padding:0 0 8px;
+  margin:0 0 6px;
+  border-bottom:1px solid #EEF2F7;
+  background:#fff;
+  position:sticky;
+  top:0;
+  z-index:2;
+}
+#hrd-checkin-modal .hrd-form-listbox--countries .ep-listbox-search,
+#hrd-ci-nationality-list .ep-listbox-search,
+#hrd-ci-country-list .ep-listbox-search{
+  width:100%;
+  height:40px;
+  border:1px solid #E5E7EB;
+  border-radius:10px;
+  padding:0 12px;
+  font:500 14px Inter,system-ui,sans-serif;
+  color:#111827;
+  background:#F8FAFC;
+  outline:none;
+  box-sizing:border-box;
+}
+#hrd-checkin-modal .hrd-form-listbox--countries .ep-listbox-search:focus,
+#hrd-ci-nationality-list .ep-listbox-search:focus,
+#hrd-ci-country-list .ep-listbox-search:focus{
+  border-color:#2563EB;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff;
+}
+#hrd-checkin-modal .hrd-form-listbox--countries .ep-listbox-options,
+#hrd-ci-nationality-list .ep-listbox-options,
+#hrd-ci-country-list .ep-listbox-options{
+  max-height:min(240px, 40vh);
+  overflow-y:auto;
+  overflow-x:hidden;
+}
+#hrd-checkin-modal .hrd-form-listbox--countries .se-filter-listbox-option.is-filtered-out,
+#hrd-ci-nationality-list .se-filter-listbox-option.is-filtered-out,
+#hrd-ci-country-list .se-filter-listbox-option.is-filtered-out{
+  display:none !important;
 }
 .hrd-input-split .hrd-form-listbox--code .se-filter-chip-trigger{
   min-height:44px;
@@ -1876,9 +2045,12 @@ button.hrd-ci-nightly-date:focus-visible{
   background:#fff;
   color:#0F172A;
   font:600 14px Inter,system-ui,sans-serif;
+  font-variant-numeric:tabular-nums;
+  letter-spacing:.01em;
   outline:none;
   box-sizing:border-box;
   width:100%;
+  min-width:0;
 }
 .hrd-dialog-body .hrd-form-listbox{
   width:100%;
@@ -1998,6 +2170,11 @@ button.hrd-ci-nightly-date:focus-visible{
   cursor:pointer;
   pointer-events:auto;
   opacity:1;
+}
+#hrd-checkin-modal .ep-combobox-listbox input.se-filter-chip-combobox,
+#hrd-transfer-modal .ep-combobox-listbox input.se-filter-chip-combobox{
+  cursor:text;
+  padding:0 8px 0 0;
 }
 #hrd-checkin-modal .ep-form-listbox:not(.hrd-ci-rate-plan-listbox) .se-filter-chip-value,
 #hrd-transfer-modal .ep-form-listbox .se-filter-chip-value{
@@ -2213,13 +2390,16 @@ button.hrd-ci-nightly-date:focus-visible{
 .hrd-field--customer-name{
   align-self:start;
 }
-.hrd-field--customer-mobile{
+.hrd-field--customer-mobile,
+.hrd-field--agency-name{
   position:relative;
   align-self:start;
   z-index:2;
   overflow:visible;
 }
-#hrd-checkin-modal .hrd-field--customer-mobile{
+#hrd-checkin-modal .hrd-field--customer-mobile,
+#hrd-checkin-modal .hrd-field--agency-name,
+#hrd-reserve-modal .hrd-field--agency-name{
   z-index:5;
 }
 .hrd-customer-suggest{

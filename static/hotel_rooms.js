@@ -122,7 +122,7 @@
     return parts.join(' ');
   }
 
-  /** Primary tile may be an empty shell after merge — pull guest from members. */
+  /** Own guest first; empty rooms fall back to the billing primary, then any peer. */
   function guestNameForBoardRoom(room, allRooms) {
     return guestDisplayName(guestStayForBoardRoom(room, allRooms));
   }
@@ -133,16 +133,26 @@
     var groupId = room && room.mergeGroupId ? String(room.mergeGroupId) : '';
     if (!groupId) return own;
     var rooms = allRooms || [];
-    var best = own;
-    for (var i = 0; i < rooms.length; i++) {
+    var primaryStay = null;
+    var peerStay = own;
+    var i;
+    for (i = 0; i < rooms.length; i++) {
       var peer = rooms[i];
       if (!peer || peer.id === room.id) continue;
       if (String(peer.mergeGroupId || '') !== groupId) continue;
-      var peerStay = peer.stay && typeof peer.stay === 'object' ? peer.stay : null;
-      if (guestDisplayName(peerStay)) return peerStay;
-      if (!best && peerStay) best = peerStay;
+      var stay = peer.stay && typeof peer.stay === 'object' ? peer.stay : null;
+      var isPrimary = !!(peer.isMergePrimary && !peer.isMergeMember);
+      if (isPrimary && guestDisplayName(stay)) {
+        primaryStay = stay;
+      }
+      if (guestDisplayName(stay) && !guestDisplayName(peerStay)) {
+        peerStay = stay;
+      } else if (!peerStay && stay) {
+        peerStay = stay;
+      }
     }
-    return best;
+    if (primaryStay) return primaryStay;
+    return peerStay;
   }
 
   function formatGuestTipDate(iso) {
@@ -514,7 +524,7 @@
   }
 
   function isExpectedCheckoutRoom(room, dateIso) {
-    if (!room || room.isMergeMember) return false;
+    if (!room) return false;
     if (mapStatus(room.status) !== 'occupied') return false;
     var day = toDateISO(dateIso) || todayISO();
     var checkOut = roomCheckOutISO(room);
@@ -1131,6 +1141,36 @@
     );
   }
 
+  function stayReservationDisplayId(stay) {
+    if (!stay || typeof stay !== 'object') return '';
+    var booking = String(stay.bookingNumber || stay.booking_number || '').trim();
+    var rid = String(
+      stay.reservationId ||
+        stay.reservation_id ||
+        stay.reservationBookingId ||
+        stay.reservation_booking_id ||
+        ''
+    ).trim();
+    if (!rid) return '';
+    if (booking && rid.toLowerCase() === booking.toLowerCase()) return '';
+    if (/^BK\d{8,}$/i.test(rid)) return '';
+    return rid;
+  }
+
+  function mergeGroupReservationId(groupRooms, allRooms) {
+    var rooms = groupRooms || [];
+    var i;
+    for (i = 0; i < rooms.length; i++) {
+      var room = rooms[i];
+      var stay = guestStayForBoardRoom(room, allRooms) || (room && room.stay);
+      var rid = stayReservationDisplayId(stay);
+      if (rid) return rid;
+      rid = stayReservationDisplayId(room && room.stay);
+      if (rid) return rid;
+    }
+    return '';
+  }
+
   function mergeGroupBookingName(groupRooms, allRooms) {
     var primary =
       (groupRooms || []).find(function (r) {
@@ -1145,6 +1185,15 @@
     var booking = stay && (stay.bookingNumber || stay.booking_number);
     if (booking) return String(booking);
     return 'Room ' + (primary.number || 'Booking');
+  }
+
+  function mergeGroupSectionTitle(groupRooms, allRooms) {
+    var name = mergeGroupBookingName(groupRooms, allRooms);
+    var rid = mergeGroupReservationId(groupRooms, allRooms);
+    if (rid && String(name || '').toLowerCase() !== rid.toLowerCase()) {
+      return String(name || 'Booking') + ' (' + rid + ')';
+    }
+    return name;
   }
 
   function renderFloor(root, layout) {
@@ -1187,7 +1236,7 @@
           }) || groupRooms[0];
         return {
           id: gid,
-          title: mergeGroupBookingName(groupRooms, rooms),
+          title: mergeGroupSectionTitle(groupRooms, rooms),
           rooms: groupRooms,
           anchor: roomNumberSortKey(primary && primary.number)
         };
@@ -1855,6 +1904,177 @@
     });
   }
 
+  function parseBoardAgencies(root) {
+    try {
+      var raw = root && root.getAttribute('data-agencies');
+      var list = raw ? JSON.parse(raw) : [];
+      return Array.isArray(list) ? list : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function filterBoardAgencies(agencies, query) {
+    var q = String(query || '').trim().toLowerCase();
+    var list = (agencies || []).filter(function (agency) {
+      return agency && String(agency.name || '').trim();
+    });
+    if (!q) return list;
+    return list.filter(function (agency) {
+      var name = String(agency.name || '').toLowerCase();
+      var gst = String(agency.gst || '').toLowerCase();
+      var address = String(agency.address || '').toLowerCase();
+      return name.indexOf(q) !== -1 || gst.indexOf(q) !== -1 || address.indexOf(q) !== -1;
+    });
+  }
+
+  function fillBoardAgencyFields(form, agency) {
+    if (!form || !agency) return;
+    if (form.elements.agencyName) form.elements.agencyName.value = agency.name || '';
+    if (form.elements.agencyGst) form.elements.agencyGst.value = agency.gst || '';
+    if (form.elements.agencyAddress) form.elements.agencyAddress.value = agency.address || '';
+    syncBoardAgencyBillingHint(form);
+  }
+
+  function bindBoardAgencySuggest(root, form) {
+    if (!form) return;
+    var nameInput = $('#hr-board-reserve-agency-name', form) || form.elements.agencyName;
+    var box = $('#hr-board-reserve-agency-suggest', form);
+    if (!nameInput || !box) return;
+    if (nameInput.getAttribute('data-agency-pick-bound') === '1') return;
+    nameInput.setAttribute('data-agency-pick-bound', '1');
+    nameInput.setAttribute('autocomplete', 'off');
+    nameInput.removeAttribute('list');
+
+    var timer = null;
+    var results = [];
+    var activeIndex = -1;
+
+    function closeSuggest() {
+      box.hidden = true;
+      box.innerHTML = '';
+      nameInput.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      results = [];
+    }
+
+    function applyAgency(agency, fromPick) {
+      if (!agency) return;
+      fillBoardAgencyFields(form, agency);
+      closeSuggest();
+      if (fromPick) showToast('Agency details loaded.');
+    }
+
+    function renderSuggest(list) {
+      results = list || [];
+      if (!results.length) {
+        closeSuggest();
+        return;
+      }
+      if (activeIndex < 0 || activeIndex >= results.length) activeIndex = 0;
+      box.hidden = false;
+      nameInput.setAttribute('aria-expanded', 'true');
+      box.innerHTML = results
+        .map(function (agency, idx) {
+          var meta = String(agency.gst || agency.address || '').trim();
+          return (
+            '<button type="button" class="hr-board-customer-opt' +
+            (idx === activeIndex ? ' is-active' : '') +
+            '" role="option" data-agency-index="' +
+            idx +
+            '">' +
+            '<span class="hr-board-customer-opt-mobile">' +
+            escapeHtml(agency.name || '') +
+            '</span>' +
+            (meta
+              ? '<span class="hr-board-customer-opt-name">' + escapeHtml(meta) + '</span>'
+              : '') +
+            '</button>'
+          );
+        })
+        .join('');
+    }
+
+    function showForQuery(query) {
+      renderSuggest(filterBoardAgencies(parseBoardAgencies(root), query));
+    }
+
+    function refreshFromApi() {
+      var api = root && root.getAttribute('data-agencies-api');
+      if (!api) return;
+      fetch(api, { credentials: 'same-origin', headers: apiHeaders() })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            return { ok: resp.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok || !result.data || !result.data.ok || !Array.isArray(result.data.agencies)) {
+            return;
+          }
+          try {
+            root.setAttribute('data-agencies', JSON.stringify(result.data.agencies));
+          } catch (err) {}
+          if (document.activeElement === nameInput) showForQuery(nameInput.value);
+        })
+        .catch(function () {});
+    }
+
+    nameInput.addEventListener('focus', function () {
+      showForQuery(nameInput.value);
+      refreshFromApi();
+    });
+    nameInput.addEventListener('click', function () {
+      showForQuery(nameInput.value);
+    });
+    nameInput.addEventListener('input', function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        showForQuery(nameInput.value);
+      }, 120);
+    });
+    nameInput.addEventListener('keydown', function (event) {
+      if (box.hidden || !results.length) return;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeIndex = (activeIndex + 1) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeIndex = (activeIndex - 1 + results.length) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'Enter' && activeIndex >= 0) {
+        event.preventDefault();
+        applyAgency(results[activeIndex], true);
+      } else if (event.key === 'Escape') {
+        closeSuggest();
+      }
+    });
+    box.addEventListener('mousedown', function (event) {
+      var btn = event.target.closest('[data-agency-index]');
+      if (!btn) return;
+      event.preventDefault();
+      var idx = Number(btn.getAttribute('data-agency-index'));
+      if (!isNaN(idx) && results[idx]) applyAgency(results[idx], true);
+    });
+    nameInput.addEventListener('blur', function () {
+      var needle = String(nameInput.value || '').trim().toLowerCase();
+      if (needle) {
+        var agencies = parseBoardAgencies(root);
+        for (var i = 0; i < agencies.length; i += 1) {
+          if (String(agencies[i].name || '').trim().toLowerCase() === needle) {
+            fillBoardAgencyFields(form, agencies[i]);
+            break;
+          }
+        }
+      }
+      setTimeout(closeSuggest, 150);
+    });
+    document.addEventListener('click', function (event) {
+      if (!form.contains(event.target)) closeSuggest();
+    });
+  }
+
   function bindBoardReserveCustomerSuggest(root, form) {
     if (!form) return;
     var mobileInput = $('#hr-board-reserve-mobile', form) || form.elements.mobile;
@@ -2139,6 +2359,7 @@
     bindBoardReservePartyToggle(form);
     bindBoardAgencyBilling(form);
     bindBoardReserveCustomerSuggest(root, form);
+    bindBoardAgencySuggest(root, form);
     bindBoardRoomsMultiSelect(form);
     bindBoardReserveDateChanges(form);
     setBoardReservePartyPanel(form, 'guest');
@@ -2232,6 +2453,9 @@
       stay.invoiceTo = agencyName;
       stay.billingName = agencyName;
     }
+    if (roomIds.length > 1 && !String(stay.reservationId || '').trim()) {
+      stay.reservationId = 'RSV-' + Date.now();
+    }
 
     var saveBtn = document.getElementById('hr-board-reserve-save');
     if (saveBtn) saveBtn.disabled = true;
@@ -2273,6 +2497,37 @@
     });
 
     chain
+      .then(function () {
+        if (roomIds.length < 2) return;
+        var primaryId = roomIds[0];
+        var mergeChain = Promise.resolve();
+        roomIds.slice(1).forEach(function (memberId) {
+          mergeChain = mergeChain.then(function () {
+            return fetch(roomDetailApi(primaryId), {
+              method: 'PUT',
+              credentials: 'same-origin',
+              headers: apiHeaders({ 'Content-Type': 'application/json' }),
+              body: JSON.stringify({
+                action: 'merge_rooms',
+                fromRoomId: memberId,
+                toRoomId: primaryId
+              })
+            })
+              .then(function (resp) {
+                return resp.json().then(function (data) {
+                  return { ok: resp.ok, data: data };
+                });
+              })
+              .then(function (result) {
+                if (result.ok && result.data && result.data.ok) return;
+                var err = String((result.data && result.data.error) || '');
+                if (/already billed|already.*merge/i.test(err)) return;
+                throw new Error(err || 'Failed to merge reserved rooms.');
+              });
+          });
+        });
+        return mergeChain;
+      })
       .then(function () {
         closeBoardReserveModal();
         return loadRooms(root);

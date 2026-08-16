@@ -4,17 +4,19 @@
 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
 {% endmacro %}
 
-{% macro ep_listbox(name, label, options, selected='', placeholder='Select...', searchable=false, field_id='', submit_form='', change_handler='', extra_class='', inline=false, data_emp='', data_date='', data_year='', data_month='', combobox=none) %}
+{% macro ep_listbox(name, label, options, selected='', placeholder='Select...', searchable=false, field_id='', submit_form='', change_handler='', extra_class='', inline=false, data_emp='', data_date='', data_year='', data_month='', combobox=none, search_placeholder='Search…') %}
 {% set fid = field_id or name %}
 {% set use_combobox = combobox if combobox is not none else searchable %}
 {% set ns = namespace(display=placeholder, has_value=false) %}
-{% for value, opt_label in options %}
-  {% if selected|string == value|string %}
-    {% set ns.display = opt_label %}
+{% for opt in options %}
+  {% set opt_value = opt[0] %}
+  {% set chip_label = opt[2] if opt|length > 2 else opt[1] %}
+  {% if selected|string == opt_value|string %}
+    {% set ns.display = chip_label %}
     {% set ns.has_value = true %}
   {% endif %}
 {% endfor %}
-<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-header-field-listbox{% if use_combobox %} ep-combobox-listbox{% endif %}{% if inline %} ep-inline-listbox{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}" data-se-listbox{% if use_combobox %} data-se-listbox-searchable data-se-listbox-combobox{% endif %}{% if submit_form %} data-se-listbox-submit="{{ submit_form }}"{% endif %}{% if change_handler %} data-se-listbox-change="{{ change_handler }}"{% endif %}{% if data_emp %} data-emp-id="{{ data_emp }}"{% endif %}{% if data_date %} data-date="{{ data_date }}"{% endif %}{% if data_year %} data-year="{{ data_year }}"{% endif %}{% if data_month %} data-month="{{ data_month }}"{% endif %} id="{{ fid }}-listbox">
+<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-header-field-listbox{% if use_combobox %} ep-combobox-listbox{% endif %}{% if inline %} ep-inline-listbox{% endif %}{% if extra_class %} {{ extra_class }}{% endif %}" data-se-listbox{% if searchable %} data-se-listbox-searchable{% endif %}{% if use_combobox %} data-se-listbox-combobox{% endif %}{% if submit_form %} data-se-listbox-submit="{{ submit_form }}"{% endif %}{% if change_handler %} data-se-listbox-change="{{ change_handler }}"{% endif %}{% if data_emp %} data-emp-id="{{ data_emp }}"{% endif %}{% if data_date %} data-date="{{ data_date }}"{% endif %}{% if data_year %} data-year="{{ data_year }}"{% endif %}{% if data_month %} data-month="{{ data_month }}"{% endif %} id="{{ fid }}-listbox">
   <label class="se-filter-chip-label" id="{{ fid }}-label" for="{{ fid }}-trigger">{{ label }}</label>
   <div class="se-filter-chip-control">
     <span class="se-filter-chip-icon" aria-hidden="true">{{ ep_listbox_payment_icon() }}</span>
@@ -43,9 +45,17 @@
     </span>
   </div>
   <div class="se-filter-listbox" id="{{ fid }}-list" role="listbox" aria-labelledby="{{ fid }}-label" hidden>
+    {% if searchable and not use_combobox %}
+    <div class="ep-listbox-search-wrap">
+      <input type="search" class="ep-listbox-search" placeholder="{{ search_placeholder }}" autocomplete="off" spellcheck="false" aria-label="{{ search_placeholder }}">
+    </div>
+    {% endif %}
     <div class="ep-listbox-options">
-    {% for value, opt_label in options %}
-    <button type="button" class="se-filter-listbox-option{% if selected|string == value|string %} is-selected{% endif %}" role="option" data-value="{{ value }}" data-name="{{ opt_label|lower }}" data-label="{{ opt_label }}" aria-selected="{{ 'true' if selected|string == value|string else 'false' }}">{{ opt_label }}</button>
+    {% for opt in options %}
+    {% set opt_value = opt[0] %}
+    {% set opt_label = opt[1] %}
+    {% set chip_label = opt[2] if opt|length > 2 else opt[1] %}
+    <button type="button" class="se-filter-listbox-option{% if selected|string == opt_value|string %} is-selected{% endif %}" role="option" data-value="{{ opt_value }}" data-name="{{ (opt_label ~ ' ' ~ opt_value ~ ' ' ~ chip_label)|lower }}" data-label="{{ chip_label }}" data-country="{{ opt_label }}" aria-selected="{{ 'true' if selected|string == opt_value|string else 'false' }}">{% if opt|length > 2 and chip_label != opt_label %}<span class="ep-listbox-option-title">{{ opt_label }}</span><span class="ep-listbox-option-meta">{{ chip_label }}</span>{% else %}{{ opt_label }}{% endif %}</button>
     {% endfor %}
     </div>
   </div>

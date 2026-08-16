@@ -352,6 +352,62 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertEqual((member_room.get("stay") or {}).get("mergeRole"), "member")
         self.assertEqual(member_room.get("status"), "reserved")
 
+    def test_assign_same_reservation_checkout_clears_this_room_only(self):
+        create = self.client.post(
+            "/hotel/api/reservations",
+            json={
+                "guestName": "Group Checkout",
+                "mobile": "9000011177",
+                "checkInDate": "2026-10-10",
+                "checkOutDate": "2026-10-12",
+                "amount": 8000,
+                "source": "direct",
+                "status": "upcoming",
+                "totalRooms": 2,
+            },
+        )
+        self.assertEqual(create.status_code, 200, create.get_data(as_text=True))
+        booking = create.get_json()["reservation"]
+        rooms_resp = self.client.get("/hotel/api/rooms")
+        vacant = [
+            r
+            for r in rooms_resp.get_json().get("rooms") or []
+            if str(r.get("status") or "").lower() == "vacant"
+        ]
+        primary = vacant[0]
+        member = vacant[1]
+        assign = self.client.post(
+            f"/hotel/api/reservations/{booking['id']}/assign",
+            json={"roomIds": [primary["id"], member["id"]]},
+        )
+        self.assertEqual(assign.status_code, 200, assign.get_data(as_text=True))
+        check_in, check_out = "2026-10-10", "2026-10-12"
+        self.client.put(
+            f"/hotel/api/rooms/{primary['id']}",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Group",
+                    "lastName": "Checkout",
+                    "mobile": "9000011177",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 2,
+                    "roomRate": 4000,
+                    "reservationId": booking["id"],
+                },
+            },
+        )
+        closed = self.client.put(
+            f"/hotel/api/rooms/{primary['id']}",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+        self.assertEqual(closed.get_json()["room"]["status"], "dirty")
+        member_after = self.client.get(f"/hotel/api/rooms/{member['id']}").get_json()["room"]
+        self.assertEqual(member_after["status"], "reserved")
+        self.assertTrue(member_after.get("stay"))
+
     def test_assign_rejects_more_rooms_than_total_rooms(self):
         create = self.client.post(
             "/hotel/api/reservations",

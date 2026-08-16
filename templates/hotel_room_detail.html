@@ -2,6 +2,27 @@
 {% set de_soft_page_title = 'Room ' ~ (room.number|default('')) ~ ' | Hotel | Hotel Bell Elite' %}
 {% set room_status = (room.status|default('vacant')|string|lower) %}
 {% set status_label = room.statusLabel|default(room_status|replace('_', ' ')|title) %}
+{% set stay = room.stay if room.stay else {} %}
+{% set guest_name = (stay.guestName or stay.guest_name or '')|trim %}
+{% if not guest_name %}
+  {% set guest_name = ((stay.title or '') ~ ' ' ~ (stay.firstName or stay.first_name or '') ~ ' ' ~ (stay.lastName or stay.last_name or ''))|trim %}
+{% endif %}
+{% set guest_mobile = ((stay.mobileCountry ~ ' ') if stay.mobileCountry and stay.mobile else '') ~ (stay.mobile or '') %}
+{% set guest_mobile = guest_mobile|trim %}
+{% set guest_rid = (stay.reservationId or stay.reservationBookingId or '')|string|trim %}
+{% if guest_rid[:2]|upper == 'BK' %}{% set guest_rid = '' %}{% endif %}
+{% set show_guest = room_status in ('occupied', 'reserved') %}
+{% set agency_name = (stay.agencyName or stay.agency_name or '')|trim %}
+{% set agency_gst = (stay.agencyGst or stay.agency_gst or '')|trim %}
+{% set agency_address = (stay.agencyAddress or stay.agency_address or '')|trim %}
+{% set has_agency = show_guest and (agency_name or agency_gst or agency_address) %}
+{% if stay.agencyBilling %}
+  {% set agency_billing = 'Invoice to ' ~ (stay.invoiceTo or stay.billingName or agency_name or '—') %}
+{% elif has_agency %}
+  {% set agency_billing = 'Guest' %}
+{% else %}
+  {% set agency_billing = '' %}
+{% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% from 'partials/hotel_date_macros.html' import hotel_date_field, hotel_time_field %}
 {% if not is_partial_main %}
@@ -15,10 +36,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=103">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=116">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <script>
 (function(){
@@ -34,10 +55,10 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
-<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=103">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=116">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 {% endif %}
 
@@ -60,6 +81,7 @@
   data-agencies-api="{{ agencies_api_url|default(url_for('list_agencies_api')) }}"
   data-agencies="{{ agencies|default([])|tojson|e }}"
 >
+  <script type="application/json" id="hrd-room-bootstrap">{{ room|tojson }}</script>
   <header class="hrd-header">
     <div class="hrd-header-main">
       <a class="hrd-back" href="{{ url_for('hotel_rooms') }}" data-hrd-back aria-label="Back to Rooms">
@@ -232,7 +254,7 @@
 
   <div class="hrd-grid">
     <div class="hrd-col">
-      <section class="hrd-card hrd-card--guest" id="hrd-guest-card"{% if room_status != 'occupied' %} data-action="checkin" tabindex="0" role="button" aria-label="Start check-in"{% endif %}>
+      <section class="hrd-card hrd-card--guest" id="hrd-guest-card"{% if not show_guest %} data-action="checkin" tabindex="0" role="button" aria-label="Start check-in"{% endif %}>
         <header class="hrd-card-head">
           <span class="hrd-card-icon hrd-card-icon--blue" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
@@ -245,13 +267,13 @@
             data-action="edit-guest"
             aria-label="Edit guest information"
             title="Edit guest"
-            {% if room_status != 'occupied' %}hidden{% endif %}
+            {% if not show_guest %}hidden{% endif %}
           >
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
             Edit
           </button>
         </header>
-        <div class="hrd-empty" id="hrd-guest-empty"{% if room_status == 'occupied' %} hidden{% endif %}>
+        <div class="hrd-empty" id="hrd-guest-empty"{% if show_guest %} hidden{% endif %}>
           <div class="hrd-empty-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
           </div>
@@ -259,22 +281,25 @@
           <p class="hrd-empty-sub">Click “Start Check-In” to add guest details</p>
           <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-start-checkin" data-action="checkin">Start Check-In</button>
         </div>
-        <div class="hrd-guest-filled" id="hrd-guest-filled"{% if room_status != 'occupied' %} hidden{% endif %}>
+        <div class="hrd-guest-filled" id="hrd-guest-filled"{% if not show_guest %} hidden{% endif %}>
           <div class="hrd-guest-row">
             <div>
-              <div class="hrd-guest-name" id="hrd-guest-name">—</div>
-              <div class="hrd-guest-meta" id="hrd-guest-meta">In-house · Room {{ room.number }}</div>
+              <div class="hrd-guest-name" id="hrd-guest-name">{{ guest_name or '—' }}</div>
+              <div class="hrd-guest-meta" id="hrd-guest-meta">{% if room_status == 'occupied' %}In-house{% else %}Reserved{% endif %} · Room {{ room.number }}</div>
             </div>
           </div>
           <dl class="hrd-dl hrd-dl--guest-meta">
-            <div><dt>Booking ID</dt><dd id="hrd-guest-booking">—</dd></div>
-            <div><dt>Status</dt><dd><span class="hrd-guest-status-pill" id="hrd-guest-status">Checked in</span></dd></div>
-            <div><dt>Mobile</dt><dd id="hrd-guest-mobile">—</dd></div>
-            <div><dt>Email</dt><dd id="hrd-guest-email">—</dd></div>
+            <div><dt>Booking ID</dt><dd id="hrd-guest-booking">{{ stay.bookingNumber or '—' }}</dd></div>
+            <div id="hrd-guest-reservation-wrap"{% if not guest_rid %} hidden{% endif %}>
+              <dt>Reservation ID</dt>
+              <dd id="hrd-guest-reservation">{{ guest_rid or '—' }}</dd>
+            </div>
+            <div><dt>Mobile</dt><dd id="hrd-guest-mobile">{{ guest_mobile or '—' }}</dd></div>
+            <div><dt>Email</dt><dd id="hrd-guest-email">{{ stay.email or '—' }}</dd></div>
           </dl>
           <dl class="hrd-dl hrd-dl--guest-stay">
-            <div><dt>Check In</dt><dd id="hrd-guest-checkin">—</dd></div>
-            <div><dt>Expected Check Out</dt><dd id="hrd-guest-checkout">—</dd></div>
+            <div><dt>Check In</dt><dd id="hrd-guest-checkin">{{ stay.checkInDate or '—' }}</dd></div>
+            <div><dt>Expected Check Out</dt><dd id="hrd-guest-checkout">{{ stay.checkOutDate or '—' }}</dd></div>
           </dl>
           <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-start-checkin-reserved" data-action="checkin" hidden>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
@@ -312,7 +337,7 @@
     </div>
 
     <div class="hrd-col">
-      <section class="hrd-card" id="hrd-agency-card"{% if room_status != 'occupied' or not room.stay or not (room.stay.agencyName or room.stay.agencyGst or room.stay.agencyAddress) %} hidden{% endif %}>
+      <section class="hrd-card" id="hrd-agency-card"{% if not has_agency %} hidden{% endif %}>
         <header class="hrd-card-head">
           <span class="hrd-card-icon hrd-card-icon--green" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
@@ -324,10 +349,10 @@
           </a>
         </header>
         <dl class="hrd-dl" id="hrd-agency-dl">
-          <div><dt>Agency Name</dt><dd data-agency-name>—</dd></div>
-          <div><dt>GST</dt><dd data-agency-gst>—</dd></div>
-          <div><dt>Address</dt><dd data-agency-address>—</dd></div>
-          <div><dt>Billing</dt><dd data-agency-billing>—</dd></div>
+          <div><dt>Agency Name</dt><dd data-agency-name>{{ agency_name or '—' }}</dd></div>
+          <div><dt>GST</dt><dd data-agency-gst>{{ agency_gst or '—' }}</dd></div>
+          <div><dt>Address</dt><dd data-agency-address>{{ agency_address or '—' }}</dd></div>
+          <div><dt>Billing</dt><dd data-agency-billing>{{ agency_billing or '—' }}</dd></div>
         </dl>
       </section>
 
@@ -416,11 +441,11 @@
               </span>
               <h3>Personal Information</h3>
             </header>
-            <div class="hrd-form-grid hrd-form-grid--2">
+            <div class="hrd-form-grid hrd-form-grid--2 hrd-form-grid--mobile-email">
               <div class="hrd-field hrd-field--customer-mobile">
                 <span>Mobile Number <em>*</em></span>
                 <span class="hrd-input-split">
-                  {{ ep_listbox('mobileCountry', 'Code', [('+91', '+91'), ('+1', '+1'), ('+44', '+44'), ('+971', '+971')], '+91', placeholder='+91', field_id='hrd-ci-mobile-country', extra_class='hrd-form-listbox hrd-form-listbox--code') }}
+                  {{ ep_listbox('mobileCountry', 'Code', phone_country_code_options|default([('+91', 'India', '+91')]), '+91', placeholder='+91', searchable=true, combobox=false, search_placeholder='Search country or code', field_id='hrd-ci-mobile-country', extra_class='hrd-form-listbox hrd-form-listbox--code', change_handler='hrdCiMobileCountryChanged') }}
                   <input type="tel" name="mobile" id="hrd-ci-mobile" required autocomplete="tel" placeholder="Mobile number" inputmode="numeric" maxlength="10" aria-autocomplete="list" aria-controls="hrd-ci-customer-suggest" aria-expanded="false">
                 </span>
                 <div class="hrd-customer-suggest" id="hrd-ci-customer-suggest" role="listbox" hidden></div>
@@ -444,7 +469,7 @@
             <div class="hrd-form-grid hrd-form-grid--3">
               {{ ep_listbox('gender', 'Gender', [('', 'Select'), ('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')], '', placeholder='Select', field_id='hrd-ci-gender', extra_class='hrd-form-listbox') }}
               {{ hotel_date_field('dateOfBirth', 'Date of Birth', field_id='hrd-ci-dob', extra_class='hrd-date-chip', panel_title='Date of birth', show_today=false, hint='', show_cal_icon=false, show_caret=false) }}
-              {{ ep_listbox('nationality', 'Nationality', [('Indian', 'Indian'), ('Other', 'Other')], 'Indian', placeholder='Select', field_id='hrd-ci-nationality', extra_class='hrd-form-listbox') }}
+              {{ ep_listbox('nationality', 'Nationality', phone_nationality_options|default([('Indian', 'Indian'), ('Other', 'Other')]), 'Indian', placeholder='Search country', searchable=true, field_id='hrd-ci-nationality', extra_class='hrd-form-listbox hrd-form-listbox--countries') }}
             </div>
             <div class="hrd-form-grid hrd-form-grid--1">
               <label class="hrd-field">
@@ -461,7 +486,7 @@
                 <span>State</span>
                 <input type="text" name="state" placeholder="State">
               </label>
-              {{ ep_listbox('country', 'Country', [('India', 'India'), ('Other', 'Other')], 'India', placeholder='Select', field_id='hrd-ci-country', extra_class='hrd-form-listbox') }}
+              {{ ep_listbox('country', 'Country', phone_country_name_options|default([('India', 'India'), ('Other', 'Other')]), 'India', placeholder='Search country', searchable=true, field_id='hrd-ci-country', extra_class='hrd-form-listbox hrd-form-listbox--countries') }}
               <label class="hrd-field">
                 <span>PIN / Postal Code</span>
                 <input type="text" name="pin" placeholder="PIN">
@@ -551,15 +576,11 @@
               </button>
             </header>
             <div class="hrd-form-grid hrd-form-grid--2">
-              <label class="hrd-field">
+              <div class="hrd-field hrd-field--agency-name">
                 <span>Agency Name</span>
-                <input type="text" name="agencyName" id="hrd-ci-agency-name" list="hrd-ci-agency-datalist" placeholder="Agency name" autocomplete="organization">
-                <datalist id="hrd-ci-agency-datalist">
-                  {% for agency in agencies|default([]) %}
-                  <option value="{{ agency.name }}" data-gst="{{ agency.gst or '' }}" data-address="{{ agency.address or '' }}"></option>
-                  {% endfor %}
-                </datalist>
-              </label>
+                <input type="text" name="agencyName" id="hrd-ci-agency-name" placeholder="Search agency master" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="hrd-ci-agency-suggest" aria-expanded="false">
+                <div class="hrd-customer-suggest" id="hrd-ci-agency-suggest" role="listbox" hidden></div>
+              </div>
               <label class="hrd-field">
                 <span>GST</span>
                 <input type="text" name="agencyGst" id="hrd-ci-agency-gst" placeholder="15-character GSTIN" autocomplete="off" maxlength="15" spellcheck="false" inputmode="text" pattern="[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z][1-9A-Za-z]Z[0-9A-Za-z]" title="Enter a valid 15-character GSTIN">
@@ -826,15 +847,11 @@
 
       <section class="hrd-form-section hrd-reserve-section" id="hrd-reserve-panel-agency" data-reserve-panel="agency" role="tabpanel" aria-labelledby="hrd-reserve-tab-agency" hidden>
         <div class="hrd-form-grid hrd-form-grid--2">
-          <label class="hrd-field">
+          <div class="hrd-field hrd-field--agency-name">
             <span>Agency Name</span>
-            <input type="text" name="agencyName" id="hrd-reserve-agency-name" list="hrd-reserve-agency-datalist" placeholder="Agency name" autocomplete="organization">
-            <datalist id="hrd-reserve-agency-datalist">
-              {% for agency in agencies|default([]) %}
-              <option value="{{ agency.name }}" data-gst="{{ agency.gst or '' }}" data-address="{{ agency.address or '' }}"></option>
-              {% endfor %}
-            </datalist>
-          </label>
+            <input type="text" name="agencyName" id="hrd-reserve-agency-name" placeholder="Search agency master" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="hrd-reserve-agency-suggest" aria-expanded="false">
+            <div class="hrd-customer-suggest" id="hrd-reserve-agency-suggest" role="listbox" hidden></div>
+          </div>
           <label class="hrd-field">
             <span>GST</span>
             <input type="text" name="agencyGst" id="hrd-reserve-agency-gst" placeholder="15-character GSTIN" autocomplete="off" maxlength="15" spellcheck="false" inputmode="text" pattern="[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z][1-9A-Za-z]Z[0-9A-Za-z]" title="Enter a valid 15-character GSTIN">
@@ -1072,10 +1089,10 @@
 </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=61"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=16"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=130"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=143"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

@@ -1250,15 +1250,19 @@ def save_agency_record(conn, name, gst="", address="", agency_id=None):
 
 
 def upsert_agency_by_name(conn, name, gst="", address=""):
-    """Create or update an agency matched by case-insensitive name."""
+    """Create or update an agency matched by case-insensitive name.
+
+    Invalid GST is ignored so address / name updates still persist.
+    Blank GST or address leaves the existing master value in place.
+    """
     ensure_agencies_schema(conn)
     name = _normalize_agency_name(name)
     if not name:
         return None
     gst = _normalize_agency_gst(gst)
-    address = _normalize_agency_address(address)
     if gst and not is_valid_agency_gst(gst):
-        return None
+        gst = ""
+    address = _normalize_agency_address(address)
     existing = conn.execute(
         "SELECT id, gst, address FROM agencies WHERE LOWER(name) = LOWER(?) LIMIT 1",
         (name,),
@@ -8977,12 +8981,6 @@ _HOTEL_MERGE_SHARED_GUEST_KEYS = (
     "idDocumentName",
     "idDocumentPath",
     "idDocumentMime",
-    "agencyName",
-    "agencyGst",
-    "agencyAddress",
-    "agencyBilling",
-    "invoiceTo",
-    "billingName",
     "profession",
     "company",
     "loyaltyNumber",
@@ -9001,6 +8999,15 @@ _HOTEL_MERGE_SHARED_GUEST_KEYS = (
     "specialRequests",
     "additionalRequests",
     "additionalGuests",
+)
+
+_HOTEL_MERGE_SHARED_AGENCY_KEYS = (
+    "agencyName",
+    "agencyGst",
+    "agencyAddress",
+    "agencyBilling",
+    "invoiceTo",
+    "billingName",
 )
 
 _HOTEL_MERGE_SHARED_BILL_KEYS = (
@@ -9038,6 +9045,19 @@ _HOTEL_MERGE_SHARED_BILL_KEYS = (
     "discountReason",
     "estimatedTotal",
 )
+
+
+def _hotel_stay_has_guest_name(stay):
+    """True when the stay already has a displayable guest identity."""
+    if not isinstance(stay, dict):
+        return False
+    if _hotel_str(stay.get("guestName") or stay.get("guest_name"), 160):
+        return True
+    if _hotel_str(stay.get("firstName") or stay.get("first_name"), 80):
+        return True
+    if _hotel_str(stay.get("lastName") or stay.get("last_name"), 80):
+        return True
+    return False
 
 
 def _hotel_stay_guest_richness(stay):
@@ -9084,11 +9104,11 @@ def _hotel_copy_stay_fields(dest, source, keys):
 
 
 def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
-    """Replicate guest identity across a merge group; keep bill money on primary.
+    """Keep bill money on the primary; do not overwrite each room's own guest.
 
-    Every merged room should show the same customer details. Folio/payments stay
-    on the billing primary; members keep mergeRole/billingRoomId. Occupancy
-    status and checkedInAt stay on each room.
+    Folio/payments stay on the billing primary; members keep mergeRole and
+    billingRoomId. Occupancy, checkedInAt, and guest identity stay on each
+    room. Empty merge shells still inherit the primary guest for display.
     """
     if not isinstance(rooms, list):
         return
@@ -9121,7 +9141,14 @@ def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
             if isinstance(primary.get("stay"), dict)
             else {}
         )
-        _hotel_copy_stay_fields(primary_stay, source_stay, _HOTEL_MERGE_SHARED_GUEST_KEYS)
+        if not _hotel_stay_has_guest_name(primary_stay):
+            _hotel_copy_stay_fields(
+                primary_stay, source_stay, _HOTEL_MERGE_SHARED_GUEST_KEYS
+            )
+        if not _hotel_str(primary_stay.get("agencyName") or primary_stay.get("agency_name"), 160):
+            _hotel_copy_stay_fields(
+                primary_stay, source_stay, _HOTEL_MERGE_SHARED_AGENCY_KEYS
+            )
         # If the richest stay was a member that still held money (pre-absorb),
         # fold bill fields onto primary when primary is empty.
         if (
@@ -9167,8 +9194,13 @@ def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
             own_checked_in = member_stay.get("checkedInAt") or member_stay.get(
                 "checked_in_at"
             )
+            member_has_guest = _hotel_stay_has_guest_name(member_stay)
+            if not member_has_guest:
+                _hotel_copy_stay_fields(
+                    member_stay, primary_stay, _HOTEL_MERGE_SHARED_GUEST_KEYS
+                )
             _hotel_copy_stay_fields(
-                member_stay, primary_stay, _HOTEL_MERGE_SHARED_GUEST_KEYS
+                member_stay, primary_stay, _HOTEL_MERGE_SHARED_AGENCY_KEYS
             )
             member_stay["mergeRole"] = "member"
             member_stay["billingRoomId"] = str(primary.get("id") or "")
@@ -9178,10 +9210,11 @@ def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
             else:
                 member_stay.pop("checkedInAt", None)
                 member_stay.pop("checked_in_at", None)
-            # Display-only rate/nights so board/detail aren't blank; money is primary.
-            for key in ("roomRate", "nights", "ratePlan", "adults", "children"):
-                if primary_stay.get(key) not in (None, "", [], {}):
-                    member_stay[key] = primary_stay.get(key)
+            # Empty shells get display-only rate/nights; money stays on primary.
+            if not member_has_guest:
+                for key in ("roomRate", "nights", "ratePlan", "adults", "children"):
+                    if primary_stay.get(key) not in (None, "", [], {}):
+                        member_stay[key] = primary_stay.get(key)
             room["stay"] = member_stay
             room["mergePrimary"] = False
             room["mergeGroupId"] = primary.get("mergeGroupId")
@@ -9192,7 +9225,10 @@ def _hotel_sync_merge_group_shared_data(rooms, tariff_rates=None):
 
 
 def _hotel_overlay_merge_shared_bill_view(room, rooms):
-    """API/UI helper: members see the primary's folio and totals."""
+    """API/UI helper: members see the primary's folio, totals, and agency.
+
+    Guest identity is copied from the primary only when this room has no name.
+    """
     if not isinstance(room, dict):
         return room
     stay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
@@ -9226,8 +9262,12 @@ def _hotel_overlay_merge_shared_bill_view(room, rooms):
         return room
     view = dict(stay)
     own_checked_in = view.get("checkedInAt") or view.get("checked_in_at")
-    _hotel_copy_stay_fields(view, pstay, _HOTEL_MERGE_SHARED_GUEST_KEYS)
+    if not _hotel_stay_has_guest_name(view):
+        _hotel_copy_stay_fields(view, pstay, _HOTEL_MERGE_SHARED_GUEST_KEYS)
+    _hotel_copy_stay_fields(view, pstay, _HOTEL_MERGE_SHARED_AGENCY_KEYS)
     _hotel_copy_stay_fields(view, pstay, _HOTEL_MERGE_SHARED_BILL_KEYS)
+    if isinstance(pstay.get("mergeRoomRates"), list):
+        view["mergeRoomRates"] = list(pstay.get("mergeRoomRates") or [])
     view["mergeRole"] = "member"
     view["billingRoomId"] = str(primary.get("id") or billing_id)
     if own_checked_in:
@@ -9242,7 +9282,7 @@ def _hotel_overlay_merge_shared_bill_view(room, rooms):
 def _hotel_heal_merge_group_occupancy(rooms, tariff_rates=None):
     """Restore Occupied only for rooms that themselves have an in-house stay.
 
-    Merge groups share guest identity and billing, not occupancy. A vacant or
+    Merge groups share billing, not occupancy or guest identity. A vacant or
     reserved peer must not flip to Occupied because another room checked in.
     Empty merge shells (no guest on any peer) must not display as Occupied.
     """
@@ -9336,7 +9376,7 @@ def _hotel_heal_merge_group_occupancy(rooms, tariff_rates=None):
         stay["mergeRole"] = ""
         room["stay"] = _normalize_hotel_room_stay(stay)
 
-    # 3) Same guest identity on every room in the merge group
+    # 3) Shared billing; keep each room's own guest when present
     _hotel_sync_merge_group_shared_data(rooms, tariff_rates=tariff_rates)
 
 
@@ -9422,8 +9462,9 @@ def _normalize_hotel_rooms_payload(floors, rooms, tax_rates=None, tariff_rates=N
 def hotel_rooms_status_counts(layout, *, as_of=None):
     """KPI counts for the rooms board.
 
-    expected_checkout = occupied (non-merge-member) rooms whose expected
-    check-out date matches as_of (defaults to today).
+    expected_checkout = occupied rooms whose expected check-out date
+    matches as_of (defaults to today). Each physical room counts, including
+    merge-group members.
     """
     rooms = (layout or {}).get("rooms") or []
     counts = {key: 0 for key in HOTEL_ROOM_STATUSES}
@@ -9436,7 +9477,7 @@ def hotel_rooms_status_counts(layout, *, as_of=None):
         counts["total"] += 1
         status = _normalize_hotel_room_status(room.get("status"))
         counts[status] = counts.get(status, 0) + 1
-        if status != "occupied" or room.get("isMergeMember"):
+        if status != "occupied":
             continue
         stay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
         checkout = str(
@@ -11027,7 +11068,12 @@ def save_hotel_room_checkin(conn, room_id, stay, status="occupied"):
         except Exception:
             pass
     saved = save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
-    for room in saved.get("rooms") or []:
+    try:
+        ensure_hotel_reservation_merge_groups(conn)
+    except ValueError:
+        pass
+    layout = get_hotel_rooms_layout(conn)
+    for room in layout.get("rooms") or []:
         if room.get("id") == target or room.get("number") == target:
             return room
     raise ValueError("Room not found.")
@@ -11838,6 +11884,136 @@ def _hotel_find_room(rooms, room_id):
     return None
 
 
+_HOTEL_LOCAL_BOOKING_RE = re.compile(r"^BK\d{8,}$", re.I)
+
+
+def _hotel_normalize_reservation_id(value):
+    """Provider/reservation id; local BK… booking numbers are not a merge key."""
+    text = str(value or "").strip()
+    if not text or _HOTEL_LOCAL_BOOKING_RE.match(text):
+        return ""
+    return text
+
+
+def _hotel_stay_reservation_ids(stay):
+    if not isinstance(stay, dict):
+        return []
+    found = []
+    seen = set()
+    for key in (
+        "reservationId",
+        "reservation_id",
+        "providerReservationId",
+        "provider_reservation_id",
+        "reservationBookingId",
+        "reservation_booking_id",
+        "bookingId",
+        "booking_id",
+    ):
+        rid = _hotel_normalize_reservation_id(stay.get(key))
+        if rid and rid not in seen:
+            seen.add(rid)
+            found.append(rid)
+    return found
+
+
+def _hotel_stay_reservation_id(stay):
+    ids = _hotel_stay_reservation_ids(stay)
+    return ids[0] if ids else ""
+
+
+def _hotel_stay_matches_reservation(stay, reservation_id):
+    rid = _hotel_normalize_reservation_id(reservation_id)
+    if not rid:
+        return False
+    return rid in _hotel_stay_reservation_ids(stay)
+
+
+def _hotel_room_is_merge_member(room):
+    if not isinstance(room, dict):
+        return False
+    stay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
+    if stay.get("mergeRole") == "member" or stay.get("billingRoomId"):
+        return True
+    return bool(room.get("mergePrimary") is False and _hotel_room_merge_group_id(room))
+
+
+def _hotel_rooms_sharing_reservation(rooms, reservation_id):
+    """Occupied/reserved rooms whose stay carries this reservation id."""
+    rid = _hotel_normalize_reservation_id(reservation_id)
+    if not rid:
+        return []
+    out = []
+    for room in rooms or []:
+        if not isinstance(room, dict):
+            continue
+        status = _normalize_hotel_room_status(room.get("status"))
+        if status not in ("occupied", "reserved"):
+            continue
+        stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+        if stay and _hotel_stay_matches_reservation(stay, rid):
+            out.append(room)
+    return out
+
+
+def _hotel_billing_primary_for_room(rooms, room):
+    if not isinstance(room, dict):
+        return None
+    stay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
+    billing_id = str(stay.get("billingRoomId") or "").strip()
+    if billing_id:
+        found = _hotel_find_room(rooms, billing_id)
+        if found:
+            return found
+    gid = _hotel_room_merge_group_id(room)
+    if gid:
+        for peer in _hotel_rooms_in_merge_group(rooms, gid):
+            if peer.get("mergePrimary") and not _hotel_room_is_merge_member(peer):
+                return peer
+        for peer in _hotel_rooms_in_merge_group(rooms, gid):
+            pstay = peer.get("stay") if isinstance(peer.get("stay"), dict) else {}
+            if pstay.get("mergeRole") == "primary":
+                return peer
+    return room
+
+
+def _hotel_pick_reservation_merge_primary(rooms, peers):
+    if not peers:
+        return None
+    peer_ids = {str(p.get("id") or "") for p in peers}
+
+    def _prefer(candidates):
+        if not candidates:
+            return None
+        for room in candidates:
+            if room.get("mergePrimary") and not _hotel_room_is_merge_member(room):
+                return room
+        for room in candidates:
+            billed = _hotel_billing_primary_for_room(rooms, room)
+            if (
+                billed
+                and str(billed.get("id") or "") in peer_ids
+                and not _hotel_room_is_merge_member(billed)
+            ):
+                return billed
+        for room in candidates:
+            if not _hotel_room_is_merge_member(room):
+                return room
+        return candidates[0]
+
+    occupied = [
+        p
+        for p in peers
+        if _normalize_hotel_room_status(p.get("status")) == "occupied"
+    ]
+    reserved = [
+        p
+        for p in peers
+        if _normalize_hotel_room_status(p.get("status")) == "reserved"
+    ]
+    return _prefer(occupied) or _prefer(reserved) or peers[0]
+
+
 def _hotel_room_merge_group_id(room):
     if not isinstance(room, dict):
         return ""
@@ -12587,6 +12763,82 @@ def merge_hotel_room_billing(conn, from_room_id, to_room_id, note=""):
     }
 
 
+def ensure_hotel_reservation_merge_groups(conn):
+    """Join occupied/reserved rooms that share a reservation id into one merge group.
+
+    Occupancy is unchanged. Returns True when at least one merge was applied.
+    """
+    layout = get_hotel_rooms_layout(conn)
+    rooms = layout.get("rooms") or []
+    by_rid = {}
+    for room in rooms:
+        if not isinstance(room, dict):
+            continue
+        status = _normalize_hotel_room_status(room.get("status"))
+        if status not in ("occupied", "reserved"):
+            continue
+        stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
+        rid = _hotel_stay_reservation_id(stay)
+        if not rid:
+            continue
+        room_id = str(room.get("id") or "").strip()
+        if not room_id:
+            continue
+        by_rid.setdefault(rid, []).append(room_id)
+
+    merged_any = False
+    for rid, room_ids in by_rid.items():
+        if len(room_ids) < 2:
+            continue
+        safety = 0
+        while safety < len(room_ids) + 2:
+            safety += 1
+            layout = get_hotel_rooms_layout(conn)
+            rooms = layout.get("rooms") or []
+            peers = _hotel_rooms_sharing_reservation(rooms, rid)
+            if len(peers) < 2:
+                break
+            gids = {_hotel_room_merge_group_id(p) for p in peers}
+            gids.discard("")
+            if len(gids) == 1 and all(_hotel_room_merge_group_id(p) for p in peers):
+                break
+            primary = _hotel_pick_reservation_merge_primary(rooms, peers)
+            if not primary:
+                break
+            if _hotel_room_is_merge_member(primary):
+                billed = _hotel_billing_primary_for_room(rooms, primary)
+                if billed:
+                    primary = billed
+            pgid = _hotel_room_merge_group_id(primary)
+            source = None
+            for peer in peers:
+                if str(peer.get("id") or "") == str(primary.get("id") or ""):
+                    continue
+                if pgid and _hotel_room_merge_group_id(peer) == pgid:
+                    continue
+                candidate = peer
+                if _hotel_room_is_merge_member(peer):
+                    billed = _hotel_billing_primary_for_room(rooms, peer)
+                    if billed:
+                        candidate = billed
+                if str(candidate.get("id") or "") == str(primary.get("id") or ""):
+                    continue
+                source = candidate
+                break
+            if not source:
+                break
+            try:
+                merge_hotel_room_billing(
+                    conn,
+                    from_room_id=source.get("id"),
+                    to_room_id=primary.get("id"),
+                )
+                merged_any = True
+            except ValueError:
+                break
+    return merged_any
+
+
 def unmerge_hotel_rooms(conn, room_id, scope="one"):
     """Clear merge links. Does not reverse folio combine on the primary."""
     layout = get_hotel_rooms_layout(conn)
@@ -12855,7 +13107,7 @@ def clear_hotel_room_stay(conn, room_id, status="dirty"):
 
     Member checkout unmerges that room, then clears it (primary bill unchanged).
     Primary checkout promotes a remaining peer when the group continues, then
-    clears this room. Other rooms keep their own occupancy.
+    clears this room. Other merged / same-reservation rooms stay as they are.
     """
     layout = get_hotel_rooms_layout(conn)
     rooms = layout.get("rooms") or []

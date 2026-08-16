@@ -423,6 +423,26 @@ body.ep-module .ep-combobox-listbox .se-filter-listbox-option.is-selected, body.
 .se-filter-listbox.ep-listbox-portaled .ep-listbox-options{
   background:#fff;
 }
+.se-filter-listbox.ep-listbox-portaled .ep-listbox-search-wrap{
+  padding:4px 4px 6px;
+  position:sticky;
+  top:0;
+  background:#fff;
+  z-index:2;
+}
+.se-filter-listbox.ep-listbox-portaled .ep-listbox-search{
+  width:100%;
+  border:1px solid var(--ep-listbox-border, #D0D7E2);
+  border-radius:8px;
+  padding:8px 10px;
+  font-size:12px;
+  font-family:inherit;
+  outline:none;
+  box-sizing:border-box;
+}
+.se-filter-listbox.ep-listbox-portaled .ep-listbox-search:focus{
+  border-color:var(--ep-listbox-focus, #93C5FD);
+}
 .se-filter-listbox.ep-listbox-portaled .se-filter-listbox-option{
   display:block;
   width:100%;

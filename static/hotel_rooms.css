@@ -268,8 +268,11 @@ body.hotel-rooms-module .hotel-kpi.hbe-kpi-card.is-active{
   color:var(--hotel-text);
   font:600 13px Inter,system-ui,sans-serif;
   text-align:left;
-  padding:0 8px 0 12px;
+  padding:0 12px;
   cursor:pointer;
+}
+#hotel-rooms-status-listbox .se-filter-chip-chev{
+  display:none;
 }
 .hotel-toolbar-right .hotel-filter-listbox .se-filter-chip-value{
   display:block;
@@ -1543,7 +1546,8 @@ html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room
   font-weight:600;
 }
 .hr-board-reserve-grid .hr-field--span2{grid-column:span 2}
-.hr-field--customer-mobile{position:relative}
+.hr-field--customer-mobile,
+.hr-field--agency-name{position:relative;overflow:visible}
 .hr-board-customer-suggest{
   position:absolute;
   left:0;

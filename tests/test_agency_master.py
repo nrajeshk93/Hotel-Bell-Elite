@@ -56,6 +56,10 @@ class AgencyMasterDbTests(unittest.TestCase):
         self.assertEqual(updated["address"], "Mumbai")
         self.assertEqual(get_agency(self.conn, saved_id)["gst"], "27BBBBB0000B1Z5")
 
+        filled = upsert_agency_by_name(self.conn, "MakeMyTrip", "not-a-gstin", "Andaman")
+        self.assertEqual(filled["gst"], "27BBBBB0000B1Z5")
+        self.assertEqual(filled["address"], "Andaman")
+
 
 class AgencyMasterRouteTests(unittest.TestCase):
     def setUp(self):

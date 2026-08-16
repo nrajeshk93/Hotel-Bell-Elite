@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=74">
 <script>
 (function(){
   try{
@@ -32,10 +32,10 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=74">
 {% endif %}
 
-<div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers">
+<div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers" data-agencies-api="{{ url_for('list_agencies_api') }}" data-agencies="{{ agencies|default([])|tojson|e }}">
   <header class="hotel-rooms-header">
     <div class="hotel-rooms-header-copy">
       <h1>Rooms</h1>
@@ -138,9 +138,6 @@
           <button type="button" class="se-filter-chip-trigger" id="hotel-rooms-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="hotel-rooms-status-list" aria-labelledby="hotel-rooms-status-label hotel-rooms-status-value">
             <span class="se-filter-chip-value" id="hotel-rooms-status-value">All statuses</span>
           </button>
-          <span class="se-filter-chip-chev" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-          </span>
         </div>
         <div class="se-filter-listbox" id="hotel-rooms-status-list" role="listbox" aria-labelledby="hotel-rooms-status-label" hidden>
           <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="all" data-label="All statuses" aria-selected="true">All statuses</button>
@@ -376,15 +373,11 @@
 
         <section class="hr-board-reserve-section" id="hr-board-reserve-panel-agency" data-reserve-panel="agency" role="tabpanel" aria-labelledby="hr-board-reserve-tab-agency" hidden>
           <div class="hr-board-reserve-grid">
-            <label class="hr-field">
+            <div class="hr-field hr-field--agency-name">
               <span>Agency Name</span>
-              <input type="text" name="agencyName" id="hr-board-reserve-agency-name" list="hr-board-reserve-agency-datalist" placeholder="Agency name" autocomplete="organization">
-              <datalist id="hr-board-reserve-agency-datalist">
-                {% for agency in agencies|default([]) %}
-                <option value="{{ agency.name }}" data-gst="{{ agency.gst or '' }}" data-address="{{ agency.address or '' }}"></option>
-                {% endfor %}
-              </datalist>
-            </label>
+              <input type="text" name="agencyName" id="hr-board-reserve-agency-name" placeholder="Search agency master" autocomplete="off" spellcheck="false" aria-autocomplete="list" aria-controls="hr-board-reserve-agency-suggest" aria-expanded="false">
+              <div class="hr-board-customer-suggest" id="hr-board-reserve-agency-suggest" role="listbox" hidden></div>
+            </div>
             <label class="hr-field">
               <span>GST</span>
               <input type="text" name="agencyGst" id="hr-board-reserve-agency-gst" placeholder="GST number" autocomplete="off">
@@ -446,7 +439,7 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=90"></script>
+<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=95"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

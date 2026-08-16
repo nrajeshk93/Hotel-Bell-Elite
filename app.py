@@ -76,6 +76,9 @@ from db import (
     save_hotel_room_reservation,
     hotel_room_available_for_stay,
     _hotel_stay_date_window,
+    _hotel_stay_reservation_id,
+    _hotel_stay_matches_reservation,
+    ensure_hotel_reservation_merge_groups,
     HOTEL_ROOM_STATUS_LABELS,
     generate_hotel_room_invoice,
     record_hotel_room_payment,
@@ -213,6 +216,11 @@ from user_photos import (
     resolve_stored_user_photo,
 )
 from masters import build_masters_dashboard
+from phone_country_codes import (
+    phone_country_code_options,
+    phone_country_name_options,
+    phone_nationality_options,
+)
 from reports import (
     PURCHASE_EXPENSE_LEDGER_NAME,
     build_reports_dashboard,
@@ -716,7 +724,17 @@ def enforce_access():
             and endpoint in _POS_RESTAURANT_SALES_WRITE_ENDPOINTS
             and user_can_access_dashboard(user, "point_of_sale")
         )
-        if not agency_ok and not customer_ok and not pos_restaurant_sales_ok:
+        hotel_agency_ok = (
+            required_dashboard == "master"
+            and endpoint in {"create_agency", "list_agencies_api"}
+            and user_can_access_dashboard(user, "hotel")
+        )
+        if (
+            not agency_ok
+            and not customer_ok
+            and not pos_restaurant_sales_ok
+            and not hotel_agency_ok
+        ):
             label = _DASHBOARD_MODULE_LABELS.get(required_dashboard, "requested")
             return _permission_denied_response(f"You do not have access to {label}.")
 
@@ -766,6 +784,15 @@ def inject_su_page_back():
         "from_hub": "reports",
         "back_href": url_for("reports"),
         "back_label": "Back to Reports",
+    }
+
+
+@app.context_processor
+def inject_phone_country_codes():
+    return {
+        "phone_country_code_options": phone_country_code_options(),
+        "phone_country_name_options": phone_country_name_options(),
+        "phone_nationality_options": phone_nationality_options(),
     }
 
 
@@ -6802,41 +6829,15 @@ def hotel_reservation_detail_api(reservation_id):
 
 
 def _reservation_id_from_stay(stay):
-    if not isinstance(stay, dict):
-        return ""
-    for key in (
-        "reservationId",
-        "reservation_id",
-        "reservationBookingId",
-        "reservation_booking_id",
-        "bookingId",
-        "booking_id",
-    ):
-        value = str(stay.get(key) or "").strip()
-        if value:
-            return value
-    return ""
+    return _hotel_stay_reservation_id(stay)
 
 
 def _stay_matches_reservation(stay, reservation_id):
-    rid = str(reservation_id or "").strip()
-    if not rid or not isinstance(stay, dict):
-        return False
-    for key in (
-        "reservationId",
-        "reservation_id",
-        "reservationBookingId",
-        "reservation_booking_id",
-        "bookingId",
-        "booking_id",
-    ):
-        if str(stay.get(key) or "").strip() == rid:
-            return True
-    return False
+    return _hotel_stay_matches_reservation(stay, reservation_id)
 
 
 def _rooms_still_hold_reservation(conn, reservation_id, exclude_room_id=None):
-    """True when another occupied room still carries this reservation id."""
+    """True when another occupied or reserved room still carries this reservation id."""
     rid = str(reservation_id or "").strip()
     if not rid:
         return False
@@ -6846,7 +6847,7 @@ def _rooms_still_hold_reservation(conn, reservation_id, exclude_room_id=None):
         if exclude and str(room.get("id") or "").strip() == exclude:
             continue
         status = str(room.get("status") or "").strip().lower().replace(" ", "_")
-        if status != "occupied":
+        if status not in ("occupied", "reserved"):
             continue
         stay = room.get("stay") if isinstance(room.get("stay"), dict) else None
         if stay and _stay_matches_reservation(stay, rid):
@@ -7049,6 +7050,10 @@ def hotel_reservation_assign_api(reservation_id):
                     from_room_id=member.get("id"),
                     to_room_id=primary.get("id"),
                 )
+            try:
+                ensure_hotel_reservation_merge_groups(conn)
+            except ValueError:
+                pass
             if extras or existing_primary_id:
                 saved_room = get_hotel_room(conn, primary.get("id")) or saved_room
         except ValueError as exc:
@@ -7373,6 +7378,10 @@ def hotel_rooms_api():
     try:
         ensure_hotel_rooms_schema(conn)
         if request.method == "GET":
+            try:
+                ensure_hotel_reservation_merge_groups(conn)
+            except ValueError:
+                pass
             layout = get_hotel_rooms_layout(conn)
             rooms = []
             for room in layout.get("rooms") or []:
@@ -7604,6 +7613,10 @@ def hotel_room_detail_api(room_id):
     try:
         ensure_hotel_rooms_schema(conn)
         if request.method == "GET":
+            try:
+                ensure_hotel_reservation_merge_groups(conn)
+            except ValueError:
+                pass
             room = get_hotel_room(conn, room_id)
             if not room:
                 return jsonify({"ok": False, "error": "Room not found."}), 404
@@ -7783,7 +7796,13 @@ def hotel_room_detail_api(room_id):
                     pass
                 room = get_hotel_room(conn, room_id)
                 conn.commit()
-                return jsonify({"ok": True, "room": room})
+                return jsonify(
+                    {
+                        "ok": True,
+                        "room": room,
+                        "checkedOutRoomIds": [str(room_id)],
+                    }
+                )
 
             if action == "set_discount":
                 result = set_hotel_room_discount(
@@ -13890,11 +13909,17 @@ def delete_agency():
     return redirect(url_for("agency_master", saved="deleted"))
 
 
+def _user_can_upsert_agency_from_ops(user):
+    return bool(
+        user_can_access_agency_master(user) or user_can_access_dashboard(user, "hotel")
+    )
+
+
 @app.route("/agencies/create", methods=["POST"], endpoint="create_agency")
 def create_agency():
     """JSON create/update agency for check-in and other embeds."""
     user = get_current_user()
-    if not user_can_access_agency_master(user):
+    if not _user_can_upsert_agency_from_ops(user):
         return jsonify({"ok": False, "error": "You do not have access to Agency Master."}), 403
 
     data = request.get_json(silent=True) or {}
@@ -13930,7 +13955,7 @@ def create_agency():
 @app.route("/agencies/api", methods=["GET"], endpoint="list_agencies_api")
 def list_agencies_api():
     user = get_current_user()
-    if not user_can_access_agency_master(user):
+    if not _user_can_upsert_agency_from_ops(user):
         return jsonify({"ok": False, "error": "You do not have access to Agency Master."}), 403
     conn = get_db()
     try:

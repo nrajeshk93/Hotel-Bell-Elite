@@ -329,6 +329,20 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hrd-reserve", html)
         self.assertIn("hrd-reserve-new", html)
         self.assertIn("hrd-reserve-modal", html)
+        self.assertIn("hrd-form-listbox--countries", html)
+        box_at = html.find('id="hrd-ci-nationality-listbox"')
+        self.assertGreater(box_at, 0)
+        nat_at = html.find('id="hrd-ci-nationality-list"')
+        self.assertGreater(nat_at, box_at)
+        trigger_chunk = html[box_at:nat_at]
+        self.assertIn('role="combobox"', trigger_chunk)
+        self.assertIn('id="hrd-ci-nationality-trigger"', trigger_chunk)
+        self.assertNotIn("ep-listbox-search", trigger_chunk)
+        nat_chunk = html[nat_at:nat_at + 120000]
+        self.assertNotIn("ep-listbox-search", nat_chunk.split('<div class="ep-listbox-options"', 1)[0])
+        self.assertIn("Afghanistan", nat_chunk)
+        self.assertIn("Indonesia", nat_chunk)
+        self.assertGreater(nat_chunk.count("se-filter-listbox-option"), 180)
 
     def test_reserved_future_room_detail_renders(self):
         reserved = self.client.put(
@@ -675,6 +689,54 @@ class HotelRoomsTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_expected_checkout_counts_each_merged_occupied_room(self):
+        """Expected checkout is physical rooms due that day, including merge members."""
+        today = datetime.now().date()
+        check_out_today = today.isoformat()
+        check_in = (today - timedelta(days=1)).isoformat()
+        stay = {
+            "firstName": "Merge",
+            "lastName": "Out",
+            "mobile": "9000000201",
+            "checkInDate": check_in,
+            "checkOutDate": check_out_today,
+            "nights": 1,
+            "roomRate": 3000,
+        }
+        self.assertEqual(
+            self.client.put(
+                "/hotel/api/rooms/room-201",
+                json={"action": "checkin", "stay": stay},
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.put(
+                "/hotel/api/rooms/room-202",
+                json={"action": "checkin", "stay": dict(stay, mobile="9000000202")},
+            ).status_code,
+            200,
+        )
+        merged = self.client.put(
+            "/hotel/api/rooms/room-202",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-202",
+                "toRoomId": "room-201",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+        layout = self.client.get("/hotel/api/rooms").get_json()
+        self.assertEqual(layout["counts"]["expected_checkout"], 2)
+        rooms = {r["id"]: r for r in layout.get("rooms") or []}
+        self.assertEqual(rooms["room-201"]["status"], "occupied")
+        self.assertEqual(rooms["room-202"]["status"], "occupied")
+        self.assertTrue(rooms["room-201"].get("mergeGroupId"))
+        self.assertEqual(
+            rooms["room-201"].get("mergeGroupId"),
+            rooms["room-202"].get("mergeGroupId"),
+        )
+
     def test_heals_orphan_vacant_with_inhouse_stay(self):
         """Vacant inventory with an active stay is restored to Occupied on load."""
         import json
@@ -866,6 +928,8 @@ class HotelRoomsTests(unittest.TestCase):
         html = detail.get_data(as_text=True)
         self.assertIn("New Check-In", html)
         self.assertIn("hrd-checkin-modal", html)
+        self.assertIn('data-se-listbox-change="hrdCiMobileCountryChanged"', html)
+        self.assertIn("Indonesia", html)
 
         checkout = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -1990,6 +2054,200 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(primary["status"], "occupied")
         self.assertEqual(member["status"], "vacant")
 
+    def test_merged_occupied_rooms_keep_distinct_guest_names(self):
+        """Each occupied merge peer keeps its own guest; folio stays on primary."""
+        check_in, check_out = self._stay_window(nights=1)
+        self.assertEqual(
+            self.client.put(
+                "/hotel/api/rooms/room-201",
+                json={
+                    "action": "checkin",
+                    "stay": {
+                        "firstName": "Anita",
+                        "lastName": "Rao",
+                        "mobile": "9000000301",
+                        "checkInDate": check_in,
+                        "checkOutDate": check_out,
+                        "nights": 1,
+                        "roomRate": 2500,
+                    },
+                },
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.put(
+                "/hotel/api/rooms/room-202",
+                json={
+                    "action": "checkin",
+                    "stay": {
+                        "firstName": "Vikram",
+                        "lastName": "Shah",
+                        "mobile": "9000000302",
+                        "checkInDate": check_in,
+                        "checkOutDate": check_out,
+                        "nights": 1,
+                        "roomRate": 2600,
+                    },
+                },
+            ).status_code,
+            200,
+        )
+        merged = self.client.put(
+            "/hotel/api/rooms/room-202",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-202",
+                "toRoomId": "room-201",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+        primary = self.client.get("/hotel/api/rooms/room-201").get_json()["room"]
+        member = self.client.get("/hotel/api/rooms/room-202").get_json()["room"]
+        self.assertIn("Anita", primary["stay"].get("guestName") or "")
+        self.assertIn("Vikram", member["stay"].get("guestName") or "")
+        self.assertEqual(primary["stay"].get("mobile"), "9000000301")
+        self.assertEqual(member["stay"].get("mobile"), "9000000302")
+        layout = self.client.get("/hotel/api/rooms").get_json()
+        rooms = {r["id"]: r for r in layout.get("rooms") or []}
+        p_name = rooms["room-201"]["stay"].get("guestName") or rooms["room-201"][
+            "stay"
+        ].get("firstName")
+        m_name = rooms["room-202"]["stay"].get("guestName") or rooms["room-202"][
+            "stay"
+        ].get("firstName")
+        self.assertIn("Anita", p_name or "")
+        self.assertIn("Vikram", m_name or "")
+        self.assertGreater(float(primary["stay"].get("estimatedTotal") or 0), 0)
+        self.assertEqual(
+            float(primary["stay"].get("estimatedTotal") or 0),
+            float(member["stay"].get("estimatedTotal") or 0),
+        )
+        member_html = self.client.get("/hotel/rooms/room-202").get_data(as_text=True)
+        self.assertIn("Vikram", member_html)
+        name_bit = member_html.split('id="hrd-guest-name"', 1)[-1][:120]
+        self.assertIn("Vikram", name_bit)
+        self.assertNotIn("Anita", name_bit)
+
+    def test_merge_member_agency_comes_from_primary(self):
+        """Merged member guest card shows the billing primary's agency."""
+        check_in, check_out = self._stay_window(nights=1)
+        self.assertEqual(
+            self.client.put(
+                "/hotel/api/rooms/room-201",
+                json={
+                    "action": "checkin",
+                    "stay": {
+                        "firstName": "Anita",
+                        "lastName": "Rao",
+                        "mobile": "9000000301",
+                        "checkInDate": check_in,
+                        "checkOutDate": check_out,
+                        "nights": 1,
+                        "roomRate": 2500,
+                        "agencyName": "ATPI India Pvt. Ltd",
+                        "agencyGst": "27AABCU9603R1ZM",
+                        "agencyAddress": "Bhandup West, Mumbai",
+                        "agencyBilling": True,
+                        "invoiceTo": "ATPI India Pvt. Ltd",
+                    },
+                },
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.put(
+                "/hotel/api/rooms/room-202",
+                json={
+                    "action": "checkin",
+                    "stay": {
+                        "firstName": "Vikram",
+                        "lastName": "Shah",
+                        "mobile": "9000000302",
+                        "checkInDate": check_in,
+                        "checkOutDate": check_out,
+                        "nights": 1,
+                        "roomRate": 2600,
+                    },
+                },
+            ).status_code,
+            200,
+        )
+        merged = self.client.put(
+            "/hotel/api/rooms/room-202",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-202",
+                "toRoomId": "room-201",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+        member = self.client.get("/hotel/api/rooms/room-202").get_json()["room"]
+        stay = member.get("stay") or {}
+        self.assertIn("Vikram", stay.get("guestName") or "")
+        self.assertEqual(stay.get("agencyName"), "ATPI India Pvt. Ltd")
+        self.assertEqual(stay.get("agencyGst"), "27AABCU9603R1ZM")
+        self.assertEqual(stay.get("agencyAddress"), "Bhandup West, Mumbai")
+        html = self.client.get("/hotel/rooms/room-202").get_data(as_text=True)
+        self.assertIn("ATPI India Pvt. Ltd", html)
+        self.assertIn("27AABCU9603R1ZM", html)
+        self.assertNotIn('id="hrd-agency-card" hidden', html)
+
+    def test_checkin_on_vacant_merge_member_keeps_own_guest(self):
+        """Check-in on a vacant merge member is not overwritten by the primary guest."""
+        check_in, check_out = self._stay_window(nights=2)
+        merged = self.client.put(
+            "/hotel/api/rooms/room-105",
+            json={
+                "action": "merge_rooms",
+                "fromRoomId": "room-105",
+                "toRoomId": "room-106",
+            },
+        )
+        self.assertEqual(merged.status_code, 200, merged.get_data(as_text=True))
+        self.assertEqual(
+            self.client.put(
+                "/hotel/api/rooms/room-106",
+                json={
+                    "action": "checkin",
+                    "stay": {
+                        "firstName": "Karan",
+                        "lastName": "Singh",
+                        "mobile": "9000000088",
+                        "checkInDate": check_in,
+                        "checkOutDate": check_out,
+                        "nights": 2,
+                        "roomRate": 3000,
+                    },
+                },
+            ).status_code,
+            200,
+        )
+        checked = self.client.put(
+            "/hotel/api/rooms/room-105",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Meera",
+                    "lastName": "Nair",
+                    "mobile": "9000000089",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 2,
+                    "roomRate": 3500,
+                },
+            },
+        )
+        self.assertEqual(checked.status_code, 200, checked.get_data(as_text=True))
+        primary = self.client.get("/hotel/api/rooms/room-106").get_json()["room"]
+        member = self.client.get("/hotel/api/rooms/room-105").get_json()["room"]
+        self.assertIn("Karan", primary["stay"].get("guestName") or "")
+        self.assertIn("Meera", member["stay"].get("guestName") or "")
+        self.assertEqual(primary["stay"].get("mobile"), "9000000088")
+        self.assertEqual(member["stay"].get("mobile"), "9000000089")
+        self.assertEqual(member["status"], "occupied")
+        self.assertEqual(primary["status"], "occupied")
+
     def test_checkin_on_reserved_merge_member_occupies_only_that_room(self):
         """Check-in on a reserved merge member occupies that room only."""
         check_in, check_out = self._stay_window(nights=1)
@@ -2621,6 +2879,198 @@ class HotelRoomsTests(unittest.TestCase):
             db_mod._hotel_stay_room_charges_amount(stay),
             10000.0,
         )
+
+    def test_same_reservation_id_auto_merges_reserved_rooms(self):
+        """Two reserved rooms with the same reservation id join one merge group."""
+        stay = {
+            "guestName": "Rid Guest",
+            "mobile": "9000012345",
+            "reservationId": "AT-RID-1001",
+        }
+        payload = {
+            "action": "reserve",
+            "checkInDate": "2026-11-10",
+            "checkOutDate": "2026-11-12",
+            "stay": stay,
+        }
+        first = self.client.put("/hotel/api/rooms/room-201", json=payload)
+        second = self.client.put("/hotel/api/rooms/room-202", json=payload)
+        self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
+        self.assertEqual(second.status_code, 200, second.get_data(as_text=True))
+
+        board = self.client.get("/hotel/api/rooms")
+        self.assertEqual(board.status_code, 200)
+        rooms = {r["id"]: r for r in board.get_json().get("rooms") or []}
+        self.assertTrue(rooms["room-201"].get("mergeGroupId"))
+        self.assertEqual(
+            rooms["room-201"].get("mergeGroupId"),
+            rooms["room-202"].get("mergeGroupId"),
+        )
+        self.assertTrue(
+            rooms["room-201"].get("isMergePrimary")
+            or rooms["room-202"].get("isMergePrimary")
+        )
+        self.assertEqual(rooms["room-201"]["status"], "reserved")
+        self.assertEqual(rooms["room-202"]["status"], "reserved")
+
+    def test_same_reservation_checkin_occupies_only_that_room(self):
+        stay = {
+            "guestName": "Stagger Guest",
+            "firstName": "Stagger",
+            "lastName": "Guest",
+            "mobile": "9000012346",
+            "reservationId": "AT-RID-1002",
+        }
+        check_in, check_out = self._stay_window(nights=1)
+        payload = {
+            "action": "reserve",
+            "checkInDate": check_in,
+            "checkOutDate": check_out,
+            "stay": stay,
+        }
+        self.assertEqual(
+            self.client.put("/hotel/api/rooms/room-201", json=payload).status_code, 200
+        )
+        self.assertEqual(
+            self.client.put("/hotel/api/rooms/room-202", json=payload).status_code, 200
+        )
+        checked = self.client.put(
+            "/hotel/api/rooms/room-201",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Stagger",
+                    "lastName": "Guest",
+                    "mobile": "9000012346",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 4500,
+                    "reservationId": "AT-RID-1002",
+                },
+            },
+        )
+        self.assertEqual(checked.status_code, 200, checked.get_data(as_text=True))
+        self.assertEqual(checked.get_json()["room"]["status"], "occupied")
+        peer = self.client.get("/hotel/api/rooms/room-202").get_json()["room"]
+        self.assertEqual(peer["status"], "reserved")
+
+    def test_same_reservation_checkout_clears_this_room_only(self):
+        stay = {
+            "guestName": "Checkout Group",
+            "firstName": "Checkout",
+            "lastName": "Group",
+            "mobile": "9000012347",
+            "reservationId": "AT-RID-1003",
+        }
+        check_in, check_out = self._stay_window(nights=1)
+        payload = {
+            "action": "reserve",
+            "checkInDate": check_in,
+            "checkOutDate": check_out,
+            "stay": stay,
+        }
+        self.assertEqual(
+            self.client.put("/hotel/api/rooms/room-201", json=payload).status_code, 200
+        )
+        self.assertEqual(
+            self.client.put("/hotel/api/rooms/room-202", json=payload).status_code, 200
+        )
+        self.client.put(
+            "/hotel/api/rooms/room-201",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Checkout",
+                    "lastName": "Group",
+                    "mobile": "9000012347",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 4500,
+                    "reservationId": "AT-RID-1003",
+                },
+            },
+        )
+        closed = self.client.put(
+            "/hotel/api/rooms/room-201",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+        self.assertEqual(closed.get_json()["room"]["status"], "dirty")
+        ids = closed.get_json().get("checkedOutRoomIds") or []
+        self.assertEqual(ids, ["room-201"])
+        peer = self.client.get("/hotel/api/rooms/room-202").get_json()["room"]
+        self.assertEqual(peer["status"], "reserved")
+        self.assertTrue(peer.get("stay"))
+
+    def test_same_reservation_checkout_leaves_occupied_peers(self):
+        stay = {
+            "guestName": "Both In",
+            "firstName": "Both",
+            "lastName": "In",
+            "mobile": "9000012348",
+            "reservationId": "AT-RID-1004",
+        }
+        check_in, check_out = self._stay_window(nights=1)
+        payload = {
+            "action": "reserve",
+            "checkInDate": check_in,
+            "checkOutDate": check_out,
+            "stay": stay,
+        }
+        self.client.put("/hotel/api/rooms/room-201", json=payload)
+        self.client.put("/hotel/api/rooms/room-202", json=payload)
+        for room_id in ("room-201", "room-202"):
+            self.client.put(
+                f"/hotel/api/rooms/{room_id}",
+                json={
+                    "action": "checkin",
+                    "stay": {
+                        "firstName": "Both",
+                        "lastName": "In",
+                        "mobile": "9000012348",
+                        "checkInDate": check_in,
+                        "checkOutDate": check_out,
+                        "nights": 1,
+                        "roomRate": 4500,
+                        "reservationId": "AT-RID-1004",
+                    },
+                },
+            )
+        closed = self.client.put(
+            "/hotel/api/rooms/room-201",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(closed.status_code, 200, closed.get_data(as_text=True))
+        self.assertEqual(closed.get_json()["room"]["status"], "dirty")
+        peer = self.client.get("/hotel/api/rooms/room-202").get_json()["room"]
+        self.assertEqual(peer["status"], "occupied")
+        self.assertTrue(peer.get("stay"))
+
+    def test_local_bk_booking_number_does_not_auto_merge(self):
+        stay = {
+            "guestName": "Local Bk",
+            "mobile": "9000012349",
+            "bookingNumber": "BK20260816123456",
+            "reservationBookingId": "BK20260816123456",
+        }
+        payload = {
+            "action": "reserve",
+            "checkInDate": "2026-11-20",
+            "checkOutDate": "2026-11-22",
+            "stay": stay,
+        }
+        self.assertEqual(
+            self.client.put("/hotel/api/rooms/room-201", json=payload).status_code, 200
+        )
+        self.assertEqual(
+            self.client.put("/hotel/api/rooms/room-202", json=payload).status_code, 200
+        )
+        board = self.client.get("/hotel/api/rooms")
+        rooms = {r["id"]: r for r in board.get_json().get("rooms") or []}
+        self.assertFalse(rooms["room-201"].get("mergeGroupId"))
+        self.assertFalse(rooms["room-202"].get("mergeGroupId"))
 
 
 if __name__ == "__main__":

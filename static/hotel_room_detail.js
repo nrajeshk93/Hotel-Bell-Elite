@@ -179,6 +179,47 @@
     return text || '—';
   }
 
+  function guestCardDisplayName(stay) {
+    if (!stay || typeof stay !== 'object') return '';
+    var name = String(stay.guestName || stay.guest_name || '').trim();
+    if (name) return name;
+    return [stay.title, stay.firstName || stay.first_name, stay.lastName || stay.last_name]
+      .map(function (part) {
+        return String(part || '').trim();
+      })
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  function readRoomBootstrap(root) {
+    var node =
+      (root && $('#hrd-room-bootstrap', root)) ||
+      document.getElementById('hrd-room-bootstrap');
+    if (!node) return null;
+    try {
+      var parsed = JSON.parse(node.textContent || '');
+      return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function stayReservationDisplayId(stay) {
+    if (!stay) return '';
+    var booking = String(stay.bookingNumber || stay.booking_number || '').trim();
+    var rid = String(
+      stay.reservationId ||
+        stay.reservation_id ||
+        stay.reservationBookingId ||
+        stay.reservation_booking_id ||
+        ''
+    ).trim();
+    if (!rid) return '';
+    if (booking && rid.toLowerCase() === booking.toLowerCase()) return '';
+    if (/^BK\d{8,}$/i.test(rid)) return '';
+    return rid;
+  }
+
   function todayISO() {
     if (typeof global.hotelDateTodayISO === 'function') {
       return global.hotelDateTodayISO();
@@ -569,7 +610,7 @@
 
     if (showGuest && stay) {
       var nameEl = $('#hrd-guest-name', root);
-      if (nameEl) nameEl.textContent = dash(stay.guestName || (stay.firstName + ' ' + stay.lastName));
+      if (nameEl) nameEl.textContent = dash(guestCardDisplayName(stay));
       var metaEl = $('#hrd-guest-meta', root);
       if (metaEl) {
         metaEl.textContent = occupied
@@ -578,8 +619,11 @@
       }
       var bookingEl = $('#hrd-guest-booking', root);
       if (bookingEl) bookingEl.textContent = dash(stay.bookingNumber);
-      var statusEl = $('#hrd-guest-status', root);
-      if (statusEl) statusEl.textContent = occupied ? 'Checked in' : 'Reserved';
+      var reservationId = stayReservationDisplayId(stay);
+      var reservationWrap = $('#hrd-guest-reservation-wrap', root);
+      var reservationEl = $('#hrd-guest-reservation', root);
+      if (reservationEl) reservationEl.textContent = dash(reservationId);
+      setVisible(reservationWrap, !!reservationId);
       var mobileEl = $('#hrd-guest-mobile', root);
       if (mobileEl) {
         mobileEl.textContent = dash(
@@ -1435,7 +1479,7 @@
       var okGroup = global.confirm(
         'This is the billing primary' +
           (partners ? ' (merged with Room ' + partners + ')' : '') +
-          '. Check out will clear all merged rooms. Continue?'
+          '. Checkout applies to this room only. Continue?'
       );
       if (!okGroup) return Promise.resolve(null);
     } else if (isMember) {
@@ -2440,7 +2484,7 @@
 
   function collectNightlyRatesFromRoomEl(row) {
     if (!row) return [];
-    return $all('.hrd-ci-nightly-row', row).map(function (nightRow) {
+    var fromDom = $all('.hrd-ci-nightly-row', row).map(function (nightRow) {
       var date = nightRow.getAttribute('data-night-date') || '';
       var rateEl = nightRow.querySelector('[data-nightly-room-rate]');
       var planEl = nightRow.querySelector('[data-nightly-rate-plan]');
@@ -2450,6 +2494,15 @@
         ratePlan: planEl ? String(planEl.value || 'EP') : 'EP'
       };
     });
+    if (fromDom.length) return fromDom;
+    try {
+      var raw = row.getAttribute('data-nightly-seed');
+      if (raw) {
+        var parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) return parsed;
+      }
+    } catch (err) {}
+    return [];
   }
 
   function nightlyRatesHtml(roomKey, nightlyRates, today) {
@@ -2522,24 +2575,24 @@
 
   function collectMergeNightlyRateSum(form) {
     if (!form) return 0;
-    var nights = $all('[data-nightly-room-rate]', form);
-    if (nights.length) {
+    var rooms = $all('.hrd-ci-rate-room', form);
+    if (rooms.length) {
       var sum = 0;
-      nights.forEach(function (el) {
-        sum += Math.max(0, Number(el.value || 0));
+      var nightCount = Math.max(1, Number(form.nights && form.nights.value) || 1);
+      rooms.forEach(function (row) {
+        var nightly = collectNightlyRatesFromRoomEl(row);
+        if (nightly.length) {
+          nightly.forEach(function (n) {
+            sum += Math.max(0, Number(n.roomRate || 0));
+          });
+          return;
+        }
+        var rateEl = row.querySelector('[data-merge-room-rate]');
+        sum += Math.max(0, Number((rateEl && rateEl.value) || 0)) * nightCount;
       });
       return Math.round(sum * 100) / 100;
     }
-    var rows = $all('[data-merge-room-rate]', form);
-    if (!rows.length) {
-      return Math.max(0, Number((form.elements.roomRate && form.elements.roomRate.value) || 0));
-    }
-    var legacy = 0;
-    var nightCount = Math.max(1, Number(form.nights && form.nights.value) || 1);
-    rows.forEach(function (el) {
-      legacy += Math.max(0, Number(el.value || 0)) * nightCount;
-    });
-    return Math.round(legacy * 100) / 100;
+    return Math.max(0, Number((form.elements.roomRate && form.elements.roomRate.value) || 0));
   }
 
   function primaryNightlyPick(form, attr) {
@@ -2662,8 +2715,6 @@
     var dates = billableNightDates(form.checkInDate && form.checkInDate.value, form.nights && form.nights.value);
     var today = hotelBusinessTodayISO(root);
     $all('.hrd-ci-rate-room', form).forEach(function (row, idx) {
-      var listHost = row.querySelector('[data-nightly-host]');
-      if (!listHost) return;
       var existing = collectNightlyRatesFromRoomEl(row);
       if (!existing.length) {
         try {
@@ -2688,11 +2739,21 @@
           row.querySelector('[data-merge-rate-plan]').value) ||
         'EP';
       var nightly = buildNightlyRatesForRoom(existing, dates, defaultRate, defaultPlan);
-      var roomKey = row.getAttribute('data-room-id') || row.getAttribute('data-room-number') || idx;
-      listHost.innerHTML = nightlyRatesHtml(roomKey, nightly, today);
       try {
         row.setAttribute('data-nightly-seed', JSON.stringify(nightly));
       } catch (err2) {}
+      var listHost = row.querySelector('[data-nightly-host]');
+      if (listHost) {
+        var roomKey = row.getAttribute('data-room-id') || row.getAttribute('data-room-number') || idx;
+        listHost.innerHTML = nightlyRatesHtml(roomKey, nightly, today);
+      }
+      var summary = row.querySelector('.hrd-ci-room-tariff');
+      if (summary) {
+        summary.textContent = nightlyRowSummaryText(
+          (nightly[0] && nightly[0].ratePlan) || defaultPlan,
+          (nightly[0] && nightly[0].roomRate) || defaultRate
+        );
+      }
     });
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();
@@ -2744,9 +2805,11 @@
         : defaultRateForType(primaryTypeKey || primaryTypeLabel);
     var primaryFromSaved = positiveRoomRate(primarySaved && primarySaved.roomRate);
     var primaryFromStay = positiveRoomRate(stay && stay.roomRate);
-    var primaryNightly =
+    var pageIsMergePrimary = !!(lastRoom && lastRoom.isMergePrimary);
+    var pageIsMergeMember = !!(lastRoom && lastRoom.isMergeMember);
+    var pageNightly =
       (primarySaved && primarySaved.nightlyRates) ||
-      (stay && stay.nightlyRates) ||
+      (!pageIsMergeMember && stay && stay.nightlyRates) ||
       [];
     rooms.push({
       roomId: primaryId,
@@ -2755,17 +2818,17 @@
       roomTypeLabel: primaryTypeLabel,
       ratePlan:
         (primarySaved && primarySaved.ratePlan) ||
-        (stay && stay.ratePlan) ||
+        (pageIsMergeMember ? '' : stay && stay.ratePlan) ||
         'EP',
       /* Reserved stays often store roomRate:0 — treat that as unset and use tariff. */
       roomRate:
         primaryFromSaved != null
           ? primaryFromSaved
-          : primaryFromStay != null
+          : !pageIsMergeMember && primaryFromStay != null
             ? primaryFromStay
             : primaryDefault,
-      nightlyRates: Array.isArray(primaryNightly) ? primaryNightly : [],
-      isPrimary: true
+      nightlyRates: Array.isArray(pageNightly) ? pageNightly : [],
+      isPrimary: pageIsMergePrimary || !pageIsMergeMember
     });
 
     var partners =
@@ -2776,7 +2839,9 @@
         return { number: n, id: '', roomTypeLabel: '', roomType: '' };
       });
     }
-    if (lastRoom && lastRoom.isMergePrimary) {
+    /* Primary check-in/edit lists every merged room's tariff. Member rooms
+       only show this room's tariff — not the rest of the group. */
+    if (pageIsMergePrimary) {
       partners.forEach(function (peer) {
         if (!peer) return;
         var pid = peer.id || peer.roomId || '';
@@ -2813,25 +2878,6 @@
           isPrimary: false
         });
       });
-    } else if (savedRates.length > 1) {
-      savedRates.forEach(function (row) {
-        if (!row || row.isPrimary) return;
-        if (String(row.roomId || '') === String(primaryId)) return;
-        var rowRate = positiveRoomRate(row.roomRate);
-        rooms.push({
-          roomId: row.roomId || '',
-          number: row.number || '',
-          roomType: row.roomType || '',
-          roomTypeLabel: row.roomTypeLabel || '',
-          ratePlan: row.ratePlan || 'EP',
-          roomRate:
-            rowRate != null
-              ? rowRate
-              : defaultRateForType(row.roomType || row.roomTypeLabel),
-          nightlyRates: row.nightlyRates || [],
-          isPrimary: false
-        });
-      });
     }
 
     var dates = billableNightDates(
@@ -2852,6 +2898,18 @@
         } catch (err) {
           seed = '';
         }
+        var showNightlyEditor = !!(row.isPrimary || rooms.length === 1);
+        var nightlyBlock = showNightlyEditor
+          ? '<div class="hrd-ci-nightly-block">' +
+            '<p class="hrd-ci-nightly-heading">Nightly rates &amp; Meal plan</p>' +
+            '<div data-nightly-host>' +
+            nightlyRatesHtml(roomKey, nightly, today) +
+            '</div></div>'
+          : '<div class="hrd-ci-nightly-block hrd-ci-nightly-block--summary">' +
+            '<p class="hrd-ci-nightly-heading">Tariff</p>' +
+            '<p class="hrd-ci-room-tariff">' +
+            escapeHtml(nightlyRowSummaryText(plan, rate)) +
+            '</p></div>';
         return (
           '<div class="hrd-ci-rate-room" data-room-id="' +
           escapeHtml(row.roomId || '') +
@@ -2884,11 +2942,8 @@
           '<input type="hidden" data-merge-rate-plan value="' +
           escapeHtml(plan) +
           '">' +
-          '<div class="hrd-ci-nightly-block">' +
-          '<p class="hrd-ci-nightly-heading">Nightly rates &amp; Meal plan</p>' +
-          '<div data-nightly-host>' +
-          nightlyRatesHtml(roomKey, nightly, today) +
-          '</div></div></div>'
+          nightlyBlock +
+          '</div>'
         );
       })
       .join('');
@@ -3280,6 +3335,53 @@
     scheduleCheckinDraftSave(root, form);
   };
 
+  function countryNameFromMobileOption(listboxRoot, option) {
+    if (option && option.getAttribute) {
+      var fromOption = String(
+        option.getAttribute('data-country') || ''
+      ).replace(/\s+/g, ' ').trim();
+      if (fromOption) return fromOption;
+      var title = option.querySelector && option.querySelector('.ep-listbox-option-title');
+      fromOption = String((title && title.textContent) || '').replace(/\s+/g, ' ').trim();
+      if (fromOption) return fromOption;
+    }
+    var list =
+      (listboxRoot && listboxRoot.__epPortaledList) ||
+      document.getElementById('hrd-ci-mobile-country-list');
+    if (!list || !list.querySelector) return '';
+    var selected =
+      list.querySelector('.se-filter-listbox-option.is-selected') ||
+      list.querySelector('.se-filter-listbox-option[aria-selected="true"]');
+    if (!selected) return '';
+    return String(
+      selected.getAttribute('data-country') ||
+      ((selected.querySelector('.ep-listbox-option-title') || {}).textContent) ||
+      ''
+    ).replace(/\s+/g, ' ').trim();
+  }
+
+  function nationalityFromCountryName(countryName) {
+    var name = String(countryName || '').trim();
+    if (!name) return '';
+    if (/^india$/i.test(name) || /^indian$/i.test(name)) return 'Indian';
+    return name;
+  }
+
+  function syncNationalityFromMobileCountry(listboxRoot, option) {
+    var countryName = countryNameFromMobileOption(listboxRoot, option);
+    if (!countryName) return;
+    var nationality = nationalityFromCountryName(countryName);
+    resetListbox('hrd-ci-nationality', nationality, nationality);
+    resetListbox('hrd-ci-country', countryName, countryName);
+  }
+
+  global.hrdCiMobileCountryChanged = function (listboxRoot, _value, _label, option) {
+    syncNationalityFromMobileCountry(listboxRoot, option);
+    var root = pageRoot();
+    var form = root && $('#hrd-checkin-form', root);
+    if (form) scheduleCheckinDraftSave(root, form);
+  };
+
   function checkinDraftKey(root) {
     var roomId = (root && root.getAttribute('data-room-id')) || '';
     return roomId ? CHECKIN_DRAFT_PREFIX + roomId : '';
@@ -3511,6 +3613,7 @@
       syncAgencyBillingHint(form);
       syncTotals(form);
       syncCheckinReservationIdField(form, stay);
+      scheduleFormFieldAutosize(form);
     } finally {
       checkinDraftApplying = false;
     }
@@ -3525,6 +3628,7 @@
       ? String(form.elements.lastName.value || '').trim()
       : '';
     form.elements.idNumber.value = [first, last].filter(Boolean).join(' ');
+    autosizeFormField(form.elements.idNumber);
   }
 
   var EXTRA_GUEST_ID_TYPES = [
@@ -3866,6 +3970,7 @@
 
     syncAdultsFromGuests(form);
     scheduleCheckinDraftSave(pageRoot(), form);
+    scheduleFormFieldAutosize(form);
     setTimeout(function () {
       nameInput.focus();
     }, 20);
@@ -3883,6 +3988,124 @@
       var removeBtn = row.querySelector('[data-hrd-remove-guest]');
       if (removeBtn) removeBtn.setAttribute('aria-label', 'Remove guest ' + n);
     });
+  }
+
+  function fieldAutosizeSizer() {
+    var sizer = document.getElementById('hrd-field-autosize-sizer');
+    if (sizer) return sizer;
+    sizer = document.createElement('span');
+    sizer.id = 'hrd-field-autosize-sizer';
+    sizer.className = 'hrd-field-autosize-sizer';
+    sizer.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(sizer);
+    return sizer;
+  }
+
+  function autosizeFormField(input) {
+    if (!input || input.disabled) return;
+    var type = String(input.type || 'text').toLowerCase();
+    if (
+      type === 'hidden' ||
+      type === 'file' ||
+      type === 'checkbox' ||
+      type === 'radio' ||
+      type === 'number' ||
+      type === 'date' ||
+      type === 'time' ||
+      type === 'button' ||
+      type === 'submit'
+    ) {
+      return;
+    }
+    if (input.closest('.ep-form-listbox, .hotel-date, .ep-time-chip, .hrd-input-affix')) {
+      return;
+    }
+    var field = input.closest('.hrd-field');
+    if (!field) return;
+    input.style.width = '';
+    if (input.tagName === 'TEXTAREA') {
+      input.style.height = 'auto';
+      input.style.height = Math.max(76, input.scrollHeight) + 'px';
+      return;
+    }
+    if (field.classList.contains('hrd-field--customer-mobile')) return;
+    if (
+      type !== 'text' &&
+      type !== 'email' &&
+      type !== 'tel' &&
+      type !== 'search' &&
+      type !== ''
+    ) {
+      return;
+    }
+    var value = String(input.value || '').trim();
+    if (!field.classList.contains('hrd-field--grow') || !field._hrdCellW) {
+      field._hrdCellW = input.clientWidth;
+    }
+    var cellW = field._hrdCellW || input.clientWidth;
+    if (!value || !cellW) {
+      field.classList.remove('hrd-field--grow');
+      return;
+    }
+    var sizer = fieldAutosizeSizer();
+    var cs = window.getComputedStyle(input);
+    sizer.style.font = cs.font;
+    sizer.style.letterSpacing = cs.letterSpacing;
+    sizer.style.textTransform = cs.textTransform;
+    sizer.textContent = input.value;
+    var pad =
+      (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+    var border =
+      (parseFloat(cs.borderLeftWidth) || 0) +
+      (parseFloat(cs.borderRightWidth) || 0);
+    var need = Math.ceil(sizer.getBoundingClientRect().width) + pad + border + 8;
+    field.classList.toggle('hrd-field--grow', need > cellW + 4);
+  }
+
+  function refreshFormFieldAutosize(form) {
+    if (!form) return;
+    Array.prototype.forEach.call(
+      form.querySelectorAll('.hrd-field input, .hrd-field textarea'),
+      autosizeFormField
+    );
+  }
+
+  function scheduleFormFieldAutosize(form) {
+    if (!form) return;
+    var run = function () {
+      refreshFormFieldAutosize(form);
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(run);
+    } else {
+      setTimeout(run, 0);
+    }
+  }
+
+  function bindFormFieldAutosize(form) {
+    if (!form) return;
+    if (form.getAttribute('data-field-autosize-bound') === '1') {
+      scheduleFormFieldAutosize(form);
+      return;
+    }
+    form.setAttribute('data-field-autosize-bound', '1');
+    form.addEventListener('input', function (event) {
+      var target = event.target;
+      if (target && target.closest && target.closest('.hrd-field')) {
+        autosizeFormField(target);
+      }
+    });
+    form._hrdRefreshFieldAutosize = function () {
+      refreshFormFieldAutosize(form);
+    };
+    window.addEventListener('resize', function () {
+      Array.prototype.forEach.call(form.querySelectorAll('.hrd-field'), function (field) {
+        field._hrdCellW = 0;
+        field.classList.remove('hrd-field--grow');
+      });
+      refreshFormFieldAutosize(form);
+    });
+    scheduleFormFieldAutosize(form);
   }
 
   function fillCheckinFromGuest(form, guest) {
@@ -3924,6 +4147,7 @@
     }
     syncAgencyBillingHint(form);
     scheduleCheckinDraftSave(pageRoot(), form);
+    scheduleFormFieldAutosize(form);
   }
 
   function bindMobileGuestLookup(root, form) {
@@ -4014,6 +4238,7 @@
       if (address) setFormText(form, 'address', address);
       closeSuggest();
       scheduleCheckinDraftSave(pageRoot(), form);
+      scheduleFormFieldAutosize(form);
       showToast('Customer details loaded.');
     }
 
@@ -4181,6 +4406,7 @@
       if (email && emailInput) emailInput.value = email;
       closeSuggest();
       syncReserveSaveEnabled(root, form);
+      scheduleFormFieldAutosize(form);
       showToast('Customer details loaded.');
     }
 
@@ -4312,24 +4538,65 @@
   }
 
   function syncAgencyDatalist(root, agencies) {
-    ['hrd-ci-agency-datalist', 'hrd-reserve-agency-datalist'].forEach(function (listId) {
-      var list = document.getElementById(listId);
-      if (!list) return;
-      list.innerHTML = '';
-      (agencies || []).forEach(function (agency) {
-        if (!agency || !agency.name) return;
-        var opt = document.createElement('option');
-        opt.value = agency.name;
-        opt.setAttribute('data-gst', agency.gst || '');
-        opt.setAttribute('data-address', agency.address || '');
-        list.appendChild(opt);
-      });
-    });
     if (root) {
       try {
         root.setAttribute('data-agencies', JSON.stringify(agencies || []));
       } catch (err) {}
     }
+  }
+
+  function filterAgencies(agencies, query) {
+    var q = String(query || '').trim().toLowerCase();
+    var list = (agencies || []).filter(function (agency) {
+      return agency && String(agency.name || '').trim();
+    });
+    if (!q) return list;
+    return list.filter(function (agency) {
+      var name = String(agency.name || '').toLowerCase();
+      var gst = String(agency.gst || '').toLowerCase();
+      var address = String(agency.address || '').toLowerCase();
+      return name.indexOf(q) !== -1 || gst.indexOf(q) !== -1 || address.indexOf(q) !== -1;
+    });
+  }
+
+  function findAgencyByName(agencies, typed) {
+    var needle = String(typed || '').trim().toLowerCase();
+    if (!needle) return null;
+    for (var i = 0; i < (agencies || []).length; i += 1) {
+      if (String(agencies[i].name || '').trim().toLowerCase() === needle) {
+        return agencies[i];
+      }
+    }
+    return null;
+  }
+
+  function refreshAgenciesFromApi(root, done) {
+    var local = parseAgenciesData(root);
+    var api = root && root.getAttribute('data-agencies-api');
+    if (!api) {
+      if (done) done(local);
+      return;
+    }
+    fetch(api, {
+      credentials: 'same-origin',
+      headers: apiHeaders()
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok && result.data && result.data.ok && Array.isArray(result.data.agencies)) {
+          syncAgencyDatalist(root, result.data.agencies);
+          if (done) done(result.data.agencies);
+          return;
+        }
+        if (done) done(local);
+      })
+      .catch(function () {
+        if (done) done(local);
+      });
   }
 
   function fillAgencyFieldsFromMaster(form, agency) {
@@ -4338,6 +4605,198 @@
     setFormText(form, 'agencyGst', agency.gst || '');
     setFormText(form, 'agencyAddress', agency.address || '');
     syncAgencyBillingHint(form);
+    scheduleFormFieldAutosize(form);
+  }
+
+  function agencyMasterPayload(form) {
+    var name = form && form.elements.agencyName
+      ? String(form.elements.agencyName.value || '').trim()
+      : '';
+    var gst = form && form.elements.agencyGst
+      ? normalizeGstin(form.elements.agencyGst.value)
+      : '';
+    var address = form && form.elements.agencyAddress
+      ? String(form.elements.agencyAddress.value || '').trim()
+      : '';
+    if (gst && !isValidGstin(gst)) gst = '';
+    return { name: name, gst: gst, address: address };
+  }
+
+  function syncAgencyMasterFromForm(root, form, opts) {
+    opts = opts || {};
+    if (!form) return;
+    var payload = agencyMasterPayload(form);
+    if (!payload.name) return;
+    var key = JSON.stringify(payload);
+    if (form._hrdAgencyMasterSyncKey === key) return;
+    var createUrl =
+      (root && root.getAttribute('data-agency-create-url')) || '/agencies/create';
+    form._hrdAgencyMasterSyncKey = key;
+    fetch(createUrl, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload)
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok) {
+          form._hrdAgencyMasterSyncKey = '';
+          if (opts.toast) {
+            showToast(
+              (result.data && result.data.error) || 'Could not save agency.',
+              true
+            );
+          }
+          return;
+        }
+        if (result.data.agencies) {
+          syncAgencyDatalist(root, result.data.agencies);
+        }
+        if (opts.toast) showToast('Saved to Agency Master.');
+      })
+      .catch(function () {
+        form._hrdAgencyMasterSyncKey = '';
+        if (opts.toast) showToast('Could not save agency.', true);
+      });
+  }
+
+  function bindAgencyMasterSync(root, form) {
+    if (!form || form.getAttribute('data-agency-sync-bound') === '1') return;
+    form.setAttribute('data-agency-sync-bound', '1');
+    ['agencyName', 'agencyGst', 'agencyAddress'].forEach(function (fieldName) {
+      var input = form.elements[fieldName];
+      if (!input) return;
+      input.addEventListener('blur', function () {
+        syncAgencyMasterFromForm(root, form, { toast: false });
+      });
+    });
+  }
+
+  function bindAgencySuggest(root, form, nameInput) {
+    if (!form || !nameInput) return;
+    if (nameInput.getAttribute('data-agency-pick-bound') === '1') return;
+    nameInput.setAttribute('data-agency-pick-bound', '1');
+    nameInput.setAttribute('autocomplete', 'off');
+    nameInput.removeAttribute('list');
+
+    var boxId = nameInput.getAttribute('aria-controls');
+    var box =
+      (boxId && document.getElementById(boxId)) ||
+      (nameInput.closest('.hrd-field') &&
+        nameInput.closest('.hrd-field').querySelector('.hrd-customer-suggest')) ||
+      $('#hrd-ci-agency-suggest', form) ||
+      $('#hrd-reserve-agency-suggest', form);
+
+    var timer = null;
+    var results = [];
+    var activeIndex = -1;
+
+    function closeSuggest() {
+      if (box) {
+        box.hidden = true;
+        box.innerHTML = '';
+      }
+      nameInput.setAttribute('aria-expanded', 'false');
+      activeIndex = -1;
+      results = [];
+    }
+
+    function applyAgency(agency, fromPick) {
+      if (!agency) return;
+      fillAgencyFieldsFromMaster(form, agency);
+      closeSuggest();
+      if (fromPick) showToast('Agency details loaded.');
+    }
+
+    function renderSuggest(list) {
+      results = list || [];
+      if (!box || !results.length) {
+        closeSuggest();
+        return;
+      }
+      if (activeIndex < 0 || activeIndex >= results.length) activeIndex = 0;
+      box.hidden = false;
+      nameInput.setAttribute('aria-expanded', 'true');
+      box.innerHTML = results
+        .map(function (agency, idx) {
+          var meta = String(agency.gst || agency.address || '').trim();
+          return (
+            '<button type="button" class="hrd-customer-opt' +
+            (idx === activeIndex ? ' is-active' : '') +
+            '" role="option" data-agency-index="' +
+            idx +
+            '">' +
+            '<span class="hrd-customer-opt-mobile">' +
+            escapeHtml(agency.name || '') +
+            '</span>' +
+            (meta
+              ? '<span class="hrd-customer-opt-name">' + escapeHtml(meta) + '</span>'
+              : '') +
+            '</button>'
+          );
+        })
+        .join('');
+    }
+
+    function showForQuery(query) {
+      renderSuggest(filterAgencies(parseAgenciesData(root), query));
+    }
+
+    nameInput.addEventListener('focus', function () {
+      showForQuery(nameInput.value);
+      refreshAgenciesFromApi(root, function () {
+        if (document.activeElement === nameInput) showForQuery(nameInput.value);
+      });
+    });
+    nameInput.addEventListener('click', function () {
+      showForQuery(nameInput.value);
+    });
+    nameInput.addEventListener('input', function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        showForQuery(nameInput.value);
+      }, 120);
+      syncAgencyBillingHint(form);
+    });
+    nameInput.addEventListener('keydown', function (event) {
+      if (!box || box.hidden || !results.length) return;
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeIndex = (activeIndex + 1) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeIndex = (activeIndex - 1 + results.length) % results.length;
+        renderSuggest(results);
+      } else if (event.key === 'Enter' && activeIndex >= 0) {
+        event.preventDefault();
+        applyAgency(results[activeIndex], true);
+      } else if (event.key === 'Escape') {
+        closeSuggest();
+      }
+    });
+    if (box) {
+      box.addEventListener('mousedown', function (event) {
+        var btn = event.target.closest('[data-agency-index]');
+        if (!btn) return;
+        event.preventDefault();
+        var idx = Number(btn.getAttribute('data-agency-index'));
+        if (!isNaN(idx) && results[idx]) applyAgency(results[idx], true);
+      });
+    }
+    nameInput.addEventListener('blur', function () {
+      var match = findAgencyByName(parseAgenciesData(root), nameInput.value);
+      if (match) fillAgencyFieldsFromMaster(form, match);
+      setTimeout(closeSuggest, 150);
+    });
+    document.addEventListener('click', function (event) {
+      if (!form.contains(event.target)) closeSuggest();
+    });
   }
 
   function bindAgencyMasterControls(root, form) {
@@ -4351,32 +4810,14 @@
       form.elements.agencyName ||
       $('#hrd-ci-agency-name', form) ||
       $('#hrd-reserve-agency-name', form);
-    if (nameInput && nameInput.getAttribute('data-agency-pick-bound') !== '1') {
-      nameInput.setAttribute('data-agency-pick-bound', '1');
-      nameInput.addEventListener('change', function () {
-        var typed = String(nameInput.value || '').trim().toLowerCase();
-        if (!typed) return;
-        var agencies = parseAgenciesData(root);
-        for (var i = 0; i < agencies.length; i += 1) {
-          if (String(agencies[i].name || '').trim().toLowerCase() === typed) {
-            fillAgencyFieldsFromMaster(form, agencies[i]);
-            return;
-          }
-        }
-      });
-    }
+    bindAgencySuggest(root, form, nameInput);
+    bindAgencyMasterSync(root, form);
 
     var btn = form.querySelector('[data-hrd-agency-master]') || $('#hrd-ci-agency-master-btn', form);
     if (!btn || btn.getAttribute('data-agency-master-bound') === '1') return;
     btn.setAttribute('data-agency-master-bound', '1');
     btn.addEventListener('click', function () {
-      var name = form.elements.agencyName
-        ? String(form.elements.agencyName.value || '').trim()
-        : '';
-      var gst = form.elements.agencyGst
-        ? normalizeGstin(form.elements.agencyGst.value)
-        : '';
-      if (form.elements.agencyGst) form.elements.agencyGst.value = gst;
+      var payload = agencyMasterPayload(form);
       var gstError = agencyGstValidationError(form);
       if (gstError) {
         showToast(gstError, true);
@@ -4386,12 +4827,9 @@
         } catch (err) {}
         return;
       }
-      var address = form.elements.agencyAddress
-        ? String(form.elements.agencyAddress.value || '').trim()
-        : '';
       var masterUrl =
         (root && root.getAttribute('data-agency-master-url')) || '/agencies';
-      if (!name) {
+      if (!payload.name) {
         if (typeof global.deSoftNavigate === 'function') {
           global.deSoftNavigate(masterUrl);
         } else {
@@ -4399,38 +4837,7 @@
         }
         return;
       }
-      var createUrl =
-        (root && root.getAttribute('data-agency-create-url')) || '/agencies/create';
-      fetch(createUrl, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: apiHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ name: name, gst: gst, address: address })
-      })
-        .then(function (resp) {
-          return resp.json().then(function (data) {
-            return { ok: resp.ok, data: data };
-          });
-        })
-        .then(function (result) {
-          if (!result.ok || !result.data || !result.data.ok) {
-            showToast(
-              (result.data && result.data.error) || 'Could not save agency.',
-              true
-            );
-            return;
-          }
-          if (result.data.agencies) {
-            syncAgencyDatalist(root, result.data.agencies);
-          }
-          if (result.data.agency) {
-            fillAgencyFieldsFromMaster(form, result.data.agency);
-          }
-          showToast('Saved to Agency Master.');
-        })
-        .catch(function () {
-          showToast('Could not save agency.', true);
-        });
+      syncAgencyMasterFromForm(root, form, { toast: true });
     });
   }
 
@@ -4668,6 +5075,7 @@
         ) {
           form.elements.additionalRequests.value = enriched.additionalRequests;
         }
+        scheduleFormFieldAutosize(form);
         syncTotals(form);
         try {
           writeCheckinDraft(root, collectStay(form), { open: true });
@@ -4769,6 +5177,7 @@
     bindMobileGuestLookup(root, form);
     bindCheckinCustomerSuggest(root, form);
     bindAgencyMasterControls(root, form);
+    bindFormFieldAutosize(form);
     bindIdDocumentUpload(root, form);
     syncAgencyDatalist(root, parseAgenciesData(root));
     syncCustomerNameFromPersonal(form);
@@ -4912,6 +5321,7 @@
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('hrd-checkin-open');
+    scheduleFormFieldAutosize(form);
     try {
       writeCheckinDraft(root, collectStay(form), { open: true });
     } catch (err) {}
@@ -5559,6 +5969,7 @@
     applyReserveBlockedDates();
     bindAgencyBilling(form);
     bindAgencyMasterControls(root, form);
+    bindFormFieldAutosize(form);
     bindReservePartyToggle(form);
     bindReserveCustomerSuggest(root, form);
     syncAgencyBillingHint(form);
@@ -5574,6 +5985,7 @@
     modal.removeAttribute('hidden');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('hrd-reserve-open');
+    scheduleFormFieldAutosize(form);
     setTimeout(function () {
       var mobileFocus = $('#hrd-reserve-mobile', form);
       if (mobileFocus && !preferAgency) mobileFocus.focus();
@@ -6586,6 +6998,11 @@
       mergeRoomRates: collectMergeRoomRates(form),
       nightlyRates: (function () {
         var rows = collectMergeRoomRates(form);
+        if (lastRoom && lastRoom.isMergeMember) {
+          return Array.isArray(lastRoom.stay && lastRoom.stay.nightlyRates)
+            ? lastRoom.stay.nightlyRates
+            : [];
+        }
         var primary = null;
         for (var i = 0; i < rows.length; i++) {
           if (rows[i] && rows[i].isPrimary) {
@@ -6700,6 +7117,9 @@
     } else {
       stay.invoiceTo = '';
       stay.billingName = '';
+    }
+    if (stay.agencyName) {
+      syncAgencyMasterFromForm(root, form, { toast: false });
     }
 
     var api = root.getAttribute('data-room-api') || '';
@@ -7606,19 +8026,24 @@
       }
     }
 
-    var status = mapStatus(root.getAttribute('data-room-status'));
-    paintRoom(root, {
-      status: status,
-      id: root.getAttribute('data-room-id'),
-      number: root.getAttribute('data-room-number'),
-      roomType: root.getAttribute('data-room-type'),
-      roomTypeLabel: root.getAttribute('data-room-type-label'),
-      stay:
-        lastRoom &&
-        String(lastRoom.id || '') === String(root.getAttribute('data-room-id') || '')
-          ? lastRoom.stay
-          : null
-    });
+    var bootRoom = readRoomBootstrap(root);
+    if (bootRoom && (bootRoom.id || bootRoom.status || bootRoom.stay)) {
+      paintRoom(root, bootRoom);
+    } else {
+      var status = mapStatus(root.getAttribute('data-room-status'));
+      paintRoom(root, {
+        status: status,
+        id: root.getAttribute('data-room-id'),
+        number: root.getAttribute('data-room-number'),
+        roomType: root.getAttribute('data-room-type'),
+        roomTypeLabel: root.getAttribute('data-room-type-label'),
+        stay:
+          lastRoom &&
+          String(lastRoom.id || '') === String(root.getAttribute('data-room-id') || '')
+            ? lastRoom.stay
+            : null
+      });
+    }
     loadRoomIfNeeded(root, function () {
       /* Refresh / soft-nav: restore open check-in sheet after room stay is loaded. */
       var pendingDraft = readCheckinDraft(root);
