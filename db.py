@@ -9670,6 +9670,31 @@ def _hotel_str(value, max_len=200):
     return str(value or "").strip()[:max_len]
 
 
+_HOTEL_ID_DOC_NAME_RE = re.compile(
+    r"^[A-Za-z0-9._-]+\.(webp|pdf|jpe?g|png|heic|heif)$",
+    re.IGNORECASE,
+)
+
+
+def _hotel_id_document_basename(value):
+    text = str(value or "").strip().replace("\\", "/")
+    text = text.split("?")[0].split("#")[0].rstrip("/")
+    if "/" in text:
+        text = text.split("/")[-1]
+    if not text or ".." in text:
+        return ""
+    if _HOTEL_ID_DOC_NAME_RE.match(text):
+        return text
+    return ""
+
+
+def _hotel_id_document_view_path(name, path):
+    stored = _hotel_id_document_basename(path) or _hotel_id_document_basename(name)
+    if not stored:
+        return _hotel_str(path, 200)
+    return "/hotel/api/id-documents/" + stored
+
+
 _HOTEL_TITLE_RE = re.compile(
     r"^(Mr|Mrs|Ms|Miss|Dr|Mx)\.?\s+(.+)$", re.IGNORECASE
 )
@@ -9991,8 +10016,9 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
         "idDocumentName": _hotel_str(
             stay.get("idDocumentName") or stay.get("id_document_name"), 120
         ),
-        "idDocumentPath": _hotel_str(
-            stay.get("idDocumentPath") or stay.get("id_document_path"), 160
+        "idDocumentPath": _hotel_id_document_view_path(
+            stay.get("idDocumentName") or stay.get("id_document_name"),
+            stay.get("idDocumentPath") or stay.get("id_document_path"),
         ),
         "idDocumentMime": _hotel_str(
             stay.get("idDocumentMime") or stay.get("id_document_mime"), 60
@@ -10235,8 +10261,9 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
             doc_name = _hotel_str(
                 item.get("idDocumentName") or item.get("id_document_name"), 120
             )
-            doc_path = _hotel_str(
-                item.get("idDocumentPath") or item.get("id_document_path"), 160
+            doc_path = _hotel_id_document_view_path(
+                doc_name,
+                item.get("idDocumentPath") or item.get("id_document_path"),
             )
             doc_mime = _hotel_str(
                 item.get("idDocumentMime") or item.get("id_document_mime"), 60

@@ -209,7 +209,7 @@ from embed_helpers import (
     is_embed_request,
     is_partial_main_request,
 )
-from hotel_id_documents import process_uploaded_id_document, resolve_stored_id_document
+from hotel_id_documents import process_uploaded_id_documents, resolve_stored_id_document
 from user_photos import (
     delete_stored_user_photo,
     process_uploaded_user_photo,
@@ -7577,12 +7577,20 @@ def hotel_customers_api():
 
 @app.route("/hotel/api/id-documents", methods=["POST"], endpoint="hotel_id_document_upload")
 def hotel_id_document_upload():
-    """Upload and compress a guest ID proof (image → WebP, PDF → Ghostscript)."""
-    upload = request.files.get("file") or request.files.get("idDocument")
-    if not upload or not upload.filename:
+    """Upload a guest ID proof as one PDF (PDF as-is, or photos merged)."""
+    uploads = [item for item in request.files.getlist("file") if item and item.filename]
+    if not uploads:
+        uploads = [
+            item for item in request.files.getlist("idDocument") if item and item.filename
+        ]
+    if not uploads:
         return jsonify({"ok": False, "error": "Choose an ID document to upload."}), 400
     try:
-        result = process_uploaded_id_document(upload, upload.filename)
+        result = process_uploaded_id_documents(
+            uploads,
+            guest_name=(request.form.get("guestName") or request.form.get("guest_name") or "").strip(),
+            id_type=(request.form.get("idType") or request.form.get("id_type") or "").strip(),
+        )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except RuntimeError as exc:
@@ -7603,7 +7611,10 @@ def hotel_id_document_file(stored_name):
     if not path:
         abort(404)
     mime = "image/webp" if path.suffix.lower() == ".webp" else "application/pdf"
-    return send_file(path, mimetype=mime, as_attachment=False, download_name=path.name)
+    resp = send_file(path, mimetype=mime, as_attachment=False, download_name=path.name)
+    resp.headers["Cache-Control"] = "private, max-age=0"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @app.route("/hotel/api/rooms/<room_id>", methods=["GET", "PUT"], endpoint="hotel_room_detail_api")

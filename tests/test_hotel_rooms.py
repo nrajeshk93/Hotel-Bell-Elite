@@ -325,6 +325,12 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hotel-room-detail-page", html)
         self.assertIn("Room 101", html)
         self.assertIn("Start Check-In", html)
+        self.assertIn("hrd-add-guest-id", html)
+        self.assertIn("Add Guest ID", html)
+        self.assertIn('data-action="add-guest-id"', html)
+        self.assertIn("hrd-ci-id-proof", html)
+        self.assertIn("hrd-id-doc-name", html)
+        self.assertIn("hrd-id-preview-modal", html)
         self.assertNotIn("New Check-in", html)
         self.assertIn("hrd-reserve", html)
         self.assertIn("hrd-reserve-new", html)
@@ -2878,6 +2884,37 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(
             db_mod._hotel_stay_room_charges_amount(stay),
             10000.0,
+        )
+
+    def test_normalize_heals_id_document_path_from_filename(self):
+        stay = db_mod._normalize_hotel_room_stay(
+            {
+                "firstName": "Lukas",
+                "idType": "Passport",
+                "idDocumentName": "f3dd5b8c-2958-4e62-adbd-b62b9e6f89eb.webp",
+                "idDocumentPath": "",
+                "idDocumentMime": "image/webp",
+            }
+        )
+        self.assertEqual(
+            stay["idDocumentPath"],
+            "/hotel/api/id-documents/f3dd5b8c-2958-4e62-adbd-b62b9e6f89eb.webp",
+        )
+        extras = db_mod._normalize_hotel_room_stay(
+            {
+                "firstName": "Host",
+                "additionalGuests": [
+                    {
+                        "name": "Extra",
+                        "idType": "Aadhaar",
+                        "idDocumentName": "9bd51354-c325-456a-919c-9d9910c52808.webp",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(
+            extras["additionalGuests"][0]["idDocumentPath"],
+            "/hotel/api/id-documents/9bd51354-c325-456a-919c-9d9910c52808.webp",
         )
 
     def test_same_reservation_id_auto_merges_reserved_rooms(self):

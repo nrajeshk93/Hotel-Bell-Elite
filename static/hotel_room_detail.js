@@ -179,6 +179,92 @@
     return text || '—';
   }
 
+  function guestNameWithoutTitle(value) {
+    return String(value || '')
+      .trim()
+      .replace(/^(Mr|Mrs|Ms|Miss|Dr|Mx)\.?\s+/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function idDocumentPersonName(source) {
+    if (source && typeof source === 'object') {
+      var first = String(source.firstName || source.first_name || '').trim();
+      var last = String(source.lastName || source.last_name || '').trim();
+      var joined = [first, last].filter(Boolean).join(' ');
+      if (joined) return joined;
+      return guestNameWithoutTitle(
+        source.guestName || source.guest_name || source.name || ''
+      );
+    }
+    return guestNameWithoutTitle(source);
+  }
+
+  function idDocumentDisplayLabel(name, idType, storedName) {
+    var person = idDocumentPersonName(name);
+    var type = String(idType || '').replace(/\s+/g, ' ').trim();
+    var parts = [];
+    if (person) parts.push(person);
+    if (type) parts.push(type);
+    if (parts.length) return parts.join(' ') + '.pdf';
+    var stored = String(storedName || '').trim();
+    if (
+      stored &&
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(webp|pdf)$/i.test(
+        stored
+      ) &&
+      !/^[0-9a-f]{32}\.(webp|pdf)$/i.test(stored)
+    ) {
+      return stored;
+    }
+    return stored;
+  }
+
+  function setIdDocumentNameLink(dd, label, path) {
+    if (!dd) return;
+    dd.innerHTML = '';
+    var text = dash(label);
+    if (path && text && text !== '—') {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'hrd-id-doc-link';
+      btn.setAttribute('data-hrd-id-view', '1');
+      btn.setAttribute('data-id-path', path);
+      btn.setAttribute('aria-label', 'View ' + text);
+      btn.title = 'View Guest ID';
+      btn.textContent = text;
+      dd.appendChild(btn);
+      return;
+    }
+    dd.textContent = text;
+  }
+
+  function checkinGuestFullName(form) {
+    if (!form) return '';
+    var first = form.elements.firstName && form.elements.firstName.value;
+    var last = form.elements.lastName && form.elements.lastName.value;
+    var joined = [first, last].filter(Boolean).join(' ').trim();
+    if (joined) return joined;
+    if (form.elements.idNumber && form.elements.idNumber.value) {
+      return guestNameWithoutTitle(form.elements.idNumber.value);
+    }
+    return idDocumentPersonName((lastRoom && lastRoom.stay) || null);
+  }
+
+  function checkinIdType(form) {
+    if (!form || !form.elements.idType) return '';
+    return String(form.elements.idType.value || '').trim();
+  }
+
+  function extraGuestIdMeta(row) {
+    var nameInput = row && row.querySelector('[data-extra-guest-name]');
+    var typeInput = row && row.querySelector('[data-extra-guest-id-type]');
+    return {
+      name: nameInput ? String(nameInput.value || '').trim() : '',
+      idType: typeInput ? String(typeInput.value || '').trim() : ''
+    };
+  }
+
   function guestCardDisplayName(stay) {
     if (!stay || typeof stay !== 'object') return '';
     var name = String(stay.guestName || stay.guest_name || '').trim();
@@ -657,10 +743,20 @@
       }
     }
 
+    var extraGuests = Array.isArray(stay && stay.additionalGuests)
+      ? stay.additionalGuests
+      : [];
+    var primaryDocPath = stayDocumentUrl(stay);
     var hasId = !!(
       showGuest &&
       stay &&
-      (stay.idType || stay.idDocumentName || stay.idNumber)
+      (
+        stay.idType ||
+        stay.idDocumentName ||
+        stay.idNumber ||
+        primaryDocPath ||
+        extraGuests.length
+      )
     );
     setVisible($('#hrd-id-empty', root), !hasId);
     setVisible($('#hrd-id-filled', root), hasId);
@@ -675,6 +771,61 @@
             stay.idNumber
         );
       }
+      var docRow = $('#hrd-id-doc-row', root);
+      var docName = $('#hrd-id-doc-name', root);
+      var fileLabel = idDocumentDisplayLabel(stay, stay.idType, stay.idDocumentName);
+      if (docRow) docRow.hidden = false;
+      if (docName) {
+        setIdDocumentNameLink(
+          docName,
+          fileLabel || (primaryDocPath ? 'Uploaded' : ''),
+          primaryDocPath
+        );
+      }
+    }
+    var extraList = $('#hrd-id-extra-list', root);
+    if (extraList) {
+      extraList.innerHTML = '';
+      var extrasToShow = showGuest ? extraGuests : [];
+      extrasToShow.forEach(function (guest, idx) {
+        if (!guest) return;
+        var gName = String(guest.name || guest.guestName || '').trim();
+        var gType = String(guest.idType || '').trim();
+        var gPath = stayDocumentUrl(guest);
+        var gFile = idDocumentDisplayLabel(guest, gType, guest.idDocumentName);
+        if (!gName && !gType && !gPath && !gFile) return;
+        var row = document.createElement('dl');
+        row.className = 'hrd-dl hrd-dl--id-row hrd-id-extra-row';
+        function cell(label, value) {
+          var wrap = document.createElement('div');
+          var dt = document.createElement('dt');
+          dt.textContent = label;
+          var dd = document.createElement('dd');
+          dd.textContent = dash(value);
+          wrap.appendChild(dt);
+          wrap.appendChild(dd);
+          return wrap;
+        }
+        row.appendChild(cell('Customer Name', gName || 'Guest ' + (idx + 2)));
+        row.appendChild(cell('ID Type', gType));
+        var docCell = document.createElement('div');
+        var docDt = document.createElement('dt');
+        docDt.textContent = 'ID Document';
+        var docLine = document.createElement('div');
+        docLine.className = 'hrd-id-extra-doc';
+        var docDd = document.createElement('dd');
+        setIdDocumentNameLink(
+          docDd,
+          gFile || (gPath ? 'Uploaded' : ''),
+          gPath
+        );
+        docLine.appendChild(docDd);
+        docCell.appendChild(docDt);
+        docCell.appendChild(docLine);
+        row.appendChild(docCell);
+        extraList.appendChild(row);
+      });
+      extraList.hidden = !extraList.children.length;
     }
 
     var agencyName = root.querySelector('[data-agency-name]');
@@ -3597,14 +3748,19 @@
       });
 
       syncCustomerNameFromPersonal(form);
-      if (stay.idDocumentPath) {
+      if (stayDocumentUrl(stay) || stay.idDocumentPath || stay.idDocumentName) {
         setIdDocumentUi(form, {
+          urlPath: stayDocumentUrl(stay),
           path: stay.idDocumentPath,
           url: stay.idDocumentPath,
           mime: stay.idDocumentMime || '',
-          displayName: stay.idDocumentName || '',
+          displayName: idDocumentDisplayLabel(stay, stay.idType, stay.idDocumentName),
           originalName: stay.idDocumentName || '',
-          storedName: stay.idDocumentName || ''
+          storedName:
+            storedIdDocumentName(stay.idDocumentStoredName) ||
+            storedIdDocumentName(stay.idDocumentName) ||
+            stay.idDocumentName ||
+            ''
         });
       } else {
         clearIdDocumentFields(form);
@@ -3797,12 +3953,18 @@
       var mime = mimeInput ? String(mimeInput.value || '').trim() : '';
       var stored = storedInput ? String(storedInput.value || '').trim() : '';
       var displayName = nameEl ? String(nameEl.textContent || '').trim() : '';
-      if (!name && !idType && !path) return;
+      var label = idDocumentDisplayLabel(name, idType, displayName || stored);
+      var docPath =
+        idDocumentViewUrl(path) ||
+        idDocumentViewUrl(stored) ||
+        idDocumentViewUrl(displayName);
+      if (!name && !idType && !docPath && !displayName) return;
       guests.push({
         name: name,
         idType: idType,
-        idDocumentName: displayName || stored,
-        idDocumentPath: path,
+        idDocumentName: label || displayName || stored,
+        idDocumentPath: docPath,
+        idDocumentStoredName: storedIdDocumentName(stored) || storedIdDocumentName(docPath) || '',
         idDocumentMime: mime
       });
     });
@@ -3826,8 +3988,13 @@
     var storedInput = row.querySelector('[data-extra-guest-doc-stored]');
     var nameEl = row.querySelector('[data-extra-guest-doc-name]');
     var uploadBtn = row.querySelector('[data-hrd-upload]');
-    var displayName = doc.displayName || doc.originalName || '';
-    if (pathInput) pathInput.value = doc.path || doc.url || '';
+    var meta = extraGuestIdMeta(row);
+    var displayName =
+      idDocumentDisplayLabel(meta.name, meta.idType, doc.displayName || doc.originalName || '') ||
+      doc.displayName ||
+      doc.originalName ||
+      '';
+    if (pathInput) pathInput.value = doc.urlPath || doc.path || doc.url || '';
     if (mimeInput) mimeInput.value = doc.mime || '';
     if (storedInput) storedInput.value = doc.storedName || '';
     if (nameEl) {
@@ -3838,14 +4005,69 @@
       uploadBtn.classList.add('is-filled');
       uploadBtn.title = displayName
         ? 'Uploaded: ' + displayName
-        : 'Upload ID document (JPG, PNG, HEIC, PDF)';
+        : 'Upload ID (PDF, or photos combined into one PDF)';
     }
     syncExtraGuestViewBtn(row, !!(pathInput && pathInput.value));
   }
 
-  function uploadExtraGuestDocument(root, row, file) {
-    if (!root || !row || !file) {
+  function idUploadFileExt(name) {
+    var text = String(name || '').toLowerCase();
+    var dot = text.lastIndexOf('.');
+    return dot >= 0 ? text.slice(dot) : '';
+  }
+
+  function classifyIdUploadFiles(fileList) {
+    var files = Array.prototype.slice.call(fileList || []);
+    var pdfs = [];
+    var images = [];
+    var imageExt = {
+      '.jpg': 1,
+      '.jpeg': 1,
+      '.png': 1,
+      '.heic': 1,
+      '.heif': 1,
+      '.webp': 1
+    };
+    files.forEach(function (file) {
+      if (!file) return;
+      var ext = idUploadFileExt(file.name);
+      var mime = String(file.type || '').toLowerCase();
+      if (ext === '.pdf' || mime === 'application/pdf') pdfs.push(file);
+      else if (imageExt[ext] || mime.indexOf('image/') === 0) images.push(file);
+      else throw new Error('Only JPG, JPEG, PNG, HEIC, and PDF files are allowed.');
+    });
+    if (!pdfs.length && !images.length) {
+      throw new Error('Choose an ID document to upload.');
+    }
+    if (pdfs.length && images.length) {
+      throw new Error('Upload either one PDF or photo files, not both.');
+    }
+    if (pdfs.length > 1) {
+      throw new Error('Upload a single PDF, or photo files to combine into one PDF.');
+    }
+    if (images.length > 8) {
+      throw new Error('You can combine at most 8 photos into one ID PDF.');
+    }
+    return { files: pdfs.length ? pdfs : images, pdfs: pdfs, images: images };
+  }
+
+  function idUploadSuccessMessage(doc, imageCount) {
+    var pages = Number((doc && doc.pageCount) || imageCount || 1);
+    if (pages > 1) return pages + ' photos combined into one PDF.';
+    return 'ID saved as PDF.';
+  }
+
+  function uploadExtraGuestDocument(root, row, files) {
+    files = Array.prototype.slice.call(files || []);
+    if (!root || !row || !files.length) {
       return Promise.reject(new Error('missing file'));
+    }
+    var classified;
+    try {
+      classified = classifyIdUploadFiles(files);
+    } catch (err) {
+      showToast(err.message || 'Could not upload ID document.', true);
+      return Promise.reject(err);
     }
     var api =
       (root.getAttribute('data-id-document-upload-api') || '').trim() ||
@@ -3855,8 +4077,13 @@
       uploadBtn.classList.add('is-busy');
       uploadBtn.disabled = true;
     }
+    var extraMeta = extraGuestIdMeta(row);
     var body = new FormData();
-    body.append('file', file, file.name);
+    classified.files.forEach(function (file) {
+      body.append('file', file, file.name);
+    });
+    body.append('guestName', extraMeta.name);
+    body.append('idType', extraMeta.idType);
     return fetch(api, {
       method: 'POST',
       credentials: 'same-origin',
@@ -3874,8 +4101,20 @@
             (result.data && result.data.error) || 'Upload failed.'
           );
         }
+        var extraLabel = idDocumentDisplayLabel(
+          extraMeta.name,
+          extraMeta.idType,
+          result.data.document.displayName
+        );
+        if (extraLabel) result.data.document.displayName = extraLabel;
         setExtraGuestDocumentUi(row, result.data.document);
-        showToast('ID document uploaded and compressed.');
+        showToast(idUploadSuccessMessage(result.data.document, classified.images.length));
+        if (lastRoom && lastRoom.stay) {
+          var form = $('#hrd-checkin-form', root);
+          if (form) lastRoom.stay.additionalGuests = collectExtraGuests(form);
+          paintGuestPanels(pageRoot() || root, lastRoom);
+          persistOccupiedStay(pageRoot() || root);
+        }
         return result.data.document;
       })
       .catch(function (err) {
@@ -3924,14 +4163,15 @@
     fileInput.type = 'file';
     fileInput.className = 'hrd-id-upload-input';
     fileInput.accept =
-      '.jpg,.jpeg,.png,.heic,.heif,.pdf,image/jpeg,image/png,image/heic,image/heif,application/pdf';
+      '.jpg,.jpeg,.png,.heic,.heif,.webp,.pdf,image/jpeg,image/png,image/heic,image/heif,image/webp,application/pdf';
+    fileInput.multiple = true;
     fileInput.hidden = true;
     fileInput.setAttribute('data-extra-guest-file', '1');
 
     var pathInput = document.createElement('input');
     pathInput.type = 'hidden';
     pathInput.setAttribute('data-extra-guest-doc-path', '1');
-    pathInput.value = guest.idDocumentPath || '';
+    pathInput.value = stayDocumentUrl(guest) || guest.idDocumentPath || '';
     var mimeInput = document.createElement('input');
     mimeInput.type = 'hidden';
     mimeInput.setAttribute('data-extra-guest-doc-mime', '1');
@@ -3945,7 +4185,7 @@
     uploadBtn.type = 'button';
     uploadBtn.className = 'hrd-id-upload-btn';
     uploadBtn.setAttribute('data-hrd-upload', '1');
-    uploadBtn.title = 'Upload ID document (JPG, PNG, HEIC, PDF)';
+    uploadBtn.title = 'Upload ID (PDF, or photos combined into one PDF)';
     uploadBtn.setAttribute('aria-label', 'Upload guest ' + index + ' ID document');
     uploadBtn.innerHTML =
       '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V6"/><path d="m8 10 4-4 4 4"/><path d="M4 18h16"/></svg>';
@@ -3985,9 +4225,13 @@
     nameEl.className = 'hrd-id-upload-name hrd-upload-text';
     nameEl.setAttribute('data-extra-guest-doc-name', '1');
     nameEl.hidden = true;
-    if (guest.idDocumentName) {
-      nameEl.textContent = guest.idDocumentName;
-      nameEl.hidden = false;
+    if (guest.idDocumentName || guest.idDocumentPath) {
+      nameEl.textContent = idDocumentDisplayLabel(
+        guest.name,
+        guest.idType,
+        guest.idDocumentName
+      );
+      nameEl.hidden = !nameEl.textContent;
     }
     typeWrap.appendChild(nameEl);
 
@@ -3999,7 +4243,7 @@
       global.initEpListboxes();
     }
 
-    if (guest.idDocumentPath) {
+    if (stayDocumentUrl(guest) || guest.idDocumentPath || guest.idDocumentName) {
       syncExtraGuestViewBtn(row, true);
       if (uploadBtn) uploadBtn.classList.add('is-filled');
     }
@@ -4065,6 +4309,11 @@
       return;
     }
     if (field.classList.contains('hrd-field--customer-mobile')) return;
+    if (input.closest('#hrd-ci-id-proof .hrd-guest-line')) {
+      input.style.width = '';
+      field.classList.remove('hrd-field--grow');
+      return;
+    }
     if (
       type !== 'text' &&
       type !== 'email' &&
@@ -4902,7 +5151,7 @@
     if (uploadBtn) {
       uploadBtn.classList.remove('is-filled', 'is-busy');
       uploadBtn.disabled = false;
-      uploadBtn.title = 'Upload ID document (JPG, PNG, HEIC, PDF)';
+      uploadBtn.title = 'Upload ID (PDF, or photos combined into one PDF)';
     }
     syncIdDocumentViewBtn(form, false);
   }
@@ -4912,7 +5161,7 @@
     var uploadName = $('#hrd-ci-id-upload-name', form);
     var uploadBtn = $('#hrd-ci-id-upload-btn', form);
     var name = (doc && (doc.displayName || doc.originalName)) || '';
-    var path = (doc && doc.urlPath) || '';
+    var path = (doc && (doc.urlPath || doc.path || doc.url)) || '';
     if (form.elements.idDocumentPath) {
       form.elements.idDocumentPath.value = path;
     }
@@ -4935,31 +5184,342 @@
       uploadBtn.classList.toggle('is-filled', !!path);
       uploadBtn.title = name
         ? name
-        : 'Upload ID document (JPG, PNG, HEIC, PDF)';
+        : 'Upload ID (PDF, or photos combined into one PDF)';
     }
     syncIdDocumentViewBtn(form, !!path);
   }
 
-  function viewIdDocument(form, pathOverride) {
-    if (!form && !pathOverride) return;
-    var url =
-      pathOverride ||
-      (form && form.elements.idDocumentPath && form.elements.idDocumentPath.value) ||
-      '';
-    if (!url) {
-      showToast('Upload an ID document first.', true);
-      return;
+  function storedIdDocumentName(value) {
+    var text = String(value || '').trim();
+    if (!text) return '';
+    var file = (text.split(/[/\\]/).pop() || '').split('?')[0].split('#')[0];
+    if (/^[A-Za-z0-9._ -]+\.(webp|pdf|jpe?g|png|heic|heif)$/i.test(file) && file.indexOf('..') === -1) {
+      return file;
     }
-    try {
-      window.open(url, '_blank', 'noopener,noreferrer');
-    } catch (err) {
-      showToast('Could not open the document.', true);
+    return '';
+  }
+
+  function idDocumentViewUrl(path) {
+    var stored = storedIdDocumentName(path);
+    if (stored) return '/hotel/api/id-documents/' + encodeURIComponent(stored);
+    return '';
+  }
+
+  function idDocumentAliasName(file) {
+    return String(file || '')
+      .replace(/\s+/g, '_')
+      .replace(/[^A-Za-z0-9._-]/g, '');
+  }
+
+  function uuidDocumentStems(stem) {
+    var text = String(stem || '').trim();
+    if (!text) return [];
+    var stems = [text];
+    var compact = text.replace(/-/g, '');
+    if (/^[0-9a-f]{32}$/i.test(compact)) {
+      stems.push(compact.toLowerCase());
+      stems.push(
+        compact.slice(0, 8) +
+          '-' +
+          compact.slice(8, 12) +
+          '-' +
+          compact.slice(12, 16) +
+          '-' +
+          compact.slice(16, 20) +
+          '-' +
+          compact.slice(20)
+      );
+    }
+    var seen = {};
+    return stems.filter(function (item) {
+      if (!item || seen[item]) return false;
+      seen[item] = true;
+      return true;
+    });
+  }
+
+  function stayDocumentUrl(stay) {
+    if (!stay) return '';
+    return (
+      idDocumentViewUrl(stay.idDocumentPath || stay.id_document_path || '') ||
+      idDocumentViewUrl(stay.idDocumentStoredName || stay.id_document_stored_name || '') ||
+      idDocumentViewUrl(stay.idDocumentName || stay.id_document_name || '')
+    );
+  }
+
+  function pushIdDocumentUrl(list, seen, value) {
+    var names = {};
+    var files = [];
+    function addName(file) {
+      file = String(file || '').trim();
+      if (!file || names[file]) return;
+      names[file] = true;
+      files.push(file);
+    }
+    addName(storedIdDocumentName(value));
+    addName(idDocumentAliasName(storedIdDocumentName(value)));
+    files.slice().forEach(function (file) {
+      var dot = file.lastIndexOf('.');
+      var stem = dot > 0 ? file.slice(0, dot) : file;
+      var ext = dot > 0 ? file.slice(dot) : '';
+      uuidDocumentStems(stem).forEach(function (variant) {
+        if (ext) addName(variant + ext);
+        ['.pdf', '.webp', '.jpg', '.jpeg', '.png'].forEach(function (other) {
+          addName(variant + other);
+        });
+      });
+    });
+    files.forEach(function (file) {
+      var url = idDocumentViewUrl(file);
+      if (url && !seen[url]) {
+        seen[url] = true;
+        list.push(url);
+      }
+    });
+  }
+
+  function idDocumentCandidateUrls(root, pathOverride) {
+    var urls = [];
+    var seen = {};
+    pushIdDocumentUrl(urls, seen, pathOverride);
+    var stay = (lastRoom && lastRoom.stay) || null;
+    if (stay) {
+      pushIdDocumentUrl(urls, seen, stay.idDocumentPath || stay.id_document_path);
+      pushIdDocumentUrl(urls, seen, stay.idDocumentStoredName);
+      pushIdDocumentUrl(urls, seen, stay.idDocumentName);
+    }
+    var form = root && $('#hrd-checkin-form', root);
+    if (form) {
+      pushIdDocumentUrl(
+        urls,
+        seen,
+        form.elements.idDocumentPath && form.elements.idDocumentPath.value
+      );
+      pushIdDocumentUrl(
+        urls,
+        seen,
+        form.elements.idDocumentStoredName && form.elements.idDocumentStoredName.value
+      );
+      var uploadName = $('#hrd-ci-id-upload-name', form);
+      if (uploadName) pushIdDocumentUrl(urls, seen, uploadName.textContent);
+    }
+    var cardName = root && $('#hrd-id-doc-name', root);
+    if (cardName) pushIdDocumentUrl(urls, seen, cardName.textContent);
+    var draft = readCheckinDraft(root);
+    var draftStay = draft && draft.stay;
+    if (draftStay) {
+      pushIdDocumentUrl(urls, seen, draftStay.idDocumentPath);
+      pushIdDocumentUrl(urls, seen, draftStay.idDocumentStoredName);
+      pushIdDocumentUrl(urls, seen, draftStay.idDocumentName);
+    }
+    return urls;
+  }
+
+  function revokeIdPreviewBlob() {
+    var modal = document.getElementById('hrd-id-preview-modal');
+    if (modal && modal.__hrdBlobUrl) {
+      try {
+        URL.revokeObjectURL(modal.__hrdBlobUrl);
+      } catch (err) {}
+      modal.__hrdBlobUrl = '';
     }
   }
 
-  function uploadIdDocument(root, form, file) {
-    if (!root || !form || !file) {
+  function closeIdDocumentPreview() {
+    var modal = document.getElementById('hrd-id-preview-modal');
+    if (!modal) return;
+    revokeIdPreviewBlob();
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    var body = document.getElementById('hrd-id-preview-body');
+    if (body) body.innerHTML = '';
+    if (modal.__hrdPreviewHome && modal.parentNode === document.body) {
+      modal.__hrdPreviewHome.appendChild(modal);
+    }
+    modal.__hrdPreviewHome = null;
+  }
+
+  function renderIdDocumentBlob(body, blob, ctype, mimeHint, url) {
+    revokeIdPreviewBlob();
+    var modal = document.getElementById('hrd-id-preview-modal');
+    var blobUrl = URL.createObjectURL(blob);
+    if (modal) modal.__hrdBlobUrl = blobUrl;
+    var isPdf =
+      /pdf/i.test(ctype || '') ||
+      /pdf/i.test(mimeHint || '') ||
+      /pdf/i.test(blob.type || '') ||
+      /\.pdf(\?|$)/i.test(url || '');
+    if (isPdf) {
+      body.innerHTML =
+        '<iframe class="hrd-id-preview-frame" title="Guest ID document" src="' +
+        blobUrl +
+        '"></iframe>';
+      return;
+    }
+    body.innerHTML =
+      '<img class="hrd-id-preview-image" alt="Guest ID document" src="' +
+      blobUrl +
+      '">';
+  }
+
+  function fetchIdDocumentBlob(url) {
+    return fetch(url, {
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'image/*,application/pdf,*/*',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      cache: 'no-store'
+    }).then(function (resp) {
+      if (!resp.ok) throw new Error('missing');
+      var ctype = String(resp.headers.get('Content-Type') || '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
+      if (ctype && !/^image\//.test(ctype) && ctype.indexOf('pdf') === -1) {
+        throw new Error('bad-type');
+      }
+      return resp.blob().then(function (blob) {
+        var blobType = String(blob.type || '').toLowerCase();
+        if (blobType.indexOf('html') !== -1) throw new Error('html');
+        return { blob: blob, ctype: ctype || blobType, url: url };
+      });
+    });
+  }
+
+  function loadIdDocumentIntoPreview(urls, mimeHint) {
+    var body = document.getElementById('hrd-id-preview-body');
+    var addBtn = document.getElementById('hrd-id-preview-add');
+    if (!body) return;
+    if (!urls.length) {
+      body.innerHTML =
+        '<p class="hrd-id-preview-empty">No ID document uploaded for this guest. Use Add Guest ID to attach a photo or PDF.</p>';
+      if (addBtn) addBtn.hidden = false;
+      return;
+    }
+    body.innerHTML = '<p class="hrd-id-preview-empty">Loading ID document…</p>';
+    if (addBtn) addBtn.hidden = true;
+    var index = 0;
+    function next() {
+      if (index >= urls.length) {
+        body.innerHTML =
+          '<p class="hrd-id-preview-empty">Could not load the ID document. Upload it again from Add Guest ID — the file name on the card is not enough if the image was not saved to storage.</p>';
+        if (addBtn) addBtn.hidden = false;
+        return;
+      }
+      var url = urls[index++];
+      fetchIdDocumentBlob(url)
+        .then(function (result) {
+          renderIdDocumentBlob(
+            body,
+            result.blob,
+            result.ctype,
+            mimeHint,
+            result.url
+          );
+        })
+        .catch(function () {
+          next();
+        });
+    }
+    next();
+  }
+
+  function openIdDocumentPreview(ref) {
+    ref = ref || {};
+    var modal = document.getElementById('hrd-id-preview-modal');
+    var body = document.getElementById('hrd-id-preview-body');
+    var sub = document.getElementById('hrd-id-preview-sub');
+    var addBtn = document.getElementById('hrd-id-preview-add');
+    var root = pageRoot();
+    var urls = Array.isArray(ref.urls) ? ref.urls.slice() : [];
+    if (!urls.length && (ref.url || ref.path)) {
+      pushIdDocumentUrl(urls, {}, ref.url || ref.path);
+    }
+    if (!urls.length) urls = idDocumentCandidateUrls(root, ref.url || ref.path || '');
+    if (!modal || !body) {
+      if (urls[0]) {
+        try {
+          window.open(urls[0], '_blank', 'noopener,noreferrer');
+        } catch (err) {}
+      } else {
+        showToast('No ID document uploaded for this guest.', true);
+      }
+      return;
+    }
+    var label = String(ref.name || '').trim();
+    if (sub) sub.textContent = label && !storedIdDocumentName(label) ? label : '';
+    if (addBtn) addBtn.hidden = !!urls.length;
+    if (modal.parentNode !== document.body) {
+      modal.__hrdPreviewHome = modal.parentNode;
+      document.body.appendChild(modal);
+    }
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    loadIdDocumentIntoPreview(urls, ref.mime || '');
+  }
+
+  function currentStayIdDocumentRef(root, pathOverride) {
+    var stay = (lastRoom && lastRoom.stay) || null;
+    var form = root && $('#hrd-checkin-form', root);
+    var draft = readCheckinDraft(root);
+    var draftStay = draft && draft.stay;
+    return {
+      urls: idDocumentCandidateUrls(root, pathOverride),
+      mime:
+        (stay && stay.idDocumentMime) ||
+        (form && form.elements.idDocumentMime && form.elements.idDocumentMime.value) ||
+        (draftStay && draftStay.idDocumentMime) ||
+        '',
+      name:
+        (stay && stay.idDocumentName) ||
+        (draftStay && draftStay.idDocumentName) ||
+        ''
+    };
+  }
+
+  function viewIdDocument(form, pathOverride) {
+    openIdDocumentPreview(currentStayIdDocumentRef(pageRoot(), pathOverride));
+  }
+
+  function persistOccupiedStay(root) {
+    root = root || pageRoot();
+    if (!root || !lastRoom || !lastRoom.stay) return Promise.resolve();
+    if (mapStatus(lastRoom.status || root.getAttribute('data-room-status')) !== 'occupied') {
+      return Promise.resolve();
+    }
+    var api = root.getAttribute('data-room-api') || '';
+    if (!api) return Promise.resolve();
+    return fetch(api, {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ action: 'checkin', stay: lastRoom.stay })
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (result.ok && result.data && result.data.ok && result.data.room) {
+          paintRoom(root, result.data.room);
+        }
+      })
+      .catch(function () {});
+  }
+
+  function uploadIdDocument(root, form, files) {
+    files = Array.prototype.slice.call(files || []);
+    if (!root || !form || !files.length) {
       return Promise.reject(new Error('missing file'));
+    }
+    var classified;
+    try {
+      classified = classifyIdUploadFiles(files);
+    } catch (err) {
+      showToast(err.message || 'Could not upload ID document.', true);
+      return Promise.reject(err);
     }
     var api =
       (root.getAttribute('data-id-document-upload-api') || '').trim() ||
@@ -4970,7 +5530,11 @@
       uploadBtn.disabled = true;
     }
     var body = new FormData();
-    body.append('file', file, file.name);
+    classified.files.forEach(function (file) {
+      body.append('file', file, file.name);
+    });
+    body.append('guestName', checkinGuestFullName(form));
+    body.append('idType', checkinIdType(form));
     return fetch(api, {
       method: 'POST',
       credentials: 'same-origin',
@@ -4988,8 +5552,27 @@
             (result.data && result.data.error) || 'Upload failed.'
           );
         }
+        var primaryLabel = idDocumentDisplayLabel(
+          checkinGuestFullName(form),
+          checkinIdType(form),
+          result.data.document.displayName
+        );
+        if (primaryLabel) result.data.document.displayName = primaryLabel;
         setIdDocumentUi(form, result.data.document);
-        showToast('ID document uploaded and compressed.');
+        if (lastRoom && lastRoom.stay) {
+          lastRoom.stay.idDocumentPath =
+            result.data.document.urlPath || result.data.document.storedName || '';
+          lastRoom.stay.idDocumentName =
+            result.data.document.displayName ||
+            result.data.document.originalName ||
+            lastRoom.stay.idDocumentName ||
+            '';
+          lastRoom.stay.idDocumentStoredName = result.data.document.storedName || '';
+          lastRoom.stay.idDocumentMime = result.data.document.mime || '';
+          paintGuestPanels(pageRoot() || root, lastRoom);
+          persistOccupiedStay(pageRoot() || root);
+        }
+        showToast(idUploadSuccessMessage(result.data.document, classified.images.length));
         scheduleCheckinDraftSave(root, form);
         return result.data.document;
       })
@@ -5025,9 +5608,9 @@
     }
     if (fileInput) {
       fileInput.addEventListener('change', function () {
-        var file = fileInput.files && fileInput.files[0];
-        if (!file) return;
-        uploadIdDocument(root, form, file).finally(function () {
+        var files = fileInput.files;
+        if (!files || !files.length) return;
+        uploadIdDocument(root, form, files).finally(function () {
           /* Allow re-selecting the same file name later. */
           fileInput.value = '';
         });
@@ -5163,6 +5746,18 @@
     }
   }
 
+  function openAddGuestIdModal(root) {
+    root = root || pageRoot();
+    var status = mapStatus(
+      (lastRoom && lastRoom.status) || (root && root.getAttribute('data-room-status'))
+    );
+    if (status !== 'occupied') {
+      showToast('Check in the guest first to add ID details.', true);
+      return;
+    }
+    openCheckinModal(root, { edit: true, idOnly: true });
+  }
+
   function openCheckinModal(root, opts) {
     opts = opts || {};
     var editing = !!opts.edit;
@@ -5192,6 +5787,8 @@
     }
     form.reset();
     form.setAttribute('data-edit-mode', editing ? '1' : '0');
+    form.setAttribute('data-id-only', opts.idOnly ? '1' : '0');
+    modal.classList.toggle('is-id-only', !!opts.idOnly);
     var today = todayISO();
     form.bookingNumber.value = 'Auto generated';
     setFormDate(form, 'bookingDate', today);
@@ -5248,7 +5845,7 @@
     if (uploadBtn) {
       uploadBtn.classList.remove('is-filled', 'is-busy');
       uploadBtn.disabled = false;
-      uploadBtn.title = 'Upload ID document (JPG, PNG, HEIC, PDF)';
+      uploadBtn.title = 'Upload ID (PDF, or photos combined into one PDF)';
     }
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();
@@ -5344,11 +5941,23 @@
 
     var titleEl = $('#hrd-checkin-title', root);
     if (titleEl) {
-      titleEl.textContent = extending ? 'Extend Stay' : editing ? 'Edit Guest' : 'New Check-In';
+      titleEl.textContent = opts.idOnly
+        ? 'Add Guest ID'
+        : extending
+          ? 'Extend Stay'
+          : editing
+            ? 'Edit Guest'
+            : 'New Check-In';
     }
     var saveBtn = $('#hrd-checkin-save', root);
     if (saveBtn) {
-      saveBtn.textContent = extending ? 'Save Stay' : editing ? 'Save Changes' : 'Check-In';
+      saveBtn.textContent = opts.idOnly
+        ? 'Save'
+        : extending
+          ? 'Save Stay'
+          : editing
+            ? 'Save Changes'
+            : 'Check-In';
     }
 
     modal.hidden = false;
@@ -5365,6 +5974,20 @@
       global.deFullscreen.updateUi();
     }
     setTimeout(function () {
+      if (opts.idOnly) {
+        var idTypeTrigger =
+          form.querySelector('#hrd-ci-id-type-trigger') ||
+          form.querySelector('#hrd-ci-id-type [data-se-trigger]');
+        if (idTypeTrigger && typeof idTypeTrigger.focus === 'function') {
+          idTypeTrigger.focus();
+          return;
+        }
+        var addGuest = form.querySelector('#hrd-ci-add-guest');
+        if (addGuest && typeof addGuest.focus === 'function') {
+          addGuest.focus();
+          return;
+        }
+      }
       if (extending) {
         var nightsField = form.querySelector('#hrd-ci-nights') || form.elements.nights;
         var outField =
@@ -5402,8 +6025,12 @@
     var modal = root && $('#hrd-checkin-modal', root);
     var form = root && $('#hrd-checkin-form', root);
     if (form && !opts.skipDraft) flushCheckinDraft(root, form, { open: false });
-    if (form) form.setAttribute('data-edit-mode', '0');
+    if (form) {
+      form.setAttribute('data-edit-mode', '0');
+      form.setAttribute('data-id-only', '0');
+    }
     if (!modal) return;
+    modal.classList.remove('is-id-only');
     if (typeof global.closeHotelDatePickers === 'function') {
       global.closeHotelDatePickers();
     }
@@ -6975,6 +7602,19 @@
     var displayName = displayNameEl
       ? String(displayNameEl.textContent || '').split(' · ')[0].trim()
       : '';
+    var docPath =
+      idDocumentViewUrl(val('idDocumentPath')) ||
+      idDocumentViewUrl(stored) ||
+      idDocumentViewUrl(displayName);
+    var docLabel = idDocumentDisplayLabel(
+      {
+        firstName: val('firstName'),
+        lastName: val('lastName'),
+        guestName: val('idNumber')
+      },
+      val('idType'),
+      displayName || stored
+    );
 
     function val(name) {
       var el = form.elements[name];
@@ -7007,8 +7647,10 @@
       returningGuest: val('returningGuest'),
       idType: val('idType'),
       idNumber: val('idNumber'),
-      idDocumentName: displayName || stored,
-      idDocumentPath: val('idDocumentPath'),
+      idDocumentName: docLabel || displayName || stored,
+      idDocumentPath: docPath,
+      idDocumentStoredName:
+        storedIdDocumentName(stored) || storedIdDocumentName(docPath) || '',
       idDocumentMime: val('idDocumentMime'),
       additionalGuests: collectExtraGuests(form),
       agencyName: val('agencyName'),
@@ -7109,6 +7751,11 @@
       stay.transferHistory = Array.isArray(prev.transferHistory)
         ? prev.transferHistory
         : [];
+      if (!stay.idDocumentPath && (prev.idDocumentPath || prev.idDocumentName)) {
+        stay.idDocumentPath = stayDocumentUrl(prev) || prev.idDocumentPath || '';
+        stay.idDocumentName = stay.idDocumentName || prev.idDocumentName || '';
+        stay.idDocumentMime = stay.idDocumentMime || prev.idDocumentMime || '';
+      }
     }
     if (!stay.firstName || !stay.lastName) {
       showToast('First name and last name are required.', true);
@@ -7184,9 +7831,16 @@
           );
         }
         clearCheckinDraft(root);
+        var idOnly = form.getAttribute('data-id-only') === '1';
         closeCheckinModal(root, { skipDraft: true });
         paintRoom(root, result.data.room);
-        showToast(editing ? 'Guest details updated.' : 'Guest checked in successfully.');
+        showToast(
+          idOnly
+            ? 'Guest ID saved.'
+            : editing
+              ? 'Guest details updated.'
+              : 'Guest checked in successfully.'
+        );
         return result.data.room;
       })
       .catch(function (err) {
@@ -7524,18 +8178,34 @@
       event.preventDefault();
       event.stopPropagation();
       if (viewDocBtn.disabled) return;
+      var pathAttr = String(viewDocBtn.getAttribute('data-id-path') || '').trim();
       var checkinForm = $('#hrd-checkin-form', root);
       var guestRow = viewDocBtn.closest('[data-extra-guest]');
-      if (guestRow) {
-        var guestPath =
-          guestRow.querySelector('[data-extra-guest-doc-path]');
-        viewIdDocument(
-          checkinForm,
-          guestPath ? String(guestPath.value || '').trim() : ''
-        );
-      } else {
-        viewIdDocument(checkinForm);
+      if (guestRow && !pathAttr) {
+        var guestPath = guestRow.querySelector('[data-extra-guest-doc-path]');
+        pathAttr = guestPath ? String(guestPath.value || '').trim() : '';
       }
+      viewIdDocument(checkinForm, pathAttr);
+      return;
+    }
+
+    var previewClose = event.target.closest('[data-hrd-id-preview-close]');
+    var previewModal = document.getElementById('hrd-id-preview-modal');
+    if (
+      previewClose ||
+      (previewModal && !previewModal.hidden && event.target === previewModal)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeIdDocumentPreview();
+      return;
+    }
+    var previewAdd = event.target.closest('#hrd-id-preview-add');
+    if (previewAdd) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeIdDocumentPreview();
+      openAddGuestIdModal(root);
       return;
     }
 
@@ -7607,6 +8277,10 @@
           return;
         }
         openCheckinModal(root);
+        return;
+      }
+      if (action === 'add-guest-id') {
+        openAddGuestIdModal(root);
         return;
       }
       if (action === 'extend') {
@@ -7690,6 +8364,13 @@
     }
     if (event.key === 'Escape') {
       /* Close open date picker first, then listbox, then modal. */
+      var idPreviewModal = document.getElementById('hrd-id-preview-modal');
+      if (idPreviewModal && !idPreviewModal.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeIdDocumentPreview();
+        return;
+      }
       if (document.querySelector('[data-hotel-date].is-open')) {
         if (typeof global.closeHotelDatePickers === 'function') {
           global.closeHotelDatePickers();
@@ -7828,9 +8509,9 @@
     }
     if (event.target.matches('[data-extra-guest-file]')) {
       var guestRow = event.target.closest('[data-extra-guest]');
-      var file = event.target.files && event.target.files[0];
-      if (!guestRow || !file) return;
-      uploadExtraGuestDocument(root, guestRow, file).finally(function () {
+      var files = event.target.files;
+      if (!guestRow || !files || !files.length) return;
+      uploadExtraGuestDocument(root, guestRow, files).finally(function () {
         event.target.value = '';
         scheduleCheckinDraftSave(root, form);
       });
