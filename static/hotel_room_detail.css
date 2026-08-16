@@ -1742,6 +1742,12 @@ button.hrd-ci-nightly-date:focus-visible{
   margin:0;
   gap:8px;
 }
+.hrd-ci-nightly-block--compact .hrd-ci-nightly-fields{
+  padding:12px 14px;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+  background:#fff;
+}
 #hrd-checkin-modal .hrd-ci-nightly-fields .hrd-field > span,
 #hrd-checkin-modal .hrd-ci-nightly-fields .se-filter-chip-label{
   margin-bottom:0;

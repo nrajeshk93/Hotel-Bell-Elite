@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=23">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=25">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -60,13 +60,16 @@
         <form id="credit-payment-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="{{ settlement_labels.filter_aria_label }}"
               data-clear-url="{{ url_for(settlement_route_endpoint, view=selected_view, supplier=selected_supplier, kind=selected_kind) }}">
           <input type="hidden" name="view" id="credit-payment-view" value="{{ selected_view }}">
-          <div class="cp-view-tabs" role="tablist" aria-label="{{ settlement_labels.view_aria_label }}">
+          <div class="cp-view-tabs-host pl-header-field">
+            <span class="se-filter-chip-label" id="credit-payment-view-label">View</span>
+            <div class="cp-view-tabs" role="tablist" aria-labelledby="credit-payment-view-label">
             {% for view_key, view_label in credit_payment_views %}
             <a class="cp-view-tab{% if selected_view == view_key %} is-active{% endif %}"
                href="{{ url_for(settlement_route_endpoint, view=view_key, **settlement_tab_query) }}"
                role="tab"
                aria-selected="{{ 'true' if selected_view == view_key else 'false' }}">{{ view_label }}</a>
             {% endfor %}
+            </div>
           </div>
           {% if selected_view == 'outstanding' %}
           <input type="hidden" id="credit-payment-date-from" name="date_from" value="{{ date_from }}">

@@ -2040,16 +2040,13 @@ class HotelRoomsTests(unittest.TestCase):
             float(primary["stay"].get("estimatedTotal") or 0),
             float(member["stay"].get("estimatedTotal") or 0),
         )
-        # Both rooms billed: primary rate×nights + member type tariff×nights.
+        # Member tariff is typed at check-in; it is not filled from Hotel Settings.
         folio = primary["stay"].get("folioCharges") or []
         rate_lines = [f for f in folio if f.get("source") == "merged_room_rate"]
-        self.assertEqual(len(rate_lines), 1, folio)
-        self.assertIn("105", rate_lines[0].get("label") or "")
-        # Room 105 is premium_without_balcony (default ₹3500) × 2 nights.
-        self.assertEqual(float(rate_lines[0].get("amount") or 0), 7000.0)
-        # Primary ₹3000×2 + member ₹3500×2 = ₹13,000 (tax-inclusive)
+        self.assertEqual(rate_lines, [])
+        # Primary ₹3000 × 2 nights
         self.assertAlmostEqual(
-            float(primary["stay"].get("estimatedTotal") or 0), 13000.0, places=2
+            float(primary["stay"].get("estimatedTotal") or 0), 6000.0, places=2
         )
         self.assertEqual(primary["status"], "occupied")
         self.assertEqual(member["status"], "vacant")
@@ -2333,8 +2330,8 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(still_primary["status"], "occupied")
         self.assertTrue(still_primary.get("isMergePrimary") or not still_primary.get("mergeGroupId"))
 
-    def test_merged_checkin_uses_per_room_type_tariffs(self):
-        """Suite primary + Deluxe member bill each type's settings tariff."""
+    def test_merged_checkin_uses_submitted_room_rates(self):
+        """Suite primary + Deluxe member bill the typed stay prices, not settings tariffs."""
         check_in, check_out = self._stay_window(nights=1)
         merged = self.client.put(
             "/hotel/api/rooms/room-306",
@@ -2395,8 +2392,8 @@ class HotelRoomsTests(unittest.TestCase):
             float(primary["stay"].get("estimatedTotal") or 0), 12000.0, places=2
         )
 
-    def test_merged_checkin_heals_copied_primary_rate_on_member(self):
-        """Stale mergeRoomRates that copied suite rate onto deluxe are repaired."""
+    def test_merged_checkin_keeps_manual_member_rate(self):
+        """Typed mergeRoomRates are billed as entered, even if they match the primary."""
         check_in, check_out = self._stay_window(nights=1)
         merged = self.client.put(
             "/hotel/api/rooms/room-306",
@@ -2445,12 +2442,15 @@ class HotelRoomsTests(unittest.TestCase):
             if f.get("source") == "merged_room_rate"
         ]
         self.assertEqual(len(rate_lines), 1, primary["stay"].get("folioCharges"))
-        self.assertEqual(float(rate_lines[0].get("amount") or 0), 4500.0)
+        self.assertEqual(float(rate_lines[0].get("amount") or 0), 7500.0)
         by_num = {
             str(r.get("number") or ""): r
             for r in (primary["stay"].get("mergeRoomRates") or [])
         }
-        self.assertEqual(float(by_num["306"]["roomRate"]), 4500.0)
+        self.assertEqual(float(by_num["306"]["roomRate"]), 7500.0)
+        self.assertAlmostEqual(
+            float(primary["stay"].get("estimatedTotal") or 0), 15000.0, places=2
+        )
 
     def test_merge_allows_any_rooms_without_stay(self):
         """Vacant / status-only rooms can join a billing merge group."""

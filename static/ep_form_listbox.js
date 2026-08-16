@@ -192,12 +192,17 @@
     }
   }
 
-  function closeListbox(root){
+  function closeListbox(root, opts){
     if (!root) return;
+    opts = opts || {};
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var list = listEl(root);
     var search = searchEl(root);
     var wasOpen = root.classList.contains('is-open');
+    var portaled = !!(list && list.classList.contains('ep-listbox-portaled'));
+    /* Portaled panels use opacity:1 !important, so the close fade never shows —
+       waiting LISTBOX_CLOSE_MS just delays the chosen label. */
+    var immediate = !!(opts.immediate || portaled || prefersReducedMotion());
     root.classList.remove('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
     function finishHide(){
@@ -210,18 +215,19 @@
         var emptyStatus = list.querySelector('.se-filter-listbox-status[data-ep-empty]');
         if (emptyStatus) emptyStatus.hidden = true;
       }
+      if (root.hasAttribute('data-se-listbox-searchable')) {
+        filterSearchableOptions(root, '');
+      }
     }
-    if (list && wasOpen && !prefersReducedMotion()) {
+    if (list && wasOpen && !immediate) {
       root.classList.add('is-closing');
       global.clearTimeout(root._epCloseTimer);
       root._epCloseTimer = global.setTimeout(finishHide, LISTBOX_CLOSE_MS);
     } else {
+      global.clearTimeout(root._epCloseTimer);
       finishHide();
     }
     if (search) search.value = '';
-    if (root.hasAttribute('data-se-listbox-searchable')) {
-      filterSearchableOptions(root, '');
-    }
     if (wasOpen && isCombobox(root)) {
       var combo = comboboxInput(root);
       var typed = combo ? String(combo.value || '').trim() : '';
@@ -702,7 +708,7 @@
         opt.setAttribute('aria-selected', on ? 'true' : 'false');
       });
     }
-    closeListbox(root);
+    closeListbox(root, { immediate: true });
 
     var submitFormId = root.getAttribute('data-se-listbox-submit');
     if (submitFormId) {

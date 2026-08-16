@@ -822,7 +822,7 @@ body.su-module .pl-add-category-row .staff-field--inline{margin-bottom:0;min-wid
 body.su-module .pl-add-category-row .se-filter-chip{width:100%}
 body.su-module #pl-add-purchase-modal .se-filter-chip{width:100%}
 body.su-module #pl-add-purchase-modal .se-filter-chip-control{width:100%;position:relative}
-body.su-module #pl-add-purchase-modal .ep-combobox-listbox .se-filter-chip-chev{
+body.su-module #pl-add-purchase-modal .se-filter-chip-chev{
   display:none !important;
 }
 body.su-module #pl-add-purchase-modal input.se-filter-chip-combobox::-webkit-search-decoration,

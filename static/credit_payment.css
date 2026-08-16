@@ -41,11 +41,57 @@ body.su-module .se-sales-header-filters:has(#credit-payment-filter-form){
 body.su-module #credit-payment-filter-form.sr-topbar-filters{
   display:flex;
   align-items:flex-end;
-  flex-wrap:nowrap;
+  flex-wrap:wrap;
   gap:12px;
   width:100%;
   min-width:0;
 }
+
+/* Same 44px control height as Purchases & Expenses */
+body.su-module #credit-payment-page #credit-payment-filter-form,
+body.su-module #credit-payment-filter-form{
+  --pl-filter-control-h:44px;
+}
+body.su-module #credit-payment-page #credit-payment-filter-form .cp-view-tabs-host > .cp-view-tabs,
+body.su-module #credit-payment-page #credit-payment-filter-form > .cp-view-tabs,
+body.su-module #credit-payment-page #credit-payment-filter-form .cp-kind-filter-tabs.cp-view-tabs,
+body.su-module #credit-payment-page #credit-payment-filter-form .se-filter-chip-control{
+  box-sizing:border-box !important;
+  height:var(--pl-filter-control-h) !important;
+  min-height:var(--pl-filter-control-h) !important;
+  max-height:var(--pl-filter-control-h) !important;
+  border-radius:8px !important;
+}
+body.su-module #credit-payment-page #credit-payment-filter-form .cp-view-tabs-host > .cp-view-tabs,
+body.su-module #credit-payment-page #credit-payment-filter-form > .cp-view-tabs{
+  padding:4px;
+  border:1px solid var(--border,#E2E8F0);
+  background:#F1F5F9;
+}
+body.su-module #credit-payment-page #credit-payment-filter-form .se-filter-chip-trigger,
+body.su-module #credit-payment-page #credit-payment-filter-form .cp-search-input,
+body.su-module #credit-payment-page #credit-payment-filter-form input[type="search"],
+body.su-module #credit-payment-page #credit-payment-filter-form .an-range-wrap,
+body.su-module #credit-payment-page #credit-payment-filter-form .an-range-trigger{
+  box-sizing:border-box !important;
+  height:100% !important;
+  min-height:0 !important;
+  max-height:100% !important;
+  line-height:1.2;
+  padding-top:0;
+  padding-bottom:0;
+}
+body.su-module #credit-payment-page #credit-payment-filter-form .an-range-wrap{
+  display:flex;
+  align-items:stretch;
+  width:max-content;
+  min-width:0;
+  flex:0 0 auto;
+}
+body.su-module #credit-payment-page #credit-payment-filter-form .se-filter-chip-chev{
+  display:none !important;
+}
+body.su-module #credit-payment-filter-form .cp-view-tabs-host,
 body.su-module #credit-payment-filter-form > .cp-view-tabs{
   flex:0 1 auto;
   min-width:0;
@@ -66,12 +112,13 @@ body.su-module .cp-search-input{
   flex:1 1 auto;
   min-width:0;
   width:100%;
-  height:48px;
+  height:100%;
+  min-height:0;
   border:none;
   background:transparent;
-  font:500 14px Inter,system-ui,sans-serif;
+  font:500 13px Inter,system-ui,sans-serif;
   color:#111827;
-  padding:0 12px 0 4px;
+  padding:0 12px;
   outline:none;
 }
 body.su-module .cp-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
@@ -109,14 +156,14 @@ body.su-module #credit-payment-filter-form .cp-kind-filter-tabs.cp-view-tabs{
   box-sizing:border-box;
   background:#F1F5F9;
   border:1px solid var(--border,#E2E8F0);
-  border-radius:12px;
+  border-radius:8px;
 }
 body.su-module #credit-payment-filter-form .cp-kind-filter-tabs .cp-kind-filter-tab{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  height:36px;
-  min-height:36px;
+  height:34px;
+  min-height:34px;
   padding:0 14px;
   border:0;
   border-radius:9px;
@@ -146,10 +193,11 @@ body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-
   background:#fff !important;
 }
 body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox{
-  min-height:44px;
+  height:100%;
+  min-height:0;
   font-size:13px;
   font-weight:600;
-  padding:0 0 0 12px;
+  padding:0 12px;
 }
 body.su-module #credit-payment-filter-form .pl-header-field-listbox.ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
   color:#94A3B8;
@@ -173,27 +221,41 @@ body.su-module #credit-payment-filter-form .pl-supplier-filter-listbox{
 body.su-module .cp-date-range-host{
   flex:0 0 auto;
   min-width:0;
+  width:max-content;
+  max-width:100%;
   z-index:30;
   margin-left:0;
 }
 body.su-module .cp-date-range-host .se-filter-chip--date-range{
   flex:none;
+  display:block;
   min-width:0;
-  width:auto;
+  width:max-content;
+  max-width:100%;
+}
+body.su-module .cp-date-range-host .se-filter-chip--date-range .se-filter-chip-control{
+  overflow:visible;
+  width:max-content;
+  max-width:100%;
 }
 body.su-module .cp-date-range-host .an-range-trigger{
-  min-width:148px;
-  width:auto;
-  max-width:min(340px, 70vw);
+  min-width:0;
+  width:max-content;
+  max-width:100%;
+  justify-content:flex-start;
+  white-space:nowrap;
 }
 body.su-module .cp-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control{
   border-color:#93C5FD;
   background:#EFF6FF;
 }
-body.su-module .cp-date-range-host .an-range-actions{
-  display:flex;
-  justify-content:flex-end;
-  gap:8px;
+body.su-module #credit-payment-page .cp-date-range-host,
+body.su-module #credit-payment-page .cp-date-range-host .se-filter-chip--date-range,
+body.su-module #credit-payment-page .cp-date-range-host .an-range-wrap,
+body.su-module #credit-payment-page .cp-date-range-host .an-range-trigger{
+  flex:0 0 auto !important;
+  width:max-content !important;
+  max-width:100%;
 }
 
 @container cp-filters (max-width:900px){
@@ -203,10 +265,14 @@ body.su-module .cp-date-range-host .an-range-actions{
   body.su-module #credit-payment-filter-form .cp-search-chip{
     flex:1 1 160px;
   }
-  body.su-module #credit-payment-filter-form .pl-supplier-filter-listbox,
-  body.su-module #credit-payment-filter-form .cp-date-range-host{
+  body.su-module #credit-payment-filter-form .pl-supplier-filter-listbox{
     flex:1 1 160px;
     max-width:none;
+  }
+  body.su-module #credit-payment-filter-form .cp-date-range-host{
+    flex:0 0 auto;
+    width:max-content;
+    max-width:100%;
   }
 }
 

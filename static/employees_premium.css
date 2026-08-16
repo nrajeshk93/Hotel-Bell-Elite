@@ -244,6 +244,10 @@ body.ep-module .se-sales-header-filters .ep-toolbar-listbox .se-filter-chip-valu
   font-weight:600;
   color:#111827;
 }
+body.ep-module .se-filter-chip-chev,
+body.ep-module .an-range-chev{
+  display:none !important;
+}
 body.ep-module .ep-header-filters .ep-date-chip .se-filter-chip-label,
 body.ep-module .se-sales-header-filters .ep-date-chip .se-filter-chip-label{
   font-size:12px;

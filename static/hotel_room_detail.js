@@ -2212,13 +2212,48 @@
     return total;
   }
 
+  function parsedRoomRate(value) {
+    if (value == null || value === '') return null;
+    var n = Number(value);
+    if (!isFinite(n) || n < 0) return null;
+    return Math.round(n * 100) / 100;
+  }
+
+  function syncCompactNightlySeed(row) {
+    if (!row || row.querySelector('[data-nightly-host]')) return;
+    var rateEl = row.querySelector('[data-merge-room-rate]');
+    var planEl = row.querySelector('[data-merge-rate-plan]');
+    if (!rateEl && !planEl) return;
+    var rate = Math.max(0, Number((rateEl && rateEl.value) || 0));
+    var plan = planEl ? String(planEl.value || 'EP') : 'EP';
+    var existing = [];
+    try {
+      var raw = row.getAttribute('data-nightly-seed');
+      if (raw) existing = JSON.parse(raw) || [];
+    } catch (err) {
+      existing = [];
+    }
+    if (!Array.isArray(existing) || !existing.length) return;
+    var next = existing.map(function (night) {
+      return {
+        date: night && night.date,
+        roomRate: rate,
+        ratePlan: plan
+      };
+    });
+    try {
+      row.setAttribute('data-nightly-seed', JSON.stringify(next));
+    } catch (err2) {}
+  }
+
   function syncTotals(form) {
     if (!form) return;
     $all('.hrd-ci-rate-room', form).forEach(function (row) {
+      syncCompactNightlySeed(row);
       var nightly = collectNightlyRatesFromRoomEl(row);
       var rateHidden = row.querySelector('[data-merge-room-rate]');
       var planHidden = row.querySelector('[data-merge-rate-plan]');
-      if (nightly.length) {
+      if (nightly.length && row.querySelector('[data-nightly-host]')) {
         if (rateHidden) rateHidden.value = String(nightly[0].roomRate);
         if (planHidden) planHidden.value = nightly[0].ratePlan || 'EP';
       }
@@ -2495,6 +2530,7 @@
       };
     });
     if (fromDom.length) return fromDom;
+    syncCompactNightlySeed(row);
     try {
       var raw = row.getAttribute('data-nightly-seed');
       if (raw) {
@@ -2559,8 +2595,8 @@
             '<span class="hrd-input-affix"><span>₹</span>' +
             '<input type="number" min="0" step="0.01" data-nightly-room-rate data-night-date="' +
             escapeHtml(nightDate || '') +
-            '" value="' +
-            escapeHtml(String(rate)) +
+            '" placeholder="0" value="' +
+            escapeHtml(rate > 0 ? String(rate) : '') +
             '"' +
             (locked ? ' readonly disabled' : '') +
             '></span>' +
@@ -2747,12 +2783,22 @@
         var roomKey = row.getAttribute('data-room-id') || row.getAttribute('data-room-number') || idx;
         listHost.innerHTML = nightlyRatesHtml(roomKey, nightly, today);
       }
-      var summary = row.querySelector('.hrd-ci-room-tariff');
-      if (summary) {
-        summary.textContent = nightlyRowSummaryText(
-          (nightly[0] && nightly[0].ratePlan) || defaultPlan,
-          (nightly[0] && nightly[0].roomRate) || defaultRate
+      var compactRate = row.querySelector(
+        '.hrd-ci-nightly-block--compact [data-merge-room-rate]'
+      );
+      if (compactRate && document.activeElement !== compactRate) {
+        compactRate.value = String(
+          (nightly[0] && nightly[0].roomRate) != null
+            ? nightly[0].roomRate
+            : defaultRate
         );
+      }
+      var compactPlan = row.querySelector(
+        '.hrd-ci-nightly-block--compact [data-merge-rate-plan]'
+      );
+      if (compactPlan) {
+        compactPlan.value =
+          (nightly[0] && nightly[0].ratePlan) || defaultPlan || 'EP';
       }
     });
     if (typeof global.initEpListboxes === 'function') {
@@ -2799,12 +2845,8 @@
         lastRoom.roomTypeLabel || lastRoom.roomType || primaryTypeLabel;
     }
     var primarySaved = savedFor(primaryId, primaryNumber);
-    var primaryDefault =
-      Number(opts.defaultRate) > 0
-        ? Number(opts.defaultRate)
-        : defaultRateForType(primaryTypeKey || primaryTypeLabel);
-    var primaryFromSaved = positiveRoomRate(primarySaved && primarySaved.roomRate);
-    var primaryFromStay = positiveRoomRate(stay && stay.roomRate);
+    var primaryFromSaved = parsedRoomRate(primarySaved && primarySaved.roomRate);
+    var primaryFromStay = parsedRoomRate(stay && stay.roomRate);
     var pageIsMergePrimary = !!(lastRoom && lastRoom.isMergePrimary);
     var pageIsMergeMember = !!(lastRoom && lastRoom.isMergeMember);
     var pageNightly =
@@ -2820,13 +2862,13 @@
         (primarySaved && primarySaved.ratePlan) ||
         (pageIsMergeMember ? '' : stay && stay.ratePlan) ||
         'EP',
-      /* Reserved stays often store roomRate:0 — treat that as unset and use tariff. */
+      /* Stay prices are typed in this form — never fall back to Hotel Settings. */
       roomRate:
         primaryFromSaved != null
           ? primaryFromSaved
           : !pageIsMergeMember && primaryFromStay != null
             ? primaryFromStay
-            : primaryDefault,
+            : 0,
       nightlyRates: Array.isArray(pageNightly) ? pageNightly : [],
       isPrimary: pageIsMergePrimary || !pageIsMergeMember
     });
@@ -2851,29 +2893,14 @@
         var saved = savedFor(pid, pnum);
         var peerType = peer.roomType || '';
         var peerLabel = peer.roomTypeLabel || peer.roomType || '';
-        var peerDefault = defaultRateForType(peerType || peerLabel);
-        var savedRate = positiveRoomRate(saved && saved.roomRate);
-        var stayPrimaryRate = positiveRoomRate(stay && stay.roomRate);
-        // Prefer type tariff when a prior bug copied the primary suite rate.
-        if (
-          savedRate != null &&
-          stayPrimaryRate != null &&
-          Math.abs(savedRate - stayPrimaryRate) < 0.01 &&
-          peerDefault > 0 &&
-          Math.abs(peerDefault - stayPrimaryRate) > 0.01 &&
-          peerType &&
-          primaryTypeKey &&
-          peerType !== primaryTypeKey
-        ) {
-          savedRate = null;
-        }
+        var savedRate = parsedRoomRate(saved && saved.roomRate);
         rooms.push({
           roomId: pid,
           number: pnum,
           roomType: peerType,
           roomTypeLabel: peerLabel,
           ratePlan: (saved && saved.ratePlan) || 'EP',
-          roomRate: savedRate != null ? savedRate : peerDefault,
+          roomRate: savedRate != null ? savedRate : 0,
           nightlyRates: (saved && saved.nightlyRates) || [],
           isPrimary: false
         });
@@ -2899,17 +2926,25 @@
           seed = '';
         }
         var showNightlyEditor = !!(row.isPrimary || rooms.length === 1);
+        var rateValue = rate > 0 ? String(rate) : '';
         var nightlyBlock = showNightlyEditor
           ? '<div class="hrd-ci-nightly-block">' +
             '<p class="hrd-ci-nightly-heading">Nightly rates &amp; Meal plan</p>' +
             '<div data-nightly-host>' +
             nightlyRatesHtml(roomKey, nightly, today) +
             '</div></div>'
-          : '<div class="hrd-ci-nightly-block hrd-ci-nightly-block--summary">' +
+          : '<div class="hrd-ci-nightly-block hrd-ci-nightly-block--compact">' +
             '<p class="hrd-ci-nightly-heading">Tariff</p>' +
-            '<p class="hrd-ci-room-tariff">' +
-            escapeHtml(nightlyRowSummaryText(plan, rate)) +
-            '</p></div>';
+            '<div class="hrd-ci-nightly-fields">' +
+            ratePlanListboxHtml('hrd-ci-merge-plan-' + roomKey, plan, {
+              label: 'Meal plan'
+            }) +
+            '<label class="hrd-field hrd-ci-nightly-rate-field">' +
+            '<span>Room rate</span>' +
+            '<span class="hrd-input-affix"><span>₹</span>' +
+            '<input type="number" min="0" step="0.01" inputmode="decimal" data-merge-room-rate placeholder="0" value="' +
+            escapeHtml(rateValue) +
+            '"></span></label></div></div>';
         return (
           '<div class="hrd-ci-rate-room" data-room-id="' +
           escapeHtml(row.roomId || '') +
@@ -2936,12 +2971,14 @@
           escapeHtml(mergeRateRoomLabel(row)) +
           '">' +
           '</label>' +
-          '<input type="hidden" data-merge-room-rate value="' +
-          escapeHtml(String(rate)) +
-          '">' +
-          '<input type="hidden" data-merge-rate-plan value="' +
-          escapeHtml(plan) +
-          '">' +
+          (showNightlyEditor
+            ? '<input type="hidden" data-merge-room-rate value="' +
+              escapeHtml(String(rate)) +
+              '">' +
+              '<input type="hidden" data-merge-rate-plan value="' +
+              escapeHtml(plan) +
+              '">'
+            : '') +
           nightlyBlock +
           '</div>'
         );
@@ -3556,8 +3593,7 @@
       setFormTime(form, 'checkOutTime', stay.checkOutTime || stay.check_out_time || '');
 
       buildCheckinRateRooms(pageRoot(), form, {
-        stay: stay,
-        defaultRate: defaultRateFor(pageRoot())
+        stay: stay
       });
 
       syncCustomerNameFromPersonal(form);
@@ -5064,8 +5100,7 @@
           });
         }
         buildCheckinRateRooms(root, form, {
-          stay: enriched,
-          defaultRate: defaultRateFor(root)
+          stay: enriched
         });
         syncCheckinReservationIdField(form, enriched);
         if (
@@ -5201,8 +5236,7 @@
     resetListbox('hrd-ci-children', '0', '0');
     resetListbox('hrd-ci-payment', '', 'Select');
     buildCheckinRateRooms(root, form, {
-      stay: staySource || null,
-      defaultRate: defaultRateFor(root)
+      stay: staySource || null
     });
 
     var uploadName = $('#hrd-ci-id-upload-name', form) || $('.hrd-upload-text', form);

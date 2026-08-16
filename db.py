@@ -12120,9 +12120,8 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
     """Ensure primary folio has one rate×nights line per merge member.
 
     Skips members that already have an absorb line (source=room_merge) so occupied
-    merges are not double-counted. Upserts source=merged_room_rate lines using
-    mergeRoomRates when present, otherwise each member's room-type tariff from
-    Hotel Settings (not the primary suite rate).
+    merges are not double-counted. Upserts source=merged_room_rate lines from the
+    stay's typed mergeRoomRates only — never invent Hotel Settings tariffs.
     """
     if not isinstance(primary, dict) or not primary.get("mergePrimary"):
         return
@@ -12232,28 +12231,12 @@ def _hotel_sync_merged_room_rate_folio(primary, rooms, tariff_rates=None):
     def _nightly_rate_for(room, *, is_primary=False):
         rid = str(room.get("id") or "").strip()
         num = str(room.get("number") or "").strip()
-        room_type = str(room.get("roomType") or "").strip()
         saved, has_saved = _lookup_saved_rate(rid, num)
-        type_rate = _hotel_rate_for_room_type(room_type, tariff_rates)
         if has_saved and saved is not None:
-            # Heal stale rows that copied the primary suite rate onto another type.
-            if (
-                not is_primary
-                and room_type
-                and primary_type
-                and room_type != primary_type
-                and primary_rate > 0
-                and abs(saved - primary_rate) < 0.01
-                and type_rate > 0
-                and abs(type_rate - primary_rate) > 0.01
-            ):
-                return type_rate
             return saved
         if is_primary and primary_rate > 0:
             return primary_rate
-        if type_rate > 0:
-            return type_rate
-        return primary_rate
+        return 0.0
 
     def _has_absorb(source_room_id):
         sid = str(source_room_id or "").strip()
