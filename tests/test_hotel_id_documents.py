@@ -40,10 +40,12 @@ class HotelIdDocumentCompressionTests(unittest.TestCase):
         stored = self.root / result["storedName"]
         self.assertTrue(stored.is_file())
         self.assertFalse(any(self.root.glob("src*")))
-        alias = self.root / result["displayName"]
-        self.assertTrue(alias.is_file())
-        self.assertTrue(docs.resolve_stored_id_document(result["displayName"]))
+        self.assertFalse((self.root / result["displayName"]).is_file())
+        self.assertTrue(docs.resolve_stored_id_document(result["storedName"]))
         self.assertEqual(len(PdfReader(str(stored)).pages), 1)
+        self.assertFalse(list(self.root.glob("*.png")))
+        self.assertFalse(list(self.root.glob("*.jpg")))
+        self.assertFalse(list(self.root.glob("*.webp")))
 
     def test_display_name_uses_guest_and_id_type(self):
         result = docs.process_uploaded_id_document(
@@ -54,8 +56,8 @@ class HotelIdDocumentCompressionTests(unittest.TestCase):
         self.assertEqual(result["displayName"], "Arun Shetty Aadhaar.pdf")
         alias = docs.stored_id_document_basename(result["displayName"])
         self.assertEqual(alias, "Arun_Shetty_Aadhaar.pdf")
-        self.assertTrue((self.root / alias).is_file())
-        self.assertTrue(docs.resolve_stored_id_document(result["displayName"]))
+        self.assertFalse((self.root / alias).is_file())
+        self.assertTrue((self.root / result["storedName"]).is_file())
         original = "f3dd5b8c-2958-4e62-adbd-b62b9e6f89eb.png"
         result = docs.process_uploaded_id_document(self._png_storage(original))
         self.assertEqual(
@@ -64,8 +66,8 @@ class HotelIdDocumentCompressionTests(unittest.TestCase):
         )
         self.assertNotEqual(result["storedName"], result["displayName"])
         self.assertTrue((self.root / result["storedName"]).is_file())
-        self.assertTrue((self.root / result["displayName"]).is_file())
-        self.assertTrue(docs.resolve_stored_id_document(result["displayName"]))
+        self.assertFalse((self.root / result["displayName"]).is_file())
+        self.assertTrue(docs.resolve_stored_id_document(result["storedName"]))
 
     def test_images_merge_into_one_pdf(self):
         result = docs.process_uploaded_id_documents(
@@ -81,6 +83,21 @@ class HotelIdDocumentCompressionTests(unittest.TestCase):
         stored = self.root / result["storedName"]
         self.assertTrue(stored.is_file())
         self.assertEqual(len(PdfReader(str(stored)).pages), 2)
+        self.assertFalse(list(self.root.glob("*.png")))
+
+    def test_deletes_source_images_and_leftover_webp(self):
+        leftover_webp = self.root / "abc123def456.webp"
+        leftover_jpg = self.root / "abc123def456.jpg"
+        leftover_webp.write_bytes(b"old-webp")
+        leftover_jpg.write_bytes(b"old-jpg")
+        with mock.patch.object(docs, "_unique_stem", return_value="abc123def456"):
+            result = docs.process_uploaded_id_document(self._png_storage())
+        self.assertEqual(result["storedName"], "abc123def456.pdf")
+        self.assertTrue((self.root / "abc123def456.pdf").is_file())
+        self.assertFalse(leftover_webp.is_file())
+        self.assertFalse(leftover_jpg.is_file())
+        self.assertFalse(list(self.root.glob("*.png")))
+        self.assertFalse(list(self.root.glob("*.webp")))
 
     def test_rejects_mixed_pdf_and_image(self):
         pdf = FileStorage(
@@ -130,7 +147,8 @@ class HotelIdDocumentCompressionTests(unittest.TestCase):
         buf = io.BytesIO(pdf_bytes)
         upload = FileStorage(stream=buf, filename="aadhaar.pdf", content_type="application/pdf")
 
-        def fake_gs(src, dest):
+        def fake_gs(src, dest, **_kwargs):
+            dest = Path(dest)
             dest.write_bytes(b"%PDF-1.4 compressed-smaller-content")
 
         with mock.patch.object(docs, "_find_ghostscript", return_value="/usr/bin/gs"):
@@ -138,6 +156,29 @@ class HotelIdDocumentCompressionTests(unittest.TestCase):
                 result = docs.process_uploaded_id_document(upload)
         self.assertTrue(result["storedName"].endswith(".pdf"))
         self.assertIn("ghostscript", result["engine"])
+
+    def test_large_photo_stores_under_size_cap(self):
+        buf = io.BytesIO()
+        noisy = Image.frombytes(
+            "RGB", (4000, 3000), os.urandom(4000 * 3000 * 3)
+        )
+        noisy.save(buf, format="JPEG", quality=95)
+        original_size = buf.tell()
+        buf.seek(0)
+        upload = FileStorage(
+            stream=buf, filename="phone.jpg", content_type="image/jpeg"
+        )
+        result = docs.process_uploaded_id_document(
+            upload, guest_name="Arun Shetty", id_type="Aadhaar"
+        )
+        stored = self.root / result["storedName"]
+        self.assertTrue(stored.is_file())
+        self.assertLessEqual(stored.stat().st_size, 500 * 1024)
+        self.assertLess(stored.stat().st_size, original_size)
+        self.assertEqual(result["displayName"], "Arun Shetty Aadhaar.pdf")
+        self.assertFalse((self.root / "Arun_Shetty_Aadhaar.pdf").is_file())
+        self.assertEqual(len(list(self.root.glob("*.pdf"))), 1)
+        self.assertEqual(len(PdfReader(str(stored)).pages), 1)
 
 
 class HotelIdDocumentRouteTests(unittest.TestCase):
@@ -217,8 +258,7 @@ class HotelIdDocumentRouteTests(unittest.TestCase):
         alias_resp = self.client.get(
             "/hotel/api/id-documents/" + body["document"]["displayName"]
         )
-        self.assertEqual(alias_resp.status_code, 200)
-        self.assertIn("application/pdf", alias_resp.headers.get("Content-Type", ""))
+        self.assertEqual(alias_resp.status_code, 404)
 
         via_url = docs.resolve_stored_id_document(body["document"]["urlPath"])
         self.assertTrue(via_url and via_url.is_file())
@@ -248,7 +288,9 @@ class HotelIdDocumentRouteTests(unittest.TestCase):
         self.assertTrue(body["ok"])
         self.assertEqual(body["document"]["displayName"], "Arun Shetty Aadhaar.pdf")
         alias = docs.stored_id_document_basename(body["document"]["displayName"])
-        self.assertTrue((Path(self.doc_tmp.name) / alias).is_file())
+        self.assertFalse((Path(self.doc_tmp.name) / alias).is_file())
+        stored = Path(self.doc_tmp.name) / body["document"]["storedName"]
+        self.assertTrue(stored.is_file())
 
     def test_upload_api_merges_two_images(self):
         resp = self.client.post(

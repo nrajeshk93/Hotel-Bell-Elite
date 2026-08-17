@@ -20,7 +20,6 @@
     '/point-of-sale/invoice',
     '/hotel/rooms',
     '/hotel/reservations',
-    '/hotel/invoice-ledger',
     '/communication-hub',
     '/access-management',
     '/employees',
@@ -595,6 +594,19 @@
     }
   }
 
+  /** Lists that change after a write — never paint a hover-prefetch snapshot. */
+  function mustFetchLiveSoftNavPath(path){
+    path = String(path || '').replace(/\/$/, '') || '/';
+    return (
+      path === '/communication-hub' ||
+      path === '/access-management/roles' ||
+      path === '/access-management/logs' ||
+      path === '/point-of-sale/invoice-ledger' ||
+      path === '/bar-point-of-sale/invoice-ledger' ||
+      path === '/hotel/invoice-ledger'
+    );
+  }
+
   function invalidatePrefetch(url){
     try{
       prefetchCache.delete(navCacheKey(url));
@@ -697,6 +709,7 @@
       if(path === '/accounts/purchase-ledger/report' || path === '/accounts/cash-ledger/report') return;
       /* Payroll HTML /report — not a file download. Do not treat /reports hub as export. */
       if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path)) return;
+      if(mustFetchLiveSoftNavPath(path)) return;
     } catch(e){}
     var key = navCacheKey(url);
     var existing = prefetchCache.get(key);
@@ -747,15 +760,9 @@
       /* Keep cache entry so Back / re-open stays instant within TTL. */
       try{
         var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
-        /* Inbox must always be fresh — outbound WhatsApp mirrors land in the DB
-           while a stale empty prefetch would wipe the conversation list. */
-        if(path === '/communication-hub'){
-          prefetchCache.delete(key);
-          return null;
-        }
-        /* Roles list mutates on create/edit/delete — a pre-create prefetch
-           makes custom roles look like they vanished after navigating away. */
-        if(path === '/access-management/roles' || path === '/access-management/logs'){
+        /* Inbox / invoice ledgers / roles mutate after writes — a hover prefetch
+           would hide the newest row until a hard refresh. */
+        if(mustFetchLiveSoftNavPath(path)){
           prefetchCache.delete(key);
           return null;
         }
@@ -794,10 +801,7 @@
         if(!html) return null;
         try{
           var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
-          if(path === '/communication-hub'){
-            return null;
-          }
-          if(path === '/access-management/roles' || path === '/access-management/logs'){
+          if(mustFetchLiveSoftNavPath(path)){
             return null;
           }
           if(path === '/stores/indent' || path === '/stores/inward'){
@@ -2678,7 +2682,7 @@
         '/static/sales_entry_dashboard.css?v=33',
         '/static/sales_update_header.css?v=12',
         '/static/sales_update_premium.css?v=27',
-        '/static/de_workspace_shell.css?v=50',
+        '/static/de_workspace_shell.css?v=52',
         '/static/stores.css?v=130',
         '/static/ep_form_listbox.css?v=29',
         '/static/pos_tables.css?v=64',

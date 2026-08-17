@@ -170,6 +170,18 @@
     return s;
   }
 
+  function checkinBlockedReason(room, root) {
+    var status = mapStatus(
+      (room && (room.inventoryStatus || room.status)) ||
+        (root && root.getAttribute('data-room-status')) ||
+        ''
+    );
+    if (status === 'dirty') {
+      return 'Room is dirty. Mark it Cleaned before check-in.';
+    }
+    return '';
+  }
+
   function pageRoot() {
     return document.getElementById('hotel-room-detail-page');
   }
@@ -668,6 +680,8 @@
     );
     var occupied = inventory === 'occupied' && !!stay;
     var reserved = inventory === 'reserved' && !!stay;
+    var dirty = inventory === 'dirty';
+    var canStartCheckin = !occupied && !reserved && !dirty && inventory !== 'out_of_order';
     var showGuest = occupied || reserved;
     var number = (room && room.number) || root.getAttribute('data-room-number') || '';
 
@@ -683,16 +697,32 @@
         guestCard.removeAttribute('role');
         guestCard.removeAttribute('tabindex');
         guestCard.removeAttribute('aria-label');
-      } else {
+      } else if (canStartCheckin) {
         guestCard.setAttribute('data-action', 'checkin');
         guestCard.setAttribute('role', 'button');
         guestCard.setAttribute('tabindex', '0');
         guestCard.setAttribute('aria-label', 'Start check-in');
+      } else {
+        guestCard.removeAttribute('data-action');
+        guestCard.removeAttribute('role');
+        guestCard.removeAttribute('tabindex');
+        guestCard.removeAttribute('aria-label');
       }
     }
     setVisible($('#hrd-edit-guest', root), showGuest);
     setVisible($('#hrd-start-checkout', root), occupied);
     setVisible($('#hrd-start-checkin-reserved', root), reserved);
+    setVisible($('#hrd-start-checkin', root), canStartCheckin);
+    var emptyTitle = $('#hrd-guest-empty-title', root);
+    var emptySub = $('#hrd-guest-empty-sub', root);
+    if (emptyTitle) {
+      emptyTitle.textContent = dirty ? 'Room is dirty' : 'No guest checked-in';
+    }
+    if (emptySub) {
+      emptySub.textContent = dirty
+        ? 'Mark it Cleaned from the room menu before check-in.'
+        : 'Click “Start Check-In” to add guest details';
+    }
 
     if (showGuest && stay) {
       var nameEl = $('#hrd-guest-name', root);
@@ -1364,6 +1394,7 @@
     var extendBtn = $('#hrd-menu-extend', root);
     var unmergeBtn = $('#hrd-menu-unmerge', root);
     var unmergeGroupBtn = $('#hrd-menu-unmerge-group', root);
+    var checkoutGroupBtn = $('#hrd-menu-checkout-group', root);
     var primaryBtn = $('#hrd-menu-set-primary', root);
     var isMember = !!(room && room.isMergeMember);
     var isPrimary = !!(room && room.isMergePrimary);
@@ -1378,6 +1409,7 @@
     if (extendBtn) extendBtn.hidden = !occupied;
     if (unmergeBtn) unmergeBtn.hidden = !inGroup;
     if (unmergeGroupBtn) unmergeGroupBtn.hidden = !isPrimary;
+    if (checkoutGroupBtn) checkoutGroupBtn.hidden = !isPrimary || !occupied;
     if (primaryBtn) primaryBtn.hidden = !isMember;
 
     paintStatusMenu(root, mapStatus(room && room.status));
@@ -1663,6 +1695,46 @@
         }
         paintRoom(root, result.data.room);
         showToast('Guest checked out. Room is dirty.');
+        return result.data.room;
+      })
+      .catch(function (err) {
+        showToast(err.message || 'Checkout failed.', true);
+        throw err;
+      });
+  }
+
+  function checkoutMergeGroup(root) {
+    var api = root.getAttribute('data-room-api') || '';
+    if (!api) {
+      showToast('Room API unavailable.', true);
+      return Promise.reject(new Error('missing api'));
+    }
+    var partners = ((lastRoom && lastRoom.mergePartnerNumbers) || []).join(', ');
+    var here = (lastRoom && lastRoom.number) || '';
+    var rooms = [here].concat(partners ? partners.split(/,\s*/) : []).filter(Boolean);
+    var ok = global.confirm(
+      'Check out all rooms in this merge' +
+        (rooms.length ? ' (' + rooms.join(', ') + ')' : '') +
+        '? Each occupied room will be marked dirty.'
+    );
+    if (!ok) return Promise.resolve(null);
+    return fetch(api, {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ action: 'checkout_group' })
+    })
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok) {
+          throw new Error((result.data && result.data.error) || 'Checkout failed.');
+        }
+        paintRoom(root, result.data.room);
+        showToast('All merged rooms checked out. Rooms are dirty.');
         return result.data.room;
       })
       .catch(function (err) {
@@ -2376,7 +2448,7 @@
     var planEl = row.querySelector('[data-merge-rate-plan]');
     if (!rateEl && !planEl) return;
     var rate = Math.max(0, Number((rateEl && rateEl.value) || 0));
-    var plan = planEl ? String(planEl.value || 'EP') : 'EP';
+    var plan = planEl ? String(planEl.value || '') : '';
     var existing = [];
     try {
       var raw = row.getAttribute('data-nightly-seed');
@@ -2406,7 +2478,7 @@
       var planHidden = row.querySelector('[data-merge-rate-plan]');
       if (nightly.length && row.querySelector('[data-nightly-host]')) {
         if (rateHidden) rateHidden.value = String(nightly[0].roomRate);
-        if (planHidden) planHidden.value = nightly[0].ratePlan || 'EP';
+        if (planHidden) planHidden.value = nightly[0].ratePlan || '';
       }
     });
     var rateSum = collectMergeNightlyRateSum(form);
@@ -2414,10 +2486,7 @@
     var hiddenRate = form.elements.roomRate || $('#hrd-ci-room-rate', form);
     if (hiddenRate) hiddenRate.value = String(primaryRate);
     var hiddenPlan = form.elements.ratePlan || $('#hrd-ci-rate-plan', form);
-    if (hiddenPlan) {
-      var plan = primaryMergeRatePlan(form);
-      if (plan) hiddenPlan.value = plan;
-    }
+    if (hiddenPlan) hiddenPlan.value = primaryMergeRatePlan(form) || '';
     var advance = Math.max(0, Number(form.advancePaid.value || 0));
     var extras = specialChargeExtrasTotal(form);
     var total = Math.round((rateSum + extras) * 100) / 100;
@@ -2428,9 +2497,10 @@
 
   function ratePlanListboxHtml(fid, selected, opts) {
     opts = opts || {};
-    var plan = selected || 'EP';
-    if (!RATE_PLAN_LABELS[plan]) plan = 'EP';
-    var display = RATE_PLAN_LABELS[plan] || plan;
+    var plan = String(selected || '').trim().toUpperCase();
+    if (plan && !RATE_PLAN_LABELS[plan]) plan = '';
+    var hasValue = !!RATE_PLAN_LABELS[plan];
+    var display = hasValue ? RATE_PLAN_LABELS[plan] : 'Select';
     var locked = !!opts.locked;
     var nightDate = opts.nightDate || '';
     var labelText = opts.label || 'Rate Plan';
@@ -2439,7 +2509,7 @@
     var options = keys
       .map(function (key) {
         var optLabel = RATE_PLAN_LABELS[key] || key;
-        var on = key === plan;
+        var on = hasValue && key === plan;
         return (
           '<button type="button" class="se-filter-listbox-option' +
           (on ? ' is-selected' : '') +
@@ -2482,7 +2552,7 @@
       planAttr +
       (nightDate ? ' data-night-date="' + escapeHtml(nightDate) + '"' : '') +
       ' value="' +
-      escapeHtml(plan) +
+      escapeHtml(hasValue ? plan : '') +
       '">' +
       '<button type="button" class="se-filter-chip-trigger" id="' +
       fid +
@@ -2495,7 +2565,9 @@
       '-value"' +
       (locked ? ' disabled' : '') +
       '>' +
-      '<span class="se-filter-chip-value" id="' +
+      '<span class="se-filter-chip-value' +
+      (hasValue ? '' : ' is-placeholder') +
+      '" id="' +
       fid +
       '-value">' +
       escapeHtml(display) +
@@ -2567,13 +2639,15 @@
   }
 
   function nightlyPlanCode(plan) {
-    var key = String(plan || 'EP').trim().toUpperCase();
-    if (!RATE_PLAN_LABELS[key]) key = 'EP';
+    var key = String(plan || '').trim().toUpperCase();
+    if (!RATE_PLAN_LABELS[key]) return '';
     return key;
   }
 
   function nightlyRowSummaryText(plan, rate) {
-    return nightlyPlanCode(plan) + ' · ' + moneyText(rate);
+    var code = nightlyPlanCode(plan);
+    if (!code) return moneyText(rate);
+    return code + ' · ' + moneyText(rate);
   }
 
   function refreshNightlyRowSummary(row) {
@@ -2582,7 +2656,7 @@
     if (!summary) return;
     var planEl = row.querySelector('[data-nightly-rate-plan]');
     var rateEl = row.querySelector('[data-nightly-room-rate]');
-    var plan = planEl ? String(planEl.value || 'EP') : 'EP';
+    var plan = planEl ? String(planEl.value || '') : '';
     var rate = rateEl ? Number(rateEl.value || 0) : 0;
     summary.textContent = nightlyRowSummaryText(plan, rate);
   }
@@ -2652,16 +2726,16 @@
       if (!day) return;
       byDate[day] = {
         roomRate: Math.max(0, Number(item.roomRate != null ? item.roomRate : item.room_rate || 0)),
-        ratePlan: String(item.ratePlan || item.rate_plan || defaultPlan || 'EP')
+        ratePlan: String(item.ratePlan || item.rate_plan || defaultPlan || '')
       };
     });
     var prevRate = Math.max(0, Number(defaultRate || 0));
-    var prevPlan = defaultPlan || 'EP';
+    var prevPlan = defaultPlan || '';
     return dates.map(function (day) {
       var hit = byDate[day];
       var rate = hit && hit.roomRate != null ? hit.roomRate : prevRate;
       var plan = hit && hit.ratePlan ? hit.ratePlan : prevPlan;
-      if (!RATE_PLAN_LABELS[plan]) plan = prevPlan || 'EP';
+      if (plan && !RATE_PLAN_LABELS[plan]) plan = prevPlan || '';
       prevRate = rate;
       prevPlan = plan;
       return { date: day, roomRate: rate, ratePlan: plan };
@@ -2677,7 +2751,7 @@
       return {
         date: date,
         roomRate: Math.max(0, Number((rateEl && rateEl.value) || 0)),
-        ratePlan: planEl ? String(planEl.value || 'EP') : 'EP'
+        ratePlan: planEl ? String(planEl.value || '') : ''
       };
     });
     if (fromDom.length) return fromDom;
@@ -2702,7 +2776,7 @@
         .map(function (night, nIdx) {
           var nightDate = toDateISO(night.date) || String(night.date || '').slice(0, 10);
           var locked = !!(nightDate && today && nightDate < today);
-          var plan = nightlyPlanCode(night.ratePlan || 'EP');
+          var plan = nightlyPlanCode(night.ratePlan);
           var rate = Math.max(0, Number(night.roomRate || 0));
           var fid =
             'hrd-ci-rate-plan-' +
@@ -2744,7 +2818,7 @@
             '<label class="hrd-field hrd-ci-nightly-rate-field">' +
             '<span>Room rate</span>' +
             '<span class="hrd-input-affix"><span>₹</span>' +
-            '<input type="number" min="0" step="0.01" data-nightly-room-rate data-night-date="' +
+            '<input type="number" min="0.01" step="0.01" required data-nightly-room-rate data-night-date="' +
             escapeHtml(nightDate || '') +
             '" placeholder="0" value="' +
             escapeHtml(rate > 0 ? String(rate) : '') +
@@ -2803,7 +2877,7 @@
       return rateEl ? Math.max(0, Number(rateEl.value || 0)) : 0;
     }
     var planEl = pick.querySelector('[data-nightly-rate-plan]');
-    return planEl ? String(planEl.value || 'EP') : 'EP';
+    return planEl ? String(planEl.value || '') : '';
   }
 
   function primaryMergeRoomRate(form) {
@@ -2819,17 +2893,73 @@
     return Math.max(0, Number((form.elements.roomRate && form.elements.roomRate.value) || 0));
   }
 
+  function firstMissingRoomRateInput(form) {
+    if (!form) return null;
+    var nodes = $all('[data-nightly-room-rate], [data-merge-room-rate]', form);
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.disabled) continue;
+      if (el.closest && el.closest('.hrd-ci-nightly-row.is-locked')) continue;
+      var raw = String(el.value || '').trim();
+      var amount = Number(raw);
+      if (!raw || !isFinite(amount) || amount <= 0) return el;
+    }
+    var hidden = form.elements.roomRate || $('#hrd-ci-room-rate', form);
+    if (!nodes.length && hidden && !hidden.disabled) {
+      var hiddenRaw = String(hidden.value || '').trim();
+      var hiddenAmount = Number(hiddenRaw);
+      if (!hiddenRaw || !isFinite(hiddenAmount) || hiddenAmount <= 0) return hidden;
+    }
+    return null;
+  }
+
+  function firstMissingMealPlanInput(form) {
+    if (!form) return null;
+    var nodes = $all('[data-nightly-rate-plan], [data-merge-rate-plan]', form);
+    for (var i = 0; i < nodes.length; i++) {
+      var el = nodes[i];
+      if (el.disabled) continue;
+      if (el.closest && el.closest('.hrd-ci-nightly-row.is-locked')) continue;
+      var plan = String(el.value || '').trim().toUpperCase();
+      if (!RATE_PLAN_LABELS[plan]) return el;
+    }
+    return null;
+  }
+
   function primaryMergeRatePlan(form) {
-    if (!form) return 'EP';
+    if (!form) return '';
     var fromNight = primaryNightlyPick(form, 'plan');
     if (fromNight) return fromNight;
     var primary = form.querySelector(
       '.hrd-ci-rate-room[data-merge-primary="1"] [data-merge-rate-plan]'
     );
-    if (primary) return String(primary.value || 'EP');
+    if (primary) return String(primary.value || '');
     var first = form.querySelector('[data-merge-rate-plan]');
-    if (first) return String(first.value || 'EP');
-    return String((form.elements.ratePlan && form.elements.ratePlan.value) || 'EP');
+    if (first) return String(first.value || '');
+    return '';
+  }
+
+  function stripStayMealPlans(stay) {
+    if (!stay) return stay;
+    var next = Object.assign({}, stay);
+    next.ratePlan = '';
+    if (Array.isArray(stay.nightlyRates)) {
+      next.nightlyRates = stay.nightlyRates.map(function (night) {
+        return Object.assign({}, night || {}, { ratePlan: '' });
+      });
+    }
+    if (Array.isArray(stay.mergeRoomRates)) {
+      next.mergeRoomRates = stay.mergeRoomRates.map(function (row) {
+        var copy = Object.assign({}, row || {}, { ratePlan: '' });
+        if (Array.isArray(row && row.nightlyRates)) {
+          copy.nightlyRates = row.nightlyRates.map(function (night) {
+            return Object.assign({}, night || {}, { ratePlan: '' });
+          });
+        }
+        return copy;
+      });
+    }
+    return next;
   }
 
   function collectMergeRoomRates(form) {
@@ -2847,8 +2977,8 @@
         ratePlan: firstNight
           ? firstNight.ratePlan
           : planEl
-            ? String(planEl.value || 'EP')
-            : 'EP',
+            ? String(planEl.value || '')
+            : '',
         roomRate: firstNight
           ? firstNight.roomRate
           : Math.max(0, Number((rateEl && rateEl.value) || 0)),
@@ -2924,7 +3054,7 @@
         (existing[0] && existing[0].ratePlan) ||
         (row.querySelector('[data-merge-rate-plan]') &&
           row.querySelector('[data-merge-rate-plan]').value) ||
-        'EP';
+        '';
       var nightly = buildNightlyRatesForRoom(existing, dates, defaultRate, defaultPlan);
       try {
         row.setAttribute('data-nightly-seed', JSON.stringify(nightly));
@@ -2949,7 +3079,7 @@
       );
       if (compactPlan) {
         compactPlan.value =
-          (nightly[0] && nightly[0].ratePlan) || defaultPlan || 'EP';
+          (nightly[0] && nightly[0].ratePlan) || defaultPlan || '';
       }
     });
     if (typeof global.initEpListboxes === 'function') {
@@ -3012,7 +3142,7 @@
       ratePlan:
         (primarySaved && primarySaved.ratePlan) ||
         (pageIsMergeMember ? '' : stay && stay.ratePlan) ||
-        'EP',
+        '',
       /* Stay prices are typed in this form — never fall back to Hotel Settings. */
       roomRate:
         primaryFromSaved != null
@@ -3050,7 +3180,7 @@
           number: pnum,
           roomType: peerType,
           roomTypeLabel: peerLabel,
-          ratePlan: (saved && saved.ratePlan) || 'EP',
+          ratePlan: (saved && saved.ratePlan) || '',
           roomRate: savedRate != null ? savedRate : 0,
           nightlyRates: (saved && saved.nightlyRates) || [],
           isPrimary: false
@@ -3066,7 +3196,7 @@
 
     wrap.innerHTML = rooms
       .map(function (row, idx) {
-        var plan = row.ratePlan || 'EP';
+        var plan = row.ratePlan || '';
         var rate = Math.max(0, Number(row.roomRate || 0));
         var nightly = buildNightlyRatesForRoom(row.nightlyRates, dates, rate, plan);
         var roomKey = String(row.roomId || row.number || idx).replace(/[^\w-]/g, '');
@@ -3093,7 +3223,7 @@
             '<label class="hrd-field hrd-ci-nightly-rate-field">' +
             '<span>Room rate</span>' +
             '<span class="hrd-input-affix"><span>₹</span>' +
-            '<input type="number" min="0" step="0.01" inputmode="decimal" data-merge-room-rate placeholder="0" value="' +
+            '<input type="number" min="0.01" step="0.01" required inputmode="decimal" data-merge-room-rate placeholder="0" value="' +
             escapeHtml(rateValue) +
             '"></span></label></div></div>';
         return (
@@ -3519,6 +3649,11 @@
     var root = pageRoot();
     var form = root && $('#hrd-checkin-form', root);
     if (!form) return;
+    $all('.hrd-ci-rate-plan-listbox', form).forEach(function (lb) {
+      var hidden = lb.querySelector('[data-nightly-rate-plan], [data-merge-rate-plan]');
+      var plan = String((hidden && hidden.value) || '').trim().toUpperCase();
+      if (RATE_PLAN_LABELS[plan]) lb.classList.remove('is-invalid');
+    });
     syncTotals(form);
     scheduleCheckinDraftSave(root, form);
   };
@@ -4129,10 +4264,11 @@
       });
   }
 
-  function addExtraGuestRow(form, guest) {
+  function addExtraGuestRow(form, guest, opts) {
     var host = extraGuestsHost(form);
     if (!host) return;
     guest = guest || {};
+    opts = opts || {};
     var index = host.querySelectorAll('[data-extra-guest]').length + 2;
     var row = document.createElement('div');
     row.className = 'hrd-form-grid hrd-form-grid--2 hrd-guest-line';
@@ -4251,9 +4387,11 @@
     syncAdultsFromGuests(form);
     scheduleCheckinDraftSave(pageRoot(), form);
     scheduleFormFieldAutosize(form);
-    setTimeout(function () {
-      nameInput.focus();
-    }, 20);
+    if (!(opts && opts.focus === false)) {
+      setTimeout(function () {
+        nameInput.focus();
+      }, 20);
+    }
   }
 
   function renumberExtraGuests(form) {
@@ -4393,6 +4531,40 @@
     scheduleFormFieldAutosize(form);
   }
 
+  function normalizeGuestCompareName(guest) {
+    guest = guest || {};
+    var first = String(guest.firstName || guest.first_name || '').trim();
+    var last = String(guest.lastName || guest.last_name || '').trim();
+    var guestName = String(
+      guest.guestName || guest.guest_name || guest.name || ''
+    ).trim();
+    if (!first && !last && guestName) {
+      var split = splitGuestName(guestName);
+      first = split.firstName || first;
+      last = split.lastName || last;
+    } else if (first || last) {
+      var joinedSplit = splitGuestName([first, last].filter(Boolean).join(' '));
+      first = joinedSplit.firstName || first;
+      last = joinedSplit.lastName || last;
+    }
+    var joined = [first, last].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    if (!joined) joined = guestName.replace(/\s+/g, ' ').trim();
+    return joined
+      .toLowerCase()
+      .replace(/^(mr|mrs|ms|miss|dr|mx)\.?\s+/, '');
+  }
+
+  function guestNamesMatch(guest, firstName, lastName, guestName) {
+    var typed = normalizeGuestCompareName({
+      firstName: firstName,
+      lastName: lastName,
+      guestName: guestName
+    });
+    if (!typed) return true;
+    var saved = normalizeGuestCompareName(guest);
+    return !!saved && saved === typed;
+  }
+
   function fillCheckinFromGuest(form, guest) {
     if (!form || !guest) return;
     var names = resolveGuestPersonalNames(guest);
@@ -4431,6 +4603,27 @@
       form.elements.agencyBilling.checked = !!(guest.agencyBilling || guest.agency_billing);
     }
     syncAgencyBillingHint(form);
+    if (stayDocumentUrl(guest) || guest.idDocumentPath || guest.idDocumentName) {
+      setIdDocumentUi(form, {
+        urlPath: stayDocumentUrl(guest),
+        path: guest.idDocumentPath,
+        url: guest.idDocumentPath,
+        mime: guest.idDocumentMime || '',
+        displayName: idDocumentDisplayLabel(guest, guest.idType, guest.idDocumentName),
+        originalName: guest.idDocumentName || '',
+        storedName:
+          storedIdDocumentName(guest.idDocumentStoredName) ||
+          storedIdDocumentName(guest.idDocumentName) ||
+          guest.idDocumentName ||
+          ''
+      });
+    }
+    if (Array.isArray(guest.additionalGuests)) {
+      clearExtraGuests(form);
+      guest.additionalGuests.forEach(function (extra) {
+        addExtraGuestRow(form, extra, { focus: false });
+      });
+    }
     scheduleCheckinDraftSave(pageRoot(), form);
     scheduleFormFieldAutosize(form);
   }
@@ -4440,20 +4633,42 @@
     var mobileInput = form.elements.mobile || $('#hrd-ci-mobile', form);
     if (!mobileInput) return;
     form._hrdLastGuestLookup = '';
-    if (form.getAttribute('data-guest-lookup-bound') === '1') return;
+    if (form.getAttribute('data-guest-lookup-bound') === '1') {
+      return;
+    }
     form.setAttribute('data-guest-lookup-bound', '1');
     var lookupTimer = null;
+    var firstInput = form.elements.firstName || $('#hrd-ci-first-name', form);
+    var lastInput = form.elements.lastName || $('#hrd-ci-last-name', form);
+
+    function currentLookupKey(digits) {
+      var first = firstInput ? String(firstInput.value || '').trim() : '';
+      var last = lastInput ? String(lastInput.value || '').trim() : '';
+      return digits + '|' + normalizeGuestCompareName({ firstName: first, lastName: last });
+    }
 
     function runLookup() {
+      if (form.getAttribute('data-edit-mode') === '1') return;
       var api =
         (root && root.getAttribute('data-guest-lookup-api')) ||
         '/hotel/api/guests/lookup';
       var mobile = String(mobileInput.value || '').trim();
       var digits = mobile.replace(/\D/g, '');
       if (digits.length < 8) return;
-      if (digits === form._hrdLastGuestLookup) return;
-      form._hrdLastGuestLookup = digits;
-      fetch(api + '?mobile=' + encodeURIComponent(mobile), {
+      var first = firstInput ? String(firstInput.value || '').trim() : '';
+      var last = lastInput ? String(lastInput.value || '').trim() : '';
+      var cacheKey = currentLookupKey(digits);
+      if (cacheKey === form._hrdLastGuestLookup) return;
+      form._hrdLastGuestLookup = cacheKey;
+      var url =
+        api +
+        '?mobile=' +
+        encodeURIComponent(mobile) +
+        '&firstName=' +
+        encodeURIComponent(first) +
+        '&lastName=' +
+        encodeURIComponent(last);
+      fetch(url, {
         credentials: 'same-origin',
         headers: apiHeaders()
       })
@@ -4466,19 +4681,41 @@
           if (!result.ok || !result.data || !result.data.found || !result.data.guest) {
             return;
           }
-          fillCheckinFromGuest(form, result.data.guest);
+          var guest = result.data.guest;
+          var liveFirst = firstInput ? String(firstInput.value || '').trim() : '';
+          var liveLast = lastInput ? String(lastInput.value || '').trim() : '';
+          var namesOk =
+            result.data.nameMatch !== false &&
+            guestNamesMatch(guest, liveFirst, liveLast);
+          if (!namesOk) return;
+          fillCheckinFromGuest(form, guest);
           showToast('Returning guest details loaded.');
         })
         .catch(function () {});
     }
 
-    mobileInput.addEventListener('input', function () {
+    form._hrdRunGuestLookup = function () {
+      form._hrdLastGuestLookup = '';
+      runLookup();
+    };
+
+    function scheduleLookup() {
       if (lookupTimer) clearTimeout(lookupTimer);
       lookupTimer = setTimeout(runLookup, 450);
-    });
+    }
+
+    mobileInput.addEventListener('input', scheduleLookup);
     mobileInput.addEventListener('blur', function () {
       if (lookupTimer) clearTimeout(lookupTimer);
       runLookup();
+    });
+    [firstInput, lastInput].forEach(function (input) {
+      if (!input) return;
+      input.addEventListener('input', scheduleLookup);
+      input.addEventListener('blur', function () {
+        if (lookupTimer) clearTimeout(lookupTimer);
+        runLookup();
+      });
     });
   }
 
@@ -4510,7 +4747,6 @@
       var address = String(customer.address || '').trim();
       if (mobile) {
         mobileInput.value = mobile;
-        form._hrdLastGuestLookup = mobile;
       }
       if (name) {
         var parts = resolveGuestPersonalNames({ guestName: name, name: name });
@@ -4525,6 +4761,9 @@
       scheduleCheckinDraftSave(pageRoot(), form);
       scheduleFormFieldAutosize(form);
       showToast('Customer details loaded.');
+      if (typeof form._hrdRunGuestLookup === 'function') {
+        form._hrdRunGuestLookup();
+      }
     }
 
     function renderSuggest(list) {
@@ -5633,12 +5872,13 @@
     return '';
   }
 
-  function refreshCheckinFromReservationApi(root, form, stay) {
+  function refreshCheckinFromReservationApi(root, form, stay, opts) {
     var rid = String(
       (stay && (stay.reservationId || stay.reservation_id || stay.reservationBookingId)) ||
         ''
     ).trim();
     if (!rid || !form || !root) return;
+    var editing = !!(opts && opts.editing);
     fetch('/hotel/api/reservations/' + encodeURIComponent(rid), {
       method: 'GET',
       credentials: 'same-origin',
@@ -5657,7 +5897,12 @@
         var res = result.data.reservation;
         var enriched = Object.assign({}, stay || {});
         var plan = mealPlanToRatePlan(res.mealPlan || res.meal_plan);
-        if (plan) enriched.ratePlan = plan;
+        if (!editing) {
+          enriched = stripStayMealPlans(enriched);
+        }
+        if (plan) {
+          enriched.ratePlan = plan;
+        }
         var amount = Number(res.amount || 0);
         var nights = Math.max(
           1,
@@ -5735,15 +5980,9 @@
     if (internal) internal.value = reservationId;
     if (input) input.value = bookingId;
     if (!field) return;
-    if (bookingId) {
-      field.hidden = false;
-      field.removeAttribute('hidden');
-      field.setAttribute('aria-hidden', 'false');
-    } else {
-      field.hidden = true;
-      field.setAttribute('hidden', '');
-      field.setAttribute('aria-hidden', 'true');
-    }
+    var show = !!bookingId;
+    setVisible(field, show);
+    field.setAttribute('aria-hidden', show ? 'false' : 'true');
   }
 
   function openAddGuestIdModal(root) {
@@ -5785,7 +6024,15 @@
       showToast(extending ? 'No guest checked in to extend.' : 'No guest stay to edit.', true);
       return;
     }
+    if (!editing) {
+      var blocked = checkinBlockedReason(lastRoom, root);
+      if (blocked) {
+        showToast(blocked, true);
+        return;
+      }
+    }
     form.reset();
+    if (form.elements.ratePlan) form.elements.ratePlan.value = '';
     form.setAttribute('data-edit-mode', editing ? '1' : '0');
     form.setAttribute('data-id-only', opts.idOnly ? '1' : '0');
     modal.classList.toggle('is-id-only', !!opts.idOnly);
@@ -5832,8 +6079,12 @@
     resetListbox('hrd-ci-adults', '1', '1');
     resetListbox('hrd-ci-children', '0', '0');
     resetListbox('hrd-ci-payment', '', 'Select');
+    var stayForRates = staySource;
+    if (!editing && stayForRates) {
+      stayForRates = stripStayMealPlans(stayForRates);
+    }
     buildCheckinRateRooms(root, form, {
-      stay: staySource || null
+      stay: stayForRates || null
     });
 
     var uploadName = $('#hrd-ci-id-upload-name', form) || $('.hrd-upload-text', form);
@@ -5859,7 +6110,7 @@
     bindDateChipPickers(modal);
 
     if (staySource) {
-      applyStayDraft(form, staySource);
+      applyStayDraft(form, !editing ? stripStayMealPlans(staySource) : staySource);
       if (staySource.bookingNumber && form.bookingNumber) {
         form.bookingNumber.value = staySource.bookingNumber;
       }
@@ -5876,7 +6127,7 @@
     } else {
       var draft = readCheckinDraft(root);
       if (draft && draft.stay) {
-        applyStayDraft(form, draft.stay);
+        applyStayDraft(form, stripStayMealPlans(draft.stay));
       }
     }
 
@@ -5917,7 +6168,8 @@
       staySource ||
         (lastRoom && lastRoom.stay && mapStatus(lastRoom.status) === 'reserved'
           ? lastRoom.stay
-          : null)
+          : null),
+      { editing: editing }
     );
 
     /* New check-in: default to current time (draft/stay may leave it blank). Still editable. */
@@ -7525,8 +7777,8 @@
     var scopeKey = scope === 'group' ? 'group' : 'one';
     var msg =
       scopeKey === 'group'
-        ? 'Unmerge all rooms in this billing group? Folio charges stay on the primary.'
-        : 'Unmerge this room from the shared bill? Folio charges stay on the primary.';
+        ? 'Unmerge all rooms in this billing group? Each room will bill on its own.'
+        : 'Unmerge this room from the shared bill? This room will bill on its own.';
     if (!global.confirm(msg)) return Promise.resolve(null);
     return fetch(api, {
       method: 'PUT',
@@ -7768,6 +8020,38 @@
     if (!stay.checkInDate) {
       showToast('Check-in date is required.', true);
       return Promise.reject(new Error('validation'));
+    }
+    if (form.getAttribute('data-id-only') !== '1') {
+      var missingRate = firstMissingRoomRateInput(form);
+      if (missingRate) {
+        showToast('Room rate is required.', true);
+        $all('[data-nightly-room-rate], [data-merge-room-rate]', form).forEach(function (el) {
+          el.classList.remove('is-invalid');
+        });
+        missingRate.classList.add('is-invalid');
+        missingRate.setAttribute('aria-invalid', 'true');
+        try {
+          missingRate.focus();
+          if (typeof missingRate.select === 'function') missingRate.select();
+        } catch (err) {}
+        return Promise.reject(new Error('validation'));
+      }
+      var missingPlan = firstMissingMealPlanInput(form);
+      if (missingPlan) {
+        showToast('Meal plan is required.', true);
+        $all('.hrd-ci-rate-plan-listbox', form).forEach(function (lb) {
+          lb.classList.remove('is-invalid');
+        });
+        var planBox =
+          (missingPlan.closest && missingPlan.closest('.hrd-ci-rate-plan-listbox')) ||
+          null;
+        if (planBox) planBox.classList.add('is-invalid');
+        var trigger = planBox && planBox.querySelector('.se-filter-chip-trigger');
+        try {
+          if (trigger) trigger.focus();
+        } catch (err) {}
+        return Promise.reject(new Error('validation'));
+      }
     }
     if (stay.checkInDate > todayISO()) {
       showToast('Future date check-in is not allowed.', true);
@@ -8272,6 +8556,11 @@
       closeMoreMenu(root);
       var action = actionBtn.getAttribute('data-action');
       if (action === 'checkin') {
+        var blockedCheckin = checkinBlockedReason(lastRoom, root);
+        if (blockedCheckin) {
+          showToast(blockedCheckin, true);
+          return;
+        }
         if (mapStatus(root.getAttribute('data-room-status')) === 'occupied') {
           showToast('Guest already checked in. Use Check Out first.');
           return;
@@ -8317,6 +8606,10 @@
       }
       if (action === 'unmerge-group') {
         unmergeRoom(root, 'group');
+        return;
+      }
+      if (action === 'checkout-group') {
+        checkoutMergeGroup(root);
         return;
       }
       if (action === 'set-primary') {
@@ -8472,6 +8765,14 @@
       event.target.getAttribute('data-merge-room-rate') != null ||
       event.target.getAttribute('data-nightly-room-rate') != null
     ) {
+      if (
+        event.target.getAttribute('data-merge-room-rate') != null ||
+        event.target.getAttribute('data-nightly-room-rate') != null ||
+        name === 'roomRate'
+      ) {
+        event.target.classList.remove('is-invalid');
+        event.target.removeAttribute('aria-invalid');
+      }
       if (name === 'nights' || name === 'checkInDate') {
         var nights = Math.max(1, Number(form.nights.value || 1));
         if (form.checkInDate.value) {
@@ -8765,7 +9066,8 @@
       if (
         pendingDraft &&
         pendingDraft.open &&
-        mapStatus(root.getAttribute('data-room-status')) !== 'occupied'
+        mapStatus(root.getAttribute('data-room-status')) !== 'occupied' &&
+        mapStatus(root.getAttribute('data-room-status')) !== 'dirty'
       ) {
         openCheckinModal(root);
       }

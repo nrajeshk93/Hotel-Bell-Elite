@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import shutil
@@ -31,6 +32,12 @@ ALLOWED_EXTENSIONS = IMAGE_EXTENSIONS | PDF_EXTENSIONS
 WEBP_QUALITY = 82
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
 MAX_ID_IMAGES = 8
+MAX_PAGE_EDGE = 1280
+JPEG_QUALITY = 62
+JPEG_QUALITY_RECAP = 45
+MAX_STORED_BYTES = 500 * 1024
+GS_DPI = 120
+GS_DPI_RECAP = 96
 
 
 def hotel_id_docs_root():
@@ -38,6 +45,42 @@ def hotel_id_docs_root():
     base = Path(__file__).resolve().parent / "uploads" / "hotel_id_docs"
     base.mkdir(parents=True, exist_ok=True)
     return base
+
+
+def _unlink_quietly(path):
+    try:
+        Path(path).unlink()
+    except OSError:
+        pass
+
+
+def _purge_image_files(paths):
+    """Delete source photos after they have been written into a PDF."""
+    for path in paths or []:
+        path = Path(path)
+        if path.suffix.lower() in IMAGE_EXTENSIONS and path.is_file():
+            _unlink_quietly(path)
+
+
+def _purge_replaced_images_for_pdf(pdf_path):
+    """Remove leftover image files that share the stored PDF stem."""
+    pdf_path = Path(pdf_path)
+    if pdf_path.suffix.lower() != ".pdf":
+        return
+    root = pdf_path.parent
+    stems = {pdf_path.stem}
+    compact = pdf_path.stem.replace("-", "")
+    if len(compact) == 32 and all(c in "0123456789abcdefABCDEF" for c in compact):
+        lower = compact.lower()
+        stems.add(lower)
+        stems.add(
+            f"{lower[:8]}-{lower[8:12]}-{lower[12:16]}-{lower[16:20]}-{lower[20:]}"
+        )
+    for stem in stems:
+        for ext in IMAGE_EXTENSIONS:
+            leftover = root / f"{stem}{ext}"
+            if leftover.is_file():
+                _unlink_quietly(leftover)
 
 
 def _ext(filename):
@@ -71,6 +114,35 @@ def _image_to_rgb(img):
     return img.convert("RGB")
 
 
+def _downscale_long_edge(img, max_edge=MAX_PAGE_EDGE):
+    """Shrink so the longer side is at most max_edge pixels."""
+    if img is None:
+        return img
+    width, height = img.size
+    long_edge = max(width, height)
+    limit = int(max_edge or 0)
+    if limit <= 0 or long_edge <= limit:
+        return img
+    scale = limit / float(long_edge)
+    new_size = (max(1, int(round(width * scale))), max(1, int(round(height * scale))))
+    resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS", Image.LANCZOS)
+    return img.resize(new_size, resample)
+
+
+def _page_from_image_file(src_path, max_edge=MAX_PAGE_EDGE, quality=JPEG_QUALITY):
+    """Load, downscale, and JPEG-roundtrip a photo so the PDF embeds DCT data."""
+    if Image is None:
+        raise RuntimeError("Pillow is required to convert ID images to PDF.")
+    with Image.open(src_path) as img:
+        rgb = _image_to_rgb(img)
+        rgb = _downscale_long_edge(rgb, max_edge)
+        buf = io.BytesIO()
+        rgb.save(buf, format="JPEG", quality=int(quality), optimize=True)
+        buf.seek(0)
+        with Image.open(buf) as jpeg:
+            return jpeg.convert("RGB")
+
+
 def compress_image_to_webp(src_path, dest_path, quality=WEBP_QUALITY):
     """Convert any supported image to WebP while preserving orientation."""
     if Image is None:
@@ -87,8 +159,10 @@ def compress_image_to_webp(src_path, dest_path, quality=WEBP_QUALITY):
         )
 
 
-def images_to_pdf(image_paths, dest_path):
-    """Combine one or more image files into a single PDF."""
+def images_to_pdf(
+    image_paths, dest_path, max_edge=MAX_PAGE_EDGE, quality=JPEG_QUALITY
+):
+    """Combine one or more images into a JPEG-compressed PDF."""
     if Image is None:
         raise RuntimeError("Pillow is required to convert ID images to PDF.")
     if not image_paths:
@@ -96,8 +170,9 @@ def images_to_pdf(image_paths, dest_path):
     pages = []
     try:
         for src in image_paths:
-            with Image.open(src) as img:
-                pages.append(_image_to_rgb(img).copy())
+            pages.append(
+                _page_from_image_file(src, max_edge=max_edge, quality=quality)
+            )
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         first = pages[0]
         rest = pages[1:]
@@ -106,7 +181,9 @@ def images_to_pdf(image_paths, dest_path):
             format="PDF",
             save_all=True,
             append_images=rest,
-            resolution=150,
+            resolution=72,
+            quality=int(quality),
+            optimize=True,
         )
     finally:
         for page in pages:
@@ -116,32 +193,57 @@ def images_to_pdf(image_paths, dest_path):
                 pass
 
 
-def compress_pdf_with_ghostscript(src_path, dest_path):
-    """Visually lossless PDF compression via Ghostscript (/printer)."""
+def compress_pdf_with_ghostscript(
+    src_path,
+    dest_path,
+    *,
+    preset="/ebook",
+    color_dpi=GS_DPI,
+    gray_dpi=GS_DPI,
+    mono_dpi=300,
+    jpeg_quality=None,
+):
+    """Compress a PDF via Ghostscript (/ebook, downsampled color)."""
     gs = _find_ghostscript()
     if not gs:
         raise RuntimeError("Ghostscript is not installed.")
+    dest_path = Path(dest_path)
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         gs,
         "-sDEVICE=pdfwrite",
         "-dCompatibilityLevel=1.4",
-        "-dPDFSETTINGS=/printer",
+        f"-dPDFSETTINGS={preset}",
         "-dDetectDuplicateImages=true",
         "-dCompressFonts=true",
         "-dSubsetFonts=true",
         "-dColorImageDownsampleType=/Bicubic",
         "-dGrayImageDownsampleType=/Bicubic",
         "-dMonoImageDownsampleType=/Bicubic",
-        "-dColorImageResolution=150",
-        "-dGrayImageResolution=150",
-        "-dMonoImageResolution=300",
-        "-dNOPAUSE",
-        "-dQUIET",
-        "-dBATCH",
-        f"-sOutputFile={dest_path}",
-        str(src_path),
+        f"-dColorImageResolution={int(color_dpi)}",
+        f"-dGrayImageResolution={int(gray_dpi)}",
+        f"-dMonoImageResolution={int(mono_dpi)}",
     ]
+    if jpeg_quality is not None:
+        quality = max(1, min(100, int(jpeg_quality)))
+        cmd.extend(
+            [
+                f"-dJPEGQ={quality}",
+                "-dAutoFilterColorImages=false",
+                "-dColorImageFilter=/DCTEncode",
+                "-dAutoFilterGrayImages=false",
+                "-dGrayImageFilter=/DCTEncode",
+            ]
+        )
+    cmd.extend(
+        [
+            "-dNOPAUSE",
+            "-dQUIET",
+            "-dBATCH",
+            f"-sOutputFile={dest_path}",
+            str(src_path),
+        ]
+    )
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     if result.returncode != 0 or not dest_path.is_file() or dest_path.stat().st_size <= 0:
         err = (result.stderr or result.stdout or "Ghostscript failed.").strip()
@@ -174,13 +276,65 @@ def compress_pdf_fallback(src_path, dest_path):
         writer.write(fh)
 
 
-def compress_pdf(src_path, dest_path):
-    """Prefer Ghostscript; fall back to pypdf stream compression."""
+def compress_pdf(
+    src_path, dest_path, *, color_dpi=GS_DPI, jpeg_quality=None
+):
+    """Prefer Ghostscript; fall back to pypdf. Keep the smaller output."""
+    src_path = Path(src_path)
+    dest_path = Path(dest_path)
     if _find_ghostscript():
-        compress_pdf_with_ghostscript(src_path, dest_path)
-        return "ghostscript"
-    compress_pdf_fallback(src_path, dest_path)
-    return "pypdf"
+        compress_pdf_with_ghostscript(
+            src_path,
+            dest_path,
+            color_dpi=color_dpi,
+            gray_dpi=color_dpi,
+            jpeg_quality=jpeg_quality,
+        )
+        engine = "ghostscript"
+    else:
+        compress_pdf_fallback(src_path, dest_path)
+        engine = "pypdf"
+    _keep_smaller_file(src_path, dest_path)
+    return engine
+
+
+def _keep_smaller_file(src_path, dest_path):
+    """Replace dest with src when dest is missing or larger."""
+    src_path = Path(src_path)
+    dest_path = Path(dest_path)
+    if not src_path.is_file() or src_path.stat().st_size <= 0:
+        return
+    if not dest_path.is_file() or dest_path.stat().st_size <= 0:
+        shutil.copyfile(src_path, dest_path)
+        return
+    if dest_path.stat().st_size > src_path.stat().st_size:
+        shutil.copyfile(src_path, dest_path)
+
+
+def _recompress_pdf_to_cap(out_path, tmp_dir, engine, image_paths=None):
+    """Second pass at 96 dpi / quality 45 if the stored PDF is still over 500 KB."""
+    out_path = Path(out_path)
+    if not out_path.is_file() or out_path.stat().st_size <= MAX_STORED_BYTES:
+        return engine
+    recap_src = Path(tmp_dir) / "recap-src.pdf"
+    recap_dst = Path(tmp_dir) / "recap-out.pdf"
+    if image_paths:
+        images_to_pdf(
+            image_paths,
+            recap_src,
+            quality=JPEG_QUALITY_RECAP,
+        )
+    else:
+        shutil.copyfile(out_path, recap_src)
+    extra = compress_pdf(
+        recap_src,
+        recap_dst,
+        color_dpi=GS_DPI_RECAP,
+        jpeg_quality=JPEG_QUALITY_RECAP,
+    )
+    if recap_dst.is_file() and recap_dst.stat().st_size and recap_dst.stat().st_size < out_path.stat().st_size:
+        shutil.copyfile(recap_dst, out_path)
+    return f"{engine}+recap+{extra}"
 
 
 _TITLE_PREFIX_RE = re.compile(
@@ -248,20 +402,10 @@ def _classify_id_uploads(file_storages):
 
 def _finish_stored_pdf(out_path, out_name, stored_label, original_name, original_size, engine, page_count):
     compressed_size = out_path.stat().st_size
-    alias_name = stored_id_document_basename(stored_label)
-    if alias_name and alias_name != out_name:
-        alias_path = hotel_id_docs_root() / alias_name
-        try:
-            if not alias_path.exists():
-                shutil.copy2(out_path, alias_path)
-        except OSError:
-            alias_name = ""
-    else:
-        alias_name = ""
     return {
         "storedName": out_name,
         "displayName": stored_label,
-        "aliasName": alias_name,
+        "aliasName": "",
         "originalName": original_name,
         "mime": "application/pdf",
         "originalSize": original_size,
@@ -294,9 +438,7 @@ def process_uploaded_id_documents(file_storages, guest_name=None, id_type=None):
             file_storage.save(str(tmp_src))
             original_size = tmp_src.stat().st_size
             engine = compress_pdf(tmp_src, out_path)
-            if out_path.stat().st_size >= original_size:
-                shutil.copyfile(tmp_src, out_path)
-                engine = engine + "+passthrough"
+            engine = _recompress_pdf_to_cap(out_path, tmp_dir, engine)
             fallback_label = Path(safe_name).stem + ".pdf"
             page_count = 1
             original_name = safe_name
@@ -312,9 +454,10 @@ def process_uploaded_id_documents(file_storages, guest_name=None, id_type=None):
             merged = tmp_dir / "merged.pdf"
             images_to_pdf(paths, merged)
             engine = "images-pdf+" + compress_pdf(merged, out_path)
-            if out_path.stat().st_size >= merged.stat().st_size:
-                shutil.copyfile(merged, out_path)
-                engine = engine + "+passthrough"
+            engine = _recompress_pdf_to_cap(
+                out_path, tmp_dir, engine, image_paths=paths
+            )
+            _purge_image_files(paths)
             fallback_label = Path(first_safe).stem + ".pdf"
             page_count = len(images)
             original_name = first_safe if len(images) == 1 else fallback_label
@@ -322,6 +465,7 @@ def process_uploaded_id_documents(file_storages, guest_name=None, id_type=None):
         stored_label = (
             id_document_display_name(guest_name, id_type, fallback_label) or fallback_label
         )
+        _purge_replaced_images_for_pdf(out_path)
         return _finish_stored_pdf(
             out_path,
             out_name,

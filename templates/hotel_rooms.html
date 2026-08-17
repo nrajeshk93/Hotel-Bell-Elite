@@ -11,11 +11,11 @@
 <title>Rooms | Hotel | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=74">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=75">
 <script>
 (function(){
   try{
@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=74">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=75">
 {% endif %}
 
 <div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers" data-agencies-api="{{ url_for('list_agencies_api') }}" data-agencies="{{ agencies|default([])|tojson|e }}">
@@ -439,7 +439,7 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=95"></script>
+<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=97"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

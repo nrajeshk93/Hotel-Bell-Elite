@@ -345,7 +345,9 @@
         root.classList.contains('ep-combobox-listbox'))
     ) {
       if (root.closest('#md-master-modal, #st-product-master-modal')) return false;
-      if (hasFixedContainingBlockAncestor(root)) return false;
+      /* Modal box uses transform + overflow:hidden, so in-tree panels clip.
+         Portal+fixed onto body / #de-fs-app escapes both. Do not skip just
+         because the chip still has a transformed ancestor. */
       return true;
     }
     /* Product / category / unit overlays sit under a transformed workspace.
@@ -599,7 +601,8 @@
       root.classList.contains('ep-toolbar-listbox') ||
       root.closest(
         '.st-indent-page, #st-indent-edit-modal, #st-indent-form, ' +
-        '#room-transfer-filter-form, #purchase-ledger-filter-form, #credits-dashboard-filter-form'
+        '#room-transfer-filter-form, #purchase-ledger-filter-form, #credits-dashboard-filter-form, ' +
+        '#pos-menu-item-modal'
       )
     ) {
       root.classList.add('is-open');

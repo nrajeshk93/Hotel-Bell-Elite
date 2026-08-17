@@ -438,6 +438,30 @@ body.hotel-rooms-module .hotel-kpi.hbe-kpi-card.is-active{
   letter-spacing:-.01em;
   font-size:15px;
   color:var(--hotel-text);
+  margin:0;
+}
+.hotel-merge-section-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 12px;
+  min-width:0;
+}
+.hotel-merge-checkout-all{
+  flex-shrink:0;
+  height:34px;
+  padding:0 14px;
+  border:1px solid var(--hotel-border, #D5DEE8);
+  border-radius:10px;
+  background:#fff;
+  color:#1D4ED8;
+  font:700 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+}
+.hotel-merge-checkout-all:hover{
+  background:#EFF6FF;
+  border-color:#BFDBFE;
 }
 /* Toolbar-like shell grouping all rooms in a merge, across floors. */
 .hotel-merge-box{

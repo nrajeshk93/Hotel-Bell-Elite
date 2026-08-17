@@ -103,9 +103,9 @@ html.de-soft-nav-session .de-main-wrapper #st-approvals-open.st-approvals-open--
   --de-sidebar-expanded:252px;
   --de-nav-label-max:180px;
   --de-sb-ease:cubic-bezier(0.22, 1, 0.36, 1);
-  --de-sb-rail-ms:280ms;
-  --de-sb-label-ms:220ms;
-  --de-sb-sub-ms:240ms;
+  --de-sb-rail-ms:180ms;
+  --de-sb-label-ms:140ms;
+  --de-sb-sub-ms:200ms;
   /* Sarvam-like motion language (shell + soft-nav + overlays) */
   --de-ease-out:cubic-bezier(0.2, 0, 0, 1);
   --de-ease-soft:cubic-bezier(0.25, 1, 0.5, 1);
@@ -232,7 +232,7 @@ body.de-open.ep-module{overflow:auto;}
     min-width:var(--de-sidebar-collapsed);
     max-width:var(--de-sidebar-collapsed);
     align-self:start;
-    transition:width var(--de-sb-rail-ms) var(--de-sb-ease),min-width var(--de-sb-rail-ms) var(--de-sb-ease),max-width var(--de-sb-rail-ms) var(--de-sb-ease),flex-basis var(--de-sb-rail-ms) var(--de-sb-ease),transform var(--de-sb-rail-ms) var(--de-sb-ease);
+    transition:width var(--de-sb-rail-ms) var(--de-sb-ease),min-width var(--de-sb-rail-ms) var(--de-sb-ease),max-width var(--de-sb-rail-ms) var(--de-sb-ease),flex-basis var(--de-sb-rail-ms) var(--de-sb-ease),margin-right var(--de-sb-rail-ms) var(--de-sb-ease),transform var(--de-sb-rail-ms) var(--de-sb-ease);
     overflow-x:hidden;
     overflow-y:hidden;
     scrollbar-gutter:stable;
@@ -260,8 +260,8 @@ body.de-open.ep-module{overflow:auto;}
     max-width:var(--de-sidebar-collapsed)!important;
     margin-right:0!important;
   }
-  /* Width expands via .is-expanded / .is-pinned (JS) and :hover (pointer over rail).
-     Unpinned + not hovered must collapse — syncDeSidebarPointerState clears sticky is-expanded. */
+  /* Hover, expanded, and pin all occupy the expanded column so the main
+     panel is pushed aside instead of sitting under the rail. */
   #main-app.de-module .de-sidebar:hover:not(.de-sidebar--suppress-hover),
   #ep-workspace.de-module .de-sidebar:hover:not(.de-sidebar--suppress-hover),
   #dashboard.de-module .de-sidebar:hover:not(.de-sidebar--suppress-hover),
@@ -271,10 +271,12 @@ body.de-open.ep-module{overflow:auto;}
   #main-app.de-module .de-sidebar.is-pinned,
   #ep-workspace.de-module .de-sidebar.is-pinned,
   #dashboard.de-module .de-sidebar.is-pinned{
+    flex:0 0 var(--de-sidebar-expanded);
     flex-basis:var(--de-sidebar-expanded);
     width:var(--de-sidebar-expanded);
     min-width:var(--de-sidebar-expanded);
     max-width:var(--de-sidebar-expanded);
+    margin-right:0;
     box-shadow:none;
     z-index:20;
   }

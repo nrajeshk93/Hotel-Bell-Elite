@@ -35,6 +35,24 @@
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
       <span id="pos-menu-item-title">Add menu item</span>
     </div>
+    <div class="pos-menu-item-mode-host" id="pos-menu-item-mode-host">
+      <div class="pos-menu-item-switch" id="pos-menu-item-mode-switch">
+        <span class="se-filter-chip-label" id="pos-menu-item-mode-label">Mode</span>
+        <div class="cp-view-tabs pos-menu-item-mode-tabs" role="tablist" aria-labelledby="pos-menu-item-mode-label">
+          <button type="button" class="cp-view-tab is-active" role="tab" id="pos-menu-item-mode-single" data-pos-menu-item-mode="single" aria-selected="true">Single</button>
+          <button type="button" class="cp-view-tab" role="tab" id="pos-menu-item-mode-bulk" data-pos-menu-item-mode="bulk" aria-selected="false">Bulk</button>
+        </div>
+      </div>
+      <div class="pos-menu-item-switch" id="pos-menu-item-outlet-switch">
+        <span class="se-filter-chip-label" id="pos-menu-item-outlet-label">Outlet</span>
+        <input type="hidden" id="pos-menu-item-product-outlet" value="restaurant">
+        <input type="hidden" id="pos-menu-item-bulk-outlet" value="restaurant">
+        <div class="cp-view-tabs pos-menu-item-mode-tabs pos-menu-item-outlet-tabs" role="tablist" aria-labelledby="pos-menu-item-outlet-label">
+          <button type="button" class="cp-view-tab is-active" role="tab" id="pos-menu-item-outlet-restaurant" data-pos-menu-item-outlet="restaurant" aria-selected="true">Restaurant</button>
+          <button type="button" class="cp-view-tab" role="tab" id="pos-menu-item-outlet-bar" data-pos-menu-item-outlet="bar" aria-selected="false">Bar</button>
+        </div>
+      </div>
+    </div>
     <div id="pos-menu-item-err" class="pos-menu-modal-err staff-credit-error" hidden></div>
     <form id="pos-menu-item-form" class="pos-menu-item-form" autocomplete="off" novalidate data-de-hard-nav>
       <div class="pos-menu-item-modal-body">
@@ -73,27 +91,7 @@
           </div>
         </div>
         <input type="hidden" id="pos-menu-item-variant" value="">
-        <div class="staff-grid">
-          <div class="staff-field" id="pos-menu-item-menu-type-field">
-            <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-menu-field-listbox" data-se-listbox data-se-listbox-change="onPosMenuItemMenuTypeChanged" id="pos-menu-item-menu-type-listbox">
-              <span class="se-filter-chip-label" id="pos-menu-item-menu-type-label">Menu Type</span>
-              <div class="se-filter-chip-control">
-                <input type="hidden" id="pos-menu-item-menu-type" name="menu_type" value="">
-                <button type="button" class="se-filter-chip-trigger" id="pos-menu-item-menu-type-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-item-menu-type-list" aria-labelledby="pos-menu-item-menu-type-label pos-menu-item-menu-type-value">
-                  <span class="se-filter-chip-value is-placeholder staff-supplier-placeholder" id="pos-menu-item-menu-type-value">Select…</span>
-                </button>
-                <span class="se-filter-chip-chev" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                </span>
-              </div>
-              <div class="se-filter-listbox" id="pos-menu-item-menu-type-list" role="listbox" aria-labelledby="pos-menu-item-menu-type-label" hidden>
-                <button type="button" class="se-filter-listbox-option" role="option" data-value="veg" data-name="veg" data-label="Veg" aria-selected="false">Veg</button>
-                <button type="button" class="se-filter-listbox-option" role="option" data-value="non_veg" data-name="non-veg" data-label="Non-Veg" aria-selected="false">Non-Veg</button>
-                <button type="button" class="se-filter-listbox-option" role="option" data-value="liquor" data-name="liquor" data-label="Liquor" aria-selected="false">Liquor</button>
-              </div>
-            </div>
-          </div>
-          <div class="staff-field" id="pos-menu-item-category-field">
+        <div class="staff-field" id="pos-menu-item-category-field">
             <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-menu-field-listbox" data-se-listbox data-se-listbox-change="onPosMenuItemCategoryChanged" id="pos-menu-item-category-listbox">
               <span class="se-filter-chip-label" id="pos-menu-item-category-label">Category *</span>
               <div class="se-filter-chip-control">
@@ -107,28 +105,27 @@
               </div>
               <div class="se-filter-listbox" id="pos-menu-item-category-list" role="listbox" aria-labelledby="pos-menu-item-category-label" hidden></div>
             </div>
+        </div>
+        <div class="staff-field" id="pos-menu-item-menu-type-field">
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-menu-field-listbox" data-se-listbox data-se-listbox-change="onPosMenuItemMenuTypeChanged" id="pos-menu-item-menu-type-listbox">
+            <span class="se-filter-chip-label" id="pos-menu-item-menu-type-label">Menu Type</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="pos-menu-item-menu-type" name="menu_type" value="">
+              <button type="button" class="se-filter-chip-trigger" id="pos-menu-item-menu-type-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-item-menu-type-list" aria-labelledby="pos-menu-item-menu-type-label pos-menu-item-menu-type-value">
+                <span class="se-filter-chip-value is-placeholder staff-supplier-placeholder" id="pos-menu-item-menu-type-value">Select…</span>
+              </button>
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="pos-menu-item-menu-type-list" role="listbox" aria-labelledby="pos-menu-item-menu-type-label" hidden>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="veg" data-name="veg" data-label="Veg" aria-selected="false">Veg</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="non_veg" data-name="non-veg" data-label="Non-Veg" aria-selected="false">Non-Veg</button>
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="liquor" data-name="liquor" data-label="Liquor" aria-selected="false">Liquor</button>
+            </div>
           </div>
         </div>
         <div class="pos-menu-recipe-block">
-          <div class="staff-field" id="pos-menu-item-product-outlet-field">
-            <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox staff-expense-payment-listbox pos-menu-field-listbox" data-se-listbox data-se-listbox-change="onPosMenuProductOutletChanged" id="pos-menu-item-product-outlet-listbox">
-              <span class="se-filter-chip-label" id="pos-menu-item-product-outlet-label">Outlet</span>
-              <div class="se-filter-chip-control">
-                <input type="hidden" id="pos-menu-item-product-outlet" value="restaurant">
-                <button type="button" class="se-filter-chip-trigger" id="pos-menu-item-product-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="pos-menu-item-product-outlet-list" aria-labelledby="pos-menu-item-product-outlet-label pos-menu-item-product-outlet-value">
-                  <span class="se-filter-chip-value" id="pos-menu-item-product-outlet-value">Restaurant</span>
-                </button>
-                <span class="se-filter-chip-chev" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-                </span>
-              </div>
-              <div class="se-filter-listbox" id="pos-menu-item-product-outlet-list" role="listbox" aria-labelledby="pos-menu-item-product-outlet-label" hidden>
-                <button type="button" class="se-filter-listbox-option" role="option" data-value="" data-name="all" data-label="All" aria-selected="false">All</button>
-                <button type="button" class="se-filter-listbox-option is-selected" role="option" data-value="restaurant" data-name="restaurant" data-label="Restaurant" aria-selected="true">Restaurant</button>
-                <button type="button" class="se-filter-listbox-option" role="option" data-value="bar" data-name="bar" data-label="Bar" aria-selected="false">Bar</button>
-              </div>
-            </div>
-          </div>
           <div class="staff-field">
             <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pos-menu-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="onPosMenuProductPicked" id="pos-menu-item-product-listbox">
               <label class="se-filter-chip-label" id="pos-menu-item-product-label" for="pos-menu-item-product-trigger">Ingredients</label>
@@ -162,9 +159,23 @@
       </div>
       <div class="modal-actions staff-credit-actions pos-floor-props-actions">
         <button type="button" class="btn btn-secondary btn-danger" id="pos-menu-item-delete" hidden>Delete</button>
-        <span class="pos-floor-props-actions-spacer" aria-hidden="true"></span>
+        <button type="button" class="btn btn-primary" id="pos-menu-item-save" disabled aria-disabled="true">Save</button>
       </div>
     </form>
+    <div class="pos-menu-item-bulk" id="pos-menu-item-bulk" hidden>
+      <div class="pos-menu-item-bulk-actions">
+        <button type="button" class="btn btn-secondary" id="pos-menu-item-bulk-template">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          Download template
+        </button>
+        <label class="btn btn-primary pos-menu-item-bulk-upload-label" for="pos-menu-item-bulk-file">
+          <input type="file" id="pos-menu-item-bulk-file" class="pos-menu-item-bulk-file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V9"/><path d="m7 14 5-5 5 5"/><path d="M5 3h14"/></svg>
+          Upload Excel
+        </label>
+      </div>
+      <div class="pos-menu-item-bulk-status" id="pos-menu-item-bulk-status" role="status" aria-live="polite"></div>
+    </div>
   </div>
 </div>
 

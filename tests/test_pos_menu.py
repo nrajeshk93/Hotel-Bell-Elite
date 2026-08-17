@@ -375,6 +375,204 @@ class PosMenuTests(unittest.TestCase):
         self.assertEqual(db_mod.margin_status_for_pct(20), "critical")
         self.assertAlmostEqual(db_mod.recommended_selling_price(40, 60), 100.0)
 
+    def test_bulk_template_and_import(self):
+        from io import BytesIO
+        from openpyxl import load_workbook, Workbook
+
+        create_cat = self.client.post(
+            "/point-of-sale/api/menu/categories",
+            json={"name": "Starters", "is_visible": True},
+        )
+        self.assertEqual(create_cat.status_code, 200)
+
+        tpl = self.client.get("/point-of-sale/api/menu/items/bulk-template")
+        self.assertEqual(tpl.status_code, 200)
+        self.assertIn(
+            "spreadsheetml.sheet",
+            tpl.headers.get("Content-Type", ""),
+        )
+        wb = load_workbook(BytesIO(tpl.data))
+        self.assertIn("Menu Items", wb.sheetnames)
+        self.assertIn("Dropdowns", wb.sheetnames)
+        headers = [cell.value for cell in next(wb["Menu Items"].iter_rows(max_row=1))]
+        self.assertEqual(headers[0], "Outlet *")
+        self.assertEqual(headers[1], "Menu *")
+        self.assertEqual(headers[2], "Category *")
+        self.assertEqual(headers[3], "Menu Type")
+        self.assertEqual(headers[4], "Rate (₹) *")
+        self.assertNotIn("Item Type", headers)
+        self.assertEqual(wb["Menu Items"]["A2"].value, "Restaurant")
+        self.assertTrue(wb["Menu Items"].data_validations.dataValidation)
+        rest_cats = [
+            cell.value
+            for cell in wb["Dropdowns"]["A"][1:]
+            if cell.value
+        ]
+        self.assertIn("Starters", rest_cats)
+        menu_types = [
+            cell.value
+            for cell in wb["Dropdowns"]["C"][1:]
+            if cell.value
+        ]
+        self.assertEqual(menu_types, ["Veg", "Non-Veg", "Liquor"])
+        bar_types = [
+            cell.value
+            for cell in wb["Dropdowns"]["D"][1:]
+            if cell.value
+        ]
+        self.assertEqual(bar_types, ["Food", "Liquor"])
+        outlet_names = [
+            cell.value
+            for cell in wb["Dropdowns"]["E"][1:]
+            if cell.value
+        ]
+        self.assertEqual(outlet_names, ["Restaurant", "Bar"])
+
+        extra_cat = self.client.post(
+            "/point-of-sale/api/menu/categories",
+            json={"name": "Desserts", "is_visible": True},
+        )
+        self.assertEqual(extra_cat.status_code, 200)
+        tpl_again = self.client.get("/point-of-sale/api/menu/items/bulk-template?outlet=restaurant")
+        self.assertEqual(tpl_again.status_code, 200)
+        wb_again = load_workbook(BytesIO(tpl_again.data))
+        cat_names_again = [
+            cell.value
+            for cell in wb_again["Dropdowns"]["A"][1:]
+            if cell.value
+        ]
+        self.assertIn("Starters", cat_names_again)
+        self.assertIn("Desserts", cat_names_again)
+
+        conn = db_mod.get_db()
+        try:
+            db_mod.save_pos_menu_category(conn, name="Wine", outlet=db_mod.POS_OUTLET_BAR)
+            conn.commit()
+        finally:
+            conn.close()
+        tpl_bar = self.client.get("/point-of-sale/api/menu/items/bulk-template?outlet=bar")
+        self.assertEqual(tpl_bar.status_code, 200)
+        wb_bar = load_workbook(BytesIO(tpl_bar.data))
+        bar_headers = [cell.value for cell in next(wb_bar["Menu Items"].iter_rows(max_row=1))]
+        self.assertEqual(bar_headers[0], "Outlet *")
+        self.assertEqual(bar_headers[3], "Menu Type")
+        self.assertEqual(bar_headers[4], "Rate (₹) *")
+        self.assertEqual(wb_bar["Menu Items"]["A2"].value, "Bar")
+        bar_cats = [
+            cell.value
+            for cell in wb_bar["Dropdowns"]["B"][1:]
+            if cell.value
+        ]
+        rest_cats_in_bar_file = [
+            cell.value
+            for cell in wb_bar["Dropdowns"]["A"][1:]
+            if cell.value
+        ]
+        self.assertIn("Wine", bar_cats)
+        self.assertNotIn("Starters", bar_cats)
+        self.assertIn("Starters", rest_cats_in_bar_file)
+        self.assertNotIn("Wine", rest_cats_in_bar_file)
+
+        upload_wb = load_workbook(BytesIO(tpl.data))
+        ws = upload_wb["Menu Items"]
+        ws.cell(2, 1, "Restaurant")
+        ws.cell(2, 2, "Chilly Paneer")
+        ws.cell(2, 3, "Starters")
+        ws.cell(2, 4, "Veg")
+        ws.cell(2, 5, 410)
+        ws.cell(2, 6, "CP1")
+        ws.cell(3, 1, "Restaurant")
+        ws.cell(3, 2, "Chicken Tikka")
+        ws.cell(3, 3, "Starters")
+        ws.cell(3, 4, "Non-Veg")
+        ws.cell(3, 5, 580)
+        ws.cell(4, 1, "Restaurant")
+        ws.cell(4, 2, "Chilly Paneer")
+        ws.cell(4, 3, "Starters")
+        ws.cell(4, 4, "Veg")
+        ws.cell(4, 5, 410)
+        ws.cell(5, 1, "Restaurant")
+        ws.cell(5, 2, "Missing Cat")
+        ws.cell(5, 3, "Does Not Exist")
+        ws.cell(5, 4, "Veg")
+        ws.cell(5, 5, 100)
+        buf = BytesIO()
+        upload_wb.save(buf)
+        buf.seek(0)
+        res = self.client.post(
+            "/point-of-sale/api/menu/items/bulk",
+            data={"file": (buf, "menu.xlsx")},
+        )
+        self.assertEqual(res.status_code, 200)
+        payload = res.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["created_count"], 2)
+        self.assertEqual(payload["skipped_count"], 1)
+        self.assertEqual(payload["error_count"], 1)
+        names = {item["name"] for item in payload["items"]}
+        self.assertIn("Chilly Paneer", names)
+        self.assertIn("Chicken Tikka", names)
+        chilly = next(item for item in payload["items"] if item["name"] == "Chilly Paneer")
+        self.assertEqual(chilly["menu_type"], "veg")
+        tikka = next(item for item in payload["items"] if item["name"] == "Chicken Tikka")
+        self.assertEqual(tikka["menu_type"], "non_veg")
+
+        wrong = Workbook()
+        wrong.active.title = "Sheet1"
+        wrong.active.append(["Name", "Price"])
+        wrong.active.append(["Tea", 40])
+        bad = BytesIO()
+        wrong.save(bad)
+        bad.seek(0)
+        rejected = self.client.post(
+            "/point-of-sale/api/menu/items/bulk",
+            data={"file": (bad, "other.xlsx")},
+        )
+        self.assertEqual(rejected.status_code, 400)
+        rejected_payload = rejected.get_json()
+        self.assertFalse(rejected_payload["ok"])
+        self.assertIn("template", (rejected_payload.get("error") or "").lower())
+
+        old = Workbook()
+        old.active.title = "Instructions"
+        old.active["A1"] = "Bulk menu upload"
+        old_items = old.create_sheet("Menu Items")
+        old_items.append(["Menu *", "Category *", "Menu Type", "Rate (₹) *", "Code"])
+        old.create_sheet("Dropdowns")
+        old_buf = BytesIO()
+        old.save(old_buf)
+        old_buf.seek(0)
+        old_rejected = self.client.post(
+            "/point-of-sale/api/menu/items/bulk",
+            data={"file": (old_buf, "old-template.xlsx")},
+        )
+        self.assertEqual(old_rejected.status_code, 400)
+        old_payload = old_rejected.get_json()
+        self.assertFalse(old_payload["ok"])
+        self.assertIn("template", (old_payload.get("error") or "").lower())
+
+        bar_upload = load_workbook(BytesIO(tpl_bar.data))
+        bar_ws = bar_upload["Menu Items"]
+        bar_ws.cell(2, 1, "Bar")
+        bar_ws.cell(2, 2, "House Wine")
+        bar_ws.cell(2, 3, "Wine")
+        bar_ws.cell(2, 4, "Liquor")
+        bar_ws.cell(2, 5, 450)
+        bar_buf = BytesIO()
+        bar_upload.save(bar_buf)
+        bar_buf.seek(0)
+        bar_res = self.client.post(
+            "/point-of-sale/api/menu/items/bulk?outlet=bar",
+            data={"file": (bar_buf, "bar.xlsx")},
+        )
+        self.assertEqual(bar_res.status_code, 200)
+        bar_payload = bar_res.get_json()
+        self.assertTrue(bar_payload["ok"])
+        self.assertEqual(bar_payload["created_count"], 1)
+        wine = next(item for item in bar_payload["items"] if item["name"] == "House Wine")
+        self.assertEqual(wine["outlet"], db_mod.POS_OUTLET_BAR)
+        self.assertEqual(wine["item_kind"], "liquor")
+
 
 if __name__ == "__main__":
     unittest.main()

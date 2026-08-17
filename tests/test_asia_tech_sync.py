@@ -213,6 +213,51 @@ class AsiaTechNormalizerTests(unittest.TestCase):
         self.assertEqual(kpis["upcoming"], 5)
         self.assertEqual(kpis["checked_out"], 1)
 
+    def test_compute_kpis_counts_rooms_not_bookings(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "group-upcoming",
+                    "guestName": "Group Guest",
+                    "checkInDate": "2026-08-16",
+                    "checkOutDate": "2026-08-17",
+                    "status": "upcoming",
+                    "source": "asia_tech",
+                    "amount": 100000,
+                    "totalRooms": 20,
+                }
+            ),
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "pair-inhouse",
+                    "guestName": "In House Pair",
+                    "checkInDate": "2026-08-10",
+                    "checkOutDate": "2026-08-18",
+                    "status": "checked_in",
+                    "statusSource": "local",
+                    "source": "direct",
+                    "amount": 8000,
+                    "totalRooms": 2,
+                }
+            ),
+        ]
+        kpis = asia_tech_client.compute_kpis(rows)
+        self.assertEqual(kpis["total"], 2)
+        self.assertEqual(kpis["upcoming"], 20)
+        self.assertEqual(kpis["checked_in"], 2)
+        self.assertEqual(
+            asia_tech_client.count_upcoming_for_date(
+                rows, date_from="2026-08-16", date_to="2026-08-16"
+            ),
+            20,
+        )
+        self.assertEqual(
+            asia_tech_client.count_upcoming_for_date(
+                rows, date_from="2026-08-17", date_to="2026-08-17"
+            ),
+            20,
+        )
+
     def test_count_checkouts_for_selected_date(self):
         rows = [
             asia_tech_client._normalize_reservation(

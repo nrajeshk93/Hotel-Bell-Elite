@@ -89,6 +89,7 @@ from db import (
     delete_hotel_room_charge,
     find_hotel_guest_by_mobile,
     clear_hotel_room_stay,
+    checkout_hotel_merge_group,
     transfer_hotel_room_stay,
     merge_hotel_room_billing,
     unmerge_hotel_rooms,
@@ -146,6 +147,7 @@ from db import (
     soft_delete_pos_menu_category,
     soft_delete_pos_menu_item,
 )
+import pos_menu_bulk
 from fo_invoice_tax_parser import parse_fo_invoice_tax_report
 from sales_report_parser import OUTLET_BAR, OUTLET_RESTAURANT, parse_sales_report
 import asia_tech_client
@@ -6457,6 +6459,20 @@ def _pos_outlet_from_request():
     return POS_OUTLET_RESTAURANT
 
 
+def _pos_bulk_outlet_from_request():
+    """Outlet for bulk template/import: Single-form ?outlet= / form field, else path."""
+    raw = (
+        (request.args.get("outlet") or request.form.get("outlet") or "")
+        .strip()
+        .lower()
+    )
+    if raw in ("bar", POS_OUTLET_BAR):
+        return POS_OUTLET_BAR
+    if raw in ("restaurant", POS_OUTLET_RESTAURANT):
+        return POS_OUTLET_RESTAURANT
+    return _pos_outlet_from_request()
+
+
 def _pos_menu_list_outlets(outlet):
     """
     Outlets for menu catalog GET.
@@ -6836,15 +6852,22 @@ def _stay_matches_reservation(stay, reservation_id):
     return _hotel_stay_matches_reservation(stay, reservation_id)
 
 
-def _rooms_still_hold_reservation(conn, reservation_id, exclude_room_id=None):
+def _rooms_still_hold_reservation(conn, reservation_id, exclude_room_id=None, exclude_room_ids=None):
     """True when another occupied or reserved room still carries this reservation id."""
     rid = str(reservation_id or "").strip()
     if not rid:
         return False
-    exclude = str(exclude_room_id or "").strip()
+    exclude = set()
+    one = str(exclude_room_id or "").strip()
+    if one:
+        exclude.add(one)
+    for item in exclude_room_ids or []:
+        extra = str(item or "").strip()
+        if extra:
+            exclude.add(extra)
     layout = get_hotel_rooms_layout(conn)
     for room in layout.get("rooms") or []:
-        if exclude and str(room.get("id") or "").strip() == exclude:
+        if str(room.get("id") or "").strip() in exclude:
             continue
         status = str(room.get("status") or "").strip().lower().replace(" ", "_")
         if status not in ("occupied", "reserved"):
@@ -6855,7 +6878,9 @@ def _rooms_still_hold_reservation(conn, reservation_id, exclude_room_id=None):
     return False
 
 
-def _sync_reservation_status_from_room(conn, *, stay, status, exclude_room_id=None):
+def _sync_reservation_status_from_room(
+    conn, *, stay, status, exclude_room_id=None, exclude_room_ids=None
+):
     """Persist Checked In / Checked Out from FO actions onto the local reservation."""
     reservation_id = _reservation_id_from_stay(stay)
     if not reservation_id:
@@ -6864,7 +6889,10 @@ def _sync_reservation_status_from_room(conn, *, stay, status, exclude_room_id=No
     if next_status not in ("checked_in", "checked_out"):
         return
     if next_status == "checked_out" and _rooms_still_hold_reservation(
-        conn, reservation_id, exclude_room_id=exclude_room_id
+        conn,
+        reservation_id,
+        exclude_room_id=exclude_room_id,
+        exclude_room_ids=exclude_room_ids,
     ):
         return
     settings = get_hotel_settings(conn)
@@ -7549,16 +7577,23 @@ def hotel_room_invoice_page(room_id):
 def hotel_guest_lookup_api():
     """Lookup a returning hotel guest by mobile number."""
     mobile = (request.args.get("mobile") or "").strip()
+    first_name = (request.args.get("firstName") or request.args.get("first_name") or "").strip()
+    last_name = (request.args.get("lastName") or request.args.get("last_name") or "").strip()
     conn = get_db()
     try:
         ensure_hotel_rooms_schema(conn)
-        guest = find_hotel_guest_by_mobile(conn, mobile)
+        guest = find_hotel_guest_by_mobile(
+            conn, mobile, first_name=first_name, last_name=last_name
+        )
         conn.commit()
     finally:
         conn.close()
     if not guest:
-        return jsonify({"ok": True, "found": False, "guest": None})
-    return jsonify({"ok": True, "found": True, "guest": guest})
+        return jsonify({"ok": True, "found": False, "guest": None, "nameMatch": False})
+    name_match = bool(guest.pop("nameMatch", True))
+    return jsonify(
+        {"ok": True, "found": True, "guest": guest, "nameMatch": name_match}
+    )
 
 
 @app.route("/hotel/api/customers", methods=["GET"], endpoint="hotel_customers_api")
@@ -7615,6 +7650,86 @@ def hotel_id_document_file(stored_name):
     resp.headers["Cache-Control"] = "private, max-age=0"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+def _hotel_stay_has_positive_room_rate(stay):
+    """True when check-in includes a room rate above zero."""
+    if not isinstance(stay, dict):
+        return False
+
+    def _positive(value):
+        try:
+            return float(value or 0) > 0
+        except (TypeError, ValueError):
+            return False
+
+    if _positive(stay.get("roomRate") or stay.get("room_rate")):
+        return True
+    nightly = stay.get("nightlyRates") or stay.get("nightly_rates") or []
+    if isinstance(nightly, list):
+        for row in nightly:
+            if isinstance(row, dict) and _positive(
+                row.get("roomRate") or row.get("room_rate")
+            ):
+                return True
+    merged = stay.get("mergeRoomRates") or stay.get("merge_room_rates") or []
+    if isinstance(merged, list):
+        for row in merged:
+            if not isinstance(row, dict):
+                continue
+            if _positive(row.get("roomRate") or row.get("room_rate")):
+                return True
+            nested = row.get("nightlyRates") or row.get("nightly_rates") or []
+            if isinstance(nested, list):
+                for night in nested:
+                    if isinstance(night, dict) and _positive(
+                        night.get("roomRate") or night.get("room_rate")
+                    ):
+                        return True
+    return False
+
+
+def _hotel_rate_plan_code(value):
+    text = str(value or "").strip().upper()
+    if text in ("EP", "CP", "MAP", "AP"):
+        return text
+    return ""
+
+
+def _hotel_stay_has_rate_plan(stay):
+    """True when check-in includes a meal plan, or the payload omitted it.
+
+    The check-in form always sends ratePlan. Empty means the employee has not
+    chosen a plan. Legacy API tests that omit the field still succeed.
+    """
+    if not isinstance(stay, dict):
+        return False
+    if "ratePlan" not in stay and "rate_plan" not in stay:
+        return True
+    if _hotel_rate_plan_code(stay.get("ratePlan") or stay.get("rate_plan")):
+        return True
+    nightly = stay.get("nightlyRates") or stay.get("nightly_rates") or []
+    if isinstance(nightly, list):
+        for row in nightly:
+            if isinstance(row, dict) and _hotel_rate_plan_code(
+                row.get("ratePlan") or row.get("rate_plan")
+            ):
+                return True
+    merged = stay.get("mergeRoomRates") or stay.get("merge_room_rates") or []
+    if isinstance(merged, list):
+        for row in merged:
+            if not isinstance(row, dict):
+                continue
+            if _hotel_rate_plan_code(row.get("ratePlan") or row.get("rate_plan")):
+                return True
+            nested = row.get("nightlyRates") or row.get("nightly_rates") or []
+            if isinstance(nested, list):
+                for night in nested:
+                    if isinstance(night, dict) and _hotel_rate_plan_code(
+                        night.get("ratePlan") or night.get("rate_plan")
+                    ):
+                        return True
+    return False
 
 
 @app.route("/hotel/api/rooms/<room_id>", methods=["GET", "PUT"], endpoint="hotel_room_detail_api")
@@ -7740,6 +7855,10 @@ def hotel_room_detail_api(room_id):
                     return jsonify({"ok": False, "error": "Mobile number is required."}), 400
                 if not (stay.get("checkInDate") or stay.get("check_in_date")):
                     return jsonify({"ok": False, "error": "Check-in date is required."}), 400
+                if not _hotel_stay_has_positive_room_rate(stay):
+                    return jsonify({"ok": False, "error": "Room rate is required."}), 400
+                if not _hotel_stay_has_rate_plan(stay):
+                    return jsonify({"ok": False, "error": "Meal plan is required."}), 400
                 check_in_raw = (
                     stay.get("checkInDate") or stay.get("check_in_date") or ""
                 ).strip()
@@ -7812,6 +7931,34 @@ def hotel_room_detail_api(room_id):
                         "ok": True,
                         "room": room,
                         "checkedOutRoomIds": [str(room_id)],
+                    }
+                )
+
+            if action == "checkout_group":
+                result = checkout_hotel_merge_group(conn, room_id, status="dirty")
+                exclude_ids = result.get("checkedOutRoomIds") or [str(room_id)]
+                seen_res = set()
+                for stay in result.get("checkedOutStays") or []:
+                    res_id = _reservation_id_from_stay(stay)
+                    if res_id and res_id in seen_res:
+                        continue
+                    if res_id:
+                        seen_res.add(res_id)
+                    try:
+                        _sync_reservation_status_from_room(
+                            conn,
+                            stay=stay,
+                            status="checked_out",
+                            exclude_room_ids=exclude_ids,
+                        )
+                    except Exception:
+                        pass
+                conn.commit()
+                return jsonify(
+                    {
+                        "ok": True,
+                        "room": result.get("room"),
+                        "checkedOutRoomIds": exclude_ids,
                     }
                 )
 
@@ -9064,6 +9211,95 @@ def point_of_sale_api_menu_category_delete(category_id):
             conn.rollback()
             return jsonify({"ok": False, "error": str(exc)}), 404
         return jsonify({"ok": True, "categories": list_pos_menu_categories(conn, outlet=outlet)})
+    finally:
+        conn.close()
+
+
+@app.route(
+    "/point-of-sale/api/menu/items/bulk-template",
+    methods=["GET"],
+    endpoint="point_of_sale_api_menu_items_bulk_template",
+)
+@app.route(
+    "/bar-point-of-sale/api/menu/items/bulk-template",
+    methods=["GET"],
+    endpoint="bar_point_of_sale_api_menu_items_bulk_template",
+)
+def point_of_sale_api_menu_items_bulk_template():
+    """Download an Excel template with dropdowns matching the Add menu item form."""
+    outlet = _pos_bulk_outlet_from_request()
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        buf = pos_menu_bulk.build_pos_menu_bulk_template(conn, outlet)
+    finally:
+        conn.close()
+    fname = "Menu Items Template.xlsx"
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.route(
+    "/point-of-sale/api/menu/items/bulk",
+    methods=["POST"],
+    endpoint="point_of_sale_api_menu_items_bulk",
+)
+@app.route(
+    "/bar-point-of-sale/api/menu/items/bulk",
+    methods=["POST"],
+    endpoint="bar_point_of_sale_api_menu_items_bulk",
+)
+def point_of_sale_api_menu_items_bulk():
+    """Create menu items from an uploaded Excel workbook."""
+    outlet = _pos_bulk_outlet_from_request()
+    upload = request.files.get("file") or request.files.get("excel")
+    if upload is None or not (upload.filename or "").strip():
+        return jsonify({"ok": False, "error": "Choose an Excel file to upload."}), 400
+    filename = (upload.filename or "").lower()
+    if not filename.endswith((".xlsx", ".xlsm")):
+        return jsonify({"ok": False, "error": "Upload an .xlsx Excel file."}), 400
+    user = get_current_user() or {}
+    updated_by = (
+        (user.get("full_name") or user.get("username") or "").strip()
+        if isinstance(user, dict)
+        else ""
+    )
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        result = pos_menu_bulk.import_pos_menu_bulk(
+            conn,
+            upload.stream,
+            outlet=outlet,
+            updated_by=updated_by,
+        )
+        conn.commit()
+        return jsonify(
+            {
+                "ok": True,
+                "created_count": result["created_count"],
+                "skipped_count": result["skipped_count"],
+                "error_count": result["error_count"],
+                "created": result["created"],
+                "skipped": result["skipped"],
+                "errors": result["errors"],
+                "items": list_pos_menu_items(conn, outlet=outlet),
+                "categories": list_pos_menu_categories(conn, outlet=outlet),
+            }
+        )
+    except ValueError as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"ok": False, "error": f"Could not import menu items: {exc}"}), 500
     finally:
         conn.close()
 

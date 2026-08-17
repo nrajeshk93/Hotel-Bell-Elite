@@ -788,6 +788,14 @@ body.pos-settings-module #pos-set-panel-menu .pos-menu-toolbar{
   color:#2563EB;
   transform:rotate(180deg);
 }
+#pos-menu-item-modal .se-filter-chip-chev{
+  display:none !important;
+}
+#pos-menu-page .se-sales-header-filters .se-filter-chip-chev,
+#pos-settings-page .se-sales-header-filters .se-filter-chip-chev,
+#md-master-modal .se-sales-header-filters .se-filter-chip-chev{
+  display:none !important;
+}
 :is(#pos-menu-page, #pos-settings-page, #pos-menu-item-modal, #md-master-modal #pos-menu-page) .pos-menu-field-listbox .se-filter-listbox{
   padding:6px;
   border:1px solid #E5E7EB;
@@ -1535,6 +1543,69 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   margin:0;
   padding:24px 26px;
 }
+#pos-menu-item-modal .pos-menu-item-mode-host{
+  display:flex;
+  flex-direction:row;
+  align-items:flex-end;
+  gap:12px;
+  margin:0 0 14px;
+  flex-shrink:0;
+}
+#pos-menu-item-modal .pos-menu-item-mode-host[hidden]{
+  display:none !important;
+}
+#pos-menu-item-modal.is-edit #pos-menu-item-mode-switch{
+  display:none !important;
+}
+#pos-menu-item-modal .pos-menu-item-switch{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px;
+  min-width:0;
+  flex:1 1 0;
+}
+#pos-menu-item-modal .pos-menu-item-switch > .se-filter-chip-label,
+#pos-menu-item-modal .pos-menu-item-mode-host > .se-filter-chip-label{
+  font:600 11px/1 Inter,system-ui,sans-serif;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:#64748B;
+}
+#pos-menu-item-modal .pos-menu-item-mode-tabs.cp-view-tabs{
+  display:flex;
+  align-items:center;
+  gap:4px;
+  width:100%;
+  padding:4px;
+  margin:0;
+  background:#F1F5F9;
+  border-radius:12px;
+}
+#pos-menu-item-modal .pos-menu-item-mode-tabs .cp-view-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  flex:1 1 0;
+  height:34px;
+  padding:0 12px;
+  border:0;
+  background:transparent;
+  border-radius:9px;
+  font:700 12px Inter,system-ui,sans-serif;
+  color:#64748B;
+  cursor:pointer;
+  white-space:nowrap;
+}
+#pos-menu-item-modal .pos-menu-item-mode-tabs .cp-view-tab:hover{
+  color:#0F172A;
+  background:rgba(255,255,255,.65);
+}
+#pos-menu-item-modal .pos-menu-item-mode-tabs .cp-view-tab.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
 #pos-menu-item-modal .staff-credit-head{
   display:flex;
   align-items:center;
@@ -1542,7 +1613,7 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   font-size:16px;
   font-weight:800;
   color:var(--txt, #1A202C);
-  margin-bottom:8px;
+  margin-bottom:14px;
   flex-shrink:0;
 }
 #pos-menu-item-modal .staff-credit-head svg{
@@ -1584,24 +1655,16 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   gap:12px;
   margin-bottom:0;
 }
-#pos-menu-page[data-pos-outlet="bar"] #pos-menu-item-menu-type-field,
-#pos-settings-page[data-pos-outlet="bar"] #pos-menu-item-menu-type-field{
+#pos-menu-item-modal.is-bar-outlet #pos-menu-item-menu-type-field{
   display:none !important;
 }
-#pos-menu-page[data-pos-outlet="bar"] #pos-menu-item-modal .staff-grid:has(#pos-menu-item-menu-type-field),
-#pos-settings-page[data-pos-outlet="bar"] #pos-menu-item-modal .staff-grid:has(#pos-menu-item-menu-type-field){
-  grid-template-columns:1fr;
-}
-#pos-menu-page[data-pos-outlet="bar"] #pos-menu-item-code-field,
-#pos-settings-page[data-pos-outlet="bar"] #pos-menu-item-code-field{
+#pos-menu-item-modal.is-bar-outlet #pos-menu-item-code-field{
   display:none !important;
 }
-#pos-menu-page[data-pos-outlet="bar"] #pos-menu-item-kind-field,
-#pos-settings-page[data-pos-outlet="bar"] #pos-menu-item-kind-field{
+#pos-menu-item-modal.is-bar-outlet #pos-menu-item-kind-field{
   display:block !important;
 }
-#pos-menu-page:not([data-pos-outlet="bar"]) #pos-menu-item-kind-field,
-#pos-settings-page:not([data-pos-outlet="bar"]) #pos-menu-item-kind-field{
+#pos-menu-item-modal:not(.is-bar-outlet) #pos-menu-item-kind-field{
   display:none !important;
 }
 #pos-menu-item-modal .staff-grid > .staff-field{
@@ -1806,6 +1869,7 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
   display:flex;
   flex-wrap:wrap;
   align-items:center;
+  justify-content:flex-end;
   gap:8px;
   flex-shrink:0;
   margin-top:12px;
@@ -1816,6 +1880,16 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
 #pos-menu-item-modal .pos-floor-props-actions-spacer{
   flex:1 1 8px;
   min-width:8px;
+}
+#pos-menu-item-modal #pos-menu-item-save:disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+#pos-menu-item-modal #pos-menu-item-save:disabled:hover{
+  background:var(--acc, #2563EB);
+  border-color:var(--acc, #2563EB);
+  color:#fff;
 }
 #pos-menu-item-modal .pos-menu-modal-err.staff-credit-error{
   display:none;
@@ -1907,11 +1981,20 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
 }
 #pos-menu-item-modal .pos-menu-item-modal-box.staff-credit-box:has(.pos-menu-listbox.is-open),
 #pos-menu-item-modal .pos-menu-item-modal-box.staff-credit-box:has(.pos-menu-unit-listbox.is-open),
+#pos-menu-item-modal .pos-menu-item-modal-box.staff-credit-box:has(.pos-menu-field-listbox.is-open),
 #pos-menu-item-modal .pos-menu-item-form:has(.pos-menu-listbox.is-open),
 #pos-menu-item-modal .pos-menu-item-form:has(.pos-menu-unit-listbox.is-open),
+#pos-menu-item-modal .pos-menu-item-form:has(.pos-menu-field-listbox.is-open),
 #pos-menu-item-modal .pos-menu-item-modal-body:has(.pos-menu-listbox.is-open),
-#pos-menu-item-modal .pos-menu-item-modal-body:has(.pos-menu-unit-listbox.is-open){
+#pos-menu-item-modal .pos-menu-item-modal-body:has(.pos-menu-unit-listbox.is-open),
+#pos-menu-item-modal .pos-menu-item-modal-body:has(.pos-menu-field-listbox.is-open){
   overflow:visible;
+}
+#pos-menu-item-modal .staff-field:has(.pos-menu-field-listbox.is-open),
+#pos-menu-item-modal .staff-grid:has(.pos-menu-field-listbox.is-open){
+  overflow:visible;
+  position:relative;
+  z-index:90;
 }
 /* Masters embed: absolute under the chip (fixed + transformed shell misplaces the panel). */
 #md-master-modal #pos-menu-item-modal .pos-menu-listbox.is-open,
@@ -2012,8 +2095,68 @@ body.pos-settings-module #pos-md-save.btn-primary:hover,
 #pos-menu-item-modal .pos-menu-listbox .ep-listbox-search-wrap{
   display:none !important;
 }
+#pos-menu-item-modal.is-bulk .pos-menu-item-form,
+#pos-menu-item-modal .pos-menu-item-form[hidden]{
+  display:none !important;
+}
+#pos-menu-item-modal .pos-menu-item-bulk[hidden]{
+  display:none !important;
+}
+#pos-menu-item-modal .pos-menu-item-bulk{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  min-height:0;
+  flex:1 1 auto;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-actions .btn{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-actions .btn svg{
+  flex-shrink:0;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-upload-label{
+  margin:0;
+  cursor:pointer;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-file{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-status:empty{
+  display:none;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-status{
+  font:500 13px/1.5 Inter,system-ui,sans-serif;
+  color:#334155;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-status.is-error{
+  color:#B91C1C;
+}
+#pos-menu-item-modal .pos-menu-item-bulk-status ul{
+  margin:8px 0 0;
+  padding-left:18px;
+}
 @media (max-width:520px){
   #pos-menu-item-modal .staff-grid{
     grid-template-columns:1fr;
+  }
+  #pos-menu-item-modal .pos-menu-item-mode-host{
+    flex-direction:column;
+    align-items:stretch;
   }
 }

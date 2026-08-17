@@ -914,6 +914,9 @@
       items.push(
         '<button type="button" class="hotel-room-menu-item" role="menuitem" data-room-action="unmerge-group">Unmerge All</button>'
       );
+      items.push(
+        '<button type="button" class="hotel-room-menu-item" role="menuitem" data-room-action="checkout-group">Check out all</button>'
+      );
     }
     if (isMember) {
       items.push(
@@ -1238,6 +1241,13 @@
           id: gid,
           title: mergeGroupSectionTitle(groupRooms, rooms),
           rooms: groupRooms,
+          primaryId: primary && primary.id ? String(primary.id) : '',
+          numbers: groupRooms
+            .map(function (r) {
+              return r && r.number ? String(r.number) : '';
+            })
+            .filter(Boolean)
+            .join(', '),
           anchor: roomNumberSortKey(primary && primary.number)
         };
       })
@@ -1286,9 +1296,18 @@
         '" data-merge-section="' +
         escapeHtml(sec.id) +
         '">' +
+        '<div class="hotel-merge-section-head">' +
         '<h2 class="hotel-floor-section-title">Merged Room — ' +
         escapeHtml(sec.title) +
         '</h2>' +
+        (sec.primaryId
+          ? '<button type="button" class="hotel-merge-checkout-all" data-merge-checkout="' +
+            escapeHtml(sec.primaryId) +
+            '" data-merge-rooms="' +
+            escapeHtml(sec.numbers || '') +
+            '">Check out all</button>'
+          : '') +
+        '</div>' +
         '<div class="hotel-merge-box">' +
         '<div class="hotel-rooms-grid">';
       sec.rooms.forEach(function (room) {
@@ -3421,6 +3440,32 @@
       });
   }
 
+  function checkoutMergeGroup(roomId, roomNumbers) {
+    if (!roomId) return;
+    var nums = String(roomNumbers || '').trim();
+    if (!nums) {
+      var room = findRoomInLayout(roomId);
+      var gid = room && String(room.mergeGroupId || '').trim();
+      if (gid) {
+        nums = (currentLayout.rooms || [])
+          .filter(function (r) {
+            return r && String(r.mergeGroupId || '').trim() === gid;
+          })
+          .map(function (r) {
+            return r.number ? String(r.number) : '';
+          })
+          .filter(Boolean)
+          .join(', ');
+      }
+    }
+    var msg =
+      'Check out all rooms in this merge' +
+      (nums ? ' (' + nums + ')' : '') +
+      '? Each occupied room will be marked dirty.';
+    if (!window.confirm(msg)) return;
+    putRoomAction(roomId, { action: 'checkout_group' }, 'All merged rooms checked out.');
+  }
+
   function handleRoomMenuAction(page, tile, action) {
     var roomId = tile && tile.getAttribute('data-id');
     if (!roomId || !action) return;
@@ -3447,7 +3492,7 @@
     if (action === 'unmerge') {
       if (
         !window.confirm(
-          'Unmerge this room from the shared bill? Folio charges stay on the primary.'
+          'Unmerge this room from the shared bill? This room will bill on its own.'
         )
       ) {
         return;
@@ -3462,7 +3507,7 @@
     if (action === 'unmerge-group') {
       if (
         !window.confirm(
-          'Unmerge all rooms in this billing group? Folio charges stay on the primary.'
+          'Unmerge all rooms in this billing group? Each room will bill on its own.'
         )
       ) {
         return;
@@ -3472,6 +3517,10 @@
         { action: 'unmerge_rooms', scope: 'group' },
         'Merge group cleared.'
       );
+      return;
+    }
+    if (action === 'checkout-group') {
+      checkoutMergeGroup(roomId);
       return;
     }
     if (action === 'set-primary') {
@@ -3943,6 +3992,17 @@
   }
 
   function onHotelRoomsDocClick(event) {
+    var mergeCheckout = event.target.closest('[data-merge-checkout]');
+    if (mergeCheckout) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeRoomMenu();
+      checkoutMergeGroup(
+        mergeCheckout.getAttribute('data-merge-checkout'),
+        mergeCheckout.getAttribute('data-merge-rooms')
+      );
+      return;
+    }
     var actionBtn = event.target.closest('.hotel-room-menu [data-room-action]');
     if (actionBtn) {
       event.preventDefault();

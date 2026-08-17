@@ -337,6 +337,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_settings"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_menu_categories"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_menu_items"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_menu_items_bulk"), "point_of_sale")
+        self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_menu_items_bulk_template"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_menu_products"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_invoices_save"), "point_of_sale")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale_api_invoice_detail"), "point_of_sale")

@@ -92,7 +92,7 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertIn("hres-date-from", html)
         self.assertIn("hres-date-to", html)
         self.assertIn("sales_date_range.js", html)
-        self.assertIn("hotel_reservations.js?v=45", html)
+        self.assertIn("hotel_reservations.js?v=47", html)
         self.assertIn('id="hres-edit-guest-title"', html)
         self.assertIn("hres-edit-dialog", html)
         self.assertNotIn("hres-edit-source-listbox", html)
@@ -771,6 +771,53 @@ class HotelReservationsTests(unittest.TestCase):
             )
             self.assertEqual(arrivals.status_code, 200)
             self.assertEqual(arrivals.get_json()["kpis"]["upcoming"], 1)
+
+    def test_upcoming_kpi_counts_rooms_not_bookings(self):
+        rows = [
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "group-stay",
+                    "guestName": "Group Guest",
+                    "checkInDate": "2026-08-16",
+                    "checkOutDate": "2026-08-17",
+                    "status": "upcoming",
+                    "source": "asia_tech",
+                    "amount": 100000,
+                    "totalRooms": 20,
+                }
+            ),
+            asia_tech_client._normalize_reservation(
+                {
+                    "id": "later-single",
+                    "guestName": "Later Guest",
+                    "checkInDate": "2026-09-01",
+                    "checkOutDate": "2026-09-03",
+                    "status": "upcoming",
+                    "source": "direct",
+                    "amount": 4000,
+                    "totalRooms": 1,
+                }
+            ),
+        ]
+        with mock.patch.object(
+            asia_tech_client, "list_provider_reservations", return_value=rows
+        ):
+            dated = self.client.get(
+                "/hotel/api/reservations?page=1&page_size=all"
+                "&date_from=2026-08-16&date_to=2026-08-16"
+            )
+            self.assertEqual(dated.status_code, 200)
+            dated_payload = dated.get_json()
+            self.assertEqual(dated_payload["kpis"]["total"], 1)
+            self.assertEqual(dated_payload["kpis"]["upcoming"], 20)
+            self.assertEqual(len(dated_payload["reservations"]), 1)
+
+            checkout_day = self.client.get(
+                "/hotel/api/reservations?page=1&page_size=all"
+                "&date_from=2026-08-17&date_to=2026-08-17"
+            )
+            self.assertEqual(checkout_day.status_code, 200)
+            self.assertEqual(checkout_day.get_json()["kpis"]["upcoming"], 20)
 
     def test_create_reservation(self):
         resp = self.client.post(

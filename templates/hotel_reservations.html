@@ -10,7 +10,7 @@
 <title>Reservations | Hotel | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_reservations.css') }}?v=44">
@@ -77,7 +77,7 @@
         <div class="hbe-kpi-text">
           <div class="pl-summary-label">Checked In</div>
           <div class="pl-summary-value" data-kpi-value>0</div>
-          <div class="pl-summary-meta" data-kpi-meta>0 reservations</div>
+          <div class="pl-summary-meta" data-kpi-meta>0 rooms</div>
         </div>
       </div>
     </article>
@@ -89,7 +89,7 @@
         <div class="hbe-kpi-text">
           <div class="pl-summary-label">Upcoming</div>
           <div class="pl-summary-value" data-kpi-value>0</div>
-          <div class="pl-summary-meta" data-kpi-meta>0 reservations</div>
+          <div class="pl-summary-meta" data-kpi-meta>0 rooms</div>
         </div>
       </div>
     </article>
@@ -101,7 +101,7 @@
         <div class="hbe-kpi-text">
           <div class="pl-summary-label">Checked Out</div>
           <div class="pl-summary-value" data-kpi-value>0</div>
-          <div class="pl-summary-meta" data-kpi-meta>0 reservations</div>
+          <div class="pl-summary-meta" data-kpi-meta>0 rooms</div>
         </div>
       </div>
     </article>
@@ -462,7 +462,7 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=16"></script>
-<script src="{{ url_for('static', filename='hotel_reservations.js') }}?v=46"></script>
+<script src="{{ url_for('static', filename='hotel_reservations.js') }}?v=47"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

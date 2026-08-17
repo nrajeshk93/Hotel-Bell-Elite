@@ -34,12 +34,12 @@
 <title>Room {{ room.number }} | Hotel | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=50">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=128">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=130">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <script>
 (function(){
@@ -58,7 +58,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=128">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=130">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 {% endif %}
 
@@ -111,6 +111,7 @@
           <button type="button" class="hrd-more-item" role="menuitem" data-action="merge" id="hrd-menu-merge" hidden>Merge Rooms</button>
           <button type="button" class="hrd-more-item" role="menuitem" data-action="unmerge" id="hrd-menu-unmerge" hidden>Unmerge Room</button>
           <button type="button" class="hrd-more-item" role="menuitem" data-action="unmerge-group" id="hrd-menu-unmerge-group" hidden>Unmerge All</button>
+          <button type="button" class="hrd-more-item" role="menuitem" data-action="checkout-group" id="hrd-menu-checkout-group" hidden>Check out all</button>
           <button type="button" class="hrd-more-item" role="menuitem" data-action="set-primary" id="hrd-menu-set-primary" hidden>Make Primary</button>
           <button type="button" class="hrd-more-item" role="menuitem" data-stub="Print folio coming soon">Print Folio</button>
           <button type="button" class="hrd-more-item" role="menuitem" data-set-status="vacant" id="hrd-menu-status-vacant">Vacant</button>
@@ -254,7 +255,7 @@
 
   <div class="hrd-grid">
     <div class="hrd-col">
-      <section class="hrd-card hrd-card--guest" id="hrd-guest-card"{% if not show_guest %} data-action="checkin" tabindex="0" role="button" aria-label="Start check-in"{% endif %}>
+      <section class="hrd-card hrd-card--guest" id="hrd-guest-card"{% if not show_guest and room_status != 'dirty' %} data-action="checkin" tabindex="0" role="button" aria-label="Start check-in"{% endif %}>
         <header class="hrd-card-head">
           <span class="hrd-card-icon hrd-card-icon--blue" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
@@ -277,9 +278,9 @@
           <div class="hrd-empty-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19c1.5-3.5 4-5 7-5s5.5 1.5 7 5"/></svg>
           </div>
-          <p class="hrd-empty-title">No guest checked-in</p>
-          <p class="hrd-empty-sub">Click “Start Check-In” to add guest details</p>
-          <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-start-checkin" data-action="checkin">Start Check-In</button>
+          <p class="hrd-empty-title" id="hrd-guest-empty-title">{% if room_status == 'dirty' %}Room is dirty{% else %}No guest checked-in{% endif %}</p>
+          <p class="hrd-empty-sub" id="hrd-guest-empty-sub">{% if room_status == 'dirty' %}Mark it Cleaned from the room menu before check-in.{% else %}Click “Start Check-In” to add guest details{% endif %}</p>
+          <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-start-checkin" data-action="checkin"{% if room_status == 'dirty' %} hidden{% endif %}>Start Check-In</button>
         </div>
         <div class="hrd-guest-filled" id="hrd-guest-filled"{% if not show_guest %} hidden{% endif %}>
           <div class="hrd-guest-row">
@@ -682,7 +683,7 @@
             </header>
             <div class="hrd-ci-rate-rooms" id="hrd-ci-rate-rooms" data-hrd-rate-rooms></div>
             <input type="hidden" name="roomRate" id="hrd-ci-room-rate" value="0">
-            <input type="hidden" name="ratePlan" id="hrd-ci-rate-plan" value="EP">
+            <input type="hidden" name="ratePlan" id="hrd-ci-rate-plan" value="">
             <div class="hrd-form-grid hrd-form-grid--1">
               <label class="hrd-field">
                 <span>Total Rate</span>
@@ -1131,7 +1132,7 @@
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=63"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=16"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=158"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=166"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

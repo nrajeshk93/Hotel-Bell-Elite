@@ -2497,6 +2497,19 @@
   }
 
   function sendKot(page) {
+    cancelAutosaveTimer();
+    if (saveInflight) {
+      var waitBtn = $('#pos-inv-send-kot', page);
+      if (waitBtn) waitBtn.disabled = true;
+      return saveInflight
+        .catch(function () {
+          return null;
+        })
+        .then(function () {
+          if (waitBtn) waitBtn.disabled = false;
+          sendKot(page);
+        });
+    }
     var pending = pendingKotLines();
     if (!pending.length) {
       toast('Nothing new to send — kitchen is already up to date.');
@@ -3473,6 +3486,12 @@
     renderLines(page);
   }
 
+  function bustInvoiceLedgerSoftNavCache() {
+    if (typeof global.deInvalidateSoftNavCacheByPath !== 'function') return;
+    global.deInvalidateSoftNavCacheByPath('/point-of-sale/invoice-ledger');
+    global.deInvalidateSoftNavCacheByPath('/bar-point-of-sale/invoice-ledger');
+  }
+
   function markInvoiceGenerated(page, invoice) {
     state.invoiceGenerated = true;
     if (invoice && invoice.id) state.invoiceId = invoice.id;
@@ -3480,6 +3499,7 @@
     state.dirty = false;
     syncInvoiceGeneratedUi(page);
     persistInvoiceResumeContext();
+    bustInvoiceLedgerSoftNavCache();
     /* Floor tile frees on Generate Invoice — do not wait for Settle. */
     var table = String(
       (invoice && (invoice.table_label || invoice.table)) ||
@@ -4720,6 +4740,7 @@
         mirrorDraft(page, payload);
         syncFloorOccupancyAfterSave(page, payload, invoice);
         if (toastOnSuccess) toast('Order ' + orderNo + ' saved.');
+        bustInvoiceLedgerSoftNavCache();
         return { ok: true, invoice: invoice };
       })
       .catch(function () {
@@ -5255,6 +5276,7 @@
     global.posInvPositionMoreMenu = positionMoreMenu;
     global.posInvCloseCustomerSuggest = closeCustomerSuggest;
     global.posInvCloseAllModals = closeAllInvModals;
+    global.__posInvHandleAction = handleAction;
 
     if (page.getAttribute('data-header-bound') !== '1') {
       page.setAttribute('data-header-bound', '1');
@@ -5277,10 +5299,14 @@
         if (!pageRoot) return;
         var actionEl = e.target.closest('[data-inv-action]');
         if (actionEl && pageRoot.contains(actionEl)) {
-          handleAction(pageRoot, actionEl.getAttribute('data-inv-action'));
+          if (typeof global.__posInvHandleAction === 'function') {
+            global.__posInvHandleAction(pageRoot, actionEl.getAttribute('data-inv-action'));
+          }
         }
         if (!e.target.closest('.pos-inv-more-wrap')) {
-          closeMoreMenu(pageRoot);
+          if (typeof global.posInvCloseMoreMenu === 'function') {
+            global.posInvCloseMoreMenu(pageRoot);
+          }
         }
       });
     }

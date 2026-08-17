@@ -1551,12 +1551,22 @@ def persist_provider_rows(settings: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     )
 
 
+def _status_room_count(rows: List[Dict[str, Any]], status: str) -> int:
+    """Sum booked rooms for rows in a status (one booking can cover many rooms)."""
+    want = str(status or "").strip().lower()
+    return sum(
+        reservation_total_rooms(row)
+        for row in rows
+        if str(row.get("status") or "").strip().lower() == want
+    )
+
+
 def compute_kpis(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     active = [r for r in rows if str(r.get("status") or "").strip().lower() != "cancelled"]
     total = len(active)
-    checked_in = sum(1 for r in active if r.get("status") == "checked_in")
-    upcoming = sum(1 for r in active if r.get("status") == "upcoming")
-    checked_out = sum(1 for r in active if r.get("status") == "checked_out")
+    checked_in = _status_room_count(active, "checked_in")
+    upcoming = _status_room_count(active, "upcoming")
+    checked_out = _status_room_count(active, "checked_out")
     revenue = round(sum(_money(r.get("amount")) for r in active), 2)
     return {
         "total": total,
@@ -1595,25 +1605,25 @@ def count_checkouts_for_date(
     date_from: str = "",
     date_to: str = "",
 ) -> int:
-    """Count expected checkouts whose departure date falls in the selected range.
+    """Count expected checkout rooms whose departure date falls in the range.
 
     A stay with check-out on 12 Aug is counted for 12 Aug even though stay
     overlap treats checkout day as exclusive (so the table/Total omit them).
-    Cancelled bookings are excluded. When no date is selected, count all
-    currently checked-out rows.
+    Multi-room bookings add totalRooms. Cancelled bookings are excluded.
+    When no date is selected, count rooms on currently checked-out rows.
     """
     d_from, d_to = _resolve_filter_dates(
         on_date=on_date, date_from=date_from, date_to=date_to
     )
     if not d_from or not d_to:
-        return sum(1 for r in rows if r.get("status") == "checked_out")
+        return _status_room_count(rows, "checked_out")
     count = 0
     for row in rows:
         if row.get("status") == "cancelled":
             continue
         cout = _parse_iso(row.get("checkOutDate"))
         if cout and d_from <= cout <= d_to:
-            count += 1
+            count += reservation_total_rooms(row)
     return count
 
 
@@ -1624,22 +1634,22 @@ def count_upcoming_for_date(
     date_from: str = "",
     date_to: str = "",
 ) -> int:
-    """Count stays for the selected date that are still pending check-in.
+    """Count upcoming rooms for the selected date that are still pending check-in.
 
-    This is the upcoming subset of Total Reservations (stay overlap). When no
-    date is selected, count all upcoming rows.
+    This is the upcoming subset of Total Reservations (stay overlap), summed
+    by totalRooms. When no date is selected, count rooms on all upcoming rows.
     """
     d_from, d_to = _resolve_filter_dates(
         on_date=on_date, date_from=date_from, date_to=date_to
     )
     if not d_from or not d_to:
-        return sum(1 for r in rows if r.get("status") == "upcoming")
+        return _status_room_count(rows, "upcoming")
     overlapping = filter_reservations(
         rows,
         date_from=d_from.isoformat(),
         date_to=d_to.isoformat(),
     )
-    return sum(1 for row in overlapping if row.get("status") == "upcoming")
+    return _status_room_count(overlapping, "upcoming")
 
 
 def count_checked_in_for_date(
@@ -1649,16 +1659,17 @@ def count_checked_in_for_date(
     date_from: str = "",
     date_to: str = "",
 ) -> int:
-    """Count guests in-house during the selected date range.
+    """Count rooms in-house during the selected date range.
 
-    Occupancy is check-in through the night before checkout. When no date is
-    selected, count all currently checked-in rows.
+    Occupancy is check-in through the night before checkout. Multi-room
+    bookings add totalRooms. When no date is selected, count rooms on
+    currently checked-in rows.
     """
     d_from, d_to = _resolve_filter_dates(
         on_date=on_date, date_from=date_from, date_to=date_to
     )
     if not d_from or not d_to:
-        return sum(1 for r in rows if r.get("status") == "checked_in")
+        return _status_room_count(rows, "checked_in")
     count = 0
     for row in rows:
         if row.get("status") == "cancelled":
@@ -1668,7 +1679,7 @@ def count_checked_in_for_date(
         if not cin or not cout:
             continue
         if cin <= d_to and cout > d_from:
-            count += 1
+            count += reservation_total_rooms(row)
     return count
 
 

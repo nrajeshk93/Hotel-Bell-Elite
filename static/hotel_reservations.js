@@ -295,7 +295,7 @@
       }
       var n = parseInt(map[key], 10);
       if (isNaN(n)) n = 0;
-      meta.textContent = n + (n === 1 ? ' reservation' : ' reservations');
+      meta.textContent = n + (n === 1 ? ' room' : ' rooms');
     });
   }
 

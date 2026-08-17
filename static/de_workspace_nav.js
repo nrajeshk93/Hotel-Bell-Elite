@@ -258,9 +258,27 @@
     return Date.now() < (window.__deSidebarHoverSuppressUntil || 0);
   }
 
-  function suppressSidebarHoverUntilPointerLeave(){
-    window.__deSidebarHoverSuppressUntil = Date.now() + 15000;
+  function expandIfPointerStillOnRail(){
     getAllSidebars().forEach(function(sb){
+      if(isDeSidebarPinned(sb)) return;
+      if(isSidebarHoverExpandSuppressed()) return;
+      try{
+        if(sb.matches(':hover')) expandSidebarAndSnap(sb);
+      } catch(e){}
+    });
+  }
+
+  function suppressSidebarHoverUntilPointerLeave(){
+    getAllSidebars().forEach(function(sb){
+      var over = false;
+      try{ over = sb.matches(':hover'); } catch(e){}
+      /* Cursor is already off the rail — do not leave suppress-hover stuck
+         waiting for a pointerleave that will never come. */
+      if(!over){
+        sb.classList.remove('de-sidebar--suppress-hover');
+        return;
+      }
+      window.__deSidebarHoverSuppressUntil = Date.now() + 15000;
       sb.classList.add('de-sidebar--suppress-hover');
       if(!isDeSidebarPinned(sb)){
         sb.classList.remove('is-expanded');
@@ -283,7 +301,7 @@
   }
 
   function suppressSidebarHoverExpand(ms){
-    ms = typeof ms === 'number' ? ms : 1200;
+    ms = typeof ms === 'number' ? ms : 220;
     window.__deSidebarHoverSuppressUntil = Date.now() + ms;
     getAllSidebars().forEach(function(sb){
       sb.classList.add('de-sidebar--suppress-hover');
@@ -296,9 +314,14 @@
     window.__deSidebarHoverSuppressTimer = setTimeout(function(){
       window.__deSidebarHoverSuppressTimer = null;
       document.querySelectorAll('.de-sidebar.de-sidebar--suppress-hover').forEach(function(sb){
-        if(sb.__deUnpinLeaveBound) return;
+        var over = false;
+        try{ over = sb.matches(':hover'); } catch(e){}
+        /* Unpin-until-leave keeps suppress only while the cursor is still on the rail. */
+        if(sb.__deUnpinLeaveBound && over) return;
         sb.classList.remove('de-sidebar--suppress-hover');
       });
+      /* mouseenter/pointerenter may have been ignored during suppress — expand now. */
+      expandIfPointerStillOnRail();
     }, ms);
   }
 
@@ -309,6 +332,7 @@
     if(isSidebarHoverExpandSuppressed() && !isDeSidebarPinned(sidebar)){
       return;
     }
+    sidebar.classList.remove('de-sidebar--suppress-hover');
     if(typeof window.clearSidebarScrollLock === 'function'){
       window.clearSidebarScrollLock();
     }
@@ -634,6 +658,7 @@
     if(isDeSidebarPinned(sidebar)) return false;
     if(isPointerOverSidebar(sidebar)) return false;
 
+    sidebar.classList.remove('de-sidebar--suppress-hover');
     var wasExpanded = sidebar.classList.contains('is-expanded');
     sidebar.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(group){
       group.classList.remove('is-flyout-active');
@@ -897,8 +922,9 @@
           sidebar.matches(':hover');
         if(keepHover){
           sidebar.classList.add('is-expanded');
+          sidebar.classList.remove('de-sidebar--suppress-hover');
         } else {
-          sidebar.classList.remove('is-expanded');
+          sidebar.classList.remove('is-expanded', 'de-sidebar--suppress-hover');
         }
       }
     });
@@ -925,9 +951,24 @@
       return;
     }
 
-    deSidebar.addEventListener('mouseenter', function(){
+    deSidebar.addEventListener('pointerenter', function(){
       clearDeSidebarCollapseTimer();
-      if(isSidebarHoverExpandSuppressed() && !isDeSidebarPinned(deSidebar)) return;
+      if(isSidebarHoverExpandSuppressed() && !isDeSidebarPinned(deSidebar)){
+        /* Enter during soft-nav/unpin suppress — retry as soon as suppress ends. */
+        var wait = Math.max(0, (window.__deSidebarHoverSuppressUntil || 0) - Date.now());
+        if(window.__deSidebarPendingExpandTimer) clearTimeout(window.__deSidebarPendingExpandTimer);
+        window.__deSidebarPendingExpandTimer = setTimeout(function(){
+          window.__deSidebarPendingExpandTimer = null;
+          if(isDeSidebarPinned(deSidebar)) return;
+          if(isSidebarHoverExpandSuppressed()) return;
+          deSidebar.classList.remove('de-sidebar--suppress-hover');
+          try{
+            if(deSidebar.matches(':hover')) expandSidebarAndSnap(deSidebar);
+          } catch(e){}
+        }, wait + 16);
+        return;
+      }
+      deSidebar.classList.remove('de-sidebar--suppress-hover');
       if(!isDeSidebarPinned(deSidebar)){
         deSidebar.querySelectorAll('.de-nav-group.is-flyout-active').forEach(function(group){
           group.classList.remove('is-flyout-active');
@@ -936,7 +977,7 @@
       expandSidebarAndSnap(deSidebar);
     });
 
-    deSidebar.addEventListener('mouseleave', function(event){
+    deSidebar.addEventListener('pointerleave', function(event){
       if(isDeSidebarPinned(deSidebar)) return;
       var related = event.relatedTarget;
       if(related && deSidebar.contains(related)) return;

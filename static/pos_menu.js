@@ -76,13 +76,8 @@
       : 'restaurant';
   }
 
-  function categoryDisplayName(cat) {
-    var name = (cat && cat.name) || '';
-    var outlet = categoryOutlet(cat);
-    if (outlet !== resolvePosOutlet()) {
-      name += outlet === 'bar' ? ' · Bar' : ' · Restaurant';
-    }
-    return name;
+  function isPlaceholderCategory(cat) {
+    return String((cat && cat.name) || '').trim().toLowerCase() === 'test';
   }
 
   function itemOutlet(it) {
@@ -110,9 +105,6 @@
   var detailsTab = 'overview';
   var openMenuItemId = null;
 
-  /** Debounced item-modal persist (invoice-style). */
-  var ITEM_AUTOSAVE_DELAY_MS = 450;
-  var itemAutosaveTimer = null;
   var itemDirty = false;
   var itemDirtyEpoch = 0;
   var itemSaveInflight = null;
@@ -573,8 +565,9 @@
 
   function categoriesForOutletFilter() {
     var outlet = ensureFilterOutlet();
-    if (!outlet) return categories.slice();
     return categories.filter(function (c) {
+      if (isPlaceholderCategory(c)) return false;
+      if (!outlet) return true;
       return categoryOutlet(c) === outlet;
     });
   }
@@ -645,20 +638,47 @@
     if (!want) clearFilterListboxPlaceholder(root);
   }
 
-  function fillCategorySelects() {
+  function categoriesForItemModal(outlet) {
+    var raw = String(outlet == null ? ensureProductOutletFilter() : outlet).toLowerCase();
+    var want = raw === 'bar' ? 'bar' : raw === 'restaurant' ? 'restaurant' : '';
+    return categories
+      .filter(function (c) {
+        if (isPlaceholderCategory(c)) return false;
+        if (!want) return true;
+        return categoryOutlet(c) === want;
+      })
+      .slice()
+      .sort(function (a, b) {
+        return String(a.name || '').localeCompare(String(b.name || ''), undefined, {
+          sensitivity: 'base',
+          numeric: true
+        });
+      });
+  }
+
+  function fillCategorySelects(opts) {
+    opts = opts || {};
+    var pickerOutlet = opts.outlet != null ? opts.outlet : ensureProductOutletFilter();
     var filter = $('#pos-menu-filter-category');
     var modal = $('#pos-menu-item-category');
     var filterVal = filterCategory || (filter ? filter.value : '') || '';
     var modalVal = modal ? modal.value : '';
     syncOutletFilterListbox();
     fillCategoryFilterListbox(filterVal);
+    var modalCats = categoriesForItemModal(pickerOutlet);
+    if (modalVal && !modalCats.some(function (c) { return String(c.id) === String(modalVal); })) {
+      modalVal = '';
+      if (modal) modal.value = '';
+      var hidden = $('#pos-menu-item-category-id');
+      if (hidden) hidden.value = '';
+    }
     var optionsWrap = $('#pos-menu-item-category-list');
     if (optionsWrap && optionsWrap.classList.contains('se-filter-listbox')) {
-      optionsWrap.innerHTML = categories
+      optionsWrap.innerHTML = modalCats
         .map(function (c) {
           var id = String(c.id);
           var selected = modalVal && String(modalVal) === id;
-          var name = categoryDisplayName(c);
+          var name = c.name || '';
           return (
             '<button type="button" class="se-filter-listbox-option' +
             (selected ? ' is-selected' : '') +
@@ -681,7 +701,7 @@
         setListboxValue(
           'pos-menu-item-category',
           String(modalVal),
-          (cat && categoryDisplayName(cat)) || 'Select category…'
+          (cat && cat.name) || 'Select category…'
         );
       } else {
         setListboxValue('pos-menu-item-category', '', 'Select category…');
@@ -689,19 +709,20 @@
     } else if (modal && modal.tagName === 'SELECT') {
       modal.innerHTML =
         '<option value="">Select category…</option>' +
-        categories
+        modalCats
           .map(function (c) {
             return (
               '<option value="' +
               escapeHtml(c.id) +
               '">' +
-              escapeHtml(categoryDisplayName(c)) +
+              escapeHtml(c.name || '') +
               '</option>'
             );
           })
           .join('');
       if (modalVal) modal.value = modalVal;
     }
+    syncItemSaveButton();
   }
 
   function itemStatus(it) {
@@ -1649,20 +1670,59 @@
     return resolvePosOutlet();
   }
 
+  function isModalBarOutlet() {
+    return ensureProductOutletFilter() === 'bar';
+  }
+
   function syncProductOutletListbox() {
     var outlet = ensureProductOutletFilter();
-    var root = $('#pos-menu-item-product-outlet-listbox');
-    var list = $('#pos-menu-item-product-outlet-list');
-    var label = outletFilterLabel(outlet);
-    setListboxValue('pos-menu-item-product-outlet', outlet, label);
-    if (list) {
-      $all('.se-filter-listbox-option', list).forEach(function (btn) {
-        var on = String(btn.getAttribute('data-value') || '') === String(outlet || '');
-        btn.classList.toggle('is-selected', on);
-        btn.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
+    if (outlet !== 'bar' && outlet !== 'restaurant') {
+      outlet = resolvePosOutlet();
+      productOutletFilter = outlet;
     }
-    clearFilterListboxPlaceholder(root);
+    var modal = $('#pos-menu-item-modal');
+    if (modal) modal.classList.toggle('is-bar-outlet', outlet === 'bar');
+    document.querySelectorAll('[data-pos-menu-item-outlet]').forEach(function (btn) {
+      var on = btn.getAttribute('data-pos-menu-item-outlet') === outlet;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    ['pos-menu-item-product-outlet', 'pos-menu-item-bulk-outlet'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.value = outlet;
+    });
+  }
+
+  function setModalOutlet(outlet) {
+    var next = String(outlet || '').toLowerCase() === 'bar' ? 'bar' : 'restaurant';
+    var prev = ensureProductOutletFilter();
+    if (prev !== 'bar' && prev !== 'restaurant') prev = resolvePosOutlet();
+    productOutletFilter = next;
+    syncProductOutletListbox();
+    if (prev === next) return;
+    fillCategorySelects({ outlet: next });
+    var catId =
+      ($('#pos-menu-item-category-id') && $('#pos-menu-item-category-id').value) || '';
+    var cat = findCategory(catId);
+    if (!cat || categoryOutlet(cat) !== next) {
+      if ($('#pos-menu-item-category-id')) $('#pos-menu-item-category-id').value = '';
+      setListboxValue('pos-menu-item-category', '', 'Select category…');
+      syncCategoryHiddenFromSelect();
+    }
+    if (next === 'bar') {
+      setMenuTypeListbox('');
+      setItemKindListbox(
+        ($('#pos-menu-item-kind') && $('#pos-menu-item-kind').value) || 'food'
+      );
+    } else {
+      setItemKindListbox('food');
+    }
+    reloadProductPicker();
+    var modal = $('#pos-menu-item-modal');
+    if (modal && modal.classList.contains('active') && !modal.classList.contains('is-bulk')) {
+      markItemDirty();
+      syncItemSaveButton();
+    }
   }
 
   function fetchProductsThen(cb, force) {
@@ -1721,15 +1781,7 @@
     if (modal) modal.classList.remove('active');
   }
 
-  function cancelItemAutosaveTimer() {
-    if (itemAutosaveTimer) {
-      clearTimeout(itemAutosaveTimer);
-      itemAutosaveTimer = null;
-    }
-  }
-
   function resetItemAutosaveState() {
-    cancelItemAutosaveTimer();
     itemDirty = false;
     itemDirtyEpoch = 0;
   }
@@ -1737,15 +1789,23 @@
   function markItemDirty() {
     var modal = $('#pos-menu-item-modal');
     if (!modal || !modal.classList.contains('active')) return;
+    if (modal.classList.contains('is-bulk')) return;
     itemDirtyEpoch += 1;
     itemDirty = true;
-    scheduleItemAutosave();
+    syncItemSaveButton();
+  }
+
+  function syncItemSaveButton() {
+    var btn = $('#pos-menu-item-save');
+    if (!btn) return;
+    var ready = itemRequiredFieldsValid() && !busy;
+    btn.disabled = !ready;
+    btn.setAttribute('aria-disabled', ready ? 'false' : 'true');
   }
 
   function clearItemDirtyAfterPersist(epochAtStart) {
     if (itemDirtyEpoch !== epochAtStart) {
       itemDirty = true;
-      scheduleItemAutosave();
       return;
     }
     itemDirty = false;
@@ -1759,10 +1819,10 @@
       name: ($('#pos-menu-item-name').value || '').trim(),
       code: ($('#pos-menu-item-code').value || '').trim(),
       variant: ($('#pos-menu-item-variant').value || '').trim(),
-      menuType: isBarOutlet()
+      menuType: isModalBarOutlet()
         ? ''
         : ($('#pos-menu-item-menu-type') && $('#pos-menu-item-menu-type').value) || '',
-      itemKind: isBarOutlet()
+      itemKind: isModalBarOutlet()
         ? (($('#pos-menu-item-kind') && $('#pos-menu-item-kind').value) || 'food')
         : 'food',
       rate: ($('#pos-menu-item-rate').value || '').trim()
@@ -1777,41 +1837,169 @@
     return true;
   }
 
-  function recipeReadyForAutosave() {
-    var result = collectRecipePayload({ skipIncomplete: false });
-    return !result.error;
-  }
-
-  function scheduleItemAutosave() {
-    cancelItemAutosaveTimer();
-    if (!itemDirty) return;
-    itemAutosaveTimer = setTimeout(function () {
-      itemAutosaveTimer = null;
-      if (!itemDirty) return;
-      if (!itemRequiredFieldsValid()) return;
-      if (!recipeReadyForAutosave()) return;
-      persistMenuItem({ silent: true });
-    }, ITEM_AUTOSAVE_DELAY_MS);
-  }
-
-  function flushItemAutosave(opts) {
-    cancelItemAutosaveTimer();
-    if (!itemDirty) return Promise.resolve({ ok: true, skipped: true });
-    if (!itemRequiredFieldsValid()) {
-      /* Incomplete Add draft — nothing persisted yet; abandon quietly. */
-      itemDirty = false;
-      return Promise.resolve({ ok: true, skipped: true });
-    }
-    return persistMenuItem(
-      Object.assign({ silent: true, skipIncompleteRecipe: true }, opts || {})
-    );
-  }
-
   function closeItemModal() {
-    return flushItemAutosave().finally(function () {
-      resetItemAutosaveState();
-      closeModal('pos-menu-item-modal');
+    resetItemAutosaveState();
+    setItemModalMode('single');
+    var itemModal = $('#pos-menu-item-modal');
+    if (itemModal) itemModal.classList.remove('is-edit', 'is-bar-outlet');
+    closeModal('pos-menu-item-modal');
+    return Promise.resolve();
+  }
+
+  function setItemModalMode(mode) {
+    var bulk = String(mode || '') === 'bulk';
+    var modal = $('#pos-menu-item-modal');
+    var form = $('#pos-menu-item-form');
+    var bulkEl = $('#pos-menu-item-bulk');
+    var title = $('#pos-menu-item-title');
+    if (modal) modal.classList.toggle('is-bulk', bulk);
+    if (form) form.hidden = bulk;
+    if (bulkEl) bulkEl.hidden = !bulk;
+    document.querySelectorAll('[data-pos-menu-item-mode]').forEach(function (btn) {
+      var on = btn.getAttribute('data-pos-menu-item-mode') === (bulk ? 'bulk' : 'single');
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
+    if (title && !($('#pos-menu-item-id').value || '').trim()) {
+      title.textContent = bulk ? 'Bulk menu upload' : 'Add menu item';
+    }
+    if (bulk) {
+      resetItemAutosaveState();
+      setErr($('#pos-menu-item-err'), '');
+      syncProductOutletListbox();
+      if (typeof global.initEpListboxes === 'function') {
+        try {
+          global.initEpListboxes();
+        } catch (err) {}
+      }
+    }
+  }
+
+  function bulkModalOutlet() {
+    var raw = ensureProductOutletFilter();
+    if (raw === 'bar' || raw === 'restaurant') return raw;
+    return resolvePosOutlet();
+  }
+
+  function downloadMenuBulkTemplate() {
+    var outlet = bulkModalOutlet();
+    var url =
+      resolvePosApiBase() +
+      '/api/menu/items/bulk-template?outlet=' +
+      encodeURIComponent(outlet) +
+      '&_=' +
+      Date.now();
+    setBulkStatus('');
+    fetch(url, {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      headers: { Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Could not download template.');
+        var disp = r.headers.get('Content-Disposition') || '';
+        var match = /filename\*?=(?:UTF-8'')?["']?([^";]+)/i.exec(disp);
+        var fallback = 'Menu Items Template.xlsx';
+        var name = match ? decodeURIComponent(match[1].replace(/"/g, '').trim()) : fallback;
+        return r.blob().then(function (blob) {
+          return { blob: blob, name: name || fallback };
+        });
+      })
+      .then(function (res) {
+        var href = URL.createObjectURL(res.blob);
+        var a = document.createElement('a');
+        a.href = href;
+        a.download = res.name;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () {
+          URL.revokeObjectURL(href);
+        }, 800);
+        setBulkStatus('');
+      })
+      .catch(function () {
+        setBulkStatus('Could not download template.', true);
+      });
+  }
+
+  function setBulkStatus(html, isError) {
+    var el = $('#pos-menu-item-bulk-status');
+    if (!el) return;
+    el.classList.toggle('is-error', !!isError);
+    el.innerHTML = html || '';
+  }
+
+  function uploadMenuBulkFile(file) {
+    var err = $('#pos-menu-item-err');
+    if (!file) {
+      setBulkStatus('Choose an Excel file first.', true);
+      return;
+    }
+    var fd = new FormData();
+    fd.append('file', file);
+    fd.append('outlet', bulkModalOutlet());
+    setErr(err, '');
+    setBulkStatus('Uploading…');
+    fetch(
+      resolvePosApiBase() +
+        '/api/menu/items/bulk?outlet=' +
+        encodeURIComponent(bulkModalOutlet()),
+      {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      body: fd
+    })
+      .then(function (r) {
+        return r.json().then(function (data) {
+          return { ok: r.ok, data: data };
+        });
+      })
+      .then(function (res) {
+        var data = res.data || {};
+        if (!res.ok || !data.ok) {
+          var msg = data.error || 'Could not import menu items.';
+          setErr(err, msg);
+          setBulkStatus(escapeHtml(msg), true);
+          showToast(msg);
+          return;
+        }
+        var created = Number(data.created_count || 0);
+        var skipped = Number(data.skipped_count || 0);
+        var failed = Number(data.error_count || 0);
+        var parts = [];
+        if (created) parts.push(created + (created === 1 ? ' item added' : ' items added'));
+        if (skipped) parts.push(skipped + ' skipped');
+        if (failed) parts.push(failed + ' with errors');
+        var summary = parts.length ? parts.join(', ') + '.' : 'No new items in the file.';
+        var extra = '';
+        var errList = Array.isArray(data.errors) ? data.errors.slice(0, 8) : [];
+        if (errList.length) {
+          extra =
+            '<ul>' +
+            errList
+              .map(function (row) {
+                return '<li>Row ' + escapeHtml(String(row.row || '')) + ': ' + escapeHtml(row.error || '') + '</li>';
+              })
+              .join('') +
+            '</ul>';
+        }
+        setBulkStatus(escapeHtml(summary) + extra, failed > 0 && created === 0);
+        showToast(summary);
+        fetchCategoriesThen(function () {
+          fetchAllItemsThen();
+        });
+      })
+      .catch(function () {
+        setErr(err, 'Could not import menu items.');
+        setBulkStatus('Could not import menu items.', true);
+        showToast('Could not import menu items.');
+      })
+      .then(function () {
+        var input = $('#pos-menu-item-bulk-file');
+        if (input) input.value = '';
+      });
   }
 
   function openCategoryModal(cat) {
@@ -1847,10 +2035,7 @@
   };
 
   global.onPosMenuProductOutletChanged = function (root, value) {
-    var raw = String(value || '').trim().toLowerCase();
-    productOutletFilter =
-      raw === 'bar' ? 'bar' : raw === 'restaurant' ? 'restaurant' : '';
-    reloadProductPicker();
+    setModalOutlet(value);
   };
 
   global.onPosMenuItemMenuTypeChanged = function () {
@@ -1880,6 +2065,16 @@
   function openItemModal(item) {
     var isEdit = !!(item && item.id);
     resetItemAutosaveState();
+    setItemModalMode('single');
+    var modeHost = $('#pos-menu-item-mode-host');
+    var itemModal = $('#pos-menu-item-modal');
+    if (itemModal) itemModal.classList.toggle('is-edit', isEdit);
+    if (modeHost) modeHost.hidden = false;
+    var bulkStatus = $('#pos-menu-item-bulk-status');
+    if (bulkStatus) {
+      bulkStatus.textContent = '';
+      bulkStatus.classList.remove('is-error');
+    }
     var catId = null;
     if (isEdit && item.category_id != null) {
       var editCatId = Number(item.category_id);
@@ -1895,7 +2090,9 @@
       if (catHidden) catHidden.value = '';
       $('#pos-menu-item-category-id').value = '';
     }
-    fillCategorySelects();
+    productOutletFilter = isEdit ? itemOutlet(item) : resolvePosOutlet();
+    syncProductOutletListbox();
+    fillCategorySelects({ outlet: productOutletFilter });
     $('#pos-menu-item-title').textContent = isEdit ? 'Edit menu item' : 'Add menu item';
     $('#pos-menu-item-id').value = isEdit ? String(item.id) : '';
     if (catId) {
@@ -1904,26 +2101,24 @@
       setListboxValue(
         'pos-menu-item-category',
         String(catId),
-        (cat && categoryDisplayName(cat)) || 'Select category…'
+        (cat && cat.name) || 'Select category…'
       );
     } else {
       $('#pos-menu-item-category-id').value = '';
       setListboxValue('pos-menu-item-category', '', 'Select category…');
     }
     syncCategoryHiddenFromSelect();
-    productOutletFilter = defaultProductOutletFilter();
-    syncProductOutletListbox();
     $('#pos-menu-item-name').value = isEdit ? item.name || '' : '';
     $('#pos-menu-item-code').value = isEdit ? item.code || '' : '';
     $('#pos-menu-item-rate').value = isEdit ? String(item.rate != null ? item.rate : '') : '';
     $('#pos-menu-item-variant').value = isEdit ? item.variant || '' : '';
-    if (isBarOutlet()) {
+    if (isModalBarOutlet()) {
       var kind = isEdit ? String(item.item_kind || 'food').toLowerCase() : 'food';
       setItemKindListbox(kind);
     } else {
       setItemKindListbox('food');
     }
-    if (isBarOutlet()) {
+    if (isModalBarOutlet()) {
       setMenuTypeListbox('');
     } else {
       var mt = isEdit ? String(item.menu_type || '').toLowerCase() : '';
@@ -1946,6 +2141,7 @@
     renderRecipeRows();
     var del = $('#pos-menu-item-delete');
     if (del) del.hidden = !isEdit;
+    syncItemSaveButton();
     setErr($('#pos-menu-item-err'), '');
     fetchProductsThen(function () {
       rebuildProductListbox();
@@ -2112,6 +2308,7 @@
 
     if (!silent) busy = true;
     setErr(err, '');
+    syncItemSaveButton();
 
     var fetchOpts = {
       method: 'POST',
@@ -2177,15 +2374,28 @@
       .then(
         function (outcome) {
           itemSaveInflight = null;
+          syncItemSaveButton();
           return outcome;
         },
         function (errOut) {
           itemSaveInflight = null;
+          syncItemSaveButton();
           throw errOut;
         }
       );
 
     return itemSaveInflight;
+  }
+
+  function saveItemFromModal() {
+    if (busy) return;
+    persistMenuItem({ silent: false, force: true }).then(function (res) {
+      if (res && res.ok && !res.skipped) {
+        resetItemAutosaveState();
+        setItemModalMode('single');
+        closeModal('pos-menu-item-modal');
+      }
+    });
   }
 
   function deleteItem(itemId) {
@@ -2346,6 +2556,24 @@
       var t = e.target;
       if (!t) return;
 
+      var modeBtn = t.closest('[data-pos-menu-item-mode]');
+      if (modeBtn) {
+        e.preventDefault();
+        setItemModalMode(modeBtn.getAttribute('data-pos-menu-item-mode'));
+        return;
+      }
+      var outletBtn = t.closest('[data-pos-menu-item-outlet]');
+      if (outletBtn) {
+        e.preventDefault();
+        setModalOutlet(outletBtn.getAttribute('data-pos-menu-item-outlet'));
+        return;
+      }
+      if (t.closest('#pos-menu-item-bulk-template')) {
+        e.preventDefault();
+        downloadMenuBulkTemplate();
+        return;
+      }
+
       var dismiss = t.closest('[data-pos-menu-dismiss]');
       if (dismiss) {
         var which = dismiss.getAttribute('data-pos-menu-dismiss');
@@ -2469,7 +2697,7 @@
       itemForm.addEventListener('submit', function (e) {
         e.preventDefault();
         e.stopPropagation();
-        flushItemAutosave();
+        saveItemFromModal();
       });
       itemForm.addEventListener('input', function (ev) {
         var t = ev.target;
@@ -2507,6 +2735,21 @@
     if (itemDel) {
       itemDel.addEventListener('click', function () {
         deleteItem();
+      });
+    }
+    var itemSave = $('#pos-menu-item-save');
+    if (itemSave && itemSave.getAttribute('data-save-bound') !== '1') {
+      itemSave.setAttribute('data-save-bound', '1');
+      itemSave.addEventListener('click', function () {
+        saveItemFromModal();
+      });
+    }
+    var bulkFile = $('#pos-menu-item-bulk-file');
+    if (bulkFile && bulkFile.getAttribute('data-bulk-bound') !== '1') {
+      bulkFile.setAttribute('data-bulk-bound', '1');
+      bulkFile.addEventListener('change', function () {
+        var file = bulkFile.files && bulkFile.files[0];
+        if (file) uploadMenuBulkFile(file);
       });
     }
 

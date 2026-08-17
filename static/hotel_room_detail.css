@@ -1962,6 +1962,10 @@ button.hrd-ci-nightly-date:focus-visible{
   font:600 12px Inter,system-ui,sans-serif;
   color:#475569;
 }
+#hrd-ci-reservation-id-field[hidden],
+#hrd-ci-reservation-id-field.is-hidden{
+  display:none !important;
+}
 .hrd-field > span em{
   color:#DC2626;
   font-style:normal;
@@ -1991,6 +1995,10 @@ button.hrd-ci-nightly-date:focus-visible{
 }
 .hrd-field input.is-invalid,
 .hrd-field input.is-invalid:focus{
+  border-color:#FCA5A5;
+  box-shadow:0 0 0 3px rgba(220,38,38,.14);
+}
+.hrd-ci-rate-plan-listbox.is-invalid .se-filter-chip-control{
   border-color:#FCA5A5;
   box-shadow:0 0 0 3px rgba(220,38,38,.14);
 }
