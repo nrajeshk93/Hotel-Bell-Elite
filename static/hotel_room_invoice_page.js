@@ -281,25 +281,18 @@
       });
     });
     var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
-    var restaurant = 0;
-    var bar = 0;
     folio.forEach(function (item) {
       if (!item) return;
       var amount = Number(item.amount || 0);
       if (!(amount > 0)) return;
-      var kind = String(item.kind || '').toLowerCase();
-      if (kind === 'restaurant_room_transfer') {
-        restaurant += amount;
-        return;
-      }
-      if (kind === 'bar_room_transfer') {
-        bar += amount;
-        return;
-      }
       var folioId = String(item.id || '').trim();
+      var labelFn = global.hotelFolioChargeDisplayLabel;
       lines.push({
         key: folioId ? 'folio:' + folioId : '',
-        label: item.label || 'Other Charge',
+        label:
+          typeof labelFn === 'function'
+            ? labelFn(item)
+            : item.label || 'Other Charge',
         qty: 1,
         rate: amount,
         amount: round2(amount),
@@ -308,30 +301,6 @@
         nameEditable: true
       });
     });
-    if (restaurant > 0) {
-      lines.push({
-        key: 'restaurant_room_transfer',
-        label: 'Restaurant Room Transfer',
-        qty: 1,
-        rate: round2(restaurant),
-        amount: round2(restaurant),
-        canEdit: true,
-        canDelete: true,
-        nameEditable: false
-      });
-    }
-    if (bar > 0) {
-      lines.push({
-        key: 'bar_room_transfer',
-        label: 'Bar Room Transfer',
-        qty: 1,
-        rate: round2(bar),
-        amount: round2(bar),
-        canEdit: true,
-        canDelete: true,
-        nameEditable: false
-      });
-    }
     return lines;
   }
 

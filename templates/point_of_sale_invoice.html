@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=62">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 <script>
 (function(){
   try{
@@ -28,7 +28,7 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=62">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 {% endif %}
 {% from 'partials/ep_form_listbox_macros.html' import ep_toolbar_listbox, ep_listbox %}
 
@@ -438,13 +438,13 @@
 {% if pos_receipt_config %}
 <script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
 {% endif %}
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=65"></script>
 <script src="{{ url_for('static', filename='pos_offline.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=13"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=14"></script>
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=7"></script>
-<script src="{{ url_for('static', filename='pos_printers.js') }}?v=19"></script>
-<script src="{{ url_for('static', filename='pos_settle.js') }}?v=3"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=127"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
+<script src="{{ url_for('static', filename='pos_settle.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=128"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

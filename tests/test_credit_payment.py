@@ -820,7 +820,7 @@ class PurchaseVerificationApprovalGateTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn('data-can-mutate="1"', html)
-        self.assertIn('id="cp-header-verify-btn"', html)
+        self.assertIn('id="cp-open-select-btn"', html)
 
     def test_create_requires_approval(self):
         payload = {
@@ -994,7 +994,7 @@ class CreditPaymentApprovalGateTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn('data-can-mutate="1"', html)
-        self.assertIn('id="cp-header-verify-btn"', html)
+        self.assertIn('id="cp-open-select-btn"', html)
         self.assertIn("Clear Payment", html)
 
     def test_create_requires_approval(self):

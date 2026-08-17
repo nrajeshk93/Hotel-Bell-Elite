@@ -577,18 +577,35 @@
       });
   }
 
-  function invoiceWorkspaceUrl(invoiceId) {
-    return resolvePosApiBase() + '/invoice?invoice=' + encodeURIComponent(invoiceId);
-  }
-
-  function navigateToInvoiceWorkspace(invoiceId) {
+  function openSettleFromUnsettledRow(row) {
+    if (!row) return;
+    var invoiceId = row.getAttribute('data-invoice-id');
     if (!invoiceId) return;
-    var url = invoiceWorkspaceUrl(invoiceId);
-    if (typeof global.deNavigateWithTransition === 'function') {
-      global.deNavigateWithTransition(url);
+    if (typeof global.bindPosSettleModal === 'function') {
+      global.bindPosSettleModal();
+    }
+    if (typeof global.openPosSettleModal !== 'function') {
+      toast('Settle dialog is not available.');
       return;
     }
-    window.location.href = url;
+    global.openPosSettleModal({
+      invoiceId: invoiceId,
+      orderNo: row.getAttribute('data-order-no') || '—',
+      tableLabel: row.getAttribute('data-table') || '',
+      grandTotal: row.getAttribute('data-grand-total'),
+      apiBase: resolvePosApiBase(),
+      onSettled: function (_settledInvoice, meta) {
+        var table = (meta && meta.tableLabel) || row.getAttribute('data-table') || '';
+        toast(
+          table
+            ? 'Bill settled. ' + table + ' is now available.'
+            : 'Bill settled successfully.'
+        );
+        window.setTimeout(function () {
+          window.location.reload();
+        }, 400);
+      }
+    });
   }
 
   function bindActions(page) {
@@ -612,7 +629,8 @@
 
       var unsettledRow = ev.target.closest('tr.pos-il-row.is-unsettled');
       if (unsettledRow && page.contains(unsettledRow) && !ev.target.closest('.pl-col-actions')) {
-        navigateToInvoiceWorkspace(unsettledRow.getAttribute('data-invoice-id'));
+        ev.preventDefault();
+        openSettleFromUnsettledRow(unsettledRow);
       }
     });
 
@@ -621,7 +639,7 @@
       var row = ev.target.closest('tr.pos-il-row.is-unsettled');
       if (!row || row !== ev.target) return;
       ev.preventDefault();
-      navigateToInvoiceWorkspace(row.getAttribute('data-invoice-id'));
+      openSettleFromUnsettledRow(row);
     });
 
     var modal = document.getElementById('pos-il-view-modal');
@@ -871,6 +889,9 @@
     bindSettlementFilter(page);
     bindDateRange(page);
     bindActions(page);
+    if (typeof global.bindPosSettleModal === 'function') {
+      global.bindPosSettleModal();
+    }
     if (typeof global.initEpListboxes === 'function') {
       global.initEpListboxes();
     }

@@ -379,6 +379,72 @@ class PosSalesUpdateTests(unittest.TestCase):
         self.assertEqual(module["sales_entry_values"]["total_sales"], 800.0)
         self.assertEqual(module["sales_entry_values"]["upi"], 800.0)
 
+    def test_hotel_credit_settlement_updates_guest_credit(self):
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_hotel_room_invoices_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO hotel_room_invoices (
+                    invoice_number, room_id, room_number, room_type_label,
+                    guest_name, booking_number, check_in_date, check_out_date,
+                    invoice_generated_at, estimated_total, advance_paid,
+                    balance_amount, status, payload_json
+                ) VALUES (?, 'r201', '201', 'Deluxe', 'Guest', '',
+                          '2026-08-12', '2026-08-13', ?, 158.0, 158.0, 0, 'settled', ?)
+                """,
+                (
+                    "HBE/RM/SU/CREDIT",
+                    "2026-08-12 11:00:00",
+                    json.dumps({
+                        "id": "r201",
+                        "number": "201",
+                        "stay": {
+                            "agencyName": "ATPI India Pvt. Ltd",
+                            "payments": [{"method": "credit", "amount": 158.0}],
+                        },
+                    }),
+                ),
+            )
+            self.app_mod.replace_hotel_ledger_entries(
+                conn,
+                self.app_mod.DEFAULT_COMPANY,
+                self.app_mod.OUTLET_HOTEL,
+                "2026-08-12",
+                [{
+                    "invoice_number": "FO-CASH",
+                    "amount": 50.0,
+                    "payment_mode": "cash",
+                    "sort_order": 1,
+                    "source_row": 1,
+                }],
+            )
+            conn.commit()
+            analytics = self.app_mod._load_outlet_entry_bundle(
+                conn,
+                self.user,
+                self.app_mod.DEFAULT_COMPANY,
+                self.app_mod.OUTLET_HOTEL,
+                "2026-08-12",
+                "2026-08-13",
+                overlay_invoices=False,
+            )
+            module = self.app_mod._load_outlet_entry_bundle(
+                conn,
+                self.user,
+                self.app_mod.DEFAULT_COMPANY,
+                self.app_mod.OUTLET_HOTEL,
+                "2026-08-12",
+                "2026-08-13",
+                overlay_invoices=True,
+            )
+        finally:
+            conn.close()
+        self.assertEqual(analytics["sales_entry_values"]["cash"], 50.0)
+        self.assertEqual(analytics["sales_entry_values"]["room_credit"], 158.0)
+        self.assertEqual(module["sales_entry_values"]["total_sales"], 158.0)
+        self.assertEqual(module["sales_entry_values"]["room_credit"], 158.0)
+
     def test_hotel_module_route_hides_fo_upload_and_highlights_hotel_nav(self):
         self.user["dashboard_access"] = {"hotel_rooms"}
         page = self.client.get("/hotel/sales-update")

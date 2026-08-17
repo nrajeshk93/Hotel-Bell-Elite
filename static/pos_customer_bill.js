@@ -98,6 +98,10 @@
     return fallback;
   }
 
+  function isNillSeriesOrderNo(orderNo) {
+    return /^(SPC|INV)\/\d{2}-\d{2}\/Nill\/\d+$/i.test(String(orderNo || '').trim());
+  }
+
   function escapeHtml(value) {
     return String(value == null ? '' : value)
       .replace(/&/g, '&amp;')
@@ -395,6 +399,17 @@
             '</span></div>'
           : '')
       : '';
+    var hideGstFssai = isNillSeriesOrderNo(orderNo);
+    var gstFssaiHtml = hideGstFssai
+      ? ''
+      : '<div class="gst-no">GST ' +
+        escapeHtml(cfg.gst) +
+        (cfg.fssai
+          ? ' &nbsp;|&nbsp; <span class="fssai">FSSAI No - ' +
+            escapeHtml(cfg.fssai) +
+            '</span>'
+          : '') +
+        '</div>';
 
     return (
       '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bill ' +
@@ -443,14 +458,7 @@
       '<div class="addr">' +
       escapeHtml(cfg.address) +
       '</div>' +
-      '<div class="gst-no">GST ' +
-      escapeHtml(cfg.gst) +
-      (cfg.fssai
-        ? ' &nbsp;|&nbsp; <span class="fssai">FSSAI No - ' +
-          escapeHtml(cfg.fssai) +
-          '</span>'
-        : '') +
-      '</div>' +
+      gstFssaiHtml +
       '<hr class="rule">' +
       '<div class="meta">' +
       '<div><span>Invoice</span><span>' +
@@ -551,5 +559,6 @@
   }
 
   global.getPosReceiptConfig = getPosReceiptConfig;
+  global.isNillSeriesOrderNo = isNillSeriesOrderNo;
   global.buildPosCustomerBillHtml = buildPosCustomerBillHtml;
 })(typeof window !== 'undefined' ? window : globalThis);

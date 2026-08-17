@@ -273,6 +273,40 @@ class HotelIdDocumentRouteTests(unittest.TestCase):
         self.assertIn("application/pdf", resp.headers.get("Content-Type", ""))
         self.assertTrue(resp.data.startswith(b"%PDF"))
 
+    def test_view_raw_url_does_not_end_with_pdf(self):
+        resp = self.client.post(
+            "/hotel/api/id-documents",
+            data={"file": self._jpeg_tuple("guest-id.jpg")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        url = body["document"]["urlPath"]
+        self.assertTrue(url.endswith("/raw"), url)
+        self.assertFalse(url.endswith(".pdf"), url)
+        self.assertIn("/id-documents/view/", url)
+        file_resp = self.client.get(url)
+        self.assertEqual(file_resp.status_code, 200)
+        self.assertIn("application/pdf", file_resp.headers.get("Content-Type", ""))
+        self.assertTrue(file_resp.data.startswith(b"%PDF"))
+
+    def test_view_url_serves_from_db_after_disk_file_removed(self):
+        resp = self.client.post(
+            "/hotel/api/id-documents",
+            data={"file": self._jpeg_tuple("guest-id.jpg")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        stored = Path(self.doc_tmp.name) / body["document"]["storedName"]
+        self.assertTrue(stored.is_file())
+        stored.unlink()
+        self.assertFalse(stored.is_file())
+        file_resp = self.client.get(body["document"]["urlPath"])
+        self.assertEqual(file_resp.status_code, 200)
+        self.assertIn("application/pdf", file_resp.headers.get("Content-Type", ""))
+        self.assertTrue(file_resp.data.startswith(b"%PDF"))
+
     def test_upload_api_names_file_from_guest_and_id_type(self):
         resp = self.client.post(
             "/hotel/api/id-documents",

@@ -12,6 +12,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice_ledger.css') }}?v=12">
 <script>
 (function(){
@@ -247,9 +249,12 @@
               {% set can_cancel = inv.ledger_can_cancel if inv.ledger_can_cancel is defined else false %}
               <tr class="pos-il-row{% if not is_settled and not is_cancelled %} is-unsettled{% endif %}{% if is_cancelled %} is-cancelled{% endif %}{% if is_settled %} is-settled{% endif %}"
                   data-invoice-id="{{ inv.id }}"
+                  data-order-no="{{ inv.order_no or '' }}"
+                  data-table="{{ inv.table_label or '' }}"
+                  data-grand-total="{{ inv.grand_total }}"
                   data-settlement="{{ 'settled' if is_settled else ('cancelled' if is_cancelled else 'unsettled') }}"
                   data-generated="{{ '1' if inv.ledger_is_generated else '0' }}"
-                  {% if not is_settled and not is_cancelled %}tabindex="0" role="link" aria-label="Open invoice {{ inv.order_no }} on POS"{% endif %}
+                  {% if not is_settled and not is_cancelled %}tabindex="0" role="button" aria-label="Settle invoice {{ inv.order_no }}"{% endif %}
                   data-search="{{ [inv.order_no or '', inv.order_date or '', inv.saved_at or '', inv.customer_name or '', inv.customer_mobile or '', inv.order_type_label or '', inv.payment_mode_label or '', inv.table_label or '', inv.captain or '', inv.grand_total|string]|join(' ')|lower }}">
                 <td class="pl-col-code" data-sort-value="{{ inv.order_no or '' }}"><span class="pl-expense-code">{{ inv.order_no or '—' }}</span></td>
                 <td class="pl-col-date" data-sort-value="{{ inv.saved_at or inv.order_date or '' }}">
@@ -332,15 +337,18 @@
   </div>
 </div>
 
+{% include 'partials/pos_settle_modal.html' %}
+
 {% if pos_receipt_config %}
 <script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
 {% endif %}
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
-<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=13"></script>
-<script src="{{ url_for('static', filename='pos_printers.js') }}?v=19"></script>
-<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=19"></script>
+<script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=14"></script>
+<script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
+<script src="{{ url_for('static', filename='pos_settle.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=20"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

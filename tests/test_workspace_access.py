@@ -323,6 +323,7 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("save_supplier"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_supplier_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("hotel_rooms"), "hotel_rooms")
+        self.assertEqual(get_endpoint_dashboard_module("hotel_credit"), "hotel_rooms")
         self.assertEqual(get_endpoint_dashboard_module("communication_hub"), "communication_hub")
         self.assertEqual(get_endpoint_dashboard_module("communication_hub_api_conversations"), "communication_hub")
         self.assertEqual(get_endpoint_dashboard_module("stores"), "stores")

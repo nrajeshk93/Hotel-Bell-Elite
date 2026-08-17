@@ -56,6 +56,9 @@
           data-tip-add-url="{{ url_for('sales_update_add_tip') }}"
           data-tip-edit-url="{{ url_for('sales_update_edit_tip') }}"
           data-tip-delete-url="{{ url_for('sales_update_delete_tip') }}"
+          data-staff-credit-add-url="{{ url_for('sales_update_add_staff_credit') }}"
+          data-staff-credit-edit-url="{{ url_for('sales_update_edit_staff_credit') }}"
+          data-staff-credit-delete-url="{{ url_for('sales_update_delete_staff_credit') }}"
           data-supplier-create-url="{{ url_for('create_supplier') }}"
           data-available-cash="{{ available_cash }}"></div>
         {% include 'partials/sales_update_petty_section.html' %}
@@ -69,7 +72,10 @@
 {% include 'partials/sales_update_filter_scripts.html' %}
 {% include 'partials/sales_update_petty_scripts.html' %}
 {% include 'partials/sales_update_hotel_ledger_scripts.html' %}
+{% include 'partials/sales_update_tips_modal.html' %}
 {% include 'partials/sales_update_tips_scripts.html' %}
+{% include 'partials/sales_update_staff_credit_modal.html' %}
+{% include 'partials/sales_update_staff_credit_scripts.html' %}
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

@@ -171,6 +171,31 @@
     applySearch();
   }
 
+  function bindInvoiceFilter(page) {
+    var form = $('#hil-filter-form', page);
+    var list = $('#hil-invoice-list', page);
+    if (!form || !list || list.getAttribute('data-bound') === '1') return;
+    list.setAttribute('data-bound', '1');
+    list.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('.se-filter-listbox-option');
+      if (!btn) return;
+      var hidden = $('#hil-invoice', page);
+      var valueEl = $('#hil-invoice-value', page);
+      var val = btn.getAttribute('data-value') || 'all';
+      if (hidden) hidden.value = val;
+      if (valueEl) {
+        valueEl.textContent =
+          btn.getAttribute('data-label') || btn.textContent.trim();
+      }
+      $all('.se-filter-listbox-option', list).forEach(function (opt) {
+        var on = opt === btn;
+        opt.classList.toggle('is-selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      prepareAndSubmit(form);
+    });
+  }
+
   function bindStatusFilter(page) {
     var form = $('#hil-filter-form', page);
     var list = $('#hil-status-list', page);
@@ -205,6 +230,10 @@
     var status = $('#hil-status', form);
     if (status && (status.value === 'all' || !status.value)) {
       status.removeAttribute('name');
+    }
+    var invoice = $('#hil-invoice', form);
+    if (invoice && (invoice.value === 'all' || !invoice.value)) {
+      invoice.removeAttribute('name');
     }
     if (typeof global.deNavigateWithTransition === 'function') {
       var action = form.getAttribute('action') || window.location.pathname;
@@ -259,6 +288,10 @@
         var status = $('#hil-status', form);
         if (status && (status.value === 'all' || !status.value)) {
           status.removeAttribute('name');
+        }
+        var invoice = $('#hil-invoice', form);
+        if (invoice && (invoice.value === 'all' || !invoice.value)) {
+          invoice.removeAttribute('name');
         }
       }
     });
@@ -387,6 +420,7 @@
           balance: balance,
           invoiceNumber: invoice.invoice_number || invoiceNumber,
           settleUrl: settleApiUrl(page, invoice.invoice_number || invoiceNumber),
+          allowCredit: !!result.data.allow_credit,
           onSuccess: function () {
             toast('Payment recorded.');
             refreshLedgerAfterSettle();
@@ -449,12 +483,18 @@
     if (form) prepareAndSubmit(form);
   }
 
+  function hilInvoiceChanged() {
+    var form = document.getElementById('hil-filter-form');
+    if (form) prepareAndSubmit(form);
+  }
+
   function initHotelInvoiceLedgerPage() {
     var page = document.getElementById('hotel-invoice-ledger-page');
     if (!page) return;
     formatAmounts(page);
     bindClientSearch(page);
     bindSort(page);
+    bindInvoiceFilter(page);
     bindStatusFilter(page);
     bindDateRange(page);
     bindActions(page);
@@ -468,6 +508,7 @@
   }
 
   global.hilStatusChanged = hilStatusChanged;
+  global.hilInvoiceChanged = hilInvoiceChanged;
   global.initHotelInvoiceLedgerPage = initHotelInvoiceLedgerPage;
   global.hilSettleClick = function (btn) {
     var page = document.getElementById('hotel-invoice-ledger-page');

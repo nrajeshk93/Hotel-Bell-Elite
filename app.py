@@ -61,6 +61,7 @@ from db import (
     get_hotel_rooms_layout,
     get_hotel_room,
     get_hotel_room_invoice,
+    _hotel_invoice_allow_credit,
     get_hotel_settings,
     get_hotel_tax_rates,
     get_hotel_tariff_rates,
@@ -83,6 +84,11 @@ from db import (
     generate_hotel_room_invoice,
     record_hotel_room_payment,
     record_hotel_room_invoice_payment,
+    hotel_invoice_credit_paid_total,
+    sync_hotel_invoice_credits,
+    upsert_hotel_invoice_credit,
+    ensure_hotel_invoice_credits_schema,
+    _hotel_credit_party_id,
     set_hotel_room_discount,
     append_hotel_room_folio_charge,
     update_hotel_room_charge,
@@ -211,7 +217,12 @@ from embed_helpers import (
     is_embed_request,
     is_partial_main_request,
 )
-from hotel_id_documents import process_uploaded_id_documents, resolve_stored_id_document
+from hotel_id_documents import (
+    open_id_document_payload,
+    persist_id_document_bytes,
+    process_uploaded_id_documents,
+    resolve_stored_id_document,
+)
 from user_photos import (
     delete_stored_user_photo,
     process_uploaded_user_photo,
@@ -380,7 +391,8 @@ HOTEL_SALES_ENTRY_FIELDS = (
     ("cash", "Cash"),
     ("card", "Card"),
     ("upi", "UPI"),
-    ("room_credit", "Credit"),
+    ("staff_account", "Employee Credit"),
+    ("room_credit", "Guest Credit"),
     ("actual_cash", "Actual Cash"),
     ("tips", "Tips"),
     ("expense", "Expense"),
@@ -693,6 +705,16 @@ def enforce_access():
         return None
 
     if not user:
+        xhr = (
+            request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            or request.is_json
+        )
+        if xhr and (
+            endpoint
+            in {"hotel_id_document_file", "hotel_id_document_file_view"}
+            or request.path.startswith("/hotel/api/id-documents/")
+        ):
+            return jsonify({"ok": False, "error": "Please sign in again."}), 401
         return redirect(url_for("index"))
 
     required_dashboard = get_endpoint_dashboard_module(endpoint)
@@ -996,6 +1018,10 @@ def sync_hotel_sales_from_ledger(conn, user, company, location, sales_date):
     sales_entries = build_hotel_sales_entry_values(sales_entries)
     sales_entries["expense"] = _sales_expense_total(conn, company, location, sales_date)
     _apply_tip_line_total(conn, company, location, sales_date, sales_entries)
+    if location in HOTEL_LOCATIONS:
+        sales_entries["staff_account"] = _sales_staff_account_total(
+            conn, company, location, sales_date
+        )
     existing_row = load_sales_row(company, location, sales_date)
     petty = (existing_row or {}).get("petty_cash_counts", {})
     cash_denoms = (existing_row or {}).get("cash_denomination_counts", {})
@@ -1504,10 +1530,21 @@ def _reverse_room_transfer_entry_payments(conn, entry_ids):
     return ids
 
 
+_SALES_ENTRY_EXPENSE_KIND_SQL = (
+    " AND COALESCE(NULLIF(TRIM(entry_kind), ''), ?) != ?"
+)
+_SALES_ENTRY_EXPENSE_KIND_PARAMS = (
+    LEDGER_ENTRY_KIND_EXPENSE,
+    LEDGER_ENTRY_KIND_PURCHASE,
+)
+
+
 def _sales_expense_total(conn, company, location, sales_date):
     row = conn.execute(
-        "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses WHERE company=? AND location=? AND sales_date=?",
-        (company, location, sales_date),
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM sales_update_expenses "
+        "WHERE company=? AND location=? AND sales_date=?"
+        + _SALES_ENTRY_EXPENSE_KIND_SQL,
+        (company, location, sales_date, *_SALES_ENTRY_EXPENSE_KIND_PARAMS),
     ).fetchone()
     return round_half_up(row["total"] if row else 0, 2)
 
@@ -1543,12 +1580,105 @@ def _sales_tip_entries(conn, company, location, sales_date):
 
 def _active_employees_for_tips(conn):
     rows = conn.execute(
-        """SELECT id, emp_code, name, location
+        """SELECT id, emp_code, name, location, company
            FROM employees
            WHERE status = 'active'
            ORDER BY LOWER(name), id"""
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def _active_employees_for_credit(conn):
+    return _active_employees_for_tips(conn)
+
+
+_SALES_STAFF_CREDIT_SCOPE_SQL = """
+          COALESCE(c.sales_company, '') = ?
+      AND COALESCE(c.sales_location, '') = ?
+"""
+
+
+def _sales_staff_credit_scope_params(company, location):
+    return (company, location)
+
+
+def _sales_staff_credit_outflow_total(conn, company, location, sales_date):
+    scope = _sales_staff_credit_scope_params(company, location)
+    row = conn.execute(
+        f"""
+        SELECT COALESCE(SUM(c.amount), 0) AS total
+        FROM credits c
+        WHERE c.date=?
+          AND c.entry_type='manual'
+          AND c.amount > 0
+          AND {_SALES_STAFF_CREDIT_SCOPE_SQL}
+        """,
+        (sales_date, *scope),
+    ).fetchone()
+    return round_half_up(row["total"] if row else 0, 2)
+
+
+def _sales_staff_account_total(conn, company, location, sales_date):
+    return _sales_staff_credit_outflow_total(conn, company, location, sales_date)
+
+
+def _sales_staff_account_entries(conn, company, location, sales_date):
+    scope = _sales_staff_credit_scope_params(company, location)
+    rows = conn.execute(
+        f"""
+        SELECT
+            c.id,
+            c.employee_id,
+            c.date,
+            c.description,
+            c.amount,
+            e.name AS employee_name,
+            e.emp_code AS employee_code,
+            e.company AS employee_company,
+            e.location AS employee_location
+        FROM credits c
+        JOIN employees e ON e.id = c.employee_id
+        WHERE c.date=?
+          AND c.entry_type='manual'
+          AND c.amount > 0
+          AND {_SALES_STAFF_CREDIT_SCOPE_SQL}
+        ORDER BY c.created_at ASC, c.id ASC
+        """,
+        (sales_date, *scope),
+    ).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        item["employee_code"] = item.get("employee_code") or ""
+        item["employee_company"] = item.get("employee_company") or ""
+        item["employee_location"] = item.get("employee_location") or ""
+        item["description"] = item.get("description") or ""
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        entries.append(item)
+    return entries
+
+
+def _sales_staff_credit_row(conn, credit_id, company, location, sales_date):
+    scope = _sales_staff_credit_scope_params(company, location)
+    return conn.execute(
+        f"""
+        SELECT c.id, c.employee_id, c.expense_id, c.description, c.amount
+        FROM credits c
+        WHERE c.id=?
+          AND c.date=?
+          AND c.entry_type='manual'
+          AND c.amount > 0
+          AND {_SALES_STAFF_CREDIT_SCOPE_SQL}
+        """,
+        (credit_id, sales_date, *scope),
+    ).fetchone()
+
+
+def _sales_staff_credit_api_payload(conn, company, location, sales_date):
+    return {
+        "staff_account_total": _sales_staff_account_total(conn, company, location, sales_date),
+        "staff_account_entries": _sales_staff_account_entries(conn, company, location, sales_date),
+    }
 
 
 def _sales_tip_line_count(conn, company, location, sales_date):
@@ -1806,9 +1936,11 @@ def _sales_expense_entries(conn, company, location, sales_date):
                   e.category, e.invoice_number, e.supplier_id, e.entry_kind, s.name AS supplier_name
            FROM sales_update_expenses e
            LEFT JOIN suppliers s ON s.id = e.supplier_id
-           WHERE e.company=? AND e.location=? AND e.sales_date=?
+           WHERE e.company=? AND e.location=? AND e.sales_date=?"""
+        + _SALES_ENTRY_EXPENSE_KIND_SQL.replace("entry_kind", "e.entry_kind")
+        + """
            ORDER BY e.created_at, e.id""",
-        (company, location, sales_date),
+        (company, location, sales_date, *_SALES_ENTRY_EXPENSE_KIND_PARAMS),
     ).fetchall()
     entries = []
     for row in rows:
@@ -1966,6 +2098,7 @@ CREDIT_PAYMENT_VIEW_OUTSTANDING = "outstanding"
 CREDIT_PAYMENT_VIEW_HISTORY = "history"
 CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT = "credit_payment"
 CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION = "purchase_verification"
+CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT = "hotel_credit"
 CREDIT_PAYMENT_VIEWS = _sorted_label_choices((
     (CREDIT_PAYMENT_VIEW_OUTSTANDING, "Outstanding Credit"),
     (CREDIT_PAYMENT_VIEW_HISTORY, "Payment History"),
@@ -2013,6 +2146,11 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "clearance_total_label": "Payment total",
         "detail_modal_title": "Payment Detail",
         "detail_date_label": "Payment date",
+        "detail_party_label": "Supplier",
+        "detail_alloc_head": "Allocated expenses",
+        "alloc_selected_label": "Selected expenses",
+        "alloc_item_column": "Expense",
+        "requires_txn_methods": ["card"],
         "pay_now_column": "Pay now",
         "select_error_none": "Select at least one credit expense.",
         "submit_error_record": "Unable to record payment.",
@@ -2072,12 +2210,84 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "detail_error_load": "Unable to load verification.",
         "detail_error_network": "Network error while loading verification.",
     },
+    CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT: {
+        "page_title": "Credit",
+        "page_subtitle": "Agency credit from Hotel Invoice Ledger. Collect full or partial payment across invoices.",
+        "filter_aria_label": "Hotel credit filters",
+        "view_aria_label": "Hotel credit views",
+        "nav_section": "hotel",
+        "nav_hotel_view": "credit",
+        "nav_accounts_view": "",
+        "route_endpoint": "hotel_credit",
+        "views": CREDIT_PAYMENT_VIEWS,
+        "show_kind_filter": False,
+        "show_kind_column": False,
+        "show_category_column": False,
+        "show_category_kpis": False,
+        "party_filter_label": "Agency",
+        "party_filter_all": "All agencies",
+        "party_plural": "agencies",
+        "party_column": "Agency",
+        "code_column": "Invoice",
+        "item_column": "Guest / Room",
+        "history_count_column": "Invoices",
+        "outstanding_unit": "invoice",
+        "requires_txn_methods": ["bank_transfer"],
+        "search_placeholder": "Invoice, agency, guest…",
+        "outstanding_summary_label": "Outstanding credit",
+        "outstanding_panel_title": "Outstanding Credit",
+        "outstanding_panel_aria": "Outstanding hotel credit invoices",
+        "outstanding_table_aria": "Outstanding hotel credit invoices",
+        "outstanding_empty": "No agency credit invoices found. Settle a Hotel Invoice Ledger bill as Credit to add it here.",
+        "history_summary_label": "Payments collected",
+        "history_summary_unit": "collection",
+        "history_panel_title": "Payment History",
+        "history_panel_aria": "Hotel credit payment history",
+        "history_table_aria": "Hotel credit payment history",
+        "history_date_column": "Payment date",
+        "history_empty": "No credit collections found for the selected filters.",
+        "history_revert_button": "Revert",
+        "history_revert_tip": "Revert to Outstanding Credit",
+        "action_button": "Clear Payment",
+        "row_action_button": "Payment Received",
+        "select_modal_title": "Select Invoices",
+        "select_modal_copy": "Choose outstanding credit invoices to collect together. Mixed agencies are recorded as separate payments. Enter a pay-now amount on each invoice for a partial collection.",
+        "select_table_aria": "Select credit invoices",
+        "select_continue": "Clear Payment",
+        "clearance_modal_title": "Payment Details",
+        "clearance_date_label": "Payment date *",
+        "clearance_mode_label": "Payment mode *",
+        "require_payment_method_choice": True,
+        "select_error_method": "Select a payment mode.",
+        "show_payment_mode": True,
+        "show_verification_account": False,
+        "show_history_expense_ids": True,
+        "clearance_submit": "Record Payment",
+        "clearance_total_label": "Payment total",
+        "detail_modal_title": "Payment Detail",
+        "detail_date_label": "Payment date",
+        "detail_party_label": "Agency",
+        "detail_alloc_head": "Allocated invoices",
+        "alloc_selected_label": "Selected invoices",
+        "alloc_item_column": "Invoice",
+        "pay_now_column": "Pay now",
+        "select_error_none": "Select at least one credit invoice.",
+        "submit_error_record": "Unable to record payment.",
+        "submit_error_network": "Network error while recording payment.",
+        "delete_confirm": "Revert this collection to Outstanding Credit?",
+        "delete_error": "Unable to revert payment.",
+        "delete_error_network": "Network error while reverting payment.",
+        "detail_error_load": "Unable to load payment.",
+        "detail_error_network": "Network error while loading payment.",
+    },
 }
 
 
 def _credit_settlement_page_mode(value):
     if value == CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION:
         return CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION
+    if value == CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT:
+        return CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT
     return CREDIT_SETTLEMENT_MODE_CREDIT_PAYMENT
 
 
@@ -2099,15 +2309,16 @@ def _render_credit_settlement_page(mode):
 
     conn = get_db()
     try:
-        suppliers = _all_suppliers(conn)
-        supplier_lookup = {str(s["id"]): s for s in suppliers}
-        if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
-            selected_supplier = PURCHASE_LEDGER_FILTER_ALL
-            supplier_id = None
+        page_mode = _credit_settlement_page_mode(mode)
+        if page_mode != CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT:
+            suppliers = _all_suppliers(conn)
+            supplier_lookup = {str(s["id"]): s for s in suppliers}
+            if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
+                selected_supplier = PURCHASE_LEDGER_FILTER_ALL
+                supplier_id = None
         if selected_kind != PURCHASE_LEDGER_FILTER_ALL and selected_kind not in LEDGER_ENTRY_KIND_LABELS:
             selected_kind = PURCHASE_LEDGER_FILTER_ALL
             entry_kind = None
-        page_mode = _credit_settlement_page_mode(mode)
         if page_mode == CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION:
             outstanding_entries = _pending_purchase_verifications(
                 conn, date_from, date_to, supplier_id=supplier_id, entry_kind=entry_kind
@@ -2122,6 +2333,27 @@ def _render_credit_settlement_page(mode):
             create_url = url_for("create_purchase_verification")
             delete_url = url_for("delete_purchase_verification")
             detail_url_template = url_for("purchase_verification_detail", verification_id=0)
+        elif page_mode == CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT:
+            all_outstanding = _outstanding_hotel_credits(conn, date_from, date_to, party_id=None)
+            suppliers = _hotel_credit_agency_filters(conn, all_outstanding)
+            supplier_lookup = {str(s["id"]): s for s in suppliers}
+            if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in supplier_lookup:
+                selected_supplier = PURCHASE_LEDGER_FILTER_ALL
+                supplier_id = None
+            outstanding_entries = (
+                all_outstanding
+                if not supplier_id
+                else [entry for entry in all_outstanding if int(entry.get("supplier_id") or 0) == int(supplier_id)]
+            )
+            payment_entries = _hotel_credit_payment_entries(
+                conn,
+                payment_date_from=payment_date_from,
+                payment_date_to=payment_date_to,
+                party_id=supplier_id,
+            )
+            create_url = url_for("create_hotel_credit_payment")
+            delete_url = url_for("delete_hotel_credit_payment")
+            detail_url_template = url_for("hotel_credit_payment_detail", payment_id=0)
         else:
             outstanding_entries = _outstanding_credit_expenses(
                 conn, date_from, date_to, supplier_id=supplier_id, entry_kind=entry_kind
@@ -2169,7 +2401,7 @@ def _render_credit_settlement_page(mode):
     payment_total = round_half_up(
         sum(entry["total_amount"] for entry in payment_entries), 2
     )
-    selected_supplier_label = "All suppliers"
+    selected_supplier_label = labels.get("party_filter_all") or "All suppliers"
     if selected_supplier != PURCHASE_LEDGER_FILTER_ALL:
         match = supplier_lookup.get(selected_supplier)
         if match:
@@ -2215,8 +2447,21 @@ def _render_credit_settlement_page(mode):
         purchase_report_kwargs["payment_date_to"] = filter_payment_date_to
 
     actor = get_current_user()
-    # Clear Payment / Verify / Approve / Revert require Approval module; Accounts alone is view-only.
-    can_mutate_settlement = user_can_approve_transactions(actor)
+    if page_mode == CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT:
+        can_mutate_settlement = bool(actor)
+        payment_methods = HOTEL_CREDIT_PAYMENT_METHODS
+        payment_method_labels = HOTEL_CREDIT_PAYMENT_METHOD_LABELS
+        nav_section = "hotel"
+        nav_hotel_view = "credit"
+        nav_accounts_view = ""
+    else:
+        # Clear Payment / Verify / Approve / Revert require Approval module; Accounts alone is view-only.
+        can_mutate_settlement = user_can_approve_transactions(actor)
+        payment_methods = CREDIT_PAYMENT_METHODS
+        payment_method_labels = CREDIT_PAYMENT_METHOD_LABELS
+        nav_section = "accounts"
+        nav_hotel_view = ""
+        nav_accounts_view = labels["nav_accounts_view"]
 
     return render_template(
         "credit_settlement_page.html",
@@ -2246,8 +2491,8 @@ def _render_credit_settlement_page(mode):
         top_category_kpis=top_category_kpis,
         payment_entries=payment_entries,
         payment_total=payment_total,
-        credit_payment_methods=CREDIT_PAYMENT_METHODS,
-        credit_payment_method_labels=CREDIT_PAYMENT_METHOD_LABELS,
+        credit_payment_methods=payment_methods,
+        credit_payment_method_labels=payment_method_labels,
         expense_category_labels=EXPENSE_CATEGORY_LABELS,
         ledger_entry_kinds=LEDGER_ENTRY_KINDS,
         ledger_entry_kind_labels=LEDGER_ENTRY_KIND_LABELS,
@@ -2267,8 +2512,9 @@ def _render_credit_settlement_page(mode):
             else None
         ),
         today_iso=today.isoformat(),
-        de_nav_section="accounts",
-        de_nav_accounts_view=labels["nav_accounts_view"],
+        de_nav_section=nav_section,
+        de_nav_hotel_view=nav_hotel_view,
+        de_nav_accounts_view=nav_accounts_view,
     )
 
 
@@ -2798,6 +3044,280 @@ def _credit_payment_detail(conn, payment_id, company=None):
         allocations.append(item)
     payment["allocations"] = allocations
     return payment
+
+
+HOTEL_CREDIT_PAYMENT_METHODS = (
+    ("cash", "Cash"),
+    ("upi", "UPI"),
+    ("card", "Card"),
+    ("bank_transfer", "Bank Transfer"),
+)
+HOTEL_CREDIT_PAYMENT_METHOD_LABELS = dict(HOTEL_CREDIT_PAYMENT_METHODS)
+HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN = frozenset({"bank_transfer"})
+
+
+def _normalize_hotel_credit_payment_method(value, *, default="cash"):
+    key = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if key in ("bank", "banktransfer", "neft", "rtgs", "imps"):
+        key = "bank_transfer"
+    if key not in HOTEL_CREDIT_PAYMENT_METHOD_LABELS:
+        return default
+    return key
+
+
+def _hotel_credit_description(guest_name, room_number):
+    guest = str(guest_name or "").strip()
+    room = str(room_number or "").strip()
+    if guest and room:
+        return f"{guest} · Room {room}"
+    if guest:
+        return guest
+    if room:
+        return f"Room {room}"
+    return "Hotel invoice"
+
+
+def _sync_and_list_hotel_credit_rows(conn):
+    ensure_hotel_rooms_schema(conn)
+    ensure_hotel_invoice_credits_schema(conn)
+    sync_hotel_invoice_credits(conn)
+    rows = conn.execute(
+        """SELECT id, invoice_number, agency_name, guest_name, room_number,
+                  credit_date, credit_amount
+           FROM hotel_invoice_credits
+           ORDER BY credit_date DESC, id DESC"""
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _outstanding_hotel_credits(conn, date_from=None, date_to=None, party_id=None):
+    entries = []
+    agencies = {int(a["id"]): a for a in list_agencies(conn)}
+    name_to_agency = {str(a.get("name") or "").strip().lower(): a for a in agencies.values()}
+    for row in _sync_and_list_hotel_credit_rows(conn):
+        credit_id = int(row["id"])
+        amount = round_half_up(row.get("credit_amount"), 2)
+        paid = round_half_up(hotel_invoice_credit_paid_total(conn, credit_id), 2)
+        balance = round_half_up(amount - paid, 2)
+        if balance <= 0.009:
+            continue
+        credit_date = str(row.get("credit_date") or "")[:10]
+        if date_from and credit_date and credit_date < date_from.isoformat():
+            continue
+        if date_to and credit_date and credit_date > date_to.isoformat():
+            continue
+        agency_name = str(row.get("agency_name") or "").strip()
+        agency = name_to_agency.get(agency_name.lower())
+        supplier_id = int(agency["id"]) if agency else _hotel_credit_party_id(agency_name)
+        if party_id and int(supplier_id) != int(party_id):
+            continue
+        guest = str(row.get("guest_name") or "").strip()
+        room = str(row.get("room_number") or "").strip()
+        entries.append(
+            {
+                "id": credit_id,
+                "expense_code": row.get("invoice_number") or "",
+                "invoice_number": row.get("invoice_number") or "",
+                "sales_date": credit_date,
+                "description": _hotel_credit_description(guest, room),
+                "category": "",
+                "entry_kind": "expense",
+                "supplier_id": supplier_id,
+                "supplier_name": agency_name or "—",
+                "supplier_gst": (agency or {}).get("gst") or "",
+                "amount": amount,
+                "paid_amount": paid,
+                "balance": balance,
+            }
+        )
+    return entries
+
+
+def _hotel_credit_agency_filters(conn, outstanding_entries):
+    seen = {}
+    for entry in outstanding_entries:
+        sid = str(entry.get("supplier_id") or "")
+        if not sid or sid in seen:
+            continue
+        seen[sid] = {
+            "id": entry.get("supplier_id"),
+            "name": entry.get("supplier_name") or "Agency",
+            "gst": entry.get("supplier_gst") or "",
+        }
+    return sorted(seen.values(), key=lambda item: str(item["name"]).lower())
+
+
+def _hotel_credit_payment_entries(conn, payment_date_from=None, payment_date_to=None, party_id=None):
+    ensure_hotel_invoice_credits_schema(conn)
+    sql = """SELECT p.id, p.company, p.agency_name, p.payment_date, p.payment_method,
+                    p.transaction_id, p.total_amount, p.notes, p.created_at,
+                    (
+                        SELECT COUNT(*) FROM hotel_invoice_credit_payment_allocations a
+                        WHERE a.payment_id = p.id
+                    ) AS allocation_count,
+                    (
+                        SELECT GROUP_CONCAT(a.invoice_number, ', ')
+                        FROM hotel_invoice_credit_payment_allocations a
+                        WHERE a.payment_id = p.id
+                    ) AS expense_codes
+             FROM hotel_invoice_credit_payments p
+             WHERE 1 = 1"""
+    params = []
+    if payment_date_from:
+        sql += " AND p.payment_date >= ?"
+        params.append(
+            payment_date_from.isoformat() if hasattr(payment_date_from, "isoformat") else payment_date_from
+        )
+    if payment_date_to:
+        sql += " AND p.payment_date <= ?"
+        params.append(
+            payment_date_to.isoformat() if hasattr(payment_date_to, "isoformat") else payment_date_to
+        )
+    sql += " ORDER BY p.payment_date DESC, p.created_at DESC, p.id DESC"
+    rows = conn.execute(sql, params).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        agency_name = str(item.get("agency_name") or "").strip()
+        supplier_id = _hotel_credit_party_id(agency_name)
+        if party_id:
+            agency = None
+            for a in list_agencies(conn):
+                if str(a.get("name") or "").strip().lower() == agency_name.lower():
+                    agency = a
+                    break
+            sid = int(agency["id"]) if agency else supplier_id
+            if int(sid) != int(party_id):
+                continue
+        item["supplier_name"] = agency_name
+        item["supplier_gst"] = ""
+        item["total_amount"] = round_half_up(item.get("total_amount"), 2)
+        item["payment_method"] = _normalize_hotel_credit_payment_method(item.get("payment_method"))
+        item["allocation_count"] = int(item.get("allocation_count") or 0)
+        item["expense_codes"] = item.get("expense_codes") or ""
+        entries.append(item)
+    return entries
+
+
+def _hotel_credit_payment_detail(conn, payment_id):
+    ensure_hotel_invoice_credits_schema(conn)
+    try:
+        payment_id = int(payment_id)
+    except (TypeError, ValueError):
+        return None
+    row = conn.execute(
+        """SELECT id, company, agency_name, payment_date, payment_method,
+                  transaction_id, total_amount, notes, created_at
+           FROM hotel_invoice_credit_payments WHERE id = ?""",
+        (payment_id,),
+    ).fetchone()
+    if not row:
+        return None
+    payment = dict(row)
+    payment["supplier_name"] = payment.get("agency_name") or ""
+    payment["supplier_gst"] = ""
+    payment["total_amount"] = round_half_up(payment.get("total_amount"), 2)
+    payment["payment_method"] = _normalize_hotel_credit_payment_method(payment.get("payment_method"))
+    alloc_rows = conn.execute(
+        """SELECT a.id, a.credit_id AS expense_id, a.amount, a.invoice_number AS expense_code,
+                  c.credit_date AS sales_date, c.guest_name, c.room_number, c.credit_amount AS expense_amount
+           FROM hotel_invoice_credit_payment_allocations a
+           LEFT JOIN hotel_invoice_credits c ON c.id = a.credit_id
+           WHERE a.payment_id = ?
+           ORDER BY a.id""",
+        (payment_id,),
+    ).fetchall()
+    allocations = []
+    for alloc in alloc_rows:
+        item = dict(alloc)
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        item["expense_amount"] = round_half_up(item.get("expense_amount"), 2)
+        item["description"] = _hotel_credit_description(
+            item.get("guest_name"), item.get("room_number")
+        )
+        item["category"] = ""
+        allocations.append(item)
+    payment["allocations"] = allocations
+    return payment
+
+
+def _validate_hotel_credit_payment_payload(conn, data):
+    errors = []
+    payment_date = _parse_sales_date(data.get("payment_date") or date.today().isoformat())
+    payment_method = _normalize_hotel_credit_payment_method(
+        data.get("payment_method"), default=""
+    )
+    transaction_id = str(data.get("transaction_id") or "").strip()
+    notes = str(data.get("notes") or "").strip()
+    if not payment_method:
+        errors.append("Select a payment mode.")
+    if payment_method in HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN and not transaction_id:
+        errors.append("Transaction ID is required for bank transfer.")
+    if payment_method not in HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN:
+        transaction_id = ""
+    raw_allocations = data.get("allocations") or []
+    if not isinstance(raw_allocations, list) or not raw_allocations:
+        errors.append("Select at least one credit invoice.")
+        return None, errors
+    parsed = []
+    seen = set()
+    agency_name = ""
+    for raw in raw_allocations:
+        try:
+            credit_id = int(raw.get("expense_id"))
+        except (TypeError, ValueError, AttributeError):
+            errors.append("Invalid invoice selection.")
+            continue
+        if credit_id in seen:
+            errors.append("Duplicate invoice in the same collection.")
+            continue
+        seen.add(credit_id)
+        amount = parse_money(raw.get("amount") if isinstance(raw, dict) else None)
+        if amount <= 0:
+            errors.append("Each pay-now amount must be greater than zero.")
+            continue
+        row = conn.execute(
+            """SELECT id, invoice_number, agency_name, credit_amount
+               FROM hotel_invoice_credits WHERE id = ?""",
+            (credit_id,),
+        ).fetchone()
+        if not row:
+            errors.append("One or more selected invoices were not found.")
+            continue
+        paid = hotel_invoice_credit_paid_total(conn, credit_id)
+        balance = round_half_up(float(row["credit_amount"] or 0) - paid, 2)
+        if amount - balance > 0.009:
+            errors.append(
+                f"{row['invoice_number']} pay-now ₹{amount:.2f} exceeds balance ₹{balance:.2f}."
+            )
+            continue
+        name = str(row["agency_name"] or "").strip()
+        if not agency_name:
+            agency_name = name
+        elif name.lower() != agency_name.lower():
+            errors.append("All selected invoices must belong to the same agency.")
+            continue
+        parsed.append(
+            {
+                "credit_id": credit_id,
+                "invoice_number": row["invoice_number"],
+                "amount": amount,
+            }
+        )
+    if errors:
+        return None, errors
+    if not parsed:
+        return None, ["Select at least one credit invoice."]
+    total = round_half_up(sum(item["amount"] for item in parsed), 2)
+    return {
+        "payment_date": payment_date.isoformat() if hasattr(payment_date, "isoformat") else payment_date,
+        "payment_method": payment_method,
+        "transaction_id": transaction_id,
+        "notes": notes,
+        "agency_name": agency_name,
+        "total_amount": total,
+        "allocations": parsed,
+    }, []
 
 
 def _validate_credit_payment_payload(conn, data):
@@ -5096,6 +5616,7 @@ def _sales_report_load_rows(kind, filters):
             rows = list_hotel_room_invoices(
                 conn,
                 status=hotel_status,
+                source="hotel",
                 date_from=date_from,
                 date_to=date_to,
             )
@@ -7174,6 +7695,10 @@ def _hotel_invoice_ledger_filters(args):
     if selected_status not in ("all", "open", "settled"):
         selected_status = "all"
     status_filter = "" if selected_status == "all" else selected_status
+    selected_invoice = (args.get("invoice") or "all").strip().lower()
+    if selected_invoice not in ("all", "hotel", "room_transfer"):
+        selected_invoice = "all"
+    invoice_source = "" if selected_invoice == "all" else selected_invoice
     q = (args.get("q") or "").strip()
     return {
         "today": today,
@@ -7182,6 +7707,8 @@ def _hotel_invoice_ledger_filters(args):
         "date_filter_active": date_filter_active,
         "selected_status": selected_status,
         "status_filter": status_filter,
+        "selected_invoice": selected_invoice,
+        "invoice_source": invoice_source,
         "q": q,
     }
 
@@ -7197,6 +7724,7 @@ def hotel_invoice_ledger():
             conn,
             q=filters["q"],
             status=filters["status_filter"],
+            source=filters["invoice_source"],
             date_from=filters["date_from"].isoformat()
             if filters["date_filter_active"] and filters["date_from"]
             else None,
@@ -7214,9 +7742,16 @@ def hotel_invoice_ledger():
         "open": "Un Settled",
         "settled": "Settled",
     }
+    invoice_labels = {
+        "all": "All",
+        "hotel": "Hotel",
+        "room_transfer": "Room Transfer",
+    }
     clear_kwargs = {}
     if filters["selected_status"] != "all":
         clear_kwargs["status"] = filters["selected_status"]
+    if filters["selected_invoice"] != "all":
+        clear_kwargs["invoice"] = filters["selected_invoice"]
     if filters["q"]:
         clear_kwargs["q"] = filters["q"]
 
@@ -7246,6 +7781,10 @@ def hotel_invoice_ledger():
         selected_status_label=status_labels.get(
             filters["selected_status"], "All statuses"
         ),
+        selected_invoice=filters["selected_invoice"],
+        selected_invoice_label=invoice_labels.get(
+            filters["selected_invoice"], "All"
+        ),
         search_q=filters["q"],
         filter_form_action=url_for("hotel_invoice_ledger"),
         invoice_ledger_clear_url=url_for("hotel_invoice_ledger", **clear_kwargs),
@@ -7268,6 +7807,7 @@ def hotel_invoice_ledger_export():
             conn,
             q=filters["q"],
             status=filters["status_filter"],
+            source=filters["invoice_source"],
             date_from=filters["date_from"].isoformat()
             if filters["date_filter_active"] and filters["date_from"]
             else None,
@@ -7296,7 +7836,7 @@ def hotel_invoice_ledger_export():
         "Amount",
         "Advance",
         "Balance",
-        "Status",
+        "Payment Mode",
     )
     for col, title in enumerate(headers, start=1):
         cell = ws.cell(row=3, column=col, value=title)
@@ -7312,11 +7852,11 @@ def hotel_invoice_ledger_export():
         ws.cell(row=idx, column=8, value=row.get("estimated_total"))
         ws.cell(row=idx, column=9, value=row.get("advance_paid"))
         ws.cell(row=idx, column=10, value=row.get("balance_amount"))
-        status_key = (row.get("status") or "").strip().lower()
         ws.cell(
             row=idx,
             column=11,
-            value="Settled" if status_key == "settled" else "Un Settled",
+            value=row.get("payment_mode_label")
+            or ("Settled" if (row.get("status") or "") == "settled" else "Un Settled"),
         )
     buf = BytesIO()
     wb.save(buf)
@@ -7338,15 +7878,26 @@ def hotel_invoice_ledger_export():
 def hotel_invoice_ledger_api(invoice_number):
     """JSON room payload for View / Print of an archived invoice."""
     conn = get_db()
+    allow_credit = False
+    item = None
     try:
         ensure_hotel_rooms_schema(conn)
         item = get_hotel_room_invoice(conn, invoice_number)
+        if item:
+            allow_credit = _hotel_invoice_allow_credit(conn, item)
         conn.commit()
     finally:
         conn.close()
     if not item:
         return jsonify({"ok": False, "error": "Invoice not found."}), 404
-    return jsonify({"ok": True, "invoice": item, "room": item.get("room")})
+    return jsonify(
+        {
+            "ok": True,
+            "invoice": item,
+            "room": item.get("room"),
+            "allow_credit": allow_credit,
+        }
+    )
 
 
 @app.route(
@@ -7397,6 +7948,104 @@ def hotel_invoice_ledger_settle_api(invoice_number):
             "payments": result.get("payments") or [],
         }
     )
+
+
+@app.route("/hotel/credit", endpoint="hotel_credit")
+def hotel_credit():
+    """Agency credit collections from Hotel Invoice Ledger Credit settlements."""
+    return _render_credit_settlement_page(CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT)
+
+
+@app.route("/hotel/credit/create", methods=["POST"], endpoint="create_hotel_credit_payment")
+def create_hotel_credit_payment():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in to record a payment."}), 401
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    try:
+        ensure_hotel_invoice_credits_schema(conn)
+        payload, errors = _validate_hotel_credit_payment_payload(conn, data)
+        if errors:
+            return jsonify({"ok": False, "error": errors[0], "errors": errors}), 400
+        cursor = conn.execute(
+            """INSERT INTO hotel_invoice_credit_payments
+               (company, agency_name, payment_date, payment_method, transaction_id, total_amount, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                DEFAULT_COMPANY,
+                payload["agency_name"],
+                payload["payment_date"],
+                payload["payment_method"],
+                payload["transaction_id"],
+                payload["total_amount"],
+                payload["notes"],
+            ),
+        )
+        payment_id = cursor.lastrowid
+        for allocation in payload["allocations"]:
+            conn.execute(
+                """INSERT INTO hotel_invoice_credit_payment_allocations
+                   (payment_id, credit_id, invoice_number, amount)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    payment_id,
+                    allocation["credit_id"],
+                    allocation["invoice_number"],
+                    allocation["amount"],
+                ),
+            )
+        conn.commit()
+        payment = _hotel_credit_payment_detail(conn, payment_id)
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "payment": payment})
+
+
+@app.route("/hotel/credit/delete", methods=["POST"], endpoint="delete_hotel_credit_payment")
+def delete_hotel_credit_payment():
+    user = get_current_user()
+    if not user:
+        return jsonify({"ok": False, "error": "You must be logged in to revert a payment."}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        payment_id = int(data.get("payment_id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "error": "Payment id is required."}), 400
+
+    conn = get_db()
+    try:
+        ensure_hotel_invoice_credits_schema(conn)
+        payment = conn.execute(
+            "SELECT id FROM hotel_invoice_credit_payments WHERE id = ?",
+            (payment_id,),
+        ).fetchone()
+        if not payment:
+            return jsonify({"ok": False, "error": "Payment was not found."}), 404
+        conn.execute(
+            "DELETE FROM hotel_invoice_credit_payment_allocations WHERE payment_id = ?",
+            (payment_id,),
+        )
+        conn.execute(
+            "DELETE FROM hotel_invoice_credit_payments WHERE id = ?",
+            (payment_id,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify({"ok": True})
+
+
+@app.route("/hotel/credit/<int:payment_id>", endpoint="hotel_credit_payment_detail")
+def hotel_credit_payment_detail(payment_id):
+    conn = get_db()
+    try:
+        payment = _hotel_credit_payment_detail(conn, payment_id)
+    finally:
+        conn.close()
+    if not payment:
+        return jsonify({"ok": False, "error": "Payment was not found."}), 404
+    return jsonify({"ok": True, "payment": payment})
 
 
 @app.route("/hotel/api/rooms", methods=["GET", "PUT"], endpoint="hotel_rooms_api")
@@ -7626,6 +8275,15 @@ def hotel_id_document_upload():
             guest_name=(request.form.get("guestName") or request.form.get("guest_name") or "").strip(),
             id_type=(request.form.get("idType") or request.form.get("id_type") or "").strip(),
         )
+        stored = resolve_stored_id_document(
+            result.get("storedName") or result.get("urlPath") or ""
+        )
+        if stored:
+            persist_id_document_bytes(
+                stored.name,
+                stored.read_bytes(),
+                result.get("mime") or "application/pdf",
+            )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
     except RuntimeError as exc:
@@ -7636,18 +8294,41 @@ def hotel_id_document_upload():
 
 
 @app.route(
+    "/hotel/api/id-documents/view/<path:stored_name>/raw",
+    methods=["GET"],
+    endpoint="hotel_id_document_file_view",
+)
+def hotel_id_document_file_view(stored_name):
+    """Serve an ID document at a URL that does not end in .pdf (nginx-safe)."""
+    return _send_hotel_id_document(stored_name)
+
+
+@app.route(
     "/hotel/api/id-documents/<path:stored_name>",
     methods=["GET"],
     endpoint="hotel_id_document_file",
 )
 def hotel_id_document_file(stored_name):
     """Serve a compressed ID document for authenticated hotel users."""
-    path = resolve_stored_id_document(stored_name)
-    if not path:
+    return _send_hotel_id_document(stored_name)
+
+
+def _send_hotel_id_document(stored_name):
+    from io import BytesIO
+
+    data, mime, filename = open_id_document_payload(stored_name)
+    if not data:
         abort(404)
-    mime = "image/webp" if path.suffix.lower() == ".webp" else "application/pdf"
-    resp = send_file(path, mimetype=mime, as_attachment=False, download_name=path.name)
-    resp.headers["Cache-Control"] = "private, max-age=0"
+    filename = filename or "guest-id.pdf"
+    mime = mime or "application/pdf"
+    resp = send_file(
+        BytesIO(data),
+        mimetype=mime,
+        as_attachment=False,
+        download_name=filename,
+    )
+    resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    resp.headers["Cache-Control"] = "private, max-age=0, no-store"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
 
@@ -9708,75 +10389,121 @@ def _cash_ledger_credit_description(invoices, guests, notes=""):
 
 
 def _cash_ledger_credit_rows(conn, company, date_from, date_to, location=None):
-    """Cash repayments from Credit / Room Transfer clearance."""
+    """Cash repayments from Credit / Room Transfer clearance and Hotel agency credit."""
+    location = _normalize_cash_ledger_location(location)
+    entries = []
+
     has_table = conn.execute(
         """SELECT 1 FROM sqlite_master
            WHERE type = 'table' AND name = 'room_transfer_payments'"""
     ).fetchone()
-    if not has_table:
-        return []
-
-    location = _normalize_cash_ledger_location(location)
-    params = [company, ROOM_TRANSFER_PAYMENT_CASH, date_from.isoformat(), date_to.isoformat()]
-    location_sql = ""
-    if location != CASH_LEDGER_FILTER_ALL:
-        location_sql = "AND a.location = ?"
-        params.append(location)
-
-    rows = conn.execute(
-        f"""SELECT p.id AS payment_id,
-                   p.payment_date,
-                   p.notes,
-                   SUM(a.amount) AS amount,
-                   GROUP_CONCAT(a.location) AS locations,
-                   GROUP_CONCAT(a.invoice_number) AS invoices,
-                   GROUP_CONCAT(a.guest_name) AS guests
-            FROM room_transfer_payments p
-            JOIN room_transfer_payment_allocations a
-              ON a.room_transfer_payment_id = p.id
-            WHERE p.company = ?
-              AND p.payment_method = ?
-              AND p.payment_date >= ? AND p.payment_date <= ?
-              {location_sql}
-            GROUP BY p.id, p.payment_date, p.notes
-            ORDER BY p.payment_date, p.id""",
-        params,
-    ).fetchall()
-
-    entries = []
-    for row in rows:
-        item = dict(row)
-        amount = round_half_up(item.get("amount"), 2)
-        if amount <= 0:
-            continue
-        locations = _cash_ledger_split_concat(item.get("locations"))
-        invoices = _cash_ledger_split_concat(item.get("invoices"))
-        guests = _cash_ledger_split_concat(item.get("guests"))
+    if has_table:
+        params = [company, ROOM_TRANSFER_PAYMENT_CASH, date_from.isoformat(), date_to.isoformat()]
+        location_sql = ""
         if location != CASH_LEDGER_FILTER_ALL:
-            detail = location
-        elif len(locations) == 1:
-            detail = locations[0]
-        elif locations:
-            detail = " + ".join(locations)
-        else:
-            detail = "Credit"
-        entries.append(
-            {
-                "id": f"credit-{item['payment_id']}",
-                "source_id": item["payment_id"],
-                "entry_type": CASH_LEDGER_ENTRY_CREDIT,
-                "entry_date": item["payment_date"],
-                "location": detail,
-                "detail": detail,
-                "expense_code": "",
-                "description": _cash_ledger_credit_description(
-                    invoices, guests, item.get("notes") or ""
-                ),
-                "amount": amount,
-                "signed_amount": amount,
-                "can_delete": False,
-            }
-        )
+            location_sql = "AND a.location = ?"
+            params.append(location)
+
+        rows = conn.execute(
+            f"""SELECT p.id AS payment_id,
+                       p.payment_date,
+                       p.notes,
+                       SUM(a.amount) AS amount,
+                       GROUP_CONCAT(a.location) AS locations,
+                       GROUP_CONCAT(a.invoice_number) AS invoices,
+                       GROUP_CONCAT(a.guest_name) AS guests
+                FROM room_transfer_payments p
+                JOIN room_transfer_payment_allocations a
+                  ON a.room_transfer_payment_id = p.id
+                WHERE p.company = ?
+                  AND p.payment_method = ?
+                  AND p.payment_date >= ? AND p.payment_date <= ?
+                  {location_sql}
+                GROUP BY p.id, p.payment_date, p.notes
+                ORDER BY p.payment_date, p.id""",
+            params,
+        ).fetchall()
+
+        for row in rows:
+            item = dict(row)
+            amount = round_half_up(item.get("amount"), 2)
+            if amount <= 0:
+                continue
+            locations = _cash_ledger_split_concat(item.get("locations"))
+            invoices = _cash_ledger_split_concat(item.get("invoices"))
+            guests = _cash_ledger_split_concat(item.get("guests"))
+            if location != CASH_LEDGER_FILTER_ALL:
+                detail = location
+            elif len(locations) == 1:
+                detail = locations[0]
+            elif locations:
+                detail = " + ".join(locations)
+            else:
+                detail = "Credit"
+            entries.append(
+                {
+                    "id": f"credit-{item['payment_id']}",
+                    "source_id": item["payment_id"],
+                    "entry_type": CASH_LEDGER_ENTRY_CREDIT,
+                    "entry_date": item["payment_date"],
+                    "location": detail,
+                    "detail": detail,
+                    "expense_code": "",
+                    "description": _cash_ledger_credit_description(
+                        invoices, guests, item.get("notes") or ""
+                    ),
+                    "amount": amount,
+                    "signed_amount": amount,
+                    "can_delete": False,
+                }
+            )
+
+    if location in (CASH_LEDGER_FILTER_ALL, OUTLET_HOTEL):
+        has_hotel = conn.execute(
+            """SELECT 1 FROM sqlite_master
+               WHERE type = 'table' AND name = 'hotel_invoice_credit_payments'"""
+        ).fetchone()
+        if has_hotel:
+            hotel_rows = conn.execute(
+                """SELECT p.id AS payment_id, p.payment_date, p.notes, p.total_amount,
+                          p.agency_name,
+                          (
+                              SELECT GROUP_CONCAT(a.invoice_number)
+                              FROM hotel_invoice_credit_payment_allocations a
+                              WHERE a.payment_id = p.id
+                          ) AS invoices
+                   FROM hotel_invoice_credit_payments p
+                   WHERE p.payment_method = 'cash'
+                     AND p.payment_date >= ? AND p.payment_date <= ?
+                     AND (p.company = ? OR p.company = '' OR p.company IS NULL)
+                   ORDER BY p.payment_date, p.id""",
+                (date_from.isoformat(), date_to.isoformat(), company),
+            ).fetchall()
+            for row in hotel_rows:
+                item = dict(row)
+                amount = round_half_up(item.get("total_amount"), 2)
+                if amount <= 0:
+                    continue
+                invoices = _cash_ledger_split_concat(item.get("invoices"))
+                agency = str(item.get("agency_name") or "").strip()
+                guests = [agency] if agency else []
+                entries.append(
+                    {
+                        "id": f"hotel-credit-{item['payment_id']}",
+                        "source_id": item["payment_id"],
+                        "entry_type": CASH_LEDGER_ENTRY_CREDIT,
+                        "entry_date": item["payment_date"],
+                        "location": OUTLET_HOTEL,
+                        "detail": OUTLET_HOTEL,
+                        "expense_code": "",
+                        "description": _cash_ledger_credit_description(
+                            invoices, guests, item.get("notes") or ""
+                        ),
+                        "amount": amount,
+                        "signed_amount": amount,
+                        "can_delete": False,
+                    }
+                )
     return entries
 
 
@@ -11552,6 +12279,7 @@ def _render_sales_update_hotel(user, **page_opts):
         )
         suppliers = _all_suppliers(conn)
         tip_employees = _active_employees_for_tips(conn)
+        credit_employees = _active_employees_for_credit(conn)
         available_cash = _cash_ledger_available_as_of(conn, selected_company, entry_date)
     finally:
         conn.close()
@@ -11579,6 +12307,7 @@ def _render_sales_update_hotel(user, **page_opts):
         expense_categories=EXPENSE_CATEGORIES,
         suppliers=suppliers,
         tip_employees=tip_employees,
+        credit_employees=credit_employees,
         available_cash=available_cash,
         cash_date_from=selected_date,
         cash_date_to=selected_date,
@@ -11752,11 +12481,17 @@ def _load_outlet_entry_bundle(
             invoice_entries = hotel_sales_entry_from_invoices(conn, sales_date)
         else:
             invoice_entries = rollup_hotel_ledger_entries(ledger_entries)
+            # Guest Credit follows live hotel Credit settlements, not the FO upload.
+            live_entries = hotel_sales_entry_from_invoices(conn, sales_date)
+            invoice_entries["room_credit"] = parse_money(live_entries.get("room_credit"))
         for key in HOTEL_IMPORT_FIELD_KEYS:
             sales_entries[key] = parse_money(invoice_entries.get(key))
         expense_total = _sales_expense_total(conn, company, location, sales_date)
         sales_entries["expense"] = expense_total
         expense_entries = _sales_expense_entries(conn, company, location, sales_date)
+        staff_account_entries = _sales_staff_account_entries(conn, company, location, sales_date)
+        staff_account_total = _sales_staff_account_total(conn, company, location, sales_date)
+        sales_entries["staff_account"] = staff_account_total
     else:
         sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
         if not is_future:
@@ -11786,6 +12521,8 @@ def _load_outlet_entry_bundle(
     if location in HOTEL_LOCATIONS:
         bundle["expense_entries"] = expense_entries
         bundle["expense_total"] = expense_total
+        bundle["staff_account_entries"] = staff_account_entries
+        bundle["staff_account_total"] = staff_account_total
     return bundle
 
 
@@ -12341,6 +13078,9 @@ def save_sales_update():
         if location in HOTEL_LOCATIONS:
             sales_entries = build_hotel_sales_entry_values(sales_entries)
             sales_entries["expense"] = _sales_expense_total(conn, company, location, sales_date)
+            sales_entries["staff_account"] = _sales_staff_account_total(
+                conn, company, location, sales_date
+            )
         else:
             sales_entries = build_sales_entry_values(conn, company, location, sales_date, sales_entries)
         _apply_tip_line_total(conn, company, location, sales_date, sales_entries)
@@ -12642,6 +13382,18 @@ def sales_update_edit_expense():
 
     conn = get_db()
     try:
+        existing = conn.execute(
+            """SELECT id, entry_kind FROM sales_update_expenses
+               WHERE id=? AND company=? AND location=? AND sales_date=?""",
+            (expense_id, company, location, sales_date),
+        ).fetchone()
+        if not existing:
+            return jsonify({"ok": False, "error": "Expense entry was not found."}), 404
+        if _normalize_ledger_entry_kind(existing["entry_kind"]) == LEDGER_ENTRY_KIND_PURCHASE:
+            return jsonify({
+                "ok": False,
+                "error": "Purchase entries cannot be edited from Sales Entry.",
+            }), 400
         supplier = _get_supplier(conn, supplier_id)
         if not supplier:
             return jsonify({"ok": False, "error": "Selected supplier was not found."}), 400
@@ -12698,6 +13450,18 @@ def sales_update_delete_expense():
 
     conn = get_db()
     try:
+        existing = conn.execute(
+            """SELECT id, entry_kind FROM sales_update_expenses
+               WHERE id=? AND company=? AND location=? AND sales_date=?""",
+            (expense_id, company, location, sales_date),
+        ).fetchone()
+        if not existing:
+            return jsonify({"ok": False, "error": "Expense entry was not found."}), 404
+        if _normalize_ledger_entry_kind(existing["entry_kind"]) == LEDGER_ENTRY_KIND_PURCHASE:
+            return jsonify({
+                "ok": False,
+                "error": "Purchase entries cannot be deleted from Sales Entry.",
+            }), 400
         conn.execute(
             "DELETE FROM sales_update_expenses WHERE id=? AND company=? AND location=? AND sales_date=?",
             (expense_id, company, location, sales_date),
@@ -12877,6 +13641,218 @@ def sales_update_delete_tip():
         conn.close()
 
     return jsonify({"ok": True, "tip_total": tip_total, "tip_entries": tip_entries})
+
+
+@app.route("/sales_update/add_staff_credit", methods=["POST"])
+def sales_update_add_staff_credit():
+    from employee_payroll import _is_credit_date_locked, _post_credit_advance_expense
+
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    company = data.get("company", DEFAULT_COMPANY)
+    location = data.get("location", OUTLET_HOTEL)
+    sales_date = data.get("date", "")
+    description = (data.get("description") or "").strip()
+    amount = parse_money(data.get("amount"))
+    try:
+        employee_id = int(data.get("employee_id") or 0)
+    except (TypeError, ValueError):
+        employee_id = 0
+
+    if location not in HOTEL_LOCATIONS:
+        return jsonify({"ok": False, "error": "Employee credit is only available for Hotel."}), 400
+
+    lock_error = _check_sales_date_lock(user, company, location, sales_date)
+    if lock_error:
+        return jsonify({"ok": False, "error": lock_error}), 403
+
+    if employee_id <= 0:
+        return jsonify({"ok": False, "error": "Please select an employee."}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "Please enter an amount greater than 0."}), 400
+    if not description:
+        return jsonify({"ok": False, "error": "Please enter a description."}), 400
+
+    conn = get_db()
+    try:
+        payroll_lock_error = _check_payroll_month_date_lock(conn, sales_date)
+        if payroll_lock_error:
+            return jsonify({"ok": False, "error": payroll_lock_error, "locked": True}), 403
+        if _is_credit_date_locked(conn, sales_date):
+            return jsonify({"ok": False, "error": "This payroll month is locked."}), 403
+        employee = conn.execute(
+            "SELECT id, name FROM employees WHERE id = ? AND status = 'active'",
+            (employee_id,),
+        ).fetchone()
+        if not employee:
+            return jsonify({"ok": False, "error": "Selected employee was not found."}), 400
+        cash_error = _validate_cash_expense_against_available(
+            conn, company, sales_date, amount, EXPENSE_PAYMENT_CASH
+        )
+        if cash_error:
+            return jsonify({"ok": False, "error": cash_error}), 400
+        cursor = conn.execute(
+            """INSERT INTO credits (
+                   employee_id, date, description, amount, entry_type,
+                   sales_company, sales_location
+               ) VALUES (?, ?, ?, ?, 'manual', ?, ?)""",
+            (employee_id, sales_date, description, amount, company, location),
+        )
+        credit_id = cursor.lastrowid
+        _, expense_error = _post_credit_advance_expense(
+            conn,
+            user,
+            employee=employee,
+            credit_id=credit_id,
+            cr_date=sales_date,
+            description=description,
+            amount=amount,
+            payment_type=EXPENSE_PAYMENT_CASH,
+        )
+        if expense_error:
+            conn.rollback()
+            return jsonify({"ok": False, "error": expense_error}), 400
+        conn.commit()
+        payload = _sales_staff_credit_api_payload(conn, company, location, sales_date)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "credit_id": credit_id, **payload})
+
+
+@app.route("/sales_update/edit_staff_credit", methods=["POST"])
+def sales_update_edit_staff_credit():
+    from employee_payroll import _is_credit_date_locked, _sync_credit_advance_expense
+
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    try:
+        credit_id = int(data.get("credit_id") or data.get("id") or 0)
+        employee_id = int(data.get("employee_id") or 0)
+    except (TypeError, ValueError):
+        credit_id = 0
+        employee_id = 0
+    company = data.get("company", DEFAULT_COMPANY)
+    location = data.get("location", OUTLET_HOTEL)
+    sales_date = data.get("date", "")
+    description = (data.get("description") or "").strip()
+    amount = parse_money(data.get("amount"))
+
+    if location not in HOTEL_LOCATIONS:
+        return jsonify({"ok": False, "error": "Employee credit is only available for Hotel."}), 400
+
+    lock_error = _check_sales_date_lock(user, company, location, sales_date)
+    if lock_error:
+        return jsonify({"ok": False, "error": lock_error}), 403
+
+    if credit_id <= 0:
+        return jsonify({"ok": False, "error": "Credit entry was not found."}), 404
+    if employee_id <= 0:
+        return jsonify({"ok": False, "error": "Please select an employee."}), 400
+    if amount <= 0:
+        return jsonify({"ok": False, "error": "Please enter an amount greater than 0."}), 400
+    if not description:
+        return jsonify({"ok": False, "error": "Please enter a description."}), 400
+
+    conn = get_db()
+    try:
+        payroll_lock_error = _check_payroll_month_date_lock(conn, sales_date)
+        if payroll_lock_error:
+            return jsonify({"ok": False, "error": payroll_lock_error, "locked": True}), 403
+        existing = _sales_staff_credit_row(conn, credit_id, company, location, sales_date)
+        if not existing:
+            return jsonify({"ok": False, "error": "Credit entry was not found for this date."}), 404
+        if _is_credit_date_locked(conn, sales_date):
+            return jsonify({"ok": False, "error": "This payroll month is locked."}), 403
+        employee = conn.execute(
+            "SELECT id, name FROM employees WHERE id = ? AND status = 'active'",
+            (employee_id,),
+        ).fetchone()
+        if not employee:
+            return jsonify({"ok": False, "error": "Selected employee was not found."}), 400
+        if existing["expense_id"]:
+            sync_error = _sync_credit_advance_expense(
+                conn,
+                user,
+                expense_id=existing["expense_id"],
+                cr_date=sales_date,
+                description=description,
+                amount=amount,
+                employee_name=employee["name"],
+            )
+            if sync_error:
+                conn.rollback()
+                return jsonify({"ok": False, "error": sync_error}), 400
+        elif amount != round_half_up(existing["amount"], 2):
+            cash_error = _validate_cash_expense_against_available(
+                conn, company, sales_date, amount, EXPENSE_PAYMENT_CASH
+            )
+            if cash_error:
+                return jsonify({"ok": False, "error": cash_error}), 400
+        conn.execute(
+            """UPDATE credits
+               SET employee_id=?, description=?, amount=?
+               WHERE id=? AND date=? AND entry_type='manual'""",
+            (employee_id, description, amount, credit_id, sales_date),
+        )
+        conn.commit()
+        payload = _sales_staff_credit_api_payload(conn, company, location, sales_date)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "credit_id": credit_id, **payload})
+
+
+@app.route("/sales_update/delete_staff_credit", methods=["POST"])
+def sales_update_delete_staff_credit():
+    from employee_payroll import _delete_credit_advance_expense, _is_credit_date_locked
+
+    user = get_current_user()
+    data = request.get_json(silent=True) or {}
+    try:
+        credit_id = int(data.get("credit_id") or data.get("id") or 0)
+    except (TypeError, ValueError):
+        credit_id = 0
+    company = data.get("company", DEFAULT_COMPANY)
+    location = data.get("location", OUTLET_HOTEL)
+    sales_date = data.get("date", "")
+
+    if location not in HOTEL_LOCATIONS:
+        return jsonify({"ok": False, "error": "Employee credit is only available for Hotel."}), 400
+
+    lock_error = _check_sales_date_lock(user, company, location, sales_date)
+    if lock_error:
+        return jsonify({"ok": False, "error": lock_error}), 403
+
+    if credit_id <= 0:
+        return jsonify({"ok": False, "error": "Credit entry was not found."}), 404
+
+    conn = get_db()
+    try:
+        payroll_lock_error = _check_payroll_month_date_lock(conn, sales_date)
+        if payroll_lock_error:
+            return jsonify({"ok": False, "error": payroll_lock_error, "locked": True}), 403
+        existing = _sales_staff_credit_row(conn, credit_id, company, location, sales_date)
+        if not existing:
+            return jsonify({"ok": False, "error": "Credit entry was not found for this date."}), 404
+        if _is_credit_date_locked(conn, sales_date):
+            return jsonify({"ok": False, "error": "This payroll month is locked."}), 403
+        if existing["expense_id"]:
+            delete_error = _delete_credit_advance_expense(conn, user, existing["expense_id"])
+            if delete_error:
+                conn.rollback()
+                return jsonify({"ok": False, "error": delete_error}), 400
+        conn.execute(
+            """DELETE FROM credits
+               WHERE id=? AND date=? AND entry_type='manual'""",
+            (credit_id, sales_date),
+        )
+        conn.commit()
+        payload = _sales_staff_credit_api_payload(conn, company, location, sales_date)
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, **payload})
 
 
 @app.route("/sales_update/tips/employee_lines", methods=["POST"])

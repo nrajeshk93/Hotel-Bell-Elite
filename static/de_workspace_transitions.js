@@ -301,7 +301,8 @@
     if(form.hasAttribute('data-md-full-nav') || form.closest('[data-md-full-nav]')) return false;
     if(form.closest('#md-master-modal, .md-master-modal, #md-master-modal-inject, .md-master-embed')) return false;
     // Modal / dialog forms are handled by page JS (JSON APIs); soft-nav must not steal submit.
-    if(form.closest(
+    // Opt in with data-de-allow-soft-submit when the modal posts HTML (credit dashboard).
+    if(form.getAttribute('data-de-allow-soft-submit') !== '1' && form.closest(
       '.modal-overlay, .modal-backdrop, .hrd-modal-overlay, .hrd-dialog-overlay, [role="dialog"][aria-modal="true"]'
     )) return false;
     // Communication Hub composer posts via fetch JSON — never soft-navigate on Send.
@@ -428,7 +429,8 @@
         'Accept': 'text/html',
         'X-De-Partial': 'main'
       },
-      redirect: 'follow'
+      redirect: 'follow',
+      cache: 'no-store'
     };
     if(nav.signal) fetchOpts.signal = nav.signal;
     // Once the server has accepted the POST, never hard-resubmit — that previously
@@ -451,6 +453,8 @@
       }
       try{
         var followedPath = new URL(result.url, window.location.href).pathname.replace(/\/$/, '') || '/';
+        invalidatePrefetch(result.url);
+        invalidatePrefetchByPath(followedPath);
         if(followedPath.indexOf('/access-management') === 0){
           invalidatePrefetchByPath('/access-management');
         }
@@ -603,7 +607,10 @@
       path === '/access-management/logs' ||
       path === '/point-of-sale/invoice-ledger' ||
       path === '/bar-point-of-sale/invoice-ledger' ||
-      path === '/hotel/invoice-ledger'
+      path === '/hotel/invoice-ledger' ||
+      path === '/hotel/credit' ||
+      path === '/credits' ||
+      path.indexOf('/credits/') === 0
     );
   }
 
@@ -916,6 +923,9 @@
       }
       if(path === '/hotel/invoice-ledger'){
         return !!main.querySelector('#hotel-invoice-ledger-page, [data-hotel-invoice-ledger]');
+      }
+      if(path === '/hotel/credit'){
+        return !!main.querySelector('#credit-payment-page') && /^credit$/i.test(h1);
       }
       if(path === '/hotel/sales-update'){
         return softNavSalesLocation(main) === 'hotel';

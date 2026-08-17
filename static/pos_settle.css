@@ -58,8 +58,10 @@
   line-height:1.45;
   color:#64748B;
 }
-#pos-inv-settle-modal #pos-inv-settle-room-field.is-incomplete .staff-input{
-  border-color:rgba(220,38,38,.45);
+#pos-inv-settle-modal #pos-inv-settle-room-field.is-incomplete .pos-inv-settle-room-listbox .se-filter-chip-control,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox.is-incomplete .se-filter-chip-control{
+  border-color:#FCA5A5 !important;
+  background:#FEF2F2 !important;
 }
 #pos-inv-settle-modal .staff-field label{
   display:block;
@@ -133,14 +135,25 @@
 #pos-inv-settle-modal .pos-inv-settle-split-row.is-bank:not(.is-multi){
   grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) auto;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox{
   width:100%;
   min-width:0;
   margin:0;
   position:relative;
 }
 #pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-label{display:none}
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-control{
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-label{
+  display:block;
+  margin-bottom:5px;
+  font-size:11px;
+  font-weight:700;
+  color:#64748B;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-control,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-control{
   display:flex;
   align-items:center;
   width:100%;
@@ -152,7 +165,8 @@
   border-radius:12px;
   box-sizing:border-box;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-icon{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-icon,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-icon{
   flex-shrink:0;
   display:flex;
   align-items:center;
@@ -161,7 +175,8 @@
   align-self:stretch;
   color:#64748B;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-icon svg{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-icon svg,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-icon svg{
   width:18px;
   height:18px;
   display:block;
@@ -171,7 +186,8 @@
   stroke-linecap:round;
   stroke-linejoin:round;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-trigger{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-trigger,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-trigger{
   flex:1 1 auto;
   min-width:0;
   border:0;
@@ -180,7 +196,23 @@
   text-align:left;
   cursor:pointer;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-chev{
+#pos-inv-settle-modal .pos-inv-settle-room-listbox.ep-combobox-listbox input.se-filter-chip-combobox{
+  cursor:text;
+  font:500 14px Inter,system-ui,sans-serif;
+  color:#111827;
+  outline:none;
+  box-shadow:none;
+  -webkit-appearance:none;
+  appearance:none;
+}
+#pos-inv-settle-modal .pos-inv-settle-room-listbox.ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
+  color:#94A3B8;
+}
+#pos-inv-settle-modal .pos-inv-settle-room-listbox.ep-combobox-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button{
+  -webkit-appearance:none;
+}
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-chev,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-chev{
   flex-shrink:0;
   display:flex;
   align-items:center;
@@ -188,7 +220,8 @@
   width:36px;
   color:#94A3B8;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-chev svg{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-chev svg,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-chev svg{
   width:16px;
   height:16px;
   display:block;
@@ -198,7 +231,8 @@
   stroke-linecap:round;
   stroke-linejoin:round;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-value{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-value,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-value{
   display:block;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -206,13 +240,16 @@
   font:500 14px Inter,system-ui,sans-serif;
   color:#111827;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-value.staff-supplier-placeholder{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-chip-value.staff-supplier-placeholder,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-chip-value.staff-supplier-placeholder{
   color:#94A3B8;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox.is-open{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox.is-open,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox.is-open{
   z-index:80;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox.is-open .se-filter-chip-control{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox.is-open .se-filter-chip-control,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox.is-open .se-filter-chip-control{
   border-color:#93C5FD;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
 }
@@ -220,7 +257,8 @@
   border-color:#FCA5A5 !important;
   background:#FEF2F2 !important;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-listbox{
   left:0;
   right:0;
   top:calc(100% + 8px);
@@ -235,7 +273,14 @@
   max-height:240px;
   overflow:auto;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox-option{
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-listbox{
+  max-height:280px;
+}
+#pos-inv-settle-modal .pos-inv-settle-box:has(.pos-inv-settle-room-listbox.is-open){
+  overflow:visible;
+}
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox-option,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-listbox-option{
   display:block;
   width:100%;
   border:0;
@@ -248,12 +293,15 @@
   cursor:pointer;
 }
 #pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox-option:hover,
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox-option:focus{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox-option:focus,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-listbox-option:hover,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-listbox-option:focus{
   background:#EFF6FF;
   color:#1D4ED8;
   outline:none;
 }
-#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox-option.is-selected{
+#pos-inv-settle-modal .pos-inv-settle-method-listbox .se-filter-listbox-option.is-selected,
+#pos-inv-settle-modal .pos-inv-settle-room-listbox .se-filter-listbox-option.is-selected{
   background:#DBEAFE;
   color:#1D4ED8;
   font-weight:650;
@@ -342,9 +390,14 @@
   border-collapse:collapse;
   table-layout:fixed;
 }
+#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-order,
+#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-total,
+#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-pay{
+  width:33.333%;
+}
 #pos-inv-settle-modal .cp-alloc-table th,
 #pos-inv-settle-modal .cp-alloc-table td{
-  padding:10px 14px;
+  padding:10px 16px;
   border-bottom:1px solid #EEF2F7;
   text-align:left;
   font-size:13px;
@@ -358,13 +411,12 @@
   color:#94A3B8;
   background:#fff;
 }
-#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-order{width:auto}
-#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-total{width:128px}
-#pos-inv-settle-modal .cp-alloc-table col.cp-alloc-col-pay{width:136px}
 #pos-inv-settle-modal .cp-alloc-table th.pl-col-amount,
 #pos-inv-settle-modal .cp-alloc-table td.pl-col-amount{
+  width:auto;
   text-align:right;
   font-variant-numeric:tabular-nums;
+  white-space:nowrap;
 }
 #pos-inv-settle-modal .cp-alloc-table tr:last-child td{border-bottom:0}
 #pos-inv-settle-modal .cp-alloc-order{
@@ -376,6 +428,9 @@
 }
 #pos-inv-settle-modal .cp-alloc-code{
   display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
   font-weight:700;
   color:#0F172A;
   line-height:1.3;

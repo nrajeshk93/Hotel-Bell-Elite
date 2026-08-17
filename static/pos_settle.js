@@ -197,9 +197,41 @@
     });
   }
 
+  function closeHotelRoomListbox() {
+    var box = document.getElementById('pos-inv-settle-hotel-room-listbox');
+    if (!box || !box.classList.contains('is-open')) return;
+    box.classList.remove('is-open');
+    var trigger = box.querySelector('.se-filter-chip-trigger');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    var list = box.__epPortaledList || box.querySelector('.se-filter-listbox');
+    if (list) {
+      list.hidden = true;
+      list.scrollTop = 0;
+      if (list.__epPortalHome && list.__epPortalHome.isConnected) {
+        list.__epPortalHome.appendChild(list);
+      }
+      list.classList.remove('ep-listbox-portaled');
+      list.removeAttribute('data-ep-listbox-portaled');
+    }
+    var combo =
+      box.querySelector('input.se-filter-chip-combobox, input.se-filter-chip-trigger');
+    if (combo && combo.tagName === 'INPUT') {
+      var hidden = document.getElementById('pos-inv-settle-hotel-room');
+      var selected = box.querySelector(
+        '.se-filter-listbox-option.is-selected, .se-filter-listbox-option[aria-selected="true"]'
+      );
+      var label = selected
+        ? String(selected.getAttribute('data-label') || selected.textContent || '').trim()
+        : '';
+      combo.value = hidden && String(hidden.value || '').trim() ? label : '';
+      combo.classList.toggle('is-placeholder', !(hidden && String(hidden.value || '').trim()));
+    }
+  }
+
   function openSettleSplitListbox(root) {
     if (!root || root.classList.contains('is-disabled')) return;
     closeAllSettleSplitListboxes(root);
+    closeHotelRoomListbox();
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var list = root.querySelector('.se-filter-listbox');
     root.classList.add('is-open');
@@ -423,31 +455,61 @@
     return sel ? String(sel.value || '').trim() : '';
   }
 
+  function hotelRoomOptionLabel(room) {
+    var number = String((room && room.number) || '').trim() || (room && room.id) || '';
+    var guest = String((room && room.guestName) || 'Guest').trim();
+    return 'Room ' + number + ' — ' + guest;
+  }
+
+  function setHotelRoomSelection(roomId, label) {
+    var id = String(roomId || '').trim();
+    var display = id ? String(label || '').trim() : '';
+    if (typeof window.resetEpListbox === 'function') {
+      window.resetEpListbox('pos-inv-settle-hotel-room', id, display);
+      return;
+    }
+    var hidden = document.getElementById('pos-inv-settle-hotel-room');
+    var combo = document.getElementById('pos-inv-settle-hotel-room-trigger');
+    if (hidden) hidden.value = id;
+    if (combo && combo.tagName === 'INPUT') {
+      combo.value = display;
+      combo.classList.toggle('is-placeholder', !id);
+    }
+  }
+
   function fillOccupiedHotelRoomSelect(rooms) {
-    var sel = document.getElementById('pos-inv-settle-hotel-room');
-    if (!sel) return;
-    var prev = String(sel.value || '').trim();
-    var html = '<option value="">Select occupied room…</option>';
+    var hidden = document.getElementById('pos-inv-settle-hotel-room');
+    var optionsWrap = document.getElementById('pos-inv-settle-hotel-room-options');
+    if (!optionsWrap) return;
+    var prev = hidden ? String(hidden.value || '').trim() : '';
+    var html = '';
+    var kept = '';
+    var keptLabel = '';
     (rooms || []).forEach(function (room) {
       if (!room || !room.id) return;
-      var number = String(room.number || '').trim() || room.id;
-      var guest = String(room.guestName || 'Guest').trim();
+      var label = hotelRoomOptionLabel(room);
+      var on = String(room.id) === prev;
+      if (on) {
+        kept = String(room.id);
+        keptLabel = label;
+      }
       html +=
-        '<option value="' +
+        '<button type="button" class="se-filter-listbox-option' +
+        (on ? ' is-selected' : '') +
+        '" role="option" data-value="' +
         escapeHtml(room.id) +
-        '">Room ' +
-        escapeHtml(number) +
-        ' — ' +
-        escapeHtml(guest) +
-        '</option>';
+        '" data-name="' +
+        escapeHtml((label + ' ' + room.id).toLowerCase()) +
+        '" data-label="' +
+        escapeHtml(label) +
+        '" aria-selected="' +
+        (on ? 'true' : 'false') +
+        '">' +
+        escapeHtml(label) +
+        '</button>';
     });
-    sel.innerHTML = html;
-    if (prev) {
-      var stillThere = Array.prototype.some.call(sel.options, function (opt) {
-        return opt.value === prev;
-      });
-      if (stillThere) sel.value = prev;
-    }
+    optionsWrap.innerHTML = html;
+    setHotelRoomSelection(kept, keptLabel);
   }
 
   function loadOccupiedHotelRooms(force) {
@@ -503,11 +565,10 @@
 
   function syncRoomTransferField() {
     var field = document.getElementById('pos-inv-settle-room-field');
-    var sel = document.getElementById('pos-inv-settle-hotel-room');
     var needed = settleUsesRoomTransfer();
     if (field) field.hidden = !needed;
     if (!needed) {
-      if (sel) sel.value = '';
+      setHotelRoomSelection('', '');
       return;
     }
     loadOccupiedHotelRooms(false);
@@ -538,12 +599,10 @@
       }
     });
     var roomField = document.getElementById('pos-inv-settle-room-field');
-    if (roomField) {
-      roomField.classList.toggle(
-        'is-incomplete',
-        settleUsesRoomTransfer() && !selectedHotelRoomId()
-      );
-    }
+    var roomListbox = document.getElementById('pos-inv-settle-hotel-room-listbox');
+    var roomIncomplete = settleUsesRoomTransfer() && !selectedHotelRoomId();
+    if (roomField) roomField.classList.toggle('is-incomplete', roomIncomplete);
+    if (roomListbox) roomListbox.classList.toggle('is-incomplete', roomIncomplete);
     submitBtn.disabled = !ok;
   }
 
@@ -671,6 +730,7 @@
 
   function resetSettleSplits() {
     closeAllSettleSplitListboxes();
+    closeHotelRoomListbox();
     var root = document.getElementById('pos-inv-settle-splits');
     if (root) root.innerHTML = '';
     addSettleSplitRow('', '');
@@ -741,6 +801,7 @@
     var modal = document.getElementById('pos-inv-settle-modal');
     if (!modal || modal.hidden) return;
     closeAllSettleSplitListboxes();
+    closeHotelRoomListbox();
     modal.hidden = true;
     modal.setAttribute('hidden', '');
     setSettleError('');
@@ -924,15 +985,6 @@
     if (!modal || modal.getAttribute('data-pos-settle-bound') === '1') return;
     modal.setAttribute('data-pos-settle-bound', '1');
 
-    var roomSelect = document.getElementById('pos-inv-settle-hotel-room');
-    if (roomSelect && roomSelect.getAttribute('data-bound') !== '1') {
-      roomSelect.setAttribute('data-bound', '1');
-      roomSelect.addEventListener('change', function () {
-        setSettleError('');
-        syncSettleSubmitEnabled();
-      });
-    }
-
     modal.addEventListener('click', function (event) {
       if (event.target.closest('[data-settle-close]')) {
         closePosSettleModal();
@@ -940,6 +992,7 @@
       }
       if (!event.target.closest('[data-se-listbox]')) {
         closeAllSettleSplitListboxes();
+        closeHotelRoomListbox();
       }
       if (event.target.closest('#pos-inv-settle-add-split')) {
         event.preventDefault();
@@ -964,9 +1017,12 @@
         if (!open || open.hidden) return;
         var openList = open.querySelector('[data-se-listbox].is-open');
         if (openList) {
+          if (openList.id === 'pos-inv-settle-hotel-room-listbox') return;
           closeSettleSplitListbox(openList);
           return;
         }
+        var roomBox = document.getElementById('pos-inv-settle-hotel-room-listbox');
+        if (roomBox && roomBox.contains(event.target)) return;
         closePosSettleModal();
       });
     }
@@ -976,6 +1032,10 @@
   global.closePosSettleModal = closePosSettleModal;
   global.bindPosSettleModal = bindPosSettleModal;
   global.submitPosSettle = submitPosSettle;
+  global.onPosSettleHotelRoomChanged = function () {
+    setSettleError('');
+    syncSettleSubmitEnabled();
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bindPosSettleModal);

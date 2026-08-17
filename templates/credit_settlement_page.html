@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>{{ page_title }} | Hotel Bell Elite</title>
+{% from 'partials/ep_form_listbox_macros.html' import ep_listbox %}
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
@@ -12,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <script>
 (function(){
@@ -85,9 +86,10 @@
           <div class="se-filter-chip se-filter-chip--search cp-search-chip pl-header-field-listbox pl-header-field">
             <label class="se-filter-chip-label" for="credit-payment-search">Search</label>
             <div class="se-filter-chip-control">
-              <input type="search" id="credit-payment-search" class="cp-search-input" placeholder="Expense, supplier, invoice…" autocomplete="off" aria-label="Search credit payment entries">
+              <input type="search" id="credit-payment-search" class="cp-search-input" placeholder="{{ settlement_labels.search_placeholder|default('Expense, supplier, invoice…') }}" autocomplete="off" aria-label="Search {{ settlement_labels.page_title|default('credit payment') }} entries">
             </div>
           </div>
+          {% if settlement_labels.show_kind_filter|default(true) %}
           <div class="pl-kind-filter-host cp-kind-filter-host pl-header-field" id="credit-payment-kind-host">
             <span class="se-filter-chip-label" id="credit-payment-kind-label">Type</span>
             <input type="hidden" id="credit-payment-kind" name="kind" value="{{ selected_kind }}">
@@ -106,8 +108,11 @@
               {% endfor %}
             </div>
           </div>
+          {% else %}
+          <input type="hidden" id="credit-payment-kind" name="kind" value="{{ selected_kind }}">
+          {% endif %}
           <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pl-header-field-listbox pl-header-field pl-supplier-filter-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-submit="credit-payment-filter-form" data-se-listbox-close-date-wrap="cp-date-range-wrap" id="credit-payment-supplier-listbox">
-            <span class="se-filter-chip-label" id="credit-payment-supplier-label">Supplier</span>
+            <span class="se-filter-chip-label" id="credit-payment-supplier-label">{{ settlement_labels.party_filter_label|default('Supplier') }}</span>
             <div class="se-filter-chip-control">
               <input type="hidden" id="credit-payment-supplier" name="supplier" value="{{ selected_supplier }}">
               <input type="search"
@@ -120,7 +125,7 @@
                      aria-controls="credit-payment-supplier-list"
                      aria-labelledby="credit-payment-supplier-label"
                      value="{% if selected_supplier != 'all' %}{{ selected_supplier_label }}{% endif %}"
-                     placeholder="All suppliers"
+                     placeholder="{{ settlement_labels.party_filter_all|default('All suppliers') }}"
                      autocomplete="off"
                      spellcheck="false">
               <span class="se-filter-chip-chev" aria-hidden="true">
@@ -129,7 +134,7 @@
             </div>
             <div class="se-filter-listbox" id="credit-payment-supplier-list" role="listbox" aria-labelledby="credit-payment-supplier-label" hidden>
               <div class="pl-supplier-options ep-listbox-options" id="credit-payment-supplier-options">
-                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all suppliers" data-label="All suppliers" aria-selected="{{ 'true' if selected_supplier == 'all' else 'false' }}">All suppliers</button>
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="{{ settlement_labels.party_filter_all|default('All suppliers')|lower }}" data-label="{{ settlement_labels.party_filter_all|default('All suppliers') }}" aria-selected="{{ 'true' if selected_supplier == 'all' else 'false' }}">{{ settlement_labels.party_filter_all|default('All suppliers') }}</button>
                 {% for supplier in suppliers %}
                 <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_supplier == (supplier.id|string) %} is-selected{% endif %}" role="option" data-value="{{ supplier.id }}" data-name="{{ supplier.name|lower }} {{ supplier.gst|lower }}" data-label="{{ supplier.name }}" aria-selected="{{ 'true' if selected_supplier == (supplier.id|string) else 'false' }}">
                   <span class="pl-supplier-option-name">{{ supplier.name }}</span>
@@ -211,10 +216,11 @@
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">{{ settlement_labels.outstanding_summary_label }}</div>
             <div class="pl-summary-value" id="cp-outstanding-total" data-amount="{{ outstanding_total }}">{{ outstanding_total }}</div>
-            <div class="pl-summary-meta">{{ outstanding_entries|length }} expense{{ '' if outstanding_entries|length == 1 else 's' }}</div>
+            <div class="pl-summary-meta">{{ outstanding_entries|length }} {{ settlement_labels.outstanding_unit|default('expense') }}{{ '' if outstanding_entries|length == 1 else 's' }}</div>
           </div>
         </div>
       </article>
+      {% if settlement_labels.show_category_kpis|default(true) %}
       <article class="card pl-summary-card hbe-kpi-card" aria-label="Meat category balance">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--red" aria-hidden="true">
@@ -246,6 +252,7 @@
         </div>
       </article>
       {% endfor %}
+      {% endif %}
     </div>
 
     <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="{{ settlement_labels.outstanding_panel_aria }}">
@@ -256,9 +263,6 @@
         </div>
         <div class="cp-panel-actions">
           <span class="pl-count" id="cp-entry-count">{{ outstanding_entries|length }} entries</span>
-          {% if outstanding_entries and can_mutate_settlement %}
-          <button type="button" class="btn btn-primary" id="cp-header-verify-btn" disabled>{{ settlement_labels.action_button }}</button>
-          {% endif %}
         </div>
       </div>
       {% if outstanding_entries %}
@@ -297,12 +301,16 @@
                   <input type="checkbox" class="cp-expense-check" id="cp-select-all" aria-label="Select all expenses">
                 </th>
                 {% endif %}
-                <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">Expense ID</th>
+                <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.code_column|default('Expense ID') }}</th>
+                {% if settlement_labels.show_kind_column|default(true) %}
                 <th class="pl-sortable" data-sort="kind" scope="col" tabindex="0" aria-sort="none">Type</th>
+                {% endif %}
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
-                <th class="pl-sortable" data-sort="expense" scope="col" tabindex="0" aria-sort="none">Expense</th>
+                <th class="pl-sortable" data-sort="expense" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.item_column|default('Expense') }}</th>
+                {% if settlement_labels.show_category_column|default(true) %}
                 <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>
-                <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
+                {% endif %}
+                <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.party_column|default('Supplier') }}</th>
                 <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Amount</th>
                 <th class="pl-sortable pl-col-amount" data-sort="balance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Balance</th>
                 {% if can_mutate_settlement %}
@@ -342,12 +350,16 @@
                 </td>
                 {% endif %}
                 <td class="pl-col-code" data-sort-value="{{ entry.expense_code or '' }}"><span class="pl-expense-code">{{ entry.expense_code or '—' }}</span></td>
+                {% if settlement_labels.show_kind_column|default(true) %}
                 <td data-sort-value="{{ kind_label }}">
                   <span class="pl-kind-pill pl-kind-pill--{{ entry.entry_kind or 'expense' }}">{{ kind_label }}</span>
                 </td>
+                {% endif %}
                 <td class="pl-col-date" data-sort-value="{{ entry.sales_date or '' }}">{{ entry.sales_date|report_dt }}</td>
                 <td data-sort-value="{{ entry.description or '' }}"><div class="pl-name">{{ entry.description or '—' }}</div></td>
+                {% if settlement_labels.show_category_column|default(true) %}
                 <td data-sort-value="{{ expense_category_labels.get(entry.category, entry.category or '') }}">{{ expense_category_labels.get(entry.category, entry.category or '—') }}</td>
+                {% endif %}
                 <td data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
@@ -414,19 +426,19 @@
           <table class="pl-table cp-table" id="cp-history-table" aria-label="{{ settlement_labels.history_table_aria }}">
             <thead>
               <tr>
-                <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.history_date_column }}</th>
-                <th class="pl-sortable" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">Supplier</th>
+                <th class="pl-sortable pl-col-date" data-sort="date" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.history_date_column }}</th>
+                <th class="pl-sortable cp-col-party" data-sort="supplier" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.party_column|default('Supplier') }}</th>
                 {% if settlement_labels.show_payment_mode %}
-                <th class="pl-sortable" data-sort="method" scope="col" tabindex="0" aria-sort="none">Method</th>
-                <th class="pl-sortable" data-sort="transaction" scope="col" tabindex="0" aria-sort="none">Transaction ID</th>
+                <th class="pl-sortable cp-col-method" data-sort="method" scope="col" tabindex="0" aria-sort="none">Method</th>
+                <th class="pl-sortable cp-col-txn" data-sort="transaction" scope="col" tabindex="0" aria-sort="none">Transaction ID</th>
                 {% endif %}
                 {% if settlement_labels.show_verification_account %}
                 <th class="pl-sortable" data-sort="account" scope="col" tabindex="0" aria-sort="none">Account</th>
                 {% endif %}
                 <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Total</th>
-                <th class="pl-sortable pl-col-count" data-sort="expenses" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Expenses</th>
+                <th class="pl-sortable pl-col-count" data-sort="expenses" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.history_count_column|default('Expenses') }}</th>
                 {% if settlement_labels.show_history_expense_ids %}
-                <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">Expense ID</th>
+                <th class="pl-sortable pl-col-code cp-expense-codes" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">{{ settlement_labels.code_column|default('Expense ID') }}</th>
                 {% endif %}
                 <th class="cp-col-actions">Actions</th>
               </tr>
@@ -446,7 +458,7 @@
               ]|select|join(' ')|lower %}
               <tr class="cp-history-row" data-payment-id="{{ entry.id }}" data-search="{{ search_blob|e }}">
                 <td class="pl-col-date" data-sort-value="{{ entry.payment_date or '' }}">{{ entry.payment_date|report_dt }}</td>
-                <td data-sort-value="{{ entry.supplier_name or '' }}">
+                <td class="cp-col-party" data-sort-value="{{ entry.supplier_name or '' }}">
                   {% if entry.supplier_name %}
                   <div class="pl-name">{{ entry.supplier_name }}</div>
                   {% if entry.supplier_gst %}<div class="pl-meta">{{ entry.supplier_gst }}</div>{% endif %}
@@ -455,8 +467,8 @@
                   {% endif %}
                 </td>
                 {% if settlement_labels.show_payment_mode %}
-                <td data-sort-value="{{ credit_payment_method_labels.get(entry.payment_method, entry.payment_method) }}">{{ credit_payment_method_labels.get(entry.payment_method, entry.payment_method) }}</td>
-                <td data-sort-value="{{ entry.transaction_id or '' }}">{{ entry.transaction_id or '—' }}</td>
+                <td class="cp-col-method" data-sort-value="{{ credit_payment_method_labels.get(entry.payment_method, entry.payment_method) }}">{{ credit_payment_method_labels.get(entry.payment_method, entry.payment_method) }}</td>
+                <td class="cp-col-txn" data-sort-value="{{ entry.transaction_id or '' }}">{{ entry.transaction_id or '—' }}</td>
                 {% endif %}
                 {% if settlement_labels.show_verification_account %}
                 <td data-sort-value="{{ entry.verification_account or '' }}">{{ entry.verification_account or '—' }}</td>
@@ -535,9 +547,9 @@
         <thead>
           <tr>
             <th class="cp-col-check"><span class="visually-hidden">Select</span></th>
-            <th>Expense</th>
+            <th>{{ settlement_labels.alloc_item_column|default('Expense') }}</th>
             <th>Date</th>
-            <th>Supplier</th>
+            <th>{{ settlement_labels.party_column|default('Supplier') }}</th>
             <th class="pl-col-amount">Balance</th>
             <th class="pl-col-amount">{{ settlement_labels.pay_now_column }}</th>
           </tr>
@@ -559,41 +571,46 @@
       <span id="cp-clearance-title">{{ settlement_labels.clearance_modal_title }}</span>
     </div>
     <div id="cp-clearance-error" class="staff-credit-error"></div>
-    <div class="staff-field">
-      <label for="cp-payment-date">{{ settlement_labels.clearance_date_label }}</label>
-      <input id="cp-payment-date" class="staff-input" type="date" value="{{ today_iso }}">
-    </div>
-    {% if settlement_labels.show_payment_mode %}
-    <div class="staff-field">
-      <label>{{ settlement_labels.clearance_mode_label }}</label>
-      <div class="staff-credit-type-toggle" id="cp-method-toggle">
-        {% for method_key, method_label in credit_payment_methods %}
-        <button type="button" class="staff-credit-type-btn{% if method_key == 'cash' %} active{% endif %}" data-value="{{ method_key }}">{{ method_label }}</button>
-        {% endfor %}
+    {% set cp_method_selected = '' if settlement_labels.require_payment_method_choice|default(false) else 'cash' %}
+    <div class="staff-grid cp-clearance-mode-date-row">
+      {% if settlement_labels.show_payment_mode %}
+      <div class="staff-field">
+        {{ ep_listbox(
+          'payment_method',
+          settlement_labels.clearance_mode_label,
+          credit_payment_methods,
+          cp_method_selected,
+          placeholder='Select payment mode',
+          field_id='cp-payment-method',
+          change_handler='cpPaymentMethodChanged',
+          extra_class='staff-expense-payment-listbox cp-method-listbox'
+        ) }}
       </div>
-      <input type="hidden" id="cp-payment-method" value="cash">
+      {% endif %}
+      <div class="staff-field">
+        <label for="cp-payment-date">{{ settlement_labels.clearance_date_label }}</label>
+        <input id="cp-payment-date" class="staff-input" type="date" value="{{ today_iso }}">
+      </div>
     </div>
+    {% if not settlement_labels.show_payment_mode %}
+    <input type="hidden" id="cp-payment-method" value="cash">
+    {% endif %}
+    {% if settlement_labels.show_payment_mode %}
     <div class="staff-field" id="cp-transaction-wrap" hidden>
       <label for="cp-transaction-id">Transaction ID *</label>
       <input id="cp-transaction-id" class="staff-input" type="text" placeholder="Bank transfer / UTR reference" autocomplete="off">
     </div>
-    {% else %}
-    <input type="hidden" id="cp-payment-method" value="cash">
     {% endif %}
-    <div class="staff-field">
-      <label for="cp-notes">Notes</label>
-      <input id="cp-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
-    </div>
     <div class="cp-alloc-wrap">
       <div class="cp-alloc-head">
-        <span>Selected expenses</span>
+        <span>{{ settlement_labels.alloc_selected_label|default('Selected expenses') }}</span>
         <span id="cp-alloc-supplier"></span>
       </div>
       <div class="cp-alloc-table-wrap">
         <table class="cp-alloc-table" aria-label="Payment allocations">
           <thead>
             <tr>
-              <th>Expense</th>
+              <th>{{ settlement_labels.alloc_item_column|default('Expense') }}</th>
               <th class="pl-col-amount">Balance</th>
               <th class="pl-col-amount">{{ settlement_labels.pay_now_column }}</th>
             </tr>
@@ -605,6 +622,10 @@
         <span>{{ settlement_labels.clearance_total_label }}</span>
         <strong id="cp-alloc-total" data-amount="0">0</strong>
       </div>
+    </div>
+    <div class="staff-field">
+      <label for="cp-notes">Notes</label>
+      <input id="cp-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
     </div>
     <div class="staff-credit-actions">
       <button type="button" class="btn" id="cp-clearance-back">Back</button>

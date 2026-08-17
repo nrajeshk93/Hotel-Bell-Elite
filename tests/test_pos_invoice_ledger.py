@@ -439,6 +439,13 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
         self.assertIn("Unsettled", html)
+        self.assertIn('id="pos-inv-settle-modal"', html)
+        self.assertIn("pos_settle.js", html)
+        self.assertIn("data-se-listbox-combobox", html)
+        self.assertIn('id="pos-inv-settle-hotel-room-trigger"', html)
+        self.assertNotIn("ep-listbox-search", html)
+        self.assertIn("Settle invoice ORD-PAY-OPEN", html)
+        self.assertIn('class="pos-il-row is-unsettled"', html)
 
         conn = db_mod.get_db()
         try:

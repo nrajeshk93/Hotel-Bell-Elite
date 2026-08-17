@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=52">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=10">
 <script>
@@ -33,7 +33,7 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=52">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=10">
 {% endif %}
@@ -283,8 +283,8 @@
   {% include 'partials/hotel_settle_modal.html' %}
 </div>
 
-<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=16"></script>
-<script src="{{ url_for('static', filename='hotel_room_invoice_page.js') }}?v=18"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=17"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice_page.js') }}?v=19"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

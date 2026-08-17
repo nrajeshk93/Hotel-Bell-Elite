@@ -411,22 +411,47 @@
     var activeKey = '';
     var ascending = true;
 
+    function parseNaturalCode(value){
+      var raw = String(value == null ? '' : value).trim();
+      var match = raw.match(/^(.*?)(\d+)\s*$/);
+      if (!match) {
+        return { prefix: raw.toLowerCase(), num: null };
+      }
+      return {
+        prefix: String(match[1] || '').toLowerCase(),
+        num: parseInt(match[2], 10)
+      };
+    }
+
+    function compareNaturalCode(a, b){
+      var av = parseNaturalCode(a);
+      var bv = parseNaturalCode(b);
+      var cmp = av.prefix.localeCompare(bv.prefix, undefined, { sensitivity: 'base' });
+      if (cmp) return cmp;
+      if (av.num == null && bv.num == null) {
+        return String(a || '').localeCompare(String(b || ''), undefined, { sensitivity: 'base' });
+      }
+      if (av.num == null) return 1;
+      if (bv.num == null) return -1;
+      return av.num - bv.num;
+    }
+
     function cellSortValue(row, colIndex, type){
       var cell = row.cells[colIndex];
-      if (!cell) return '';
+      if (!cell) return type === 'number' ? 0 : '';
       var raw = cell.getAttribute('data-sort-value');
       if (raw == null || raw === '') raw = (cell.textContent || '').trim();
       if (type === 'number') {
         var n = Number(raw);
         return isFinite(n) ? n : 0;
       }
-      return String(raw).toLowerCase();
+      return String(raw);
     }
 
     function sortBy(th){
       var key = th.getAttribute('data-sort') || '';
       var type = th.getAttribute('data-sort-type') || 'text';
-      var colIndex = Array.from(th.parentNode.children).indexOf(th);
+      var colIndex = th.cellIndex;
       if (colIndex < 0) return;
 
       if (activeKey === key) ascending = !ascending;
@@ -441,6 +466,7 @@
         var bv = cellSortValue(b, colIndex, type);
         var cmp = 0;
         if (type === 'number') cmp = av - bv;
+        else if (type === 'natural') cmp = compareNaturalCode(av, bv);
         else cmp = String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' });
         return ascending ? cmp : -cmp;
       });

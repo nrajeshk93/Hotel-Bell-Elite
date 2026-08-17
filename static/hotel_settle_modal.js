@@ -531,7 +531,9 @@
     var agency =
       stay &&
       String(stay.agencyName || stay.agency_name || '').trim();
-    loadPayMethods(!!agency);
+    var allowCredit =
+      opts.allowCredit != null ? !!opts.allowCredit : !!agency;
+    loadPayMethods(allowCredit);
     settleCtx = {
       room: room,
       balance: round2(balance),

@@ -53,7 +53,7 @@ class PosBanquetTaxTests(unittest.TestCase):
         except OSError:
             pass
 
-    def _payload(self, *, order_no, lines, tax_cgst_pct=None, tax_ugst_pct=None, gst=0, total=None):
+    def _payload(self, *, order_no, lines, tax_cgst_pct=None, tax_ugst_pct=None, gst=0, total=None, **overrides):
         subtotal = sum(float(line["rate"]) * float(line["qty"]) for line in lines)
         if total is None:
             total = subtotal + float(gst)
@@ -81,6 +81,7 @@ class PosBanquetTaxTests(unittest.TestCase):
             data["taxCgstPct"] = tax_cgst_pct
         if tax_ugst_pct is not None:
             data["taxUgstPct"] = tax_ugst_pct
+        data.update(overrides)
         return data
 
     def test_admin_banquet_only_stores_custom_percents(self):
@@ -190,3 +191,42 @@ class PosBanquetTaxTests(unittest.TestCase):
         self.assertIn(b'id="pos-inv-sum-cgst-pct"', html)
         self.assertIn(b'id="pos-inv-sum-ugst-pct"', html)
         self.assertIn(b'data-pos-is-admin="1"', html)
+
+    def test_banquet_zero_tax_generate_uses_nill_series(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="SPC/BANQ00/26-27",
+                lines=[{"uid": "L1", "name": "Banquet", "rate": 50000, "qty": 1}],
+                tax_cgst_pct=0,
+                tax_ugst_pct=0,
+                gst=0,
+                total=50000,
+                customerBill=True,
+            ),
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        inv = res.get_json()["invoice"]
+        self.assertEqual(inv["order_no"], "SPC/26-27/Nill/1")
+        self.assertTrue(inv.get("customer_bill_sent"))
+        self.assertAlmostEqual(float(inv["gst"]), 0.0)
+        self.assertEqual(inv["tax_cgst_pct"], 0.0)
+        self.assertEqual(inv["tax_ugst_pct"], 0.0)
+
+    def test_banquet_taxed_generate_uses_taxable_series(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no="SPC/BANQ05/26-27",
+                lines=[{"uid": "L1", "name": "Banquet", "rate": 50000, "qty": 1}],
+                tax_cgst_pct=9,
+                tax_ugst_pct=9,
+                gst=9000,
+                total=59000,
+                customerBill=True,
+            ),
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        inv = res.get_json()["invoice"]
+        self.assertEqual(inv["order_no"], "SPC/26-27/1")
+        self.assertTrue(inv.get("customer_bill_sent"))

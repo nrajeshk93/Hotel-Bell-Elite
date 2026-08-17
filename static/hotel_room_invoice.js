@@ -76,6 +76,43 @@
       .replace(/"/g, '&quot;');
   }
 
+  function folioChargeDisplayLabel(item) {
+    var kind = String((item && item.kind) || '').toLowerCase();
+    var base =
+      kind === 'bar_room_transfer'
+        ? 'Bar Room Transfer'
+        : kind === 'restaurant_room_transfer'
+          ? 'Restaurant Room Transfer'
+          : '';
+    var stored = String((item && item.label) || '').trim();
+    if (!base) return stored || 'Other Charge';
+    var invoiceNo = String(
+      (item &&
+        (item.orderNo ||
+          item.order_no ||
+          item.invoiceNumber ||
+          item.invoiceNo)) ||
+        ''
+    ).trim();
+    if (!invoiceNo && stored) {
+      var match = stored.match(/\b(?:ORD|INV)[-A-Za-z0-9]+/i);
+      if (match) invoiceNo = match[0];
+      else if (stored.indexOf(base) === 0) {
+        invoiceNo = stored
+          .slice(base.length)
+          .replace(/^\s*[·•|—–-]+\s*/, '')
+          .trim();
+      }
+    }
+    if (!invoiceNo) {
+      var rawId = String(
+        (item && (item.invoiceId || item.invoice_id)) || ''
+      ).trim();
+      if (rawId && rawId.length <= 24) invoiceNo = rawId;
+    }
+    return invoiceNo ? base + ' · ' + invoiceNo : stored || base;
+  }
+
   function toDateISO(value) {
     var raw = String(value || '').trim();
     if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
@@ -393,48 +430,19 @@
     });
 
     var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
-    var restaurant = 0;
-    var bar = 0;
     folio.forEach(function (item) {
       if (!item) return;
       var amount = Number(item.amount || 0);
       if (!(amount > 0)) return;
-      var kind = String(item.kind || '').toLowerCase();
       var at = toDateISO(item.at) || checkIn;
-      if (kind === 'restaurant_room_transfer') {
-        restaurant += amount;
-        return;
-      }
-      if (kind === 'bar_room_transfer') {
-        bar += amount;
-        return;
-      }
       lines.push({
-        description: item.label || 'Other Charge',
+        description: folioChargeDisplayLabel(item),
         date: at,
         qty: 1,
         rate: amount,
         amount: amount
       });
     });
-    if (restaurant > 0) {
-      lines.push({
-        description: 'Restaurant Room Transfer',
-        date: checkIn,
-        qty: 1,
-        rate: Math.round(restaurant * 100) / 100,
-        amount: Math.round(restaurant * 100) / 100
-      });
-    }
-    if (bar > 0) {
-      lines.push({
-        description: 'Bar Room Transfer',
-        date: checkIn,
-        qty: 1,
-        rate: Math.round(bar * 100) / 100,
-        amount: Math.round(bar * 100) / 100
-      });
-    }
 
     return lines;
   }
@@ -850,5 +858,6 @@
   global.buildHotelRoomInvoiceHtml = buildHotelRoomInvoiceHtml;
   global.openHotelRoomInvoice = openHotelRoomInvoice;
   global.hotelInvoiceRoomLabel = hotelInvoiceRoomLabel;
+  global.hotelFolioChargeDisplayLabel = folioChargeDisplayLabel;
   global.hotelRoomInvoiceAmountInWords = amountInWords;
 })(window);

@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=24">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=25">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
@@ -76,7 +76,7 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=24">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=25">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
@@ -2639,7 +2639,7 @@
 
     <div id="acm-err" style="display:none;background:var(--err-bg);border:1px solid rgba(220,38,38,.25);color:var(--err);padding:9px 13px;border-radius:var(--rs);font-size:12px;margin-bottom:12px;"></div>
 
-    <form id="add-credit-form" method="POST" action="{% if mode is defined and mode == 'credits' and emp is defined %}{{ url_for('add_credit', emp_id=emp.id) }}{% else %}{{ url_for('add_credit_global') }}{% endif %}">
+    <form id="add-credit-form" method="POST" data-de-allow-soft-submit="1" action="{% if mode is defined and mode == 'credits' and emp is defined %}{{ url_for('add_credit', emp_id=emp.id) }}{% else %}{{ url_for('add_credit_global') }}{% endif %}">
       <input type="hidden" name="year" value="{{ sel_year }}">
       <input type="hidden" name="month" value="{{ sel_month }}">
       <input type="hidden" id="acm-type" name="transaction_type" value="credit">

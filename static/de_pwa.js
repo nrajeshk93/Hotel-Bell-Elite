@@ -13,6 +13,15 @@
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
       .then(function (reg) {
+        caches.keys().then(function (keys) {
+          return Promise.all(
+            keys.map(function (key) {
+              if (String(key).indexOf('hbe-pos-') === 0 && key !== 'hbe-pos-v40') {
+                return caches.delete(key);
+              }
+            })
+          );
+        }).catch(function () {});
         if (reg && typeof reg.update === 'function') {
           try {
             reg.update();

@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <script>
@@ -36,7 +36,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
-<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 {% endif %}
@@ -292,7 +292,7 @@
             <thead>
               <tr>
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none">Date</th>
-                <th class="pl-sortable" data-sort="expense_id" scope="col" tabindex="0" aria-sort="none">ID</th>
+                <th class="pl-sortable" data-sort="expense_id" data-sort-type="natural" scope="col" tabindex="0" aria-sort="none">ID</th>
                 <th class="pl-sortable" data-sort="kind" scope="col" tabindex="0" aria-sort="none">Type</th>
                 <th class="pl-sortable" data-sort="expense" scope="col" tabindex="0" aria-sort="none">Description</th>
                 <th class="pl-sortable" data-sort="category" scope="col" tabindex="0" aria-sort="none">Category</th>

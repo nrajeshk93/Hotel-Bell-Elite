@@ -159,6 +159,18 @@ class PurchaseLedgerKindFilterTests(unittest.TestCase):
         ids = {row["id"] for row in entries}
         self.assertEqual(ids, {self.expense_id, self.legacy_id})
 
+    def test_sales_entry_expense_helpers_exclude_purchases(self):
+        total = app_module._sales_expense_total(
+            self.conn, "HBE", "Hotel", "2026-07-01"
+        )
+        entries = app_module._sales_expense_entries(
+            self.conn, "HBE", "Hotel", "2026-07-01"
+        )
+        ids = {row["id"] for row in entries}
+        self.assertEqual(total, 65.0)
+        self.assertEqual(ids, {self.expense_id, self.legacy_id})
+        self.assertNotIn(self.purchase_id, ids)
+
 
 class CreateSalesExpenseKindTests(unittest.TestCase):
     def setUp(self):

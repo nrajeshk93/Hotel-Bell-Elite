@@ -743,6 +743,7 @@
     if (root.id === 'credit-payment-supplier-listbox') return;
     // Expense / tips modals own their searchable listboxes (custom GST / employee search).
     if (root.closest('#sales-expense-modal, #sales-tips-modal')) return;
+    if (root.classList.contains('pos-inv-settle-method-listbox')) return;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');
     var list = listEl(root);

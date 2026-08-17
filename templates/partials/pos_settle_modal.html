@@ -21,10 +21,46 @@
       </div>
     </div>
     <div class="staff-field" id="pos-inv-settle-room-field" hidden>
-      <label for="pos-inv-settle-hotel-room">Hotel room *</label>
-      <select id="pos-inv-settle-hotel-room" class="staff-input" aria-label="Hotel room for Room Transfer">
-        <option value="">Select occupied room…</option>
-      </select>
+      <div
+        class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox staff-expense-payment-listbox pos-inv-settle-room-listbox"
+        data-se-listbox
+        data-se-listbox-searchable
+        data-se-listbox-combobox
+        data-se-listbox-change="onPosSettleHotelRoomChanged"
+        id="pos-inv-settle-hotel-room-listbox"
+      >
+        <span class="se-filter-chip-label" id="pos-inv-settle-hotel-room-label">Hotel room *</span>
+        <div class="se-filter-chip-control">
+          <span class="se-filter-chip-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+              <path d="M4 21V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v12"/>
+              <path d="M4 21h16"/>
+              <path d="M10 21v-5h4v5"/>
+              <path d="M8 11h.01"/>
+            </svg>
+          </span>
+          <input type="hidden" id="pos-inv-settle-hotel-room" value="" aria-label="Hotel room for Room Transfer">
+          <input type="search"
+                 class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                 id="pos-inv-settle-hotel-room-trigger"
+                 role="combobox"
+                 aria-autocomplete="list"
+                 aria-haspopup="listbox"
+                 aria-expanded="false"
+                 aria-controls="pos-inv-settle-hotel-room-list"
+                 aria-labelledby="pos-inv-settle-hotel-room-label"
+                 value=""
+                 placeholder="Select occupied room…"
+                 autocomplete="off"
+                 spellcheck="false">
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox" id="pos-inv-settle-hotel-room-list" role="listbox" aria-labelledby="pos-inv-settle-hotel-room-label" hidden>
+          <div class="ep-listbox-options" id="pos-inv-settle-hotel-room-options"></div>
+        </div>
+      </div>
       <p class="pos-inv-settle-room-hint">Required when paying by Room Transfer — posts to Estimated Charges on that stay.</p>
     </div>
     <div class="staff-field">

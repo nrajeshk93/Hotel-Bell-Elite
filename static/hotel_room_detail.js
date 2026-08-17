@@ -1041,49 +1041,33 @@
     });
 
     var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
-    var restaurant = 0;
-    var bar = 0;
-    var otherFolio = [];
     folio.forEach(function (item) {
       if (!item) return;
       var amount = Number(item.amount || 0);
       if (!(amount > 0)) return;
-      var kind = String(item.kind || '').toLowerCase();
-      if (kind === 'restaurant_room_transfer') restaurant += amount;
-      else if (kind === 'bar_room_transfer') bar += amount;
-      else {
-        var label = item.label || 'Other Charge';
-        var src = String(item.source || '');
-        if (src === 'merged_room_rate') {
-          var override = mergeChargesFor(
-            item.sourceRoomId,
-            item.sourceRoomNumber
-          );
-          if (override != null) {
-            amount = override;
-          }
+      var src = String(item.source || '');
+      if (src === 'merged_room_rate' || src === 'room_merge') {
+        var mergedNow =
+          !!(room && room.isMergePrimary) ||
+          String((stay && stay.mergeRole) || '').toLowerCase() === 'primary';
+        if (!mergedNow) return;
+        var override = mergeChargesFor(
+          item.sourceRoomId,
+          item.sourceRoomNumber
+        );
+        if (override != null) {
+          amount = override;
         }
-        if (!(amount > 0)) return;
-        otherFolio.push({
-          label: label,
-          amount: amount
-        });
       }
-    });
-    if (restaurant > 0) {
+      if (!(amount > 0)) return;
+      var labelFn = global.hotelFolioChargeDisplayLabel;
       lines.push({
-        label: 'Restaurant Room Transfer',
-        amount: Math.round(restaurant * 100) / 100
+        label:
+          typeof labelFn === 'function'
+            ? labelFn(item)
+            : item.label || 'Other Charge',
+        amount: Math.round(amount * 100) / 100
       });
-    }
-    if (bar > 0) {
-      lines.push({
-        label: 'Bar Room Transfer',
-        amount: Math.round(bar * 100) / 100
-      });
-    }
-    otherFolio.forEach(function (row) {
-      lines.push(row);
     });
     return lines;
   }
@@ -1134,6 +1118,7 @@
     if (
       stay &&
       stay.estimatedTotal != null &&
+      !stay.independentBilling &&
       !(Number(stay.overstayNights) > 0 || overstayNightsFromStay(stay) > 0)
     ) {
       estimated = Math.round(Number(stay.estimatedTotal || 0) * 100) / 100;
@@ -5431,17 +5416,46 @@
   function storedIdDocumentName(value) {
     var text = String(value || '').trim();
     if (!text) return '';
-    var file = (text.split(/[/\\]/).pop() || '').split('?')[0].split('#')[0];
-    if (/^[A-Za-z0-9._ -]+\.(webp|pdf|jpe?g|png|heic|heif)$/i.test(file) && file.indexOf('..') === -1) {
+    text = text.split('?')[0].split('#')[0].replace(/\\/g, '/').replace(/\/+$/, '');
+    if (/\/(raw|content)$/i.test(text)) {
+      text = text.replace(/\/(raw|content)$/i, '');
+    }
+    var viewAt = text.indexOf('/id-documents/view/');
+    if (viewAt !== -1) {
+      text = text.slice(viewAt + '/id-documents/view/'.length);
+    } else {
+      var apiAt = text.indexOf('/id-documents/');
+      if (apiAt !== -1) text = text.slice(apiAt + '/id-documents/'.length);
+      else text = text.split('/').pop() || '';
+    }
+    var file = String(text.split('/').pop() || '').trim();
+    if (
+      /^[A-Za-z0-9._ -]+\.(webp|pdf|jpe?g|png|heic|heif)$/i.test(file) &&
+      file.indexOf('..') === -1
+    ) {
+      return file;
+    }
+    if (
+      /^[0-9a-f]{32}$/i.test(file) ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(file)
+    ) {
       return file;
     }
     return '';
   }
 
+  function idDocumentApiBase() {
+    var root = pageRoot();
+    var api =
+      (root && root.getAttribute('data-id-document-upload-api')) ||
+      '/hotel/api/id-documents';
+    return String(api || '').replace(/\/+$/, '') || '/hotel/api/id-documents';
+  }
+
   function idDocumentViewUrl(path) {
     var stored = storedIdDocumentName(path);
-    if (stored) return '/hotel/api/id-documents/' + encodeURIComponent(stored);
-    return '';
+    if (!stored) return '';
+    return idDocumentApiBase() + '/view/' + encodeURIComponent(stored) + '/raw';
   }
 
   function idDocumentAliasName(file) {
@@ -5513,6 +5527,11 @@
       if (url && !seen[url]) {
         seen[url] = true;
         list.push(url);
+      }
+      var legacy = idDocumentApiBase() + '/' + encodeURIComponent(file);
+      if (legacy && !seen[legacy]) {
+        seen[legacy] = true;
+        list.push(legacy);
       }
     });
   }
@@ -5605,7 +5624,7 @@
     return fetch(url, {
       credentials: 'same-origin',
       headers: {
-        Accept: 'image/*,application/pdf,*/*',
+        Accept: 'application/pdf,image/*,application/octet-stream,*/*',
         'X-Requested-With': 'XMLHttpRequest'
       },
       cache: 'no-store'
@@ -5615,13 +5634,38 @@
         .split(';')[0]
         .trim()
         .toLowerCase();
-      if (ctype && !/^image\//.test(ctype) && ctype.indexOf('pdf') === -1) {
-        throw new Error('bad-type');
-      }
       return resp.blob().then(function (blob) {
-        var blobType = String(blob.type || '').toLowerCase();
-        if (blobType.indexOf('html') !== -1) throw new Error('html');
-        return { blob: blob, ctype: ctype || blobType, url: url };
+        return blob.slice(0, 8).arrayBuffer().then(function (buf) {
+          var bytes = new Uint8Array(buf);
+          var head = '';
+          for (var i = 0; i < bytes.length; i++) {
+            head += String.fromCharCode(bytes[i]);
+          }
+          var isPdf = head.indexOf('%PDF') === 0;
+          var blobType = String(blob.type || '').toLowerCase();
+          var isHtml =
+            !isPdf &&
+            (blobType.indexOf('html') !== -1 ||
+              ctype.indexOf('text/html') !== -1 ||
+              head.indexOf('<!') === 0 ||
+              head.toLowerCase().indexOf('<html') === 0);
+          if (isHtml) throw new Error('html');
+          if (
+            !isPdf &&
+            ctype &&
+            !/^image\//.test(ctype) &&
+            ctype.indexOf('pdf') === -1 &&
+            ctype !== 'application/octet-stream' &&
+            ctype !== 'binary/octet-stream'
+          ) {
+            throw new Error('bad-type');
+          }
+          return {
+            blob: blob,
+            ctype: isPdf ? 'application/pdf' : ctype || blobType,
+            url: url
+          };
+        });
       });
     });
   }

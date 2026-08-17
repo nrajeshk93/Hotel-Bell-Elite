@@ -1219,6 +1219,8 @@ class HotelRoomsTests(unittest.TestCase):
     def test_guest_lookup_returns_id_after_checkout(self):
         doc_path = "/hotel/api/id-documents/aa111111-2222-3333-4444-555555555555.pdf"
         extra_path = "/hotel/api/id-documents/bb111111-2222-3333-4444-555555555555.pdf"
+        healed_doc = "/hotel/api/id-documents/view/aa111111-2222-3333-4444-555555555555.pdf/raw"
+        healed_extra = "/hotel/api/id-documents/view/bb111111-2222-3333-4444-555555555555.pdf/raw"
         check_in, check_out = self._stay_window(nights=1)
         checkin = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -1261,12 +1263,12 @@ class HotelRoomsTests(unittest.TestCase):
         guest = body["guest"]
         self.assertEqual(guest["firstName"], "Priya")
         self.assertEqual(guest["idType"], "Aadhaar")
-        self.assertEqual(guest["idDocumentPath"], doc_path)
+        self.assertEqual(guest["idDocumentPath"], healed_doc)
         self.assertEqual(guest["address"], "12 Marine Drive")
         extras = guest.get("additionalGuests") or []
         self.assertEqual(len(extras), 1)
         self.assertEqual(extras[0]["name"], "Amit Shah")
-        self.assertEqual(extras[0]["idDocumentPath"], extra_path)
+        self.assertEqual(extras[0]["idDocumentPath"], healed_extra)
 
         mismatch = self.client.get(
             "/hotel/api/guests/lookup?mobile=9876501234&firstName=Amit&lastName=Khan"
@@ -1275,7 +1277,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertTrue(mismatch_body["found"])
         self.assertFalse(mismatch_body["nameMatch"])
         self.assertEqual(mismatch_body["guest"]["firstName"], "Priya")
-        self.assertEqual(mismatch_body["guest"]["idDocumentPath"], doc_path)
+        self.assertEqual(mismatch_body["guest"]["idDocumentPath"], healed_doc)
 
         titled = self.client.get(
             "/hotel/api/guests/lookup?mobile=9876501234&firstName=Mr%20Priya&lastName=Shah"
@@ -1284,6 +1286,7 @@ class HotelRoomsTests(unittest.TestCase):
 
     def test_guest_profile_merge_keeps_id_without_reupload(self):
         doc_path = "/hotel/api/id-documents/cc111111-2222-3333-4444-555555555555.pdf"
+        healed_doc = "/hotel/api/id-documents/view/cc111111-2222-3333-4444-555555555555.pdf/raw"
         check_in, check_out = self._stay_window(nights=1)
         first = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -1307,6 +1310,7 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
         self.client.put("/hotel/api/rooms/room-101", json={"action": "checkout"})
+        self.client.put("/hotel/api/rooms/room-101", json={"status": "vacant"})
 
         second = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -1335,7 +1339,7 @@ class HotelRoomsTests(unittest.TestCase):
         after = self.client.get("/hotel/api/guests/lookup?mobile=9000011122")
         self.assertEqual(after.status_code, 200)
         guest = after.get_json()["guest"]
-        self.assertEqual(guest["idDocumentPath"], doc_path)
+        self.assertEqual(guest["idDocumentPath"], healed_doc)
         self.assertEqual(guest["idType"], "Aadhaar")
         self.assertEqual(guest["idDocumentName"], "Arun Shetty Aadhaar.pdf")
 
@@ -1378,6 +1382,11 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay["earlyCheckinAmount"], 250)
         self.assertEqual(len(stay["folioCharges"]), 1)
         self.assertEqual(stay["folioCharges"][0]["kind"], "restaurant_room_transfer")
+        self.assertEqual(stay["folioCharges"][0]["orderNo"], "ORD-1")
+        self.assertEqual(
+            stay["folioCharges"][0]["label"],
+            "Restaurant Room Transfer · ORD-1",
+        )
         # room 5000 + extras 750 + folio 420 = 6170 (tax-inclusive rates)
         self.assertEqual(stay["estimatedTotal"], 6170.0)
         self.assertEqual(stay["advancePaid"], 1000)
@@ -1954,6 +1963,10 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hil-view-btn", html)
         self.assertIn("hil-print-btn", html)
         self.assertIn("de-nav-hotel-invoice-ledger", html)
+        self.assertIn("de-nav-hotel-credit", html)
+        self.assertIn("hil-invoice-listbox", html)
+        self.assertIn("Room Transfer", html)
+        self.assertIn(">Invoice</span>", html)
 
         api = self.client.get(f"/hotel/invoice-ledger/api/{inv_no}")
         self.assertEqual(api.status_code, 200)
@@ -1977,6 +1990,205 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertTrue(settled["ok"])
         self.assertEqual(settled["invoice"]["status"], "settled")
         self.assertLessEqual(float(settled["invoice"]["balance_amount"]), 0.009)
+        ledger = self.client.get("/hotel/invoice-ledger")
+        self.assertIn("Payment Mode", ledger.get_data(as_text=True))
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_hotel_room_invoices(conn, q=inv_no)
+        finally:
+            conn.close()
+        match = next(row for row in rows if row["invoice_number"] == inv_no)
+        self.assertEqual(match["status"], "settled")
+        self.assertEqual(match["payment_mode_label"], "Cash")
+        self.assertEqual(match["payment_modes"], ["cash"])
+
+    def test_invoice_ledger_payment_mode_shows_split_tenders(self):
+        self._checkin_with_charges(advance=0)
+        stay = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        total = round(float(stay["balanceAmount"]), 2)
+        cash_part = round(total / 2, 2)
+        upi_part = round(total - cash_part, 2)
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": cash_part},
+                    {"payment_method": "upi", "amount": upi_part},
+                ],
+            },
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        inv_no = gen.get_json()["room"]["stay"]["invoiceNumber"]
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_hotel_room_invoices(conn, q=inv_no)
+        finally:
+            conn.close()
+        match = next(row for row in rows if row["invoice_number"] == inv_no)
+        self.assertEqual(match["status"], "settled")
+        self.assertEqual(match["payment_mode_label"], "Cash + UPI")
+        self.assertEqual(match["payment_modes"], ["cash", "upi"])
+
+    def test_pos_room_transfer_lists_on_invoice_ledger(self):
+        """Restaurant/bar room transfers appear as Un Settled hotel invoices."""
+        self._checkin_with_charges(advance=0)
+        conn = db_mod.get_db()
+        try:
+            result = db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=150.48,
+                kind="restaurant_room_transfer",
+                label="Restaurant Room Transfer · SPC/26-27/12",
+                source="pos",
+                invoice_id="99",
+                order_no="SPC/26-27/12",
+                outlet="restaurant",
+            )
+            db_mod.upsert_pos_room_transfer_invoice(
+                conn, result["room"], result["charge"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        page = self.client.get("/hotel/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("SPC/26-27/12", html)
+        self.assertIn("Un Settled", html)
+
+        room_transfer = self.client.get(
+            "/hotel/invoice-ledger?invoice=room_transfer"
+        )
+        self.assertIn("SPC/26-27/12", room_transfer.get_data(as_text=True))
+        hotel_only = self.client.get("/hotel/invoice-ledger?invoice=hotel")
+        self.assertNotIn("SPC/26-27/12", hotel_only.get_data(as_text=True))
+
+        stay = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        balance_before = float(stay["balanceAmount"])
+        settle = self.client.post(
+            "/hotel/invoice-ledger/api/SPC/26-27/12/settle",
+            json={
+                "payment_splits": [{"method": "cash", "amount": 150.48}],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        settled = settle.get_json()
+        self.assertTrue(settled["ok"])
+        self.assertEqual(settled["invoice"]["status"], "settled")
+        self.assertEqual(settled["invoice"]["source"], "pos_room_transfer")
+        stay_after = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        self.assertAlmostEqual(
+            float(stay_after["balanceAmount"]),
+            round(balance_before - 150.48, 2),
+            places=2,
+        )
+        folio = stay_after["folioCharges"]
+        self.assertTrue(any(f.get("settled") for f in folio))
+
+    def test_pos_room_transfer_ledger_allow_credit_when_stay_has_agency(self):
+        """Room-transfer bills on the ledger expose Credit when the live stay has an agency."""
+        check_in, check_out = self._stay_window(nights=2)
+        res = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Agency",
+                    "lastName": "Guest",
+                    "mobile": "9000000099",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 2,
+                    "roomRate": 2500,
+                    "totalRate": 5000,
+                    "advancePaid": 0,
+                    "agencyName": "Travel Co",
+                    "agencyGst": "27AAAAA0000A1Z5",
+                },
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        conn = db_mod.get_db()
+        try:
+            result = db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=158.0,
+                kind="restaurant_room_transfer",
+                label="Restaurant Room Transfer · SPC/26-27/99",
+                source="pos",
+                invoice_id="199",
+                order_no="SPC/26-27/99",
+                outlet="restaurant",
+            )
+            db_mod.upsert_pos_room_transfer_invoice(
+                conn, result["room"], result["charge"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        api = self.client.get("/hotel/invoice-ledger/api/SPC/26-27/99")
+        self.assertEqual(api.status_code, 200, api.get_data(as_text=True))
+        payload = api.get_json()
+        self.assertTrue(payload["allow_credit"])
+        self.assertEqual(
+            payload["room"]["stay"].get("agencyName")
+            or payload["room"]["stay"].get("agency_name"),
+            "Travel Co",
+        )
+
+        settle = self.client.post(
+            "/hotel/invoice-ledger/api/SPC/26-27/99/settle",
+            json={
+                "payment_splits": [{"method": "credit", "amount": 158.0}],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        settled = settle.get_json()
+        self.assertTrue(settled["ok"])
+        self.assertEqual(settled["invoice"]["status"], "settled")
+
+    def test_stay_payment_settles_linked_pos_room_transfer(self):
+        self._checkin_with_charges(advance=0)
+        conn = db_mod.get_db()
+        try:
+            result = db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=80,
+                kind="bar_room_transfer",
+                label="Bar Room Transfer · INV/26-27/4",
+                source="pos",
+                invoice_id="100",
+                order_no="INV/26-27/4",
+                outlet="bar",
+            )
+            db_mod.upsert_pos_room_transfer_invoice(
+                conn, result["room"], result["charge"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        stay = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "payment_splits": [
+                    {"method": "upi", "amount": stay["balanceAmount"]},
+                ],
+            },
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        api = self.client.get("/hotel/invoice-ledger/api/INV/26-27/4")
+        self.assertEqual(api.status_code, 200)
+        item = api.get_json()["invoice"]
+        self.assertEqual(item["status"], "settled")
+        self.assertLessEqual(float(item["balance_amount"]), 0.009)
 
     def test_invoice_ledger_settle_after_checkout(self):
         self._checkin_with_charges(advance=0)
@@ -2798,6 +3010,108 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertLess(len(primary["stay"]["folioCharges"]), folio_count)
         self.assertTrue(primary["stay"].get("independentBilling"))
         self.assertFalse(primary.get("mergeGroupId"))
+        for stay in (member["stay"], primary["stay"]):
+            merge_folio = [
+                f
+                for f in stay.get("folioCharges") or []
+                if str(f.get("source") or "") in ("room_merge", "merged_room_rate")
+            ]
+            self.assertEqual(merge_folio, [])
+
+    def test_independent_stay_strips_stale_merge_folio(self):
+        """Unmerged rooms must not keep other rooms' absorb lines on Estimated Charges."""
+        check_in, check_out = self._stay_window(nights=1)
+        stay = db_mod._normalize_hotel_room_stay(
+            {
+                "firstName": "Asha",
+                "lastName": "Nair",
+                "checkInDate": check_in,
+                "checkOutDate": check_out,
+                "nights": 1,
+                "roomRate": 5000,
+                "independentBilling": True,
+                "folioCharges": [
+                    {
+                        "kind": "other",
+                        "label": "Room 102 — stay charges",
+                        "amount": 5000,
+                        "source": "room_merge",
+                        "sourceRoomId": "room-102",
+                        "sourceRoomNumber": "102",
+                    },
+                    {
+                        "kind": "other",
+                        "label": "Room 103 — stay charges",
+                        "amount": 5000,
+                        "source": "room_merge",
+                        "sourceRoomId": "room-103",
+                        "sourceRoomNumber": "103",
+                    },
+                    {
+                        "kind": "restaurant_room_transfer",
+                        "label": "Dinner",
+                        "amount": 800,
+                        "source": "pos",
+                    },
+                ],
+            }
+        )
+        sources = [f.get("source") for f in stay.get("folioCharges") or []]
+        self.assertNotIn("room_merge", sources)
+        self.assertNotIn("merged_room_rate", sources)
+        self.assertEqual(len(stay["folioCharges"]), 1)
+        self.assertEqual(stay["folioCharges"][0]["kind"], "restaurant_room_transfer")
+        self.assertLess(float(stay["estimatedTotal"]), 10000)
+        self.assertGreater(float(stay["estimatedTotal"]), 5000)
+
+    def test_folio_keeps_each_pos_invoice_as_own_line(self):
+        """Each restaurant/bar transfer must stay a distinct folio line with its order number."""
+        check_in, check_out = self._stay_window(nights=1)
+        stay = db_mod._normalize_hotel_room_stay(
+            {
+                "firstName": "Asha",
+                "lastName": "Nair",
+                "checkInDate": check_in,
+                "checkOutDate": check_out,
+                "nights": 1,
+                "roomRate": 2000,
+                "folioCharges": [
+                    {
+                        "id": "fc1",
+                        "kind": "restaurant_room_transfer",
+                        "label": "Restaurant Room Transfer · ORD-1",
+                        "amount": 150.48,
+                        "source": "pos",
+                        "invoiceId": "11",
+                    },
+                    {
+                        "id": "fc2",
+                        "kind": "restaurant_room_transfer",
+                        "label": "Restaurant Room Transfer · ORD-2",
+                        "amount": 80,
+                        "source": "pos",
+                        "invoiceId": "12",
+                    },
+                    {
+                        "id": "fc3",
+                        "kind": "bar_room_transfer",
+                        "label": "Bar Room Transfer",
+                        "amount": 40,
+                        "source": "pos",
+                        "invoiceId": "13",
+                        "orderNo": "ORD-3",
+                    },
+                ],
+            }
+        )
+        folio = stay["folioCharges"]
+        self.assertEqual(len(folio), 3)
+        self.assertEqual(folio[0]["orderNo"], "ORD-1")
+        self.assertEqual(folio[1]["orderNo"], "ORD-2")
+        self.assertEqual(folio[2]["orderNo"], "ORD-3")
+        self.assertEqual(folio[0]["label"], "Restaurant Room Transfer · ORD-1")
+        self.assertEqual(folio[1]["label"], "Restaurant Room Transfer · ORD-2")
+        self.assertEqual(folio[2]["amount"], 40)
 
     def test_unmerge_primary_scope_one_shows_former_member(self):
         """Unmerge Room on the primary must not leave the member hidden on the board."""
@@ -3191,7 +3505,7 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(
             stay["idDocumentPath"],
-            "/hotel/api/id-documents/f3dd5b8c-2958-4e62-adbd-b62b9e6f89eb.webp",
+            "/hotel/api/id-documents/view/f3dd5b8c-2958-4e62-adbd-b62b9e6f89eb.webp/raw",
         )
         extras = db_mod._normalize_hotel_room_stay(
             {
@@ -3207,7 +3521,7 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(
             extras["additionalGuests"][0]["idDocumentPath"],
-            "/hotel/api/id-documents/9bd51354-c325-456a-919c-9d9910c52808.webp",
+            "/hotel/api/id-documents/view/9bd51354-c325-456a-919c-9d9910c52808.webp/raw",
         )
 
     def test_same_reservation_id_auto_merges_reserved_rooms(self):

@@ -182,6 +182,9 @@
   }
 
   function syncExpenseAvailableCashDisplay(){
+    if (widget && widget.dataset.availableCash != null && widget.dataset.availableCash !== '') {
+      availableCash = Number(widget.dataset.availableCash || 0);
+    }
     const isCash = getSelectedExpensePaymentType() === 'cash';
     if (salesExpenseAvailableWrap) salesExpenseAvailableWrap.hidden = !isCash;
     if (!salesExpenseAvailableCash) return;
@@ -818,6 +821,7 @@
     if (!expenseModal || salesEntryLocked) return;
     resetExpenseForm();
     renderExpenseEntries(expenseEntries);
+    syncExpenseAvailableCashDisplay();
     expenseModal.classList.add('open');
     expenseModal.setAttribute('aria-hidden', 'false');
   }

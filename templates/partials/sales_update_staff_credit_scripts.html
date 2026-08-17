@@ -1,0 +1,329 @@
+<script>
+(function(){
+  const widget = document.getElementById('sales-entry-widget');
+  if (!widget || !widget.dataset.staffCreditAddUrl) return;
+
+  const creditLocation = widget.dataset.location || '';
+  {% set credit_boot_entries = [] %}
+  {% if outlet_records is defined and outlet_records.get('Hotel') %}
+    {% set credit_boot_entries = outlet_records['Hotel'].staff_account_entries|default([]) %}
+  {% endif %}
+  const creditEmployees = {{ credit_employees|default([])|tojson }};
+  const salesEntryLocked = {{ 'true' if sales_entry_locked else 'false' }};
+  let staffCreditEntries = {{ credit_boot_entries|tojson }};
+  let editingStaffCreditId = null;
+
+  const staffModal = document.getElementById('staff-credit-modal');
+  const openStaffModalBtn = document.getElementById('open-staff-credit');
+  const cancelStaffModalBtn = document.getElementById('cancel-staff-credit');
+  const saveStaffCreditBtn = document.getElementById('save-staff-credit');
+  const staffCreditSubmitLabel = document.getElementById('staff-credit-submit-label');
+  const staffCreditAmount = document.getElementById('staff-credit-amount');
+  const staffCreditDescription = document.getElementById('staff-credit-description');
+  const staffCreditError = document.getElementById('staff-credit-error');
+  const staffCreditList = document.getElementById('staff-credit-list');
+  const staffCreditHistoryTotal = document.getElementById('staff-credit-history-total');
+  const staffCreditEmployeeInput = document.getElementById('staff-credit-employee');
+  const staffCreditAvailableWrap = document.getElementById('staff-credit-available-wrap');
+  const staffCreditAvailableCash = document.getElementById('staff-credit-available-cash');
+
+  const formatInrKpi = (value) => (typeof formatInr === 'function' ? formatInr(value, 0) : String(value || 0));
+  const formatAmount = (value) => {
+    const amount = Number(value || 0);
+    return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+  };
+
+  function invalidatePayrollCreditNavCache(){
+    if (typeof window.deInvalidateSoftNavCacheByPath === 'function') {
+      window.deInvalidateSoftNavCacheByPath('/credits');
+    }
+  }
+
+  function escapeHtml(value){
+    return String(value || '').replace(/[&<>"']/g, (ch) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'":'&#39;'}[ch]));
+  }
+
+  function staffAccountInput(){
+    return document.querySelector(`[data-sales-entry="staff_account"][data-sales-location="${creditLocation}"]`);
+  }
+
+  function readAvailableCash(){
+    return Number((widget && widget.dataset.availableCash) || {{ available_cash|default(0)|tojson }} || 0);
+  }
+
+  function writeAvailableCash(value){
+    const next = Math.round(Number(value || 0) * 100) / 100;
+    if (widget) widget.dataset.availableCash = String(next);
+    return next;
+  }
+
+  function existingStaffCreditAmount(creditId){
+    if (!creditId) return 0;
+    const existing = staffCreditEntries.find((row) => String(row.id) === String(creditId));
+    return existing ? Number(existing.amount || 0) : 0;
+  }
+
+  function staffCreditAvailableLimit(){
+    return Number(readAvailableCash()) + existingStaffCreditAmount(editingStaffCreditId);
+  }
+
+  function syncStaffCreditAvailableCashDisplay(){
+    if (staffCreditAvailableWrap) staffCreditAvailableWrap.hidden = false;
+    if (staffCreditAvailableCash) staffCreditAvailableCash.textContent = formatInrKpi(staffCreditAvailableLimit());
+  }
+
+  function updateStaffAccountTotal(value){
+    const input = staffAccountInput();
+    if (input) input.value = formatAmount(value);
+  }
+
+  function buildLocationSalesEntries(){
+    const entries = {};
+    document.querySelectorAll(`[data-sales-entry][data-sales-location="${creditLocation}"]`).forEach((input) => {
+      const key = String(input.dataset.salesEntry || '');
+      entries[key] = Math.max(0, Math.round(Number(input.value || 0) * 100) / 100);
+    });
+    return entries;
+  }
+
+  async function persistStaffCreditSalesTotal(){
+    if (!widget || !widget.dataset.saveUrl) return;
+    const resp = await fetch(widget.dataset.saveUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: widget.dataset.company,
+        location: creditLocation,
+        date: widget.dataset.date,
+        sales_entries: buildLocationSalesEntries(),
+        sales_only: true,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save employee credit total.');
+  }
+
+  function employeeLabelById(employeeId){
+    const match = creditEmployees.find((row) => String(row.id) === String(employeeId));
+    if (!match) return '';
+    const code = match.emp_code ? ` (${match.emp_code})` : '';
+    return `${match.name || 'Employee'}${code}`;
+  }
+
+  function getSelectedStaffEmployeeId(){
+    return staffCreditEmployeeInput ? (staffCreditEmployeeInput.value || '') : '';
+  }
+
+  function closeStaffEmployeeListbox(){
+    const root = document.getElementById('staff-credit-employee-listbox');
+    if (typeof window.closeAllEpListboxes === 'function') {
+      window.closeAllEpListboxes();
+      return;
+    }
+    if (!root) return;
+    root.classList.remove('is-open');
+    const trigger = document.getElementById('staff-credit-employee-trigger');
+    const list = document.getElementById('staff-credit-employee-list');
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+    if (list) list.hidden = true;
+  }
+
+  function setStaffEmployee(employeeId){
+    const normalizedId = employeeId ? String(employeeId) : '';
+    const label = normalizedId ? employeeLabelById(normalizedId) : '';
+    if (typeof window.resetEpListbox === 'function') {
+      window.resetEpListbox('staff-credit-employee', normalizedId, label);
+      return;
+    }
+    if (staffCreditEmployeeInput) staffCreditEmployeeInput.value = normalizedId;
+    const trigger = document.getElementById('staff-credit-employee-trigger');
+    if (trigger) {
+      trigger.value = label;
+      trigger.classList.toggle('is-placeholder', !normalizedId);
+    }
+  }
+
+  function renderStaffCreditEntries(entries, options){
+    const opts = options || {};
+    staffCreditEntries = Array.isArray(entries) ? entries : [];
+    const total = staffCreditEntries.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+    if (staffCreditHistoryTotal) staffCreditHistoryTotal.textContent = formatInrKpi(total);
+    if (staffCreditEntries.length || opts.syncTotal) updateStaffAccountTotal(total);
+    if (!staffCreditList) return;
+    if (!staffCreditEntries.length) {
+      staffCreditList.innerHTML = '<div class="staff-credit-empty">No employee credits added for this date.</div>';
+      return;
+    }
+    staffCreditList.innerHTML = staffCreditEntries.map((row) => {
+      const id = escapeHtml(row.id);
+      const name = escapeHtml(row.employee_name || 'Employee');
+      const code = row.employee_code ? escapeHtml(row.employee_code) : `ID ${escapeHtml(row.employee_id)}`;
+      const note = row.description ? escapeHtml(row.description) : '';
+      const meta = [code, note].filter(Boolean).join(' · ');
+      return `<div class="staff-credit-row" data-credit-id="${id}"><div class="staff-credit-info"><div class="staff-credit-name">${name}</div><div class="staff-credit-desc">${meta}</div></div><div class="staff-credit-amount">${formatInrKpi(row.amount)}</div><div class="staff-credit-controls"><button type="button" class="staff-credit-action" data-credit-action="edit" data-credit-id="${id}">Edit</button><button type="button" class="staff-credit-action danger" data-credit-action="delete" data-credit-id="${id}">Delete</button></div></div>`;
+    }).join('');
+  }
+
+  function showStaffCreditError(message){
+    if (!staffCreditError) return;
+    staffCreditError.textContent = message || '';
+    staffCreditError.style.display = message ? 'block' : 'none';
+  }
+
+  function resetStaffCreditForm(){
+    editingStaffCreditId = null;
+    if (staffCreditAmount) staffCreditAmount.value = '';
+    if (staffCreditDescription) staffCreditDescription.value = '';
+    setStaffEmployee('');
+    if (staffCreditSubmitLabel) staffCreditSubmitLabel.textContent = 'Add Credit';
+    showStaffCreditError('');
+  }
+
+  function openStaffCreditModal(){
+    if (!staffModal || salesEntryLocked) return;
+    resetStaffCreditForm();
+    renderStaffCreditEntries(staffCreditEntries);
+    syncStaffCreditAvailableCashDisplay();
+    staffModal.classList.add('open');
+    staffModal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeStaffCreditModal(){
+    if (!staffModal) return;
+    closeStaffEmployeeListbox();
+    staffModal.classList.remove('open');
+    staffModal.setAttribute('aria-hidden', 'true');
+    resetStaffCreditForm();
+  }
+
+  function editStaffCredit(creditId){
+    if (salesEntryLocked) return;
+    const row = staffCreditEntries.find((item) => String(item.id) === String(creditId));
+    if (!row || !staffModal) return;
+    editingStaffCreditId = row.id;
+    setStaffEmployee(row.employee_id || '');
+    if (staffCreditAmount) staffCreditAmount.value = formatAmount(row.amount);
+    if (staffCreditDescription) staffCreditDescription.value = row.description || '';
+    if (staffCreditSubmitLabel) staffCreditSubmitLabel.textContent = 'Update Credit';
+    syncStaffCreditAvailableCashDisplay();
+    staffModal.classList.add('open');
+    staffModal.setAttribute('aria-hidden', 'false');
+  }
+
+  async function performStaffCreditDelete(creditId){
+    if (!widget || !creditId) throw new Error('Missing credit id.');
+    const resp = await fetch(widget.dataset.staffCreditDeleteUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company: widget.dataset.company,
+        location: creditLocation,
+        date: widget.dataset.date,
+        credit_id: creditId,
+      }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not delete credit.');
+    writeAvailableCash(Number(readAvailableCash()) + existingStaffCreditAmount(creditId));
+    renderStaffCreditEntries(data.staff_account_entries || [], { syncTotal: true });
+    updateStaffAccountTotal(data.staff_account_total || 0);
+    syncStaffCreditAvailableCashDisplay();
+    invalidatePayrollCreditNavCache();
+    await persistStaffCreditSalesTotal();
+  }
+
+  async function deleteStaffCredit(creditId){
+    if (!widget || salesEntryLocked || !creditId) return;
+    var ok = typeof window.deConfirm === 'function'
+      ? await window.deConfirm('Delete this employee credit line?')
+      : window.confirm('Delete this employee credit line?');
+    if (!ok) return;
+    try {
+      await performStaffCreditDelete(creditId);
+    } catch (err) {
+      showStaffCreditError(err.message);
+      openStaffCreditModal();
+    }
+  }
+
+  async function submitStaffCredit(){
+    if (!widget || salesEntryLocked) return;
+    const employeeId = getSelectedStaffEmployeeId();
+    const amountRaw = staffCreditAmount ? staffCreditAmount.value : '';
+    const description = staffCreditDescription ? staffCreditDescription.value.trim() : '';
+    if (!employeeId) {
+      showStaffCreditError('Please select an employee.');
+      return;
+    }
+    if (!amountRaw || Number(amountRaw) <= 0) {
+      showStaffCreditError('Please enter an amount greater than 0.');
+      return;
+    }
+    if (!description) {
+      showStaffCreditError('Please enter a description.');
+      return;
+    }
+    const amountValue = Number(amountRaw);
+    const cashLimit = staffCreditAvailableLimit();
+    if (amountValue - Number(cashLimit) > 0.001) {
+      showStaffCreditError(
+        'Cash expense cannot be more than available cash (' + formatInrKpi(cashLimit) + ').'
+      );
+      return;
+    }
+    const previousAmount = existingStaffCreditAmount(editingStaffCreditId);
+    const url = editingStaffCreditId ? widget.dataset.staffCreditEditUrl : widget.dataset.staffCreditAddUrl;
+    const payload = {
+      company: widget.dataset.company,
+      location: creditLocation,
+      date: widget.dataset.date,
+      employee_id: employeeId,
+      amount: amountRaw,
+      description,
+    };
+    if (editingStaffCreditId) payload.credit_id = editingStaffCreditId;
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.ok) throw new Error(data.error || 'Could not save employee credit.');
+      writeAvailableCash(Number(readAvailableCash()) + previousAmount - amountValue);
+      renderStaffCreditEntries(data.staff_account_entries || [], { syncTotal: true });
+      updateStaffAccountTotal(data.staff_account_total || 0);
+      resetStaffCreditForm();
+      syncStaffCreditAvailableCashDisplay();
+      invalidatePayrollCreditNavCache();
+      await persistStaffCreditSalesTotal();
+    } catch (err) {
+      showStaffCreditError(err.message || 'Could not save employee credit.');
+    }
+  }
+
+  if (openStaffModalBtn) openStaffModalBtn.addEventListener('click', openStaffCreditModal);
+  if (cancelStaffModalBtn) cancelStaffModalBtn.addEventListener('click', closeStaffCreditModal);
+  if (saveStaffCreditBtn) saveStaffCreditBtn.addEventListener('click', submitStaffCredit);
+  if (staffModal) {
+    staffModal.addEventListener('click', (event) => {
+      if (event.target === staffModal) closeStaffCreditModal();
+    });
+  }
+  if (staffCreditList) {
+    staffCreditList.addEventListener('click', (event) => {
+      const editBtn = event.target.closest('[data-credit-action="edit"]');
+      const deleteBtn = event.target.closest('[data-credit-action="delete"]');
+      if (editBtn) {
+        event.preventDefault();
+        editStaffCredit(editBtn.getAttribute('data-credit-id'));
+      } else if (deleteBtn) {
+        event.preventDefault();
+        deleteStaffCredit(deleteBtn.getAttribute('data-credit-id'));
+      }
+    });
+  }
+  if (typeof window.initEpListboxes === 'function') window.initEpListboxes();
+  renderStaffCreditEntries(staffCreditEntries, { syncTotal: true });
+})();
+</script>

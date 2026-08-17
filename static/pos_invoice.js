@@ -356,31 +356,37 @@
     return fy;
   }
 
+  function bumpOutletSeqKey(key, n) {
+    if (n < 1) return;
+    try {
+      var cur = parseInt(localStorage.getItem(key) || '0', 10) || 0;
+      if (n > cur) localStorage.setItem(key, String(n));
+    } catch (e) {}
+  }
+
   function noteOutletOrderSeq(orderNo) {
-    /* Keep a high-water mark after the server confirms SPC|INV/{yy-yy}/{n}.
-       Client drafts must never mint from this — they use provisional hex ids. */
+    /* Keep a high-water mark after the server confirms SPC|INV/{yy-yy}/{n}
+       or the nil-tax PREFIX/{yy-yy}/Nill/{n} series. Client drafts must never
+       mint from this — they use provisional hex ids. */
     var text = String(orderNo || '').trim();
+    var spcNill = /^SPC\/(\d{2}-\d{2})\/Nill\/(\d+)$/i.exec(text);
+    if (spcNill) {
+      bumpOutletSeqKey('hbe_pos_spc_nill_seq_' + spcNill[1], parseInt(spcNill[2], 10) || 0);
+      return;
+    }
+    var invNill = /^INV\/(\d{2}-\d{2})\/Nill\/(\d+)$/i.exec(text);
+    if (invNill) {
+      bumpOutletSeqKey('hbe_pos_inv_nill_seq_' + invNill[1], parseInt(invNill[2], 10) || 0);
+      return;
+    }
     var spc = /^SPC\/(\d{2}-\d{2})\/(\d+)$/i.exec(text);
     if (spc) {
-      var spcKey = 'hbe_pos_spc_seq_' + spc[1];
-      var spcN = parseInt(spc[2], 10) || 0;
-      if (spcN >= 1) {
-        try {
-          var spcCur = parseInt(localStorage.getItem(spcKey) || '0', 10) || 0;
-          if (spcN > spcCur) localStorage.setItem(spcKey, String(spcN));
-        } catch (e) {}
-      }
+      bumpOutletSeqKey('hbe_pos_spc_seq_' + spc[1], parseInt(spc[2], 10) || 0);
       return;
     }
     var inv = /^INV\/(\d{2}-\d{2})\/(\d+)$/i.exec(text);
     if (!inv) return;
-    var invKey = 'hbe_pos_inv_seq_' + inv[1];
-    var invN = parseInt(inv[2], 10) || 0;
-    if (invN < 1) return;
-    try {
-      var invCur = parseInt(localStorage.getItem(invKey) || '0', 10) || 0;
-      if (invN > invCur) localStorage.setItem(invKey, String(invN));
-    } catch (e2) {}
+    bumpOutletSeqKey('hbe_pos_inv_seq_' + inv[1], parseInt(inv[2], 10) || 0);
   }
 
   function randomOrderSuffix() {
@@ -398,11 +404,14 @@
     return String(Date.now()).slice(-6).toUpperCase();
   }
 
-  /** True when the server has assigned SPC|INV/{yy-yy}/{n} (not a client draft). */
+  /** True when the server has assigned SPC|INV/{yy-yy}/{n} or Nill series. */
   function isConfirmedOutletOrderNo(orderNo) {
     var text = String(orderNo || '').trim();
     return (
-      /^SPC\/\d{2}-\d{2}\/\d+$/i.test(text) || /^INV\/\d{2}-\d{2}\/\d+$/i.test(text)
+      /^SPC\/\d{2}-\d{2}\/\d+$/i.test(text) ||
+      /^INV\/\d{2}-\d{2}\/\d+$/i.test(text) ||
+      /^SPC\/\d{2}-\d{2}\/Nill\/\d+$/i.test(text) ||
+      /^INV\/\d{2}-\d{2}\/Nill\/\d+$/i.test(text)
     );
   }
 

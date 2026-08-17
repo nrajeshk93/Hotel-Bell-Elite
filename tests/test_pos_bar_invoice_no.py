@@ -117,3 +117,67 @@ class PosBarInvoiceNoTests(unittest.TestCase):
         ).get_json()["invoice"]["order_no"]
         self.assertEqual(bar, "INV/26-27/1")
         self.assertEqual(rest, "SPC/26-27/1")
+
+    def test_nil_tax_generate_uses_nill_series(self):
+        res = self.client.post(
+            "/bar-point-of-sale/api/invoices",
+            json=self._payload(
+                "INV/AAAAAA/26-27",
+                customerBill=True,
+                totals={
+                    "subtotal": 200,
+                    "discount": 0,
+                    "gst": 0,
+                    "vat": 0,
+                    "service": 0,
+                    "tip": 0,
+                    "roundOff": 0,
+                    "total": 200,
+                },
+            ),
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        body = res.get_json()
+        self.assertEqual(body["invoice"]["order_no"], "INV/26-27/Nill/1")
+        self.assertEqual(body["invoice"]["outlet"], "bar")
+        self.assertTrue(body["invoice"].get("customer_bill_sent"))
+
+    def test_nill_series_independent_of_taxable(self):
+        taxed = self.client.post(
+            "/bar-point-of-sale/api/invoices",
+            json=self._payload("INV/BBBBBB/26-27", customerBill=True),
+        ).get_json()["invoice"]["order_no"]
+        nill_totals = {
+            "subtotal": 200,
+            "discount": 0,
+            "gst": 0,
+            "vat": 0,
+            "service": 0,
+            "tip": 0,
+            "roundOff": 0,
+            "total": 200,
+        }
+        nill = self.client.post(
+            "/bar-point-of-sale/api/invoices",
+            json=self._payload(
+                "INV/CCCCCC/26-27",
+                customerBill=True,
+                totals=nill_totals,
+            ),
+        ).get_json()["invoice"]["order_no"]
+        nill2 = self.client.post(
+            "/bar-point-of-sale/api/invoices",
+            json=self._payload(
+                "INV/DDDDDD/26-27",
+                customerBill=True,
+                totals=nill_totals,
+            ),
+        ).get_json()["invoice"]["order_no"]
+        self.assertEqual(taxed, "INV/26-27/1")
+        self.assertEqual(nill, "INV/26-27/Nill/1")
+        self.assertEqual(nill2, "INV/26-27/Nill/2")
+
+    def test_nill_order_no_is_final(self):
+        self.assertTrue(db_mod.is_bar_inv_nill_order_no("INV/26-27/Nill/1"))
+        self.assertFalse(db_mod.is_bar_inv_order_no("INV/26-27/Nill/1"))
+        self.assertFalse(db_mod.is_provisional_pos_order_no("INV/26-27/Nill/1"))

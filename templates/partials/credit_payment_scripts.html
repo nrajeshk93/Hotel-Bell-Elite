@@ -13,6 +13,15 @@
   var labels = {{ settlement_labels|tojson }};
   var showPaymentMode = labels.show_payment_mode !== false;
   var showVerificationAccount = labels.show_verification_account === true;
+  var txnMethods = Array.isArray(labels.requires_txn_methods) && labels.requires_txn_methods.length
+    ? labels.requires_txn_methods
+    : ['card'];
+  var partyPlural = labels.party_plural || 'suppliers';
+  var requirePaymentMethod = labels.require_payment_method_choice === true;
+
+  function methodRequiresTxn(method){
+    return txnMethods.indexOf(String(method || '')) !== -1;
+  }
 
   var outstandingData = [];
   try {
@@ -723,7 +732,7 @@
     });
     if (!names.length) return '';
     if (names.length === 1) return '· ' + names[0];
-    return '· ' + names.length + ' suppliers';
+    return '· ' + names.length + ' ' + partyPlural;
   }
 
   function updateTableSelectionUi(){
@@ -965,7 +974,7 @@
   var transactionWrap = document.getElementById('cp-transaction-wrap');
   var transactionEl = document.getElementById('cp-transaction-id');
   var notesEl = document.getElementById('cp-notes');
-  var methodToggle = document.getElementById('cp-method-toggle');
+  var methodListbox = document.getElementById('cp-payment-method-listbox');
 
   function syncTransactionVisibility(){
     if (!showPaymentMode) {
@@ -973,23 +982,30 @@
       if (transactionEl) transactionEl.value = '';
       return;
     }
-    var method = paymentMethodEl ? paymentMethodEl.value : 'cash';
-    if (transactionWrap) transactionWrap.hidden = method !== 'card';
-    if (method !== 'card' && transactionEl) transactionEl.value = '';
+    var method = paymentMethodEl ? paymentMethodEl.value : (requirePaymentMethod ? '' : 'cash');
+    if (transactionWrap) transactionWrap.hidden = !methodRequiresTxn(method);
+    if (!methodRequiresTxn(method) && transactionEl) transactionEl.value = '';
   }
 
-  if (methodToggle) {
-    methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(other){
-          other.classList.remove('active');
-        });
-        btn.classList.add('active');
-        if (paymentMethodEl) paymentMethodEl.value = btn.getAttribute('data-value') || 'cash';
-        syncTransactionVisibility();
-      });
+  function setPaymentMethodListbox(value, label){
+    if (paymentMethodEl) paymentMethodEl.value = value || '';
+    if (!methodListbox) return;
+    var display = methodListbox.querySelector('.se-filter-chip-value');
+    var placeholder = 'Select payment mode';
+    if (display) {
+      display.textContent = (value && label) ? label : placeholder;
+      display.classList.toggle('is-placeholder', !value);
+    }
+    methodListbox.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+      var on = !!value && opt.getAttribute('data-value') === value;
+      opt.classList.toggle('is-selected', on);
+      opt.setAttribute('aria-selected', on ? 'true' : 'false');
     });
   }
+
+  window.cpPaymentMethodChanged = function(){
+    syncTransactionVisibility();
+  };
 
   function refreshAllocTotal(){
     if (!allocBody || !allocTotalEl) return;
@@ -1016,7 +1032,7 @@
       if (supplierNames.length <= 1) {
         allocSupplierEl.textContent = supplierNames[0] || '';
       } else {
-        allocSupplierEl.textContent = supplierNames.length + ' suppliers';
+        allocSupplierEl.textContent = supplierNames.length + ' ' + partyPlural;
       }
     }
     var multiSupplier = supplierNames.length > 1;
@@ -1063,12 +1079,10 @@
     setError(selectError, '');
     setError(clearanceError, '');
     if (paymentDateEl) paymentDateEl.value = todayIso;
-    if (paymentMethodEl) paymentMethodEl.value = 'cash';
-    if (methodToggle) {
-      methodToggle.querySelectorAll('.staff-credit-type-btn').forEach(function(btn){
-        var active = btn.getAttribute('data-value') === 'cash';
-        btn.classList.toggle('active', active);
-      });
+    if (requirePaymentMethod) {
+      setPaymentMethodListbox('', '');
+    } else {
+      setPaymentMethodListbox('cash', methodLabels.cash || 'Cash');
     }
     if (transactionEl) transactionEl.value = '';
     if (notesEl) notesEl.value = '';
@@ -1115,7 +1129,11 @@
     }
     var method = showPaymentMode && paymentMethodEl ? paymentMethodEl.value : 'cash';
     var transactionId = showPaymentMode && transactionEl ? transactionEl.value.trim() : '';
-    if (showPaymentMode && method === 'card' && !transactionId) {
+    if (showPaymentMode && requirePaymentMethod && !method) {
+      setError(clearanceError, labels.select_error_method || 'Select a payment mode.');
+      return;
+    }
+    if (showPaymentMode && methodRequiresTxn(method) && !transactionId) {
       setError(clearanceError, 'Transaction ID is required for bank transfer.');
       return;
     }
@@ -1231,7 +1249,7 @@
     detailBody.innerHTML =
       '<div class="cp-detail-meta">' +
         '<div><span class="cp-detail-label">' + escapeHtml(labels.detail_date_label || 'Payment date') + '</span><span class="cp-detail-value">' + escapeHtml(reportDt(payment.payment_date || '—')) + '</span></div>' +
-        '<div><span class="cp-detail-label">Supplier</span><span class="cp-detail-value">' + escapeHtml(payment.supplier_name || '—') + '</span></div>' +
+        '<div><span class="cp-detail-label">' + escapeHtml(labels.detail_party_label || 'Supplier') + '</span><span class="cp-detail-value">' + escapeHtml(payment.supplier_name || '—') + '</span></div>' +
         (showPaymentMode
           ? '<div><span class="cp-detail-label">' + escapeHtml((labels.clearance_mode_label || 'Payment mode *').replace(' *', '')) + '</span><span class="cp-detail-value">' + escapeHtml(methodLabel) + '</span></div>' +
             '<div><span class="cp-detail-label">Transaction ID</span><span class="cp-detail-value">' + escapeHtml(payment.transaction_id || '—') + '</span></div>'
@@ -1243,8 +1261,8 @@
         '<div><span class="cp-detail-label">Notes</span><span class="cp-detail-value">' + escapeHtml(payment.notes || '—') + '</span></div>' +
       '</div>' +
       '<div class="cp-alloc-wrap">' +
-        '<div class="cp-alloc-head"><span>Allocated expenses</span><span>' + ((payment.allocations || []).length) + '</span></div>' +
-        '<div class="cp-alloc-table-wrap"><table class="cp-alloc-table"><thead><tr><th>Expense</th><th class="pl-col-amount">Paid</th></tr></thead><tbody>' +
+        '<div class="cp-alloc-head"><span>' + escapeHtml(labels.detail_alloc_head || 'Allocated expenses') + '</span><span>' + ((payment.allocations || []).length) + '</span></div>' +
+        '<div class="cp-alloc-table-wrap"><table class="cp-alloc-table"><thead><tr><th>' + escapeHtml(labels.alloc_item_column || 'Expense') + '</th><th class="pl-col-amount">Paid</th></tr></thead><tbody>' +
         (rows || '<tr><td colspan="2">No allocations</td></tr>') +
         '</tbody></table></div>' +
       '</div>';

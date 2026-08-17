@@ -2,8 +2,20 @@
 
 #credit-payment-page .content.se-content > .pl-summary-row,
 #credit-payment-page .cp-outstanding-kpi-row{
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));
+  grid-template-columns:repeat(4,minmax(0,1fr));
   max-width:none;
+}
+@media (max-width:900px){
+  #credit-payment-page .content.se-content > .pl-summary-row,
+  #credit-payment-page .cp-outstanding-kpi-row{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+}
+@media (max-width:640px){
+  #credit-payment-page .content.se-content > .pl-summary-row,
+  #credit-payment-page .cp-outstanding-kpi-row{
+    grid-template-columns:minmax(0,1fr);
+  }
 }
 
 body.su-module .cp-view-tabs{
@@ -439,6 +451,10 @@ body.su-module .cp-col-actions{
   text-align:right;
   padding-right:16px !important;
 }
+body.su-module #cp-outstanding-table .cp-col-actions{
+  width:auto;
+  min-width:168px;
+}
 body.su-module .cp-row-approve-btn{
   display:inline-flex;
   align-items:center;
@@ -493,16 +509,74 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   display:none;
 }
 
-/* History: keep Total/Actions in view — long expense-code lists must wrap, not widen the table. */
+/* History: keep header/value columns aligned under a fixed layout. */
+#credit-payment-page #cp-history-table{
+  table-layout:fixed;
+  width:100%;
+  border-collapse:separate;
+  border-spacing:0;
+}
+#credit-payment-page #cp-history-table th,
+#credit-payment-page #cp-history-table td{
+  vertical-align:middle;
+  padding:12px;
+}
+#credit-payment-page #cp-history-table th.pl-sortable{
+  position:relative;
+  padding-right:22px;
+}
+#credit-payment-page #cp-history-table th.pl-sortable::after{
+  position:absolute;
+  right:8px;
+  top:50%;
+  margin-left:0;
+  transform:translateY(-50%);
+}
+#credit-payment-page #cp-history-table .pl-col-date{
+  width:128px;
+  white-space:nowrap;
+}
+#credit-payment-page #cp-history-table .cp-col-party{
+  width:auto;
+  min-width:140px;
+}
+#credit-payment-page #cp-history-table .cp-col-party .pl-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#credit-payment-page #cp-history-table .cp-col-method{
+  width:124px;
+  white-space:nowrap;
+}
+#credit-payment-page #cp-history-table .cp-col-txn{
+  width:148px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#credit-payment-page #cp-history-table .pl-col-amount,
 #credit-payment-page #cp-history-table .pl-col-count{
-  width:88px;
+  width:104px;
   white-space:nowrap;
   text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+#credit-payment-page #cp-history-table th.pl-col-amount,
+#credit-payment-page #cp-history-table th.pl-col-count{
+  padding-right:22px;
+}
+#credit-payment-page #cp-history-table td.pl-col-amount,
+#credit-payment-page #cp-history-table td.pl-col-count{
+  padding-right:22px;
 }
 #credit-payment-page #cp-history-table .cp-expense-codes{
+  width:160px;
   white-space:normal;
-  max-width:min(320px, 36vw);
-  vertical-align:top;
+  max-width:none;
+  vertical-align:middle;
+}
+#credit-payment-page #cp-history-table th.cp-expense-codes{
+  white-space:nowrap;
 }
 #credit-payment-page #cp-history-table .cp-expense-code-list{
   display:flex;
@@ -518,6 +592,7 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   position:sticky;
   right:0;
   z-index:3;
+  width:96px;
   background:#fff;
   box-shadow:-8px 0 12px -12px rgba(15,23,42,.35);
   text-align:right;
@@ -558,6 +633,22 @@ body.su-module .cp-link-btn--danger{color:#DC2626}
 body.su-module .cp-link-btn--danger:hover{background:#FEF2F2}
 
 body.su-module .cp-modal-box{width:min(720px,94vw)}
+body.su-module .cp-clearance-mode-date-row{
+  margin-bottom:14px;
+}
+body.su-module .cp-clearance-mode-date-row > .staff-field{
+  margin-bottom:0;
+  min-width:0;
+}
+body.su-module .cp-clearance-mode-date-row:not(:has(.cp-method-listbox)){
+  grid-template-columns:1fr;
+}
+body.su-module #cp-clearance-modal .cp-method-listbox{
+  width:100%;
+}
+body.su-module #cp-clearance-modal .cp-method-listbox .se-filter-chip-control{
+  min-height:44px;
+}
 body.su-module .cp-select-modal-box{width:min(860px,96vw)}
 body.su-module .cp-modal-box .staff-credit-actions{
   display:flex;

@@ -42,9 +42,110 @@ GS_DPI_RECAP = 96
 
 def hotel_id_docs_root():
     """Absolute directory for compressed ID documents."""
-    base = Path(__file__).resolve().parent / "uploads" / "hotel_id_docs"
+    env = os.environ.get("HOTEL_ID_DOCS_DIR", "").strip()
+    if env:
+        base = Path(env)
+    else:
+        base = Path(__file__).resolve().parent / "uploads" / "hotel_id_docs"
     base.mkdir(parents=True, exist_ok=True)
     return base
+
+
+def id_document_view_url(stored_name):
+    """Public GET URL that does not end in .pdf/.webp (nginx often intercepts those)."""
+    name = stored_id_document_basename(stored_name) or _raw_id_document_basename(
+        stored_name
+    )
+    if not name:
+        return ""
+    return f"/hotel/api/id-documents/view/{name}/raw"
+
+
+def _mime_for_suffix(suffix):
+    return {
+        ".pdf": "application/pdf",
+        ".webp": "image/webp",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".png": "image/png",
+        ".heic": "image/heic",
+        ".heif": "image/heif",
+    }.get(str(suffix or "").lower(), "application/pdf")
+
+
+def persist_id_document_bytes(stored_name, data, mime="application/pdf"):
+    """Keep a copy in SQLite so deploys that wipe uploads/ can still serve the ID."""
+    name = stored_id_document_basename(stored_name) or _raw_id_document_basename(
+        stored_name
+    )
+    if not name or not data:
+        return
+    try:
+        import sqlite3
+
+        import db as db_mod
+    except Exception:
+        return
+    conn = db_mod.get_db()
+    try:
+        db_mod.ensure_hotel_id_documents_schema(conn)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO hotel_id_documents (stored_name, mime, payload)
+            VALUES (?, ?, ?)
+            """,
+            (name, mime or "application/pdf", sqlite3.Binary(bytes(data))),
+        )
+        conn.commit()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        conn.close()
+
+
+def load_id_document_bytes(stored_name):
+    """Return (bytes, mime, stored_name) from SQLite, or (None, None, None)."""
+    try:
+        import db as db_mod
+    except Exception:
+        return None, None, None
+    conn = db_mod.get_db()
+    try:
+        db_mod.ensure_hotel_id_documents_schema(conn)
+        for name in id_document_lookup_names(stored_name):
+            row = conn.execute(
+                """
+                SELECT stored_name, mime, payload
+                FROM hotel_id_documents
+                WHERE stored_name = ?
+                """,
+                (name,),
+            ).fetchone()
+            if row and row["payload"]:
+                return (
+                    bytes(row["payload"]),
+                    row["mime"] or "application/pdf",
+                    row["stored_name"],
+                )
+    except Exception:
+        return None, None, None
+    finally:
+        conn.close()
+    return None, None, None
+
+
+def open_id_document_payload(stored_name):
+    """Disk first, then SQLite. Returns (data, mime, filename) or (None, None, None)."""
+    path = resolve_stored_id_document(stored_name)
+    if path:
+        data = path.read_bytes()
+        mime = _mime_for_suffix(path.suffix)
+        persist_id_document_bytes(path.name, data, mime)
+        return data, mime, path.name
+    return load_id_document_bytes(stored_name)
 
 
 def _unlink_quietly(path):
@@ -412,7 +513,7 @@ def _finish_stored_pdf(out_path, out_name, stored_label, original_name, original
         "compressedSize": compressed_size,
         "engine": engine,
         "pageCount": int(page_count or 1),
-        "urlPath": f"/hotel/api/id-documents/{out_name}",
+        "urlPath": id_document_view_url(out_name),
     }
 
 
@@ -506,9 +607,17 @@ def _raw_id_document_basename(stored_name):
     """Filename only, keeping spaces; rejects path traversal."""
     text = str(stored_name or "").strip().replace("\\", "/")
     text = text.split("?")[0].split("#")[0].rstrip("/")
-    if "/" in text:
+    if text.endswith("/raw") or text.endswith("/content"):
+        text = text.rsplit("/", 1)[0]
+    if "/id-documents/view/" in text:
+        text = text.split("/id-documents/view/")[-1]
+    elif "/id-documents/" in text:
+        text = text.split("/id-documents/")[-1]
+        if text in ("view", "file"):
+            return ""
+    elif "/" in text:
         text = text.split("/")[-1]
-    if not text or ".." in text:
+    if not text or ".." in text or "/" in text:
         return ""
     return text
 

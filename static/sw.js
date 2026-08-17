@@ -1,19 +1,21 @@
 /* Hotel Bell Elite — POS offline service worker (v4).
  * Floor APIs are never cached — occupancy must update immediately after save.
- * Invoice HTML is network-first so workspace chrome (sidebar modules) is not stuck. */
-var CACHE_VERSION = 'hbe-pos-v36';
+ * Invoice HTML is network-first so workspace chrome (sidebar modules) is not stuck.
+ * Hotel / workspace JS+CSS are not intercepted — browser HTTP cache + ?v= must
+ * pick up deploys. Only POS precache/pos_* stay in Cache Storage (network-first). */
+var CACHE_VERSION = 'hbe-pos-v40';
 var PRECACHE = [
   '/point-of-sale/invoice',
   '/static/manifest.webmanifest',
   '/static/de_workspace_shell.css?v=52',
   '/static/ep_form_listbox.css?v=29',
   '/static/pos_invoice.css?v=51',
-  '/static/pos_invoice.js?v=127',
+  '/static/pos_invoice.js?v=128',
   '/static/pos_offline.js?v=4',
   '/static/ep_form_listbox.js?v=64',
   '/static/de_workspace_nav.js?v=46',
-  '/static/de_workspace_transitions.js?v=181',
-  '/static/de_pwa.js?v=4',
+  '/static/de_workspace_transitions.js?v=183',
+  '/static/de_pwa.js?v=10',
   '/static/pwa-icon-192.png',
   '/static/pwa-icon-512.png',
   '/static/favicon-32.png'
@@ -91,6 +93,14 @@ function isPosInvoiceHtml(url) {
   );
 }
 
+function isPosCachedStatic(url) {
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.indexOf('/static/') !== 0) return false;
+  if (url.pathname.indexOf('/static/pos_') === 0) return true;
+  var key = url.pathname + (url.search || '');
+  return PRECACHE.indexOf(key) !== -1 || PRECACHE.indexOf(url.pathname) !== -1;
+}
+
 self.addEventListener('fetch', function (event) {
   var req = event.request;
   if (req.method !== 'GET') return;
@@ -120,7 +130,9 @@ self.addEventListener('fetch', function (event) {
   }
 
   if (url.pathname.indexOf('/static/') === 0) {
-    event.respondWith(cacheFirst(req));
+    if (isPosCachedStatic(url)) {
+      event.respondWith(networkFirstStatic(req));
+    }
   }
 });
 
@@ -184,35 +196,20 @@ function networkFirstHtml(req) {
     });
 }
 
-function cacheFirst(req) {
-  return caches.match(req).then(function (cached) {
-    if (cached) {
-      fetch(req)
-        .then(function (res) {
-          if (res && res.ok) {
-            caches.open(CACHE_VERSION).then(function (cache) {
-              cache.put(req, res);
-            });
-          }
-        })
-        .catch(function () {});
-      return cached;
-    }
-    return fetch(req)
-      .then(function (res) {
-        if (res && res.ok) {
-          var copy = res.clone();
-          caches.open(CACHE_VERSION).then(function (cache) {
-            cache.put(req, copy);
-          });
-        }
-        return res;
-      })
-      .catch(function () {
-        if (req.mode === 'navigate') {
-          return caches.match('/point-of-sale/invoice');
-        }
-        return Response.error();
+function networkFirstStatic(req) {
+  return fetch(req, { cache: 'no-cache' })
+    .then(function (res) {
+      if (res && res.ok) {
+        var copy = res.clone();
+        caches.open(CACHE_VERSION).then(function (cache) {
+          cache.put(req, copy);
+        });
+      }
+      return res;
+    })
+    .catch(function () {
+      return caches.match(req).then(function (cached) {
+        return cached || Response.error();
       });
-  });
+    });
 }

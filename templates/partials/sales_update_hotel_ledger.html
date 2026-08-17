@@ -6,6 +6,7 @@
 {%- elif field_key == 'actual_cash' -%}{%- set cls = 'se-field-icon--emerald' -%}
 {%- elif field_key == 'tips' -%}{%- set cls = 'se-field-icon--violet' -%}
 {%- elif field_key == 'expense' -%}{%- set cls = 'se-field-icon--violet' -%}
+{%- elif field_key == 'staff_account' -%}{%- set cls = 'se-field-icon--amber' -%}
 {%- elif field_key == 'upi' -%}{%- set cls = 'se-field-icon--sky' -%}
 {%- elif field_key == 'cash' -%}{%- set cls = 'se-field-icon--emerald' -%}
 {%- endif -%}
@@ -24,6 +25,8 @@
 <svg viewBox="0 0 24 24"><circle cx="16.5" cy="6.5" r="2.6"/><path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17"/><path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.8-2.9l-4.2 3.9"/><path d="M2 16v5h5"/></svg>
 {%- elif field_key == 'expense' -%}
 <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="14" y2="17"/></svg>
+{%- elif field_key == 'staff_account' -%}
+<svg viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><path d="M1 10h22"/><circle cx="7.5" cy="15" r="1.5"/><path d="M11 15h6"/></svg>
 {%- elif field_key == 'upi' -%}
 <svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M12 17h.01"/><path d="M9.5 7h5"/><path d="M10 10h4"/></svg>
 {%- else -%}
@@ -87,6 +90,11 @@
               <div class="cash-cell-action">
                 <input type="number" min="0" step="0.01" value="{{ hotel_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="Hotel" data-entry-label="{{ field_label }}" aria-label="Hotel {{ field_label }} amount" class="se-entry-input--upload" readonly tabindex="-1">
                 <button type="button" class="se-row-action" id="open-sales-tips" title="Manage tips by employee" aria-label="Open tip entry"{% if sales_entry_locked %} disabled{% endif %}>{{ se_row_more_icon() }}</button>
+              </div>
+              {% elif field_key == 'staff_account' %}
+              <div class="cash-cell-action">
+                <input type="number" min="0" step="0.01" value="{{ hotel_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="Hotel" data-entry-label="{{ field_label }}" aria-label="Hotel {{ field_label }} amount" class="se-entry-input--upload" readonly tabindex="-1">
+                <button type="button" class="se-row-action" id="open-staff-credit" title="Manage employee credit" aria-label="Open employee credit entry"{% if sales_entry_locked %} disabled{% endif %}>{{ se_row_more_icon() }}</button>
               </div>
               {% else %}
               <input type="number" min="0" step="0.01" value="{{ hotel_record.sales_entry_values.get(field_key, 0) }}" inputmode="decimal" data-sales-entry="{{ field_key }}" data-sales-location="Hotel" data-entry-label="{{ field_label }}" aria-label="Hotel {{ field_label }} amount"{% if field_key in hotel_manual_sales_entry_keys %} class="se-entry-input--manual"{% else %} class="se-entry-input--upload" readonly tabindex="-1"{% endif %}>

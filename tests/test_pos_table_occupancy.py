@@ -640,17 +640,34 @@ class PosTableOccupancyTests(unittest.TestCase):
         charge = body["invoice"].get("folio_charge") or {}
         self.assertEqual(charge.get("kind"), "restaurant_room_transfer")
         self.assertEqual(float(charge.get("amount") or 0), total)
+        self.assertEqual(charge.get("orderNo"), "ORD-2607-Settle-05")
+        self.assertIn("ORD-2607-Settle-05", charge.get("label") or "")
 
         room = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
         folio = room["stay"]["folioCharges"]
         self.assertEqual(len(folio), 1)
         self.assertEqual(folio[0]["kind"], "restaurant_room_transfer")
+        self.assertEqual(folio[0]["orderNo"], "ORD-2607-Settle-05")
+        self.assertEqual(
+            folio[0]["label"],
+            "Restaurant Room Transfer · ORD-2607-Settle-05",
+        )
         self.assertEqual(float(folio[0]["amount"]), total)
         self.assertEqual(
             float(room["stay"]["estimatedTotal"]),
             round(2000 + total, 2),
         )
         self.assertEqual(float(room["stay"]["balanceAmount"]), round(2000 + total, 2))
+
+        order_no = folio[0]["orderNo"]
+        ledger = self.client.get("/hotel/invoice-ledger")
+        self.assertEqual(ledger.status_code, 200)
+        self.assertIn(order_no, ledger.get_data(as_text=True))
+        inv = self.client.get(f"/hotel/invoice-ledger/api/{order_no}").get_json()
+        self.assertTrue(inv["ok"])
+        self.assertEqual(inv["invoice"]["status"], "open")
+        self.assertEqual(inv["invoice"]["source"], "pos_room_transfer")
+        self.assertAlmostEqual(float(inv["invoice"]["balance_amount"]), total, places=2)
 
     def test_settle_bill_rejects_credit_mode(self):
         saved = self.client.post(

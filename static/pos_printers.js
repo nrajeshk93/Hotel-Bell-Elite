@@ -23,6 +23,13 @@
     return 'restaurant';
   }
 
+  function isNillSeriesOrderNo(orderNo) {
+    if (typeof global.isNillSeriesOrderNo === 'function' && global.isNillSeriesOrderNo !== isNillSeriesOrderNo) {
+      return global.isNillSeriesOrderNo(orderNo);
+    }
+    return /^(SPC|INV)\/\d{2}-\d{2}\/Nill\/\d+$/i.test(String(orderNo || '').trim());
+  }
+
   function resolveOutlet(outlet) {
     if (outlet) return normalizeOutlet(outlet);
     var el =
@@ -636,11 +643,13 @@
     billWrap(cfg.address || '', KOT_COLS).forEach(function (ln) {
       out.push(kotCenter(ln));
     });
-    var taxLine = 'GST ' + (cfg.gst || '');
-    if (cfg.fssai) taxLine += ' | FSSAI ' + cfg.fssai;
-    billWrap(taxLine, KOT_COLS).forEach(function (ln) {
-      out.push(kotCenter(ln));
-    });
+    if (!isNillSeriesOrderNo(orderNo)) {
+      var taxLine = 'GST ' + (cfg.gst || '');
+      if (cfg.fssai) taxLine += ' | FSSAI ' + cfg.fssai;
+      billWrap(taxLine, KOT_COLS).forEach(function (ln) {
+        out.push(kotCenter(ln));
+      });
+    }
     out.push(rule);
     out.push(kotPad('Invoice', String(orderNo)));
     out.push(kotPad('Date', kotFormatDate(when)));
@@ -751,11 +760,13 @@
     billWrap(cfg.address || '', KOT_COLS).forEach(function (ln) {
       line(ln);
     });
-    var taxLine = 'GST ' + (cfg.gst || '');
-    if (cfg.fssai) taxLine += ' | FSSAI ' + cfg.fssai;
-    billWrap(taxLine, KOT_COLS).forEach(function (ln) {
-      line(ln);
-    });
+    if (!isNillSeriesOrderNo(orderNo)) {
+      var taxLine = 'GST ' + (cfg.gst || '');
+      if (cfg.fssai) taxLine += ' | FSSAI ' + cfg.fssai;
+      billWrap(taxLine, KOT_COLS).forEach(function (ln) {
+        line(ln);
+      });
+    }
     center(false);
     line(rule);
     line(kotPad('Invoice', String(orderNo)));

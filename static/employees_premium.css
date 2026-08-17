@@ -355,16 +355,22 @@ body.ep-module.cd-ledger-page .su-title-crumb-sep{
   color:#9CA3AF;
 }
 
-/* Credit Dashboard filters — Expense Ledger chip row */
+/* Credit Dashboard filters — reflow from the card width, not the viewport.
+   A 720px viewport query was stacking chips in a right-aligned column while
+   the sidebar already made this card ~660px. */
 body.ep-module.cd-ledger-page .se-sales-header-filters:has(#credits-dashboard-filter-form){
   justify-content:stretch;
+  flex-direction:row;
+  align-items:stretch;
+  container-type:inline-size;
+  container-name:cd-filters;
 }
 body.ep-module.cd-ledger-page #credits-dashboard-filter-form.sr-topbar-filters{
-  display:flex;
-  flex-wrap:nowrap;
-  align-items:flex-end;
-  justify-content:flex-end;
+  display:grid;
+  grid-template-columns:minmax(160px,1.6fr) minmax(132px,1fr) minmax(108px,.75fr) minmax(88px,.6fr);
   gap:12px;
+  align-items:end;
+  justify-content:stretch;
   width:100%;
   max-width:100%;
   min-width:0;
@@ -431,11 +437,15 @@ body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip.is-
 }
 body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip{
   position:relative;
-  flex:1 1 auto;
-  width:auto;
-  min-width:96px;
-  max-width:100%;
   z-index:20;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip,
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox.pl-header-field-listbox{
+  flex:none;
+  width:100%;
+  min-width:0;
+  max-width:none;
+  box-sizing:border-box;
 }
 body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip .cd-search-input,
 body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip .pl-search-input{
@@ -458,32 +468,17 @@ body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip .pl
 }
 body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-input::-webkit-search-cancel-button{-webkit-appearance:none}
 body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-input::placeholder{color:#94A3B8;font-weight:500}
-body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox.pl-header-field-listbox{
-  flex:0 1 auto;
-  width:clamp(120px,12vw,180px);
-  min-width:112px;
-  max-width:200px;
-}
-body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox[id*="location"]{
-  width:clamp(140px,14vw,220px);
-  min-width:132px;
-  max-width:240px;
-}
-@media(max-width:900px){
-  body.ep-module.cd-ledger-page #credits-dashboard-filter-form.sr-topbar-filters{flex-wrap:wrap}
+@container cd-filters (max-width:720px){
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form.sr-topbar-filters{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+  }
   body.ep-module.cd-ledger-page #credits-dashboard-filter-form .cd-search-chip{
-    flex:1 1 100%;width:100%;min-width:0;max-width:none;
-  }
-  body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox.pl-header-field-listbox{
-    flex:1 1 calc(33.33% - 8px);width:auto;min-width:0;max-width:none;
+    grid-column:1/-1;
   }
 }
-@media(max-width:640px){
-  body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox.pl-header-field-listbox{
-    flex:1 1 calc(50% - 6px);
-  }
-  body.ep-module.cd-ledger-page #credits-dashboard-filter-form .ep-toolbar-listbox[id*="location"]{
-    flex:1 1 100%;
+@container cd-filters (max-width:480px){
+  body.ep-module.cd-ledger-page #credits-dashboard-filter-form.sr-topbar-filters{
+    grid-template-columns:repeat(2,minmax(0,1fr));
   }
 }
 

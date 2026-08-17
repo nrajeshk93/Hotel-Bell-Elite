@@ -232,6 +232,26 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         self.assertEqual(entry["room_credit"], 1000.0)
         self.assertEqual(entry["cash"], 0.0)
 
+    def test_hotel_sales_entry_from_invoices_maps_credit_settlement(self):
+        self._insert_hotel(
+            invoice_number="HBE/RM/ENTRY/CREDIT",
+            generated_at="2026-04-12 12:00:00",
+            total=158.0,
+            status="settled",
+            payments=[{"method": "credit", "amount": 158.0}],
+        )
+        self.conn.commit()
+        entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
+        self.assertEqual(entry["total_sales"], 158.0)
+        self.assertEqual(entry["room_credit"], 158.0)
+        self.assertEqual(entry["cash"], 0.0)
+        kpis = db_mod.aggregate_invoice_sales_kpis(
+            self.conn, "2026-04-12", "2026-04-12", location="Hotel"
+        )
+        self.assertEqual(kpis["room_credit"], 158.0)
+        self.assertEqual(kpis["cash"], 0.0)
+        self.assertEqual(kpis["difference"], 0.0)
+
     def test_pos_sales_entry_from_invoices_by_outlet(self):
         self._insert_pos(
             order_no="SPC/ENTRY/1",
