@@ -209,6 +209,42 @@
       payTotalEl.setAttribute('data-amount', String(total));
       payTotalEl.textContent = money(total);
     }
+    syncSettleSubmitEnabled();
+  }
+
+  function splitsMatchTarget() {
+    var rows = splitRows();
+    var target = round2(billTarget());
+    if (rows.length <= 1) return target > 0.009 && !!rowMethodValue(rows[0]);
+    var total = 0;
+    var allFilled = true;
+    var allModes = true;
+    rows.forEach(function (row) {
+      if (!rowMethodValue(row)) allModes = false;
+      var amountInput = row.querySelector('.pos-inv-settle-amount');
+      var raw = amountInput ? String(amountInput.value || '').trim() : '';
+      var amount = Number(raw);
+      if (!raw || !isFinite(amount) || amount <= 0) allFilled = false;
+      total += isFinite(amount) ? amount : 0;
+    });
+    return allFilled && allModes && Math.abs(round2(total) - target) <= 0.009;
+  }
+
+  function syncSettleSubmitEnabled() {
+    var submitBtn = document.getElementById('pos-inv-settle-submit');
+    if (!submitBtn) return;
+    var ok = splitsMatchTarget();
+    if (ok) {
+      splitRows().forEach(function (row) {
+        var method = rowMethodValue(row);
+        var txnInput = row.querySelector('.pos-inv-settle-txn');
+        if (METHODS_REQUIRING_TXN[method] && !(txnInput && txnInput.value.trim())) {
+          ok = false;
+        }
+      });
+    }
+    submitBtn.disabled = !ok;
+    submitBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
   }
 
   function syncSingleAmount() {
@@ -220,6 +256,63 @@
     var amountInput = rows[0].querySelector('.pos-inv-settle-amount');
     if (amountInput) amountInput.value = String(billTarget() || '');
     refreshSplitBalance();
+  }
+
+  function syncRemainingSplitAmount(changedRow) {
+    var rows = splitRows();
+    if (rows.length < 2) return;
+    var target = round2(billTarget());
+    if (!(target > 0)) return;
+
+    function amountRaw(row) {
+      var input = row.querySelector('.pos-inv-settle-amount');
+      return input ? String(input.value || '').trim() : '';
+    }
+    function setAmount(row, value) {
+      var input = row.querySelector('.pos-inv-settle-amount');
+      if (!input) return;
+      input.value = value > 0 ? String(round2(value)) : '';
+    }
+
+    if (rows.length === 2) {
+      var first = rows[0];
+      var second = rows[1];
+      if (!changedRow) {
+        var firstRaw = amountRaw(first);
+        var secondRaw = amountRaw(second);
+        var firstAmt = Number(firstRaw);
+        var secondAmt = Number(secondRaw);
+        if (firstRaw && isFinite(firstAmt) && firstAmt > 0 && !secondRaw) {
+          setAmount(second, target - firstAmt);
+        } else if (secondRaw && isFinite(secondAmt) && secondAmt > 0 && !firstRaw) {
+          setAmount(first, target - secondAmt);
+        }
+        return;
+      }
+      var otherRow = changedRow === first ? second : first;
+      var raw = amountRaw(changedRow);
+      var amount = Number(raw);
+      if (!raw || !isFinite(amount) || amount <= 0) {
+        setAmount(otherRow, 0);
+        return;
+      }
+      setAmount(otherRow, target - amount);
+      return;
+    }
+
+    var lastRow = rows[rows.length - 1];
+    if (changedRow && changedRow === lastRow) return;
+    var others = 0;
+    var hasEarlierAmount = false;
+    for (var i = 0; i < rows.length - 1; i++) {
+      var rawEarlier = amountRaw(rows[i]);
+      var amountEarlier = Number(rawEarlier);
+      if (rawEarlier && isFinite(amountEarlier) && amountEarlier > 0) {
+        hasEarlierAmount = true;
+        others += amountEarlier;
+      }
+    }
+    setAmount(lastRow, hasEarlierAmount ? target - others : 0);
   }
 
   function closeMethodListbox(box) {
@@ -393,9 +486,16 @@
     wrap.appendChild(row);
 
     var amountInput = row.querySelector('.pos-inv-settle-amount');
+    var txnInput = row.querySelector('.pos-inv-settle-txn');
     var removeBtn = row.querySelector('.pos-inv-settle-remove');
     bindMethodListbox(row);
-    if (amountInput) amountInput.addEventListener('input', refreshSplitBalance);
+    if (amountInput) {
+      amountInput.addEventListener('input', function () {
+        syncRemainingSplitAmount(row);
+        refreshSplitBalance();
+      });
+    }
+    if (txnInput) txnInput.addEventListener('input', syncSettleSubmitEnabled);
     if (removeBtn) {
       removeBtn.addEventListener('click', function () {
         if (splitRows().length <= 1) return;
@@ -403,6 +503,7 @@
         row.remove();
         updateRemoveButtons();
         refreshMethodOptionAvailability();
+        syncRemainingSplitAmount(null);
         syncSingleAmount();
       });
     }
@@ -423,10 +524,42 @@
   function paintAllocBody() {
     var body = document.getElementById('pos-inv-settle-alloc-body');
     var meta = document.getElementById('pos-inv-settle-alloc-meta');
+    var items = settleCtx && settleCtx.items;
+    if (items && items.length > 1) {
+      if (meta) meta.textContent = items.length + ' invoices';
+      if (body) {
+        body.innerHTML = items
+          .map(function (item) {
+            var roomNo = item.roomLabel || '—';
+            var inv = item.invoiceNumber || '';
+            var label = 'Room ' + roomNo;
+            if (inv) label += ' · ' + inv;
+            var balance = Number(item.balance || 0);
+            return (
+              '<tr>' +
+              '<td>' +
+              escapeHtml(label) +
+              '</td>' +
+              '<td class="pl-col-amount">' +
+              escapeHtml(money(balance)) +
+              '</td>' +
+              '<td class="pl-col-amount">' +
+              escapeHtml(money(balance)) +
+              '</td>' +
+              '</tr>'
+            );
+          })
+          .join('');
+      }
+      return;
+    }
     var room = settleCtx && settleCtx.room;
     var roomNo =
-      (room && (room.numberDisplay || room.mergeRoomLabel || room.number)) || '—';
+      (items && items[0] && items[0].roomLabel) ||
+      (room && (room.numberDisplay || room.mergeRoomLabel || room.number)) ||
+      '—';
     var inv =
+      (items && items[0] && items[0].invoiceNumber) ||
       (settleCtx && settleCtx.invoiceNumber) ||
       (room && room.stay && (room.stay.invoiceNumber || room.stay.invoice_number)) ||
       '';
@@ -483,6 +616,17 @@
         return s + Number(item.amount || 0);
       }, 0)
     );
+    if (rows.length > 1 && Math.abs(sum - target) > 0.009) {
+      return {
+        splits: [],
+        error:
+          'Modes total ₹' +
+          sum.toFixed(2) +
+          ' must match balance due ₹' +
+          target.toFixed(2) +
+          '.'
+      };
+    }
     if (sum > target + 0.009) {
       return {
         splits: [],
@@ -515,15 +659,29 @@
     opts = opts || {};
     var modal = mountSettleModal(settleModal());
     if (!modal) return false;
+    var items = Array.isArray(opts.items)
+      ? opts.items.filter(function (item) {
+          return item && Number(item.balance || 0) > 0.009;
+        })
+      : [];
     var room = opts.room || null;
     var stay = room && room.stay ? room.stay : null;
     var balance = Number(
       opts.balance != null
         ? opts.balance
-        : stay && stay.balanceAmount != null
-          ? stay.balanceAmount
-          : 0
+        : items.length
+          ? items.reduce(function (sum, item) {
+              return sum + Number(item.balance || 0);
+            }, 0)
+          : stay && stay.balanceAmount != null
+            ? stay.balanceAmount
+            : 0
     );
+    if (items.length) {
+      balance = items.reduce(function (sum, item) {
+        return sum + Number(item.balance || 0);
+      }, 0);
+    }
     if (!(balance > 0.009)) {
       if (typeof opts.onError === 'function') opts.onError('Invoice is already settled.');
       return false;
@@ -532,13 +690,26 @@
       stay &&
       String(stay.agencyName || stay.agency_name || '').trim();
     var allowCredit =
-      opts.allowCredit != null ? !!opts.allowCredit : !!agency;
+      opts.allowCredit != null
+        ? !!opts.allowCredit
+        : items.length
+          ? items.every(function (item) {
+              return !!item.allowCredit;
+            })
+          : !!agency;
     loadPayMethods(allowCredit);
+    var first = items[0] || null;
+    var settleUrl = opts.settleUrl || (first && first.settleUrl) || '';
+    if (items.length > 1) {
+      settleUrl = opts.settleSelectedUrl || settleUrl;
+    }
     settleCtx = {
       room: room,
       balance: round2(balance),
-      invoiceNumber: opts.invoiceNumber || '',
-      settleUrl: opts.settleUrl || '',
+      invoiceNumber:
+        opts.invoiceNumber || (first && first.invoiceNumber) || '',
+      settleUrl: settleUrl,
+      items: items,
       onSuccess: opts.onSuccess || null,
       onError: opts.onError || null
     };
@@ -547,14 +718,44 @@
     if (notes) notes.value = '';
     paintAllocBody();
     resetSplits();
+    bindAddSplitButton();
     modal.hidden = false;
     modal.removeAttribute('hidden');
     return true;
   }
 
+  function handleAddSplitClick(ev) {
+    if (ev) ev.preventDefault();
+    if (!settleCtx) return;
+    var modal = settleModal();
+    if (!modal || modal.hidden) return;
+    closeAllMethodListboxes();
+    if (splitRows().length === 1) {
+      var firstAmount = splitRows()[0].querySelector('.pos-inv-settle-amount');
+      if (firstAmount) firstAmount.value = '';
+    }
+    addSplitRow('', '');
+    syncRemainingSplitAmount(null);
+    updateRemoveButtons();
+    refreshMethodOptionAvailability();
+    refreshSplitBalance();
+  }
+
+  function bindAddSplitButton() {
+    var addBtn = document.getElementById('pos-inv-settle-add-split');
+    if (!addBtn || addBtn.getAttribute('data-hil-add-split-bound') === '1') return;
+    addBtn.setAttribute('data-hil-add-split-bound', '1');
+    addBtn.addEventListener('click', handleAddSplitClick);
+  }
+
   function submitSettle() {
     if (!settleCtx || !settleCtx.settleUrl) {
       setSettleError('Settle endpoint is unavailable.');
+      return;
+    }
+    if (!splitsMatchTarget()) {
+      setSettleError('Modes total must match the balance due.');
+      syncSettleSubmitEnabled();
       return;
     }
     var collected = collectSplits();
@@ -568,6 +769,15 @@
     var saveBtn = document.getElementById('pos-inv-settle-submit');
     if (saveBtn) saveBtn.disabled = true;
     setSettleError('');
+    var payload = {
+      payment_splits: collected.splits,
+      note: note
+    };
+    if (settleCtx.items && settleCtx.items.length > 1) {
+      payload.invoice_numbers = settleCtx.items.map(function (item) {
+        return item.invoiceNumber;
+      });
+    }
     fetch(settleCtx.settleUrl, {
       method: 'POST',
       credentials: 'same-origin',
@@ -576,10 +786,7 @@
         'Content-Type': 'application/json',
         'X-Requested-With': 'XMLHttpRequest'
       },
-      body: JSON.stringify({
-        payment_splits: collected.splits,
-        note: note
-      })
+      body: JSON.stringify(payload)
     })
       .then(function (resp) {
         return resp.json().then(function (data) {
@@ -603,7 +810,7 @@
         }
       })
       .finally(function () {
-        if (saveBtn) saveBtn.disabled = false;
+        syncSettleSubmitEnabled();
       });
   }
 
@@ -613,6 +820,7 @@
     }
     document.documentElement.setAttribute('data-hotel-settle-doc-bound', '1');
     bound = true;
+    bindAddSplitButton();
 
     document.addEventListener('click', function (ev) {
       /* Only handle clicks for modals opened via openHotelSettleModal (ledger).
@@ -627,19 +835,6 @@
       if (closeEl && modal.contains(closeEl)) {
         ev.preventDefault();
         closeHotelSettleModal();
-        return;
-      }
-      if (
-        ev.target.closest &&
-        ev.target.closest('#pos-inv-settle-add-split') &&
-        modal.contains(ev.target)
-      ) {
-        ev.preventDefault();
-        closeAllMethodListboxes();
-        addSplitRow('', '');
-        updateRemoveButtons();
-        refreshMethodOptionAvailability();
-        refreshSplitBalance();
         return;
       }
       if (

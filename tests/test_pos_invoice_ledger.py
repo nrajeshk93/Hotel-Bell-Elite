@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from datetime import date, timedelta
 from unittest import mock
 
 import db as db_mod
@@ -237,6 +238,10 @@ class PosInvoiceLedgerTests(unittest.TestCase):
             html,
             rf'pos-il-delete-btn[^>]*data-invoice-id="{draft_id}"|data-invoice-id="{draft_id}"[^>]*pos-il-delete-btn',
         )
+        self.assertRegex(
+            html,
+            rf'pos-il-edit-btn[^>]*data-invoice-id="{draft_id}"|data-invoice-id="{draft_id}"[^>]*pos-il-edit-btn',
+        )
         self.assertNotIn(
             f'pos-il-cancel-btn" data-tip="Cancel" aria-label="Cancel invoice SPC/DRAFT1/26-27"',
             html,
@@ -245,6 +250,10 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertIn(f'data-invoice-id="{gen_id}"', html)
         self.assertIn(f'Cancel invoice {gen_no}', html)
         self.assertIn("pos-il-cancel-btn", html)
+        self.assertRegex(
+            html,
+            rf'pos-il-edit-btn[^>]*data-invoice-id="{gen_id}"|data-invoice-id="{gen_id}"[^>]*pos-il-edit-btn',
+        )
         self.assertNotRegex(
             html,
             rf'pos-il-delete-btn[^>]*data-invoice-id="{gen_id}"|data-invoice-id="{gen_id}"[^>]*pos-il-delete-btn',
@@ -256,6 +265,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         )[0]
         self.assertNotIn("pos-il-delete-btn", settled_block)
         self.assertNotIn("pos-il-cancel-btn", settled_block)
+        self.assertNotIn("pos-il-edit-btn", settled_block)
 
         # Settled cancel blocked for everyone (admin included).
         blocked = self.client.post(
@@ -427,6 +437,94 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(match["payment_modes"], ["cash", "upi"])
         self.assertEqual(match["payment_mode_label"], "Cash + UPI")
 
+    def test_ledger_room_transfer_payment_mode_shows_fbe_reference(self):
+        today = date.today()
+        checkin = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000001",
+                    "checkInDate": today.isoformat(),
+                    "checkOutDate": (today + timedelta(days=1)).isoformat(),
+                    "roomRate": 2000,
+                    "nights": 1,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(checkin.status_code, 200, checkin.get_data(as_text=True))
+
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-FBE-0709", total=500, table="T1"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice = saved.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        total = float(invoice["grand_total"])
+
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "room_transfer", "amount": total},
+                ],
+                "hotel_room_id": "room-101",
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        self.assertEqual(
+            settle.get_json()["invoice"].get("payment_mode_label"),
+            "Room Transfer (Invoice yet to generate)",
+        )
+
+        pending_page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(pending_page.status_code, 200)
+        pending_html = pending_page.get_data(as_text=True)
+        self.assertIn("Room Transfer (Invoice yet to generate)", pending_html)
+
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_pos_invoices(conn)
+        finally:
+            conn.close()
+        match = next(r for r in rows if r["id"] == invoice_id)
+        self.assertEqual(match["payment_modes"], ["room_transfer"])
+        self.assertEqual(
+            match["payment_mode_label"], "Room Transfer (Invoice yet to generate)"
+        )
+
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        fb_no = gen.get_json()["room"]["stay"]["fbTransferInvoiceNumber"]
+        self.assertTrue(str(fb_no).startswith("FBE/"))
+
+        generated_page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(generated_page.status_code, 200)
+        generated_html = generated_page.get_data(as_text=True)
+        expected = f"Room Transfer ({fb_no})"
+        self.assertIn(expected, generated_html)
+
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_pos_invoices(conn)
+        finally:
+            conn.close()
+        match = next(r for r in rows if r["id"] == invoice_id)
+        self.assertEqual(match["payment_mode_label"], expected)
+        conn = db_mod.get_db()
+        try:
+            single = db_mod.get_pos_invoice(conn, invoice_id)
+        finally:
+            conn.close()
+        self.assertEqual(single["payment_mode_label"], expected)
+
     def test_ledger_shows_unsettled_when_no_payment(self):
         saved = self.client.post(
             "/point-of-sale/api/invoices",
@@ -502,6 +600,117 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertFalse(any(r["id"] == settled_id for r in unsettled_rows))
         self.assertTrue(any(r["id"] == settled_id for r in settled_rows))
         self.assertFalse(any(r["id"] == open_id for r in settled_rows))
+
+    def test_ledger_settle_selected_invoices(self):
+        first = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-SEL-0001", total=200, table="T1"),
+        )
+        second = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-SEL-0002", total=300, table="T2"),
+        )
+        self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
+        self.assertEqual(second.status_code, 200, second.get_data(as_text=True))
+        inv_a = first.get_json()["invoice"]
+        inv_b = second.get_json()["invoice"]
+        combined = round(float(inv_a["grand_total"]) + float(inv_b["grand_total"]), 2)
+
+        page = self.client.get("/point-of-sale/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('id="pos-il-select-all"', html)
+        self.assertIn('id="pos-il-settle-selected"', html)
+        self.assertIn("pos-il-row-check", html)
+        self.assertIn("Settle selected", html)
+        self.assertIn("/point-of-sale/api/invoices/settle-selected", html)
+        self.assertIn("ORD-SEL-0001", html)
+        self.assertIn("ORD-SEL-0002", html)
+
+        settle = self.client.post(
+            "/point-of-sale/api/invoices/settle-selected",
+            json={
+                "invoice_ids": [inv_a["id"], inv_b["id"]],
+                "payment_splits": [{"payment_method": "cash", "amount": combined}],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        payload = settle.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["paid_count"], 2)
+        self.assertEqual(payload["settled_count"], 2)
+        ids = {row["id"] for row in payload["invoices"]}
+        self.assertEqual(ids, {inv_a["id"], inv_b["id"]})
+        for row in payload["invoices"]:
+            self.assertEqual(row["status"], "closed")
+            self.assertTrue(row.get("payments") or row.get("payment_modes"))
+
+        again = self.client.post(
+            "/point-of-sale/api/invoices/settle-selected",
+            json={
+                "invoice_ids": [inv_a["id"]],
+                "payment_splits": [{"payment_method": "cash", "amount": 1}],
+            },
+        )
+        self.assertEqual(again.status_code, 400)
+
+        dup = self.client.post(
+            "/point-of-sale/api/invoices/settle-selected",
+            json={
+                "invoice_ids": [inv_b["id"], inv_b["id"]],
+                "payment_splits": [{"payment_method": "cash", "amount": 1}],
+            },
+        )
+        self.assertEqual(dup.status_code, 400)
+
+    def test_bar_ledger_settle_selected_invoices(self):
+        first = self.client.post(
+            "/bar-point-of-sale/api/invoices",
+            json=self._payload(order_no="BAR-SEL-0001", total=180, table="B1"),
+        )
+        second = self.client.post(
+            "/bar-point-of-sale/api/invoices",
+            json=self._payload(order_no="BAR-SEL-0002", total=220, table="B2"),
+        )
+        self.assertEqual(first.status_code, 200, first.get_data(as_text=True))
+        self.assertEqual(second.status_code, 200, second.get_data(as_text=True))
+        inv_a = first.get_json()["invoice"]
+        inv_b = second.get_json()["invoice"]
+        combined = round(float(inv_a["grand_total"]) + float(inv_b["grand_total"]), 2)
+
+        page = self.client.get("/bar-point-of-sale/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('id="pos-il-select-all"', html)
+        self.assertIn("/bar-point-of-sale/api/invoices/settle-selected", html)
+        self.assertIn("BAR-SEL-0001", html)
+
+        restaurant = self.client.post(
+            "/point-of-sale/api/invoices/settle-selected",
+            json={
+                "invoice_ids": [inv_a["id"], inv_b["id"]],
+                "payment_splits": [{"payment_method": "cash", "amount": combined}],
+            },
+        )
+        self.assertEqual(restaurant.status_code, 404)
+
+        settle = self.client.post(
+            "/bar-point-of-sale/api/invoices/settle-selected",
+            json={
+                "invoice_ids": [inv_a["id"], inv_b["id"]],
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": 150},
+                    {"payment_method": "upi", "amount": round(combined - 150, 2)},
+                ],
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        payload = settle.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["paid_count"], 2)
+        self.assertEqual(payload["settled_count"], 2)
+        for row in payload["invoices"]:
+            self.assertEqual(row["status"], "closed")
 
 
 if __name__ == "__main__":

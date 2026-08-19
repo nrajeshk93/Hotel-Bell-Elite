@@ -119,11 +119,35 @@
   cursor:default;
 }
 
+#hri-custom-modal .hri-custom-fields-row{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) minmax(108px, 38%);
+  gap:12px;
+  margin-bottom:14px;
+}
+#hri-custom-modal .hri-custom-fields-row .pos-inv-field{
+  margin-bottom:0;
+}
+
 /* POS lock CSS only allows data-inv-action=print; hotel uses data-hri-action. */
 .hotel-room-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="print"],
 .hotel-room-invoice-page.is-invoice-generated .pos-inv-tool[data-hri-action="pdf"]{
   pointer-events:auto;
   cursor:pointer;
+}
+
+/* POS lock CSS disables line edit buttons when is-invoice-generated is set. */
+.hotel-room-invoice-page.is-charges-editable .pos-inv-lines-card,
+.hotel-room-invoice-page.is-ledger-edit .pos-inv-lines-card{
+  opacity:1;
+}
+.hotel-room-invoice-page.is-charges-editable .pos-inv-note-btn:not([disabled]),
+.hotel-room-invoice-page.is-charges-editable .pos-inv-del:not([disabled]),
+.hotel-room-invoice-page.is-ledger-edit .pos-inv-note-btn:not([disabled]),
+.hotel-room-invoice-page.is-ledger-edit .pos-inv-del:not([disabled]){
+  pointer-events:auto;
+  cursor:pointer;
+  opacity:1;
 }
 
 /* Keep toolbar tool icon + label optically centered. */

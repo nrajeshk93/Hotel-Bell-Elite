@@ -31,6 +31,7 @@
   } catch (err) {}
 
   var lastRoom = null;
+  var lastRoot = null;
   var lastSummary = null;
   var discountDraftType = 'pct';
 
@@ -100,6 +101,34 @@
     }
   }
 
+  function isLedgerEdit(root) {
+    if (!root) return false;
+    if (root.getAttribute('data-ledger-edit') === '1') return true;
+    if (root.getAttribute('data-invoice-edit-open') === '1') return true;
+    return root.classList.contains('is-ledger-edit');
+  }
+
+  function generateInvoiceLabel(root) {
+    return isLedgerEdit(root) ? 'Modify and Generate Invoice' : 'Generate Invoice';
+  }
+
+  function generateInvoiceTitle(root) {
+    return isLedgerEdit(root)
+      ? 'Modify and regenerate hotel room invoice'
+      : 'Generate hotel room invoice';
+  }
+
+  function actionApiUrl(root) {
+    if (isLedgerEdit(root)) {
+      return root.getAttribute('data-invoice-edit-api') || '';
+    }
+    return root.getAttribute('data-room-api') || '';
+  }
+
+  function invoiceLoadUrl(root) {
+    return root.getAttribute('data-invoice-api') || '';
+  }
+
   function guestName(stay) {
     if (!stay) return 'Guest';
     return (
@@ -120,6 +149,22 @@
 
   function invoiceNumber(stay) {
     return (stay && (stay.invoiceNumber || stay.invoice_number)) || '';
+  }
+
+  function stayEditUnlocked(stay) {
+    if (!stay || typeof stay !== 'object') return false;
+    return !!(stay.invoiceEditOpen || stay.invoice_edit_open);
+  }
+
+  function chargesEditable(stay, root) {
+    root = root || lastRoot;
+    if (root && isLedgerEdit(root)) return true;
+    return stayEditUnlocked(stay);
+  }
+
+  function invoiceLocked(stay, root) {
+    if (chargesEditable(stay, root)) return false;
+    return !!(stay && stay.invoiceGenerated && invoiceNumber(stay));
   }
 
   function statusLabel(status) {
@@ -180,8 +225,9 @@
     return Math.max(1, booked + overstayNightsFromStay(stay));
   }
 
-  function folioLines(room) {
+  function folioLines(room, root) {
     var stay = (room && room.stay) || {};
+    var unlocked = chargesEditable(stay, root);
     var lines = [];
     var bookedNights = Math.max(1, Number(stay.nights || 1));
     var overstayNights = overstayNightsFromStay(stay);
@@ -249,7 +295,7 @@
           qty: overstayNights,
           rate: overRate,
           amount: overstayAmount,
-          canEdit: false,
+          canEdit: true,
           canDelete: false,
           nameEditable: false
         });
@@ -281,11 +327,16 @@
       });
     });
     var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
-    folio.forEach(function (item) {
+    folio.forEach(function (item, index) {
       if (!item) return;
+      var kind = String(item.kind || '').toLowerCase();
+      if (kind === 'restaurant_room_transfer' || kind === 'bar_room_transfer') return;
       var amount = Number(item.amount || 0);
       if (!(amount > 0)) return;
       var folioId = String(item.id || '').trim();
+      if (!folioId && unlocked) {
+        folioId = 'legacy-' + String(index + 1);
+      }
       var labelFn = global.hotelFolioChargeDisplayLabel;
       lines.push({
         key: folioId ? 'folio:' + folioId : '',
@@ -328,9 +379,9 @@
     return (Math.min(base, n) / base) * 100 > DISCOUNT_REASON_PCT;
   }
 
-  function moneySummary(room) {
+  function moneySummary(room, root) {
     var stay = room && room.stay && typeof room.stay === 'object' ? room.stay : null;
-    var lines = folioLines(room);
+    var lines = folioLines(room, root);
     var subtotal = round2(
       lines.reduce(function (sum, row) {
         return sum + Number(row.amount || 0);
@@ -362,9 +413,13 @@
     var total = round2(taxable + cgst + ugst);
     var advance = Math.max(0, Number((stay && stay.advancePaid) || 0));
     var balance =
-      stay && stay.balanceAmount != null
-        ? round2(stay.balanceAmount)
-        : Math.max(0, round2(total - advance));
+      stay && stay.combinedBalanceDue != null
+        ? round2(stay.combinedBalanceDue)
+        : stay && stay.balanceAmount != null
+          ? round2(stay.balanceAmount)
+          : Math.max(0, round2(total - advance));
+    var fbTotal = round2(Number((stay && stay.fbTransferTotal) || 0));
+    var fbBalance = round2(Number((stay && stay.fbTransferBalance) || 0));
     return {
       lines: lines,
       subtotal: subtotal,
@@ -417,9 +472,10 @@
   }
 
   function paintRoom(root, room) {
+    lastRoot = root || lastRoot;
     lastRoom = room || null;
     var stay = room && room.stay && typeof room.stay === 'object' ? room.stay : null;
-    var summary = moneySummary(room);
+    var summary = moneySummary(room, root);
     lastSummary = summary;
     var status = String((room && room.status) || 'vacant').toLowerCase();
     var invNo = invoiceNumber(stay);
@@ -464,7 +520,9 @@
 
     var tbody = $('#hri-lines-body', root);
     var empty = $('#hri-empty', root);
-    var locked = !!invNo;
+    var ledgerEdit = isLedgerEdit(root);
+    var editable = chargesEditable(stay, root);
+    var locked = invoiceLocked(stay, root);
     if (tbody) {
       if (!summary.lines.length) {
         tbody.innerHTML = '';
@@ -473,8 +531,12 @@
         if (empty) empty.hidden = true;
         tbody.innerHTML = summary.lines
           .map(function (row) {
-            var canEdit = !!row.canEdit && !locked;
-            var canDelete = !!row.canDelete && !locked;
+            var canEdit =
+              !locked &&
+              !!row.key &&
+              (ledgerEdit || editable || !!row.canEdit);
+            var canDelete =
+              !locked && (ledgerEdit || editable ? !!row.canDelete : !!row.canDelete);
             return (
               '<tr data-charge-key="' +
               escapeHtml(row.key || '') +
@@ -537,7 +599,8 @@
     setText($('#hri-sum-balance', root), money(summary.balance));
     setText($('#hri-sum-total', root), money(summary.total));
 
-    root.classList.toggle('is-invoice-generated', !!invNo);
+    root.classList.toggle('is-invoice-generated', invoiceLocked(stay, root));
+    root.classList.toggle('is-charges-editable', chargesEditable(stay, root));
 
     var genBtn = $('#hri-generate', root);
     var settleBtn = $('#hri-settle-bill', root);
@@ -545,32 +608,35 @@
     var pdfBtn = $('#hri-tool-pdf', root);
     var discBtn = $('#hri-tool-discount', root);
     if (genBtn) {
+      var genLabel = generateInvoiceLabel(root);
+      genBtn.title = generateInvoiceTitle(root);
       if (!stay) {
         genBtn.disabled = true;
-        genBtn.textContent = 'Generate Invoice';
-      } else if (invNo) {
+        genBtn.textContent = genLabel;
+      } else if (invoiceLocked(stay, root)) {
         genBtn.disabled = true;
         genBtn.innerHTML =
           '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 12 3 3 5-6"/><circle cx="12" cy="12" r="9"/></svg> Invoice Generated';
       } else {
         genBtn.disabled = false;
         genBtn.innerHTML =
-          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg> Generate Invoice';
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg> ' +
+          genLabel;
       }
     }
     if (settleBtn) {
-      var canSettle = !!(stay && invNo);
+      var canSettle = invoiceLocked(stay, root);
       settleBtn.hidden = !canSettle;
       settleBtn.disabled = !canSettle;
     }
     if (printBtn) printBtn.disabled = !stay;
     if (pdfBtn) pdfBtn.disabled = !stay;
     if (discBtn) {
-      discBtn.disabled = !stay || !!invNo;
+      discBtn.disabled = !stay || invoiceLocked(stay, root);
       discBtn.classList.toggle('is-active', showDisc);
     }
     var customBtn = $('#hri-add-custom', root);
-    if (customBtn) customBtn.disabled = !stay || !!invNo;
+    if (customBtn) customBtn.disabled = !stay || invoiceLocked(stay, root);
   }
 
   function settleModal() {
@@ -664,6 +730,42 @@
       payTotalEl.setAttribute('data-amount', String(total));
       payTotalEl.textContent = money(total);
     }
+    syncSettleSubmitEnabled();
+  }
+
+  function splitsMatchTarget() {
+    var rows = splitRows();
+    var target = round2(billTarget());
+    if (rows.length <= 1) return target > 0.009 && !!rowMethodValue(rows[0]);
+    var total = 0;
+    var allFilled = true;
+    var allModes = true;
+    rows.forEach(function (row) {
+      if (!rowMethodValue(row)) allModes = false;
+      var amountInput = row.querySelector('.pos-inv-settle-amount');
+      var raw = amountInput ? String(amountInput.value || '').trim() : '';
+      var amount = Number(raw);
+      if (!raw || !isFinite(amount) || amount <= 0) allFilled = false;
+      total += isFinite(amount) ? amount : 0;
+    });
+    return allFilled && allModes && Math.abs(round2(total) - target) <= 0.009;
+  }
+
+  function syncSettleSubmitEnabled() {
+    var submitBtn = document.getElementById('pos-inv-settle-submit');
+    if (!submitBtn) return;
+    var ok = splitsMatchTarget();
+    if (ok) {
+      splitRows().forEach(function (row) {
+        var method = rowMethodValue(row);
+        var txnInput = row.querySelector('.pos-inv-settle-txn');
+        if (METHODS_REQUIRING_TXN[method] && !(txnInput && txnInput.value.trim())) {
+          ok = false;
+        }
+      });
+    }
+    submitBtn.disabled = !ok;
+    submitBtn.setAttribute('aria-disabled', ok ? 'false' : 'true');
   }
 
   function syncSingleAmount() {
@@ -675,6 +777,63 @@
     var amountInput = rows[0].querySelector('.pos-inv-settle-amount');
     if (amountInput) amountInput.value = String(billTarget() || '');
     refreshSplitBalance();
+  }
+
+  function syncRemainingSplitAmount(changedRow) {
+    var rows = splitRows();
+    if (rows.length < 2) return;
+    var target = round2(billTarget());
+    if (!(target > 0)) return;
+
+    function amountRaw(row) {
+      var input = row.querySelector('.pos-inv-settle-amount');
+      return input ? String(input.value || '').trim() : '';
+    }
+    function setAmount(row, value) {
+      var input = row.querySelector('.pos-inv-settle-amount');
+      if (!input) return;
+      input.value = value > 0 ? String(round2(value)) : '';
+    }
+
+    if (rows.length === 2) {
+      var first = rows[0];
+      var second = rows[1];
+      if (!changedRow) {
+        var firstRaw = amountRaw(first);
+        var secondRaw = amountRaw(second);
+        var firstAmt = Number(firstRaw);
+        var secondAmt = Number(secondRaw);
+        if (firstRaw && isFinite(firstAmt) && firstAmt > 0 && !secondRaw) {
+          setAmount(second, target - firstAmt);
+        } else if (secondRaw && isFinite(secondAmt) && secondAmt > 0 && !firstRaw) {
+          setAmount(first, target - secondAmt);
+        }
+        return;
+      }
+      var otherRow = changedRow === first ? second : first;
+      var raw = amountRaw(changedRow);
+      var amount = Number(raw);
+      if (!raw || !isFinite(amount) || amount <= 0) {
+        setAmount(otherRow, 0);
+        return;
+      }
+      setAmount(otherRow, target - amount);
+      return;
+    }
+
+    var lastRow = rows[rows.length - 1];
+    if (changedRow && changedRow === lastRow) return;
+    var others = 0;
+    var hasEarlierAmount = false;
+    for (var i = 0; i < rows.length - 1; i++) {
+      var rawEarlier = amountRaw(rows[i]);
+      var amountEarlier = Number(rawEarlier);
+      if (rawEarlier && isFinite(amountEarlier) && amountEarlier > 0) {
+        hasEarlierAmount = true;
+        others += amountEarlier;
+      }
+    }
+    setAmount(lastRow, hasEarlierAmount ? target - others : 0);
   }
 
   function rowMethodValue(row) {
@@ -891,9 +1050,16 @@
     wrap.appendChild(row);
 
     var amountInput = row.querySelector('.pos-inv-settle-amount');
+    var txnInput = row.querySelector('.pos-inv-settle-txn');
     var removeBtn = row.querySelector('.pos-inv-settle-remove');
     bindMethodListbox(row);
-    if (amountInput) amountInput.addEventListener('input', refreshSplitBalance);
+    if (amountInput) {
+      amountInput.addEventListener('input', function () {
+        syncRemainingSplitAmount(row);
+        refreshSplitBalance();
+      });
+    }
+    if (txnInput) txnInput.addEventListener('input', syncSettleSubmitEnabled);
     if (removeBtn) {
       removeBtn.addEventListener('click', function () {
         if (splitRows().length <= 1) return;
@@ -901,6 +1067,7 @@
         row.remove();
         updateRemoveButtons();
         refreshMethodOptionAvailability();
+        syncRemainingSplitAmount(null);
         syncSingleAmount();
       });
     }
@@ -946,7 +1113,7 @@
       showToast('No active stay to settle.', true);
       return;
     }
-    if (!invoiceNumber(lastRoom.stay)) {
+    if (!invoiceLocked(lastRoom.stay)) {
       showToast('Generate the invoice before settling.', true);
       return;
     }
@@ -1016,7 +1183,7 @@
       showToast('No active stay for discount.', true);
       return;
     }
-    if (invoiceNumber(lastRoom.stay)) {
+    if (invoiceLocked(lastRoom.stay)) {
       showToast('Discount cannot be changed after the invoice is generated.', true);
       return;
     }
@@ -1053,7 +1220,7 @@
       showToast('No active stay for custom charges.', true);
       return;
     }
-    if (invoiceNumber(lastRoom.stay)) {
+    if (invoiceLocked(lastRoom.stay)) {
       showToast('Charges cannot be changed after the invoice is generated.', true);
       return;
     }
@@ -1175,7 +1342,7 @@
 
   function deleteLineCharge(root, chargeKey) {
     if (!chargeKey) return Promise.reject(new Error('missing key'));
-    if (invoiceNumber(lastRoom && lastRoom.stay)) {
+    if (invoiceLocked(lastRoom && lastRoom.stay)) {
       showToast('Charges cannot be deleted after the invoice is generated.', true);
       return Promise.reject(new Error('locked'));
     }
@@ -1288,6 +1455,17 @@
         return s + Number(item.amount || 0);
       }, 0)
     );
+    if (rows.length > 1 && Math.abs(sum - target) > 0.009) {
+      return {
+        splits: [],
+        error:
+          'Modes total ₹' +
+          sum.toFixed(2) +
+          ' must match balance due ₹' +
+          target.toFixed(2) +
+          '.'
+      };
+    }
     if (sum > target + 0.009) {
       return {
         splits: [],
@@ -1306,7 +1484,7 @@
   }
 
   function putAction(root, body) {
-    var api = root.getAttribute('data-room-api') || '';
+    var api = actionApiUrl(root);
     return fetch(api, {
       method: 'PUT',
       credentials: 'same-origin',
@@ -1336,7 +1514,13 @@
         }
         paintRoom(root, result.data.room);
         var inv = invoiceNumber(result.data.room && result.data.room.stay);
-        showToast(inv ? 'Invoice ' + inv + ' generated.' : 'Invoice generated.');
+        showToast(inv ? 'Invoice ' + inv + ' updated.' : 'Invoice updated.');
+        if (isLedgerEdit(root)) {
+          var backUrl = root.getAttribute('data-ledger-back-url') || '/hotel/invoice-ledger';
+          window.setTimeout(function () {
+            navigateTo(backUrl);
+          }, 600);
+        }
         return result.data.room;
       })
       .catch(function (err) {
@@ -1347,6 +1531,11 @@
   }
 
   function recordPayment(root) {
+    if (!splitsMatchTarget()) {
+      setSettleError('Modes total must match the balance due.');
+      syncSettleSubmitEnabled();
+      return Promise.reject(new Error('mismatch'));
+    }
     var collected = collectSplits();
     if (collected.error) {
       setSettleError(collected.error);
@@ -1379,7 +1568,7 @@
         throw err;
       })
       .finally(function () {
-        if (saveBtn) saveBtn.disabled = false;
+        syncSettleSubmitEnabled();
       });
   }
 
@@ -1509,7 +1698,12 @@
       if (event.target.closest('#pos-inv-settle-add-split')) {
         event.preventDefault();
         closeAllMethodListboxes();
+        if (splitRows().length === 1) {
+          var firstAmount = splitRows()[0].querySelector('.pos-inv-settle-amount');
+          if (firstAmount) firstAmount.value = '';
+        }
         addSplitRow('', '');
+        syncRemainingSplitAmount(null);
         updateRemoveButtons();
         refreshMethodOptionAvailability();
         refreshSplitBalance();
@@ -1539,13 +1733,33 @@
   }
 
   function loadRoom(root) {
-    var api = root.getAttribute('data-room-api') || '';
     var bootstrap = root.getAttribute('data-room-bootstrap') || '';
     if (bootstrap) {
       try {
         paintRoom(root, JSON.parse(bootstrap));
       } catch (err) {}
     }
+    if (isLedgerEdit(root)) {
+      var invoiceUrl = invoiceLoadUrl(root);
+      if (!invoiceUrl) return Promise.resolve();
+      return fetch(invoiceUrl, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: apiHeaders()
+      })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            return { ok: resp.ok, data: data };
+          });
+        })
+        .then(function (result) {
+          if (result.ok && result.data && result.data.ok && result.data.room) {
+            paintRoom(root, result.data.room);
+          }
+        })
+        .catch(function () {});
+    }
+    var api = root.getAttribute('data-room-api') || '';
     if (!api) return Promise.resolve();
     return fetch(api, {
       method: 'GET',
@@ -1568,11 +1782,12 @@
   function initHotelRoomInvoicePage() {
     var root = document.getElementById('hotel-room-invoice-page');
     if (!root) return;
+    lastRoot = root;
     bindEvents(root);
     bindNotes(root);
     loadRoom(root).then(function () {
       if (root.getAttribute('data-open-settle') === '1') {
-        if (invoiceNumber(lastRoom && lastRoom.stay)) {
+        if (invoiceLocked(lastRoom && lastRoom.stay)) {
           openSettleModal();
         }
       }

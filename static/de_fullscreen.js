@@ -1,8 +1,9 @@
 (function(){
   'use strict';
 
-  var ICON_ENTER = '<svg class="de-fs-icon-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
-  var ICON_EXIT = '<svg class="de-fs-icon-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10 3 21"/><path d="M10 14 21 3"/></svg>';
+  /* Maximize (enter) vs minimize (exit) — mirror pair so the two modes never look alike. */
+  var ICON_ENTER = '<svg class="de-fs-icon-enter" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>';
+  var ICON_EXIT = '<svg class="de-fs-icon-exit" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M10 14L3 21"/></svg>';
 
   var STORAGE_KEY = 'de-fullscreen-active';
   var NAV_TS_KEY = 'de-fullscreen-nav-ts';
@@ -56,7 +57,7 @@
     link.rel = 'stylesheet';
     link.setAttribute('data-de-fullscreen-css', '1');
     var script = document.currentScript;
-    link.href = (script && script.getAttribute('data-css')) || '/static/de_fullscreen.css?v=4';
+    link.href = (script && script.getAttribute('data-css')) || '/static/de_fullscreen.css?v=8';
     document.head.appendChild(link);
   }
 
@@ -340,11 +341,16 @@
     };
   }
 
+  function fullscreenButtonIcon(active) {
+    return active ? ICON_EXIT : ICON_ENTER;
+  }
+
   function updateButtons(){
     var active = !!getFullscreenElement();
     buttons.forEach(function(btn){
       if(!btn.isConnected) return;
       btn.classList.toggle('is-fullscreen', active);
+      btn.innerHTML = fullscreenButtonIcon(active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
       btn.setAttribute('aria-label', active ? 'Exit full screen' : 'Enter full screen');
       btn.title = active ? 'Exit full screen' : 'Full screen';
@@ -561,13 +567,19 @@
       return Promise.reject(new Error('unsupported'));
     }
     userExitIntent = false;
-    setPreference(true);
     ensureFullscreenRoot();
-    updateButtons();
-    if(getFullscreenElement()) return Promise.resolve();
+    if(getFullscreenElement()){
+      setPreference(true);
+      updateButtons();
+      return Promise.resolve();
+    }
+    setPreference(true);
     if(attemptRestoreSync()) return Promise.resolve();
-    return requestAppFullscreen().then(updateButtons).catch(function(err){
-      /* Preference stays true so soft-nav restore can retry after navigation. */
+    return requestAppFullscreen().then(function(){
+      setPreference(!!getFullscreenElement());
+      updateButtons();
+    }).catch(function(err){
+      /* Preference may stay true for soft-nav restore retries after navigation. */
       updateButtons();
       return Promise.reject(err);
     });
@@ -581,7 +593,7 @@
     btn.setAttribute('aria-pressed', 'false');
     btn.setAttribute('aria-label', 'Enter full screen');
     btn.title = 'Full screen';
-    btn.innerHTML = ICON_ENTER + ICON_EXIT;
+    btn.innerHTML = fullscreenButtonIcon(!!getFullscreenElement());
     btn.addEventListener('click', toggleFullscreen);
     buttons.push(btn);
     return btn;
@@ -595,7 +607,12 @@
   }
 
   function mountInContainer(container, useTopSlot, corner){
-    if(!supported || !container || container.querySelector('.de-fullscreen-btn')) return;
+    if(!supported || !container) return;
+    var existing = container.querySelector('.de-fullscreen-btn');
+    if(existing){
+      if(buttons.indexOf(existing) === -1) buttons.push(existing);
+      return;
+    }
     var btn = createButton();
     if(!btn) return;
     if(useTopSlot){
@@ -713,7 +730,9 @@
     window.addEventListener('pageshow', function(){
       pageUnloading = false;
       restoreAfterNavigation();
+      updateButtons();
     });
+    window.addEventListener('focus', updateButtons);
   }
 
   function init(){
@@ -747,10 +766,13 @@
   }
 
   function reinit(){
-    buttons = [];
+    /* Keep connected buttons — soft-nav + page init both call reinit; wiping the
+       registry left a mounted .de-fullscreen-btn stuck with a stale icon/state. */
+    buttons = buttons.filter(function(btn){ return btn.isConnected; });
     mountButtons();
     wrapIndexViewHelpers();
     updateButtons();
+    requestAnimationFrame(updateButtons);
   }
 
   function setSoftNavInProgress(active){

@@ -1330,6 +1330,31 @@
     return '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 6V4M15 6V4M9 18v2M15 18v2"/></svg>';
   }
 
+  function tableGuestName(table) {
+    if (!table || typeof table !== 'object') return '';
+    var name = String(table.customerName || table.customer_name || '').trim();
+    if (!name || name.toLowerCase() === 'guest') return '';
+    return name;
+  }
+
+  function tableSubtitle(table) {
+    var status = mapStatus(table && table.status);
+    var guest = tableGuestName(table);
+    if (guest && status === 'occupied') {
+      return { text: guest, isGuest: true };
+    }
+    var seats =
+      table && table.seats != null && table.seats !== ''
+        ? table.seats
+        : table && table.mergedSeats != null && table.mergedSeats !== ''
+          ? table.mergedSeats
+          : '';
+    if (seats !== '') {
+      return { text: String(seats) + ' Seater', isGuest: false };
+    }
+    return null;
+  }
+
   function areaNameById(areas, areaId) {
     var i;
     for (i = 0; i < areas.length; i++) {
@@ -1508,6 +1533,7 @@
       var tileName = normalize(tile.getAttribute('data-name'));
       var tileDisplay = normalize(tile.getAttribute('data-display-name'));
       var tileSearch = normalize(tile.getAttribute('data-search-names'));
+      var guestName = normalize(tile.getAttribute('data-guest-name'));
       var seats = normalize(tile.getAttribute('data-seats'));
       var matchArea = !area || tileArea === area;
       var matchStatus = !statusFilter || tileStatus === statusFilter;
@@ -1516,6 +1542,7 @@
         tileName.indexOf(query) !== -1 ||
         tileDisplay.indexOf(query) !== -1 ||
         tileSearch.indexOf(query) !== -1 ||
+        guestName.indexOf(query) !== -1 ||
         seats.indexOf(query) !== -1;
       var show = matchArea && matchStatus && matchQuery;
       tile.classList.toggle('is-hidden', !show);
@@ -1589,6 +1616,8 @@
     var mergeLabel = t.mergeLabel || '';
     var mergedNames = Array.isArray(t.mergedNames) ? t.mergedNames : [name];
     var areaKey = t.areaId || fallbackAreaId || '';
+    var guestName = tableGuestName(t);
+    var subtitle = tableSubtitle(t);
     var menuHtml =
       '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="transfer">Transfer table</button>' +
       (isMerged
@@ -1612,13 +1641,15 @@
       '" data-billing-table="' +
       escapeHtml(billingTable) +
       '" data-search-names="' +
-      escapeHtml(mergedNames.join(' ')) +
+      escapeHtml(mergedNames.join(' ') + (guestName ? ' ' + guestName : '')) +
       '" data-status="' +
       escapeHtml(status) +
       '" data-area="' +
       escapeHtml(areaKey) +
       '" data-seats="' +
       escapeHtml(seats) +
+      '" data-guest-name="' +
+      escapeHtml(guestName) +
       '" data-id="' +
       escapeHtml(t.id || '') +
       '" data-merge-group="' +
@@ -1644,8 +1675,12 @@
       '<div class="pos-table-tile-name">' +
       escapeHtml(displayName) +
       '</div>' +
-      (seats !== ''
-        ? '<div class="pos-table-tile-seats">' + escapeHtml(seats) + ' Seater</div>'
+      (subtitle
+        ? '<div class="pos-table-tile-seats' +
+          (subtitle.isGuest ? ' pos-table-tile-seats--guest' : '') +
+          '">' +
+          escapeHtml(subtitle.text) +
+          '</div>'
         : '') +
       (mergeLabel
         ? '<div class="pos-table-merge-tag">' + escapeHtml(mergeLabel) + '</div>'

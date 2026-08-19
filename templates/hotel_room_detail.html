@@ -39,7 +39,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=130">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=135">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <script>
 (function(){
@@ -58,7 +58,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=130">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=135">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 {% endif %}
 
@@ -139,17 +139,6 @@
       <button type="button" class="hrd-btn hrd-btn--outline" id="hrd-reserve-new" data-action="reserve-new" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
         New Reservation
-      </button>
-      {% endif %}
-      {% if room_status == 'occupied' %}
-      <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-new-checkin" data-action="checkout">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-        Check Out
-      </button>
-      {% else %}
-      <button type="button" class="hrd-btn hrd-btn--primary" id="hrd-new-checkin" data-action="checkout" hidden>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-        Check Out
       </button>
       {% endif %}
     </div>
@@ -384,17 +373,32 @@
           <p class="hrd-charges-banner">No charges yet. Charges appear after check-in.</p>
         </div>
         <div class="hrd-charges-body" id="hrd-charges-body" hidden>
-          <ul class="hrd-charges-list" id="hrd-charges-list"></ul>
-          <dl class="hrd-charges-totals" id="hrd-charges-totals">
-            <div data-charges-discount-row hidden>
-              <dt>Discount <span class="hrd-charges-muted" data-charges-discount-hint></span></dt>
-              <dd data-charges-discount>—</dd>
-            </div>
-            <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-cgst>—</dd></div>
-            <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-ugst>—</dd></div>
-            <div><dt>Estimated Total</dt><dd data-charges-total>—</dd></div>
-            <div><dt>Advance Paid</dt><dd data-charges-advance>—</dd></div>
-            <div class="hrd-charges-balance"><dt>Balance Due</dt><dd data-charges-balance>—</dd></div>
+          <div class="hrd-charges-section" id="hrd-charges-hotel-section">
+            <h3 class="hrd-charges-section-title">Hotel Charges</h3>
+            <ul class="hrd-charges-list" id="hrd-charges-list"></ul>
+            <dl class="hrd-charges-totals" id="hrd-charges-totals">
+              <div data-charges-discount-row hidden>
+                <dt>Discount <span class="hrd-charges-muted" data-charges-discount-hint></span></dt>
+                <dd data-charges-discount>—</dd>
+              </div>
+              <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-cgst>—</dd></div>
+              <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-ugst>—</dd></div>
+              <div><dt>Estimated Total</dt><dd data-charges-total>—</dd></div>
+              <div><dt>Advance Paid</dt><dd data-charges-advance>—</dd></div>
+              <div class="hrd-charges-balance"><dt>Balance Due</dt><dd data-charges-balance>—</dd></div>
+            </dl>
+          </div>
+          <div class="hrd-charges-section hrd-charges-fb-section" id="hrd-charges-fb-section" hidden>
+            <h3 class="hrd-charges-section-title">F&amp;B Room Transfers</h3>
+            <p class="hrd-charges-invoice-no" id="hrd-charges-fb-invoice-no" hidden></p>
+            <ul class="hrd-charges-list" id="hrd-charges-fb-list"></ul>
+            <dl class="hrd-charges-totals hrd-charges-fb-totals">
+              <div><dt>F&amp;B Subtotal</dt><dd data-charges-fb-total>—</dd></div>
+              <div class="hrd-charges-balance"><dt>F&amp;B Balance</dt><dd data-charges-fb-balance>—</dd></div>
+            </dl>
+          </div>
+          <dl class="hrd-charges-totals hrd-charges-combined" id="hrd-charges-combined" hidden>
+            <div class="hrd-charges-balance"><dt>Combined Checkout Due</dt><dd data-charges-combined-balance>—</dd></div>
           </dl>
           <div class="hrd-charges-actions" id="hrd-charges-actions" hidden>
             <a
@@ -421,6 +425,28 @@
   </div>
 
   <div class="hotel-rooms-toast" id="hrd-toast" role="status" aria-live="polite" hidden></div>
+
+<div class="hrd-dialog-overlay" id="hrd-checkout-invoice-modal" hidden aria-hidden="true">
+  <div class="hrd-dialog hrd-dialog--notice" role="dialog" aria-modal="true" aria-labelledby="hrd-checkout-invoice-title">
+    <header class="hrd-dialog-head">
+      <div class="hrd-dialog-head-main">
+        <span class="hrd-dialog-icon hrd-dialog-icon--blue" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+        </span>
+        <div>
+          <h2 id="hrd-checkout-invoice-title">Generate Invoice to check out</h2>
+        </div>
+      </div>
+      <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-checkout-invoice-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <footer class="hrd-dialog-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-checkout-invoice-close>Close</button>
+      <a class="hrd-btn hrd-btn--primary" id="hrd-checkout-invoice-go" href="#">Generate Invoice</a>
+    </footer>
+  </div>
+</div>
 
 <div class="hrd-dialog-overlay hrd-id-preview-overlay" id="hrd-id-preview-modal" hidden aria-hidden="true">
   <div class="hrd-dialog hrd-dialog--id-preview" role="dialog" aria-modal="true" aria-labelledby="hrd-id-preview-title">
@@ -944,17 +970,33 @@
     <form class="hrd-dialog-body" id="hrd-invoice-form" novalidate>
       <input type="hidden" id="hrd-invoice-mode" value="generate">
       <div class="hrd-invoice-summary" id="hrd-invoice-summary" aria-label="Charge summary">
-        <ul class="hrd-charges-list" id="hrd-invoice-lines"></ul>
-        <dl class="hrd-charges-totals">
-          <div id="hrd-invoice-discount-row" hidden>
-            <dt>Discount <span class="hrd-charges-muted" id="hrd-invoice-discount-hint"></span></dt>
-            <dd id="hrd-invoice-discount">—</dd>
-          </div>
-          <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-cgst">—</dd></div>
-          <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-ugst">—</dd></div>
-          <div><dt>Estimated Total</dt><dd id="hrd-invoice-total">—</dd></div>
-          <div><dt>Advance Paid</dt><dd id="hrd-invoice-advance">—</dd></div>
-          <div class="hrd-charges-balance"><dt>Balance Due</dt><dd id="hrd-invoice-balance">—</dd></div>
+        <div class="hrd-invoice-block" id="hrd-invoice-hotel-block">
+          <h3 class="hrd-charges-section-title">Hotel Invoice</h3>
+          <p class="hrd-charges-invoice-no" id="hrd-invoice-hotel-no" hidden></p>
+          <ul class="hrd-charges-list" id="hrd-invoice-lines"></ul>
+          <dl class="hrd-charges-totals">
+            <div id="hrd-invoice-discount-row" hidden>
+              <dt>Discount <span class="hrd-charges-muted" id="hrd-invoice-discount-hint"></span></dt>
+              <dd id="hrd-invoice-discount">—</dd>
+            </div>
+            <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-cgst">—</dd></div>
+            <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-ugst">—</dd></div>
+            <div><dt>Estimated Total</dt><dd id="hrd-invoice-total">—</dd></div>
+            <div><dt>Advance Paid</dt><dd id="hrd-invoice-advance">—</dd></div>
+            <div class="hrd-charges-balance"><dt>Hotel Balance</dt><dd id="hrd-invoice-balance">—</dd></div>
+          </dl>
+        </div>
+        <div class="hrd-invoice-block hrd-invoice-fb-block" id="hrd-invoice-fb-block" hidden>
+          <h3 class="hrd-charges-section-title">F&amp;B Transfers Invoice</h3>
+          <p class="hrd-charges-invoice-no" id="hrd-invoice-fb-no" hidden></p>
+          <ul class="hrd-charges-list" id="hrd-invoice-fb-lines"></ul>
+          <dl class="hrd-charges-totals">
+            <div><dt>F&amp;B Total</dt><dd id="hrd-invoice-fb-total">—</dd></div>
+            <div class="hrd-charges-balance"><dt>F&amp;B Balance</dt><dd id="hrd-invoice-fb-balance">—</dd></div>
+          </dl>
+        </div>
+        <dl class="hrd-charges-totals hrd-charges-combined" id="hrd-invoice-combined-row" hidden>
+          <div class="hrd-charges-balance"><dt>Combined Due</dt><dd id="hrd-invoice-combined-balance">—</dd></div>
         </dl>
       </div>
       <div class="hrd-invoice-pay-field">
@@ -1132,7 +1174,7 @@
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=63"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=17"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=171"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=175"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

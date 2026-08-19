@@ -25,6 +25,8 @@
 
   var session = {
     invoiceId: null,
+    items: [],
+    settleSelectedUrl: '',
     orderNo: '',
     tableLabel: '',
     grandTotal: 0,
@@ -797,62 +799,44 @@
     );
   }
 
-  function closePosSettleModal() {
-    var modal = document.getElementById('pos-inv-settle-modal');
-    if (!modal || modal.hidden) return;
-    closeAllSettleSplitListboxes();
-    closeHotelRoomListbox();
-    modal.hidden = true;
-    modal.setAttribute('hidden', '');
-    setSettleError('');
-    var onClose = session.onClose;
-    session.invoiceId = null;
-    session.onSettled = null;
-    session.onClose = null;
-    if (typeof onClose === 'function') {
-      try {
-        onClose();
-      } catch (e) {}
+  function paintSettleAllocBody() {
+    var metaEl = document.getElementById('pos-inv-settle-alloc-meta');
+    var allocBody = document.getElementById('pos-inv-settle-alloc-body');
+    var items = session.items || [];
+    if (items.length > 1) {
+      if (metaEl) metaEl.textContent = items.length + ' invoices';
+      if (allocBody) {
+        allocBody.innerHTML = items
+          .map(function (item) {
+            var orderNo = item.orderNo || '—';
+            var sub = item.tableLabel || item.customerName || '';
+            var total = Math.round((Number(item.grandTotal) || 0) * 100) / 100;
+            return (
+              '<tr>' +
+              '<td><div class="cp-alloc-order"><span class="cp-alloc-code">' +
+              escapeHtml(orderNo) +
+              '</span>' +
+              (sub
+                ? '<span class="cp-alloc-supplier">' + escapeHtml(sub) + '</span>'
+                : '') +
+              '</div></td>' +
+              '<td class="pl-col-amount"><span class="cp-alloc-total-value">' +
+              escapeHtml(settleMoneyLabel(total)) +
+              '</span></td>' +
+              '<td class="pl-col-amount"><input class="cp-alloc-input" type="number" value="' +
+              escapeHtml(String(total)) +
+              '" disabled aria-label="Pay now amount"></td>' +
+              '</tr>'
+            );
+          })
+          .join('');
+      }
+      return;
     }
-  }
-
-  function openPosSettleModal(opts) {
-    opts = opts || {};
-    if (!isBrowserOnline()) {
-      toast('Settle Bill requires an internet connection.');
-      return false;
-    }
-    var invoiceId = opts.invoiceId;
-    if (!invoiceId) {
-      toast('Save the order before settling the bill.');
-      return false;
-    }
-    var modal = document.getElementById('pos-inv-settle-modal');
-    if (!modal) {
-      toast('Settle dialog is not available on this page.');
-      return false;
-    }
-
-    session.invoiceId = invoiceId;
-    session.orderNo = opts.orderNo || '—';
-    session.tableLabel = opts.tableLabel || opts.table || '';
-    session.grandTotal = Math.round((Number(opts.grandTotal) || 0) * 100) / 100;
-    session.apiBase = resolveApiBase(opts.apiBase);
-    session.onSettled = typeof opts.onSettled === 'function' ? opts.onSettled : null;
-    session.onClose = typeof opts.onClose === 'function' ? opts.onClose : null;
-
-    setSettleError('');
-    var total = settleBillTotal();
     var orderNo = session.orderNo;
     var table = session.tableLabel;
-    var totalEl = document.getElementById('pos-inv-settle-total');
-    if (totalEl) {
-      totalEl.setAttribute('data-amount', String(total));
-      totalEl.textContent = settleMoneyLabel(total);
-    }
-    var metaEl = document.getElementById('pos-inv-settle-alloc-meta');
+    var total = settleBillTotal();
     if (metaEl) metaEl.textContent = orderNo;
-    var allocBody = document.getElementById('pos-inv-settle-alloc-body');
     if (allocBody) {
       allocBody.innerHTML =
         '<tr>' +
@@ -871,6 +855,98 @@
         '" disabled aria-label="Pay now amount"></td>' +
         '</tr>';
     }
+  }
+
+  function closePosSettleModal() {
+    var modal = document.getElementById('pos-inv-settle-modal');
+    if (!modal || modal.hidden) return;
+    closeAllSettleSplitListboxes();
+    closeHotelRoomListbox();
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    setSettleError('');
+    var onClose = session.onClose;
+    session.invoiceId = null;
+    session.items = [];
+    session.settleSelectedUrl = '';
+    session.onSettled = null;
+    session.onClose = null;
+    if (typeof onClose === 'function') {
+      try {
+        onClose();
+      } catch (e) {}
+    }
+  }
+
+  function openPosSettleModal(opts) {
+    opts = opts || {};
+    if (!isBrowserOnline()) {
+      toast('Settle Bill requires an internet connection.');
+      return false;
+    }
+    var items = Array.isArray(opts.items)
+      ? opts.items.filter(function (item) {
+          return item && (item.invoiceId || item.invoice_id);
+        })
+      : [];
+    items = items.map(function (item) {
+      return {
+        invoiceId: item.invoiceId || item.invoice_id,
+        orderNo: item.orderNo || item.order_no || '—',
+        tableLabel: item.tableLabel || item.table || '',
+        customerName: item.customerName || item.customer_name || '',
+        grandTotal: Math.round((Number(item.grandTotal != null ? item.grandTotal : item.grand_total) || 0) * 100) / 100
+      };
+    });
+    var invoiceId =
+      opts.invoiceId || (items.length === 1 ? items[0].invoiceId : null);
+    if (!invoiceId && items.length < 2) {
+      toast('Save the order before settling the bill.');
+      return false;
+    }
+    var modal = document.getElementById('pos-inv-settle-modal');
+    if (!modal) {
+      toast('Settle dialog is not available on this page.');
+      return false;
+    }
+
+    session.items = items;
+    session.settleSelectedUrl = opts.settleSelectedUrl || opts.settle_selected_url || '';
+    session.invoiceId = invoiceId;
+    if (items.length > 1) {
+      session.orderNo = items.length + ' invoices';
+      session.tableLabel = '';
+      session.grandTotal = items.reduce(function (sum, item) {
+        return sum + (Number(item.grandTotal) || 0);
+      }, 0);
+      session.grandTotal = Math.round(session.grandTotal * 100) / 100;
+    } else {
+      var first = items[0] || null;
+      session.orderNo = opts.orderNo || (first && first.orderNo) || '—';
+      session.tableLabel =
+        opts.tableLabel || opts.table || (first && first.tableLabel) || '';
+      session.grandTotal = Math.round(
+        (Number(
+          opts.grandTotal != null
+            ? opts.grandTotal
+            : first
+              ? first.grandTotal
+              : 0
+        ) || 0) * 100
+      ) / 100;
+    }
+    session.apiBase = resolveApiBase(opts.apiBase);
+    session.onSettled = typeof opts.onSettled === 'function' ? opts.onSettled : null;
+    session.onClose = typeof opts.onClose === 'function' ? opts.onClose : null;
+
+    setSettleError('');
+    var total = settleBillTotal();
+    var totalEl = document.getElementById('pos-inv-settle-total');
+    if (totalEl) {
+      totalEl.setAttribute('data-amount', String(total));
+      totalEl.textContent = settleMoneyLabel(total);
+    }
+    paintSettleAllocBody();
     var notesEl = document.getElementById('pos-inv-settle-notes');
     if (notesEl) notesEl.value = '';
     occupiedRoomsState.loading = false;
@@ -893,7 +969,8 @@
       syncSettleSubmitEnabled();
       return;
     }
-    if (!session.invoiceId) return;
+    if (!session.invoiceId && !(session.items && session.items.length)) return;
+    var isMulti = !!(session.items && session.items.length > 1);
     var collected = collectSettleSplits();
     if (collected.error) {
       setSettleError(collected.error);
@@ -923,11 +1000,25 @@
       payload.hotel_room_id = hotelRoomId;
       payload.hotelRoomId = hotelRoomId;
     }
-    var url =
-      session.apiBase +
-      '/api/invoices/' +
-      encodeURIComponent(session.invoiceId) +
-      '/settle';
+    var url;
+    if (isMulti) {
+      payload.invoice_ids = session.items.map(function (item) {
+        return item.invoiceId;
+      });
+      url =
+        session.settleSelectedUrl ||
+        session.apiBase + '/api/invoices/settle-selected';
+    } else {
+      var invoiceId =
+        session.invoiceId ||
+        (session.items[0] && session.items[0].invoiceId);
+      if (!invoiceId) return;
+      url =
+        session.apiBase +
+        '/api/invoices/' +
+        encodeURIComponent(invoiceId) +
+        '/settle';
+    }
 
     fetch(url, {
       method: 'POST',
@@ -959,11 +1050,24 @@
           result.data && result.data.invoice ? result.data.invoice : null;
         var onSettled = session.onSettled;
         var table = session.tableLabel;
+        var paidCount =
+          (result.data && result.data.paid_count) ||
+          (isMulti && session.items ? session.items.length : 1);
         closePosSettleModal();
         if (typeof onSettled === 'function') {
           try {
-            onSettled(settledInvoice, { tableLabel: table });
+            onSettled(settledInvoice, {
+              tableLabel: table,
+              paidCount: paidCount,
+              invoices: (result.data && result.data.invoices) || []
+            });
           } catch (e) {}
+        } else if (isMulti) {
+          toast(
+            paidCount === 1
+              ? 'Bill settled successfully.'
+              : paidCount + ' bills settled successfully.'
+          );
         } else {
           toast(
             table

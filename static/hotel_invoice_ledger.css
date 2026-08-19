@@ -1,8 +1,30 @@
 /* Hotel Invoice Ledger — Expense Ledger–style page chrome */
-body.hotel-invoice-ledger-module .se-sales-header-filters:has(#hil-filter-form){
+body.hotel-invoice-ledger-module .hil-kpi{
+  margin:0;
+  width:100%;
+  cursor:pointer;
+  transition:border-color .15s ease, background-color .15s ease, box-shadow .15s ease, transform .2s ease;
+}
+body.hotel-invoice-ledger-module .hil-kpi:hover{
+  border-color:rgba(37,99,235,.28);
+  transform:translateY(-1px);
+}
+body.hotel-invoice-ledger-module .hil-kpi.is-active{
+  border-color:rgba(37,99,235,.42);
+  background:#F8FBFF;
+  box-shadow:0 0 0 1px rgba(37,99,235,.1), 0 8px 30px rgba(15,23,42,.04);
+}
+body.hotel-invoice-ledger-module .hil-kpi:focus{
+  outline:none;
+}
+body.hotel-invoice-ledger-module .hil-kpi:focus-visible{
+  outline:2px solid #2563EB;
+  outline-offset:2px;
+}
+body.hotel-invoice-ledger-module .se-sales-header-filters:has(.hil-ledger-form){
   justify-content:stretch;
 }
-body.hotel-invoice-ledger-module #hil-filter-form.sr-topbar-filters{
+body.hotel-invoice-ledger-module .hil-ledger-form.sr-topbar-filters{
   display:flex;
   flex-wrap:nowrap;
   align-items:flex-end;
@@ -13,13 +35,13 @@ body.hotel-invoice-ledger-module #hil-filter-form.sr-topbar-filters{
   min-width:0;
   flex:1 1 auto;
 }
-body.hotel-invoice-ledger-module #hil-filter-form .pl-header-field{
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field{
   flex:0 1 auto;
   width:clamp(120px,12vw,180px);
   min-width:112px;
   max-width:200px;
 }
-body.hotel-invoice-ledger-module #hil-filter-form .pl-search-chip{
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip{
   position:relative;
   flex:1 1 auto;
   width:auto;
@@ -27,14 +49,14 @@ body.hotel-invoice-ledger-module #hil-filter-form .pl-search-chip{
   max-width:100%;
   z-index:20;
 }
-body.hotel-invoice-ledger-module #hil-filter-form .pl-date-range-host{
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-date-range-host{
   flex:0 0 auto;
   width:auto;
   min-width:0;
   max-width:none;
   z-index:30;
 }
-body.hotel-invoice-ledger-module #hil-filter-form .pl-header-field .se-filter-chip-label{
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field .se-filter-chip-label{
   display:block;
   margin-bottom:5px;
   font-size:11px;
@@ -43,7 +65,7 @@ body.hotel-invoice-ledger-module #hil-filter-form .pl-header-field .se-filter-ch
   text-transform:uppercase;
   letter-spacing:.4px;
 }
-body.hotel-invoice-ledger-module #hil-filter-form .pl-header-field-listbox .se-filter-chip-control{
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox .se-filter-chip-control{
   width:100%;
   min-height:44px;
   background:#fff !important;
@@ -53,7 +75,7 @@ body.hotel-invoice-ledger-module #hil-filter-form .pl-header-field-listbox .se-f
   align-items:center;
   overflow:hidden;
 }
-body.hotel-invoice-ledger-module #hil-filter-form .pl-search-chip .pl-search-input{
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip .pl-search-input{
   flex:1 1 auto;
   min-width:0;
   width:100%;
@@ -66,42 +88,90 @@ body.hotel-invoice-ledger-module #hil-filter-form .pl-search-chip .pl-search-inp
   font-weight:500;
   outline:none;
 }
-body.hotel-invoice-ledger-module #hil-filter-form .se-filter-chip-chev,
-body.hotel-invoice-ledger-module #hil-filter-form .an-range-chev{
+body.hotel-invoice-ledger-module .hil-ledger-form .se-filter-chip-chev,
+body.hotel-invoice-ledger-module .hil-ledger-form .an-range-chev{
   display:none !important;
 }
 
-/* Wide ledger: scroll as one row (same as Expense / Purchase ledger). */
-body.hotel-invoice-ledger-module #hil-table{
-  min-width:1080px;
+/* Wide ledger: keep each row to two lines (name + meta); scroll horizontally. */
+body.hotel-invoice-ledger-module .hil-ledger-table{
+  min-width:1480px;
 }
-body.hotel-invoice-ledger-module #hil-table .pl-col-status{
+body.hotel-invoice-ledger-module .hil-ledger-table th,
+body.hotel-invoice-ledger-module .hil-ledger-table td{
+  vertical-align:middle;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table .hil-col-invoice,
+body.hotel-invoice-ledger-module .hil-ledger-table .pl-col-code{
+  min-width:158px;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table .hil-col-date,
+body.hotel-invoice-ledger-module .hil-ledger-table .pl-col-date{
+  min-width:112px;
+  white-space:nowrap;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table .hil-col-room{
+  min-width:168px;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table .hil-col-guest{
+  min-width:240px;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table .pl-name,
+body.hotel-invoice-ledger-module .hil-ledger-table .pl-meta,
+body.hotel-invoice-ledger-module .hil-ledger-table .pl-expense-code{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  max-width:100%;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table .cp-col-check{
+  width:44px;
+  min-width:44px;
+}
+body.hotel-invoice-ledger-module [id$="-selection-bar"]{
+  margin-top:0;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table tr.hil-row.is-selected td{
+  background:#EFF6FF;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table tr.hil-row.is-open .cp-col-check{
+  cursor:default;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table .pl-col-status{
   min-width:132px;
   white-space:nowrap;
 }
-body.hotel-invoice-ledger-module #hil-table th.pl-col-actions,
-body.hotel-invoice-ledger-module #hil-table td.pl-col-actions{
-  min-width:88px;
+body.hotel-invoice-ledger-module .hil-ledger-table th.pl-col-actions,
+body.hotel-invoice-ledger-module .hil-ledger-table td.pl-col-actions{
+  min-width:148px;
   white-space:nowrap;
 }
-body.hotel-invoice-ledger-module #hil-table .pl-col-amount{
+body.hotel-invoice-ledger-module .hil-ledger-table .pl-col-amount{
   white-space:nowrap;
+}
+body.su-module.hotel-invoice-ledger-module .pl-action-btns .act-btn.cancel:hover{
+  color:#B91C1C;
+  background:#FEF2F2;
+}
+body.hotel-invoice-ledger-module .cp-status-pill--cancelled{
+  background:rgba(220,38,38,.1);
+  color:#b91c1c;
 }
 
-#hil-table tbody tr.hil-row:hover td{
+.hil-ledger-table tbody tr.hil-row:hover td{
   background:#F8FAFC;
 }
-#hil-table tr.hil-row.is-open{
+.hil-ledger-table tr.hil-row.is-open{
   cursor:pointer;
 }
-#hil-table tr.hil-row.is-open:focus-visible{
+.hil-ledger-table tr.hil-row.is-open:focus-visible{
   outline:2px solid #2563eb;
   outline-offset:-2px;
 }
-#hil-table tr.hil-row.is-open .pl-col-actions{
+.hil-ledger-table tr.hil-row.is-open .pl-col-actions{
   cursor:default;
 }
-#hil-table tr.hil-row.is-open .hil-status-settle{
+.hil-ledger-table tr.hil-row.is-open .hil-status-settle{
   cursor:pointer;
   border:0;
   font:inherit;
@@ -112,7 +182,7 @@ body.hotel-invoice-ledger-module #hil-table .pl-col-amount{
   appearance:none;
   -webkit-appearance:none;
 }
-#hil-table tr.hil-row.is-open .hil-status-settle:focus-visible{
+.hil-ledger-table tr.hil-row.is-open .hil-status-settle:focus-visible{
   outline:2px solid #2563EB;
   outline-offset:2px;
 }
@@ -156,11 +226,211 @@ body.hotel-invoice-ledger-module .hil-print-btn svg{
 }
 
 @media (max-width:900px){
-  body.hotel-invoice-ledger-module #hil-filter-form.sr-topbar-filters{
+  body.hotel-invoice-ledger-module .hil-ledger-form.sr-topbar-filters{
     flex-wrap:wrap;
   }
-  body.hotel-invoice-ledger-module #hil-filter-form .pl-search-chip{
+  body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip{
     flex:1 1 100%;
     order:-1;
   }
+}
+
+.hil-void-modal[hidden]{display:none !important}
+.hil-void-modal{
+  position:fixed;
+  inset:0;
+  z-index:5600;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+.hil-void-modal-backdrop{
+  position:absolute;
+  inset:0;
+  background:rgba(15,23,42,.4);
+}
+.hil-void-modal-box{
+  position:relative;
+  width:100%;
+  max-width:400px;
+  padding:24px;
+  border-radius:14px;
+  background:#fff;
+  box-shadow:0 20px 48px rgba(15,23,42,.2);
+}
+.hil-void-modal-box h3{
+  margin:0 0 8px;
+  font-size:18px;
+  font-weight:750;
+  color:#0f172a;
+}
+.hil-void-lead{
+  margin:0 0 16px;
+  font-size:12.5px;
+  line-height:1.5;
+  color:#64748b;
+  font-weight:500;
+}
+.hil-void-field{
+  display:block;
+  margin-bottom:12px;
+  font-size:13px;
+}
+.hil-void-field span{
+  display:block;
+  margin-bottom:6px;
+  font-size:11px;
+  font-weight:700;
+  color:#64748b;
+  text-transform:uppercase;
+  letter-spacing:.4px;
+}
+.hil-void-field textarea{
+  width:100%;
+  min-height:84px;
+  resize:vertical;
+  border:1px solid #E2E8F0;
+  border-radius:10px;
+  padding:10px 12px;
+  font:inherit;
+  color:#0F172A;
+  background:#fff;
+}
+.hil-void-field textarea:focus{
+  outline:none;
+  border-color:#93C5FD;
+  box-shadow:0 0 0 3px rgba(37,99,235,.15);
+}
+.hil-void-error{
+  margin:0 0 12px;
+  padding:10px 12px;
+  border-radius:10px;
+  background:#FEF2F2;
+  border:1px solid #FECACA;
+  font-size:12.5px;
+  font-weight:600;
+  color:#B91C1C;
+}
+.hil-void-error[hidden]{display:none !important}
+.hil-void-actions{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:8px;
+  margin-top:16px;
+  padding-top:16px;
+}
+.hil-void-btn{
+  min-height:42px;
+  padding:0 14px;
+  border-radius:10px;
+  border:1px solid #E5E7EB;
+  background:#fff;
+  color:#0F172A;
+  font:700 13px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.hil-void-btn svg{
+  width:16px;
+  height:16px;
+  stroke:currentColor;
+  stroke-width:1.9;
+  fill:none;
+}
+.hil-void-btn--danger{
+  background:#DC2626;
+  border-color:#DC2626;
+  color:#fff;
+}
+.hil-void-btn--danger:hover{
+  background:#B91C1C;
+  border-color:#B91C1C;
+}
+.hil-void-btn--danger:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+}
+
+body.hotel-room-transfer-popup{
+  margin:0;
+  min-height:100vh;
+  background:#F8FAFC;
+}
+body.hotel-room-transfer-popup .main-wrapper{
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+body.hotel-room-transfer-popup .se-content{
+  flex:1 1 auto;
+  min-height:0;
+}
+
+body.hil-rt-overlay-open{
+  overflow:hidden;
+}
+.hil-rt-overlay[hidden]{
+  display:none !important;
+}
+.hil-rt-overlay{
+  position:fixed;
+  inset:0;
+  z-index:1400;
+  display:flex;
+  flex-direction:column;
+  background:#fff;
+}
+.hil-rt-overlay-bar{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 16px;
+  border-bottom:1px solid #E2E8F0;
+  background:#fff;
+}
+.hil-rt-overlay-bar h2{
+  margin:0;
+  font-size:16px;
+  font-weight:750;
+  color:#0F172A;
+}
+.hil-rt-overlay-close{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  height:34px;
+  border:1px solid #E2E8F0;
+  border-radius:8px;
+  background:#fff;
+  color:#475569;
+  cursor:pointer;
+  flex-shrink:0;
+}
+.hil-rt-overlay-close:hover{
+  background:#F8FAFC;
+  border-color:#CBD5E1;
+  color:#111827;
+}
+.hil-rt-overlay-close svg{
+  width:18px;
+  height:18px;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.hil-rt-overlay-frame{
+  flex:1 1 auto;
+  width:100%;
+  border:0;
+  min-height:0;
+  background:#F8FAFC;
 }

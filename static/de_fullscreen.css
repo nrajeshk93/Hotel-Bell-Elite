@@ -159,9 +159,6 @@ body.am-module .am-header > .de-fullscreen-slot--corner,
   stroke-linejoin:round;
   display:block;
 }
-.de-fullscreen-btn .de-fs-icon-exit{display:none}
-.de-fullscreen-btn.is-fullscreen .de-fs-icon-enter{display:none}
-.de-fullscreen-btn.is-fullscreen .de-fs-icon-exit{display:block}
 .de-fullscreen-toast{
   position:fixed;
   top:20px;

@@ -1208,6 +1208,25 @@ body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   gap:10px;
   flex-wrap:wrap;
   margin-left:auto;
+  flex:1 1 280px;
+  min-width:0;
+  justify-content:flex-end;
+}
+.pos-tables-search{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:1 1 clamp(140px, 22vw, 320px);
+  min-width:min(140px, 100%);
+  max-width:320px;
+  width:auto;
+  height:40px;
+  min-height:40px;
+  padding:0 12px;
+  border:1px solid var(--pos-border);
+  border-radius:12px;
+  background:#fff;
+  box-sizing:border-box;
 }
 .pos-view-toggle{
   display:inline-flex;
@@ -1218,6 +1237,7 @@ body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   gap:2px;
   min-height:40px;
   box-sizing:border-box;
+  flex:0 0 auto;
 }
 .pos-view-btn{
   display:inline-flex;
@@ -1242,19 +1262,6 @@ body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   background:#fff;
   color:var(--pos-primary);
   box-shadow:0 1px 3px rgba(15,23,42,.08);
-}
-.pos-tables-search{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  min-width:220px;
-  height:40px;
-  min-height:40px;
-  padding:0 12px;
-  border:1px solid var(--pos-border);
-  border-radius:12px;
-  background:#fff;
-  box-sizing:border-box;
 }
 .pos-tables-search svg{
   width:16px;height:16px;
@@ -1630,6 +1637,10 @@ body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   color:var(--pos-muted);
   text-align:center;
   width:100%;
+}
+.pos-table-tile-seats--guest{
+  font-weight:650;
+  color:var(--pos-text);
 }
 .pos-table-tile-foot{
   display:flex;
@@ -2092,10 +2103,16 @@ body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   .pos-tables-kpis,
   .pos-tables-kpis.has-unsettled-kpi{grid-template-columns:repeat(2,minmax(0,1fr))}
   .pos-quick-actions-grid{grid-template-columns:1fr}
-  .pos-tables-search{min-width:0;width:100%}
+  .pos-tables-search{
+    flex:1 1 100%;
+    min-width:0;
+    max-width:none;
+    width:100%;
+    order:1;
+  }
   .pos-toolbar-right{width:100%}
-  .pos-toolbar-right .pos-status-filter-listbox{max-width:none;flex:1 1 100%;min-width:0}
-  .pos-view-toggle{flex:1}
+  .pos-view-toggle{flex:1;order:2}
+  .pos-toolbar-right .pos-status-filter-listbox{max-width:none;flex:1 1 100%;min-width:0;order:3}
   .pos-view-btn{flex:1;justify-content:center}
 }
 

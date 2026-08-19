@@ -254,6 +254,72 @@
     return status === 'occupied';
   }
 
+  function currentOrderType(page) {
+    return (
+      fieldValue('pos-inv-order-type-header', page) ||
+      fieldValue('pos-inv-order-type', page) ||
+      'dine_in'
+    );
+  }
+
+  function dineInNeedsTable(page) {
+    return currentOrderType(page) === 'dine_in' && !fieldValue('pos-inv-table', page);
+  }
+
+  function focusTablePicker(page) {
+    var tableTrigger =
+      (page && $('#pos-inv-table-trigger', page)) ||
+      document.getElementById('pos-inv-table-trigger');
+    if (tableTrigger) tableTrigger.focus();
+  }
+
+  function guardDineInNeedsTable(page) {
+    if (!dineInNeedsTable(page)) return false;
+    toast('Select a table before adding items.');
+    focusTablePicker(page);
+    return true;
+  }
+
+  function syncMenuBlockedUi(page) {
+    if (!page) page = document.getElementById('pos-invoice-page');
+    if (!page) return;
+    var needsTable = dineInNeedsTable(page);
+    var generated = !!state.invoiceGenerated;
+    var blocked = needsTable && !generated;
+    document.body.classList.toggle('pos-inv-menu-blocked', blocked);
+
+    var search = $('#pos-inv-search', page);
+    if (search) {
+      var lock = blocked || generated;
+      search.disabled = lock;
+      search.readOnly = lock;
+      search.placeholder = blocked
+        ? 'Select a table to search menu items…'
+        : 'Search menu items by name or code…';
+      if (blocked) closeSuggest(page);
+    }
+
+    var addCustom = $('#pos-inv-add-custom', page);
+    if (addCustom) {
+      addCustom.disabled = generated;
+      if (blocked || generated) addCustom.setAttribute('aria-disabled', 'true');
+      else addCustom.removeAttribute('aria-disabled');
+    }
+
+    var emptyTitle = page.querySelector('.pos-inv-empty-title');
+    var emptyCopy = page.querySelector('.pos-inv-empty-copy');
+    if (emptyTitle) {
+      emptyTitle.textContent = blocked
+        ? 'Select a table to begin billing'
+        : 'Search and add items to begin billing';
+    }
+    if (emptyCopy) {
+      emptyCopy.textContent = blocked
+        ? 'Choose a table first. Menu items can be added after that.'
+        : 'Search for menu items above. Selected items will appear here.';
+    }
+  }
+
   var state = {
     lines: [],
     discountType: 'pct',
@@ -707,13 +773,9 @@
   function resolveResumePrefs() {
     var prefInvoice = queryParam('invoice').trim();
     var prefTable = queryParam('table').trim();
-    if (!prefInvoice && !prefTable) {
-      var stored = readStoredResumeContext();
-      if (stored) {
-        prefInvoice = stored.invoiceId || '';
-        prefTable = stored.table || '';
-      }
-    }
+    /* Resume only from explicit URL params (?invoice= / ?table=). Sidebar POS and
+       other links land on bare /invoice — storage must not reopen a closed bill.
+       persistInvoiceResumeContext keeps params on the URL for browser refresh. */
     return { invoiceId: prefInvoice, table: prefTable };
   }
 
@@ -2810,6 +2872,7 @@
 
   function addItem(page, item, qty) {
     if (guardInvoiceLocked()) return;
+    if (guardDineInNeedsTable(page)) return;
     var existing = null;
     var i;
     for (i = 0; i < state.lines.length; i++) {
@@ -2971,10 +3034,7 @@
       String(state.tableForOrder || '').trim() ||
       String(state.resumeTableValue || '').trim();
     if (current) return current;
-    var fromQuery = queryParam('table').trim();
-    if (fromQuery) return fromQuery;
-    var stored = readStoredResumeContext();
-    return stored && stored.table ? stored.table : '';
+    return queryParam('table').trim();
   }
 
   function tableNameMatches(name, pref) {
@@ -2992,6 +3052,7 @@
     state.resumeTableLabel = name;
     if (!state.tableForOrder) state.tableForOrder = name;
     persistInvoiceResumeContext();
+    syncMenuBlockedUi(page);
   }
 
   function populateTables(page, tablesIn, opts) {
@@ -3085,6 +3146,7 @@
       state.resumeTableLabel = pref;
       setListboxValue('pos-inv-table', pref, pref);
     }
+    syncMenuBlockedUi(page);
   }
 
   function posInvOrderTypeChanged(root, value, label) {
@@ -3093,6 +3155,7 @@
     if (guardInvoiceLocked()) return;
     var display = label || ORDER_TYPE_LABELS[value] || value;
     setListboxValue('pos-inv-order-type-header', value, display);
+    syncMenuBlockedUi(page);
   }
 
   function initMeta(page) {
@@ -3312,6 +3375,7 @@
   function posInvTableChanged(root, value, label) {
     var page = document.getElementById('pos-invoice-page');
     if (!page) return;
+    syncMenuBlockedUi(page);
 
     var prevValue = state.resumeTableValue;
     var prevLabel = state.resumeTableLabel;
@@ -3453,13 +3517,6 @@
     updateGenerateInvoiceButton(page);
     updatePrintTools(page);
 
-    var search = $('#pos-inv-search', page);
-    if (search) {
-      search.disabled = !!state.invoiceGenerated;
-      search.readOnly = !!state.invoiceGenerated;
-      if (state.invoiceGenerated) search.blur();
-    }
-
     var lockSelectors = [
       '#pos-inv-customer-name',
       '#pos-inv-customer-mobile',
@@ -3485,7 +3542,7 @@
       sendKotBtn.disabled = !hasPendingKot;
     }
 
-    page.querySelectorAll('[data-inv-action="discount"], [data-inv-action="service"], [data-inv-action="tip"], [data-inv-action="coupon"], [data-inv-action="add-custom"], [data-inv-action="clear"], [data-inv-action="duplicate"], [data-inv-action="hold"]').forEach(function (el) {
+    page.querySelectorAll('[data-inv-action="discount"], [data-inv-action="service"], [data-inv-action="tip"], [data-inv-action="coupon"], [data-inv-action="clear"], [data-inv-action="duplicate"], [data-inv-action="hold"]').forEach(function (el) {
       el.disabled = !!state.invoiceGenerated;
       if (state.invoiceGenerated) el.setAttribute('aria-disabled', 'true');
       else el.removeAttribute('aria-disabled');
@@ -3493,6 +3550,7 @@
 
     updateSettleBillButton(page);
     renderLines(page);
+    syncMenuBlockedUi(page);
   }
 
   function bustInvoiceLedgerSoftNavCache() {
@@ -4896,6 +4954,7 @@
     }
     if (action === 'add-custom') {
       if (guardInvoiceLocked()) return;
+      if (guardDineInNeedsTable(page)) return;
       openCustomModal(page);
       return;
     }
@@ -5119,11 +5178,23 @@
     if (!wrap || !input || wrap.getAttribute('data-bound') === '1') return;
     wrap.setAttribute('data-bound', '1');
 
+    wrap.addEventListener('mousedown', function (e) {
+      if (!dineInNeedsTable(page)) return;
+      e.preventDefault();
+      guardDineInNeedsTable(page);
+    });
+
     function refreshClear() {
       if (clearBtn) clearBtn.hidden = !String(input.value || '').length;
     }
 
     input.addEventListener('input', function () {
+      if (guardDineInNeedsTable(page)) {
+        input.value = '';
+        refreshClear();
+        closeSuggest(page);
+        return;
+      }
       refreshClear();
       var q = input.value;
       if (String(q).trim().length < MIN_QUERY) {
@@ -5568,6 +5639,9 @@
 
     /* Resolve resume prefs before floor populate so sync cache callbacks keep the chip. */
     var resumePrefs = resolveResumePrefs();
+    if (!resumePrefs.invoiceId && !resumePrefs.table) {
+      clearInvoiceResumeContext();
+    }
     if (freshMount && resumePrefs.table) {
       state.tableForOrder = resumePrefs.table;
       state.resumeTableValue = resumePrefs.table;
@@ -5655,7 +5729,10 @@
     }
 
     var search = $('#pos-inv-search', page);
-    if (search && !(resumePrefs.invoiceId || resumePrefs.table)) {
+    syncMenuBlockedUi(page);
+    if (dineInNeedsTable(page)) {
+      focusTablePicker(page);
+    } else if (search && !(resumePrefs.invoiceId || resumePrefs.table)) {
       /* Prefer search focus for billing flow */
       try {
         search.focus({ preventScroll: true });

@@ -55,6 +55,7 @@ from db import (
     ensure_pos_schema,
     ensure_stores_schema,
     enrich_pos_floor_tables_for_display,
+    enrich_pos_floor_tables_with_open_orders,
     get_customer,
     get_agency,
     get_db,
@@ -62,6 +63,9 @@ from db import (
     get_hotel_room,
     get_hotel_room_invoice,
     _hotel_invoice_allow_credit,
+    _hotel_invoice_guest_name,
+    _hotel_invoice_source_value,
+    HOTEL_INVOICE_SOURCE_POS_TRANSFER,
     get_hotel_settings,
     get_hotel_tax_rates,
     get_hotel_tariff_rates,
@@ -84,6 +88,10 @@ from db import (
     generate_hotel_room_invoice,
     record_hotel_room_payment,
     record_hotel_room_invoice_payment,
+    record_hotel_room_invoices_payment,
+    cancel_hotel_room_invoice,
+    reopen_hotel_room_invoice_for_edit,
+    apply_hotel_invoice_ledger_edit,
     hotel_invoice_credit_paid_total,
     sync_hotel_invoice_credits,
     upsert_hotel_invoice_credit,
@@ -140,6 +148,7 @@ from db import (
     save_pos_menu_item,
     send_pos_invoice_pending_kot,
     settle_pos_invoice,
+    settle_pos_invoices,
     sync_pos_floor_occupancy_from_open_orders,
     transfer_pos_invoice_table,
     merge_pos_invoice_tables,
@@ -7692,13 +7701,16 @@ def _hotel_invoice_ledger_filters(args):
         args, "date_from", "date_to", default_fy=True
     )
     selected_status = (args.get("status") or "all").strip().lower()
-    if selected_status not in ("all", "open", "settled"):
+    if selected_status not in ("all", "open", "settled", "cancelled"):
         selected_status = "all"
     status_filter = "" if selected_status == "all" else selected_status
     selected_invoice = (args.get("invoice") or "all").strip().lower()
-    if selected_invoice not in ("all", "hotel", "room_transfer"):
+    if selected_invoice not in ("all", "hotel", "fb_transfer"):
         selected_invoice = "all"
-    invoice_source = "" if selected_invoice == "all" else selected_invoice
+    if selected_invoice == "all":
+        invoice_source = "hotel_ledger"
+    else:
+        invoice_source = selected_invoice
     q = (args.get("q") or "").strip()
     return {
         "today": today,
@@ -7741,11 +7753,12 @@ def hotel_invoice_ledger():
         "all": "All statuses",
         "open": "Un Settled",
         "settled": "Settled",
+        "cancelled": "Cancelled",
     }
     invoice_labels = {
         "all": "All",
         "hotel": "Hotel",
-        "room_transfer": "Room Transfer",
+        "fb_transfer": "F&B Transfers",
     }
     clear_kwargs = {}
     if filters["selected_status"] != "all":
@@ -7789,6 +7802,12 @@ def hotel_invoice_ledger():
         filter_form_action=url_for("hotel_invoice_ledger"),
         invoice_ledger_clear_url=url_for("hotel_invoice_ledger", **clear_kwargs),
         invoice_ledger_export_url=url_for("hotel_invoice_ledger_export", **export_kwargs),
+        room_transfer_overlay_url=url_for("hotel_room_transfer_invoices", popup=1),
+        id_prefix="hil",
+        page_dom_id="hotel-invoice-ledger-page",
+        room_transfer_ledger=False,
+        is_popup=False,
+        can_cancel_invoices=user_can_edit_kot_sent_lines(get_current_user()),
     )
 
 
@@ -7871,6 +7890,234 @@ def hotel_invoice_ledger_export():
     )
 
 
+def _hotel_room_transfer_ledger_filters(args):
+    """Parse Room Transfer ledger GET filters (POS transfer rows only)."""
+    filters = _hotel_invoice_ledger_filters(args)
+    filters["selected_invoice"] = "room_transfer"
+    filters["invoice_source"] = "pos_room_transfer"
+    filters["is_popup"] = str(args.get("popup") or "").strip() == "1"
+    return filters
+
+
+def _hotel_room_transfer_query_kwargs(filters):
+    kwargs = {}
+    if filters["selected_status"] != "all":
+        kwargs["status"] = filters["selected_status"]
+    if filters["q"]:
+        kwargs["q"] = filters["q"]
+    if filters.get("is_popup"):
+        kwargs["popup"] = 1
+    return kwargs
+
+
+@app.route("/hotel/room-transfer-invoices", endpoint="hotel_room_transfer_invoices")
+def hotel_room_transfer_invoices():
+    """Per-POS room-transfer invoices (SPC / bar order numbers)."""
+    filters = _hotel_room_transfer_ledger_filters(request.args)
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        rows = list_hotel_room_invoices(
+            conn,
+            q=filters["q"],
+            status=filters["status_filter"],
+            source="pos_room_transfer",
+            date_from=filters["date_from"].isoformat()
+            if filters["date_filter_active"] and filters["date_from"]
+            else None,
+            date_to=filters["date_to"].isoformat()
+            if filters["date_filter_active"] and filters["date_to"]
+            else None,
+        )
+        kpis = hotel_room_invoice_kpis(rows)
+        conn.commit()
+    finally:
+        conn.close()
+
+    status_labels = {
+        "all": "All statuses",
+        "open": "Un Settled",
+        "settled": "Settled",
+        "cancelled": "Cancelled",
+    }
+    clear_kwargs = _hotel_room_transfer_query_kwargs(filters)
+    export_kwargs = dict(clear_kwargs)
+    if filters["date_filter_active"]:
+        if filters["date_from"]:
+            export_kwargs["date_from"] = filters["date_from"].isoformat()
+        if filters["date_to"]:
+            export_kwargs["date_to"] = filters["date_to"].isoformat()
+    filter_kwargs = {"popup": 1} if filters["is_popup"] else {}
+
+    return render_template(
+        "hotel_invoice_ledger.html",
+        de_nav_section="hotel",
+        de_nav_hotel_view="invoice_ledger",
+        page_title="Room Transfer",
+        invoices=rows,
+        kpis=kpis,
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else "",
+        date_to=filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else "",
+        active_date_filter=filters["date_filter_active"],
+        selected_status=filters["selected_status"],
+        selected_status_label=status_labels.get(
+            filters["selected_status"], "All statuses"
+        ),
+        selected_invoice="room_transfer",
+        selected_invoice_label="Room Transfer",
+        search_q=filters["q"],
+        filter_form_action=url_for("hotel_room_transfer_invoices", **filter_kwargs),
+        invoice_ledger_clear_url=url_for(
+            "hotel_room_transfer_invoices", **clear_kwargs
+        ),
+        invoice_ledger_export_url=url_for(
+            "hotel_room_transfer_invoices_export", **export_kwargs
+        ),
+        id_prefix="hrt",
+        page_dom_id="hotel-room-transfer-ledger-page",
+        room_transfer_ledger=True,
+        is_popup=filters["is_popup"],
+        can_cancel_invoices=user_can_edit_kot_sent_lines(get_current_user()),
+    )
+
+
+@app.route(
+    "/hotel/room-transfer-invoices/export",
+    endpoint="hotel_room_transfer_invoices_export",
+)
+def hotel_room_transfer_invoices_export():
+    """Excel download of per-POS room-transfer invoices."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from io import BytesIO
+
+    filters = _hotel_room_transfer_ledger_filters(request.args)
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        rows = list_hotel_room_invoices(
+            conn,
+            q=filters["q"],
+            status=filters["status_filter"],
+            source="pos_room_transfer",
+            date_from=filters["date_from"].isoformat()
+            if filters["date_filter_active"] and filters["date_from"]
+            else None,
+            date_to=filters["date_to"].isoformat()
+            if filters["date_filter_active"] and filters["date_to"]
+            else None,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Room Transfer"
+    header_font = Font(bold=True)
+    ws["A1"] = "Hotel Bell Elite — Room Transfer"
+    ws["A1"].font = Font(bold=True, size=14)
+    headers = (
+        "Invoice No",
+        "Invoice Date",
+        "Room",
+        "Guest",
+        "Outlet",
+        "Check In",
+        "Check Out",
+        "Amount",
+        "Advance",
+        "Balance",
+        "Payment Mode",
+    )
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=3, column=col, value=title)
+        cell.font = header_font
+    for idx, row in enumerate(rows, start=4):
+        ws.cell(row=idx, column=1, value=row.get("invoice_number") or "")
+        ws.cell(row=idx, column=2, value=row.get("invoice_generated_at") or "")
+        ws.cell(row=idx, column=3, value=row.get("room_number") or "")
+        ws.cell(row=idx, column=4, value=row.get("guest_name") or "")
+        ws.cell(row=idx, column=5, value=row.get("room_type_label") or "")
+        ws.cell(row=idx, column=6, value=row.get("check_in_date") or "")
+        ws.cell(row=idx, column=7, value=row.get("check_out_date") or "")
+        ws.cell(row=idx, column=8, value=row.get("estimated_total"))
+        ws.cell(row=idx, column=9, value=row.get("advance_paid"))
+        ws.cell(row=idx, column=10, value=row.get("balance_amount"))
+        ws.cell(
+            row=idx,
+            column=11,
+            value=row.get("payment_mode_label")
+            or ("Settled" if (row.get("status") or "") == "settled" else "Un Settled"),
+        )
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=report_export_filename("Room Transfer", filters=filters),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@app.route(
+    "/hotel/invoice-ledger/api/settle-selected",
+    methods=["POST"],
+    endpoint="hotel_invoice_ledger_settle_selected_api",
+)
+def hotel_invoice_ledger_settle_selected_api():
+    """Record one payment across multiple open hotel invoices."""
+    data = request.get_json(silent=True) or {}
+    invoice_numbers = data.get("invoice_numbers") or data.get("invoiceNumbers") or []
+    payment = data.get("payment") if isinstance(data.get("payment"), dict) else None
+    payment_splits = data.get("payment_splits") or data.get("paymentSplits")
+    note = data.get("note") or data.get("notes") or ""
+    if payment is None and payment_splits is None:
+        payment = {
+            "amount": data.get("amount"),
+            "method": data.get("method") or data.get("paymentMethod"),
+            "reference": data.get("reference")
+            or data.get("paymentReference")
+            or data.get("payment_reference"),
+            "note": note,
+        }
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        try:
+            result = record_hotel_room_invoices_payment(
+                conn,
+                invoice_numbers,
+                payment=payment,
+                payment_splits=payment_splits
+                if isinstance(payment_splits, list)
+                else None,
+                note=note,
+            )
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+    finally:
+        conn.close()
+    return jsonify(
+        {
+            "ok": True,
+            "invoices": result.get("invoices") or [],
+            "invoice": result.get("invoice"),
+            "payments": result.get("payments") or [],
+            "settled_count": result.get("settled_count") or 0,
+            "paid_count": result.get("paid_count") or 0,
+        }
+    )
+
+
 @app.route(
     "/hotel/invoice-ledger/api/<path:invoice_number>",
     endpoint="hotel_invoice_ledger_api",
@@ -7948,6 +8195,146 @@ def hotel_invoice_ledger_settle_api(invoice_number):
             "payments": result.get("payments") or [],
         }
     )
+
+
+@app.route(
+    "/hotel/invoice-ledger/api/<path:invoice_number>/cancel",
+    methods=["POST"],
+    endpoint="hotel_invoice_ledger_cancel_api",
+)
+def hotel_invoice_ledger_cancel_api(invoice_number):
+    """Cancel an unsettled hotel invoice (Cancellation Access)."""
+    user = get_current_user()
+    if not user_can_edit_kot_sent_lines(user):
+        return jsonify(
+            {"ok": False, "error": "Cancellation Access is required to cancel invoices."}
+        ), 403
+    data = request.get_json(silent=True) or {}
+    reason = ""
+    if isinstance(data, dict):
+        reason = data.get("reason") or data.get("cancelReason") or data.get("cancel_reason") or ""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        try:
+            result = cancel_hotel_room_invoice(conn, invoice_number, reason=reason)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            msg = str(exc)
+            code = 404 if "not found" in msg.lower() else 400
+            return jsonify({"ok": False, "error": msg}), code
+    finally:
+        conn.close()
+    return jsonify(
+        {
+            "ok": True,
+            "mode": result.get("mode"),
+            "invoice": result.get("invoice"),
+        }
+    )
+
+
+@app.route(
+    "/hotel/invoice-ledger/api/<path:invoice_number>/reopen-edit",
+    methods=["POST"],
+    endpoint="hotel_invoice_ledger_reopen_edit_api",
+)
+def hotel_invoice_ledger_reopen_edit_api(invoice_number):
+    """Unlock an unsettled hotel invoice for editing (Cancellation Access)."""
+    user = get_current_user()
+    if not user_can_edit_kot_sent_lines(user):
+        return jsonify(
+            {"ok": False, "error": "Cancellation Access is required to edit unsettled invoices."}
+        ), 403
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        try:
+            result = reopen_hotel_room_invoice_for_edit(conn, invoice_number)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            msg = str(exc)
+            code = 404 if "not found" in msg.lower() else 400
+            return jsonify({"ok": False, "error": msg}), code
+    finally:
+        conn.close()
+    edit_url = url_for("hotel_invoice_ledger_edit_page", invoice_number=invoice_number)
+    return jsonify(
+        {
+            "ok": True,
+            "invoice": result.get("invoice"),
+            "room": result.get("room"),
+            "edit_url": edit_url,
+        }
+    )
+
+
+@app.route(
+    "/hotel/invoice-ledger/<path:invoice_number>/edit",
+    endpoint="hotel_invoice_ledger_edit_page",
+)
+def hotel_invoice_ledger_edit_page(invoice_number):
+    """Invoice-scoped edit workspace from Hotel Invoice Ledger."""
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        item = get_hotel_room_invoice(conn, invoice_number)
+        conn.commit()
+    finally:
+        conn.close()
+    if not item:
+        abort(404)
+    if _hotel_invoice_source_value(item.get("source")) == HOTEL_INVOICE_SOURCE_POS_TRANSFER:
+        abort(404)
+    room = dict(item.get("room") or {})
+    stay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
+    if not stay.get("invoiceEditOpen") and not stay.get("invoice_edit_open"):
+        abort(403)
+    guest_name = item.get("guest_name") or _hotel_invoice_guest_name(stay) or "Guest"
+    return render_template(
+        "hotel_room_invoice_page.html",
+        de_nav_section="hotel",
+        de_nav_hotel_view="invoice_ledger",
+        room=room,
+        room_status=room.get("status") or "occupied",
+        guest_name=guest_name,
+        invoice_number=item.get("invoice_number") or invoice_number,
+        ledger_edit=True,
+        open_settle=False,
+        today_iso=date.today().isoformat(),
+    )
+
+
+@app.route(
+    "/hotel/invoice-ledger/api/<path:invoice_number>/edit",
+    methods=["PUT"],
+    endpoint="hotel_invoice_ledger_edit_api",
+)
+def hotel_invoice_ledger_edit_api(invoice_number):
+    """Apply charge/discount/regenerate actions during a ledger invoice edit."""
+    user = get_current_user()
+    if not user_can_edit_kot_sent_lines(user):
+        return jsonify(
+            {"ok": False, "error": "Cancellation Access is required to edit unsettled invoices."}
+        ), 403
+    data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "").strip().lower()
+    conn = get_db()
+    try:
+        ensure_hotel_rooms_schema(conn)
+        try:
+            result = apply_hotel_invoice_ledger_edit(conn, invoice_number, action, data)
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            msg = str(exc)
+            code = 404 if "not found" in msg.lower() else 400
+            return jsonify({"ok": False, "error": msg}), code
+    finally:
+        conn.close()
+    return jsonify({"ok": True, **result})
 
 
 @app.route("/hotel/credit", endpoint="hotel_credit")
@@ -8667,7 +9054,12 @@ def hotel_room_detail_api(room_id):
                     if existing and isinstance(existing.get("stay"), dict)
                     else None
                 )
-                if stay and stay.get("invoiceGenerated") and stay.get("invoiceNumber"):
+                if (
+                    stay
+                    and stay.get("invoiceGenerated")
+                    and stay.get("invoiceNumber")
+                    and not stay.get("invoiceEditOpen")
+                ):
                     return (
                         jsonify(
                             {
@@ -8765,8 +9157,13 @@ def hotel_room_detail_api(room_id):
                         "ok": True,
                         "room": result["room"],
                         "minted": result.get("minted"),
+                        "fbMinted": result.get("fbMinted"),
                         "payment": result.get("payment"),
                         "payments": result.get("payments") or [],
+                        "hotelInvoice": result.get("hotelInvoice"),
+                        "fbInvoice": result.get("fbInvoice"),
+                        "linkedPosOrders": result.get("linkedPosOrders") or [],
+                        "combinedBalanceDue": result.get("combinedBalanceDue"),
                     }
                 )
 
@@ -9003,6 +9400,7 @@ def point_of_sale_invoice_ledger():
         inv["ledger_can_cancel"] = (
             can_cancel and (not is_settled) and (not is_cancelled) and is_generated
         )
+        inv["ledger_can_edit"] = can_cancel and (not is_settled) and (not is_cancelled)
 
     selected_order_type = filters["selected_order_type"]
     selected_order_type_label = "All"
@@ -9391,6 +9789,65 @@ def point_of_sale_api_invoice_close(invoice_id):
         conn.close()
 
 
+@app.route(
+    "/point-of-sale/api/invoices/settle-selected",
+    methods=["POST"],
+    endpoint="point_of_sale_api_invoices_settle_selected",
+)
+@app.route(
+    "/bar-point-of-sale/api/invoices/settle-selected",
+    methods=["POST"],
+    endpoint="bar_point_of_sale_api_invoices_settle_selected",
+)
+def point_of_sale_api_invoices_settle_selected():
+    """Record one payment across multiple open Restaurant or Bar invoices."""
+    outlet = _pos_outlet_from_request()
+    payload = request.get_json(silent=True) or {}
+    invoice_ids = payload.get("invoice_ids") or payload.get("invoiceIds") or []
+    conn = get_db()
+    try:
+        ensure_pos_schema(conn)
+        try:
+            ids = invoice_ids if isinstance(invoice_ids, (list, tuple)) else []
+            for raw in ids:
+                try:
+                    invoice_id = int(raw)
+                except (TypeError, ValueError):
+                    return jsonify({"ok": False, "error": "Invalid invoice id."}), 400
+                existing = get_pos_invoice(conn, invoice_id)
+                if not existing or not _pos_invoice_belongs_to_outlet(existing, outlet):
+                    return jsonify({"ok": False, "error": "Invoice not found."}), 404
+            user = get_current_user()
+            user_id = user.get("id") if user else None
+            result = settle_pos_invoices(
+                conn,
+                ids,
+                payment_splits=payload.get("payment_splits")
+                or payload.get("paymentSplits"),
+                payment_date=payload.get("payment_date"),
+                notes=payload.get("notes") or "",
+                user_id=user_id,
+                hotel_room_id=payload.get("hotel_room_id")
+                or payload.get("hotelRoomId")
+                or "",
+            )
+            conn.commit()
+        except ValueError as exc:
+            conn.rollback()
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify(
+            {
+                "ok": True,
+                "invoices": result.get("invoices") or [],
+                "invoice": result.get("invoice"),
+                "settled_count": result.get("settled_count") or 0,
+                "paid_count": result.get("paid_count") or 0,
+            }
+        )
+    finally:
+        conn.close()
+
+
 @app.route("/point-of-sale/api/invoices/<int:invoice_id>/settle", methods=["POST"], endpoint="point_of_sale_api_invoice_settle")
 @app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/settle", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_settle")
 def point_of_sale_api_invoice_settle(invoice_id):
@@ -9713,6 +10170,7 @@ def _pos_floor_api_payload(conn, layout=None, outlet=POS_OUTLET_RESTAURANT):
     """Floor JSON for API responses with merged-table display helpers."""
     layout = layout or get_pos_floor_layout(conn, outlet)
     tables = enrich_pos_floor_tables_for_display(layout.get("tables") or [])
+    tables = enrich_pos_floor_tables_with_open_orders(conn, tables, outlet)
     return {
         "areas": layout.get("areas") or [],
         "tables": tables,

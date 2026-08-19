@@ -111,6 +111,13 @@ class PosTableOccupancyTests(unittest.TestCase):
                 return t["status"]
         return None
 
+    def _floor_table(self, name):
+        res = self.client.get("/point-of-sale/api/floor")
+        for t in res.get_json()["tables"]:
+            if t["name"] == name:
+                return t
+        return None
+
     def _payload(self, order_no, table, order_type="dine_in", kot_send=False, **overrides):
         data = {
             "orderNo": order_no,
@@ -189,6 +196,56 @@ class PosTableOccupancyTests(unittest.TestCase):
 
         # Saving items onto a dine-in table claims it as occupied immediately.
         self.assertEqual(self._floor_status("T1"), "occupied")
+
+    def test_floor_shows_guest_name_on_occupied_table(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0011a", "T1", customerName="Rajesh Kumar"),
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        tile = self._floor_table("T1")
+        self.assertEqual(tile["status"], "occupied")
+        self.assertEqual(tile.get("customerName"), "Rajesh Kumar")
+        self.assertEqual(tile.get("customer_name"), "Rajesh Kumar")
+
+    def test_floor_hides_default_guest_placeholder_on_occupied_table(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0011b", "T1", customerName="Guest"),
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        tile = self._floor_table("T1")
+        self.assertEqual(tile["status"], "occupied")
+        self.assertNotIn("customerName", tile)
+        self.assertNotIn("customer_name", tile)
+
+    def test_takeaway_order_does_not_use_or_occupy_table(self):
+        payload = self._payload("ORD-2607-TA-01", "T1", order_type="takeaway")
+        payload["table"] = ""
+        res = self.client.post("/point-of-sale/api/invoices", json=payload)
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        invoice = res.get_json()["invoice"]
+        self.assertEqual(invoice.get("order_type"), "takeaway")
+        self.assertEqual(invoice.get("table_label"), "")
+        self.assertEqual(self._floor_status("T1"), "available")
+
+    def test_switching_dine_in_to_takeaway_frees_table(self):
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-TA-02", "T1"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        self.assertEqual(self._floor_status("T1"), "occupied")
+        order_no = saved.get_json()["invoice"]["order_no"]
+        switched = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no, "", order_type="takeaway"),
+        )
+        self.assertEqual(switched.status_code, 200, switched.get_data(as_text=True))
+        body = switched.get_json()["invoice"]
+        self.assertEqual(body.get("order_type"), "takeaway")
+        self.assertEqual(body.get("table_label"), "")
+        self.assertEqual(self._floor_status("T1"), "available")
 
     def test_first_kot_send_flips_table_occupied(self):
         self.assertEqual(self._floor_status("T1"), "available")
@@ -653,14 +710,14 @@ class PosTableOccupancyTests(unittest.TestCase):
             "Restaurant Room Transfer · ORD-2607-Settle-05",
         )
         self.assertEqual(float(folio[0]["amount"]), total)
-        self.assertEqual(
-            float(room["stay"]["estimatedTotal"]),
-            round(2000 + total, 2),
-        )
-        self.assertEqual(float(room["stay"]["balanceAmount"]), round(2000 + total, 2))
+        self.assertEqual(float(room["stay"]["estimatedTotal"]), 2000.0)
+        self.assertEqual(float(room["stay"]["balanceAmount"]), 2000.0)
 
         order_no = folio[0]["orderNo"]
-        ledger = self.client.get("/hotel/invoice-ledger")
+        hotel_ledger = self.client.get("/hotel/invoice-ledger")
+        self.assertEqual(hotel_ledger.status_code, 200)
+        self.assertNotIn(order_no, hotel_ledger.get_data(as_text=True))
+        ledger = self.client.get("/hotel/room-transfer-invoices")
         self.assertEqual(ledger.status_code, 200)
         self.assertIn(order_no, ledger.get_data(as_text=True))
         inv = self.client.get(f"/hotel/invoice-ledger/api/{order_no}").get_json()
@@ -1911,6 +1968,162 @@ class PosTableOccupancyTests(unittest.TestCase):
         body = ok.get_json()
         self.assertTrue(body["ok"])
         self.assertFalse(body["invoice"].get("customer_bill_sent"))
+
+    def test_reopen_edit_does_not_reoccupy_table(self):
+        """Ledger modify must not mark the dine-in table occupied again."""
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-Reopen-02",
+                "T1",
+                kot_send=True,
+                customerBill=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+        self.assertEqual(self._floor_status("T1"), "available")
+
+        reopen = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/reopen-edit")
+        self.assertEqual(reopen.status_code, 200, reopen.get_data(as_text=True))
+        body = reopen.get_json()
+        self.assertTrue(body["ok"])
+        self.assertFalse(body["invoice"].get("customer_bill_sent"))
+        self.assertTrue((body["invoice"].get("customer_bill_at") or "").strip())
+        self.assertEqual(self._floor_status("T1"), "available")
+
+        by_table = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
+        self.assertEqual(by_table.status_code, 200)
+        self.assertIsNone(by_table.get_json().get("invoice"))
+
+    def test_reopen_regenerate_does_not_reoccupy_table(self):
+        """Modify and Generate Invoice must not mark the dine-in table occupied."""
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-Reopen-03",
+                "T1",
+                kot_send=True,
+                customerBill=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+        order_no = saved.get_json()["invoice"]["order_no"]
+        self.assertEqual(self._floor_status("T1"), "available")
+
+        reopen = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/reopen-edit")
+        self.assertEqual(reopen.status_code, 200, reopen.get_data(as_text=True))
+        self.assertEqual(self._floor_status("T1"), "available")
+
+        regen = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no,
+                "",
+                kot_send=False,
+                customerBill=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 120,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(regen.status_code, 200, regen.get_data(as_text=True))
+        body = regen.get_json()
+        self.assertTrue(body["ok"])
+        self.assertTrue(body["invoice"].get("customer_bill_sent"))
+        self.assertEqual(self._floor_status("T1"), "available")
+
+        by_table = self.client.get("/point-of-sale/api/invoices/by-table?table=T1")
+        self.assertEqual(by_table.status_code, 200)
+        self.assertIsNone(by_table.get_json().get("invoice"))
+
+    def test_regenerate_without_reopen_still_saves(self):
+        """Ledger modify can regenerate even if the unlock step was skipped."""
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                "ORD-2607-Reopen-04",
+                "T1",
+                kot_send=True,
+                customerBill=True,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 100,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice_id = saved.get_json()["invoice"]["id"]
+        order_no = saved.get_json()["invoice"]["order_no"]
+        self.assertTrue(saved.get_json()["invoice"].get("customer_bill_sent"))
+
+        regen = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(
+                order_no,
+                "",
+                kot_send=False,
+                customerBill=True,
+                invoiceId=invoice_id,
+                lines=[
+                    {
+                        "uid": "1",
+                        "menuId": None,
+                        "name": "Filter Coffee",
+                        "variant": "",
+                        "rate": 150,
+                        "qty": 2,
+                        "kotSentQty": 2,
+                    }
+                ],
+            ),
+        )
+        self.assertEqual(regen.status_code, 200, regen.get_data(as_text=True))
+        body = regen.get_json()
+        self.assertTrue(body["ok"])
+        self.assertTrue(body["invoice"].get("customer_bill_sent"))
+        lines = body["invoice"].get("lines") or []
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(float(lines[0]["rate"]), 150.0)
+        self.assertEqual(self._floor_status("T1"), "available")
 
     def test_cancel_unsettled_requires_cancellation_access(self):
         saved = self.client.post(

@@ -924,7 +924,27 @@
     }, listenOpts);
   }
 
+  function cleanupOrphanedPortaledListboxes(){
+    document.querySelectorAll('.se-filter-listbox[data-ep-listbox-portaled]').forEach(function(list){
+      var root = list.__epPortalRoot;
+      if (root && root.isConnected && root.classList.contains('is-open')) return;
+      list.hidden = true;
+      clearFixedListbox(list);
+      if (root && root.isConnected) {
+        unportalListbox(root, list);
+        return;
+      }
+      list.classList.remove('ep-listbox-portaled');
+      list.removeAttribute('data-ep-listbox-portaled');
+      list.__epPortalHome = null;
+      list.__epPortalRoot = null;
+      if (root) root.__epPortaledList = null;
+      if (list.parentNode) list.parentNode.removeChild(list);
+    });
+  }
+
   function initEpListboxes(){
+    cleanupOrphanedPortaledListboxes();
     listboxRoots('[data-se-listbox]').forEach(bindListbox);
   }
 
@@ -976,6 +996,8 @@
 
   window.initEpListboxes = initEpListboxes;
   window.rebindEpListbox = rebindEpListbox;
+  window.closeEpListbox = closeListbox;
+  window.cleanupOrphanedPortaledListboxes = cleanupOrphanedPortaledListboxes;
   window.closeAllEpListboxes = function(except){
     closeAllListboxes(except || null);
   };

@@ -1,5 +1,6 @@
-{% set de_soft_body_class = 'de-open hotel-rooms-module hotel-room-invoice-module pos-invoice-module' %}
-{% set de_soft_page_title = 'Invoice | Room ' ~ (room.number|default('')) ~ ' | Hotel | Hotel Bell Elite' %}
+{% set ledger_edit = ledger_edit|default(false) %}
+{% set de_soft_body_class = ('de-open hotel-invoice-ledger-module hotel-room-invoice-module pos-invoice-module' if ledger_edit else 'de-open hotel-rooms-module hotel-room-invoice-module pos-invoice-module') %}
+{% set de_soft_page_title = ('Edit ' ~ (invoice_number|default('')) ~ ' | Invoice Ledger | Hotel Bell Elite' if ledger_edit else 'Invoice | Room ' ~ (room.number|default('')) ~ ' | Hotel | Hotel Bell Elite') %}
 {% set room_status = room_status|default((room.status|default('vacant')|string|lower)) %}
 {% set status_label = room.statusLabel|default(room_status|replace('_', ' ')|title) %}
 {% set stay = room.stay if room.stay is mapping else none %}
@@ -9,7 +10,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Invoice | Room {{ room.number }} | Hotel | Hotel Bell Elite</title>
+<title>{{ 'Edit ' ~ invoice_number ~ ' | Invoice Ledger | Hotel Bell Elite' if ledger_edit else 'Invoice | Room ' ~ room.number ~ ' | Hotel | Hotel Bell Elite' }}</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
@@ -17,7 +18,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=12">
 <script>
 (function(){
   try{
@@ -27,7 +28,7 @@
 })();
 </script>
 </head>
-<body class="de-open hotel-rooms-module hotel-room-invoice-module pos-invoice-module">
+<body class="{{ de_soft_body_class }}">
 {% endif %}
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
@@ -35,38 +36,49 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=10">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice_page.css') }}?v=12">
 {% endif %}
 
 <div
-  class="de-main-inner pos-invoice-page hotel-room-invoice-page"
+  class="de-main-inner pos-invoice-page hotel-room-invoice-page{% if ledger_edit %} is-ledger-edit{% endif %}"
   id="hotel-room-invoice-page"
   data-hotel-room-invoice-page
   data-room-id="{{ room.id }}"
   data-room-number="{{ room.number }}"
   data-room-status="{{ room_status }}"
+  {% if ledger_edit %}
+  data-ledger-edit="1"
+  data-invoice-edit-open="1"
+  data-invoice-number="{{ invoice_number }}"
+  data-invoice-api="{{ url_for('hotel_invoice_ledger_api', invoice_number=invoice_number) }}"
+  data-invoice-edit-api="{{ url_for('hotel_invoice_ledger_edit_api', invoice_number=invoice_number) }}"
+  data-ledger-back-url="{{ url_for('hotel_invoice_ledger') }}"
+  {% else %}
   data-room-api="{{ url_for('hotel_room_detail_api', room_id=room.id) }}"
   data-room-detail-url="{{ url_for('hotel_room_detail', room_id=room.id) }}"
+  {% endif %}
   data-open-settle="{{ '1' if open_settle else '0' }}"
   data-room-bootstrap="{{ room|tojson|e }}"
 >
   <header class="pos-inv-header">
     <div class="pos-inv-header-title-row">
-      <a class="pos-inv-btn pos-inv-btn--ghost hri-pos-back" href="{{ url_for('hotel_room_detail', room_id=room.id) }}" data-hri-back aria-label="Back to room">
+      <a class="pos-inv-btn pos-inv-btn--ghost hri-pos-back" href="{{ url_for('hotel_invoice_ledger') if ledger_edit else url_for('hotel_room_detail', room_id=room.id) }}" data-hri-back aria-label="{{ 'Back to Invoice Ledger' if ledger_edit else 'Back to room' }}">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
       </a>
       <span class="pos-inv-header-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h18v7H3z"/><path d="M5 12V8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v4"/><path d="M8 15h.01M16 15h.01"/></svg>
       </span>
-      <h1>Create Invoice</h1>
+      <h1>{{ 'Edit Invoice' if ledger_edit else 'Create Invoice' }}</h1>
     </div>
     <div class="pos-inv-header-actions"></div>
     <div class="pos-inv-header-toolbar">
       <div class="pos-inv-header-pills">
-        <div class="hri-pos-room-pill" title="Room">
-          <span class="hri-pos-room-pill-label">Room</span>
-          <strong data-hri-room-number>{{ room.number }}</strong>
+        <div class="hri-pos-room-pill" title="{{ 'Invoice' if ledger_edit else 'Room' }}">
+          <span class="hri-pos-room-pill-label">{{ 'Invoice' if ledger_edit else 'Room' }}</span>
+          <strong data-hri-room-number>{% if ledger_edit %}{{ invoice_number }}{% else %}{{ room.number }}{% endif %}</strong>
+          {% if not ledger_edit %}
           <span class="hri-status-chip hri-status-chip--{{ room_status }}" data-hri-status>{{ status_label }}</span>
+          {% endif %}
         </div>
       </div>
       <div class="pos-inv-header-buttons">
@@ -225,9 +237,9 @@
         <span>PDF</span>
       </button>
     </div>
-    <button type="button" class="pos-inv-btn pos-inv-btn--primary pos-inv-toolbar-primary" id="hri-generate" data-hri-action="generate" title="Generate hotel room invoice">
+    <button type="button" class="pos-inv-btn pos-inv-btn--primary pos-inv-toolbar-primary" id="hri-generate" data-hri-action="generate" title="{{ 'Modify and regenerate hotel room invoice' if ledger_edit else 'Generate hotel room invoice' }}">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg>
-      Generate Invoice
+      {{ 'Modify and Generate Invoice' if ledger_edit else 'Generate Invoice' }}
     </button>
   </div>
 
@@ -265,14 +277,16 @@
     <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="hri-custom-title">
       <h3 id="hri-custom-title">Custom Charges</h3>
       <input type="hidden" id="hri-custom-key" value="">
-      <label class="pos-inv-field">
-        <span id="hri-custom-name-label">Charge name</span>
-        <input type="text" id="hri-custom-name" maxlength="120" placeholder="e.g. Mini bar, Laundry, Damage" autocomplete="off">
-      </label>
-      <label class="pos-inv-field">
-        <span id="hri-custom-rate-label">Rate (₹)</span>
-        <input type="number" id="hri-custom-rate" min="0" step="0.01" value="" placeholder="0.00" inputmode="decimal">
-      </label>
+      <div class="hri-custom-fields-row">
+        <label class="pos-inv-field">
+          <span id="hri-custom-name-label">Charge name</span>
+          <input type="text" id="hri-custom-name" maxlength="120" placeholder="e.g. Mini bar, Laundry, Damage" autocomplete="off">
+        </label>
+        <label class="pos-inv-field hri-custom-field-rate">
+          <span id="hri-custom-rate-label">Rate (₹)</span>
+          <input type="number" id="hri-custom-rate" min="0" step="0.01" value="" placeholder="0.00" inputmode="decimal">
+        </label>
+      </div>
       <div class="pos-inv-modal-actions">
         <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-hri-custom-close>Cancel</button>
         <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="hri-custom-save">Add Charge</button>
@@ -284,7 +298,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=17"></script>
-<script src="{{ url_for('static', filename='hotel_room_invoice_page.js') }}?v=19"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice_page.js') }}?v=25"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

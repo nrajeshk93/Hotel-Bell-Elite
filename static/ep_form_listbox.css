@@ -419,6 +419,10 @@ body.ep-module .ep-combobox-listbox .se-filter-listbox-option.is-selected, body.
   isolation:isolate;
   box-sizing:border-box;
 }
+.se-filter-listbox.ep-listbox-portaled[hidden]{
+  display:none !important;
+  pointer-events:none !important;
+}
 .se-filter-listbox.ep-listbox-portaled.ep-period-compact,
 .se-filter-listbox.ep-listbox-portaled.ep-month-compact{
   max-height:calc(12px + 4 * 40px);

@@ -12,6 +12,12 @@
   text-decoration: none;
 }
 
+.pos-invoice-ledger-module .pos-il-payment-mode {
+  white-space: normal;
+  max-width: 240px;
+  line-height: 1.35;
+}
+
 /* Filter row — mirror Expense Ledger search chip */
 body.su-module .se-sales-header-filters:has(#pos-il-filter-form) {
   justify-content: stretch;
@@ -167,6 +173,23 @@ body.su-module #pos-invoice-ledger-page .pl-date-range-host .se-filter-chip.is-f
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.02em;
+}
+
+#pos-il-table .cp-col-check {
+  width: 44px;
+  min-width: 44px;
+}
+
+#pos-il-selection-bar {
+  margin-top: 0;
+}
+
+#pos-il-table tr.pos-il-row.is-selected td {
+  background: #eff6ff;
+}
+
+#pos-il-table tr.pos-il-row.is-unsettled .cp-col-check {
+  cursor: default;
 }
 
 #pos-il-table tr.pos-il-row.is-unsettled {

@@ -293,3 +293,50 @@ class PosRestaurantInvoiceNoTests(unittest.TestCase):
         self.assertTrue(db_mod.pos_invoice_is_nil_tax(0.004, 0))
         self.assertFalse(db_mod.pos_invoice_is_nil_tax(5, 0))
         self.assertFalse(db_mod.pos_invoice_is_nil_tax(0, 20))
+
+    def test_soft_deleted_official_number_stays_reserved(self):
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """INSERT INTO pos_invoices
+                   (order_no, order_date, order_type, table_label, customer_name, customer_mobile,
+                    captain, status, outlet, subtotal, discount_amount, gst_amount, service_amount,
+                    tip, round_off, grand_total, saved_at, customer_bill_sent, is_active)
+                   VALUES ('SPC/26-27/710', '2026-07-29', 'takeaway', '', 'Guest', '',
+                           '', 'open', 'restaurant', 50, 0, 5, 0, 0, 0, 55,
+                           '2026-07-29 12:00:00', 1, 0)"""
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        blocked = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("SPC/BBBBBB/26-27", customerBill=True),
+        )
+        self.assertEqual(blocked.status_code, 400, blocked.get_data(as_text=True))
+        self.assertIn("reserved", blocked.get_json()["error"].lower())
+
+    def test_cannot_resume_cancelled_invoice_number(self):
+        draft = "SPC/RESUME1/26-27"
+        bill = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(draft, customerBill=True),
+        )
+        self.assertEqual(bill.status_code, 200, bill.get_data(as_text=True))
+        invoice = bill.get_json()["invoice"]
+        order_no = invoice["order_no"]
+        invoice_id = invoice["id"]
+
+        cancel = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/delete",
+            json={"reason": "Guest left"},
+        )
+        self.assertEqual(cancel.status_code, 200, cancel.get_data(as_text=True))
+
+        resume = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no, customerBill=True),
+        )
+        self.assertEqual(resume.status_code, 400, resume.get_data(as_text=True))
+        self.assertIn("cancelled", resume.get_json()["error"].lower())

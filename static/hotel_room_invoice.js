@@ -432,6 +432,8 @@
     var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
     folio.forEach(function (item) {
       if (!item) return;
+      var kind = String(item.kind || '').toLowerCase();
+      if (kind === 'restaurant_room_transfer' || kind === 'bar_room_transfer') return;
       var amount = Number(item.amount || 0);
       if (!(amount > 0)) return;
       var at = toDateISO(item.at) || checkIn;
@@ -855,8 +857,143 @@
     return false;
   }
 
+  function fbTransferLinesFromStay(stay) {
+    var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
+    var lines = [];
+    folio.forEach(function (item) {
+      if (!item) return;
+      var kind = String(item.kind || '').toLowerCase();
+      if (kind !== 'restaurant_room_transfer' && kind !== 'bar_room_transfer') return;
+      var amount = Number(item.amount || 0);
+      if (!(amount > 0)) return;
+      lines.push({
+        description: folioChargeDisplayLabel(item),
+        amount: Math.round(amount * 100) / 100
+      });
+    });
+    return lines;
+  }
+
+  function buildFbCombinedTransferInvoiceHtml(room, opts) {
+    opts = opts || {};
+    var stay = (room && room.stay) || {};
+    var lines = fbTransferLinesFromStay(stay);
+    var total = Math.round(
+      lines.reduce(function (sum, row) {
+        return sum + Number(row.amount || 0);
+      }, 0) * 100
+    ) / 100;
+    if (!(total > 0) && stay.fbTransferTotal != null) {
+      total = Math.round(Number(stay.fbTransferTotal || 0) * 100) / 100;
+    }
+    var invoiceNo =
+      String(
+        opts.invoiceNumber ||
+          stay.fbTransferInvoiceNumber ||
+          stay.fb_transfer_invoice_number ||
+          '—'
+      ).trim() || '—';
+    var invoiceDate =
+      toDateISO(stay.fbTransferInvoiceGeneratedAt) ||
+      toDateISO(stay.invoiceGeneratedAt) ||
+      todayISO();
+    var hotelInv = String(stay.invoiceNumber || '').trim();
+    var checkIn = toDateISO(stay.checkInDate || stay.check_in_date);
+    var checkOut = toDateISO(stay.checkOutDate || stay.check_out_date);
+    var billTo = billToBlock(stay);
+    var roomNumber = hotelInvoiceRoomLabel(room);
+    var rowsHtml = lines
+      .map(function (row, idx) {
+        return (
+          '<tr class="hri-line"><td class="center">' +
+          (idx + 1) +
+          '</td><td>' +
+          escapeHtml(row.description) +
+          '</td><td class="num">' +
+          money(row.amount) +
+          '</td></tr>'
+        );
+      })
+      .join('');
+    var mastheadHtml =
+      '<div class="hri-header"><div class="hri-brand"><img class="hri-mark" src="' +
+      escapeHtml(absoluteAssetUrl(HOTEL.markUrl)) +
+      '" alt="Hotel Bell Elite"><div class="hri-brand-copy"><h1 class="hri-brand-name">' +
+      escapeHtml(HOTEL.name) +
+      '</h1></div></div></div>' +
+      '<div class="hri-meta-row"><div><h2 class="hri-title">F&amp;B TRANSFERS INVOICE</h2>' +
+      '<ul class="hri-meta-list">' +
+      '<li><span class="k">Invoice No.</span><span class="v">' +
+      escapeHtml(invoiceNo) +
+      '</span></li>' +
+      (hotelInv
+        ? '<li><span class="k">Hotel Invoice</span><span class="v">' +
+          escapeHtml(hotelInv) +
+          '</span></li>'
+        : '') +
+      '<li><span class="k">Invoice Date</span><span class="v">' +
+      escapeHtml(prettyDate(invoiceDate)) +
+      '</span></li>' +
+      '<li><span class="k">Room</span><span class="v">' +
+      escapeHtml(roomNumber || '—') +
+      '</span></li>' +
+      '<li><span class="k">Check In</span><span class="v">' +
+      escapeHtml(prettyDate(checkIn)) +
+      '</span></li>' +
+      '<li><span class="k">Check Out</span><span class="v">' +
+      escapeHtml(prettyDate(checkOut)) +
+      '</span></li>' +
+      '</ul></div><aside class="hri-billto"><div class="hri-billto-head">' +
+      iconUser() +
+      ' Bill To</div><div class="hri-billto-body"><div class="name">' +
+      escapeHtml(billTo.name) +
+      '</div></div></aside></div>';
+    return (
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>F&amp;B Invoice ' +
+      escapeHtml(invoiceNo) +
+      '</title><link rel="stylesheet" href="' +
+      escapeHtml(absoluteAssetUrl('/static/hotel_room_invoice.css')) +
+      '"></head><body class="hri-doc"><article class="hri-sheet">' +
+      mastheadHtml +
+      '<table class="hri-table"><thead><tr><th class="center">#</th><th>POS Bill</th><th class="num">Amount</th></tr></thead><tbody>' +
+      rowsHtml +
+      '</tbody><tfoot><tr><td colspan="2" class="hri-doc-foot"><div class="hri-totals-row"><span class="k">Total</span><span class="v">' +
+      money(total) +
+      '</span></div><p class="muted">Restaurant and bar bills transferred to room.</p></td><td class="num">' +
+      money(total) +
+      '</td></tr></tfoot></table></article></body></html>'
+    );
+  }
+
+  function openFbCombinedTransferInvoice(room, opts) {
+    opts = opts || {};
+    if (!room || !room.stay) return false;
+    var html = buildFbCombinedTransferInvoiceHtml(room, opts);
+    var autoPrint = opts.autoPrint === true;
+    try {
+      var win = global.open('', '_blank', 'width=920,height=1100');
+      if (win) {
+        win.document.open();
+        win.document.write(html);
+        win.document.close();
+        win.focus();
+        if (autoPrint) {
+          setTimeout(function () {
+            try {
+              win.print();
+            } catch (err) {}
+          }, 350);
+        }
+        return true;
+      }
+    } catch (err) {}
+    return false;
+  }
+
   global.buildHotelRoomInvoiceHtml = buildHotelRoomInvoiceHtml;
+  global.buildFbCombinedTransferInvoiceHtml = buildFbCombinedTransferInvoiceHtml;
   global.openHotelRoomInvoice = openHotelRoomInvoice;
+  global.openFbCombinedTransferInvoice = openFbCombinedTransferInvoice;
   global.hotelInvoiceRoomLabel = hotelInvoiceRoomLabel;
   global.hotelFolioChargeDisplayLabel = folioChargeDisplayLabel;
   global.hotelRoomInvoiceAmountInWords = amountInWords;

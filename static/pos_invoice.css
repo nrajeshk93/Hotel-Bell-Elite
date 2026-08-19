@@ -272,7 +272,29 @@ body.pos-invoice-module .de-main-inner.pos-invoice-page,
   border-radius:999px;
   background:#F8FAFC;
   border-color:#E5E7EB;
-  padding-right:4px;
+  padding-right:12px;
+}
+body.pos-invoice-module.pos-inv-menu-blocked #pos-inv-search-wrap{
+  opacity:.72;
+}
+body.pos-invoice-module.pos-inv-menu-blocked #pos-inv-search{
+  cursor:not-allowed;
+  background:#F1F5F9;
+}
+body.pos-invoice-module.pos-inv-menu-blocked #pos-inv-add-custom{
+  opacity:.72;
+  cursor:not-allowed;
+}
+body.pos-invoice-module.pos-inv-order-no-table #pos-inv-table-listbox{
+  display:none !important;
+}
+body.pos-invoice-module .pos-inv-header-pills .pos-inv-header-listbox .se-filter-chip-chev{
+  display:none !important;
+  width:0 !important;
+  min-width:0 !important;
+  overflow:hidden;
+  visibility:hidden;
+  pointer-events:none;
 }
 .pos-inv-header-pills .pos-inv-header-listbox .se-filter-chip-control:hover{
   background:#F1F5F9;

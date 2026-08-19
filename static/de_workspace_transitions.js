@@ -2696,7 +2696,7 @@
         '/static/stores.css?v=130',
         '/static/ep_form_listbox.css?v=29',
         '/static/pos_tables.css?v=64',
-        '/static/pos_invoice.css?v=55',
+        '/static/pos_invoice.css?v=65',
         '/static/purchase_ledger.css?v=53',
         '/static/communication_hub.css?v=12',
         '/static/hotel_rooms.css?v=72',

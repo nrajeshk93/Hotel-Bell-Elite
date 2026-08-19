@@ -283,7 +283,8 @@ _ACCESS_MODULE_UI_META = {
     "cancellation_access": {
         "icon": "ban",
         "description": (
-            "Edit or remove kitchen-sent POS lines after a KOT is sent; "
+            "Edit or cancel unsettled POS and Hotel invoices; "
+            "edit or remove kitchen-sent POS lines after a KOT is sent. "
             "Kitchen Order Tokens on the Tables page update to match. "
             "Only a Super Administrator can grant this module to a role."
         ),
@@ -311,8 +312,10 @@ _POINT_OF_SALE_ENDPOINTS = {
     "point_of_sale_api_invoices_save",
     "point_of_sale_api_invoice_detail",
     "point_of_sale_api_invoice_delete",
+    "point_of_sale_api_invoice_reopen_edit",
     "point_of_sale_api_customers",
     "point_of_sale_api_invoice_settle",
+    "point_of_sale_api_invoices_settle_selected",
     "point_of_sale_api_hotel_rooms_occupied",
     "point_of_sale_api_kot_tokens",
     "point_of_sale_api_kot_tokens_reduce",
@@ -338,8 +341,10 @@ _POINT_OF_SALE_BAR_ENDPOINTS = {
     "bar_point_of_sale_api_invoices_save",
     "bar_point_of_sale_api_invoice_detail",
     "bar_point_of_sale_api_invoice_delete",
+    "bar_point_of_sale_api_invoice_reopen_edit",
     "bar_point_of_sale_api_customers",
     "bar_point_of_sale_api_invoice_settle",
+    "bar_point_of_sale_api_invoices_settle_selected",
     "bar_point_of_sale_api_hotel_rooms_occupied",
     "bar_point_of_sale_api_kot_tokens",
     "bar_point_of_sale_api_kot_tokens_reduce",
@@ -362,8 +367,15 @@ _HOTEL_ROOMS_ENDPOINTS = {
     "hotel_reservation_assign_api",
     "hotel_invoice_ledger",
     "hotel_invoice_ledger_export",
+    "hotel_room_transfer_invoices",
+    "hotel_room_transfer_invoices_export",
     "hotel_invoice_ledger_api",
     "hotel_invoice_ledger_settle_api",
+    "hotel_invoice_ledger_settle_selected_api",
+    "hotel_invoice_ledger_cancel_api",
+    "hotel_invoice_ledger_reopen_edit_api",
+    "hotel_invoice_ledger_edit_page",
+    "hotel_invoice_ledger_edit_api",
     "hotel_credit",
     "create_hotel_credit_payment",
     "delete_hotel_credit_payment",

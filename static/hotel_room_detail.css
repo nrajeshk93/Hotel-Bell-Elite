@@ -1034,6 +1034,7 @@ body.hotel-room-detail-module .de-content{
   display:flex;
   flex-wrap:wrap;
   align-items:center;
+  justify-content:flex-end;
   gap:16px;
   margin-top:20px;
   padding-top:20px;
@@ -1045,6 +1046,30 @@ body.hotel-room-detail-module .de-content{
 }
 .hrd-charges-actions .hrd-link-btn{
   flex:0 0 auto;
+}
+.hrd-charges-section{
+  margin-top:0;
+}
+.hrd-charges-section + .hrd-charges-section{
+  margin-top:20px;
+  padding-top:20px;
+  border-top:1px solid var(--hrd-border);
+}
+.hrd-charges-section-title{
+  margin:0 0 12px;
+  font:600 13px/1.3 Inter,system-ui,sans-serif;
+  color:var(--hotel-text);
+  letter-spacing:.02em;
+  text-transform:uppercase;
+}
+.hrd-charges-combined,
+.hrd-invoice-block + .hrd-invoice-block{
+  margin-top:16px;
+  padding-top:16px;
+  border-top:1px dashed var(--hrd-border);
+}
+.hrd-invoice-block .hrd-charges-section-title{
+  margin-bottom:10px;
 }
 .hrd-invoice-dialog{
   max-width:520px;
@@ -3121,6 +3146,30 @@ body.hrd-checkin-open{overflow:hidden}
 .hrd-reserve-party-btn:focus-visible{
   outline:2px solid #2563EB;
   outline-offset:2px;
+}
+.hrd-dialog--notice{
+  width:min(480px, 100%);
+  max-height:none;
+}
+.hrd-dialog--notice .hrd-dialog-head{
+  border-bottom:0;
+  align-items:center;
+  padding:18px 20px;
+}
+.hrd-dialog--notice .hrd-dialog-head-main{
+  align-items:center;
+  flex:1;
+  min-width:0;
+}
+.hrd-dialog--notice .hrd-dialog-head-main > div{
+  min-width:0;
+  flex:1;
+}
+.hrd-dialog--notice .hrd-dialog-head h2{
+  display:flex;
+  align-items:center;
+  min-height:42px;
+  line-height:1.25;
 }
 .hrd-dialog-head{
   display:flex;

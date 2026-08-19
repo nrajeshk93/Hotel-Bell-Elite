@@ -31,6 +31,111 @@
     return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
+  function apiHeaders(extra) {
+    var headers = {
+      Accept: 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    };
+    if (extra) {
+      Object.keys(extra).forEach(function (key) {
+        headers[key] = extra[key];
+      });
+    }
+    return headers;
+  }
+
+  function invoicePageUrl(invoiceId) {
+    return (
+      resolvePosApiBase() +
+      '/invoice?invoice=' +
+      encodeURIComponent(String(invoiceId || '').trim())
+    );
+  }
+
+  function navigateToInvoice(invoiceId) {
+    var url = invoicePageUrl(invoiceId);
+    if (!url) return;
+    if (typeof global.deNavigateWithTransition === 'function') {
+      global.deNavigateWithTransition(url);
+      return;
+    }
+    window.location.href = url;
+  }
+
+  /** Keep browser fullscreen during modal open / ledger refresh (same as hotel ledger). */
+  function preserveFullscreenGesture() {
+    if (global.deFullscreen && typeof global.deFullscreen.preserveForNavigation === 'function') {
+      global.deFullscreen.preserveForNavigation();
+    } else if (global.deFullscreen && typeof global.deFullscreen.armForSoftNav === 'function') {
+      global.deFullscreen.armForSoftNav();
+    }
+  }
+
+  function refreshLedgerPage() {
+    var form = document.getElementById('pos-il-filter-form');
+    var url = window.location.pathname + (window.location.search || '');
+    if (form) {
+      var qs = new URLSearchParams(new FormData(form)).toString();
+      url = (form.action || url) + (qs ? '?' + qs : '');
+    }
+    if (typeof global.deSoftRefresh === 'function') {
+      global.deSoftRefresh(url);
+      return;
+    }
+    if (typeof global.deNavigateWithTransition === 'function') {
+      global.deNavigateWithTransition(url);
+      return;
+    }
+    window.location.href = url;
+  }
+
+  function reopenInvoiceForEdit(page, btn) {
+    var invoiceId = btn && btn.getAttribute('data-invoice-id');
+    if (!invoiceId) return;
+    if (page.getAttribute('data-pos-can-cancel') !== '1') {
+      toast('Cancellation Access is required to edit unsettled invoices.');
+      return;
+    }
+    var generated = (btn.getAttribute('data-generated') || '') === '1';
+    if (!generated) {
+      navigateToInvoice(invoiceId);
+      return;
+    }
+    if (btn) btn.disabled = true;
+    fetch(
+      resolvePosApiBase() +
+        '/api/invoices/' +
+        encodeURIComponent(invoiceId) +
+        '/reopen-edit',
+      {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: apiHeaders({ 'Content-Type': 'application/json' }),
+        body: '{}'
+      }
+    )
+      .then(function (resp) {
+        return resp.json().then(function (data) {
+          return { ok: resp.ok, data: data || {} };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data.ok) {
+          throw new Error(
+            (result.data && result.data.error) ||
+              'Could not open invoice for editing.'
+          );
+        }
+        navigateToInvoice(invoiceId);
+      })
+      .catch(function (err) {
+        toast(err.message || 'Could not open invoice for editing.');
+      })
+      .then(function () {
+        if (btn) btn.disabled = false;
+      });
+  }
+
   function toast(msg) {
     if (typeof global.showToast === 'function') {
       global.showToast(msg);
@@ -91,6 +196,7 @@
         row.style.display = !q || hay.indexOf(q) !== -1 ? '' : 'none';
       });
       updateVisibleCount(page);
+      syncSelection(page);
     }
     input.addEventListener('input', applySearch);
     applySearch();
@@ -602,10 +708,200 @@
             : 'Bill settled successfully.'
         );
         window.setTimeout(function () {
-          window.location.reload();
+          refreshLedgerPage();
         }, 400);
       }
     });
+  }
+
+  function rowGrandTotal(row) {
+    var n = Number(row && row.getAttribute('data-grand-total'));
+    return isFinite(n) ? n : 0;
+  }
+
+  function selectableRows(page) {
+    return $all('tr.pos-il-row.is-unsettled', page).filter(function (row) {
+      if (row.style.display === 'none') return false;
+      var check = row.querySelector('.pos-il-row-check');
+      return !!(check && !check.disabled);
+    });
+  }
+
+  function checkedRows(page) {
+    return $all('tr.pos-il-row.is-unsettled', page).filter(function (row) {
+      var check = row.querySelector('.pos-il-row-check');
+      return !!(check && check.checked);
+    });
+  }
+
+  function settleSelectedUrl(page) {
+    return (
+      (page && page.getAttribute('data-settle-selected-url')) ||
+      resolvePosApiBase() + '/api/invoices/settle-selected'
+    );
+  }
+
+  function syncSelection(page) {
+    if (!page) return;
+    var rows = selectableRows(page);
+    var checked = checkedRows(page);
+    var visibleChecked = rows.filter(function (row) {
+      var check = row.querySelector('.pos-il-row-check');
+      return !!(check && check.checked);
+    });
+    $all('tr.pos-il-row', page).forEach(function (row) {
+      var check = row.querySelector('.pos-il-row-check');
+      row.classList.toggle('is-selected', !!(check && check.checked));
+    });
+    var selectAll = $('#pos-il-select-all', page);
+    if (selectAll) {
+      var allOn = rows.length > 0 && visibleChecked.length === rows.length;
+      selectAll.checked = allOn;
+      selectAll.indeterminate = visibleChecked.length > 0 && !allOn;
+      selectAll.disabled = rows.length === 0;
+    }
+    var bar = $('#pos-il-selection-bar', page);
+    var countEl = $('#pos-il-select-count', page);
+    var totalEl = $('#pos-il-select-total', page);
+    var settleBtn = $('#pos-il-settle-selected', page);
+    var count = checked.length;
+    var total = checked.reduce(function (sum, row) {
+      return sum + rowGrandTotal(row);
+    }, 0);
+    if (countEl) {
+      countEl.textContent =
+        count + ' invoice' + (count === 1 ? '' : 's') + ' selected';
+    }
+    if (totalEl) {
+      totalEl.setAttribute('data-amount', String(total));
+      if (typeof global.formatAmountNode === 'function') {
+        global.formatAmountNode(totalEl);
+      } else {
+        totalEl.textContent = '₹' + total.toFixed(2);
+      }
+    }
+    if (settleBtn) settleBtn.disabled = count === 0;
+    if (bar) {
+      if (count > 0) {
+        bar.hidden = false;
+        bar.removeAttribute('hidden');
+      } else {
+        bar.hidden = true;
+        bar.setAttribute('hidden', '');
+      }
+    }
+  }
+
+  function clearSelection(page) {
+    $all('.pos-il-row-check', page).forEach(function (check) {
+      check.checked = false;
+    });
+    syncSelection(page);
+  }
+
+  function itemFromRow(row) {
+    if (!row) return null;
+    var invoiceId = row.getAttribute('data-invoice-id');
+    if (!invoiceId) return null;
+    return {
+      invoiceId: invoiceId,
+      orderNo: row.getAttribute('data-order-no') || '—',
+      tableLabel: row.getAttribute('data-table') || '',
+      customerName: row.getAttribute('data-customer-name') || '',
+      grandTotal: rowGrandTotal(row)
+    };
+  }
+
+  function openSettleSelected(page) {
+    var rows = checkedRows(page);
+    if (!rows.length) {
+      toast('Select at least one unsettled invoice.');
+      return;
+    }
+    var items = [];
+    for (var i = 0; i < rows.length; i++) {
+      var item = itemFromRow(rows[i]);
+      if (item && item.grandTotal > 0.009) items.push(item);
+    }
+    if (!items.length) {
+      toast('Selected invoices are already settled.');
+      return;
+    }
+    if (typeof global.bindPosSettleModal === 'function') {
+      global.bindPosSettleModal();
+    }
+    if (typeof global.openPosSettleModal !== 'function') {
+      toast('Settle dialog is not available.');
+      return;
+    }
+    if (items.length === 1) {
+      openSettleFromUnsettledRow(rows[0]);
+      return;
+    }
+    global.openPosSettleModal({
+      items: items,
+      settleSelectedUrl: settleSelectedUrl(page),
+      apiBase: resolvePosApiBase(),
+      onSettled: function (_settledInvoice, meta) {
+        var paid = (meta && meta.paidCount) || items.length;
+        toast(
+          paid === 1
+            ? 'Bill settled successfully.'
+            : paid + ' bills settled successfully.'
+        );
+        window.setTimeout(function () {
+          refreshLedgerPage();
+        }, 400);
+      }
+    });
+  }
+
+  function bindSelection(page) {
+    if (page.getAttribute('data-pos-il-select-bound') === '1') return;
+    page.setAttribute('data-pos-il-select-bound', '1');
+    var selectAll = $('#pos-il-select-all', page);
+    if (selectAll) {
+      selectAll.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+      });
+      selectAll.addEventListener('change', function () {
+        var on = !!selectAll.checked;
+        selectableRows(page).forEach(function (row) {
+          var check = row.querySelector('.pos-il-row-check');
+          if (check) check.checked = on;
+        });
+        syncSelection(page);
+      });
+    }
+    page.addEventListener('click', function (ev) {
+      var check = ev.target.closest
+        ? ev.target.closest('.pos-il-row-check, #pos-il-select-all, .cp-col-check')
+        : null;
+      if (check && page.contains(check)) ev.stopPropagation();
+    });
+    page.addEventListener('change', function (ev) {
+      var check = ev.target.closest ? ev.target.closest('.pos-il-row-check') : null;
+      if (!check || !page.contains(check)) return;
+      syncSelection(page);
+    });
+    var clearBtn = $('#pos-il-clear-selection', page);
+    var closeBtn = $('#pos-il-bulk-bar-close', page);
+    function onClear(ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      clearSelection(page);
+    }
+    if (clearBtn) clearBtn.addEventListener('click', onClear);
+    if (closeBtn) closeBtn.addEventListener('click', onClear);
+    var settleBtn = $('#pos-il-settle-selected', page);
+    if (settleBtn) {
+      settleBtn.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        openSettleSelected(page);
+      });
+    }
+    syncSelection(page);
   }
 
   function bindActions(page) {
@@ -618,17 +914,30 @@
         openViewModal(viewBtn.getAttribute('data-invoice-id'));
         return;
       }
+      var editBtn = ev.target.closest('.pos-il-edit-btn');
+      if (editBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (editBtn.disabled) return;
+        reopenInvoiceForEdit(page, editBtn);
+        return;
+      }
       var voidBtn = ev.target.closest('.pos-il-delete-btn, .pos-il-cancel-btn');
       if (voidBtn) {
         ev.preventDefault();
         ev.stopPropagation();
         if (voidBtn.disabled) return;
+        preserveFullscreenGesture();
         openVoidInvoiceModal(voidBtn);
         return;
       }
 
       var unsettledRow = ev.target.closest('tr.pos-il-row.is-unsettled');
-      if (unsettledRow && page.contains(unsettledRow) && !ev.target.closest('.pl-col-actions')) {
+      if (
+        unsettledRow &&
+        page.contains(unsettledRow) &&
+        !ev.target.closest('.pl-col-actions, .cp-col-check, .pos-il-row-check, #pos-il-select-all, #pos-il-selection-bar')
+      ) {
         ev.preventDefault();
         openSettleFromUnsettledRow(unsettledRow);
       }
@@ -695,6 +1004,7 @@
 
   function openVoidInvoiceModal(btn) {
     if (!btn) return;
+    preserveFullscreenGesture();
     var invoiceId = btn.getAttribute('data-invoice-id');
     if (!invoiceId) return;
     var mode = btn.getAttribute('data-void-mode') || 'cancel';
@@ -742,12 +1052,22 @@
       modal.removeAttribute('hidden');
     }
     window.setTimeout(function () {
-      if (reason) reason.focus();
+      if (reason) {
+        try {
+          reason.focus({ preventScroll: true });
+        } catch (focusErr) {
+          reason.focus();
+        }
+      }
+      if (global.deFullscreen && typeof global.deFullscreen.restoreIfNeeded === 'function') {
+        global.deFullscreen.restoreIfNeeded();
+      }
     }, 30);
   }
 
   function submitVoidInvoiceModal() {
     if (!pendingVoidInvoice || !pendingVoidInvoice.id) return;
+    preserveFullscreenGesture();
     var reasonEl = document.getElementById('pos-il-void-reason');
     var err = document.getElementById('pos-il-void-error');
     var confirmBtn = document.getElementById('pos-il-void-confirm');
@@ -827,7 +1147,7 @@
           }
         }
         window.setTimeout(function () {
-          window.location.reload();
+          refreshLedgerPage();
         }, 400);
       })
       .catch(function () {
@@ -888,6 +1208,7 @@
     bindOrderTypeFilter(page);
     bindSettlementFilter(page);
     bindDateRange(page);
+    bindSelection(page);
     bindActions(page);
     if (typeof global.bindPosSettleModal === 'function') {
       global.bindPosSettleModal();
@@ -900,6 +1221,18 @@
 
   global.initPosInvoiceLedgerPage = initPosInvoiceLedgerPage;
   global.__posIlPrintViewedBill = printViewedBill;
+  global.posIlEditClick = function (btn) {
+    var page = document.getElementById('pos-invoice-ledger-page');
+    if (!page || !btn) return false;
+    reopenInvoiceForEdit(page, btn);
+    return false;
+  };
+  global.posIlVoidClick = function (btn) {
+    if (!btn) return false;
+    preserveFullscreenGesture();
+    openVoidInvoiceModal(btn);
+    return false;
+  };
 
   /* Soft-nav safe: one document listener always calls the latest print handler. */
   if (!global.__posIlPrintDelegated) {

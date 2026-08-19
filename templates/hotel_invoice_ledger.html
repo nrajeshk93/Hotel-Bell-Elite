@@ -1,25 +1,37 @@
+{% set id_prefix = id_prefix|default('hil') %}
+{% set page_dom_id = page_dom_id|default('hotel-invoice-ledger-page') %}
+{% set room_transfer_ledger = room_transfer_ledger|default(false) %}
+{% set is_popup = is_popup|default(false) %}
 {% set de_soft_body_class = 'de-open su-module hotel-invoice-ledger-module' %}
-{% set de_soft_page_title = 'Invoice Ledger | Hotel | Hotel Bell Elite' %}
+{% set de_soft_page_title = (page_title|default('Invoice Ledger - Hotel')) ~ ' | Hotel | Hotel Bell Elite' %}
 {% if not is_partial_main %}
 <!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Invoice Ledger | Hotel | Hotel Bell Elite</title>
+<title>{{ page_title|default('Invoice Ledger - Hotel') }} | Hotel | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+{% if not is_popup %}
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+{% endif %}
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_invoice_ledger.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_invoice_ledger.css') }}?v=13">
+{% if is_popup %}
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_app_toast.css') }}?v=1">
+{% endif %}
 <script>
 (function(){
   try{
@@ -29,9 +41,11 @@
 })();
 </script>
 </head>
-<body class="de-open su-module hotel-invoice-ledger-module">
+<body class="de-open su-module hotel-invoice-ledger-module{% if is_popup %} hotel-room-transfer-popup{% endif %}">
 {% endif %}
+{% if not is_popup %}
 {% include 'partials/de_workspace_shell_open.html' %}
+{% endif %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
@@ -42,21 +56,28 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_invoice_ledger.css') }}?v=8">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_invoice_ledger.css') }}?v=13">
 {% endif %}
 
-<div class="main-wrapper" id="hotel-invoice-ledger-page"
+<div class="main-wrapper" id="{{ page_dom_id }}"
      data-hotel-invoice-ledger
+     data-ledger-prefix="{{ id_prefix }}"
      data-invoice-api-base="{{ url_for('hotel_invoice_ledger_api', invoice_number='__ID__') }}"
-     data-settle-api-base="{{ url_for('hotel_invoice_ledger_settle_api', invoice_number='__ID__') }}">
+     data-settle-api-base="{{ url_for('hotel_invoice_ledger_settle_api', invoice_number='__ID__') }}"
+     data-settle-selected-url="{{ url_for('hotel_invoice_ledger_settle_selected_api') }}"
+     data-cancel-api-base="{{ url_for('hotel_invoice_ledger_cancel_api', invoice_number='__ID__') }}"
+     data-reopen-api-base="{{ url_for('hotel_invoice_ledger_reopen_edit_api', invoice_number='__ID__') }}"
+     data-can-cancel="{{ '1' if can_cancel_invoices else '0' }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
+        {% if not is_popup %}
         <div class="su-header-nav">
           <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
             <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
         </div>
+        {% endif %}
         <div class="su-title">
           <div class="su-title-row">
             <h1>{{ page_title }}</h1>
@@ -65,98 +86,107 @@
       </div>
       <div class="su-header-tools">
         <a class="btn btn-primary" href="{{ invoice_ledger_export_url }}" download>Export Excel</a>
+        {% if not room_transfer_ledger %}
+        <button type="button" class="btn btn-primary" id="hil-open-room-transfer" data-room-transfer-url="{{ room_transfer_overlay_url }}">Room Transfer</button>
+        {% endif %}
       </div>
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <form id="hil-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Invoice ledger filters"
+        <form id="{{ id_prefix }}-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters hil-ledger-form" aria-label="Invoice ledger filters"
               data-clear-url="{{ invoice_ledger_clear_url }}">
-          <input type="hidden" id="hil-date-from" name="date_from" value="{{ date_from }}">
-          <input type="hidden" id="hil-date-to" name="date_to" value="{{ date_to }}">
+          {% if is_popup %}
+          <input type="hidden" name="popup" value="1">
+          {% endif %}
+          <input type="hidden" id="{{ id_prefix }}-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="{{ id_prefix }}-date-to" name="date_to" value="{{ date_to }}">
 
-          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="hil-search-chip">
-            <label class="se-filter-chip-label" for="hil-search">Search</label>
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="{{ id_prefix }}-search-chip">
+            <label class="se-filter-chip-label" for="{{ id_prefix }}-search">Search</label>
             <div class="se-filter-chip-control">
-              <input type="search" id="hil-search" class="pl-search-input pl-header-search" value="{{ search_q }}" placeholder="Invoice, guest, room…" autocomplete="off" aria-label="Search invoices">
+              <input type="search" id="{{ id_prefix }}-search" class="pl-search-input pl-header-search" value="{{ search_q }}" placeholder="Invoice, guest, room…" autocomplete="off" aria-label="Search invoices">
             </div>
           </div>
 
-          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="hilInvoiceChanged" id="hil-invoice-listbox">
-            <span class="se-filter-chip-label" id="hil-invoice-label">Invoice</span>
+          {% if not room_transfer_ledger %}
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="hilInvoiceChanged" id="{{ id_prefix }}-invoice-listbox">
+            <span class="se-filter-chip-label" id="{{ id_prefix }}-invoice-label">Invoice</span>
             <div class="se-filter-chip-control">
-              <input type="hidden" id="hil-invoice" name="invoice" value="{{ selected_invoice }}">
-              <button type="button" class="se-filter-chip-trigger" id="hil-invoice-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="hil-invoice-list" aria-labelledby="hil-invoice-label hil-invoice-value">
-                <span class="se-filter-chip-value" id="hil-invoice-value">{{ selected_invoice_label }}</span>
+              <input type="hidden" id="{{ id_prefix }}-invoice" name="invoice" value="{{ selected_invoice }}">
+              <button type="button" class="se-filter-chip-trigger" id="{{ id_prefix }}-invoice-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ id_prefix }}-invoice-list" aria-labelledby="{{ id_prefix }}-invoice-label {{ id_prefix }}-invoice-value">
+                <span class="se-filter-chip-value" id="{{ id_prefix }}-invoice-value">{{ selected_invoice_label }}</span>
               </button>
             </div>
-            <div class="se-filter-listbox" id="hil-invoice-list" role="listbox" aria-labelledby="hil-invoice-label" hidden>
+            <div class="se-filter-listbox" id="{{ id_prefix }}-invoice-list" role="listbox" aria-labelledby="{{ id_prefix }}-invoice-label" hidden>
               <button type="button" class="se-filter-listbox-option{% if selected_invoice == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All" aria-selected="{{ 'true' if selected_invoice == 'all' else 'false' }}">All</button>
               <button type="button" class="se-filter-listbox-option{% if selected_invoice == 'hotel' %} is-selected{% endif %}" role="option" data-value="hotel" data-label="Hotel" aria-selected="{{ 'true' if selected_invoice == 'hotel' else 'false' }}">Hotel</button>
-              <button type="button" class="se-filter-listbox-option{% if selected_invoice == 'room_transfer' %} is-selected{% endif %}" role="option" data-value="room_transfer" data-label="Room Transfer" aria-selected="{{ 'true' if selected_invoice == 'room_transfer' else 'false' }}">Room Transfer</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_invoice == 'fb_transfer' %} is-selected{% endif %}" role="option" data-value="fb_transfer" data-label="F&amp;B Transfers" aria-selected="{{ 'true' if selected_invoice == 'fb_transfer' else 'false' }}">F&amp;B Transfers</button>
             </div>
           </div>
+          {% endif %}
 
-          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="hilStatusChanged" id="hil-status-listbox">
-            <span class="se-filter-chip-label" id="hil-status-label">Status</span>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="hilStatusChanged" id="{{ id_prefix }}-status-listbox">
+            <span class="se-filter-chip-label" id="{{ id_prefix }}-status-label">Status</span>
             <div class="se-filter-chip-control">
-              <input type="hidden" id="hil-status" name="status" value="{{ selected_status }}">
-              <button type="button" class="se-filter-chip-trigger" id="hil-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="hil-status-list" aria-labelledby="hil-status-label hil-status-value">
-                <span class="se-filter-chip-value" id="hil-status-value">{{ selected_status_label }}</span>
+              <input type="hidden" id="{{ id_prefix }}-status" name="status" value="{{ selected_status }}">
+              <button type="button" class="se-filter-chip-trigger" id="{{ id_prefix }}-status-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="{{ id_prefix }}-status-list" aria-labelledby="{{ id_prefix }}-status-label {{ id_prefix }}-status-value">
+                <span class="se-filter-chip-value" id="{{ id_prefix }}-status-value">{{ selected_status_label }}</span>
               </button>
             </div>
-            <div class="se-filter-listbox" id="hil-status-list" role="listbox" aria-labelledby="hil-status-label" hidden>
+            <div class="se-filter-listbox" id="{{ id_prefix }}-status-list" role="listbox" aria-labelledby="{{ id_prefix }}-status-label" hidden>
               <button type="button" class="se-filter-listbox-option{% if selected_status == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All statuses" aria-selected="{{ 'true' if selected_status == 'all' else 'false' }}">All statuses</button>
               <button type="button" class="se-filter-listbox-option{% if selected_status == 'open' %} is-selected{% endif %}" role="option" data-value="open" data-label="Un Settled" aria-selected="{{ 'true' if selected_status == 'open' else 'false' }}">Un Settled</button>
               <button type="button" class="se-filter-listbox-option{% if selected_status == 'settled' %} is-selected{% endif %}" role="option" data-value="settled" data-label="Settled" aria-selected="{{ 'true' if selected_status == 'settled' else 'false' }}">Settled</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'cancelled' %} is-selected{% endif %}" role="option" data-value="cancelled" data-label="Cancelled" aria-selected="{{ 'true' if selected_status == 'cancelled' else 'false' }}">Cancelled</button>
             </div>
           </div>
 
-          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="hil-date-range-host">
-            <span class="se-filter-chip-label" id="hil-date-range-label">Date</span>
+          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="{{ id_prefix }}-date-range-host">
+            <span class="se-filter-chip-label" id="{{ id_prefix }}-date-range-label">Date</span>
             <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
               <div class="se-filter-chip-control">
-                <div class="an-range-wrap an-range-wrap--sales" id="hil-date-range-wrap" data-max-date="{{ today_iso }}">
-                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="hil-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="hil-date-range-panel" aria-labelledby="hil-date-range-label hil-date-range-display">
+                <div class="an-range-wrap an-range-wrap--sales" id="{{ id_prefix }}-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="{{ id_prefix }}-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="{{ id_prefix }}-date-range-panel" aria-labelledby="{{ id_prefix }}-date-range-label {{ id_prefix }}-date-range-display">
                     <span class="an-range-trigger-label">
-                      <span id="hil-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Select date…{% endif %}</span>
+                      <span id="{{ id_prefix }}-date-range-display">{% if active_date_filter %}{{ date_from }} – {{ date_to }}{% else %}Select date…{% endif %}</span>
                     </span>
                   </button>
-                  <div class="an-range-backdrop" id="hil-date-range-backdrop" aria-hidden="true"></div>
-                  <div class="an-range-panel" id="hil-date-range-panel" role="dialog" aria-labelledby="hil-date-range-panel-title" hidden>
+                  <div class="an-range-backdrop" id="{{ id_prefix }}-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="{{ id_prefix }}-date-range-panel" role="dialog" aria-labelledby="{{ id_prefix }}-date-range-panel-title" hidden>
                     <div class="an-range-panel-inner">
-                      <div class="an-range-panel-h" id="hil-date-range-panel-title">Date range</div>
+                      <div class="an-range-panel-h" id="{{ id_prefix }}-date-range-panel-title">Date range</div>
                       <div class="an-cal-dual">
                         <div class="an-cal-pane">
                           <div class="an-cal-pane-hdr">
-                            <button type="button" class="an-cal-nav-btn" id="hil-cal-prev" aria-label="Previous months">
+                            <button type="button" class="an-cal-nav-btn" id="{{ id_prefix }}-cal-prev" aria-label="Previous months">
                               <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
                             </button>
-                            <h4 class="an-cal-month-title" id="hil-cal-title0">—</h4>
+                            <h4 class="an-cal-month-title" id="{{ id_prefix }}-cal-title0">—</h4>
                             <span class="an-cal-nav-sp" aria-hidden="true"></span>
                           </div>
                           <div class="an-cal-dow" aria-hidden="true">
                             <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
                           </div>
-                          <div class="an-cal-grid" id="hil-cal-grid0"></div>
+                          <div class="an-cal-grid" id="{{ id_prefix }}-cal-grid0"></div>
                         </div>
                         <div class="an-cal-pane">
                           <div class="an-cal-pane-hdr">
                             <span class="an-cal-nav-sp" aria-hidden="true"></span>
-                            <h4 class="an-cal-month-title" id="hil-cal-title1">—</h4>
-                            <button type="button" class="an-cal-nav-btn" id="hil-cal-next" aria-label="Next months">
+                            <h4 class="an-cal-month-title" id="{{ id_prefix }}-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="{{ id_prefix }}-cal-next" aria-label="Next months">
                               <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
                             </button>
                           </div>
                           <div class="an-cal-dow" aria-hidden="true">
                             <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
                           </div>
-                          <div class="an-cal-grid" id="hil-cal-grid1"></div>
+                          <div class="an-cal-grid" id="{{ id_prefix }}-cal-grid1"></div>
                         </div>
                       </div>
                     </div>
                     <div class="an-range-actions">
-                      <button type="button" class="btn" id="hil-date-range-clear">Clear</button>
-                      <button type="button" class="btn btn-primary" id="hil-date-range-apply">Apply</button>
+                      <button type="button" class="btn" id="{{ id_prefix }}-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="{{ id_prefix }}-date-range-apply">Apply</button>
                     </div>
                   </div>
                 </div>
@@ -170,70 +200,92 @@
 
   <section class="content se-content">
     <div class="pl-summary-row" aria-label="Invoice summary">
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total billed">
+      <article class="card pl-summary-card hbe-kpi-card hil-kpi" data-hil-kpi="all" role="button" tabindex="0" aria-label="Total billed — show all invoices">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
             <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
           </div>
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Total billed</div>
-            <div class="pl-summary-value pl-amount" id="hil-kpi-total" data-amount="{{ kpis.amount_sum }}">{{ kpis.amount_sum }}</div>
+            <div class="pl-summary-value pl-amount" id="{{ id_prefix }}-kpi-total" data-amount="{{ kpis.amount_sum }}">{{ kpis.amount_sum }}</div>
             <div class="pl-summary-meta">{{ kpis.total }} invoice{{ '' if kpis.total == 1 else 's' }}</div>
           </div>
         </div>
       </article>
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Outstanding balance">
+      <article class="card pl-summary-card hbe-kpi-card hil-kpi" data-hil-kpi="open" role="button" tabindex="0" aria-label="Outstanding balance — filter unsettled invoices">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
           </div>
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Outstanding</div>
-            <div class="pl-summary-value pl-amount" id="hil-kpi-outstanding" data-amount="{{ kpis.outstanding }}">{{ kpis.outstanding }}</div>
+            <div class="pl-summary-value pl-amount" id="{{ id_prefix }}-kpi-outstanding" data-amount="{{ kpis.outstanding }}">{{ kpis.outstanding }}</div>
             <div class="pl-summary-meta">{{ kpis.open }} unpaid</div>
           </div>
         </div>
       </article>
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Settled invoices">
+      <article class="card pl-summary-card hbe-kpi-card hil-kpi" data-hil-kpi="settled" role="button" tabindex="0" aria-label="Settled invoices — filter settled invoices">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           </div>
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Settled</div>
-            <div class="pl-summary-value" id="hil-kpi-settled">{{ kpis.settled }}</div>
+            <div class="pl-summary-value" id="{{ id_prefix }}-kpi-settled">{{ kpis.settled }}</div>
             <div class="pl-summary-meta">Fully paid</div>
           </div>
         </div>
       </article>
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Un settled invoices">
+      <article class="card pl-summary-card hbe-kpi-card hil-kpi" data-hil-kpi="open" role="button" tabindex="0" aria-label="Un settled invoices — filter unsettled invoices">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
           </div>
           <div class="hbe-kpi-text">
             <div class="pl-summary-label">Un Settled</div>
-            <div class="pl-summary-value" id="hil-kpi-open">{{ kpis.open }}</div>
+            <div class="pl-summary-value" id="{{ id_prefix }}-kpi-open">{{ kpis.open }}</div>
             <div class="pl-summary-meta">Balance due</div>
           </div>
         </div>
       </article>
     </div>
 
-    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Hotel invoices">
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="{% if room_transfer_ledger %}Room transfer invoices{% else %}Hotel invoices{% endif %}">
       <div class="card-hdr">
         <div class="card-title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
           <span>Invoices</span>
         </div>
-        <span class="pl-count" id="hil-entry-count">{{ invoices|length }} entr{{ 'y' if invoices|length == 1 else 'ies' }}</span>
+        <span class="pl-count" id="{{ id_prefix }}-entry-count">{{ invoices|length }} entr{{ 'y' if invoices|length == 1 else 'ies' }}</span>
+      </div>
+      <div class="cp-bulk-bar" id="{{ id_prefix }}-selection-bar" hidden>
+        <div class="cp-bulk-bar-left">
+          <span class="cp-bulk-bar-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+          </span>
+          <span class="cp-bulk-bar-count" id="{{ id_prefix }}-select-count">0 invoices selected</span>
+          <button type="button" class="cp-link-btn" id="{{ id_prefix }}-clear-selection">Clear selection</button>
+          <span class="cp-action-bar-sep" aria-hidden="true">·</span>
+          <span class="cp-bulk-bar-meta">Balance <strong id="{{ id_prefix }}-select-total" class="pl-amount" data-amount="0">0</strong></span>
+        </div>
+        <div class="cp-bulk-bar-right">
+          <button type="button" class="btn btn-primary" id="{{ id_prefix }}-settle-selected" disabled>
+            Settle selected
+          </button>
+          <button type="button" class="cp-bulk-bar-close" id="{{ id_prefix }}-bulk-bar-close" aria-label="Clear selection">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+          </button>
+        </div>
       </div>
       <div class="card-body pl-card-body--flush">
         {% if invoices %}
-        <div class="pl-table-wrap" tabindex="0" aria-label="Hotel invoices, scroll for more">
-          <table class="pl-table" id="hil-table" aria-label="Hotel invoice ledger">
+        <div class="pl-table-wrap" tabindex="0" aria-label="{% if room_transfer_ledger %}Room transfer invoices, scroll for more{% else %}Hotel invoices, scroll for more{% endif %}">
+          <table class="pl-table hil-ledger-table" id="{{ id_prefix }}-table" aria-label="{% if room_transfer_ledger %}Room transfer invoices{% else %}Hotel invoice ledger{% endif %}">
             <thead>
               <tr>
+                <th class="cp-col-check">
+                  <input type="checkbox" class="cp-expense-check" id="{{ id_prefix }}-select-all" aria-label="Select all unsettled invoices">
+                </th>
                 <th class="pl-sortable" data-sort="invoice_no" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Invoice No</th>
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Date</th>
                 <th class="pl-sortable" data-sort="room" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Room</th>
@@ -248,27 +300,44 @@
             </thead>
             <tbody>
               {% for inv in invoices %}
-              {% set is_open = inv.status != 'settled' %}
-              {% set payment_mode_label = inv.payment_mode_label or ('Un Settled' if is_open else 'Settled') %}
-              <tr class="hil-row pl-expense-row{% if is_open %} is-open{% endif %}"
+              {% set is_open = inv.status == 'open' %}
+              {% set is_cancelled = inv.status == 'cancelled' %}
+              {% set is_hotel_stay = (inv.source or 'hotel') not in ('pos_room_transfer', 'fb_combined_transfer') %}
+              {% set is_fb_combined = (inv.source or '') == 'fb_combined_transfer' %}
+              {% set can_mutate = can_cancel_invoices and is_open and is_hotel_stay %}
+              {% set payment_mode_label = inv.payment_mode_label or ('Un Settled' if is_open else ('Cancelled' if is_cancelled else 'Settled')) %}
+              <tr class="hil-row pl-expense-row{% if is_open %} is-open{% endif %}{% if is_cancelled %} is-cancelled{% endif %}"
                   data-sort-row
                   data-invoice-number="{{ inv.invoice_number }}"
                   data-room-id="{{ inv.room_id or '' }}"
+                  data-room-number="{{ inv.room_number or '' }}"
+                  data-guest-name="{{ inv.guest_name or '' }}"
+                  data-balance="{{ inv.balance_amount }}"
+                  data-allow-credit="{{ '1' if inv.allow_credit else '0' }}"
                   data-invoice-status="{{ inv.status }}"
                   data-invoice-source="{{ inv.source or 'hotel' }}"
                   data-search="{{ [inv.invoice_number or '', inv.guest_name or '', inv.room_number or '', inv.booking_number or '', inv.room_type_label or '', payment_mode_label]|join(' ')|lower }}">
-                <td class="pl-col-code" data-sort-value="{{ inv.invoice_number or '' }}"><span class="pl-expense-code">{{ inv.invoice_number }}</span></td>
-                <td class="pl-col-date" data-sort-value="{{ inv.invoice_generated_at or '' }}">{{ inv.invoice_generated_at[:10] if inv.invoice_generated_at else '—' }}</td>
-                <td data-sort-value="{{ inv.room_number or '' }}">
-                  <div class="pl-name">{{ inv.room_number or '—' }}</div>
-                  {% if inv.room_type_label %}<div class="pl-meta">{{ inv.room_type_label }}</div>{% endif %}
+                <td class="cp-col-check">
+                  {% if is_open %}
+                  <input type="checkbox" class="cp-expense-check hil-row-check" aria-label="Select invoice {{ inv.invoice_number }}">
+                  {% endif %}
                 </td>
-                <td data-sort-value="{{ inv.guest_name or '' }}">
-                  <div class="pl-name">{{ inv.guest_name or '—' }}</div>
-                  {% if inv.booking_number %}<div class="pl-meta">{{ inv.booking_number }}</div>{% endif %}
+                <td class="pl-col-code hil-col-invoice" data-sort-value="{{ inv.invoice_number or '' }}"><span class="pl-expense-code" title="{{ inv.invoice_number }}">{{ inv.invoice_number }}</span></td>
+                <td class="pl-col-date hil-col-date" data-sort-value="{{ inv.invoice_generated_at or '' }}">{{ inv.invoice_generated_at[:10] if inv.invoice_generated_at else '—' }}</td>
+                <td class="hil-col-room" data-sort-value="{{ inv.room_number or '' }}">
+                  <div class="pl-name" title="{{ inv.room_number or '' }}">{{ inv.room_number or '—' }}</div>
+                  {% if room_transfer_ledger and inv.room_type_label %}
+                  <div class="pl-meta" title="{{ inv.room_type_label }}">{{ inv.room_type_label }}</div>
+                  {% endif %}
                 </td>
-                <td data-sort-value="{{ inv.check_in_date or '' }}">{{ inv.check_in_date or '—' }}</td>
-                <td data-sort-value="{{ inv.check_out_date or '' }}">{{ inv.check_out_date or '—' }}</td>
+                <td class="hil-col-guest" data-sort-value="{{ inv.guest_name or '' }}">
+                  <div class="pl-name" title="{{ inv.guest_name or '' }}">{{ inv.guest_name or '—' }}</div>
+                  {% if inv.booking_number and inv.booking_number != inv.invoice_number %}
+                  <div class="pl-meta" title="{{ inv.booking_number }}">{{ inv.booking_number }}</div>
+                  {% endif %}
+                </td>
+                <td class="hil-col-date" data-sort-value="{{ inv.check_in_date or '' }}">{{ inv.check_in_date or '—' }}</td>
+                <td class="hil-col-date" data-sort-value="{{ inv.check_out_date or '' }}">{{ inv.check_out_date or '—' }}</td>
                 <td class="pl-col-amount pl-amount" data-amount="{{ inv.estimated_total }}" data-sort-value="{{ inv.estimated_total }}">{{ inv.estimated_total }}</td>
                 <td class="pl-col-amount pl-amount" data-amount="{{ inv.balance_amount }}" data-sort-value="{{ inv.balance_amount }}">{{ inv.balance_amount }}</td>
                 <td class="pl-col-status" data-sort-value="{{ payment_mode_label }}">
@@ -276,6 +345,8 @@
                   <button type="button" class="cp-status-pill cp-status-pill--outstanding hil-status-settle" data-hil-settle title="Click to settle" aria-label="Settle invoice {{ inv.invoice_number }}" onclick="return window.hilSettleClick && window.hilSettleClick(this)">
                     {{ payment_mode_label }}
                   </button>
+                  {% elif is_cancelled %}
+                  <span class="cp-status-pill cp-status-pill--cancelled">{{ payment_mode_label }}</span>
                   {% else %}
                   <span class="cp-status-pill cp-status-pill--cleared">{{ payment_mode_label }}</span>
                   {% endif %}
@@ -285,6 +356,14 @@
                     <button type="button" class="act-btn edit hil-view-btn" data-tip="View" aria-label="View invoice {{ inv.invoice_number }}" data-invoice-number="{{ inv.invoice_number }}">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                     </button>
+                    {% if can_mutate %}
+                    <button type="button" class="act-btn edit hil-edit-btn" data-tip="Edit" aria-label="Edit invoice {{ inv.invoice_number }}" data-invoice-number="{{ inv.invoice_number }}" data-room-id="{{ inv.room_id or '' }}" onclick="return window.hilEditClick && window.hilEditClick(this)">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <button type="button" class="act-btn cancel hil-cancel-btn" data-tip="Cancel" aria-label="Cancel invoice {{ inv.invoice_number }}" data-invoice-number="{{ inv.invoice_number }}" onclick="return window.hilCancelClick && window.hilCancelClick(this)">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+                    </button>
+                    {% endif %}
                     <button type="button" class="act-btn hil-print-btn" data-tip="Print" aria-label="Print invoice {{ inv.invoice_number }}" data-invoice-number="{{ inv.invoice_number }}">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                     </button>
@@ -296,22 +375,56 @@
           </table>
         </div>
         {% else %}
-        <div class="pl-empty">No hotel invoices match these filters.</div>
+        <div class="pl-empty">{% if room_transfer_ledger %}No room transfer invoices match these filters.{% else %}No hotel invoices match these filters.{% endif %}</div>
         {% endif %}
       </div>
     </article>
   </section>
 
   {% include 'partials/hotel_settle_modal.html' %}
+
+  <div class="hil-void-modal" id="{{ id_prefix }}-void-modal" hidden>
+    <div class="hil-void-modal-backdrop" data-hil-void-close tabindex="-1" aria-hidden="true"></div>
+    <div class="hil-void-modal-box" role="dialog" aria-modal="true" aria-labelledby="{{ id_prefix }}-void-title">
+      <h3 id="{{ id_prefix }}-void-title">Cancel Invoice</h3>
+      <p class="hil-void-lead" id="{{ id_prefix }}-void-lead">This cannot be undone.</p>
+      <label class="hil-void-field">
+        <span id="{{ id_prefix }}-void-reason-label">Reason for cancellation</span>
+        <textarea id="{{ id_prefix }}-void-reason" rows="3" maxlength="500" placeholder="Why is this invoice being cancelled?" autocomplete="off"></textarea>
+      </label>
+      <p class="hil-void-error" id="{{ id_prefix }}-void-error" hidden></p>
+      <div class="hil-void-actions">
+        <button type="button" class="btn hil-void-btn hil-void-btn--secondary" data-hil-void-close>Keep Invoice</button>
+        <button type="button" class="btn hil-void-btn hil-void-btn--danger" id="{{ id_prefix }}-void-confirm">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>
+          <span>Cancel Invoice</span>
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
+
+{% if not room_transfer_ledger %}
+<div class="hil-rt-overlay" id="hil-rt-overlay" hidden>
+  <div class="hil-rt-overlay-bar">
+    <h2>Room Transfer</h2>
+    <button type="button" class="hil-rt-overlay-close" id="hil-rt-overlay-close" data-hil-rt-close aria-label="Close Room Transfer">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6L6 18"/><path d="M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <iframe class="hil-rt-overlay-frame" id="hil-rt-frame" title="Room Transfer invoices"></iframe>
+</div>
+{% endif %}
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=17"></script>
-<script src="{{ url_for('static', filename='hotel_settle_modal.js') }}?v=4"></script>
-<script src="{{ url_for('static', filename='hotel_invoice_ledger.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='hotel_settle_modal.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='hotel_invoice_ledger.js') }}?v=13"></script>
+{% if not is_popup %}
 {% include 'partials/de_workspace_shell_close.html' %}
+{% endif %}
 {% if not is_partial_main %}
 </body>
 </html>
