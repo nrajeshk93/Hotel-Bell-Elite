@@ -1882,19 +1882,39 @@
     });
   }
 
+  function formBoardAgencyBillFlags(form) {
+    if (!form || !form.elements) return { room: false, fb: false };
+    var roomEl = form.elements.agencyRoomBilling;
+    var fbEl = form.elements.agencyFbBilling;
+    if (roomEl || fbEl) {
+      return {
+        room: !!(roomEl && roomEl.checked),
+        fb: !!(fbEl && fbEl.checked)
+      };
+    }
+    var on = !!(form.elements.agencyBilling && form.elements.agencyBilling.checked);
+    return { room: on, fb: on };
+  }
+
   function syncBoardAgencyBillingHint(form) {
-    var hint = $('#hr-board-reserve-agency-billing-hint', form);
-    var nameEl = $('#hr-board-reserve-agency-billing-name', form);
-    var billing = form && form.elements.agencyBilling;
+    var flags = formBoardAgencyBillFlags(form);
     var agencyName = form && form.elements.agencyName
       ? String(form.elements.agencyName.value || '').trim()
       : '';
-    if (!hint) return;
-    var show = !!(billing && billing.checked);
-    hint.hidden = !show;
-    if (show) hint.removeAttribute('hidden');
-    else hint.setAttribute('hidden', '');
-    if (nameEl) nameEl.textContent = agencyName || 'Agency Name';
+    var label = agencyName || 'Agency Name';
+    var roomName = $('#hr-board-reserve-agency-room-billing-name', form);
+    var fbName = $('#hr-board-reserve-agency-fb-billing-name', form);
+    if (roomName) roomName.textContent = label;
+    if (fbName) fbName.textContent = label;
+    var roomHint = $('#hr-board-reserve-agency-room-billing-hint', form);
+    var fbHint = $('#hr-board-reserve-agency-fb-billing-hint', form);
+    [roomHint, fbHint].forEach(function (hint, idx) {
+      if (!hint) return;
+      var show = idx === 0 ? flags.room : flags.fb;
+      hint.hidden = !show;
+      if (show) hint.removeAttribute('hidden');
+      else hint.setAttribute('hidden', '');
+    });
   }
 
   function bindBoardReservePartyToggle(form) {
@@ -1912,7 +1932,12 @@
     if (!form || form.getAttribute('data-agency-billing-bound') === '1') return;
     form.setAttribute('data-agency-billing-bound', '1');
     form.addEventListener('change', function (event) {
-      if (event.target && event.target.name === 'agencyBilling') {
+      if (
+        event.target &&
+        (event.target.name === 'agencyBilling' ||
+          event.target.name === 'agencyRoomBilling' ||
+          event.target.name === 'agencyFbBilling')
+      ) {
         syncBoardAgencyBillingHint(form);
       }
     });
@@ -2369,6 +2394,8 @@
     if (form.elements.agencyName) form.elements.agencyName.value = '';
     if (form.elements.agencyGst) form.elements.agencyGst.value = '';
     if (form.elements.agencyAddress) form.elements.agencyAddress.value = '';
+    if (form.elements.agencyRoomBilling) form.elements.agencyRoomBilling.checked = false;
+    if (form.elements.agencyFbBilling) form.elements.agencyFbBilling.checked = false;
     if (form.elements.agencyBilling) form.elements.agencyBilling.checked = false;
 
     if (typeof global.initHotelDatePickers === 'function') {
@@ -2443,8 +2470,8 @@
     var agencyAddress = form.elements.agencyAddress
       ? String(form.elements.agencyAddress.value || '').trim()
       : '';
-    var agencyBilling = !!(form.elements.agencyBilling && form.elements.agencyBilling.checked);
-    if (agencyBilling && !agencyName) {
+    var agencyFlags = formBoardAgencyBillFlags(form);
+    if ((agencyFlags.room || agencyFlags.fb) && !agencyName) {
       showToast('Agency name is required for agency billing.', true);
       return;
     }
@@ -2465,10 +2492,12 @@
       agencyName: agencyName,
       agencyGst: agencyGst,
       agencyAddress: agencyAddress,
-      agencyBilling: agencyBilling,
+      agencyRoomBilling: agencyFlags.room,
+      agencyFbBilling: agencyFlags.fb,
+      agencyBilling: !!(agencyFlags.room || agencyFlags.fb),
       additionalRequests: additionalRequests
     };
-    if (agencyBilling && agencyName) {
+    if (agencyFlags.room && agencyName) {
       stay.invoiceTo = agencyName;
       stay.billingName = agencyName;
     }

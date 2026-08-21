@@ -1,0 +1,258 @@
+{% set de_soft_body_class = 'de-open su-module sales-report-module meal-plan-report-module' %}
+{% set de_soft_page_title = page_title ~ ' | Reports | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>{{ page_title }} | Reports | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module sales-report-module meal-plan-report-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=21">
+<link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
+{% endif %}
+
+<div class="main-wrapper" id="meal-plan-report-page"
+     data-sales-report
+     data-report-kind="meal-plan">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn de-sidebar-pin-btn" type="button" onclick="toggleDeSidebarExpandedPin()" title="Pin sidebar expanded" aria-label="Pin sidebar expanded" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>{{ page_title }}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools">
+        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download="{{ sales_report_export_filename }}">Export Excel</a>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="sr-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Meal plan filters"
+              data-clear-url="{{ sales_report_clear_url }}">
+          {% if preserve_from_hub %}
+          <input type="hidden" name="from_hub" value="reports">
+          {% endif %}
+          <input type="hidden" id="sr-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="sr-date-to" name="date_to" value="{{ date_to }}">
+
+          <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="sr-search-chip">
+            <label class="se-filter-chip-label" for="sr-search">Search</label>
+            <div class="se-filter-chip-control">
+              <input type="search" id="sr-search" class="pl-search-input pl-header-search" value="" placeholder="Room, guest, meal plan…" autocomplete="off" aria-label="Search meal plan rows">
+            </div>
+          </div>
+
+          <div class="se-filter-chip-date-host pl-date-range-host pl-header-field" id="sr-date-range-host">
+            <span class="se-filter-chip-label" id="sr-date-range-label">Date</span>
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range pl-header-field-listbox ep-form-listbox{% if active_date_filter %} is-filtered{% endif %}">
+              <div class="se-filter-chip-control">
+                <div class="an-range-wrap an-range-wrap--sales" id="sr-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="sr-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="sr-date-range-panel" aria-labelledby="sr-date-range-label sr-date-range-display">
+                    <span class="an-range-trigger-label">
+                      <span id="sr-date-range-display">{% if active_date_filter %}{{ date_from|report_date }}{% else %}Select date…{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="sr-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="sr-date-range-panel" role="dialog" aria-labelledby="sr-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="sr-date-range-panel-title">Date</div>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="sr-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="sr-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="sr-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="sr-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="sr-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="sr-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="sr-date-range-today">Today</button>
+                      <button type="button" class="btn" id="sr-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="sr-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+                <span class="se-filter-chip-chev" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </span>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <div class="pl-summary-row" aria-label="Meal plan summary">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Occupied rooms">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-6h6v6"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Occupied rooms</div>
+            <div class="pl-summary-value" id="mp-kpi-rooms">{{ kpis.occupied_rooms }}</div>
+            <div class="pl-summary-meta">{{ kpis.total_pax }} guest{{ '' if kpis.total_pax == 1 else 's' }}</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Breakfast covers">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Breakfast</div>
+            <div class="pl-summary-value" id="mp-kpi-breakfast">{{ kpis.breakfast }}</div>
+            <div class="pl-summary-meta">CP / MAP / AP</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Lunch covers">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M6 8h12v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Lunch</div>
+            <div class="pl-summary-value" id="mp-kpi-lunch">{{ kpis.lunch }}</div>
+            <div class="pl-summary-meta">AP only</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Dinner covers">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M5 10c0-3.5 3-6 7-6s7 2.5 7 6v2H5v-2z"/><path d="M8 21h8"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Dinner</div>
+            <div class="pl-summary-value" id="mp-kpi-dinner">{{ kpis.dinner }}</div>
+            <div class="pl-summary-meta">MAP / AP</div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Meal plan rooms">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          <span>In-house</span>
+        </div>
+        <span class="pl-count" id="sr-entry-count">{{ rows|length }} entr{{ 'y' if rows|length == 1 else 'ies' }}</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if rows %}
+        <div class="pl-table-wrap" tabindex="0" aria-label="Meal plan, scroll for more">
+          <table class="pl-table" id="sr-table" aria-label="Meal plan entries">
+            <thead>
+              <tr>
+                <th class="pl-sortable" data-sort="room" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Room</th>
+                <th class="pl-sortable" data-sort="guest" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Guest</th>
+                <th class="pl-sortable" data-sort="plan" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Meal plan</th>
+                <th class="pl-sortable pl-col-amount" data-sort="adults" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Adults</th>
+                <th class="pl-sortable pl-col-amount" data-sort="children" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Children</th>
+                <th class="pl-sortable pl-col-amount" data-sort="pax" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Pax</th>
+                <th class="pl-sortable pl-col-amount" data-sort="breakfast" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Breakfast</th>
+                <th class="pl-sortable pl-col-amount" data-sort="lunch" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Lunch</th>
+                <th class="pl-sortable pl-col-amount" data-sort="dinner" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Dinner</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in rows %}
+              <tr class="sr-row pl-expense-row"
+                  data-sort-row
+                  data-search="{{ [row.room_number or '', row.guest_name or '', row.plan_label or '', row.plan or '']|join(' ')|lower }}">
+                <td class="pl-col-code" data-sort-value="{{ row.room_number or '' }}"><span class="pl-expense-code">{{ row.room_number or '—' }}</span></td>
+                <td data-sort-value="{{ row.guest_name or '' }}">{{ row.guest_name or '—' }}</td>
+                <td data-sort-value="{{ row.plan or '' }}">{{ row.plan_label or row.plan or '—' }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.adults }}">{{ row.adults }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.children }}">{{ row.children }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.pax }}">{{ row.pax }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.breakfast }}">{{ row.breakfast }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.lunch }}">{{ row.lunch }}</td>
+                <td class="pl-col-amount" data-sort-value="{{ row.dinner }}">{{ row.dinner }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">No in-house rooms for this date.</div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=16"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=57"></script>
+<script src="{{ url_for('static', filename='sales_report.js') }}?v=8"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

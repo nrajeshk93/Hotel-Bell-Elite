@@ -206,7 +206,7 @@
         <div class="pos-inv-name-wrap" id="pos-inv-name-wrap">
           <label class="pos-inv-field" for="pos-inv-customer-name">
             <span>First name <abbr title="required">*</abbr></span>
-            <input type="text" id="pos-inv-customer-name" name="customer_name" placeholder="Guest first name" autocomplete="given-name" required aria-autocomplete="list" aria-controls="pos-inv-customer-name-suggest" aria-expanded="false">
+            <input type="text" id="pos-inv-customer-name" name="customer_name" placeholder="Enter first name" autocomplete="given-name" required aria-autocomplete="list" aria-controls="pos-inv-customer-name-suggest" aria-expanded="false">
           </label>
           <div class="pos-inv-customer-suggest" id="pos-inv-customer-name-suggest" role="listbox" hidden></div>
         </div>
@@ -444,7 +444,7 @@
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
 <script src="{{ url_for('static', filename='pos_settle.js') }}?v=6"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=140"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=144"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

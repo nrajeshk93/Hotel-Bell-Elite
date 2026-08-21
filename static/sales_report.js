@@ -198,6 +198,10 @@
     if (outlet && (outlet.value === 'all' || !outlet.value)) {
       outlet.removeAttribute('name');
     }
+    var agency = $('#sr-agency', form);
+    if (agency && (agency.value === 'all' || !agency.value)) {
+      agency.removeAttribute('name');
+    }
     var dateFrom = $('#sr-date-from', form);
     var dateTo = $('#sr-date-to', form);
     if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
@@ -230,6 +234,7 @@
 
     var dateFrom = $('#sr-date-from', form);
     var dateTo = $('#sr-date-to', form);
+    var singleDay = page.getAttribute('data-report-kind') === 'meal-plan';
     global.SalesDateRangePicker.init({
       wrapId: 'sr-date-range-wrap',
       triggerId: 'sr-date-range-trigger',
@@ -247,7 +252,12 @@
       grid0Id: 'sr-cal-grid0',
       grid1Id: 'sr-cal-grid1',
       emptyLabel: 'Select date…',
+      singleDay: singleDay,
       onBeforeSubmit: function () {
+        if (singleDay && dateFrom && dateTo && dateFrom.value) {
+          dateTo.value = dateFrom.value;
+          dateTo.setAttribute('name', 'date_to');
+        }
         if (dateFrom && !dateFrom.value) dateFrom.removeAttribute('name');
         if (dateTo && !dateTo.value) dateTo.removeAttribute('name');
         var status = $('#sr-status', form);
@@ -257,6 +267,10 @@
         var outlet = $('#sr-outlet', form);
         if (outlet && (outlet.value === 'all' || !outlet.value)) {
           outlet.removeAttribute('name');
+        }
+        var agency = $('#sr-agency', form);
+        if (agency && (agency.value === 'all' || !agency.value)) {
+          agency.removeAttribute('name');
         }
       }
     });
@@ -311,8 +325,21 @@
     if (form) prepareAndSubmit(form);
   }
 
+  function srAgencyChanged() {
+    var form = document.getElementById('sr-filter-form');
+    if (form) prepareAndSubmit(form);
+  }
+
+  function findSalesReportPage() {
+    return (
+      document.getElementById('sales-report-page') ||
+      document.getElementById('meal-plan-report-page') ||
+      document.querySelector('[data-sales-report]')
+    );
+  }
+
   function initSalesReportPage() {
-    var page = document.getElementById('sales-report-page');
+    var page = findSalesReportPage();
     if (!page) return;
     formatAmounts(page);
     bindClientSearch(page);
@@ -323,10 +350,41 @@
       global.initEpListboxes();
     }
     updateVisibleCount(page);
+    bindAgencyBillingLiveRefresh(page);
+  }
+
+  /** Agency billing mutates as invoices settle — refresh when returning to the tab/page. */
+  function bindAgencyBillingLiveRefresh(page) {
+    if (!page || page.getAttribute('data-report-kind') !== 'agency') return;
+    if (page.getAttribute('data-sr-live-refresh-bound') === '1') return;
+    page.setAttribute('data-sr-live-refresh-bound', '1');
+    var lastHiddenAt = 0;
+
+    function softReload() {
+      if (typeof global.deSoftRefresh === 'function') {
+        global.deSoftRefresh(window.location.href);
+      } else {
+        window.location.reload();
+      }
+    }
+
+    document.addEventListener('visibilitychange', function () {
+      if (document.hidden) {
+        lastHiddenAt = Date.now();
+        return;
+      }
+      if (!findSalesReportPage()) return;
+      if (lastHiddenAt && Date.now() - lastHiddenAt > 1500) softReload();
+    });
+
+    global.addEventListener('pageshow', function (ev) {
+      if (ev && ev.persisted) softReload();
+    });
   }
 
   global.srStatusChanged = srStatusChanged;
   global.srOutletChanged = srOutletChanged;
+  global.srAgencyChanged = srAgencyChanged;
   global.initSalesReportPage = initSalesReportPage;
 
   if (document.readyState === 'loading') {

@@ -54,6 +54,7 @@ html, body {
 }
 
 .hri-sheet {
+  position: relative;
   width: 210mm;
   min-height: 297mm;
   margin: 18px auto 32px;
@@ -61,6 +62,31 @@ html, body {
   background: #fff;
   box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
   color: var(--hri-ink);
+}
+
+.hri-cancelled-watermark{
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+  z-index:8;
+  overflow:hidden;
+}
+.hri-cancelled-watermark span{
+  display:inline-block;
+  font-family:Arial,Helvetica,sans-serif;
+  font-size:54px;
+  font-weight:800;
+  letter-spacing:.14em;
+  line-height:1;
+  color:rgba(185,28,28,.34);
+  border:3px solid rgba(185,28,28,.4);
+  padding:10px 18px;
+  transform:rotate(-34deg);
+  text-transform:uppercase;
+  white-space:nowrap;
 }
 
 .hri-header {
@@ -581,6 +607,10 @@ html, body {
     padding: 0;
     box-shadow: none;
   }
+  .hri-cancelled-watermark span{
+    color:rgba(185,28,28,.42);
+    border-color:rgba(185,28,28,.48);
+  }
   @page {
     size: A4 portrait;
     margin: 8mm 9mm;
@@ -729,4 +759,66 @@ html, body {
   .hri-sign-sub {
     font-size: 10px;
   }
+}
+
+/* In-page invoice preview when pop-up windows are blocked */
+.hri-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(2px);
+}
+.hri-preview-shell {
+  display: flex;
+  flex-direction: column;
+  width: min(960px, 100%);
+  max-height: 100%;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.28);
+  overflow: hidden;
+}
+.hri-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hri-line);
+  background: #fff;
+}
+.hri-preview-title {
+  font: 600 14px/1.3 Manrope, "Segoe UI", sans-serif;
+  color: var(--hri-navy);
+}
+.hri-preview-actions {
+  display: flex;
+  gap: 8px;
+}
+.hri-preview-actions button {
+  appearance: none;
+  border: 1px solid var(--hri-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--hri-ink);
+  font: 600 13px/1 Manrope, "Segoe UI", sans-serif;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.hri-preview-actions button:hover,
+.hri-preview-actions button:focus-visible {
+  border-color: var(--hri-gold);
+  color: var(--hri-navy);
+}
+.hri-preview-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #e8edf3;
 }

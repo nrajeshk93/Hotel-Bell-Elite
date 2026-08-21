@@ -16,10 +16,12 @@
 {% set agency_gst = (stay.agencyGst or stay.agency_gst or '')|trim %}
 {% set agency_address = (stay.agencyAddress or stay.agency_address or '')|trim %}
 {% set has_agency = show_guest and (agency_name or agency_gst or agency_address) %}
-{% if stay.agencyBilling %}
-  {% set agency_billing = 'Invoice to ' ~ (stay.invoiceTo or stay.billingName or agency_name or '—') %}
+{% if stay.agencyRoomBilling or stay.agencyFbBilling %}
+  {% set agency_billing = 'Room: ' ~ ('agency' if stay.agencyRoomBilling else 'guest') ~ ' · F&B: ' ~ ('agency' if stay.agencyFbBilling else 'guest') %}
+{% elif stay.agencyBilling %}
+  {% set agency_billing = 'Room: agency · F&B: agency' %}
 {% elif has_agency %}
-  {% set agency_billing = 'Guest' %}
+  {% set agency_billing = 'Room: guest · F&B: guest' %}
 {% else %}
   {% set agency_billing = '' %}
 {% endif %}
@@ -39,8 +41,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=135">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=142">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=8">
 <script>
 (function(){
   try{
@@ -58,8 +60,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=135">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=142">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=8">
 {% endif %}
 
 <div
@@ -375,8 +377,20 @@
         <div class="hrd-charges-body" id="hrd-charges-body" hidden>
           <div class="hrd-charges-section" id="hrd-charges-hotel-section">
             <h3 class="hrd-charges-section-title">Hotel Charges</h3>
+            <div class="hrd-charges-subsection" id="hrd-charges-invoiced-section" hidden>
+              <h4 class="hrd-charges-subtitle">Invoiced</h4>
+              <div class="hrd-charges-invoiced-history" id="hrd-charges-invoiced-history"></div>
+            </div>
+            <div class="hrd-charges-subsection" id="hrd-charges-pending-section" hidden>
+              <h4 class="hrd-charges-subtitle">Pending charges</h4>
+              <ul class="hrd-charges-list" id="hrd-charges-pending-list"></ul>
+            </div>
             <ul class="hrd-charges-list" id="hrd-charges-list"></ul>
             <dl class="hrd-charges-totals" id="hrd-charges-totals">
+              <div>
+                <dt>Room Charges <span class="hrd-charges-muted">(excl. tax)</span></dt>
+                <dd data-charges-subtotal>—</dd>
+              </div>
               <div data-charges-discount-row hidden>
                 <dt>Discount <span class="hrd-charges-muted" data-charges-discount-hint></span></dt>
                 <dd data-charges-discount>—</dd>
@@ -390,30 +404,72 @@
           </div>
           <div class="hrd-charges-section hrd-charges-fb-section" id="hrd-charges-fb-section" hidden>
             <h3 class="hrd-charges-section-title">F&amp;B Room Transfers</h3>
+            <div class="hrd-charges-subsection" id="hrd-charges-fb-invoiced-section" hidden>
+              <h4 class="hrd-charges-subtitle">Invoiced</h4>
+              <div class="hrd-charges-invoiced-history" id="hrd-charges-fb-invoiced-history"></div>
+            </div>
+            <div class="hrd-charges-subsection" id="hrd-charges-fb-pending-section" hidden>
+              <h4 class="hrd-charges-subtitle">Pending charges</h4>
+              <ul class="hrd-charges-list" id="hrd-charges-fb-pending-list"></ul>
+            </div>
             <p class="hrd-charges-invoice-no" id="hrd-charges-fb-invoice-no" hidden></p>
             <ul class="hrd-charges-list" id="hrd-charges-fb-list"></ul>
             <dl class="hrd-charges-totals hrd-charges-fb-totals">
-              <div><dt>F&amp;B Subtotal</dt><dd data-charges-fb-total>—</dd></div>
+              <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-fb-cgst>—</dd></div>
+              <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-fb-ugst>—</dd></div>
+              <div><dt>F&amp;B Total</dt><dd data-charges-fb-total>—</dd></div>
               <div class="hrd-charges-balance"><dt>F&amp;B Balance</dt><dd data-charges-fb-balance>—</dd></div>
             </dl>
           </div>
           <dl class="hrd-charges-totals hrd-charges-combined" id="hrd-charges-combined" hidden>
-            <div class="hrd-charges-balance"><dt>Combined Checkout Due</dt><dd data-charges-combined-balance>—</dd></div>
+            <div>
+              <dt>Hotel Due</dt>
+              <dd data-charges-combined-hotel>—</dd>
+            </div>
+            <div>
+              <dt>F&amp;B Due</dt>
+              <dd data-charges-combined-fb>—</dd>
+            </div>
+            <div class="hrd-charges-balance">
+              <dt>Combined Checkout Due</dt>
+              <dd data-charges-combined-balance>—</dd>
+            </div>
           </dl>
           <div class="hrd-charges-actions" id="hrd-charges-actions" hidden>
-            <a
+            <button
+              type="button"
               class="hrd-btn hrd-btn--primary"
-              id="hrd-generate-invoice"
-              href="{{ url_for('hotel_room_invoice_page', room_id=room.id) }}"
+              id="hrd-generate-hotel-invoice"
+              data-invoice-kind="hotel"
               hidden
             >
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+              Generate Room Invoice
+            </button>
+            <button
+              type="button"
+              class="hrd-btn hrd-btn--primary"
+              id="hrd-generate-fb-invoice"
+              data-invoice-kind="fb"
+              hidden
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>
+              Generate F&amp;B Invoice
+            </button>
+            <button
+              type="button"
+              class="hrd-btn hrd-btn--primary"
+              id="hrd-generate-invoice"
+              data-invoice-kind="all"
+              hidden
+              aria-hidden="true"
+            >
               Generate Invoice
-            </a>
+            </button>
             <a
               class="hrd-link-btn"
               id="hrd-record-payment"
-              href="{{ url_for('hotel_room_invoice_page', room_id=room.id) }}?settle=1"
+              href="{{ url_for('hotel_room_invoice_page', room_id=room.id) }}?kind=hotel&settle=1"
               hidden
             >
               Record Payment
@@ -482,11 +538,7 @@
           <h2 id="hrd-checkin-title">New Check-In</h2>
         </div>
       </div>
-      <div class="hrd-modal-head-actions">
-        <button type="button" class="hrd-modal-close" id="hrd-checkin-close" aria-label="Close" data-hrd-checkin-close>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
+      <div class="hrd-modal-head-actions"></div>
     </header>
 
     <form class="hrd-modal-form" id="hrd-checkin-form" novalidate data-de-hard-nav>
@@ -656,13 +708,26 @@
                 <textarea name="agencyAddress" id="hrd-ci-agency-address" rows="2" placeholder="Agency address"></textarea>
               </label>
               <div class="hrd-field hrd-field--span2 hrd-agency-billing-wrap">
-                <label class="hrd-check">
-                  <input type="checkbox" name="agencyBilling" id="hrd-ci-agency-billing" value="1">
-                  Agency Billing
-                </label>
-                <p class="hrd-agency-billing-hint" id="hrd-ci-agency-billing-hint" hidden>
-                  Invoice will be billed to <strong id="hrd-ci-agency-billing-name">Agency Name</strong>
-                </p>
+                <div class="hrd-agency-billing-row">
+                  <div class="hrd-agency-billing-item">
+                    <label class="hrd-check">
+                      <input type="checkbox" name="agencyRoomBilling" id="hrd-ci-agency-room-billing" value="1">
+                      Room — Agency Billing
+                    </label>
+                    <p class="hrd-agency-billing-hint" id="hrd-ci-agency-room-billing-hint" hidden>
+                      Room invoice will be billed to <strong id="hrd-ci-agency-room-billing-name">Agency Name</strong>
+                    </p>
+                  </div>
+                  <div class="hrd-agency-billing-item hrd-agency-billing-item--end">
+                    <label class="hrd-check">
+                      <input type="checkbox" name="agencyFbBilling" id="hrd-ci-agency-fb-billing" value="1">
+                      F&amp;B — Agency Billing
+                    </label>
+                    <p class="hrd-agency-billing-hint" id="hrd-ci-agency-fb-billing-hint" hidden>
+                      F&amp;B invoice will be billed to <strong id="hrd-ci-agency-fb-billing-name">Agency Name</strong>
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -927,13 +992,26 @@
             <textarea name="agencyAddress" id="hrd-reserve-agency-address" rows="2" placeholder="Agency address"></textarea>
           </label>
           <div class="hrd-field hrd-field--span2 hrd-agency-billing-wrap">
-            <label class="hrd-check">
-              <input type="checkbox" name="agencyBilling" id="hrd-reserve-agency-billing" value="1">
-              Agency Billing
-            </label>
-            <p class="hrd-agency-billing-hint" id="hrd-reserve-agency-billing-hint" hidden>
-              Invoice will be billed to <strong id="hrd-reserve-agency-billing-name">Agency Name</strong>
-            </p>
+            <div class="hrd-agency-billing-row">
+              <div class="hrd-agency-billing-item">
+                <label class="hrd-check">
+                  <input type="checkbox" name="agencyRoomBilling" id="hrd-reserve-agency-room-billing" value="1">
+                  Room — Agency Billing
+                </label>
+                <p class="hrd-agency-billing-hint" id="hrd-reserve-agency-room-billing-hint" hidden>
+                  Room invoice will be billed to <strong id="hrd-reserve-agency-room-billing-name">Agency Name</strong>
+                </p>
+              </div>
+              <div class="hrd-agency-billing-item hrd-agency-billing-item--end">
+                <label class="hrd-check">
+                  <input type="checkbox" name="agencyFbBilling" id="hrd-reserve-agency-fb-billing" value="1">
+                  F&amp;B — Agency Billing
+                </label>
+                <p class="hrd-agency-billing-hint" id="hrd-reserve-agency-fb-billing-hint" hidden>
+                  F&amp;B invoice will be billed to <strong id="hrd-reserve-agency-fb-billing-name">Agency Name</strong>
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -960,7 +1038,6 @@
         </span>
         <div>
           <h2 id="hrd-invoice-title">Generate Invoice</h2>
-          <p id="hrd-invoice-subtitle">Lock charges and record payment</p>
         </div>
       </div>
       <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-invoice-close>
@@ -969,12 +1046,17 @@
     </header>
     <form class="hrd-dialog-body" id="hrd-invoice-form" novalidate>
       <input type="hidden" id="hrd-invoice-mode" value="generate">
+      <input type="hidden" id="hrd-invoice-kind" value="all">
       <div class="hrd-invoice-summary" id="hrd-invoice-summary" aria-label="Charge summary">
         <div class="hrd-invoice-block" id="hrd-invoice-hotel-block">
           <h3 class="hrd-charges-section-title">Hotel Invoice</h3>
           <p class="hrd-charges-invoice-no" id="hrd-invoice-hotel-no" hidden></p>
           <ul class="hrd-charges-list" id="hrd-invoice-lines"></ul>
           <dl class="hrd-charges-totals">
+            <div>
+              <dt>Room Charges <span class="hrd-charges-muted">(excl. tax)</span></dt>
+              <dd id="hrd-invoice-subtotal">—</dd>
+            </div>
             <div id="hrd-invoice-discount-row" hidden>
               <dt>Discount <span class="hrd-charges-muted" id="hrd-invoice-discount-hint"></span></dt>
               <dd id="hrd-invoice-discount">—</dd>
@@ -991,6 +1073,8 @@
           <p class="hrd-charges-invoice-no" id="hrd-invoice-fb-no" hidden></p>
           <ul class="hrd-charges-list" id="hrd-invoice-fb-lines"></ul>
           <dl class="hrd-charges-totals">
+            <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-fb-cgst">—</dd></div>
+            <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-fb-ugst">—</dd></div>
             <div><dt>F&amp;B Total</dt><dd id="hrd-invoice-fb-total">—</dd></div>
             <div class="hrd-charges-balance"><dt>F&amp;B Balance</dt><dd id="hrd-invoice-fb-balance">—</dd></div>
           </dl>
@@ -1171,10 +1255,10 @@
 </div>
 </div>
 
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=63"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=67"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=17"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=175"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=24"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=194"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

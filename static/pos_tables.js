@@ -44,12 +44,20 @@
     return outlet;
   }
 
-  /** Cancellation Access (module tree) — edit KOT lines even after bill sent. */
+  /** Cancellation (module tree) — edit KOT lines even after bill sent. */
   function canCancelKotLines() {
     var root =
       document.getElementById('pos-tables-page') ||
       document.querySelector('[data-pos-can-cancel-kot]');
     return !!(root && root.getAttribute('data-pos-can-cancel-kot') === '1');
+  }
+
+  /** Edit Access (module tree) — reopen/edit unsettled invoices. */
+  function canEditUnsettledInvoices() {
+    var root =
+      document.getElementById('pos-tables-page') ||
+      document.querySelector('[data-pos-can-edit]');
+    return !!(root && root.getAttribute('data-pos-can-edit') === '1');
   }
 
   function kotTokenLinesLocked(token) {
@@ -74,6 +82,10 @@
   }
 
   var STATUS_KEYS = ['available', 'occupied', 'reserved', 'cleaning', 'inactive'];
+  var OCCUPIED_ATTENTION_HOURS = 4;
+  var OCCUPIED_ATTENTION_MS = OCCUPIED_ATTENTION_HOURS * 60 * 60 * 1000;
+  var KOT_PENDING_ATTENTION_MINUTES = 30;
+  var KOT_PENDING_ATTENTION_MS = KOT_PENDING_ATTENTION_MINUTES * 60 * 1000;
   var STATUS_LABELS = {
     available: 'Available',
     occupied: 'Occupied',
@@ -147,6 +159,8 @@
       banner.hidden = true;
       banner.setAttribute('hidden', '');
       banner.classList.remove('is-shown');
+      banner.classList.remove('pos-kot-pending-banner--attention');
+      banner.setAttribute('data-attention', '0');
       banner.setAttribute('aria-hidden', 'true');
       closeKotPendingModal();
       return;
@@ -158,11 +172,23 @@
     var badge = banner.querySelector('[data-kot-pending-count]');
     var copy = banner.querySelector('[data-kot-pending-copy]');
     if (badge) badge.textContent = String(count);
+    syncKotPendingBannerAttention(data);
     if (copy) {
-      copy.textContent =
-        count === 1
-          ? '1 table has orders that are not yet sent to kitchen.'
-          : count + ' tables have orders that are not yet sent to kitchen.';
+      var overdueCount = kotPendingOverdueCount(data);
+      if (overdueCount > 0) {
+        copy.textContent =
+          overdueCount === 1
+            ? '1 table has kitchen orders waiting over 30 minutes to send.'
+            : overdueCount +
+              ' of ' +
+              count +
+              ' tables have kitchen orders waiting over 30 minutes to send.';
+      } else {
+        copy.textContent =
+          count === 1
+            ? '1 table has orders that are not yet sent to kitchen.'
+            : count + ' tables have orders that are not yet sent to kitchen.';
+      }
     }
     var modal = document.getElementById('pos-kot-pending-modal');
     if (modal && !modal.hidden) paintKotPendingModal(data);
@@ -239,7 +265,7 @@
       .map(function (t) {
         var status = mapStatus(t.table_status || 'occupied');
         var seats = t.seats != null && t.seats !== '' ? String(t.seats) + ' Seater' : '';
-        var when = formatKotPendingWhen(t.saved_at);
+        var when = formatKotPendingWhen(t.pending_since || t.pendingSince || t.saved_at);
         var items = Number(t.pending_qty) > 0 ? Number(t.pending_qty) : Number(t.pending_items) || 0;
         var kotNo = t.kot_no || t.order_no || '—';
         return (
@@ -1269,6 +1295,28 @@
     menu.style.top = top + 'px';
   }
 
+  function syncTableMenuActions(menu, tile) {
+    if (!menu || !tile) return;
+    var status = mapStatus(tile.getAttribute('data-status') || 'available');
+    $all('[data-table-action]', menu).forEach(function (btn) {
+      var action = normalize(btn.getAttribute('data-table-action') || '');
+      var show = true;
+      if (action === 'available') {
+        /* Occupied frees only after invoice settle/cancel — not from this menu.
+           Already-available tables do not need "Set available". */
+        show =
+          status === 'reserved' ||
+          status === 'cleaning' ||
+          status === 'inactive';
+      } else if (action === 'occupied') {
+        show = status !== 'occupied';
+      } else if (action === 'reserve') {
+        show = status !== 'reserved' && status !== 'occupied';
+      }
+      btn.hidden = !show;
+    });
+  }
+
   function openTableMenu(btn, tile) {
     closeTableMenu();
     var menu = tile && tile.querySelector('.pos-table-menu');
@@ -1279,6 +1327,7 @@
     menu.__posMenuTile = tile;
     var host = document.getElementById('de-fs-app') || document.body;
     host.appendChild(menu);
+    syncTableMenuActions(menu, tile);
     tile.classList.add('is-menu-open');
     menu.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
@@ -1300,9 +1349,30 @@
     var tables = data.tables || [];
     var i;
     var found = false;
+    var mapped = mapStatus(nextStatus);
     for (i = 0; i < tables.length; i++) {
       if (tables[i].id === tableId) {
-        tables[i].status = mapStatus(nextStatus);
+        tables[i].status = mapped;
+        if (mapped === 'occupied') {
+          if (!tables[i].occupiedSince) {
+            var now = new Date();
+            tables[i].occupiedSince =
+              now.getFullYear() +
+              '-' +
+              String(now.getMonth() + 1).padStart(2, '0') +
+              '-' +
+              String(now.getDate()).padStart(2, '0') +
+              ' ' +
+              String(now.getHours()).padStart(2, '0') +
+              ':' +
+              String(now.getMinutes()).padStart(2, '0') +
+              ':' +
+              String(now.getSeconds()).padStart(2, '0');
+          }
+        } else {
+          delete tables[i].occupiedSince;
+          delete tables[i].occupied_since;
+        }
         found = true;
         break;
       }
@@ -1312,6 +1382,92 @@
     renderFloor(root, data);
     updateKpis(root);
     applyFilters(root);
+  }
+
+  function parseOccupiedSince(value) {
+    var raw = String(value || '').trim();
+    if (!raw) return null;
+    if (raw.indexOf('T') !== -1) {
+      var iso = new Date(raw);
+      return isNaN(iso.getTime()) ? null : iso;
+    }
+    var parts = raw.split(/[\sT]/);
+    if (parts.length < 2) return null;
+    var dp = parts[0].split('-');
+    var tp = parts[1].split(':');
+    if (dp.length < 3 || tp.length < 2) return null;
+    return new Date(
+      Number(dp[0]),
+      Number(dp[1]) - 1,
+      Number(dp[2]),
+      Number(tp[0]),
+      Number(tp[1]),
+      Number(tp[2] || 0)
+    );
+  }
+
+  function isOverdueSince(sinceValue, thresholdMs) {
+    var since = parseOccupiedSince(sinceValue);
+    if (!since) return false;
+    return Date.now() - since.getTime() >= thresholdMs;
+  }
+
+  function tableOccupiedTooLong(sinceValue) {
+    return isOverdueSince(sinceValue, OCCUPIED_ATTENTION_MS);
+  }
+
+  function kotPendingTableOverdue(table) {
+    var since = String(
+      (table && (table.pending_since || table.pendingSince || table.saved_at)) || ''
+    ).trim();
+    return isOverdueSince(since, KOT_PENDING_ATTENTION_MS);
+  }
+
+  function kotPendingOverdueCount(summary) {
+    var tables = (summary && summary.tables) || [];
+    var count = 0;
+    tables.forEach(function (table) {
+      if (kotPendingTableOverdue(table)) count += 1;
+    });
+    return count;
+  }
+
+  function syncKotPendingBannerAttention(summary) {
+    var banner = document.getElementById('pos-kot-pending-banner');
+    if (!banner || banner.hidden) return;
+    var overdue = kotPendingOverdueCount(summary || currentKotPending) > 0;
+    banner.classList.toggle('pos-kot-pending-banner--attention', overdue);
+    banner.setAttribute('data-attention', overdue ? '1' : '0');
+    var title = banner.querySelector('.pos-kot-pending-banner-title');
+    if (title) {
+      title.textContent = overdue
+        ? 'Kitchen Orders Pending — overdue'
+        : 'Kitchen Orders Pending';
+    }
+  }
+
+  function syncTableAttention(tile) {
+    if (!tile) return '';
+    var status = mapStatus(tile.getAttribute('data-status'));
+    var since = tile.getAttribute('data-occupied-since') || '';
+    var longOccupied = status === 'occupied' && tableOccupiedTooLong(since);
+    tile.classList.toggle('pos-table-tile--attention', longOccupied);
+    tile.setAttribute('data-attention', longOccupied ? '1' : '0');
+    var base =
+      tile.getAttribute('data-display-name') ||
+      tile.getAttribute('data-name') ||
+      'Table';
+    var label = String(tile.getAttribute('aria-label') || base).trim();
+    label = label.replace(/, Long occupied \(4\+ hours\)$/i, '');
+    if (longOccupied) {
+      label = (label || base) + ', Long occupied (4+ hours)';
+    }
+    tile.setAttribute('aria-label', label || base);
+    return longOccupied ? 'Long occupied (4+ hours)' : '';
+  }
+
+  function syncAllTableAttention(root) {
+    $all('[data-table-tile]', root).forEach(syncTableAttention);
   }
 
   function mapStatus(status) {
@@ -1368,6 +1524,52 @@
     return !status || status === 'all' ? '' : status;
   }
 
+  function statusFilterLabel(root, key) {
+    if (!key || key === 'all') return 'All Status';
+    var listbox = $('#pos-tables-status-list', root);
+    if (!listbox) {
+      return key.charAt(0).toUpperCase() + key.slice(1);
+    }
+    var label = '';
+    $all('.se-filter-listbox-option', listbox).forEach(function (opt) {
+      if ((opt.getAttribute('data-value') || '') === key) {
+        label = opt.getAttribute('data-label') || opt.textContent.trim();
+      }
+    });
+    return label || key.charAt(0).toUpperCase() + key.slice(1);
+  }
+
+  function syncStatusListbox(root, key) {
+    var want = !key || key === 'all' ? 'all' : mapStatus(key);
+    var input = $('#pos-tables-status-filter', root);
+    if (input) input.value = want;
+    var valueEl = $('#pos-tables-status-value', root);
+    if (valueEl) valueEl.textContent = statusFilterLabel(root, want);
+    var listbox = $('#pos-tables-status-list', root);
+    if (!listbox) return;
+    $all('.se-filter-listbox-option', listbox).forEach(function (opt) {
+      var on = (opt.getAttribute('data-value') || '') === want;
+      opt.classList.toggle('is-selected', on);
+      opt.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function syncKpiSelection(root) {
+    var current = statusFilterValue(root) || 'all';
+    var occupiedCard = root.querySelector('.pos-kpi[data-kpi="occupied"]');
+    if (!occupiedCard) return;
+    var active = current === 'occupied';
+    occupiedCard.classList.toggle('is-active', active);
+    occupiedCard.setAttribute('aria-pressed', active ? 'true' : 'false');
+  }
+
+  function setStatusFilter(root, key) {
+    var want = !key || key === 'all' ? 'all' : mapStatus(key);
+    syncStatusListbox(root, want);
+    syncKpiSelection(root);
+    applyFilters(root);
+  }
+
   function updateKpis(root) {
     var tiles = $all('[data-table-tile]', root);
     var counts = { total: tiles.length };
@@ -1391,6 +1593,10 @@
       if (!el || !key || key === 'sales' || key === 'unsettled') return;
       el.textContent = String(counts[key] != null ? counts[key] : 0);
     });
+    if ((counts.occupied || 0) <= 0 && statusFilterValue(root) === 'occupied') {
+      syncStatusListbox(root, 'all');
+      syncKpiSelection(root);
+    }
   }
 
   function summarizeSalesFromInvoices(invoices) {
@@ -1563,6 +1769,7 @@
     if (floor) {
       floor.hidden = hasTiles && visible === 0;
     }
+    syncAllTableAttention(root);
   }
 
   function renderAreaPills(root, areas) {
@@ -1618,6 +1825,10 @@
     var areaKey = t.areaId || fallbackAreaId || '';
     var guestName = tableGuestName(t);
     var subtitle = tableSubtitle(t);
+    var occupiedSince =
+      status === 'occupied'
+        ? String(t.occupiedSince || t.occupied_since || '').trim()
+        : '';
     var menuHtml =
       '<button type="button" class="pos-table-menu-item" role="menuitem" data-table-action="transfer">Transfer table</button>' +
       (isMerged
@@ -1660,7 +1871,11 @@
       (isPrimary ? '1' : '0') +
       '" data-merge-member="' +
       (isMember ? '1' : '0') +
-      '" tabindex="0">' +
+      '"' +
+      (occupiedSince
+        ? ' data-occupied-since="' + escapeHtml(occupiedSince) + '"'
+        : '') +
+      ' tabindex="0">' +
       '<div class="pos-table-tile-top">' +
       '<span class="pos-table-shape-icon" aria-hidden="true">' +
       shapeIcon(shape) +
@@ -1825,6 +2040,7 @@
     floor.innerHTML = html;
     floor.setAttribute('data-view', view);
     floor.hidden = false;
+    syncAllTableAttention(root);
   }
 
   function bindAreaPills(root) {
@@ -1889,6 +2105,7 @@
     if (!tile || !action) return;
     var name = tile.getAttribute('data-name') || 'Table';
     var id = tile.getAttribute('data-id') || '';
+    var status = mapStatus(tile.getAttribute('data-status') || 'available');
     closeTableMenu();
     if (action === 'open') {
       /* Occupied tables resume their open order on the invoice page instead of
@@ -1910,10 +2127,12 @@
       return;
     }
     if (action === 'reserve') {
+      if (status === 'reserved' || status === 'occupied') return;
       setTableStatus(root, id, 'reserved');
       return;
     }
     if (action === 'occupied') {
+      if (status === 'occupied') return;
       setTableStatus(root, id, 'occupied');
       return;
     }
@@ -1922,6 +2141,8 @@
       return;
     }
     if (action === 'available') {
+      /* Occupied → available only after invoice settle/cancel. */
+      if (status === 'available' || status === 'occupied') return;
       setTableStatus(root, id, 'available');
       return;
     }
@@ -2017,7 +2238,32 @@
 
   function posTablesStatusChanged() {
     var root = document.getElementById('pos-tables-page');
-    if (root) applyFilters(root);
+    if (!root) return;
+    syncKpiSelection(root);
+    applyFilters(root);
+  }
+
+  function bindKpiFilters(root) {
+    var occupiedKpi = root.querySelector('.pos-kpi[data-kpi="occupied"]');
+    if (!occupiedKpi || occupiedKpi.getAttribute('data-filter-bound') === '1') return;
+    occupiedKpi.setAttribute('data-filter-bound', '1');
+    occupiedKpi.setAttribute('role', 'button');
+    occupiedKpi.setAttribute('tabindex', '0');
+    occupiedKpi.setAttribute('aria-pressed', 'false');
+    occupiedKpi.setAttribute('title', 'Filter occupied tables');
+    function toggleOccupiedFilter() {
+      var current = statusFilterValue(root);
+      setStatusFilter(root, current === 'occupied' ? 'all' : 'occupied');
+    }
+    occupiedKpi.addEventListener('click', function (event) {
+      event.preventDefault();
+      toggleOccupiedFilter();
+    });
+    occupiedKpi.addEventListener('keydown', function (event) {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      toggleOccupiedFilter();
+    });
   }
 
   function paintTablesPage(root, data) {
@@ -2491,7 +2737,7 @@
       return;
     }
     if (!canCancelKotLines()) {
-      toast('Cancellation Access is required to reduce kitchen-sent items.');
+      toast('Cancellation is required to reduce kitchen-sent items.');
       syncKotTokensSaveButton();
       return;
     }
@@ -2741,7 +2987,7 @@
           (linesLocked
             ? '<p class="pos-kot-token-bill-lock">Bill sent — resend disabled</p>'
             : billSent
-              ? '<p class="pos-kot-token-bill-lock is-soft">Bill sent — Cancellation Access can still edit</p>'
+              ? '<p class="pos-kot-token-bill-lock is-soft">Bill sent — Cancellation can still edit</p>'
               : '') +
           '<div class="pos-kot-token-panel-tools">' +
           '<button type="button" class="pos-kot-token-link" data-kot-select-all="' +
@@ -3188,8 +3434,8 @@
 
   function editTodayInvoice(invoiceId, btn) {
     if (!invoiceId) return;
-    if (!canCancelKotLines()) {
-      toast('Cancellation Access is required to edit unsettled invoices.');
+    if (!canEditUnsettledInvoices()) {
+      toast('Edit Access is required to edit unsettled invoices.');
       return;
     }
     if (btn) btn.disabled = true;
@@ -3256,7 +3502,7 @@
   function openCancelInvoiceModal(invoiceId, btn) {
     if (!invoiceId) return;
     if (!canCancelKotLines()) {
-      toast('Cancellation Access is required to cancel invoices.');
+      toast('Cancellation is required to cancel invoices.');
       return;
     }
     var inv = findTodayInvoiceById(invoiceId);
@@ -3489,7 +3735,8 @@
     var cancelSvg =
       '<svg viewBox="0 0 24 24" aria-hidden="true">' +
       '<circle cx="12" cy="12" r="9"/><path d="m9 9 6 6M15 9l-6 6"/></svg>';
-    var showMutate = canCancelKotLines();
+    var showEdit = canEditUnsettledInvoices();
+    var showCancel = canCancelKotLines();
 
     rowsEl.innerHTML = invoices
       .map(function (inv) {
@@ -3521,23 +3768,29 @@
             : statusKey === 'cancelled'
               ? ' is-cancelled'
               : ' is-unsettled';
-        var mutateBtns =
-          showMutate && unsettled
-            ? '<button type="button" class="act-btn edit pos-today-invoice-btn--edit" data-today-invoice-edit="' +
+        var mutateBtns = '';
+        if (unsettled && (showEdit || showCancel)) {
+          if (showEdit) {
+            mutateBtns +=
+              '<button type="button" class="act-btn edit pos-today-invoice-btn--edit" data-today-invoice-edit="' +
               escapeHtml(id) +
               '" data-tip="Edit" aria-label="Edit invoice ' +
               escapeHtml(orderNo) +
               '">' +
               editSvg +
-              '</button>' +
+              '</button>';
+          }
+          if (showCancel) {
+            mutateBtns +=
               '<button type="button" class="act-btn cancel pos-today-invoice-btn--cancel" data-today-invoice-cancel="' +
               escapeHtml(id) +
               '" data-tip="Cancel" aria-label="Cancel invoice ' +
               escapeHtml(orderNo) +
               '">' +
               cancelSvg +
-              '</button>'
-            : '';
+              '</button>';
+          }
+        }
         return (
           '<tr class="pos-today-invoice-row' +
           rowClass +
@@ -3811,6 +4064,8 @@
     bindAreaPills(root);
     bindViewToggle(root);
     bindSearch(root);
+    bindKpiFilters(root);
+    syncKpiSelection(root);
     bindTileInteractions(root);
     bindTransferTableModal();
     bindMergeTablesModal();
@@ -3825,6 +4080,19 @@
     loadFloorFromApi(function (data) {
       paintTablesPage(root, data || loadFloorDataCached());
     });
+    if (root.__posTableAttentionTimer) {
+      clearInterval(root.__posTableAttentionTimer);
+    }
+    root.__posTableAttentionTimer = setInterval(function () {
+      if (!root.isConnected) {
+        clearInterval(root.__posTableAttentionTimer);
+        root.__posTableAttentionTimer = null;
+        return;
+      }
+      if (document.hidden) return;
+      syncAllTableAttention(root);
+      syncKotPendingBannerAttention(currentKotPending);
+    }, 60000);
   }
 
   global.posTablesStatusChanged = posTablesStatusChanged;

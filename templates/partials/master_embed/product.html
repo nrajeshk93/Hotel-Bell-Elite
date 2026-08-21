@@ -98,6 +98,12 @@
 
   <script>
   (function bootProductEmbed(){
+    /* Masters modal paints first, then runs initStoresPage after rAF — avoid double init. */
+    if (document.getElementById('md-master-modal-inject') &&
+        document.getElementById('md-master-modal') &&
+        document.getElementById('md-master-modal').classList.contains('open')) {
+      return;
+    }
     try {
       if (typeof window.initStoresPage === 'function') window.initStoresPage();
       else if (typeof window.initEpListboxes === 'function') window.initEpListboxes();

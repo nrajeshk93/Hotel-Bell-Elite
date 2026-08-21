@@ -208,6 +208,16 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(tile.get("customerName"), "Rajesh Kumar")
         self.assertEqual(tile.get("customer_name"), "Rajesh Kumar")
 
+    def test_floor_api_includes_occupied_since_from_open_bill(self):
+        res = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0011c", "T1", savedAt="2026-07-22 08:00:00"),
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        tile = self._floor_table("T1")
+        self.assertEqual(tile["status"], "occupied")
+        self.assertEqual(tile.get("occupiedSince"), "2026-07-22 08:00:00")
+
     def test_floor_hides_default_guest_placeholder_on_occupied_table(self):
         res = self.client.post(
             "/point-of-sale/api/invoices",
@@ -801,6 +811,19 @@ class PosTableOccupancyTests(unittest.TestCase):
         self.assertEqual(pending["tables"][0]["kot_no"], "KOT-2607-0030")
         self.assertEqual(pending["tables"][0]["table_status"], "occupied")
         self.assertEqual(pending["tables"][0]["seats"], 4)
+        self.assertTrue(pending["tables"][0].get("pending_since"))
+
+    def test_floor_kot_pending_includes_pending_since_timestamp(self):
+        from datetime import datetime, timedelta
+
+        old = (datetime.now() - timedelta(minutes=31)).strftime("%Y-%m-%d %H:%M:%S")
+        self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload("ORD-2607-0032", "T1", savedAt=old),
+        )
+        pending = self.client.get("/point-of-sale/api/floor").get_json()["kot_pending"]
+        self.assertEqual(pending["pending_table_count"], 1)
+        self.assertEqual(pending["tables"][0].get("pending_since"), old)
 
         # Full KOT send clears pending for that order.
         invoice_id = pending["tables"][0]["invoice_id"]
@@ -1096,7 +1119,7 @@ class PosTableOccupancyTests(unittest.TestCase):
             self.assertIn("kitchen-sent", str(removed.exception).lower())
             conn.rollback()
 
-            # Admin flag alone (legacy kw) does not bypass — needs Cancellation Access.
+            # Admin flag alone (legacy kw) does not bypass — needs Cancellation.
             with self.assertRaises(ValueError) as admin_cut:
                 db_mod.save_pos_invoice(
                     conn,
@@ -1924,9 +1947,9 @@ class PosTableOccupancyTests(unittest.TestCase):
         inv = self.client.get("/point-of-sale/api/invoices/by-table?table=T2")
         self.assertIsNotNone(inv.get_json()["invoice"])
 
-    # -- Unsettled invoice Edit / Cancel (Cancellation Access) ---------------
+    # -- Unsettled invoice Edit / Cancel (Edit Access + Cancellation) --
 
-    def test_reopen_edit_requires_cancellation_access(self):
+    def test_reopen_edit_requires_edit_access(self):
         saved = self.client.post(
             "/point-of-sale/api/invoices",
             json=self._payload(
@@ -1957,11 +1980,20 @@ class PosTableOccupancyTests(unittest.TestCase):
         with mock.patch.object(self.app_mod, "get_current_user", return_value=locked):
             denied = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/reopen-edit")
         self.assertEqual(denied.status_code, 403)
-        self.assertIn("Cancellation Access", denied.get_json()["error"])
+        self.assertIn("Edit Access", denied.get_json()["error"])
+
+        cancel_only = dict(self.user)
+        cancel_only["is_admin"] = False
+        cancel_only["dashboard_access"] = {"point_of_sale", "cancellation_access"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=cancel_only):
+            still_denied = self.client.post(
+                f"/point-of-sale/api/invoices/{invoice_id}/reopen-edit"
+            )
+        self.assertEqual(still_denied.status_code, 403)
 
         unlocked = dict(self.user)
         unlocked["is_admin"] = False
-        unlocked["dashboard_access"] = {"point_of_sale", "cancellation_access"}
+        unlocked["dashboard_access"] = {"point_of_sale", "edit_access"}
         with mock.patch.object(self.app_mod, "get_current_user", return_value=unlocked):
             ok = self.client.post(f"/point-of-sale/api/invoices/{invoice_id}/reopen-edit")
         self.assertEqual(ok.status_code, 200, ok.get_data(as_text=True))

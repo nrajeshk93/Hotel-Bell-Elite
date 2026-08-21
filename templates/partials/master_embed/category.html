@@ -3,6 +3,11 @@
   <header class="se-sales-header su-header md-master-embed-header">
     <div class="su-header-top">
       <div class="su-header-left">
+        <div class="su-header-nav">
+          <button type="button" class="su-page-back" onclick="if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back to Master">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+          </button>
+        </div>
         <div class="su-title">
           <div class="su-title-row">
             <h1>Category Master</h1>
@@ -16,6 +21,15 @@
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
         <div class="sr-topbar-filters md-master-embed-filter-form-row" aria-label="Category filters">
+          <div class="pl-kind-filter-host pl-header-field md-master-outlet-filter" id="cm-outlet-filter-host">
+            <span class="se-filter-chip-label" id="cm-outlet-filter-label">Outlet</span>
+            <input type="hidden" id="cm-outlet-filter" value="all">
+            <div class="cp-view-tabs pl-kind-filter-tabs" role="tablist" aria-labelledby="cm-outlet-filter-label" id="cm-outlet-filter-tabs">
+              <button type="button" class="cp-view-tab pl-kind-filter-tab is-active" role="tab" data-value="all" aria-selected="true">All</button>
+              <button type="button" class="cp-view-tab pl-kind-filter-tab" role="tab" data-value="bar" aria-selected="false">Bar</button>
+              <button type="button" class="cp-view-tab pl-kind-filter-tab" role="tab" data-value="restaurant" aria-selected="false">Restaurant</button>
+            </div>
+          </div>
           <div class="se-filter-chip se-filter-chip--search pl-search-chip" id="cm-category-search-chip">
             <label class="se-filter-chip-label" for="cm-category-search">Search</label>
             <div class="se-filter-chip-control">
@@ -36,35 +50,68 @@
     {% endwith %}
   </div>
 
-  <script src="{{ url_for('static', filename='category_master.js') }}?v=1"></script>
+  <script src="{{ url_for('static', filename='category_master.js') }}?v=4"></script>
   <script>
-  (function initCmCategoryEmbedSearch(){
+  (function initCmCategoryEmbedFilters(){
     var searchInput = document.getElementById('cm-category-search');
+    var outletInput = document.getElementById('cm-outlet-filter');
+    var outletTabs = document.getElementById('cm-outlet-filter-tabs');
     var table = document.getElementById('cm-category-table');
-    if (!searchInput || !table || searchInput.getAttribute('data-cm-search-bound') === '1') return;
-    searchInput.setAttribute('data-cm-search-bound', '1');
+    if (!table || (searchInput && searchInput.getAttribute('data-cm-search-bound') === '1')) return;
+    if (searchInput) searchInput.setAttribute('data-cm-search-bound', '1');
     var countEl = document.getElementById('cm-category-count');
     var tableWrap = document.getElementById('cm-category-table-wrap');
     var emptyEl = document.getElementById('cm-category-search-empty');
     var chip = document.getElementById('cm-category-search-chip');
-    function applySearch(){
-      var needle = String(searchInput.value || '').trim().toLowerCase();
+
+    function applyFilters(){
+      var needle = searchInput ? String(searchInput.value || '').trim().toLowerCase() : '';
+      var outlet = outletInput ? String(outletInput.value || 'all').trim().toLowerCase() : 'all';
+      if (outlet !== 'all' && outlet !== 'bar' && outlet !== 'restaurant') outlet = 'all';
       if (chip) chip.classList.toggle('is-active', !!needle);
       var rows = Array.from(table.querySelectorAll('tbody tr[data-sort-row]'));
       var visible = 0;
       rows.forEach(function(row){
         var hay = String(row.getAttribute('data-search') || '').toLowerCase();
-        var match = !needle || hay.indexOf(needle) !== -1;
+        var rowOutlet = String(row.getAttribute('data-category-outlet') || '').toLowerCase();
+        var matchOutlet = outlet === 'all' || rowOutlet === outlet;
+        var matchSearch = !needle || hay.indexOf(needle) !== -1;
+        var match = matchOutlet && matchSearch;
         row.hidden = !match;
         if (match) visible += 1;
       });
       if (countEl) countEl.textContent = visible + ' total';
-      if (emptyEl) emptyEl.hidden = !(needle && visible === 0);
-      if (tableWrap) tableWrap.hidden = !!(needle && visible === 0);
+      var noMatch = visible === 0 && (!!needle || outlet !== 'all');
+      if (emptyEl) {
+        emptyEl.hidden = !noMatch;
+        if (noMatch) {
+          emptyEl.innerHTML = '<strong>No categories match</strong> Try a different outlet or search term.';
+        }
+      }
+      if (tableWrap) tableWrap.hidden = !!noMatch;
     }
-    searchInput.addEventListener('input', applySearch);
-    searchInput.addEventListener('keydown', function(e){ if (e.key === 'Enter') e.preventDefault(); });
-    applySearch();
+
+    if (outletTabs && outletTabs.getAttribute('data-cm-outlet-bound') !== '1') {
+      outletTabs.setAttribute('data-cm-outlet-bound', '1');
+      outletTabs.addEventListener('click', function(e){
+        var tab = e.target.closest('.pl-kind-filter-tab');
+        if (!tab || !outletTabs.contains(tab)) return;
+        e.preventDefault();
+        var val = tab.getAttribute('data-value') || 'all';
+        if (outletInput) outletInput.value = val;
+        outletTabs.querySelectorAll('.pl-kind-filter-tab').forEach(function(btn){
+          var on = btn === tab;
+          btn.classList.toggle('is-active', on);
+          btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        applyFilters();
+      });
+    }
+    if (searchInput) {
+      searchInput.addEventListener('input', applyFilters);
+      searchInput.addEventListener('keydown', function(e){ if (e.key === 'Enter') e.preventDefault(); });
+    }
+    applyFilters();
   })();
   if (typeof window.initCategoryMasterPage === 'function') window.initCategoryMasterPage();
   </script>

@@ -16,19 +16,12 @@
     var title = document.getElementById('cm-category-modal-title');
     if (title) title.textContent = editing ? 'Edit category' : 'Add category';
     var saveBtn = document.getElementById('cm-category-save-btn');
-    if (saveBtn) saveBtn.textContent = editing ? 'Update category' : 'Save category';
-    var deleteForm = document.getElementById('cm-category-delete-form');
-    if (deleteForm) {
-      if (editing) deleteForm.removeAttribute('hidden');
-      else deleteForm.setAttribute('hidden', '');
-    }
+    if (saveBtn) saveBtn.textContent = 'Save';
   }
 
   function clearForm() {
     var idEl = document.getElementById('cm-category-id');
     if (idEl) idEl.value = '';
-    var deleteId = document.getElementById('cm-category-delete-id');
-    if (deleteId) deleteId.value = '';
     var nameEl = document.getElementById('cm-category-name');
     if (nameEl) nameEl.value = '';
     var visibleEl = document.getElementById('cm-category-visible');
@@ -36,8 +29,6 @@
     if (typeof global.resetEpListbox === 'function') {
       global.resetEpListbox('cm-category-outlet', 'restaurant', 'Restaurant');
     }
-    var deleteOutlet = document.getElementById('cm-category-delete-outlet');
-    if (deleteOutlet) deleteOutlet.value = 'restaurant';
     var err = document.getElementById('cm-category-modal-err');
     if (err) {
       err.innerHTML = '';
@@ -54,8 +45,6 @@
     var visible = row.getAttribute('data-category-visible') === '1';
     var idEl = document.getElementById('cm-category-id');
     if (idEl) idEl.value = id;
-    var deleteId = document.getElementById('cm-category-delete-id');
-    if (deleteId) deleteId.value = id;
     var nameEl = document.getElementById('cm-category-name');
     if (nameEl) nameEl.value = name;
     var visibleEl = document.getElementById('cm-category-visible');
@@ -64,8 +53,6 @@
     if (typeof global.resetEpListbox === 'function') {
       global.resetEpListbox('cm-category-outlet', outlet, outletLabel);
     }
-    var deleteOutlet = document.getElementById('cm-category-delete-outlet');
-    if (deleteOutlet) deleteOutlet.value = outlet;
     setEditing(true);
   }
 
@@ -203,6 +190,25 @@
           e.preventDefault();
           var row = actionEl.closest('tr[data-category-id]');
           global.openCategoryMasterModal({ row: row });
+        } else if (action === 'delete-category') {
+          e.preventDefault();
+          e.stopPropagation();
+          var delRow = actionEl.closest('tr[data-category-id]');
+          var delId = delRow ? delRow.getAttribute('data-category-id') || '' : '';
+          var delName = delRow ? delRow.getAttribute('data-category-name') || 'this category' : 'this category';
+          if (!delId) return;
+          if (!global.confirm('Delete "' + delName + '"? Menu items in it will also be removed from the menu.')) {
+            return;
+          }
+          var deleteForm = document.getElementById('cm-category-delete-form');
+          var deleteIdEl = document.getElementById('cm-category-delete-id');
+          if (!deleteForm || !deleteIdEl) return;
+          deleteIdEl.value = delId;
+          if (typeof deleteForm.requestSubmit === 'function') deleteForm.requestSubmit();
+          else {
+            var submitEv = new Event('submit', { bubbles: true, cancelable: true });
+            if (deleteForm.dispatchEvent(submitEv)) deleteForm.submit();
+          }
         } else if (action === 'close-category-modal') {
           e.preventDefault();
           global.closeCategoryMasterModal({ navigate: true, reset: true });

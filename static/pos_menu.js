@@ -1419,7 +1419,7 @@
         '</span>'
       : '';
     grid.innerHTML =
-      card('Selling Price', formatMoney(a.selling_price != null ? a.selling_price : item.rate)) +
+      card('Selling Price (incl. GST)', formatMoney(a.selling_price != null ? a.selling_price : item.rate)) +
       card('FIFO Food Cost', formatMoney(a.fifo_food_cost != null ? a.fifo_food_cost : item.display_food_cost)) +
       card('Gross Profit', formatMoney(a.gross_profit != null ? a.gross_profit : item.gross_margin), statusHtml) +
       card('Margin %', formatPct(a.margin_pct != null ? a.margin_pct : item.margin_pct), statusHtml) +

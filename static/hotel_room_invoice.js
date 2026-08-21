@@ -18,7 +18,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var SGST_RATE = UGST_RATE;
-  var CSS_HREF = '/static/hotel_room_invoice.css?v=6';
+  var CSS_HREF = '/static/hotel_room_invoice.css?v=8';
 
   function absoluteAssetUrl(path) {
     var raw = String(path || '').trim();
@@ -74,6 +74,42 @@
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  function cancelledInvoiceParts(room, opts) {
+    opts = opts || {};
+    var stay = (room && room.stay) || {};
+    var status = String(
+      opts.invoiceStatus ||
+        opts.status ||
+        stay.invoiceStatus ||
+        stay.invoice_status ||
+        ''
+    )
+      .trim()
+      .toLowerCase();
+    if (status !== 'cancelled') {
+      return { isCancelled: false, mark: '', metaItems: '' };
+    }
+    var reason = String(
+      opts.cancelReason ||
+        opts.cancel_reason ||
+        stay.cancelReason ||
+        stay.cancel_reason ||
+        ''
+    ).trim();
+    return {
+      isCancelled: true,
+      mark:
+        '<div class="hri-cancelled-watermark" aria-hidden="true"><span>Cancelled</span></div>',
+      metaItems:
+        '<li><span class="k">Status</span><span class="v">Cancelled</span></li>' +
+        (reason
+          ? '<li><span class="k">Reason</span><span class="v">' +
+            escapeHtml(reason) +
+            '</span></li>'
+          : '')
+    };
   }
 
   function folioChargeDisplayLabel(item) {
@@ -244,8 +280,28 @@
     );
   }
 
-  function billToBlock(stay) {
-    var agencyBilling = !!(stay && stay.agencyBilling && stay.agencyName);
+  function stayAgencyBillFlags(stay) {
+    if (!stay || typeof stay !== 'object') return { room: false, fb: false };
+    var hasRoom =
+      Object.prototype.hasOwnProperty.call(stay, 'agencyRoomBilling') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agency_room_billing');
+    var hasFb =
+      Object.prototype.hasOwnProperty.call(stay, 'agencyFbBilling') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agency_fb_billing');
+    if (hasRoom || hasFb) {
+      return {
+        room: !!(stay.agencyRoomBilling || stay.agency_room_billing),
+        fb: !!(stay.agencyFbBilling || stay.agency_fb_billing)
+      };
+    }
+    var legacy = !!(stay.agencyBilling || stay.agency_billing);
+    return { room: legacy, fb: legacy };
+  }
+
+  function billToBlock(stay, kind) {
+    var flags = stayAgencyBillFlags(stay);
+    var useAgency = kind === 'fb' ? flags.fb : flags.room;
+    var agencyBilling = !!(stay && useAgency && stay.agencyName);
     var name = agencyBilling
       ? String(stay.invoiceTo || stay.billingName || stay.agencyName || '').trim() ||
         guestDisplayName(stay)
@@ -349,6 +405,7 @@
       };
     });
     var roomLabel =
+      (stay.chargeLabels && stay.chargeLabels.room) ||
       (room && (room.roomTypeLabel || room.roomType)) ||
       'Room Tariff';
     roomLabel = String(roomLabel).replace(/_/g, ' ');
@@ -414,14 +471,26 @@
     }
 
     var extras = [
-      { label: 'Extra Bed', amount: Number(stay.extraBedAmount || 0) },
-      { label: 'Early Check-in', amount: Number(stay.earlyCheckinAmount || 0) },
-      { label: 'Late Check-out', amount: Number(stay.lateCheckoutAmount || 0) }
+      { key: 'extra_bed', label: 'Extra Bed', amount: Number(stay.extraBedAmount || 0) },
+      {
+        key: 'early_checkin',
+        label: 'Early Check-in',
+        amount: Number(stay.earlyCheckinAmount || 0)
+      },
+      {
+        key: 'late_checkout',
+        label: 'Late Check-out',
+        amount: Number(stay.lateCheckoutAmount || 0)
+      }
     ];
+    var chargeLabels =
+      stay.chargeLabels && typeof stay.chargeLabels === 'object'
+        ? stay.chargeLabels
+        : {};
     extras.forEach(function (row) {
       if (!(row.amount > 0)) return;
       lines.push({
-        description: row.label,
+        description: chargeLabels[row.key] || row.label,
         date: checkIn,
         qty: 1,
         rate: row.amount,
@@ -517,8 +586,97 @@
     return String((room && room.number) || '').trim();
   }
 
+  function invoiceHistoryEntry(stay, invoiceNumber, kind) {
+    if (!stay || !invoiceNumber) return null;
+    var target = String(invoiceNumber).trim();
+    var raw = (stay.invoiceHistory || stay.invoice_history) || [];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        var item = raw[i];
+        if (!item) continue;
+        var inv = String(item.invoiceNumber || item.invoice_number || '').trim();
+        var entryKind = String(item.kind || 'hotel').toLowerCase();
+        if (inv === target && (!kind || entryKind === kind)) {
+          return item;
+        }
+      }
+    }
+    if (kind === 'hotel' || !kind) {
+      if (target === String(stay.invoiceNumber || '').trim()) {
+        return {
+          kind: 'hotel',
+          invoiceNumber: target,
+          generatedAt: stay.invoiceGeneratedAt || '',
+          snapshotStay: null
+        };
+      }
+    }
+    if (kind === 'fb') {
+      if (
+        target ===
+        String(stay.fbTransferInvoiceNumber || stay.fb_transfer_invoice_number || '').trim()
+      ) {
+        return {
+          kind: 'fb',
+          invoiceNumber: target,
+          generatedAt: stay.fbTransferInvoiceGeneratedAt || '',
+          snapshotStay: null
+        };
+      }
+      if (target === String(stay.invoiceNumber || '').trim()) {
+        return {
+          kind: 'fb',
+          invoiceNumber: target,
+          generatedAt:
+            stay.fbTransferInvoiceGeneratedAt || stay.invoiceGeneratedAt || '',
+          snapshotStay: null
+        };
+      }
+    }
+    return null;
+  }
+
+  function roomWithInvoiceSnapshot(room, invoiceNumber, kind) {
+    if (!room || !invoiceNumber) return room;
+    var stay = room.stay || {};
+    var entry = invoiceHistoryEntry(stay, invoiceNumber, kind);
+    if (entry && entry.snapshotStay && typeof entry.snapshotStay === 'object') {
+      return Object.assign({}, room, { stay: entry.snapshotStay });
+    }
+    if (kind === 'fb') {
+      var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
+      var lines = folio.filter(function (line) {
+        if (!line) return false;
+        var inv = String(
+          line.invoicedInvoiceNumber || line.invoiced_invoice_number || ''
+        ).trim();
+        return inv === String(invoiceNumber).trim();
+      });
+      if (lines.length) {
+        var snapStay = Object.assign({}, stay, {
+          folioCharges: lines.map(function (line) {
+            return Object.assign({}, line);
+          }),
+          fbTransferTotal: lines.reduce(function (sum, line) {
+            return sum + Number(line.amount || 0);
+          }, 0)
+        });
+        return Object.assign({}, room, { stay: snapStay });
+      }
+    }
+    return room;
+  }
+
   function buildHotelRoomInvoiceHtml(room, opts) {
     opts = opts || {};
+    var invNo = String(opts.invoiceNumber || '').trim();
+    if (invNo) {
+      room = roomWithInvoiceSnapshot(room, invNo, 'hotel');
+      var entry = invoiceHistoryEntry((room && room.stay) || {}, invNo, 'hotel');
+      if (entry && entry.generatedAt && !opts.invoiceDate) {
+        opts.invoiceDate = entry.generatedAt;
+      }
+    }
     var stay = (room && room.stay) || {};
     var lines = buildInvoiceLines(room);
     var subtotal = Math.round(
@@ -586,10 +744,12 @@
     var checkIn = toDateISO(stay.checkInDate || stay.check_in_date);
     var checkOut = toDateISO(stay.checkOutDate || stay.check_out_date);
     var invoiceDate =
-      toDateISO(stay.invoiceGeneratedAt) ||
       toDateISO(opts.invoiceDate) ||
+      toDateISO(stay.invoiceGeneratedAt) ||
       toDateISO(new Date().toISOString().slice(0, 10));
-    var invoiceNo = String(stay.invoiceNumber || '—').trim() || '—';
+    var invoiceNo = String(
+      opts.invoiceNumber || stay.invoiceNumber || '—'
+    ).trim() || '—';
     var bookingNo = String(stay.bookingNumber || '—').trim() || '—';
     var adults = Math.max(1, Number(stay.adults || 1));
     var children = Math.max(0, Number(stay.children || 0));
@@ -603,6 +763,7 @@
     var billTo = billToBlock(stay);
     var roomNumber = hotelInvoiceRoomLabel(room);
     var roomNumberSingle = (room && room.number) || '';
+    var cancelled = cancelledInvoiceParts(room, opts);
 
     var minRows = 4;
     var rowsHtml = lines
@@ -688,6 +849,7 @@
       '<li><span class="k">Invoice No.</span><span class="v">' +
       escapeHtml(invoiceNo) +
       '</span></li>' +
+      cancelled.metaItems +
       '<li><span class="k">Invoice Date</span><span class="v">' +
       escapeHtml(prettyDate(invoiceDate)) +
       '</span></li>' +
@@ -779,12 +941,15 @@
       absoluteAssetUrl(CSS_HREF) +
       '">' +
       '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
-      '</head><body>' +
+      '</head><body' +
+      (cancelled.isCancelled ? ' class="is-cancelled"' : '') +
+      '>' +
       '<div class="hri-toolbar">' +
       '<button type="button" onclick="window.close()">Close</button>' +
       '<button type="button" class="hri-print" onclick="window.print()">Print Invoice</button>' +
       '</div>' +
       '<article class="hri-sheet">' +
+      cancelled.mark +
       '<table class="hri-doc">' +
       '<thead>' +
       '<tr><td colspan="6" class="hri-doc-masthead">' +
@@ -812,33 +977,76 @@
     );
   }
 
-  function openHotelRoomInvoice(room, opts) {
+  function closeHtmlPreviewOverlay() {
+    var existing = document.getElementById('hri-preview-overlay');
+    if (existing) existing.remove();
+  }
+
+  function openHtmlPreviewOverlay(html, title, autoPrint) {
+    closeHtmlPreviewOverlay();
+    var overlay = document.createElement('div');
+    overlay.id = 'hri-preview-overlay';
+    overlay.className = 'hri-preview-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.innerHTML =
+      '<div class="hri-preview-shell">' +
+      '<header class="hri-preview-toolbar">' +
+      '<strong class="hri-preview-title">' +
+      escapeHtml(title || 'Invoice') +
+      '</strong>' +
+      '<div class="hri-preview-actions">' +
+      '<button type="button" class="hri-preview-print">Print</button>' +
+      '<button type="button" class="hri-preview-close">Close</button>' +
+      '</div></header>' +
+      '<iframe class="hri-preview-frame" title="Invoice preview"></iframe>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    var frame = overlay.querySelector('.hri-preview-frame');
+    if (frame) frame.srcdoc = html;
+    var closeBtn = overlay.querySelector('.hri-preview-close');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', closeHtmlPreviewOverlay);
+    }
+    var printBtn = overlay.querySelector('.hri-preview-print');
+    if (printBtn) {
+      printBtn.addEventListener('click', function () {
+        try {
+          if (frame && frame.contentWindow) frame.contentWindow.print();
+        } catch (err) {}
+      });
+    }
+    overlay.addEventListener('click', function (event) {
+      if (event.target === overlay) closeHtmlPreviewOverlay();
+    });
+    document.addEventListener(
+      'keydown',
+      function onEsc(event) {
+        if (event.key !== 'Escape') return;
+        closeHtmlPreviewOverlay();
+        document.removeEventListener('keydown', onEsc);
+      },
+      { once: true }
+    );
+    if (autoPrint) {
+      setTimeout(function () {
+        try {
+          if (frame && frame.contentWindow) frame.contentWindow.print();
+        } catch (err) {}
+      }, 400);
+    }
+    return true;
+  }
+
+  function openHtmlInPreviewWindow(html, opts) {
     opts = opts || {};
-    if (!room || !room.stay) return false;
-    var html = buildHotelRoomInvoiceHtml(room, opts);
     var autoPrint = opts.autoPrint === true;
-    try {
-      var win = global.open('', '_blank', 'width=920,height=1100');
-      if (win) {
-        win.document.open();
-        win.document.write(html);
-        win.document.close();
-        win.focus();
-        if (autoPrint) {
-          setTimeout(function () {
-            try {
-              win.print();
-            } catch (err) {}
-          }, 350);
-        }
-        return true;
-      }
-    } catch (err) {}
+    var title = String(opts.title || 'Invoice').trim() || 'Invoice';
 
     try {
-      var blob = new Blob([html], { type: 'text/html' });
+      var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
       var url = URL.createObjectURL(blob);
-      var blobWin = global.open(url, '_blank', 'width=920,height=1100');
+      var blobWin = global.open(url, '_blank', 'noopener,noreferrer,width=920,height=1100');
       if (blobWin) {
         setTimeout(function () {
           try {
@@ -854,122 +1062,6 @@
       URL.revokeObjectURL(url);
     } catch (err) {}
 
-    return false;
-  }
-
-  function fbTransferLinesFromStay(stay) {
-    var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
-    var lines = [];
-    folio.forEach(function (item) {
-      if (!item) return;
-      var kind = String(item.kind || '').toLowerCase();
-      if (kind !== 'restaurant_room_transfer' && kind !== 'bar_room_transfer') return;
-      var amount = Number(item.amount || 0);
-      if (!(amount > 0)) return;
-      lines.push({
-        description: folioChargeDisplayLabel(item),
-        amount: Math.round(amount * 100) / 100
-      });
-    });
-    return lines;
-  }
-
-  function buildFbCombinedTransferInvoiceHtml(room, opts) {
-    opts = opts || {};
-    var stay = (room && room.stay) || {};
-    var lines = fbTransferLinesFromStay(stay);
-    var total = Math.round(
-      lines.reduce(function (sum, row) {
-        return sum + Number(row.amount || 0);
-      }, 0) * 100
-    ) / 100;
-    if (!(total > 0) && stay.fbTransferTotal != null) {
-      total = Math.round(Number(stay.fbTransferTotal || 0) * 100) / 100;
-    }
-    var invoiceNo =
-      String(
-        opts.invoiceNumber ||
-          stay.fbTransferInvoiceNumber ||
-          stay.fb_transfer_invoice_number ||
-          '—'
-      ).trim() || '—';
-    var invoiceDate =
-      toDateISO(stay.fbTransferInvoiceGeneratedAt) ||
-      toDateISO(stay.invoiceGeneratedAt) ||
-      todayISO();
-    var hotelInv = String(stay.invoiceNumber || '').trim();
-    var checkIn = toDateISO(stay.checkInDate || stay.check_in_date);
-    var checkOut = toDateISO(stay.checkOutDate || stay.check_out_date);
-    var billTo = billToBlock(stay);
-    var roomNumber = hotelInvoiceRoomLabel(room);
-    var rowsHtml = lines
-      .map(function (row, idx) {
-        return (
-          '<tr class="hri-line"><td class="center">' +
-          (idx + 1) +
-          '</td><td>' +
-          escapeHtml(row.description) +
-          '</td><td class="num">' +
-          money(row.amount) +
-          '</td></tr>'
-        );
-      })
-      .join('');
-    var mastheadHtml =
-      '<div class="hri-header"><div class="hri-brand"><img class="hri-mark" src="' +
-      escapeHtml(absoluteAssetUrl(HOTEL.markUrl)) +
-      '" alt="Hotel Bell Elite"><div class="hri-brand-copy"><h1 class="hri-brand-name">' +
-      escapeHtml(HOTEL.name) +
-      '</h1></div></div></div>' +
-      '<div class="hri-meta-row"><div><h2 class="hri-title">F&amp;B TRANSFERS INVOICE</h2>' +
-      '<ul class="hri-meta-list">' +
-      '<li><span class="k">Invoice No.</span><span class="v">' +
-      escapeHtml(invoiceNo) +
-      '</span></li>' +
-      (hotelInv
-        ? '<li><span class="k">Hotel Invoice</span><span class="v">' +
-          escapeHtml(hotelInv) +
-          '</span></li>'
-        : '') +
-      '<li><span class="k">Invoice Date</span><span class="v">' +
-      escapeHtml(prettyDate(invoiceDate)) +
-      '</span></li>' +
-      '<li><span class="k">Room</span><span class="v">' +
-      escapeHtml(roomNumber || '—') +
-      '</span></li>' +
-      '<li><span class="k">Check In</span><span class="v">' +
-      escapeHtml(prettyDate(checkIn)) +
-      '</span></li>' +
-      '<li><span class="k">Check Out</span><span class="v">' +
-      escapeHtml(prettyDate(checkOut)) +
-      '</span></li>' +
-      '</ul></div><aside class="hri-billto"><div class="hri-billto-head">' +
-      iconUser() +
-      ' Bill To</div><div class="hri-billto-body"><div class="name">' +
-      escapeHtml(billTo.name) +
-      '</div></div></aside></div>';
-    return (
-      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>F&amp;B Invoice ' +
-      escapeHtml(invoiceNo) +
-      '</title><link rel="stylesheet" href="' +
-      escapeHtml(absoluteAssetUrl('/static/hotel_room_invoice.css')) +
-      '"></head><body class="hri-doc"><article class="hri-sheet">' +
-      mastheadHtml +
-      '<table class="hri-table"><thead><tr><th class="center">#</th><th>POS Bill</th><th class="num">Amount</th></tr></thead><tbody>' +
-      rowsHtml +
-      '</tbody><tfoot><tr><td colspan="2" class="hri-doc-foot"><div class="hri-totals-row"><span class="k">Total</span><span class="v">' +
-      money(total) +
-      '</span></div><p class="muted">Restaurant and bar bills transferred to room.</p></td><td class="num">' +
-      money(total) +
-      '</td></tr></tfoot></table></article></body></html>'
-    );
-  }
-
-  function openFbCombinedTransferInvoice(room, opts) {
-    opts = opts || {};
-    if (!room || !room.stay) return false;
-    var html = buildFbCombinedTransferInvoiceHtml(room, opts);
-    var autoPrint = opts.autoPrint === true;
     try {
       var win = global.open('', '_blank', 'width=920,height=1100');
       if (win) {
@@ -987,13 +1079,347 @@
         return true;
       }
     } catch (err) {}
-    return false;
+
+    return openHtmlPreviewOverlay(html, title, autoPrint);
+  }
+
+  function openHotelRoomInvoice(room, opts) {
+    opts = opts || {};
+    if (!room || !room.stay) return false;
+    var html = buildHotelRoomInvoiceHtml(room, opts);
+    var invNo =
+      String(opts.invoiceNumber || (room.stay && room.stay.invoiceNumber) || '').trim() ||
+      'Invoice';
+    return openHtmlInPreviewWindow(html, {
+      autoPrint: opts.autoPrint === true,
+      title: invNo
+    });
+  }
+
+  function fbTransferLinesFromStay(stay) {
+    var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
+    var checkIn = toDateISO(stay && (stay.checkInDate || stay.check_in_date));
+    var lines = [];
+    folio.forEach(function (item) {
+      if (!item) return;
+      var kind = String(item.kind || '').toLowerCase();
+      if (kind !== 'restaurant_room_transfer' && kind !== 'bar_room_transfer') return;
+      var amount = Number(item.amount || 0);
+      if (!(amount > 0)) return;
+      amount = Math.round(amount * 100) / 100;
+      lines.push({
+        description: folioChargeDisplayLabel(item),
+        date: toDateISO(item.at || item.createdAt || item.created_at) || checkIn,
+        qty: 1,
+        rate: amount,
+        amount: amount
+      });
+    });
+    return lines;
+  }
+
+  function buildFbCombinedTransferInvoiceHtml(room, opts) {
+    opts = opts || {};
+    var invNo = String(opts.invoiceNumber || '').trim();
+    if (invNo) {
+      room = roomWithInvoiceSnapshot(room, invNo, 'fb');
+      var entry = invoiceHistoryEntry((room && room.stay) || {}, invNo, 'fb');
+      if (entry && entry.generatedAt && !opts.invoiceDate) {
+        opts.invoiceDate = entry.generatedAt;
+      }
+    }
+    var stay = (room && room.stay) || {};
+    var lines = fbTransferLinesFromStay(stay);
+    var subtotal = Math.round(
+      lines.reduce(function (sum, row) {
+        return sum + Number(row.amount || 0);
+      }, 0) * 100
+    ) / 100;
+    if (!(subtotal > 0) && stay.fbTransferTotal != null) {
+      subtotal = Math.round(Number(stay.fbTransferTotal || 0) * 100) / 100;
+    }
+    /* POS transfer amounts are tax-inclusive — extract CGST/UGST like the room invoice. */
+    var inclusive = subtotal;
+    var factor = 1 + CGST_RATE + UGST_RATE;
+    var taxable =
+      factor > 0 ? Math.round((inclusive / factor) * 100) / 100 : inclusive;
+    var cgst = Math.round(taxable * CGST_RATE * 100) / 100;
+    var ugst = Math.round((inclusive - taxable - cgst) * 100) / 100;
+    if (ugst < 0) ugst = 0;
+    var total = inclusive;
+    if (factor > 0) {
+      lines = lines.map(function (row) {
+        var amt = Math.round(Number(row.amount || 0) * 100) / 100;
+        var rate = Math.round(Number(row.rate || 0) * 100) / 100;
+        return Object.assign({}, row, {
+          amount: Math.round((amt / factor) * 100) / 100,
+          rate: rate > 0 ? Math.round((rate / factor) * 100) / 100 : rate
+        });
+      });
+      subtotal = Math.round(
+        lines.reduce(function (sum, row) {
+          return sum + Number(row.amount || 0);
+        }, 0) * 100
+      ) / 100;
+    }
+
+    var invoiceNo =
+      String(
+        opts.invoiceNumber ||
+          stay.fbTransferInvoiceNumber ||
+          stay.fb_transfer_invoice_number ||
+          '—'
+      ).trim() || '—';
+    var invoiceDate =
+      toDateISO(opts.invoiceDate) ||
+      toDateISO(stay.fbTransferInvoiceGeneratedAt) ||
+      toDateISO(stay.invoiceGeneratedAt) ||
+      toDateISO(opts.invoiceDate) ||
+      toDateISO(new Date().toISOString().slice(0, 10));
+    var hotelInv = String(stay.invoiceNumber || '').trim();
+    var bookingNo = String(stay.bookingNumber || '—').trim() || '—';
+    var checkIn = toDateISO(stay.checkInDate || stay.check_in_date);
+    var checkOut = toDateISO(stay.checkOutDate || stay.check_out_date);
+    var adults = Math.max(1, Number(stay.adults || 1));
+    var children = Math.max(0, Number(stay.children || 0));
+    var guestsLabel =
+      adults +
+      ' Adult' +
+      (adults === 1 ? '' : 's') +
+      (children
+        ? ' · ' + children + ' Child' + (children === 1 ? '' : 'ren')
+        : '');
+    var billTo = billToBlock(stay, 'fb');
+    var roomNumber = hotelInvoiceRoomLabel(room);
+    var cancelled = cancelledInvoiceParts(room, opts);
+
+    var minRows = 4;
+    var rowsHtml = lines
+      .map(function (row, idx) {
+        return (
+          '<tr class="hri-line">' +
+          '<td class="center">' +
+          (idx + 1) +
+          '</td>' +
+          '<td>' +
+          escapeHtml(row.description) +
+          '</td>' +
+          '<td>' +
+          escapeHtml(prettyDate(row.date)) +
+          '</td>' +
+          '<td class="center">' +
+          escapeHtml(String(row.qty || 1)) +
+          '</td>' +
+          '<td class="num">' +
+          money(row.rate) +
+          '</td>' +
+          '<td class="num">' +
+          money(row.amount) +
+          '</td>' +
+          '</tr>'
+        );
+      })
+      .join('');
+    for (var pad = lines.length; pad < minRows; pad++) {
+      rowsHtml +=
+        '<tr class="hri-pad-row"><td class="center">&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>';
+    }
+
+    var mastheadHtml =
+      '<div class="hri-header">' +
+      '<div class="hri-brand">' +
+      '<img class="hri-mark" src="' +
+      escapeHtml(absoluteAssetUrl(HOTEL.markUrl)) +
+      '" alt="Hotel Bell Elite">' +
+      '<div class="hri-brand-copy">' +
+      '<h1 class="hri-brand-name">' +
+      escapeHtml(HOTEL.name) +
+      '</h1>' +
+      '<div class="hri-brand-rule" aria-hidden="true"><span class="hri-brand-rule-ornament"></span></div>' +
+      '<p class="hri-brand-tag">' +
+      escapeHtml(HOTEL.tagline) +
+      '</p></div></div>' +
+      '<div class="hri-contact">' +
+      '<div class="hri-contact-row">' +
+      iconPin() +
+      '<span>' +
+      escapeHtml(HOTEL.address) +
+      '</span></div>' +
+      '<div class="hri-contact-row">' +
+      iconPhone() +
+      '<span>' +
+      escapeHtml(HOTEL.phone) +
+      '</span></div>' +
+      '<div class="hri-contact-row">' +
+      iconMail() +
+      '<span>' +
+      escapeHtml(HOTEL.email) +
+      '</span></div>' +
+      '<div class="hri-contact-row">' +
+      iconWeb() +
+      '<span>' +
+      escapeHtml(HOTEL.website) +
+      '</span></div>' +
+      '<div class="hri-contact-row">' +
+      iconDoc() +
+      '<span><strong>GST:</strong> ' +
+      escapeHtml(HOTEL.gst) +
+      '</span></div>' +
+      '</div></div>' +
+      '<div class="hri-meta-row">' +
+      '<div><h2 class="hri-title">TAX INVOICE</h2>' +
+      '<ul class="hri-meta-list">' +
+      '<li><span class="k">Invoice No.</span><span class="v">' +
+      escapeHtml(invoiceNo) +
+      '</span></li>' +
+      cancelled.metaItems +
+      (hotelInv
+        ? '<li><span class="k">Hotel Invoice</span><span class="v">' +
+          escapeHtml(hotelInv) +
+          '</span></li>'
+        : '') +
+      '<li><span class="k">Invoice Date</span><span class="v">' +
+      escapeHtml(prettyDate(invoiceDate)) +
+      '</span></li>' +
+      '<li><span class="k">Booking No.</span><span class="v">' +
+      escapeHtml(bookingNo) +
+      '</span></li>' +
+      '<li><span class="k">Room' +
+      (roomNumber.indexOf('+') >= 0 ? 's' : '') +
+      '</span><span class="v">' +
+      escapeHtml(roomNumber || '—') +
+      '</span></li>' +
+      '<li><span class="k">Check In</span><span class="v">' +
+      escapeHtml(prettyDate(checkIn)) +
+      '</span></li>' +
+      '<li><span class="k">Check Out</span><span class="v">' +
+      escapeHtml(prettyDate(checkOut)) +
+      '</span></li>' +
+      '<li><span class="k">Guests</span><span class="v">' +
+      escapeHtml(guestsLabel) +
+      '</span></li>' +
+      '<li><span class="k">Bill Type</span><span class="v">F&amp;B Room Transfers</span></li>' +
+      '</ul></div>' +
+      '<aside class="hri-billto"><div class="hri-billto-head">' +
+      iconUser() +
+      ' Bill To</div><div class="hri-billto-body">' +
+      '<div class="name">' +
+      escapeHtml(billTo.name) +
+      '</div>' +
+      (billTo.address
+        ? '<div class="muted">' + escapeHtml(billTo.address) + '</div>'
+        : '') +
+      (billTo.gst
+        ? '<div class="muted"><strong>GST:</strong> ' + escapeHtml(billTo.gst) + '</div>'
+        : '') +
+      (billTo.phone
+        ? '<div class="muted">Phone: ' + escapeHtml(billTo.phone) + '</div>'
+        : '') +
+      (billTo.email
+        ? '<div class="muted">Email: ' + escapeHtml(billTo.email) + '</div>'
+        : '') +
+      '</div></aside></div>';
+
+    var footerHtml =
+      '<div class="hri-bottom">' +
+      '<section class="hri-notes"><div class="hri-notes-head">' +
+      iconDoc() +
+      ' Notes</div><div class="hri-notes-body">Restaurant and bar bills transferred to this room stay. Amounts are GST-inclusive; CGST and UGST are shown for this tax invoice.</div></section>' +
+      '<section class="hri-totals">' +
+      '<div class="hri-totals-row"><span class="k">Subtotal</span><span class="v">' +
+      money(subtotal) +
+      '</span></div>' +
+      '<div class="hri-totals-row"><span class="k">CGST (2.5%)</span><span class="v">' +
+      money(cgst) +
+      '</span></div>' +
+      '<div class="hri-totals-row"><span class="k">UGST (2.5%)</span><span class="v">' +
+      money(ugst) +
+      '</span></div>' +
+      '<div class="hri-totals-row is-total"><span class="k">Total Amount (₹)</span><span class="v">' +
+      money(total) +
+      '</span></div>' +
+      '<div class="hri-words">Amount in Words: <strong>' +
+      escapeHtml(amountInWords(total)) +
+      '</strong></div>' +
+      '</section></div>' +
+      '<div class="hri-thanks">Thank You &amp; Safe Travels!</div>' +
+      '<div class="hri-values">' +
+      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>Comfortable Stay</div>' +
+      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><polygon points="12 2 15 9 22 9 17 14 19 21 12 17 5 21 7 14 2 9 9 9"/></svg></div>Quality Service</div>' +
+      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M5 16c0-4 3-7 7-7s7 3 7 7"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/><path d="M4 16h16v4H4z"/></svg></div>Memorable Experience</div>' +
+      '<div class="hri-value"><div class="hri-value-ico"><svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-8 10-4.5-2.5-8-5-8-10V6l8-3 8 3z"/></svg></div>We Value You</div>' +
+      '</div>' +
+      '<div class="hri-sign"><div class="hri-sign-box"><div class="hri-sign-line"></div><div class="hri-sign-title">Authorised Signatory</div><div class="hri-sign-sub">Hotel Bell Elite</div></div></div>';
+
+    return (
+      '<!doctype html><html lang="en"><head><meta charset="utf-8">' +
+      '<meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>Tax Invoice ' +
+      escapeHtml(invoiceNo) +
+      ' | Hotel Bell Elite</title>' +
+      '<link rel="stylesheet" href="' +
+      absoluteAssetUrl(CSS_HREF) +
+      '">' +
+      '<style>.muted{color:#5b6b7c;font-weight:500}</style>' +
+      '</head><body' +
+      (cancelled.isCancelled ? ' class="is-cancelled"' : '') +
+      '>' +
+      '<div class="hri-toolbar">' +
+      '<button type="button" onclick="window.close()">Close</button>' +
+      '<button type="button" class="hri-print" onclick="window.print()">Print Invoice</button>' +
+      '</div>' +
+      '<article class="hri-sheet">' +
+      cancelled.mark +
+      '<table class="hri-doc">' +
+      '<thead>' +
+      '<tr><td colspan="6" class="hri-doc-masthead">' +
+      mastheadHtml +
+      '</td></tr>' +
+      '<tr class="hri-colhead">' +
+      '<th class="center" style="width:58px">Sl. No.</th>' +
+      '<th>Description</th>' +
+      '<th style="width:110px">Date</th>' +
+      '<th class="center" style="width:56px">Qty</th>' +
+      '<th class="num" style="width:100px">Rate (₹)</th>' +
+      '<th class="num" style="width:110px">Amount (₹)</th>' +
+      '</tr>' +
+      '</thead>' +
+      '<tbody>' +
+      rowsHtml +
+      '</tbody>' +
+      '<tfoot>' +
+      '<tr><td colspan="6" class="hri-doc-foot">' +
+      footerHtml +
+      '</td></tr>' +
+      '</tfoot>' +
+      '</table>' +
+      '</article></body></html>'
+    );
+  }
+
+  function openFbCombinedTransferInvoice(room, opts) {
+    opts = opts || {};
+    if (!room || !room.stay) return false;
+    var html = buildFbCombinedTransferInvoiceHtml(room, opts);
+    var invNo =
+      String(
+        opts.invoiceNumber ||
+          room.stay.fbTransferInvoiceNumber ||
+          room.stay.invoiceNumber ||
+          ''
+      ).trim() || 'F&B Invoice';
+    return openHtmlInPreviewWindow(html, {
+      autoPrint: opts.autoPrint === true,
+      title: invNo
+    });
   }
 
   global.buildHotelRoomInvoiceHtml = buildHotelRoomInvoiceHtml;
   global.buildFbCombinedTransferInvoiceHtml = buildFbCombinedTransferInvoiceHtml;
   global.openHotelRoomInvoice = openHotelRoomInvoice;
   global.openFbCombinedTransferInvoice = openFbCombinedTransferInvoice;
+  global.openHtmlInPreviewWindow = openHtmlInPreviewWindow;
+  global.closeHtmlPreviewOverlay = closeHtmlPreviewOverlay;
   global.hotelInvoiceRoomLabel = hotelInvoiceRoomLabel;
   global.hotelFolioChargeDisplayLabel = folioChargeDisplayLabel;
   global.hotelRoomInvoiceAmountInWords = amountInWords;

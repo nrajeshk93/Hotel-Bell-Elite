@@ -3,7 +3,8 @@
 import os
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta
+from io import BytesIO
 from unittest import mock
 
 import db as db_mod
@@ -119,6 +120,7 @@ class SalesReportsTests(unittest.TestCase):
             [r["id"] for r in sales],
             [
                 "hotel_sales",
+                "agency_billing",
                 "manager_insight",
                 "restaurant_sales",
                 "menu_sales",
@@ -126,10 +128,15 @@ class SalesReportsTests(unittest.TestCase):
             ],
         )
         self.assertEqual(sales[0]["view_route"], "sales_report_hotel")
-        self.assertEqual(sales[1]["view_route"], "sales_report_manager_insight")
-        self.assertEqual(sales[2]["view_route"], "sales_report_restaurant")
-        self.assertEqual(sales[3]["view_route"], "sales_report_menu")
-        self.assertEqual(sales[4]["view_route"], "sales_report_customer_insights")
+        self.assertEqual(sales[1]["view_route"], "sales_report_agency_billing")
+        self.assertEqual(sales[2]["view_route"], "sales_report_manager_insight")
+        self.assertEqual(sales[3]["view_route"], "sales_report_restaurant")
+        self.assertEqual(sales[4]["view_route"], "sales_report_menu")
+        self.assertEqual(sales[5]["view_route"], "sales_report_customer_insights")
+
+        restaurant = [r for r in REPORT_DEFINITIONS if r.get("category") == "restaurant"]
+        self.assertEqual([r["id"] for r in restaurant], ["menu_margin", "meal_plan"])
+        self.assertEqual(restaurant[1]["view_route"], "sales_report_meal_plan")
 
         with self.app.test_request_context():
             from flask import url_for
@@ -139,24 +146,39 @@ class SalesReportsTests(unittest.TestCase):
             (s for s in payload["report_sections"] if s["key"] == "sales"), None
         )
         self.assertIsNotNone(sales_section)
-        self.assertEqual(sales_section["count"], 5)
+        self.assertEqual(sales_section["count"], 6)
         names = [r["name"] for r in sales_section["reports"]]
         self.assertEqual(
             names,
             [
                 "Hotel Sales",
+                "Agency Ledger",
                 "Manager Insight",
                 "Sales - Restaurant & Bar",
                 "Menu Insights",
                 "Customer Insights",
             ],
         )
+        restaurant_section = next(
+            (s for s in payload["report_sections"] if s["key"] == "restaurant"), None
+        )
+        self.assertIsNotNone(restaurant_section)
+        self.assertEqual(restaurant_section["count"], 2)
+        self.assertEqual(
+            [r["name"] for r in restaurant_section["reports"]],
+            ["Menu & Margin", "Meal Plan"],
+        )
 
         hub = self.client.get("/reports")
         self.assertEqual(hub.status_code, 200)
         html = hub.get_data(as_text=True)
         self.assertIn("Hotel Sales", html)
+        self.assertIn("Agency Ledger", html)
         self.assertIn("Manager Insight", html)
+        self.assertIn("Meal Plan", html)
+        self.assertIn('data-report-id="meal_plan"', html)
+        meal_card = html[html.find('data-report-id="meal_plan"') :][:280]
+        self.assertIn('data-report-category="restaurant"', meal_card)
         self.assertIn("Sales - Restaurant &amp; Bar", html)
         self.assertNotIn("Bar Sales", html)
         self.assertNotIn('data-report-id="bar_sales"', html)
@@ -164,7 +186,9 @@ class SalesReportsTests(unittest.TestCase):
         self.assertIn("Customer Insights", html)
         self.assertIn('data-report-category="sales"', html)
         self.assertIn("/reports/sales/hotel", html)
+        self.assertIn("/reports/sales/agency-billing", html)
         self.assertIn("/reports/sales/manager-insight", html)
+        self.assertIn("/reports/sales/meal-plan", html)
         self.assertIn("/reports/sales/restaurant", html)
         self.assertNotIn("/reports/sales/bar", html)
         self.assertIn("/reports/sales/menu", html)
@@ -632,12 +656,172 @@ class SalesReportsTests(unittest.TestCase):
         self.assertNotIn("Un Settled", modes)
         self.assertEqual(float(modes["Total"]), float(modes["Total Sales"]))
 
+    def _checkin_agency_room(self, room_id="room-101", agency="Travel Desk Co"):
+        check_out = datetime.now().date() + timedelta(days=1)
+        check_in = check_out - timedelta(days=1)
+        res = self.client.put(
+            f"/hotel/api/rooms/{room_id}",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Iyer",
+                    "mobile": "9000000077",
+                    "checkInDate": check_in.isoformat(),
+                    "checkOutDate": check_out.isoformat(),
+                    "nights": 1,
+                    "roomRate": 2000,
+                    "advancePaid": 0,
+                    "agencyName": agency,
+                    "agencyBilling": True,
+                },
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        return res.get_json()["room"]
+
+    def _credit_settle_room(self, room_id="room-101"):
+        room = self.client.get(f"/hotel/api/rooms/{room_id}").get_json()["room"]
+        pay = round(float(room["stay"]["balanceAmount"]), 2)
+        res = self.client.put(
+            f"/hotel/api/rooms/{room_id}",
+            json={
+                "action": "generate_invoice",
+                "payment_splits": [{"payment_method": "credit", "amount": pay}],
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        stay = res.get_json()["room"]["stay"]
+        return stay["invoiceNumber"], pay
+
+    def test_agency_billing_includes_open_agency_invoices_without_credit(self):
+        self._checkin_agency_room(room_id="room-102", agency="ATPI India Pvt. Ltd")
+        res = self.client.put(
+            "/hotel/api/rooms/room-102",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        stay = res.get_json()["room"]["stay"]
+        inv_no = stay["invoiceNumber"]
+        billed = round(float(stay["estimatedTotal"]), 2)
+        conn = db_mod.get_db()
+        try:
+            credit = conn.execute(
+                "SELECT id FROM hotel_invoice_credits WHERE invoice_number = ?",
+                (inv_no,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNone(credit)
+
+        page = self.client.get("/reports/sales/agency-billing")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn(inv_no, html)
+        self.assertIn("ATPI India Pvt. Ltd", html)
+        self.assertIn(f'data-amount="{billed}', html)
+        self.assertIn("Outstanding", html)
+
+    def test_agency_billing_report_page_and_collections(self):
+        self._checkin_agency_room()
+        inv_no, billed = self._credit_settle_room()
+        page = self.client.get("/reports/sales/agency-billing?from_hub=reports")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Agency Ledger", html)
+        self.assertIn('id="sales-report-page"', html)
+        self.assertIn('data-report-kind="agency"', html)
+        self.assertIn('aria-label="Back to Reports"', html)
+        self.assertIn("Invoice No", html)
+        self.assertIn("Agency", html)
+        self.assertIn("Billed", html)
+        self.assertIn("Received", html)
+        self.assertIn("Travel Desk Co", html)
+        self.assertIn(inv_no, html)
+        self.assertIn("Outstanding", html)
+        self.assertIn("Collected in period", html)
+
+        conn = db_mod.get_db()
+        try:
+            credit = conn.execute(
+                "SELECT id FROM hotel_invoice_credits WHERE invoice_number = ?",
+                (inv_no,),
+            ).fetchone()
+        finally:
+            conn.close()
+        self.assertIsNotNone(credit)
+        partial = round(min(billed, 500.0), 2)
+        created = self.client.post(
+            "/hotel/credit/create",
+            json={
+                "payment_date": date.today().isoformat(),
+                "payment_method": "cash",
+                "allocations": [{"expense_id": credit["id"], "amount": partial}],
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.get_data(as_text=True))
+
+        after = self.client.get("/reports/sales/agency-billing").get_data(as_text=True)
+        self.assertIn(inv_no, after)
+        remaining = round(billed - partial, 2)
+        self.assertIn(f'data-amount="{partial}', after)
+        self.assertIn(f'data-amount="{remaining}', after)
+
+        outside = self.client.get(
+            "/reports/sales/agency-billing?date_from=2020-04-01&date_to=2020-04-02"
+        )
+        self.assertEqual(outside.status_code, 200)
+        outside_html = outside.get_data(as_text=True)
+        self.assertNotIn(inv_no, outside_html)
+
+        export = self.client.get("/reports/sales/agency-billing/export")
+        self.assertEqual(export.status_code, 200)
+        self.assertTrue(export.data[:2] == b"PK")
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        ws = wb.active
+        self.assertEqual(ws.title, "Agency Ledger")
+        self.assertIn("Agency Ledger", str(ws["A1"].value or ""))
+        headers = [ws.cell(4, col).value for col in range(1, 10)]
+        self.assertEqual(
+            headers,
+            [
+                "Invoice No",
+                "Date",
+                "Agency",
+                "Guest",
+                "Room",
+                "Billed",
+                "Received",
+                "Balance",
+                "Status",
+            ],
+        )
+        invoice_col = [ws.cell(row, 1).value for row in range(5, (ws.max_row or 4) + 1)]
+        self.assertIn(inv_no, invoice_col)
+        fy_start, today = db_mod.indian_fiscal_year_bounds()
+        cd = export.headers.get("Content-Disposition") or ""
+        self.assertIn(
+            report_export_filename(
+                "Agency Ledger",
+                date_from=fy_start,
+                date_to=today,
+                date_filter_active=True,
+            ),
+            cd,
+        )
+
     def test_sales_report_endpoints_map_to_reports_module(self):
         for endpoint in (
             "sales_report_hotel",
             "sales_report_hotel_export",
+            "sales_report_agency_billing",
+            "sales_report_agency_billing_export",
             "sales_report_manager_insight",
             "sales_report_manager_insight_export",
+            "sales_report_meal_plan",
+            "sales_report_meal_plan_export",
             "sales_report_restaurant",
             "sales_report_restaurant_export",
             "sales_report_bar",
@@ -667,8 +851,12 @@ class SalesReportsTests(unittest.TestCase):
             for path in (
                 "/reports",
                 "/reports/sales/hotel",
+                "/reports/sales/agency-billing",
+                "/reports/sales/agency-billing/export",
                 "/reports/sales/manager-insight",
                 "/reports/sales/manager-insight/export",
+                "/reports/sales/meal-plan",
+                "/reports/sales/meal-plan/export",
                 "/reports/sales/restaurant",
                 "/reports/sales/bar",
                 "/reports/sales/menu",
@@ -681,6 +869,264 @@ class SalesReportsTests(unittest.TestCase):
                 if denied.status_code == 302:
                     self.assertNotIn(b'id="sales-report-page"', denied.data)
                     self.assertNotIn(b'id="menu-sales-report-page"', denied.data)
+                    self.assertNotIn(b'id="meal-plan-report-page"', denied.data)
+
+    def _checkin_meal_plan_room(
+        self,
+        room_id="room-101",
+        *,
+        rate_plan="MAP",
+        adults=2,
+        children=1,
+        nights=2,
+        nightly_plans=None,
+        first_name="Asha",
+        last_name="Nair",
+    ):
+        today = date.today()
+        check_out = today + timedelta(days=max(1, int(nights)))
+        nightly = nightly_plans
+        if nightly is None:
+            nightly = [
+                {
+                    "date": (today + timedelta(days=i)).isoformat(),
+                    "roomRate": 3500,
+                    "ratePlan": rate_plan,
+                }
+                for i in range(max(1, int(nights)))
+            ]
+        res = self.client.put(
+            f"/hotel/api/rooms/{room_id}",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": first_name,
+                    "lastName": last_name,
+                    "mobile": "9000001101",
+                    "checkInDate": today.isoformat(),
+                    "checkOutDate": check_out.isoformat(),
+                    "nights": max(1, int(nights)),
+                    "roomRate": 3500,
+                    "adults": adults,
+                    "children": children,
+                    "ratePlan": rate_plan,
+                    "nightlyRates": nightly,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        return res.get_json()["room"], today, check_out
+
+    def test_meal_plan_report_covers_by_plan_and_nightly_override(self):
+        from meal_plan_report import (
+            build_meal_plan_report,
+            meal_covers_for_plan,
+            plan_for_date,
+        )
+
+        self.assertEqual(
+            meal_covers_for_plan("MAP", 3),
+            {"breakfast": 3, "lunch": 0, "dinner": 3},
+        )
+        self.assertEqual(
+            meal_covers_for_plan("CP", 2),
+            {"breakfast": 2, "lunch": 0, "dinner": 0},
+        )
+        self.assertEqual(
+            meal_covers_for_plan("EP", 2),
+            {"breakfast": 0, "lunch": 0, "dinner": 0},
+        )
+        self.assertEqual(
+            meal_covers_for_plan("AP", 4),
+            {"breakfast": 4, "lunch": 4, "dinner": 4},
+        )
+
+        today = date.today()
+        night2 = today + timedelta(days=1)
+        room, _check_in, _check_out = self._checkin_meal_plan_room(
+            room_id="room-103",
+            rate_plan="MAP",
+            adults=2,
+            children=1,
+            nights=2,
+            nightly_plans=[
+                {"date": today.isoformat(), "roomRate": 3500, "ratePlan": "MAP"},
+                {"date": night2.isoformat(), "roomRate": 3500, "ratePlan": "CP"},
+            ],
+        )
+        stay = room["stay"]
+        self.assertEqual(plan_for_date(stay, today), "MAP")
+        self.assertEqual(plan_for_date(stay, night2), "CP")
+
+        page = self.client.get("/reports/sales/meal-plan")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Meal Plan", html)
+        self.assertIn("id=\"meal-plan-report-page\"", html)
+        self.assertIn("MAP — Breakfast + Dinner", html)
+        self.assertIn("Asha Nair", html)
+
+        conn = db_mod.get_db()
+        try:
+            day1 = build_meal_plan_report(conn, report_date=today)
+            day2 = build_meal_plan_report(conn, report_date=night2)
+        finally:
+            conn.close()
+
+        match1 = next(r for r in day1["rows"] if "103" in (r.get("room_number") or ""))
+        self.assertEqual(match1["plan"], "MAP")
+        self.assertEqual(match1["pax"], 3)
+        self.assertEqual(match1["breakfast"], 3)
+        self.assertEqual(match1["lunch"], 0)
+        self.assertEqual(match1["dinner"], 3)
+        self.assertEqual(day1["kpis"]["breakfast"], match1["breakfast"])
+        self.assertEqual(day1["kpis"]["dinner"], match1["dinner"])
+
+        match2 = next(r for r in day2["rows"] if "103" in (r.get("room_number") or ""))
+        self.assertEqual(match2["plan"], "CP")
+        self.assertEqual(match2["breakfast"], 3)
+        self.assertEqual(match2["lunch"], 0)
+        self.assertEqual(match2["dinner"], 0)
+
+        self._checkin_meal_plan_room(
+            room_id="room-104",
+            rate_plan="EP",
+            adults=1,
+            children=0,
+            nights=1,
+            first_name="Ravi",
+            last_name="EP",
+        )
+        conn = db_mod.get_db()
+        try:
+            with_ep = build_meal_plan_report(conn, report_date=today)
+        finally:
+            conn.close()
+        ep_row = next(r for r in with_ep["rows"] if "104" in (r.get("room_number") or ""))
+        self.assertEqual(ep_row["plan"], "EP")
+        self.assertEqual(ep_row["breakfast"], 0)
+        self.assertEqual(ep_row["dinner"], 0)
+
+        export = self.client.get(
+            f"/reports/sales/meal-plan/export?date={today.isoformat()}"
+        )
+        self.assertEqual(export.status_code, 200)
+        self.assertIn(
+            "spreadsheetml.sheet",
+            export.headers.get("Content-Type", ""),
+        )
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        ws = wb.active
+        self.assertEqual(ws["A1"].value.startswith("Hotel Bell Elite — Meal Plan"), True)
+        headers = [ws.cell(4, col).value for col in range(1, 10)]
+        self.assertEqual(
+            headers,
+            [
+                "Room",
+                "Guest",
+                "Meal plan",
+                "Adults",
+                "Children",
+                "Pax",
+                "Breakfast",
+                "Lunch",
+                "Dinner",
+            ],
+        )
+
+    def test_meal_plan_from_hub_preserves_back_link(self):
+        page = self.client.get("/reports/sales/meal-plan?from_hub=reports")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Back to Reports", html)
+        self.assertIn('name="from_hub" value="reports"', html)
+
+    def test_meal_plan_dedupes_same_room_across_invoices_and_layout(self):
+        from meal_plan_report import build_meal_plan_report
+
+        today = date.today()
+        room, _ci, _co = self._checkin_meal_plan_room(
+            room_id="room-105",
+            rate_plan="AP",
+            adults=1,
+            children=0,
+            nights=1,
+            first_name="Antony",
+            last_name="Kibson",
+        )
+        stay = room["stay"]
+        check_in = stay["checkInDate"]
+        check_out = stay["checkOutDate"]
+        guest = "Mr Antony Kibson"
+        base_payload = {
+            "number": "105",
+            "stay": {
+                "guestName": guest,
+                "firstName": "Antony",
+                "lastName": "Kibson",
+                "adults": 1,
+                "children": 0,
+                "ratePlan": "AP",
+                "checkInDate": check_in,
+                "checkOutDate": check_out,
+            },
+        }
+        ep_payload = {
+            "number": "105",
+            "stay": {
+                "guestName": guest,
+                "firstName": "Antony",
+                "lastName": "Kibson",
+                "adults": 1,
+                "children": 0,
+                "ratePlan": "EP",
+                "checkInDate": check_in,
+                "checkOutDate": check_out,
+            },
+        }
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_hotel_room_invoices_schema(conn)
+            for inv_no, payload in (
+                ("HBE-DUP-1", base_payload),
+                ("HBE-DUP-2", base_payload),
+                ("HBE-DUP-3", base_payload),
+                ("HBE-DUP-EP", ep_payload),
+            ):
+                conn.execute(
+                    """
+                    INSERT INTO hotel_room_invoices (
+                        invoice_number, room_id, room_number, guest_name,
+                        check_in_date, check_out_date, payload_json, status
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'open')
+                    """,
+                    (
+                        inv_no,
+                        "room-105",
+                        "105",
+                        guest,
+                        check_in,
+                        check_out,
+                        __import__("json").dumps(payload),
+                    ),
+                )
+            conn.commit()
+            payload = build_meal_plan_report(conn, report_date=today)
+        finally:
+            conn.close()
+
+        room_rows = [
+            r for r in payload["rows"] if "105" in (r.get("room_number") or "")
+        ]
+        self.assertEqual(len(room_rows), 1, room_rows)
+        self.assertEqual(room_rows[0]["plan"], "AP")
+        self.assertEqual(room_rows[0]["pax"], 1)
+        self.assertEqual(payload["kpis"]["breakfast"], 1)
+        self.assertEqual(payload["kpis"]["lunch"], 1)
+        self.assertEqual(payload["kpis"]["dinner"], 1)
 
 
 if __name__ == "__main__":

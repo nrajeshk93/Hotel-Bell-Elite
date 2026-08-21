@@ -815,28 +815,30 @@
   }
 
   function bindHotelSettleModal() {
-    if (document.documentElement.getAttribute('data-hotel-settle-doc-bound') === '1') {
-      return;
+    if (document.__hotelSettleDocClick) {
+      document.removeEventListener('click', document.__hotelSettleDocClick, true);
+      document.removeEventListener('click', document.__hotelSettleDocClick);
     }
-    document.documentElement.setAttribute('data-hotel-settle-doc-bound', '1');
-    bound = true;
-    bindAddSplitButton();
-
-    document.addEventListener('click', function (ev) {
-      /* Only handle clicks for modals opened via openHotelSettleModal (ledger).
-         Create Invoice owns the same DOM ids with its own handlers. */
-      if (!settleCtx) return;
+    if (document.__hotelSettleDocKey) {
+      document.removeEventListener('keydown', document.__hotelSettleDocKey);
+    }
+    document.__hotelSettleDocClick = function (ev) {
       var modal = settleModal();
       if (!modal || modal.hidden) return;
-
-      var closeEl = ev.target.closest
-        ? ev.target.closest('[data-hotel-settle-close], [data-hri-settle-close]')
-        : null;
+      var closeEl =
+        ev.target && ev.target.closest
+          ? ev.target.closest(
+              '[data-hotel-settle-close], [data-hri-settle-close], [data-settle-close]'
+            )
+          : null;
       if (closeEl && modal.contains(closeEl)) {
         ev.preventDefault();
+        ev.stopPropagation();
         closeHotelSettleModal();
         return;
       }
+      /* Submit / listboxes only when this script opened the dialog. */
+      if (!settleCtx) return;
       if (
         ev.target.closest &&
         ev.target.closest('#pos-inv-settle-submit') &&
@@ -853,15 +855,18 @@
       if (!ev.target.closest('#pos-inv-settle-splits [data-se-listbox]')) {
         closeAllMethodListboxes();
       }
-    });
-
-    document.addEventListener('keydown', function (ev) {
+    };
+    document.__hotelSettleDocKey = function (ev) {
       if (ev.key !== 'Escape') return;
-      if (!settleCtx) return;
       var modal = settleModal();
       if (!modal || modal.hidden) return;
       closeHotelSettleModal();
-    });
+    };
+    document.addEventListener('click', document.__hotelSettleDocClick);
+    document.addEventListener('keydown', document.__hotelSettleDocKey);
+    document.documentElement.setAttribute('data-hotel-settle-doc-bound', '1');
+    bound = true;
+    bindAddSplitButton();
   }
 
   global.bindHotelSettleModal = bindHotelSettleModal;

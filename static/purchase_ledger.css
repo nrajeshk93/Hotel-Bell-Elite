@@ -1,6 +1,28 @@
 /* Expense Ledger filters / table chrome.
  * Page scroll (header/KPI scroll away) lives in reports_page_scroll.css. */
 
+/* Header actions — Export / Add Entry / fullscreen share one control size */
+#purchase-ledger-page .su-header-tools{
+  align-items:center;
+  gap:8px;
+}
+#purchase-ledger-page .su-header-tools .btn{
+  box-sizing:border-box;
+  height:40px;
+  min-height:40px;
+  padding:0 14px;
+  line-height:1;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+#purchase-ledger-page .su-header-tools .de-fullscreen-btn,
+#purchase-ledger-page .su-header-tools .de-fullscreen-slot .de-fullscreen-btn{
+  align-self:center;
+  width:40px;
+  height:40px;
+}
+
 body.su-module .se-sales-header-filters:has(#purchase-ledger-filter-form){
   justify-content:stretch;
 }

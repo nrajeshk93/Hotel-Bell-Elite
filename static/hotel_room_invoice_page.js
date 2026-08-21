@@ -108,14 +108,55 @@
     return root.classList.contains('is-ledger-edit');
   }
 
+  /** Edit module (Access Roles) — folio charge / generate mutations. */
+  function canEditAccess(root) {
+    root = root || lastRoot;
+    if (!root) return false;
+    return root.getAttribute('data-can-edit') === '1';
+  }
+
+  function requireEditAccess(root, message) {
+    if (canEditAccess(root)) return true;
+    showToast(
+      message || 'Edit Access is required to change invoice folio charges.',
+      true
+    );
+    return false;
+  }
+
   function generateInvoiceLabel(root) {
-    return isLedgerEdit(root) ? 'Modify and Generate Invoice' : 'Generate Invoice';
+    var kind = invoiceKindFromPage(root);
+    if (isLedgerEdit(root)) return 'Modify and Generate Invoice';
+    if (kind === 'fb') return 'Generate F&B Invoice';
+    if (kind === 'hotel') return 'Generate Room Invoice';
+    return 'Generate Invoice';
   }
 
   function generateInvoiceTitle(root) {
-    return isLedgerEdit(root)
-      ? 'Modify and regenerate hotel room invoice'
-      : 'Generate hotel room invoice';
+    var kind = invoiceKindFromPage(root);
+    if (isLedgerEdit(root)) return 'Modify and regenerate hotel room invoice';
+    if (kind === 'fb') return 'Generate F&B room transfer invoice';
+    if (kind === 'hotel') return 'Generate hotel room invoice';
+    return 'Generate hotel room invoice';
+  }
+
+  function invoiceKindFromPage(root) {
+    root = root || lastRoot;
+    var fromAttr = String(
+      (root && root.getAttribute('data-invoice-kind')) || ''
+    ).toLowerCase();
+    if (fromAttr === 'hotel' || fromAttr === 'fb' || fromAttr === 'all') {
+      return fromAttr;
+    }
+    try {
+      var kind = String(
+        new URL(window.location.href).searchParams.get('kind') || ''
+      ).toLowerCase();
+      if (kind === 'room' || kind === 'hbe') kind = 'hotel';
+      if (kind === 'fbe' || kind === 'fnb') kind = 'fb';
+      if (kind === 'hotel' || kind === 'fb' || kind === 'all') return kind;
+    } catch (err) {}
+    return 'hotel';
   }
 
   function actionApiUrl(root) {
@@ -164,6 +205,35 @@
 
   function invoiceLocked(stay, root) {
     if (chargesEditable(stay, root)) return false;
+    var kind = invoiceKindFromPage(root);
+    if (kind === 'fb') {
+      if (!stay) return true;
+      var hasFbe = !!(
+        stay.fbTransferInvoiceNumber ||
+        stay.fb_transfer_invoice_number ||
+        stay.fbTransferInvoiceGenerated
+      );
+      if (!hasFbe) return false;
+      var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
+      var pendingFb = folio.some(function (line) {
+        if (!line) return false;
+        var lineKind = String(line.kind || '').toLowerCase();
+        if (
+          lineKind !== 'restaurant_room_transfer' &&
+          lineKind !== 'bar_room_transfer'
+        ) {
+          return false;
+        }
+        if (!(Number(line.amount || 0) > 0)) return false;
+        return !String(
+          line.invoicedInvoiceNumber || line.invoiced_invoice_number || ''
+        ).trim();
+      });
+      return !pendingFb;
+    }
+    if (kind === 'hotel') {
+      return !!(stay && stay.invoiceGenerated && invoiceNumber(stay));
+    }
     return !!(stay && stay.invoiceGenerated && invoiceNumber(stay));
   }
 
@@ -225,79 +295,110 @@
     return Math.max(1, booked + overstayNightsFromStay(stay));
   }
 
+  function addDaysISO(iso, days) {
+    var text = toDateISO(iso);
+    if (!text) return '';
+    var parts = text.split('-');
+    if (parts.length !== 3) return '';
+    var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    if (isNaN(d.getTime())) return '';
+    d.setDate(d.getDate() + Number(days || 0));
+    return (
+      d.getFullYear() +
+      '-' +
+      String(d.getMonth() + 1).padStart(2, '0') +
+      '-' +
+      String(d.getDate()).padStart(2, '0')
+    );
+  }
+
   function folioLines(room, root) {
     var stay = (room && room.stay) || {};
     var unlocked = chargesEditable(stay, root);
     var lines = [];
     var bookedNights = Math.max(1, Number(stay.nights || 1));
-    var overstayNights = overstayNightsFromStay(stay);
     var billableNights = billableNightsFromStay(stay);
     var roomRate = Math.max(0, Number(stay.roomRate || 0));
     var nightlyRates = Array.isArray(stay.nightlyRates) ? stay.nightlyRates : [];
+    var checkIn = toDateISO(stay.checkInDate || stay.check_in_date);
+    var chargeLabels =
+      stay.chargeLabels && typeof stay.chargeLabels === 'object'
+        ? stay.chargeLabels
+        : {};
     var roomLabel =
-      (room && (room.roomTypeLabel || room.roomType)) || 'Room Charges';
+      chargeLabels.room ||
+      (room && (room.roomTypeLabel || room.roomType)) ||
+      'Room Charges';
     roomLabel = String(roomLabel).replace(/_/g, ' ');
 
-    function sliceNightlySum(startIdx, count) {
-      if (!nightlyRates.length || !(count > 0)) return null;
-      var sum = 0;
-      var last = roomRate;
-      for (var i = 0; i < count; i++) {
-        var idx = startIdx + i;
+    function nightRateAt(index, nightDate) {
+      if (nightlyRates.length) {
+        var byDate = null;
+        if (nightDate) {
+          for (var n = 0; n < nightlyRates.length; n++) {
+            if (toDateISO(nightlyRates[n] && nightlyRates[n].date) === nightDate) {
+              byDate = nightlyRates[n];
+              break;
+            }
+          }
+        }
         var row =
-          idx < nightlyRates.length
-            ? nightlyRates[idx]
-            : nightlyRates[nightlyRates.length - 1];
-        if (row && row.roomRate != null) last = Math.max(0, Number(row.roomRate || 0));
-        sum += last;
+          byDate ||
+          (index < nightlyRates.length
+            ? nightlyRates[index]
+            : nightlyRates[nightlyRates.length - 1]);
+        if (row && row.roomRate != null) {
+          return Math.max(0, Number(row.roomRate || 0));
+        }
       }
-      return round2(sum);
+      return roomRate;
     }
 
-    var bookedAmount = sliceNightlySum(0, bookedNights);
-    var overstayAmount = sliceNightlySum(
-      bookedNights,
-      Math.max(0, billableNights - bookedNights)
-    );
-    if (bookedAmount == null && roomRate > 0) {
-      bookedAmount = round2(roomRate * bookedNights);
-    }
-    if (overstayAmount == null && roomRate > 0 && overstayNights > 0) {
-      overstayAmount = round2(roomRate * overstayNights);
+    function nightPlanAt(index, nightDate) {
+      if (nightlyRates.length) {
+        var byDate = null;
+        if (nightDate) {
+          for (var n = 0; n < nightlyRates.length; n++) {
+            if (toDateISO(nightlyRates[n] && nightlyRates[n].date) === nightDate) {
+              byDate = nightlyRates[n];
+              break;
+            }
+          }
+        }
+        var row =
+          byDate ||
+          (index < nightlyRates.length
+            ? nightlyRates[index]
+            : nightlyRates[nightlyRates.length - 1]);
+        if (row && row.ratePlan) return String(row.ratePlan).trim();
+      }
+      return String(stay.ratePlan || '').trim();
     }
 
-    if (bookedAmount > 0) {
-      var bookedRate =
-        nightlyRates.length && bookedNights
-          ? round2(bookedAmount / bookedNights)
-          : roomRate;
-      lines.push({
-        key: 'room',
-        label: roomLabel,
-        qty: bookedNights,
-        rate: bookedRate,
-        amount: bookedAmount,
-        canEdit: true,
-        canDelete: false,
-        nameEditable: false
-      });
-      if (overstayAmount > 0 && billableNights > bookedNights) {
-        var overRate =
-          overstayNights > 0 ? round2(overstayAmount / overstayNights) : roomRate;
+    /* One folio row per stay night (matches printed invoice night lines). */
+    if ((roomRate > 0 || nightlyRates.length) && billableNights > 0) {
+      for (var i = 0; i < billableNights; i++) {
+        var nightDate = checkIn ? addDaysISO(checkIn, i) : '';
+        var isOverstay = i >= bookedNights;
+        var nightRate = nightRateAt(i, nightDate);
+        if (!(nightRate > 0)) continue;
+        var plan = nightPlanAt(i, nightDate);
+        var label = roomLabel;
+        if (isOverstay) label += ' (Overstay)';
+        if (nightDate) label += ' · ' + formatStayDate(nightDate);
+        if (plan) label += ' · ' + plan;
         lines.push({
-          key: 'overstay',
-          label:
-            'Overstay (' +
-            overstayNights +
-            ' night' +
-            (overstayNights === 1 ? '' : 's') +
-            ')',
-          qty: overstayNights,
-          rate: overRate,
-          amount: overstayAmount,
+          key: 'night:' + i,
+          nightIndex: i,
+          label: label,
+          baseLabel: roomLabel,
+          qty: 1,
+          rate: nightRate,
+          amount: round2(nightRate),
           canEdit: true,
           canDelete: false,
-          nameEditable: false
+          nameEditable: true,
+          isOverstay: isOverstay
         });
       }
     }
@@ -317,13 +418,13 @@
       if (!(row.amount > 0)) return;
       lines.push({
         key: row.key,
-        label: row.label,
+        label: chargeLabels[row.key] || row.label,
         qty: 1,
         rate: row.amount,
         amount: round2(row.amount),
         canEdit: true,
         canDelete: true,
-        nameEditable: false
+        nameEditable: true
       });
     });
     var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
@@ -382,48 +483,68 @@
   function moneySummary(room, root) {
     var stay = room && room.stay && typeof room.stay === 'object' ? room.stay : null;
     var lines = folioLines(room, root);
-    var subtotal = round2(
+    var grossInclusive = round2(
       lines.reduce(function (sum, row) {
         return sum + Number(row.amount || 0);
       }, 0)
     );
-    if (!(subtotal > 0) && stay && stay.estimatedTotal != null && !(Number(stay.discountAmount) > 0)) {
-      subtotal = round2(stay.estimatedTotal);
+    if (
+      !(grossInclusive > 0) &&
+      stay &&
+      stay.estimatedTotal != null &&
+      !(Number(stay.discountAmount) > 0)
+    ) {
+      grossInclusive = round2(stay.estimatedTotal);
     }
     /* Prefer explicit stay gross: estimated + discount when discount was applied. */
     if (stay && stay.estimatedTotal != null && Number(stay.discountAmount) > 0) {
       var grossFromStay = round2(
         Number(stay.estimatedTotal || 0) + Number(stay.discountAmount || 0)
       );
-      if (grossFromStay > subtotal) subtotal = grossFromStay;
+      if (grossFromStay > grossInclusive) grossInclusive = grossFromStay;
     }
     var discountType = (stay && (stay.discountType || stay.discount_type)) || 'pct';
     var discountValue = Number(
       stay && (stay.discountValue != null ? stay.discountValue : stay.discount_value)
     );
     if (!isFinite(discountValue)) discountValue = 0;
-    var discount =
+    var discountInclusive =
       stay && stay.discountAmount != null
         ? round2(stay.discountAmount)
-        : calcDiscountAmount(subtotal, discountType, discountValue);
-    if (discount > subtotal) discount = subtotal;
-    var taxable = round2(Math.max(0, subtotal - discount));
+        : calcDiscountAmount(grossInclusive, discountType, discountValue);
+    if (discountInclusive > grossInclusive) discountInclusive = grossInclusive;
+    /* Room rates / stay lines are tax-inclusive — extract CGST/UGST, do not add tax. */
+    var inclusive = round2(Math.max(0, grossInclusive - discountInclusive));
+    var factor = 1 + CGST_RATE + UGST_RATE;
+    var taxable =
+      factor > 0 ? round2(inclusive / factor) : inclusive;
     var cgst = round2(taxable * CGST_RATE);
-    var ugst = round2(taxable * UGST_RATE);
-    var total = round2(taxable + cgst + ugst);
+    var ugst = round2(inclusive - taxable - cgst);
+    if (ugst < 0) ugst = 0;
+    var displaySubtotal =
+      factor > 0 ? round2(grossInclusive / factor) : grossInclusive;
+    var displayDiscount =
+      discountInclusive > 0 && factor > 0
+        ? round2(discountInclusive / factor)
+        : discountInclusive;
+    if (displayDiscount > displaySubtotal) displayDiscount = displaySubtotal;
+    var total = inclusive;
     var advance = Math.max(0, Number((stay && stay.advancePaid) || 0));
-    var balance =
-      stay && stay.combinedBalanceDue != null
-        ? round2(stay.combinedBalanceDue)
-        : stay && stay.balanceAmount != null
-          ? round2(stay.balanceAmount)
-          : Math.max(0, round2(total - advance));
-    var fbTotal = round2(Number((stay && stay.fbTransferTotal) || 0));
-    var fbBalance = round2(Number((stay && stay.fbTransferBalance) || 0));
+    var balance = Math.max(0, round2(total - advance));
+    if (
+      stay &&
+      stay.balanceAmount != null &&
+      !(Number(stay.overstayNights) > 0 || overstayNightsFromStay(stay) > 0)
+    ) {
+      balance = round2(Number(stay.balanceAmount || 0));
+    }
     return {
       lines: lines,
-      subtotal: subtotal,
-      discount: discount,
+      /* Inclusive gross used for discount % / ₹ preview and server parity. */
+      grossInclusive: grossInclusive,
+      subtotal: displaySubtotal,
+      discount: displayDiscount,
+      discountInclusive: discountInclusive,
       discountType: discountType,
       discountValue: discountValue,
       taxable: taxable,
@@ -521,7 +642,8 @@
     var tbody = $('#hri-lines-body', root);
     var empty = $('#hri-empty', root);
     var ledgerEdit = isLedgerEdit(root);
-    var editable = chargesEditable(stay, root);
+    var hasEditAccess = canEditAccess(root);
+    var editable = hasEditAccess && chargesEditable(stay, root);
     var locked = invoiceLocked(stay, root);
     if (tbody) {
       if (!summary.lines.length) {
@@ -532,17 +654,25 @@
         tbody.innerHTML = summary.lines
           .map(function (row) {
             var canEdit =
+              hasEditAccess &&
               !locked &&
               !!row.key &&
               (ledgerEdit || editable || !!row.canEdit);
             var canDelete =
-              !locked && (ledgerEdit || editable ? !!row.canDelete : !!row.canDelete);
+              hasEditAccess &&
+              !locked &&
+              (ledgerEdit || editable ? !!row.canDelete : !!row.canDelete);
+            var noAccessTitle = 'Edit Access is required to change folio charges';
             return (
               '<tr data-charge-key="' +
               escapeHtml(row.key || '') +
               '">' +
-              '<td>' +
-              escapeHtml(row.label) +
+              '<td class="pos-inv-col-item">' +
+              (canEdit
+                ? '<button type="button" class="hri-line-item-btn" data-hri-line-edit title="Edit item">' +
+                  escapeHtml(row.label) +
+                  '</button>'
+                : escapeHtml(row.label)) +
               '</td>' +
               '<td class="pos-inv-col-qty">' +
               escapeHtml(String(row.qty || 1)) +
@@ -558,9 +688,11 @@
               (canEdit
                 ? ' title="Edit charge"'
                 : ' disabled title="' +
-                  (locked
-                    ? 'Invoice locked'
-                    : 'This charge cannot be edited') +
+                  (!hasEditAccess
+                    ? noAccessTitle
+                    : locked
+                      ? 'Invoice locked'
+                      : 'This charge cannot be edited') +
                   '"') +
               '>' +
               '<svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>' +
@@ -569,11 +701,15 @@
               (canDelete
                 ? ' title="Remove charge"'
                 : ' disabled title="' +
-                  (locked
-                    ? 'Invoice locked'
-                    : row.key === 'room'
-                      ? 'Room tariff cannot be deleted'
-                      : 'This charge cannot be removed') +
+                  (!hasEditAccess
+                    ? noAccessTitle
+                    : locked
+                      ? 'Invoice locked'
+                      : row.key === 'room' ||
+                          row.key === 'overstay' ||
+                          String(row.key || '').indexOf('night:') === 0
+                        ? 'Room tariff cannot be deleted'
+                        : 'This charge cannot be removed') +
                   '"') +
               '>' +
               '<svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg>' +
@@ -600,7 +736,8 @@
     setText($('#hri-sum-total', root), money(summary.total));
 
     root.classList.toggle('is-invoice-generated', invoiceLocked(stay, root));
-    root.classList.toggle('is-charges-editable', chargesEditable(stay, root));
+    root.classList.toggle('is-charges-editable', hasEditAccess && chargesEditable(stay, root));
+    root.classList.toggle('is-folio-readonly', !hasEditAccess);
 
     var genBtn = $('#hri-generate', root);
     var settleBtn = $('#hri-settle-bill', root);
@@ -609,10 +746,17 @@
     var discBtn = $('#hri-tool-discount', root);
     if (genBtn) {
       var genLabel = generateInvoiceLabel(root);
-      genBtn.title = generateInvoiceTitle(root);
+      genBtn.title = hasEditAccess
+        ? generateInvoiceTitle(root)
+        : 'Edit Access is required to generate or modify invoices';
       if (!stay) {
         genBtn.disabled = true;
         genBtn.textContent = genLabel;
+      } else if (!hasEditAccess) {
+        genBtn.disabled = true;
+        genBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg> ' +
+          genLabel;
       } else if (invoiceLocked(stay, root)) {
         genBtn.disabled = true;
         genBtn.innerHTML =
@@ -632,11 +776,19 @@
     if (printBtn) printBtn.disabled = !stay;
     if (pdfBtn) pdfBtn.disabled = !stay;
     if (discBtn) {
-      discBtn.disabled = !stay || invoiceLocked(stay, root);
+      discBtn.disabled = !hasEditAccess || !stay || invoiceLocked(stay, root);
+      discBtn.title = hasEditAccess
+        ? 'Add or change discount'
+        : 'Edit Access is required to change folio charges';
       discBtn.classList.toggle('is-active', showDisc);
     }
     var customBtn = $('#hri-add-custom', root);
-    if (customBtn) customBtn.disabled = !stay || invoiceLocked(stay, root);
+    if (customBtn) {
+      customBtn.disabled = !hasEditAccess || !stay || invoiceLocked(stay, root);
+      customBtn.title = hasEditAccess
+        ? 'Add a custom folio charge'
+        : 'Edit Access is required to change folio charges';
+    }
   }
 
   function settleModal() {
@@ -1163,7 +1315,11 @@
     var raw = amountEl ? String(amountEl.value || '').trim() : '';
     var value = raw === '' ? 0 : Number(raw);
     if (isNaN(value) || value < 0) value = 0;
-    var subtotal = lastSummary ? lastSummary.subtotal : 0;
+    var subtotal = lastSummary
+      ? lastSummary.grossInclusive != null
+        ? lastSummary.grossInclusive
+        : lastSummary.subtotal
+      : 0;
     var amount = calcDiscountAmount(subtotal, discountDraftType, value);
     if (preview) preview.textContent = 'Discount: ' + money(amount);
     var needs = discountNeedsReason(discountDraftType, value, subtotal);
@@ -1179,6 +1335,7 @@
   }
 
   function openDiscountModal() {
+    if (!requireEditAccess(lastRoot)) return;
     if (!lastRoom || !lastRoom.stay) {
       showToast('No active stay for discount.', true);
       return;
@@ -1215,7 +1372,31 @@
     if (modal) modal.hidden = true;
   }
 
+  function lineIsPerNightRate(line) {
+    if (!line || !line.key) return false;
+    if (line.key === 'room' || line.key === 'overstay') return true;
+    return String(line.key).indexOf('night:') === 0;
+  }
+
+  function lineEditRateValue(line) {
+    if (!line) return '';
+    var qty = Math.max(1, Number(line.qty) || 1);
+    var rate = Number(line.rate);
+    var amount = Number(line.amount);
+    if (lineIsPerNightRate(line) && qty > 1 && isFinite(amount) && amount > 0) {
+      /* Prefer true per-night rate; if rate was wrongly stored as the line total, derive it. */
+      if (isFinite(rate) && rate > 0 && round2(rate) !== round2(amount)) {
+        return round2(rate);
+      }
+      return round2(amount / qty);
+    }
+    if (isFinite(rate) && rate > 0) return round2(rate);
+    if (isFinite(amount) && amount > 0) return round2(amount);
+    return '';
+  }
+
   function openCustomModal(editLine) {
+    if (!requireEditAccess(lastRoot)) return;
     if (!lastRoom || !lastRoom.stay) {
       showToast('No active stay for custom charges.', true);
       return;
@@ -1240,23 +1421,17 @@
     if (nameLabel) nameLabel.textContent = editing ? 'Item' : 'Charge name';
     if (rateLabel) {
       rateLabel.textContent =
-        editing && editLine.key === 'room' ? 'Rate (₹) / night' : 'Rate (₹)';
+        editing && lineIsPerNightRate(editLine) ? 'Rate (₹) / night' : 'Rate (₹)';
     }
     if (nameEl) {
-      nameEl.value = editing ? editLine.label || '' : '';
+      nameEl.value = editing
+        ? editLine.baseLabel || editLine.label || ''
+        : '';
       nameEl.readOnly = editing ? !editLine.nameEditable : false;
       nameEl.tabIndex = nameEl.readOnly ? -1 : 0;
     }
     if (rateEl) {
-      rateEl.value = editing
-        ? String(
-            editLine.key === 'room'
-              ? editLine.rate
-              : editLine.amount != null
-                ? editLine.amount
-                : editLine.rate || ''
-          )
-        : '';
+      rateEl.value = editing ? String(lineEditRateValue(editLine) || '') : '';
     }
     modal.hidden = false;
     var focusEl = nameEl && !nameEl.readOnly ? nameEl : rateEl;
@@ -1283,6 +1458,9 @@
   }
 
   function saveCustomCharge(root) {
+    if (!requireEditAccess(root)) {
+      return Promise.reject(new Error('edit access required'));
+    }
     var keyEl = document.getElementById('hri-custom-key');
     var nameEl = document.getElementById('hri-custom-name');
     var rateEl = document.getElementById('hri-custom-rate');
@@ -1298,11 +1476,23 @@
 
     var payload;
     if (chargeKey) {
+      if (nameEl && !nameEl.readOnly && !label) {
+        showToast('Enter an item name.', true);
+        if (saveBtn) saveBtn.disabled = false;
+        return Promise.reject(new Error('name required'));
+      }
+      var line = findLineByKey(chargeKey);
+      var qty = line && Number(line.qty) > 0 ? Number(line.qty) : 1;
+      var amount = round2(rate);
+      /* Overstay API expects the line total; night/room APIs expect the nightly rate. */
+      if (chargeKey === 'overstay') {
+        amount = round2(rate * Math.max(1, qty));
+      }
       payload = {
         action: 'update_charge',
         chargeKey: chargeKey,
         label: label,
-        amount: round2(rate),
+        amount: amount,
         rate: round2(rate)
       };
     } else {
@@ -1341,6 +1531,9 @@
   }
 
   function deleteLineCharge(root, chargeKey) {
+    if (!requireEditAccess(root)) {
+      return Promise.reject(new Error('edit access required'));
+    }
     if (!chargeKey) return Promise.reject(new Error('missing key'));
     if (invoiceLocked(lastRoom && lastRoom.stay)) {
       showToast('Charges cannot be deleted after the invoice is generated.', true);
@@ -1374,6 +1567,9 @@
   }
 
   function applyDiscount(root) {
+    if (!requireEditAccess(root)) {
+      return Promise.reject(new Error('edit access required'));
+    }
     var amountEl = document.getElementById('hri-discount-amount');
     var reasonEl = document.getElementById('hri-discount-reason');
     var raw = amountEl ? String(amountEl.value || '').trim() : '';
@@ -1382,7 +1578,11 @@
       showToast('Enter a valid discount.', true);
       return Promise.reject(new Error('invalid discount'));
     }
-    var subtotal = lastSummary ? lastSummary.subtotal : 0;
+    var subtotal = lastSummary
+      ? lastSummary.grossInclusive != null
+        ? lastSummary.grossInclusive
+        : lastSummary.subtotal
+      : 0;
     if (discountNeedsReason(discountDraftType, value, subtotal)) {
       var reason = reasonEl ? String(reasonEl.value || '').trim() : '';
       if (!reason) {
@@ -1498,11 +1698,13 @@
   }
 
   function generateInvoice(root) {
+    if (!requireEditAccess(root)) return Promise.reject(new Error('edit access required'));
     var genBtn = $('#hri-generate', root);
     if (genBtn) genBtn.disabled = true;
     var note = (($('#hri-notes', root) || {}).value || '').trim();
     return putAction(root, {
       action: 'generate_invoice',
+      invoice_kind: invoiceKindFromPage(root),
       payment_splits: [],
       note: note
     })
@@ -1513,8 +1715,22 @@
           );
         }
         paintRoom(root, result.data.room);
-        var inv = invoiceNumber(result.data.room && result.data.room.stay);
-        showToast(inv ? 'Invoice ' + inv + ' updated.' : 'Invoice updated.');
+        var stay = result.data.room && result.data.room.stay;
+        var inv = invoiceNumber(stay);
+        var fbInv =
+          (result.data.fbInvoice && result.data.fbInvoice.invoiceNumber) ||
+          (stay && (stay.fbTransferInvoiceNumber || stay.fb_transfer_invoice_number)) ||
+          '';
+        var msg = 'Invoice updated.';
+        if (result.data.minted && inv) msg = 'Room invoice ' + inv + ' generated.';
+        if (result.data.fbMinted && fbInv) {
+          msg =
+            (result.data.minted ? msg + ' ' : '') +
+            'F&B invoice ' +
+            fbInv +
+            ' generated.';
+        }
+        showToast(msg);
         if (isLedgerEdit(root)) {
           var backUrl = root.getAttribute('data-ledger-back-url') || '/hotel/invoice-ledger';
           window.setTimeout(function () {

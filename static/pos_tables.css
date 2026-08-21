@@ -168,6 +168,21 @@ body.pos-module .pl-summary-row.pos-tables-kpis,
   transform:translateY(-2px);
   box-shadow:0 12px 28px rgba(15,23,42,.07);
 }
+.pos-kpi[data-kpi="occupied"]{
+  cursor:pointer;
+}
+.pos-kpi[data-kpi="occupied"]:focus{
+  outline:none;
+}
+.pos-kpi[data-kpi="occupied"]:focus-visible{
+  outline:2px solid var(--pos-primary);
+  outline-offset:2px;
+}
+.pos-kpi[data-kpi="occupied"].is-active{
+  border-color:rgba(37,99,235,.42);
+  background:#F8FBFF;
+  box-shadow:0 0 0 1px rgba(37,99,235,.1), 0 8px 30px rgba(15,23,42,.04);
+}
 .pos-kpi[data-kpi="unsettled"][hidden]{display:none !important}
 .pos-kpi[data-kpi="unsettled"].is-clickable{
   cursor:pointer;
@@ -300,6 +315,54 @@ body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
 }
 .pos-kot-pending-view-btn:active{
   transform:translateY(1px);
+}
+
+/* KOT pending 30+ minutes — rose pulse like hotel overdue checkout. */
+@keyframes pos-kot-pending-attention-pulse{
+  0%, 100%{
+    box-shadow:0 0 0 0 rgba(225,29,72,.0), 0 1px 2px rgba(234,88,12,.06);
+    border-color:#FB7185;
+    background:linear-gradient(90deg,#FFF1F2 0%,#FFEDD5 100%);
+  }
+  50%{
+    box-shadow:0 0 0 5px rgba(225,29,72,.32), 0 8px 24px rgba(225,29,72,.14);
+    border-color:#BE123C;
+    background:linear-gradient(90deg,#FFE4E6 0%,#FECDD3 100%);
+  }
+}
+html.de-soft-nav-session .de-main-wrapper .pos-kot-pending-banner--attention,
+html.de-soft-navigating .de-main-wrapper .pos-kot-pending-banner--attention,
+.pos-kot-pending-banner--attention{
+  animation:pos-kot-pending-attention-pulse 1.4s ease-in-out infinite !important;
+}
+html.de-soft-nav-session .de-main-wrapper .pos-kot-pending-banner--attention .pos-kot-pending-banner-badge,
+html.de-soft-navigating .de-main-wrapper .pos-kot-pending-banner--attention .pos-kot-pending-banner-badge,
+.pos-kot-pending-banner--attention .pos-kot-pending-banner-badge{
+  animation:pos-table-attention-badge-pulse 1.4s ease-in-out infinite !important;
+}
+html.de-soft-nav-session .de-main-wrapper .pos-kot-pending-banner--attention .pos-kot-pending-banner-icon,
+html.de-soft-navigating .de-main-wrapper .pos-kot-pending-banner--attention .pos-kot-pending-banner-icon,
+.pos-kot-pending-banner--attention .pos-kot-pending-banner-icon{
+  background:#FFE4E6;
+  border-color:#FDA4AF;
+  color:#BE123C;
+}
+@media (prefers-reduced-motion: reduce){
+  html.de-soft-nav-session .de-main-wrapper .pos-kot-pending-banner--attention,
+  html.de-soft-navigating .de-main-wrapper .pos-kot-pending-banner--attention,
+  .pos-kot-pending-banner--attention{
+    animation:none !important;
+    border-color:#E11D48 !important;
+    box-shadow:inset 0 0 0 2px rgba(225,29,72,.4);
+    background:linear-gradient(90deg,#FFE4E6 0%,#FECDD3 100%);
+  }
+  html.de-soft-nav-session .de-main-wrapper .pos-kot-pending-banner--attention .pos-kot-pending-banner-badge,
+  html.de-soft-navigating .de-main-wrapper .pos-kot-pending-banner--attention .pos-kot-pending-banner-badge,
+  .pos-kot-pending-banner--attention .pos-kot-pending-banner-badge{
+    animation:none !important;
+    background:#E11D48;
+    color:#fff;
+  }
 }
 
 /* Pending KOT details modal */
@@ -600,6 +663,73 @@ body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   box-shadow:none;
 }
 .pos-kot-modal-send-all:active{transform:translateY(1px)}
+
+/* Pending Kitchen Orders — blue redesign (header + accents) */
+#pos-kot-pending-modal .pos-kot-modal-dialog{
+  border-color:#BFDBFE;
+  box-shadow:0 24px 64px rgba(37,99,235,.18);
+}
+#pos-kot-pending-modal .pos-kot-modal-header{
+  padding:20px 22px 18px;
+  background:linear-gradient(180deg,#DBEAFE 0%,#EFF6FF 100%);
+  border-bottom:1px solid #BFDBFE;
+}
+#pos-kot-pending-modal .pos-kot-modal-icon{
+  background:#2563EB;
+  border:1px solid #1D4ED8;
+  color:#fff;
+  box-shadow:0 8px 18px rgba(37,99,235,.28);
+}
+#pos-kot-pending-modal .pos-kot-modal-heading-copy h2{
+  color:#1E3A8A;
+}
+#pos-kot-pending-modal .pos-kot-modal-sub{
+  color:#3B82F6;
+}
+#pos-kot-pending-modal .pos-kot-modal-close{
+  color:#60A5FA;
+}
+#pos-kot-pending-modal .pos-kot-modal-close:hover{
+  background:rgba(255,255,255,.72);
+  color:#1E40AF;
+}
+#pos-kot-pending-modal .pos-kot-modal-table th{
+  color:#3B82F6;
+  background:#F8FBFF;
+  border-bottom-color:#DBEAFE;
+}
+#pos-kot-pending-modal .pos-kot-modal-table td{
+  border-bottom-color:#E8F1FE;
+}
+#pos-kot-pending-modal .pos-kot-table-cell-name{
+  color:#1E3A8A;
+}
+#pos-kot-pending-modal .pos-kot-table-status{
+  background:#DBEAFE;
+  color:#1D4ED8;
+}
+#pos-kot-pending-modal .pos-kot-table-status.is-available{background:#DCFCE7;color:#15803D}
+#pos-kot-pending-modal .pos-kot-table-status.is-reserved{background:#EDE9FE;color:#6D28D9}
+#pos-kot-pending-modal .pos-kot-table-status.is-cleaning{background:#FFE4E6;color:#BE123C}
+#pos-kot-pending-modal .pos-kot-table-status.is-inactive{background:#E2E8F0;color:#475569}
+#pos-kot-pending-modal .pos-kot-modal-footer{
+  background:#EFF6FF;
+  border-top:1px solid #BFDBFE;
+}
+#pos-kot-pending-modal .pos-kot-modal-meta{
+  color:#1E40AF;
+}
+#pos-kot-pending-modal .pos-kot-modal-send-all{
+  background:#2563EB;
+  box-shadow:0 8px 20px rgba(37,99,235,.28);
+}
+#pos-kot-pending-modal .pos-kot-modal-send-all:hover{background:#1D4ED8}
+#pos-kot-pending-modal .pos-kot-modal-send-all:disabled{
+  opacity:.6;
+  cursor:wait;
+  box-shadow:none;
+}
+
 .pos-kot-modal-footer-actions{
   display:inline-flex;
   align-items:center;
@@ -1535,6 +1665,59 @@ body.pos-module .pl-summary-row.pos-tables-kpis.has-unsettled-kpi,
   justify-self:end;
 }
 .pos-table-tile--occupied{background:linear-gradient(180deg,#FFFFFF 0%,#FFF8F1 100%);border-color:#FED7AA}
+
+/* Long occupied (4+ hours, no checkout) — rose pulse like hotel overdue rooms. */
+@keyframes pos-table-attention-pulse{
+  0%, 100%{
+    box-shadow:0 0 0 0 rgba(225,29,72,.0), var(--pos-shadow, 0 8px 24px rgba(15,23,42,.06));
+    border-color:#FB7185;
+    background:linear-gradient(180deg,#FFFFFF 0%,#FFF1F2 100%);
+  }
+  50%{
+    box-shadow:0 0 0 5px rgba(225,29,72,.32), 0 8px 24px rgba(225,29,72,.14);
+    border-color:#BE123C;
+    background:linear-gradient(180deg,#FFE4E6 0%,#FECDD3 100%);
+  }
+}
+@keyframes pos-table-attention-badge-pulse{
+  0%, 100%{
+    background:#FFE4E6;
+    color:#BE123C;
+  }
+  50%{
+    background:#E11D48;
+    color:#fff;
+  }
+}
+html.de-soft-nav-session .de-main-wrapper .pos-table-tile--attention,
+html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention,
+.pos-table-tile--attention{
+  border-color:#FB7185 !important;
+  animation:pos-table-attention-pulse 1.4s ease-in-out infinite !important;
+}
+html.de-soft-nav-session .de-main-wrapper .pos-table-tile--attention .pos-table-badge,
+html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-badge,
+.pos-table-tile--attention .pos-table-badge{
+  animation:pos-table-attention-badge-pulse 1.4s ease-in-out infinite !important;
+}
+@media (prefers-reduced-motion: reduce){
+  html.de-soft-nav-session .de-main-wrapper .pos-table-tile--attention,
+  html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention,
+  .pos-table-tile--attention{
+    animation:none !important;
+    border-color:#E11D48 !important;
+    box-shadow:inset 0 0 0 2px rgba(225,29,72,.4);
+    background:linear-gradient(180deg,#FFE4E6 0%,#FECDD3 100%);
+  }
+  html.de-soft-nav-session .de-main-wrapper .pos-table-tile--attention .pos-table-badge,
+  html.de-soft-navigating .de-main-wrapper .pos-table-tile--attention .pos-table-badge,
+  .pos-table-tile--attention .pos-table-badge{
+    animation:none !important;
+    background:#E11D48;
+    color:#fff;
+  }
+}
+
 .pos-table-tile--reserved{background:linear-gradient(180deg,#FFFFFF 0%,#F8F5FF 100%);border-color:#DDD6FE}
 .pos-table-tile--cleaning{background:linear-gradient(180deg,#FFFFFF 0%,#FFF5F7 100%);border-color:#FECDD3}
 .pos-table-tile--inactive{background:linear-gradient(180deg,#FFFFFF 0%,#F8FAFC 100%);opacity:.88}

@@ -1,19 +1,34 @@
+{% set embed_title = 'Edit Supplier' if (show_form and form.id) else ('Add Supplier' if show_form else 'Supplier Master') %}
 <div class="md-master-embed md-master-embed--page-shell md-master-embed--supplier"
-     data-md-modal-title="Supplier Master">
+     data-md-modal-title="{{ embed_title }}">
   <header class="se-sales-header su-header md-master-embed-header">
     <div class="su-header-top">
       <div class="su-header-left">
+        <div class="su-header-nav">
+          {% if show_form %}
+          <a class="su-page-back" href="{{ url_for('supplier_master', embed=1) }}" aria-label="Back to Supplier Master">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+          </a>
+          {% else %}
+          <button type="button" class="su-page-back" onclick="if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back to Master">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+          </button>
+          {% endif %}
+        </div>
         <div class="su-title">
           <div class="su-title-row">
-            <h1>Supplier Master</h1>
+            <h1>{{ embed_title }}</h1>
           </div>
         </div>
       </div>
       <div class="su-header-tools md-master-embed-header-actions">
+        {% if not show_form %}
         <a class="btn" href="{{ supplier_report_url }}" download data-de-no-soft-nav="1">Export</a>
-        <button type="button" class="btn btn-primary" id="sm-open-supplier-modal" data-sm-action="open-supplier-modal">Add Supplier</button>
+        <a class="btn btn-primary" href="{{ url_for('supplier_master', focus='form', embed=1) }}">Add Supplier</a>
+        {% endif %}
       </div>
     </div>
+    {% if not show_form %}
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
         <div class="sr-topbar-filters md-master-embed-filter-form-row" aria-label="Supplier filters">
@@ -29,6 +44,7 @@
         </div>
       </div>
     </div>
+    {% endif %}
   </header>
 
   <div class="md-master-embed-body">
@@ -37,7 +53,8 @@
     {% endwith %}
   </div>
 
-  <script src="{{ url_for('static', filename='supplier_master.js') }}?v=2"></script>
+  <script src="{{ url_for('static', filename='supplier_master.js') }}?v=3"></script>
+  {% if not show_form %}
   <script>
   (function initSmSupplierEmbedSearch(){
     var searchInput = document.getElementById('sm-supplier-search');
@@ -69,4 +86,9 @@
   })();
   if (typeof window.initSupplierMasterPage === 'function') window.initSupplierMasterPage();
   </script>
+  {% else %}
+  <script>
+  if (typeof window.initSupplierMasterPage === 'function') window.initSupplierMasterPage();
+  </script>
+  {% endif %}
 </div>

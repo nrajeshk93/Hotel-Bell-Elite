@@ -1,101 +1,6 @@
 (function (global) {
   'use strict';
 
-  function getModal() {
-    return document.getElementById('sm-supplier-modal');
-  }
-
-  function getForm() {
-    return document.getElementById('sm-supplier-form');
-  }
-
-  function setEditing(editing) {
-    var modal = getModal();
-    if (!modal) return;
-    modal.setAttribute('data-sm-editing', editing ? '1' : '0');
-    var title = document.getElementById('sm-supplier-modal-title');
-    if (title) title.textContent = editing ? 'Edit supplier' : 'Add supplier';
-    var saveBtn = document.getElementById('sm-supplier-save-btn');
-    if (saveBtn) saveBtn.textContent = editing ? 'Update supplier' : 'Save supplier';
-    var deleteForm = document.getElementById('sm-supplier-delete-form');
-    if (deleteForm) {
-      if (editing) deleteForm.removeAttribute('hidden');
-      else deleteForm.setAttribute('hidden', '');
-    }
-  }
-
-  function clearForm() {
-    var form = getForm();
-    if (!form) return;
-    var idEl = document.getElementById('sm-supplier-id');
-    if (idEl) idEl.value = '';
-    var deleteId = document.getElementById('sm-supplier-delete-id');
-    if (deleteId) deleteId.value = '';
-    ['supplier-name', 'supplier-gst', 'supplier-address', 'supplier-phone',
-      'supplier-bank-name', 'supplier-bank-account', 'supplier-ifsc'].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el) el.value = '';
-    });
-    var err = document.getElementById('sm-supplier-modal-err');
-    if (err) {
-      err.innerHTML = '';
-      err.hidden = true;
-    }
-    setEditing(false);
-  }
-
-  function navigateSupplierList() {
-    var modal = getModal();
-    var url = modal && modal.getAttribute('data-sm-list-url');
-    var masterModal = document.getElementById('md-master-modal');
-    if (masterModal && masterModal.classList.contains('open')) {
-      if (modal) {
-        modal.classList.remove('active');
-        modal.setAttribute('aria-hidden', 'true');
-      }
-      return;
-    }
-    if (!url) return;
-    if (typeof global.deSoftRefresh === 'function') {
-      global.deSoftRefresh(url);
-    } else if (typeof global.deNavigateWithTransition === 'function') {
-      global.deNavigateWithTransition(url);
-    } else {
-      global.location.href = url;
-    }
-  }
-
-  global.openSupplierModal = function openSupplierModal(opts) {
-    var modal = getModal();
-    var form = getForm();
-    if (!modal || !form) return false;
-    opts = opts || {};
-    if (opts.reset !== false) clearForm();
-    setEditing(!!(opts.editing || (document.getElementById('sm-supplier-id') || {}).value));
-    modal.classList.add('active');
-    modal.setAttribute('aria-hidden', 'false');
-    global.setTimeout(function () {
-      var focusEl = document.getElementById('supplier-name');
-      if (focusEl) focusEl.focus();
-    }, 0);
-    return true;
-  };
-
-  global.closeSupplierModal = function closeSupplierModal(opts) {
-    opts = opts || {};
-    var modal = getModal();
-    if (!modal) return;
-    var wasEditing = modal.getAttribute('data-sm-editing') === '1';
-    if (opts.navigate !== false && wasEditing) {
-      navigateSupplierList();
-      if (opts.reset !== false) clearForm();
-      return;
-    }
-    modal.classList.remove('active');
-    modal.setAttribute('aria-hidden', 'true');
-    if (opts.reset !== false) clearForm();
-  };
-
   function initSupplierTableSort() {
     var table = document.getElementById('sm-supplier-table');
     if (!table || table.getAttribute('data-sm-sort-bound') === '1') return;
@@ -163,44 +68,8 @@
 
   global.initSupplierMasterPage = function initSupplierMasterPage() {
     initSupplierTableSort();
-
-    var modal = getModal();
-    if (!modal) return;
-
-    if (!document.documentElement.getAttribute('data-sm-supplier-modal-bound')) {
-      document.documentElement.setAttribute('data-sm-supplier-modal-bound', '1');
-
-      document.addEventListener('click', function (e) {
-        var actionEl = e.target.closest('[data-sm-action]');
-        if (!actionEl) {
-          if (e.target === getModal()) {
-            global.closeSupplierModal({ navigate: true, reset: true });
-          }
-          return;
-        }
-        var action = actionEl.getAttribute('data-sm-action');
-        if (action === 'open-supplier-modal') {
-          e.preventDefault();
-          global.openSupplierModal({ reset: true });
-        } else if (action === 'close-supplier-modal') {
-          e.preventDefault();
-          global.closeSupplierModal({ navigate: true, reset: true });
-        }
-      });
-
-      document.addEventListener('keydown', function (e) {
-        if (e.key !== 'Escape') return;
-        var openModal = getModal();
-        if (openModal && openModal.classList.contains('active')) {
-          e.preventDefault();
-          e.stopPropagation();
-          global.closeSupplierModal({ navigate: true, reset: true });
-        }
-      }, true);
-    }
-
-    if (modal.classList.contains('active')) {
-      modal.setAttribute('aria-hidden', 'false');
+    var form = document.getElementById('sm-supplier-form');
+    if (form) {
       global.setTimeout(function () {
         var focusEl = document.getElementById('supplier-name');
         if (focusEl) focusEl.focus();

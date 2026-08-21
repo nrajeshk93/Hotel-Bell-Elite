@@ -25,6 +25,18 @@
     return (page && page.getAttribute('data-ledger-prefix')) || 'hil';
   }
 
+  function isRoomTransferLedger(page) {
+    page = page || ledgerPageFrom();
+    return !!(page && page.getAttribute('data-room-transfer-ledger') === '1');
+  }
+
+  function isPosRoomTransferRow(row) {
+    return (
+      String((row && row.getAttribute('data-invoice-source')) || '').toLowerCase() ===
+      'pos_room_transfer'
+    );
+  }
+
   function $id(page, name) {
     if (!page) return null;
     return page.querySelector('#' + ledgerPrefix(page) + '-' + name);
@@ -197,13 +209,22 @@
     cancelled: 'Cancelled'
   };
 
+  function statusFilterLabels(page) {
+    var labels = Object.assign({}, STATUS_FILTER_LABELS);
+    if (isRoomTransferLedger(page)) {
+      labels.cancelled = 'Invoice Generated';
+    }
+    return labels;
+  }
+
   function syncStatusListbox(page, key) {
     var want = key || 'all';
     var hidden = $id(page, 'status');
     if (hidden) hidden.value = want;
     var valueEl = $id(page, 'status-value');
     if (valueEl) {
-      valueEl.textContent = STATUS_FILTER_LABELS[want] || STATUS_FILTER_LABELS.all;
+      var labels = statusFilterLabels(page);
+      valueEl.textContent = labels[want] || labels.all;
     }
     var list = $id(page, 'status-list');
     if (!list) return;
@@ -281,29 +302,42 @@
     applySearch();
   }
 
-  function bindInvoiceFilter(page) {
+  function applyInvoiceTab(tab) {
+    if (!tab) return false;
+    var page = ledgerPageFrom(tab);
     var form = $id(page, 'filter-form');
-    var list = $id(page, 'invoice-list');
-    if (!form || !list || list.getAttribute('data-bound') === '1') return;
-    list.setAttribute('data-bound', '1');
-    list.addEventListener('click', function (ev) {
-      var btn = ev.target.closest('.se-filter-listbox-option');
-      if (!btn) return;
-      var hidden = $id(page, 'invoice');
-      var valueEl = $id(page, 'invoice-value');
-      var val = btn.getAttribute('data-value') || 'all';
-      if (hidden) hidden.value = val;
-      if (valueEl) {
-        valueEl.textContent =
-          btn.getAttribute('data-label') || btn.textContent.trim();
-      }
-      $all('.se-filter-listbox-option', list).forEach(function (opt) {
-        var on = opt === btn;
-        opt.classList.toggle('is-selected', on);
-        opt.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-      prepareAndSubmit(form);
+    var hidden = $id(page, 'invoice');
+    var tabs = $id(page, 'invoice-tabs');
+    if (!form || !hidden || !tabs) return false;
+    var val = tab.getAttribute('data-value') || 'all';
+    if (String(hidden.value || '') === val) return false;
+    hidden.value = val;
+    $all('.pl-kind-filter-tab', tabs).forEach(function (btn) {
+      var on = btn === tab;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
+    prepareAndSubmit(form);
+    return false;
+  }
+
+  function applyOutletTab(tab) {
+    if (!tab) return false;
+    var page = ledgerPageFrom(tab);
+    var form = $id(page, 'filter-form');
+    var hidden = $id(page, 'outlet');
+    var tabs = $id(page, 'outlet-tabs');
+    if (!form || !hidden || !tabs) return false;
+    var val = tab.getAttribute('data-value') || 'all';
+    if (String(hidden.value || '') === val) return false;
+    hidden.value = val;
+    $all('.pl-kind-filter-tab', tabs).forEach(function (btn) {
+      var on = btn === tab;
+      btn.classList.toggle('is-active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    prepareAndSubmit(form);
+    return false;
   }
 
   function bindStatusFilter(page) {
@@ -345,6 +379,10 @@
     var invoice = $id(page, 'invoice') || form.querySelector('[name="invoice"]');
     if (invoice && (invoice.value === 'all' || !invoice.value)) {
       invoice.removeAttribute('name');
+    }
+    var outlet = $id(page, 'outlet') || form.querySelector('[name="outlet"]');
+    if (outlet && (outlet.value === 'all' || !outlet.value)) {
+      outlet.removeAttribute('name');
     }
     var skipSoftNav =
       window !== window.top || !!form.querySelector('input[name="popup"]');
@@ -449,9 +487,8 @@
           toast('Invoice printer is unavailable.');
           return;
         }
-        var source = String(
-          (result.data.invoice && result.data.invoice.source) || ''
-        ).toLowerCase();
+        var invoice = result.data.invoice || {};
+        var source = String(invoice.source || '').toLowerCase();
         var openFn =
           source === 'fb_combined_transfer' &&
           typeof global.openFbCombinedTransferInvoice === 'function'
@@ -459,8 +496,9 @@
             : global.openHotelRoomInvoice;
         var opened = openFn(result.data.room, {
           autoPrint: !!autoPrint,
-          invoiceNumber:
-            (result.data.invoice && result.data.invoice.invoice_number) || ''
+          invoiceNumber: invoice.invoice_number || '',
+          invoiceStatus: invoice.status || '',
+          cancelReason: invoice.cancel_reason || ''
         });
         if (!opened) {
           toast('Allow pop-ups to view or print the invoice.');
@@ -569,6 +607,7 @@
   }
 
   function bindSelection(page) {
+    if (isRoomTransferLedger(page)) return;
     if (page.getAttribute('data-hil-select-bound') === '1') return;
     page.setAttribute('data-hil-select-bound', '1');
     var selectAll = $id(page, 'select-all');
@@ -617,6 +656,14 @@
   }
 
   function refreshLedgerAfterSettle() {
+    if (typeof global.deInvalidateSoftNavCacheByPath === 'function') {
+      try {
+        global.deInvalidateSoftNavCacheByPath('/hotel/invoice-ledger');
+        global.deInvalidateSoftNavCacheByPath('/hotel/room-transfer-invoices');
+        global.deInvalidateSoftNavCacheByPath('/hotel/credit');
+        global.deInvalidateSoftNavCacheByPath('/reports/sales');
+      } catch (eInv) {}
+    }
     var page = ledgerPageFrom();
     var form = ledgerForm(page);
     var url = window.location.pathname + (window.location.search || '');
@@ -630,6 +677,10 @@
     }
     var skipSoftNav =
       window !== window.top || (form && form.querySelector('input[name="popup"]'));
+    if (!skipSoftNav && typeof global.deSoftRefresh === 'function') {
+      global.deSoftRefresh(url);
+      return;
+    }
     if (!skipSoftNav && typeof global.deNavigateWithTransition === 'function') {
       global.deNavigateWithTransition(url);
       return;
@@ -638,6 +689,7 @@
   }
 
   function openSettleSelected(page) {
+    if (isRoomTransferLedger(page)) return;
     var rows = checkedRows(page);
     if (!rows.length) {
       toast('Select at least one unsettled invoice.');
@@ -694,6 +746,7 @@
 
   function openSettleFromRow(page, row) {
     if (!row) return;
+    if (isRoomTransferLedger(page) || isPosRoomTransferRow(row)) return;
     var invoiceNumber = row.getAttribute('data-invoice-number') || '';
     if (!invoiceNumber) {
       toast('Invoice not found.');
@@ -787,6 +840,8 @@
       }
       if (ev.target.closest('.pl-col-actions')) return;
 
+      if (isRoomTransferLedger(page)) return;
+
       var settleBtn = ev.target.closest('[data-hil-settle], .hil-status-settle');
       if (settleBtn) {
         var settleRow = settleBtn.closest('tr.hil-row.is-open');
@@ -804,6 +859,7 @@
       }
     });
     page.addEventListener('keydown', function (ev) {
+      if (isRoomTransferLedger(page)) return;
       if (ev.key !== 'Enter' && ev.key !== ' ') return;
       var settleBtn = ev.target.closest('[data-hil-settle], .hil-status-settle');
       if (!settleBtn) return;
@@ -999,73 +1055,6 @@
     if (form) prepareAndSubmit(form);
   }
 
-  function bindRoomTransferOverlay() {
-    var btn = document.getElementById('hil-open-room-transfer');
-    var overlay = document.getElementById('hil-rt-overlay');
-    var frame = document.getElementById('hil-rt-frame');
-    if (!btn || !overlay || !frame) return;
-    if (overlay.getAttribute('data-hil-rt-bound') === '1') return;
-    overlay.setAttribute('data-hil-rt-bound', '1');
-
-    function overlayUrl() {
-      var base =
-        btn.getAttribute('data-room-transfer-url') ||
-        '/hotel/room-transfer-invoices?popup=1';
-      var page = ledgerPageFrom(btn);
-      var form = ledgerForm(page);
-      var url;
-      try {
-        url = new URL(base, window.location.origin);
-      } catch (err) {
-        return base;
-      }
-      url.searchParams.set('popup', '1');
-      if (form) {
-        var dateFrom = form.querySelector('[name="date_from"]');
-        var dateTo = form.querySelector('[name="date_to"]');
-        if (dateFrom && dateFrom.value) {
-          url.searchParams.set('date_from', dateFrom.value);
-        } else {
-          url.searchParams.delete('date_from');
-        }
-        if (dateTo && dateTo.value) {
-          url.searchParams.set('date_to', dateTo.value);
-        } else {
-          url.searchParams.delete('date_to');
-        }
-      }
-      return url.pathname + url.search;
-    }
-
-    function openOverlay() {
-      overlay.hidden = false;
-      overlay.removeAttribute('hidden');
-      document.body.classList.add('hil-rt-overlay-open');
-      frame.src = overlayUrl();
-    }
-
-    function closeOverlay() {
-      overlay.hidden = true;
-      overlay.setAttribute('hidden', '');
-      document.body.classList.remove('hil-rt-overlay-open');
-      frame.removeAttribute('src');
-    }
-
-    btn.addEventListener('click', function (ev) {
-      ev.preventDefault();
-      openOverlay();
-    });
-    $all('[data-hil-rt-close]', overlay).forEach(function (el) {
-      el.addEventListener('click', function (ev) {
-        ev.preventDefault();
-        closeOverlay();
-      });
-    });
-    document.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Escape' && !overlay.hidden) closeOverlay();
-    });
-  }
-
   function initHotelInvoiceLedgerPage() {
     var page = document.querySelector('[data-hotel-invoice-ledger]');
     if (!page) return;
@@ -1073,13 +1062,11 @@
     bindKpiFilters(page);
     bindClientSearch(page);
     bindSort(page);
-    bindInvoiceFilter(page);
     bindStatusFilter(page);
     bindDateRange(page);
     bindActions(page);
-    bindSelection(page);
+    if (!isRoomTransferLedger(page)) bindSelection(page);
     bindVoidInvoiceModal();
-    bindRoomTransferOverlay();
     if (typeof global.bindHotelSettleModal === 'function') {
       global.bindHotelSettleModal();
     }
@@ -1091,11 +1078,14 @@
 
   global.hilStatusChanged = hilStatusChanged;
   global.hilInvoiceChanged = hilInvoiceChanged;
+  global.hilInvoiceTabClick = applyInvoiceTab;
+  global.hilOutletTabClick = applyOutletTab;
   global.initHotelInvoiceLedgerPage = initHotelInvoiceLedgerPage;
   global.hilSettleClick = function (btn) {
     var page = ledgerPageFrom(btn);
     var row = btn && btn.closest ? btn.closest('tr.hil-row.is-open') : null;
     if (!page || !row) return false;
+    if (isRoomTransferLedger(page) || isPosRoomTransferRow(row)) return false;
     openSettleFromRow(page, row);
     return false;
   };

@@ -43,19 +43,20 @@
   <header class="se-sales-header su-header md-master-embed-header">
     <div class="su-header-top">
       <div class="su-header-left">
-        {% if back_href is defined and back_href %}
         <div class="su-header-nav">
+          {% if back_href is defined and back_href %}
           {% include 'partials/su_page_back.html' with context %}
           <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
             <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
+          {% else %}
+          <button type="button" class="su-page-back" onclick="if (typeof closeMasterModal === 'function') closeMasterModal()" aria-label="Back to Master">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+          </button>
+          {% endif %}
         </div>
-        {% endif %}
         <div class="su-title">
           <div class="su-title-row">
-            <div class="su-title-icon" aria-hidden="true" style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;min-width:48px;min-height:48px;max-width:48px;max-height:48px;flex:0 0 48px;overflow:hidden;border-radius:14px;background:#EEF5FF;color:#1877F2;box-sizing:border-box;">
-              <svg width="24" height="24" viewBox="0 0 24 24" style="width:24px;height:24px;display:block;stroke:currentColor;fill:none;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            </div>
             <h1>Employee Master</h1>
           </div>
         </div>

@@ -1,5 +1,6 @@
 """Hotel Rooms floor board seed and API."""
 
+import json
 import os
 import tempfile
 import unittest
@@ -416,6 +417,9 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay["agencyName"], "Travel Co")
         self.assertEqual(stay["agencyGst"], "27AAAAA0000A1Z5")
         self.assertTrue(stay["agencyBilling"])
+        self.assertTrue(stay["agencyRoomBilling"])
+        self.assertTrue(stay["agencyFbBilling"])
+        self.assertEqual(stay["invoiceTo"], "Travel Co")
 
         missing = self.client.put(
             "/hotel/api/rooms/room-104",
@@ -555,6 +559,106 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay.get("agencyName") or "", "")
         self.assertEqual(stay.get("agencyGst") or "", "")
         self.assertFalse(stay.get("agencyBilling"))
+
+    def test_agency_room_and_fb_billing_flags(self):
+        check_in, check_out = self._stay_window(nights=1)
+        room_only = self.client.put(
+            "/hotel/api/rooms/room-103",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Lukas",
+                    "lastName": "Wong",
+                    "mobile": "9000000227",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 2000,
+                    "agencyName": "ATPI India Pvt. Ltd",
+                    "agencyRoomBilling": True,
+                    "agencyFbBilling": False,
+                },
+            },
+        )
+        self.assertEqual(room_only.status_code, 200, room_only.get_data(as_text=True))
+        stay = room_only.get_json()["room"]["stay"]
+        self.assertTrue(stay["agencyRoomBilling"])
+        self.assertFalse(stay["agencyFbBilling"])
+        self.assertTrue(stay["agencyBilling"])
+        self.assertEqual(stay["invoiceTo"], "ATPI India Pvt. Ltd")
+        self.assertTrue(db_mod._hotel_stay_bills_room_to_agency(stay))
+        self.assertFalse(db_mod._hotel_stay_bills_fb_to_agency(stay))
+
+        fb_only = self.client.put(
+            "/hotel/api/rooms/room-104",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Guest",
+                    "lastName": "Two",
+                    "mobile": "9000000228",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 2000,
+                    "agencyName": "ATPI India Pvt. Ltd",
+                    "agencyRoomBilling": False,
+                    "agencyFbBilling": True,
+                },
+            },
+        )
+        self.assertEqual(fb_only.status_code, 200, fb_only.get_data(as_text=True))
+        stay = fb_only.get_json()["room"]["stay"]
+        self.assertFalse(stay["agencyRoomBilling"])
+        self.assertTrue(stay["agencyFbBilling"])
+        self.assertTrue(stay["agencyBilling"])
+        self.assertEqual(stay.get("invoiceTo") or "", "")
+        self.assertFalse(db_mod._hotel_stay_bills_room_to_agency(stay))
+        self.assertTrue(db_mod._hotel_stay_bills_fb_to_agency(stay))
+
+        missing = self.client.put(
+            "/hotel/api/rooms/room-105",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "No",
+                    "lastName": "Agency",
+                    "mobile": "9000000229",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 2000,
+                    "agencyRoomBilling": True,
+                },
+            },
+        )
+        self.assertEqual(missing.status_code, 400)
+        self.assertIn("agency", (missing.get_json() or {}).get("error", "").lower())
+
+        missing_fb = self.client.put(
+            "/hotel/api/rooms/room-105",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "No",
+                    "lastName": "AgencyFb",
+                    "mobile": "9000000230",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 2000,
+                    "agencyFbBilling": True,
+                },
+            },
+        )
+        self.assertEqual(missing_fb.status_code, 400)
+
+        flags = db_mod._hotel_stay_agency_bill_flags({"agencyBilling": True})
+        self.assertEqual(flags, (True, True))
+        flags = db_mod._hotel_stay_agency_bill_flags(
+            {"agencyRoomBilling": True, "agencyFbBilling": False}
+        )
+        self.assertEqual(flags, (True, False))
 
     def test_room_detail_api_get_and_mark_clean(self):
         put_dirty = self.client.put(
@@ -1607,7 +1711,8 @@ class HotelRoomsTests(unittest.TestCase):
 
         detail = self.client.get("/hotel/rooms/room-101")
         html = detail.get_data(as_text=True)
-        self.assertIn("hrd-generate-invoice", html)
+        self.assertIn("hrd-generate-hotel-invoice", html)
+        self.assertIn("hrd-generate-fb-invoice", html)
         self.assertIn("hrd-invoice-modal", html)
         self.assertIn("hrd-invoice-add-split", html)
         self.assertIn("Split Payment", html)
@@ -1619,7 +1724,8 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("pos-invoice-page", inv_html)
         self.assertIn("pos_invoice.css", inv_html)
         self.assertIn("hri-generate", inv_html)
-        self.assertIn("Generate Invoice", inv_html)
+        self.assertIn("Generate Room Invoice", inv_html)
+        self.assertIn('data-invoice-kind="hotel"', inv_html)
         self.assertIn("Settle Bill", inv_html)
         self.assertIn("Bill Summary", inv_html)
         self.assertIn("pos-inv-settle-modal", inv_html)
@@ -1662,16 +1768,15 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(stay["balanceAmount"], 3250.0)
         self.assertEqual(body["room"]["status"], "occupied")
 
-        # Second generate does not mint a new number.
+        # Second generate without pending charges is rejected (invoice is locked).
         again = self.client.put(
             "/hotel/api/rooms/room-101",
             json={"action": "generate_invoice", "amount": 0},
         )
-        self.assertEqual(again.status_code, 200, again.get_data(as_text=True))
-        self.assertFalse(again.get_json().get("minted"))
-        self.assertEqual(
-            again.get_json()["room"]["stay"]["invoiceNumber"], stay["invoiceNumber"]
-        )
+        self.assertEqual(again.status_code, 400, again.get_data(as_text=True))
+        self.assertIn("No pending charges", again.get_data(as_text=True))
+        unchanged = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]["stay"]
+        self.assertEqual(unchanged["invoiceNumber"], stay["invoiceNumber"])
 
     def test_generate_invoice_continues_hbe_short_fy_series(self):
         short_fy = db_mod.indian_fiscal_year_short_label()
@@ -1806,12 +1911,17 @@ class HotelRoomsTests(unittest.TestCase):
                 "action": "update_charge",
                 "chargeKey": "room",
                 "rate": 3000,
+                "label": "Deluxe Suite Tariff",
             },
         )
         self.assertEqual(room_rate.status_code, 200, room_rate.get_data(as_text=True))
         stay = room_rate.get_json()["room"]["stay"]
         self.assertEqual(stay["roomRate"], 3000)
         self.assertEqual(stay["totalRate"], 6000)
+        self.assertEqual(
+            (stay.get("chargeLabels") or {}).get("room"),
+            "Deluxe Suite Tariff",
+        )
 
         deleted = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -1860,6 +1970,71 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(removed.status_code, 200, removed.get_data(as_text=True))
         labels = [f.get("label") for f in removed.get_json()["room"]["stay"]["folioCharges"]]
         self.assertNotIn("Laundry service", labels)
+
+    def test_update_room_rate_propagates_to_nightly_rates(self):
+        """Editing Rate ₹/night must rewrite booked nightlyRates, not only roomRate."""
+        check_in, check_out = self._stay_window(nights=2)
+        night2 = (datetime.fromisoformat(check_in).date() + timedelta(days=1)).isoformat()
+        res = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Nightly",
+                    "lastName": "Edit",
+                    "mobile": "9000000111",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 2,
+                    "roomRate": 3500,
+                    "ratePlan": "EP",
+                    "nightlyRates": [
+                        {"date": check_in, "roomRate": 3500, "ratePlan": "EP"},
+                        {"date": night2, "roomRate": 3500, "ratePlan": "EP"},
+                    ],
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        stay = res.get_json()["room"]["stay"]
+        self.assertEqual(stay["totalRate"], 7000.0)
+
+        updated = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "update_charge",
+                "chargeKey": "room",
+                "rate": 4000,
+                "label": "Deluxe with Balcony",
+            },
+        )
+        self.assertEqual(updated.status_code, 200, updated.get_data(as_text=True))
+        stay2 = updated.get_json()["room"]["stay"]
+        self.assertEqual(stay2["roomRate"], 4000.0)
+        self.assertEqual(stay2["totalRate"], 8000.0)
+        self.assertEqual(
+            [row["roomRate"] for row in (stay2.get("nightlyRates") or [])],
+            [4000.0, 4000.0],
+        )
+        self.assertEqual(
+            (stay2.get("chargeLabels") or {}).get("room"),
+            "Deluxe with Balcony",
+        )
+
+        night_edit = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "update_charge",
+                "chargeKey": "night:1",
+                "rate": 4200,
+            },
+        )
+        self.assertEqual(night_edit.status_code, 200, night_edit.get_data(as_text=True))
+        stay3 = night_edit.get_json()["room"]["stay"]
+        self.assertEqual(stay3["nightlyRates"][0]["roomRate"], 4000.0)
+        self.assertEqual(stay3["nightlyRates"][1]["roomRate"], 4200.0)
+        self.assertEqual(stay3["totalRate"], 8200.0)
 
     def test_record_payment_rejects_before_generate_and_overpay(self):
         self._checkin_with_charges()
@@ -2059,6 +2234,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn(inv_no, html)
         self.assertIn("is-open", html)
         self.assertIn("Un Settled", html)
+        self.assertIn('data-hil-kpi="settled"', html)
         self.assertIn("pos-inv-settle-modal", html)
         self.assertIn("hotel_settle_modal.js", html)
         self.assertIn("data-hil-settle", html)
@@ -2070,15 +2246,17 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn("hil-cancel-btn", html)
         self.assertIn("hil-select-all", html)
         self.assertIn("hil-settle-selected", html)
+        self.assertIn("hil-status-settle", html)
         self.assertIn("hil-row-check", html)
         self.assertIn("settle-selected", html)
         self.assertIn("de-nav-hotel-invoice-ledger", html)
         self.assertIn("de-nav-hotel-credit", html)
         self.assertIn("hil-invoice-listbox", html)
+        self.assertIn("hil-invoice-tabs", html)
         self.assertIn("Room Transfer", html)
         self.assertIn("hil-open-room-transfer", html)
-        self.assertIn("hil-rt-overlay", html)
         self.assertIn("/hotel/room-transfer-invoices", html)
+        self.assertNotIn("hil-rt-overlay", html)
         self.assertNotIn('data-value="room_transfer"', html)
         self.assertIn(">Invoice</span>", html)
 
@@ -2115,6 +2293,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(match["status"], "settled")
         self.assertEqual(match["payment_mode_label"], "Cash")
         self.assertEqual(match["payment_modes"], ["cash"])
+        self.assertAlmostEqual(float(match["payment_amounts"]["cash"]), float(settled["invoice"]["estimated_total"]), places=2)
 
     def test_invoice_ledger_payment_mode_shows_split_tenders(self):
         self._checkin_with_charges(advance=0)
@@ -2137,12 +2316,105 @@ class HotelRoomsTests(unittest.TestCase):
         conn = db_mod.get_db()
         try:
             rows = db_mod.list_hotel_room_invoices(conn, q=inv_no)
+            kpis = db_mod.hotel_room_invoice_kpis(rows)
         finally:
             conn.close()
         match = next(row for row in rows if row["invoice_number"] == inv_no)
         self.assertEqual(match["status"], "settled")
         self.assertEqual(match["payment_mode_label"], "Cash + UPI")
         self.assertEqual(match["payment_modes"], ["cash", "upi"])
+        self.assertAlmostEqual(float(match["payment_amounts"]["cash"]), cash_part, places=2)
+        self.assertAlmostEqual(float(match["payment_amounts"]["upi"]), upi_part, places=2)
+        self.assertAlmostEqual(float(kpis["payment_totals"]["cash"]), cash_part, places=2)
+        self.assertAlmostEqual(float(kpis["payment_totals"]["upi"]), upi_part, places=2)
+
+        page = self.client.get("/hotel/invoice-ledger")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('data-sort="pay_cash"', html)
+        self.assertNotIn('aria-label="Settlement by payment mode"', html)
+        self.assertNotIn("hil-settlement-summary", html)
+        self.assertIn(">Cash<", html)
+        self.assertIn(">UPI<", html)
+
+        export = self.client.get("/hotel/invoice-ledger/export")
+        self.assertEqual(export.status_code, 200)
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        ws = wb.active
+        headers = [ws.cell(3, col).value for col in range(1, ws.max_column + 1)]
+        self.assertEqual(headers[10], "Payment Mode")
+        self.assertEqual(headers[11], "Cash")
+        self.assertEqual(headers[12], "UPI")
+        self.assertEqual(headers[13], "Card")
+        order_row = None
+        for row in range(4, ws.max_row + 1):
+            if ws.cell(row, 1).value == inv_no:
+                order_row = row
+                break
+        self.assertIsNotNone(order_row)
+        self.assertAlmostEqual(float(ws.cell(order_row, 12).value), cash_part, places=2)
+        self.assertAlmostEqual(float(ws.cell(order_row, 13).value), upi_part, places=2)
+
+    def test_fbe_ledger_settlement_records_real_tender_amounts(self):
+        self._checkin_with_charges(advance=0)
+        conn = db_mod.get_db()
+        try:
+            result = db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=400,
+                kind="restaurant_room_transfer",
+                label="Restaurant Room Transfer · SPC/26-27/88",
+                source="pos",
+                invoice_id="88",
+                order_no="SPC/26-27/88",
+                outlet="restaurant",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "invoice_kind": "fb", "payment_splits": []},
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        fb_no = gen.get_json()["room"]["stay"]["fbTransferInvoiceNumber"]
+        self.assertTrue(str(fb_no).startswith("FBE/"))
+
+        settle = self.client.post(
+            f"/hotel/invoice-ledger/api/{fb_no}/settle",
+            json={
+                "payment_splits": [
+                    {"method": "cash", "amount": 150},
+                    {"method": "upi", "amount": 250},
+                ]
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        settled = settle.get_json()["invoice"]
+        self.assertEqual(settled["status"], "settled")
+        self.assertEqual(settled["payment_mode_label"], "Cash + UPI")
+        self.assertEqual(settled["payment_modes"], ["cash", "upi"])
+        self.assertAlmostEqual(float(settled["payment_amounts"]["cash"]), 150, places=2)
+        self.assertAlmostEqual(float(settled["payment_amounts"]["upi"]), 250, places=2)
+
+        conn = db_mod.get_db()
+        try:
+            room = db_mod.get_hotel_room(conn, "room-101")
+            stay = room["stay"]
+            methods = [
+                p.get("method")
+                for p in (stay.get("fbTransferPayments") or [])
+                if isinstance(p, dict)
+            ]
+        finally:
+            conn.close()
+        self.assertIn("cash", methods)
+        self.assertIn("upi", methods)
+        self.assertNotIn("checkout", methods)
 
     def test_pos_room_transfer_lists_on_invoice_ledger(self):
         """Per-POS room transfers list on Room Transfer, not Invoice Ledger."""
@@ -2163,6 +2435,20 @@ class HotelRoomsTests(unittest.TestCase):
             db_mod.upsert_pos_room_transfer_invoice(
                 conn, result["room"], result["charge"]
             )
+            bar = db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=40.0,
+                kind="bar_room_transfer",
+                label="Bar Room Transfer · BAR/26-27/1",
+                source="pos",
+                invoice_id="100",
+                order_no="BAR/26-27/1",
+                outlet="bar",
+            )
+            db_mod.upsert_pos_room_transfer_invoice(
+                conn, bar["room"], bar["charge"]
+            )
             conn.commit()
         finally:
             conn.close()
@@ -2172,28 +2458,54 @@ class HotelRoomsTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertNotIn("SPC/26-27/12", html)
         self.assertIn("hil-open-room-transfer", html)
-        self.assertIn("hil-rt-overlay", html)
-        self.assertIn('id="hil-rt-frame"', html)
         self.assertIn("/hotel/room-transfer-invoices", html)
+        self.assertNotIn("hil-rt-overlay", html)
+        self.assertNotIn('id="hil-rt-frame"', html)
         self.assertNotIn('data-value="room_transfer"', html)
 
         room_transfer = self.client.get("/hotel/room-transfer-invoices")
         self.assertEqual(room_transfer.status_code, 200)
         rt_html = room_transfer.get_data(as_text=True)
         self.assertIn("SPC/26-27/12", rt_html)
-        self.assertIn("Un Settled", rt_html)
+        self.assertIn("BAR/26-27/1", rt_html)
+        self.assertIn("Invoice yet to generate", rt_html)
+        self.assertIn('id="hrt-kpi-open">2<', rt_html)
+        self.assertIn("Yet to generate", rt_html)
+        self.assertIn("Invoice Generated", rt_html)
+        self.assertIn('id="hrt-kpi-outstanding">0<', rt_html)
+        self.assertIn('id="hrt-outlet-tabs"', rt_html)
+        self.assertIn('data-value="bar"', rt_html)
+        self.assertIn('data-value="restaurant"', rt_html)
+        self.assertIn(">Status<", rt_html)
+        self.assertNotIn(">Payment Mode<", rt_html)
         self.assertIn('id="hrt-filter-form"', rt_html)
         self.assertIn('data-invoice-source="pos_room_transfer"', rt_html)
         self.assertIn('data-ledger-prefix="hrt"', rt_html)
+        self.assertIn('data-room-transfer-ledger="1"', rt_html)
+        self.assertNotIn('data-hil-kpi="settled"', rt_html)
+        self.assertNotIn('id="hrt-kpi-settled"', rt_html)
+        self.assertNotIn("hil-status-settle", rt_html)
+        self.assertNotIn("data-hil-settle", rt_html)
+        self.assertNotIn("hrt-settle-selected", rt_html)
+        self.assertNotIn("hil-row-check", rt_html)
+        self.assertNotIn("hrt-select-all", rt_html)
+        self.assertIn("de-nav-hotel-invoice-ledger", rt_html)
+        self.assertIn("Back to Invoice Ledger", rt_html)
+        self.assertIn('class="su-page-back"', rt_html)
         self.assertNotIn("hil-invoice-listbox", rt_html)
         self.assertNotIn("hil-open-room-transfer", rt_html)
 
-        popup = self.client.get("/hotel/room-transfer-invoices?popup=1")
-        self.assertEqual(popup.status_code, 200)
-        popup_html = popup.get_data(as_text=True)
-        self.assertIn("SPC/26-27/12", popup_html)
-        self.assertIn("hotel-room-transfer-popup", popup_html)
-        self.assertNotIn("de-nav-hotel-invoice-ledger", popup_html)
+        restaurant_only = self.client.get(
+            "/hotel/room-transfer-invoices?outlet=restaurant"
+        )
+        restaurant_html = restaurant_only.get_data(as_text=True)
+        self.assertIn("SPC/26-27/12", restaurant_html)
+        self.assertNotIn("BAR/26-27/1", restaurant_html)
+        self.assertIn('id="hrt-kpi-open">1<', restaurant_html)
+        bar_only = self.client.get("/hotel/room-transfer-invoices?outlet=bar")
+        bar_html = bar_only.get_data(as_text=True)
+        self.assertIn("BAR/26-27/1", bar_html)
+        self.assertNotIn("SPC/26-27/12", bar_html)
 
         hotel_only = self.client.get("/hotel/invoice-ledger?invoice=hotel")
         self.assertNotIn("SPC/26-27/12", hotel_only.get_data(as_text=True))
@@ -2219,6 +2531,16 @@ class HotelRoomsTests(unittest.TestCase):
         )
         folio = stay_after["folioCharges"]
         self.assertTrue(any(f.get("settled") for f in folio))
+
+        # Payment-settled transfer still counts as Un Settled until FBE is generated.
+        rt_after = self.client.get("/hotel/room-transfer-invoices").get_data(as_text=True)
+        self.assertIn("Invoice yet to generate", rt_after)
+        self.assertIn('id="hrt-kpi-open">2<', rt_after)
+        filtered = self.client.get("/hotel/room-transfer-invoices?status=open")
+        self.assertEqual(filtered.status_code, 200)
+        filtered_html = filtered.get_data(as_text=True)
+        self.assertIn("SPC/26-27/12", filtered_html)
+        self.assertIn("Invoice yet to generate", filtered_html)
 
     def test_pos_room_transfer_ledger_allow_credit_when_stay_has_agency(self):
         """Room-transfer bills on the ledger expose Credit when the live stay has an agency."""
@@ -2326,6 +2648,26 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(item["status"], "settled")
         self.assertLessEqual(float(item["balance_amount"]), 0.009)
         self.assertEqual(item["source"], "fb_combined_transfer")
+        spc = self.client.get("/hotel/invoice-ledger/api/INV/26-27/4")
+        self.assertEqual(spc.status_code, 200, spc.get_data(as_text=True))
+        spc_item = spc.get_json()["invoice"]
+        self.assertEqual(spc_item["status"], "cancelled")
+        self.assertEqual(spc_item["payment_mode_label"], f"Invoice Generated ({fb_no})")
+        rt_html = self.client.get("/hotel/room-transfer-invoices").get_data(as_text=True)
+        self.assertIn(f"Invoice Generated ({fb_no})", rt_html)
+        self.assertIn("cp-status-pill--cleared", rt_html)
+        self.assertIn("Total Transfer Bill", rt_html)
+        self.assertIn('id="hrt-kpi-total" data-amount="80.0"', rt_html)
+        self.assertIn('id="hrt-kpi-open">0<', rt_html)
+        self.assertIn('id="hrt-kpi-outstanding">1<', rt_html)
+        open_only = self.client.get("/hotel/room-transfer-invoices?status=open")
+        self.assertNotIn("INV/26-27/4", open_only.get_data(as_text=True))
+        generated_only = self.client.get(
+            "/hotel/room-transfer-invoices?status=cancelled"
+        )
+        generated_html = generated_only.get_data(as_text=True)
+        self.assertIn("INV/26-27/4", generated_html)
+        self.assertIn(f"Invoice Generated ({fb_no})", generated_html)
 
     def test_invoice_ledger_settle_after_checkout(self):
         self._checkin_with_charges(advance=0)
@@ -2540,7 +2882,7 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertIn(denied_rooms.status_code, (302, 403))
         self.assertEqual(denied_api.status_code, 403)
 
-    def test_invoice_ledger_edit_cancel_require_cancellation_access(self):
+    def test_invoice_ledger_edit_cancel_require_separate_access(self):
         self._checkin_with_charges(advance=0)
         room = self._generate_stay_invoice()
         inv_no = room["stay"]["invoiceNumber"]
@@ -2582,7 +2924,39 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertNotIn("hil-edit-btn", locked_html)
         self.assertNotIn("hil-cancel-btn", locked_html)
         self.assertEqual(denied_edit.status_code, 403)
+        self.assertIn("Edit Access", (denied_edit.get_json() or {}).get("error", ""))
         self.assertEqual(denied_cancel.status_code, 403)
+        self.assertIn(
+            "Cancellation", (denied_cancel.get_json() or {}).get("error", "")
+        )
+
+        cancel_only = dict(hotel_only)
+        cancel_only["dashboard_access"] = {"hotel_rooms", "cancellation_access"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=cancel_only):
+            cancel_page = self.client.get("/hotel/invoice-ledger?status=open")
+            cancel_denied_edit = self.client.post(
+                f"/hotel/invoice-ledger/api/{inv_no}/reopen-edit",
+                json={},
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+        cancel_html = cancel_page.get_data(as_text=True)
+        self.assertNotIn("hil-edit-btn", cancel_html)
+        self.assertIn("hil-cancel-btn", cancel_html)
+        self.assertEqual(cancel_denied_edit.status_code, 403)
+
+        edit_only = dict(hotel_only)
+        edit_only["dashboard_access"] = {"hotel_rooms", "edit_access"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=edit_only):
+            edit_page = self.client.get("/hotel/invoice-ledger?status=open")
+            edit_denied_cancel = self.client.post(
+                f"/hotel/invoice-ledger/api/{inv_no}/cancel",
+                json={"reason": "Guest left"},
+                headers={"X-Requested-With": "XMLHttpRequest"},
+            )
+        edit_html = edit_page.get_data(as_text=True)
+        self.assertIn("hil-edit-btn", edit_html)
+        self.assertNotIn("hil-cancel-btn", edit_html)
+        self.assertEqual(edit_denied_cancel.status_code, 403)
 
         missing_reason = self.client.post(
             f"/hotel/invoice-ledger/api/{inv_no}/cancel",
@@ -2763,6 +3137,66 @@ class HotelRoomsTests(unittest.TestCase):
         )
         self.assertEqual(reopen.status_code, 400, reopen.get_data(as_text=True))
         self.assertIn("another guest", (reopen.get_json() or {}).get("error", "").lower())
+
+    def test_room_invoice_folio_mutations_require_edit_access(self):
+        self._checkin_with_charges(advance=0)
+
+        page = self.client.get("/hotel/rooms/room-101/invoice?kind=hotel")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn('data-can-edit="1"', html)
+        self.assertIn("Folio charges", html)
+
+        hotel_only = {
+            "id": self.admin_id,
+            "username": "frontdesk",
+            "full_name": "Front Desk",
+            "is_admin": False,
+            "is_active": True,
+            "dashboard_access": {"hotel_rooms"},
+            "stores_access": set(),
+            "sales_analytics_access": set(),
+            "user_access": set(),
+            "payroll_access": set(),
+            "accounts_access": set(),
+        }
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=hotel_only):
+            locked_page = self.client.get("/hotel/rooms/room-101/invoice?kind=hotel")
+            denied_update = self.client.put(
+                "/hotel/api/rooms/room-101",
+                json={"action": "update_charge", "chargeKey": "extra_bed", "amount": 900},
+            )
+            denied_discount = self.client.put(
+                "/hotel/api/rooms/room-101",
+                json={
+                    "action": "set_discount",
+                    "discountType": "pct",
+                    "discountValue": 5,
+                },
+            )
+            denied_generate = self.client.put(
+                "/hotel/api/rooms/room-101",
+                json={"action": "generate_invoice", "payment_splits": []},
+            )
+        locked_html = locked_page.get_data(as_text=True)
+        self.assertEqual(locked_page.status_code, 200)
+        self.assertIn('data-can-edit="0"', locked_html)
+        self.assertEqual(denied_update.status_code, 403)
+        self.assertIn("Edit Access", (denied_update.get_json() or {}).get("error", ""))
+        self.assertEqual(denied_discount.status_code, 403)
+        self.assertEqual(denied_generate.status_code, 403)
+
+        with_edit = dict(hotel_only)
+        with_edit["dashboard_access"] = {"hotel_rooms", "edit_access"}
+        with mock.patch.object(self.app_mod, "get_current_user", return_value=with_edit):
+            allowed_page = self.client.get("/hotel/rooms/room-101/invoice?kind=hotel")
+            allowed_update = self.client.put(
+                "/hotel/api/rooms/room-101",
+                json={"action": "update_charge", "chargeKey": "extra_bed", "amount": 900},
+            )
+        self.assertIn('data-can-edit="1"', allowed_page.get_data(as_text=True))
+        self.assertEqual(allowed_update.status_code, 200, allowed_update.get_data(as_text=True))
+        self.assertEqual(allowed_update.get_json()["room"]["stay"]["extraBedAmount"], 900)
 
     def test_invoice_ledger_edit_page_requires_open_session(self):
         self._checkin_with_charges(advance=0)
@@ -3541,6 +3975,42 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertEqual(float(stay["fbTransferTotal"]), 800.0)
         self.assertEqual(float(stay["combinedBalanceDue"]), 5800.0)
 
+    def test_fb_invoice_balance_allocation_uses_unsettled_lines_only(self):
+        """Unpaid F&B due on an FBE must not include settled or pending-untyped amounts."""
+        stay = {
+            "fbTransferBalance": 526.0,
+            "invoiceHistory": [
+                {
+                    "kind": "fb",
+                    "invoiceNumber": "FBE/26-27/00001",
+                    "estimatedTotal": 2216.0,
+                }
+            ],
+            "folioCharges": [
+                {
+                    "kind": "restaurant_room_transfer",
+                    "amount": 2216.0,
+                    "invoicedInvoiceNumber": "FBE/26-27/00001",
+                    "settled": True,
+                    "source": "pos",
+                },
+                {
+                    "kind": "restaurant_room_transfer",
+                    "amount": 526.0,
+                    "source": "pos",
+                    "settled": False,
+                },
+            ],
+        }
+        allocated = db_mod._hotel_allocate_fb_invoice_balances(stay)
+        self.assertEqual(allocated.get("FBE/26-27/00001"), 0.0)
+
+        stay["folioCharges"][0]["settled"] = False
+        stay["folioCharges"] = [stay["folioCharges"][0]]
+        stay["fbTransferBalance"] = 526.0
+        allocated = db_mod._hotel_allocate_fb_invoice_balances(stay)
+        self.assertEqual(allocated.get("FBE/26-27/00001"), 526.0)
+
     def test_folio_keeps_each_pos_invoice_as_own_line(self):
         """Each restaurant/bar transfer must stay a distinct folio line with its order number."""
         check_in, check_out = self._stay_window(nights=1)
@@ -3658,6 +4128,356 @@ class HotelRoomsTests(unittest.TestCase):
         self.assertTrue(str(stay["invoiceNumber"]).startswith("HBE/"))
         self.assertFalse(stay.get("fbTransferInvoiceNumber"))
         self.assertIsNone(gen.get_json().get("fbInvoice"))
+
+    def test_generate_invoice_kind_hotel_and_fb_separately(self):
+        """Room and F&B invoices can be minted independently via invoice_kind."""
+        self._checkin_with_charges(advance=0)
+        conn = db_mod.get_db()
+        try:
+            db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=150.48,
+                kind="restaurant_room_transfer",
+                label="Restaurant Room Transfer · ORD-SEP",
+                source="pos",
+                invoice_id="701",
+                order_no="ORD-SEP",
+                outlet="restaurant",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        hotel_only = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "invoice_kind": "hotel",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(hotel_only.status_code, 200, hotel_only.get_data(as_text=True))
+        hotel_body = hotel_only.get_json()
+        stay = hotel_body["room"]["stay"]
+        self.assertTrue(hotel_body.get("minted"))
+        self.assertFalse(hotel_body.get("fbMinted"))
+        self.assertTrue(str(stay["invoiceNumber"]).startswith("HBE/"))
+        self.assertFalse(stay.get("fbTransferInvoiceNumber"))
+
+        fb_only = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "invoice_kind": "fb",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(fb_only.status_code, 200, fb_only.get_data(as_text=True))
+        fb_body = fb_only.get_json()
+        stay2 = fb_body["room"]["stay"]
+        self.assertFalse(fb_body.get("minted"))
+        self.assertTrue(fb_body.get("fbMinted"))
+        self.assertEqual(stay2["invoiceNumber"], stay["invoiceNumber"])
+        self.assertTrue(str(stay2["fbTransferInvoiceNumber"]).startswith("FBE/"))
+
+        again_hotel = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "invoice_kind": "hotel",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(again_hotel.status_code, 400, again_hotel.get_data(as_text=True))
+        self.assertIn("No pending room charges", again_hotel.get_data(as_text=True))
+
+    def test_supplemental_fbe_locks_first_invoice(self):
+        """New F&B transfers after FBE generation mint a supplemental invoice."""
+        self._checkin_with_charges(advance=0)
+        conn = db_mod.get_db()
+        try:
+            db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=150.48,
+                kind="restaurant_room_transfer",
+                label="Restaurant Room Transfer · ORD-A",
+                source="pos",
+                invoice_id="601",
+                order_no="ORD-A",
+                outlet="restaurant",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        gen1 = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(gen1.status_code, 200, gen1.get_data(as_text=True))
+        stay1 = gen1.get_json()["room"]["stay"]
+        fbe1 = stay1["fbTransferInvoiceNumber"]
+        conn = db_mod.get_db()
+        try:
+            row1 = db_mod.get_hotel_room_invoice(conn, fbe1)
+        finally:
+            conn.close()
+        est1 = float(row1["estimated_total"])
+        lines1 = ((row1.get("room") or {}).get("stay") or {}).get("folioCharges") or []
+        self.assertEqual(len(lines1), 1)
+
+        conn = db_mod.get_db()
+        try:
+            result_b = db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=80.0,
+                kind="bar_room_transfer",
+                label="Bar Room Transfer · ORD-B",
+                source="pos",
+                invoice_id="602",
+                order_no="ORD-B",
+                outlet="bar",
+            )
+            db_mod.upsert_pos_room_transfer_invoice(
+                conn, result_b["room"], result_b["charge"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        conn = db_mod.get_db()
+        try:
+            row1_locked = db_mod.get_hotel_room_invoice(conn, fbe1)
+            live = db_mod.get_hotel_room(conn, "room-101")
+            pending_fb = db_mod._hotel_pending_fb_total(live["stay"])
+        finally:
+            conn.close()
+        self.assertAlmostEqual(float(row1_locked["estimated_total"]), est1, places=2)
+        self.assertGreater(pending_fb, 0.009)
+
+        gen2 = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(gen2.status_code, 200, gen2.get_data(as_text=True))
+        stay2 = gen2.get_json()["room"]["stay"]
+        fb_history = [
+            row["invoiceNumber"]
+            for row in (stay2.get("invoiceHistory") or [])
+            if str(row.get("kind") or "").lower() == "fb"
+        ]
+        self.assertIn(fbe1, fb_history)
+        self.assertEqual(len(fb_history), 2)
+        fbe2 = next(n for n in fb_history if n != fbe1)
+
+        conn = db_mod.get_db()
+        try:
+            row1_after = db_mod.get_hotel_room_invoice(conn, fbe1)
+            row2 = db_mod.get_hotel_room_invoice(conn, fbe2)
+        finally:
+            conn.close()
+        payload1_after = ((row1_after.get("room") or {}).get("stay") or {})
+        payload2_stay = (row2.get("room") or {}).get("stay") or {}
+        self.assertAlmostEqual(float(row1_after["estimated_total"]), est1, places=2)
+        self.assertEqual(len(payload1_after.get("folioCharges") or []), 1)
+        self.assertEqual(len(payload2_stay.get("folioCharges") or []), 1)
+
+        # Second POS transfer must show as Invoice Generated on Room Transfer ledger.
+        spc_b = self.client.get("/hotel/invoice-ledger/api/ORD-B")
+        self.assertEqual(spc_b.status_code, 200, spc_b.get_data(as_text=True))
+        spc_b_item = spc_b.get_json()["invoice"]
+        self.assertEqual(spc_b_item["status"], "cancelled")
+        self.assertEqual(
+            spc_b_item["payment_mode_label"], f"Invoice Generated ({fbe2})"
+        )
+        rt_html = self.client.get("/hotel/room-transfer-invoices").get_data(as_text=True)
+        self.assertIn(f"Invoice Generated ({fbe2})", rt_html)
+        self.assertNotRegex(
+            rt_html,
+            r"ORD-B[\s\S]{0,400}Invoice yet to generate",
+        )
+
+    def test_room_transfer_ledger_heals_status_after_fbe_tag(self):
+        """Backfill must not leave tagged F&B transfers as 'yet to generate'."""
+        self._checkin_with_charges(advance=0)
+        conn = db_mod.get_db()
+        try:
+            result = db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=399,
+                kind="bar_room_transfer",
+                label="Bar Room Transfer · INV/26-27/499",
+                source="pos",
+                invoice_id="499",
+                order_no="INV/26-27/499",
+                outlet="bar",
+            )
+            db_mod.upsert_pos_room_transfer_invoice(
+                conn, result["room"], result["charge"]
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "generate_invoice",
+                "invoice_kind": "fb",
+                "payment_splits": [],
+            },
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+        fb_no = gen.get_json()["room"]["stay"]["fbTransferInvoiceNumber"]
+        self.assertTrue(str(fb_no).startswith("FBE/"))
+
+        # Simulate a stale open row (pre-heal) then list/backfill.
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                UPDATE hotel_room_invoices
+                SET status = 'open',
+                    cancel_reason = '',
+                    cancelled_at = '',
+                    balance_amount = 399
+                WHERE invoice_number = ?
+                """,
+                ("INV/26-27/499",),
+            )
+            conn.commit()
+            db_mod.backfill_pos_room_transfer_invoices_from_layout(conn)
+            conn.commit()
+            item = db_mod.get_hotel_room_invoice(conn, "INV/26-27/499")
+        finally:
+            conn.close()
+        self.assertEqual(item["status"], "cancelled")
+        self.assertEqual(item["payment_mode_label"], f"Invoice Generated ({fb_no})")
+
+        rt_html = self.client.get("/hotel/room-transfer-invoices").get_data(as_text=True)
+        self.assertIn(f"Invoice Generated ({fb_no})", rt_html)
+
+    def test_supplemental_hbe_locks_first_invoice_on_overstay(self):
+        """Overstay after HBE generation mints a supplemental hotel invoice."""
+        check_in, check_out = self._stay_window(nights=1)
+        res = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Lock",
+                    "lastName": "Stay",
+                    "mobile": "9000000777",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 1,
+                    "roomRate": 3500,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+
+        gen1 = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(gen1.status_code, 200, gen1.get_data(as_text=True))
+        stay1 = gen1.get_json()["room"]["stay"]
+        hbe1 = stay1["invoiceNumber"]
+        conn = db_mod.get_db()
+        try:
+            row1 = db_mod.get_hotel_room_invoice(conn, hbe1)
+        finally:
+            conn.close()
+        est1 = float(row1["estimated_total"])
+
+        conn = db_mod.get_db()
+        try:
+            layout = db_mod.get_hotel_rooms_layout(conn)
+            rooms = layout.get("rooms") or []
+            for room in rooms:
+                if room.get("id") != "room-101":
+                    continue
+                stay = room.get("stay") or {}
+                stay["checkOutDate"] = (
+                    datetime.now().date() - timedelta(days=1)
+                ).isoformat()
+                room["stay"] = stay
+            db_mod.save_hotel_rooms_layout(conn, layout.get("floors") or [], rooms)
+            conn.commit()
+        finally:
+            conn.close()
+
+        refreshed = self.client.get("/hotel/api/rooms/room-101").get_json()["room"]
+        stay_live = refreshed["stay"]
+        self.assertGreater(int(stay_live.get("billableNights") or 0), int(stay1.get("hotelInvoicedBillableNights") or 0))
+
+        conn = db_mod.get_db()
+        try:
+            pending_hotel, _ = db_mod._hotel_pending_hotel_amount(stay_live)
+        finally:
+            conn.close()
+        self.assertGreater(pending_hotel, 0.009)
+
+        gen2 = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(gen2.status_code, 200, gen2.get_data(as_text=True))
+        stay2 = gen2.get_json()["room"]["stay"]
+        hbe_history = [
+            row["invoiceNumber"]
+            for row in (stay2.get("invoiceHistory") or [])
+            if str(row.get("kind") or "").lower() == "hotel"
+        ]
+        self.assertIn(hbe1, hbe_history)
+        self.assertEqual(len(hbe_history), 2)
+        hbe2 = next(n for n in hbe_history if n != hbe1)
+        self.assertNotEqual(hbe2, hbe1)
+
+        conn = db_mod.get_db()
+        try:
+            row1_after = db_mod.get_hotel_room_invoice(conn, hbe1)
+        finally:
+            conn.close()
+        self.assertAlmostEqual(float(row1_after["estimated_total"]), est1, places=2)
+
+    def test_checkout_blocked_when_pending_charges_remain(self):
+        self._checkin_with_charges(advance=0)
+        gen = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "generate_invoice", "payment_splits": []},
+        )
+        self.assertEqual(gen.status_code, 200, gen.get_data(as_text=True))
+
+        conn = db_mod.get_db()
+        try:
+            db_mod.append_hotel_room_folio_charge(
+                conn,
+                "room-101",
+                amount=120.0,
+                kind="restaurant_room_transfer",
+                label="Restaurant Room Transfer · ORD-C",
+                source="pos",
+                invoice_id="603",
+                order_no="ORD-C",
+                outlet="restaurant",
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        checkout = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={"action": "checkout"},
+        )
+        self.assertEqual(checkout.status_code, 400, checkout.get_data(as_text=True))
+        self.assertIn("Additional Invoice", checkout.get_data(as_text=True))
 
     def test_unmerge_primary_scope_one_shows_former_member(self):
         """Unmerge Room on the primary must not leave the member hidden on the board."""

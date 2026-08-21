@@ -1,6 +1,7 @@
 /**
  * Dual-month date range picker (Analytics / Report topbar).
  * Usage: SalesDateRangePicker.init({ wrapId, formId, ... });
+ * Pass singleDay: true for one-day selection (from == to).
  */
 (function (global) {
   function positionPanel(trigger, panel, opts) {
@@ -160,6 +161,11 @@
 
     let selFrom = ff.value || '';
     let selTo = ft.value || '';
+    const singleDay = !!(cfg.singleDay || cfg.mode === 'single');
+    if (singleDay && selFrom) {
+      selTo = selFrom;
+      if (ft) ft.value = selFrom;
+    }
     const now = new Date();
     let viewY = now.getFullYear();
     let viewM = now.getMonth();
@@ -203,13 +209,18 @@
       return fmt(lo) + ' – ' + fmt(hi);
     }
     function refreshTriggerText() {
+      if (singleDay) {
+        if (selFrom) display.textContent = fmt(selFrom);
+        else display.textContent = cfg.emptyLabel || 'Select date…';
+        return;
+      }
       if (selFrom && selTo) display.textContent = fmtRange(selFrom, selTo);
       else if (selFrom) display.textContent = fmt(selFrom) + ' – …';
       else display.textContent = cfg.emptyLabel || 'Select date range';
     }
     function syncFormHidden() {
       ff.value = selFrom;
-      ft.value = selTo;
+      ft.value = singleDay ? selFrom : selTo;
     }
 
     function addMonth(y, m0, delta) {
@@ -300,7 +311,10 @@
 
     function onDayClick(iso) {
       if (maxDateStr && compareIso(iso, maxDateStr) > 0) return;
-      if (!selFrom || (selFrom && selTo)) {
+      if (singleDay) {
+        selFrom = iso;
+        selTo = iso;
+      } else if (!selFrom || (selFrom && selTo)) {
         selFrom = iso;
         selTo = '';
       } else {
@@ -321,7 +335,8 @@
       }
       openSnapshot = { from: ff.value, to: ft.value };
       selFrom = openSnapshot.from;
-      selTo = openSnapshot.to;
+      selTo = singleDay ? openSnapshot.from || openSnapshot.to : openSnapshot.to;
+      if (singleDay && selFrom) selTo = selFrom;
       const v = parseISO(selFrom || maxDateStr);
       if (v) {
         viewY = v.y;
@@ -427,10 +442,10 @@
         e.stopPropagation();
         if (!selFrom) selFrom = (ff && ff.value) || '';
         if (!selFrom) return;
-        if (!selTo) selTo = selFrom;
+        if (singleDay || !selTo) selTo = selFrom;
         let lo = selFrom;
-        let hi = selTo;
-        if (compareIso(lo, hi) > 0) {
+        let hi = singleDay ? selFrom : selTo;
+        if (!singleDay && compareIso(lo, hi) > 0) {
           lo = selTo;
           hi = selFrom;
         }

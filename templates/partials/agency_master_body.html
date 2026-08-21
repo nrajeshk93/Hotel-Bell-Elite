@@ -22,17 +22,25 @@
             <thead>
               <tr>
                 <th scope="col">Agency Name</th>
+                <th scope="col">Mobile</th>
                 <th scope="col">GST</th>
                 <th scope="col">Address</th>
+                <th scope="col">Bank Account</th>
+                <th scope="col">Bank Name</th>
+                <th scope="col">IFSC Code</th>
                 <th class="pl-col-actions" scope="col">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% for agency in agencies %}
-              <tr data-sort-row data-search="{{ [agency.name or '', agency.gst or '', agency.address or '']|join(' ')|lower }}">
+              <tr data-sort-row data-search="{{ [agency.name or '', agency.phone or '', agency.gst or '', agency.address or '', agency.bank_account_number or '', agency.bank_name or '', agency.ifsc_code or '']|join(' ')|lower }}">
                 <td class="pl-name">{{ agency.name }}</td>
+                <td class="sm-col-mobile">{{ agency.phone or '—' }}</td>
                 <td>{{ agency.gst or '—' }}</td>
                 <td>{{ agency.address or '—' }}</td>
+                <td>{{ agency.bank_account_number or '—' }}</td>
+                <td>{{ agency.bank_name or '—' }}</td>
+                <td>{{ agency.ifsc_code or '—' }}</td>
                 <td class="pl-col-actions">
                   <div class="act-grp">
                     <a class="act-btn edit"
@@ -60,15 +68,6 @@
 
     {% if show_form %}
     <article class="card" aria-label="Agency form">
-      <div class="card-hdr">
-        <div class="card-title">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-          <span>{% if form.id %}Edit agency{% else %}Add agency{% endif %}</span>
-        </div>
-        {% if form_focus %}
-        <a class="btn" href="{{ url_for('agency_master', embed=1) if embed_mode else url_for('agency_master') }}">Back to list</a>
-        {% endif %}
-      </div>
       <div class="card-body">
         <form method="post" action="{{ url_for('save_agency') }}"{% if embed_mode %} data-md-full-nav="1"{% endif %}>
           <input type="hidden" name="agency_id" value="{{ form.id or '' }}">
@@ -85,6 +84,10 @@
               <input id="agency-name" class="staff-input" name="name" type="text" value="{{ form.name or '' }}" placeholder="e.g. MakeMyTrip" required>
             </div>
             <div class="staff-field staff-field--inline">
+              <label for="agency-phone">Mobile number</label>
+              <input id="agency-phone" class="staff-input" name="phone" type="tel" inputmode="numeric" value="{{ form.phone or '' }}" placeholder="e.g. 9876543210" autocomplete="tel">
+            </div>
+            <div class="staff-field staff-field--inline">
               <label for="agency-gst">GST</label>
               <input id="agency-gst" class="staff-input" name="gst" type="text" value="{{ form.gst or '' }}" placeholder="15-character GSTIN" maxlength="15" spellcheck="false" pattern="[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z][1-9A-Za-z]Z[0-9A-Za-z]" title="Enter a valid 15-character GSTIN">
             </div>
@@ -92,18 +95,24 @@
               <label for="agency-address">Address</label>
               <textarea id="agency-address" class="staff-input" name="address" rows="3" placeholder="Agency address">{{ form.address or '' }}</textarea>
             </div>
+            <div class="staff-field staff-field--inline">
+              <label for="agency-bank-account">Bank Account</label>
+              <input id="agency-bank-account" class="staff-input" name="bank_account_number" type="text" value="{{ form.bank_account_number or '' }}" placeholder="e.g. 1234567890" inputmode="numeric" autocomplete="off">
+            </div>
+            <div class="staff-field staff-field--inline">
+              <label for="agency-bank-name">Bank Name</label>
+              <input id="agency-bank-name" class="staff-input" name="bank_name" type="text" value="{{ form.bank_name or '' }}" placeholder="e.g. HDFC Bank" autocomplete="off">
+            </div>
+            <div class="staff-field staff-field--inline staff-field--full">
+              <label for="agency-ifsc">IFSC Code</label>
+              <input id="agency-ifsc" class="staff-input" name="ifsc_code" type="text" value="{{ form.ifsc_code or '' }}" placeholder="e.g. HDFC0001234" maxlength="11" spellcheck="false" pattern="[A-Za-z]{4}0[A-Za-z0-9]{6}" title="Enter a valid 11-character IFSC (e.g. HDFC0001234)" autocomplete="off">
+            </div>
           </div>
           <div class="sm-actions">
-            <button type="submit" class="btn btn-primary staff-primary">{% if form.id %}Update agency{% else %}Save agency{% endif %}</button>
             <a class="btn staff-secondary" href="{{ url_for('agency_master', embed=1) if embed_mode else url_for('agency_master') }}">Cancel</a>
+            <button type="submit" class="btn btn-primary staff-primary">Save</button>
           </div>
         </form>
-        {% if form.id %}
-        <form method="post" action="{{ url_for('delete_agency') }}" class="sm-delete-form" onsubmit="return confirm('Delete this agency? This cannot be undone.');"{% if embed_mode %} data-md-full-nav="1"{% endif %}>
-          <input type="hidden" name="agency_id" value="{{ form.id }}">
-          <button type="submit" class="btn sm-btn-danger">Delete agency</button>
-        </form>
-        {% endif %}
       </div>
     </article>
     {% endif %}

@@ -290,6 +290,8 @@ def map_row_to_invoice_room(row: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "agencyName": agency_name,
         "agencyGst": agency_gst or guest_gst,
         "agencyBilling": bool(agency_name),
+        "agencyRoomBilling": bool(agency_name),
+        "agencyFbBilling": bool(agency_name),
         "invoiceTo": agency_name if agency_name else guest_name,
         "billingName": agency_name if agency_name else guest_name,
         "paymentMethod": payment_method,

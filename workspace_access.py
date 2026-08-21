@@ -173,8 +173,16 @@ _WORKSPACE_MODULE_REGISTRY = (
     },
     {
         "key": "cancellation_access",
-        "label": "Cancellation Access",
-        # Module-level grant: edit/remove kitchen-sent POS lines after KOT.
+        "label": "Cancellation",
+        # Module-level grant: cancel unsettled invoices; edit/remove kitchen-sent POS lines after KOT.
+        "permission_scope": None,
+        "permission_field": None,
+        "permission_children": (),
+    },
+    {
+        "key": "edit_access",
+        "label": "Edit",
+        # Module-level grant: reopen/edit unsettled POS and Hotel invoices.
         "permission_scope": None,
         "permission_field": None,
         "permission_children": (),
@@ -196,7 +204,9 @@ _ACCESS_MODULE_CHILDREN = {
 }
 _DASHBOARD_MODULE_LABELS = {item["key"]: item["label"] for item in _DASHBOARD_MODULES}
 # Dashboard modules only a Super Administrator (is_admin) may grant or revoke on roles.
-_SUPER_ADMIN_ONLY_DASHBOARD_KEYS = frozenset({"approval", "cancellation_access"})
+_SUPER_ADMIN_ONLY_DASHBOARD_KEYS = frozenset(
+    {"approval", "cancellation_access", "edit_access"}
+)
 _SALES_ANALYTICS_SUBMODULE_LABELS = {
     item["key"]: item["label"] for item in _SALES_ANALYTICS_SUBMODULES
 }
@@ -238,14 +248,14 @@ _ACCESS_MODULE_UI_META = {
         "icon": "receipt",
         "description": (
             "Counter billing and invoice workspace for guest sales. "
-            "After a KOT is sent, those lines stay locked unless the role also has Cancellation Access."
+            "After a KOT is sent, those lines stay locked unless the role also has Cancellation."
         ),
     },
     "point_of_sale_bar": {
         "icon": "receipt",
         "description": (
             "Bar counter billing and invoice workspace. "
-            "After a KOT is sent, those lines stay locked unless the role also has Cancellation Access."
+            "After a KOT is sent, those lines stay locked unless the role also has Cancellation."
         ),
     },
 
@@ -283,9 +293,17 @@ _ACCESS_MODULE_UI_META = {
     "cancellation_access": {
         "icon": "ban",
         "description": (
-            "Edit or cancel unsettled POS and Hotel invoices; "
+            "Cancel unsettled POS and Hotel invoices; "
             "edit or remove kitchen-sent POS lines after a KOT is sent. "
             "Kitchen Order Tokens on the Tables page update to match. "
+            "Only a Super Administrator can grant this module to a role."
+        ),
+    },
+    "edit_access": {
+        "icon": "pencil",
+        "description": (
+            "Edit room invoice folio charges (rates, discounts, custom lines) "
+            "and reopen unsettled POS or Hotel invoices. "
             "Only a Super Administrator can grant this module to a role."
         ),
     },
@@ -468,8 +486,12 @@ _REPORTS_ENDPOINTS = {
     "reports",
     "sales_report_hotel",
     "sales_report_hotel_export",
+    "sales_report_agency_billing",
+    "sales_report_agency_billing_export",
     "sales_report_manager_insight",
     "sales_report_manager_insight_export",
+    "sales_report_meal_plan",
+    "sales_report_meal_plan_export",
     "sales_report_restaurant",
     "sales_report_restaurant_export",
     "sales_report_bar",
@@ -1306,9 +1328,17 @@ def is_system_administrator(user):
 def user_can_edit_kot_sent_lines(user):
     """True when the user may change or remove kitchen-sent POS lines.
 
-    Granted via the Cancellation Access module (administrators include all modules).
+    Granted via the Cancellation module (administrators include all modules).
     """
     return user_can_access_dashboard(user, "cancellation_access")
+
+
+def user_can_edit_unsettled_invoices(user):
+    """True when the user may edit hotel/POS invoice folio charges and reopen invoices.
+
+    Granted via the Edit module (administrators include all modules).
+    """
+    return user_can_access_dashboard(user, "edit_access")
 
 
 def user_can_approve_transactions(user):
@@ -1881,10 +1911,12 @@ def save_access_user_record(
     sql_now,
     email="",
     photo_path=None,
+    must_change_password=False,
 ):
     email = (email or "").strip()
     role = get_access_role(conn, role_id)
     is_admin = bool(role and role.get("is_admin"))
+    force_change = 1 if must_change_password else 0
     if user_id:
         params = [username, full_name, email, int(is_admin), role_id]
         update_sql = (
@@ -1892,8 +1924,8 @@ def save_access_user_record(
             f"role_id = ?, is_active = 1, updated_at = {sql_now}"
         )
         if password:
-            update_sql += ", password_hash = ?, must_change_password = 1"
-            params.append(auth_security.hash_password(password))
+            update_sql += ", password_hash = ?, must_change_password = ?"
+            params.extend([auth_security.hash_password(password), force_change])
         if photo_path is not None:
             update_sql += ", photo_path = ?"
             params.append((photo_path or "").strip())
@@ -1907,7 +1939,7 @@ def save_access_user_record(
             f"""INSERT INTO users
                 (username, full_name, email, password_hash, is_admin, role_id, photo_path,
                  must_change_password, is_active, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, {sql_now}, {sql_now})""",
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, {sql_now}, {sql_now})""",
             (
                 username,
                 full_name,
@@ -1916,6 +1948,7 @@ def save_access_user_record(
                 int(is_admin),
                 role_id,
                 (photo_path or "").strip() if photo_path is not None else "",
+                force_change,
             ),
         )
         saved_user_id = conn.execute(

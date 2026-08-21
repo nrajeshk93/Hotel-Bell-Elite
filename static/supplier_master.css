@@ -67,6 +67,18 @@ body.master-module .sm-supplier-modal .sm-delete-form{
   z-index:10100;
 }
 
+/* Category Master outlet listbox — hide chevron (matches other master form listboxes) */
+#cm-category-outlet-listbox .se-filter-chip-chev,
+#md-master-modal #cm-category-outlet-listbox .se-filter-chip-chev,
+body.master-module #cm-category-outlet-listbox .se-filter-chip-chev,
+body.su-module #cm-category-outlet-listbox .se-filter-chip-chev{
+  display:none !important;
+}
+#cm-category-outlet-listbox .se-filter-chip-trigger,
+#md-master-modal #cm-category-outlet-listbox .se-filter-chip-trigger{
+  padding-right:14px;
+}
+
 body.su-module .sm-pl-table,
 body.master-module .sm-pl-table{
   min-width:0;
@@ -75,6 +87,11 @@ body.master-module .sm-pl-table{
 body.su-module .sm-pl-table td,
 body.master-module .sm-pl-table td{
   vertical-align:top;
+}
+body.su-module .sm-pl-table .sm-col-mobile,
+body.master-module .sm-pl-table .sm-col-mobile{
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
 }
 body.su-module .sm-pl-table tbody tr:hover td,
 body.master-module .sm-pl-table tbody tr:hover td{
@@ -112,6 +129,7 @@ body.master-module .sm-actions{
   padding-top:16px;
   border-top:1px solid var(--border-s);
   flex-wrap:wrap;
+  justify-content:flex-end;
 }
 body.su-module .sm-delete-form,
 body.master-module .sm-delete-form{margin-top:14px}

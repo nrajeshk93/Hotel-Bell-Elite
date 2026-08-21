@@ -40,17 +40,18 @@ body.su-module .st-po-tabs .cp-view-tab svg{
 }
 
 /* Toolbar: tabs on the left; Search / Indent / Outlet share one baseline.
-   Below ~960px the filters drop to a second row so they cannot overlap the tabs. */
+   Tabs never shrink — filters wrap to the next row before they can overlap. */
 body.su-module .st-po-toolbar{
   container-type:inline-size;
   container-name:st-po-toolbar;
   width:100%;
   max-width:100%;
   min-width:0;
+  min-height:0;
   overflow:visible;
   box-sizing:border-box;
-  align-items:stretch;
-  justify-content:stretch;
+  align-items:flex-end;
+  justify-content:flex-start;
 }
 body.su-module .st-po-toolbar .st-indent-search-chip{
   position:relative;
@@ -59,26 +60,52 @@ body.su-module .st-po-toolbar .st-indent-search-chip{
 body.su-module .st-po-toolbar .st-indent-filter-bar{
   display:flex;
   flex-direction:row;
-  flex-wrap:nowrap;
+  flex-wrap:wrap;
   align-items:flex-end;
   justify-content:flex-start;
   gap:12px;
   width:100%;
+  min-height:0;
 }
 body.su-module .st-po-toolbar .st-indent-status-tabs,
 body.su-module .st-po-toolbar .st-po-tabs-wrap{
-  flex:0 1 auto;
+  flex:0 0 auto;
   width:auto;
-  min-width:0;
-  max-width:none;
+  min-width:max-content;
+  max-width:100%;
+  align-self:flex-end;
+  position:relative;
+  z-index:1;
+}
+/* Match Search / Indent / Outlet label row so tabs sit on the control baseline */
+body.su-module .st-po-toolbar .st-po-tabs-wrap{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  justify-content:flex-end;
+}
+body.su-module .st-po-toolbar .st-po-tabs-wrap > .se-filter-chip-label{
+  visibility:hidden;
+  user-select:none;
+  display:block;
+  width:100%;
+  margin-bottom:8px;
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  line-height:1;
 }
 body.su-module .st-po-toolbar .st-po-tabs{
   flex-wrap:nowrap;
+  flex-shrink:0;
+  width:max-content;
+  max-width:none;
   height:48px;
   min-height:48px;
-  max-width:100%;
 }
 body.su-module .st-po-toolbar .st-po-tabs .cp-view-tab{
+  flex:0 0 auto;
   padding:0 10px;
   white-space:nowrap;
 }
@@ -87,17 +114,22 @@ body.su-module .st-po-toolbar .st-indent-filter-bar-end{
   align-items:flex-end;
   justify-content:flex-end;
   gap:12px;
-  flex:1 1 auto;
+  flex:1 1 280px;
   flex-wrap:nowrap;
   width:auto;
-  min-width:0;
+  /* Keep enough room for Indent + Outlet; wrap to next row instead of overlapping tabs */
+  min-width:min(100%,260px);
   max-width:100%;
   margin-left:auto;
+  align-self:flex-end;
+  position:relative;
+  z-index:0;
 }
 /* Match Search / Indent / Outlet label + control height */
 body.su-module .st-po-toolbar .se-filter-chip-label,
 body.su-module .st-po-toolbar .st-intro-outlet .se-filter-chip-label,
-body.su-module .st-po-toolbar .ep-toolbar-listbox .se-filter-chip-label{
+body.su-module .st-po-toolbar .ep-toolbar-listbox .se-filter-chip-label,
+body.su-module .st-po-toolbar .st-po-indent-chip .se-filter-chip-label{
   display:block;
   width:100%;
   margin-bottom:8px;
@@ -110,41 +142,49 @@ body.su-module .st-po-toolbar .ep-toolbar-listbox .se-filter-chip-label{
   color:#64748B;
 }
 body.su-module .st-po-toolbar .st-indent-search-chip,
-body.su-module .st-po-toolbar .st-intro-outlet{
+body.su-module .st-po-toolbar .st-intro-outlet,
+body.su-module .st-po-toolbar .st-po-indent-chip{
   display:flex;
   flex-direction:column;
   align-items:stretch;
   justify-content:flex-end;
   align-self:flex-end;
   min-width:0;
+  min-height:0;
+  height:auto;
 }
 body.su-module .st-po-toolbar .st-indent-search-chip{
   flex:1 1 180px;
   max-width:280px;
 }
-body.su-module .st-po-toolbar .st-intro-outlet{
+body.su-module .st-po-toolbar .st-intro-outlet,
+body.su-module .st-po-toolbar .st-po-indent-chip{
   flex:0 1 168px;
   width:auto;
   min-width:132px;
   max-width:188px;
 }
 body.su-module .st-po-indent-listbox,
+body.su-module .st-po-toolbar .st-po-indent-chip,
 body.su-module .st-po-toolbar .st-intro-outlet .st-outlet-listbox{
   width:100%;
   min-width:0;
   max-width:none;
-  flex:1 1 auto;
+  flex:0 0 auto;
 }
 body.su-module .st-po-toolbar .st-indent-search-chip .se-filter-chip-control,
 body.su-module .st-po-toolbar .st-intro-outlet .se-filter-chip-control,
+body.su-module .st-po-toolbar .st-po-indent-chip .se-filter-chip-control,
 body.su-module .st-po-toolbar .ep-toolbar-listbox .se-filter-chip-control{
   min-height:48px;
   height:48px;
 }
-body.su-module .st-po-indent-listbox .se-filter-chip-trigger{
+body.su-module .st-po-indent-listbox .se-filter-chip-trigger,
+body.su-module .st-po-indent-chip .se-filter-chip-trigger{
   padding-right:48px;
 }
-body.su-module .st-po-indent-listbox .se-filter-chip-value{
+body.su-module .st-po-indent-listbox .se-filter-chip-value,
+body.su-module .st-po-indent-chip .se-filter-chip-value{
   min-width:0;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -162,23 +202,27 @@ body.su-module .st-po-indent-listbox .se-filter-chip-value{
   }
   body.su-module .st-po-toolbar .st-indent-status-tabs,
   body.su-module .st-po-toolbar .st-po-tabs-wrap{
-    flex:1 1 100%;
-    width:100%;
+    flex:0 0 auto;
+    width:auto;
+    min-width:max-content;
     max-width:100%;
   }
   body.su-module .st-po-toolbar .st-indent-filter-bar-end{
     display:flex;
     flex-wrap:nowrap;
-    flex:1 1 100%;
-    width:100%;
+    flex:1 1 280px;
+    width:auto;
+    min-width:min(100%,260px);
+    max-width:100%;
     margin-left:0;
-    justify-content:stretch;
+    justify-content:flex-end;
   }
   body.su-module .st-po-toolbar .st-indent-search-chip{
     flex:1 1 0;
     max-width:none;
   }
-  body.su-module .st-po-toolbar .st-intro-outlet{
+  body.su-module .st-po-toolbar .st-intro-outlet,
+  body.su-module .st-po-toolbar .st-po-indent-chip{
     flex:0 1 168px;
     width:auto;
     min-width:132px;
@@ -194,14 +238,6 @@ body.su-module .st-po-indent-listbox .se-filter-chip-value{
     padding:0 8px;
     font-size:11px;
   }
-  body.su-module .st-po-toolbar .st-indent-filter-bar{
-    flex-wrap:wrap;
-  }
-  body.su-module .st-po-toolbar .st-indent-status-tabs,
-  body.su-module .st-po-toolbar .st-po-tabs-wrap{
-    flex:1 1 100%;
-    width:100%;
-  }
   body.su-module .st-po-toolbar .st-indent-filter-bar-end{
     flex:1 1 100%;
     width:100%;
@@ -212,7 +248,8 @@ body.su-module .st-po-indent-listbox .se-filter-chip-value{
     flex:1 1 0;
     max-width:none;
   }
-  body.su-module .st-po-toolbar .st-intro-outlet{
+  body.su-module .st-po-toolbar .st-intro-outlet,
+  body.su-module .st-po-toolbar .st-po-indent-chip{
     flex:0 1 160px;
     min-width:120px;
     max-width:180px;
@@ -224,7 +261,8 @@ body.su-module .st-po-indent-listbox .se-filter-chip-value{
     flex-wrap:wrap;
   }
   body.su-module .st-po-toolbar .st-indent-search-chip,
-  body.su-module .st-po-toolbar .st-intro-outlet{
+  body.su-module .st-po-toolbar .st-intro-outlet,
+  body.su-module .st-po-toolbar .st-po-indent-chip{
     flex:1 1 100%;
     max-width:none;
   }

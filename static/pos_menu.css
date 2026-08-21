@@ -452,13 +452,18 @@ body.pos-menu-module .pos-menu-header-actions .btn-primary:hover{
   max-height:min(62vh,720px);
 }
 #pos-set-panel-menu .pos-menu-table.pl-table,
-#pos-set-panel-menu .pos-menu-table{
+#pos-set-panel-menu .pos-menu-table,
+#pos-menu-page .pos-menu-table.pl-table,
+#pos-menu-page .pos-menu-table{
   width:100%;
   border-collapse:collapse;
+  table-layout:fixed;
 }
 #pos-set-panel-menu .pos-menu-table th,
-#pos-set-panel-menu .pos-menu-table td{
-  padding:12px 18px;
+#pos-set-panel-menu .pos-menu-table td,
+#pos-menu-page .pos-menu-table th,
+#pos-menu-page .pos-menu-table td{
+  padding:12px 14px;
   text-align:left;
   border-bottom:1px solid var(--mmc-border-s);
   font-size:13px;
@@ -466,7 +471,8 @@ body.pos-menu-module .pos-menu-header-actions .btn-primary:hover{
   font-family:Inter,system-ui,sans-serif;
   color:var(--mmc-text);
 }
-#pos-set-panel-menu .pos-menu-table th{
+#pos-set-panel-menu .pos-menu-table th,
+#pos-menu-page .pos-menu-table th{
   position:sticky;
   top:0;
   z-index:2;
@@ -477,14 +483,61 @@ body.pos-menu-module .pos-menu-header-actions .btn-primary:hover{
   text-transform:uppercase;
   letter-spacing:.5px;
   white-space:nowrap;
+  line-height:1.25;
 }
+#pos-set-panel-menu .pos-menu-table .pos-menu-th-sub,
+#pos-menu-page .pos-menu-table .pos-menu-th-sub{
+  display:block;
+  font-size:9px;
+  font-weight:600;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:var(--mmc-muted);
+  opacity:.85;
+}
+/* Column widths — keep amount / actions columns tight so header + value share an edge */
+#pos-set-panel-menu .pos-menu-table th:nth-child(1),
+#pos-set-panel-menu .pos-menu-table td:nth-child(1),
+#pos-menu-page .pos-menu-table th:nth-child(1),
+#pos-menu-page .pos-menu-table td:nth-child(1){width:22%}
+#pos-set-panel-menu .pos-menu-table th:nth-child(2),
+#pos-set-panel-menu .pos-menu-table td:nth-child(2),
+#pos-menu-page .pos-menu-table th:nth-child(2),
+#pos-menu-page .pos-menu-table td:nth-child(2){width:12%}
+#pos-set-panel-menu .pos-menu-table th:nth-child(3),
+#pos-set-panel-menu .pos-menu-table td:nth-child(3),
+#pos-menu-page .pos-menu-table th:nth-child(3),
+#pos-menu-page .pos-menu-table td:nth-child(3){width:14%}
+#pos-set-panel-menu .pos-menu-table th:nth-child(4),
+#pos-set-panel-menu .pos-menu-table td:nth-child(4),
+#pos-menu-page .pos-menu-table th:nth-child(4),
+#pos-menu-page .pos-menu-table td:nth-child(4){width:14%}
+#pos-set-panel-menu .pos-menu-table th:nth-child(5),
+#pos-set-panel-menu .pos-menu-table td:nth-child(5),
+#pos-menu-page .pos-menu-table th:nth-child(5),
+#pos-menu-page .pos-menu-table td:nth-child(5){width:11%}
+#pos-set-panel-menu .pos-menu-table th:nth-child(6),
+#pos-set-panel-menu .pos-menu-table td:nth-child(6),
+#pos-menu-page .pos-menu-table th:nth-child(6),
+#pos-menu-page .pos-menu-table td:nth-child(6){width:10%}
+#pos-set-panel-menu .pos-menu-table th:nth-child(7),
+#pos-set-panel-menu .pos-menu-table td:nth-child(7),
+#pos-menu-page .pos-menu-table th:nth-child(7),
+#pos-menu-page .pos-menu-table td:nth-child(7){width:9%}
+#pos-set-panel-menu .pos-menu-table th:nth-child(8),
+#pos-set-panel-menu .pos-menu-table td:nth-child(8),
+#pos-menu-page .pos-menu-table th:nth-child(8),
+#pos-menu-page .pos-menu-table td:nth-child(8){width:8%}
 /* Sortable headers — mirror Expense Ledger (purchase_ledger.css .pl-sortable) */
-#pos-set-panel-menu .pos-menu-table th.pl-sortable{
+#pos-set-panel-menu .pos-menu-table th.pl-sortable,
+#pos-menu-page .pos-menu-table th.pl-sortable{
   cursor:pointer;
   user-select:none;
 }
-#pos-set-panel-menu .pos-menu-table th.pl-sortable:hover{color:var(--mmc-text)}
-#pos-set-panel-menu .pos-menu-table th.pl-sortable::after{
+#pos-set-panel-menu .pos-menu-table th.pl-sortable:hover,
+#pos-menu-page .pos-menu-table th.pl-sortable:hover{color:var(--mmc-text)}
+#pos-set-panel-menu .pos-menu-table th.pl-sortable::after,
+#pos-menu-page .pos-menu-table th.pl-sortable::after{
   content:'';
   display:inline-block;
   margin-left:6px;
@@ -493,19 +546,27 @@ body.pos-menu-module .pos-menu-header-actions .btn-primary:hover{
   vertical-align:middle;
 }
 #pos-set-panel-menu .pos-menu-table th.pl-sortable.is-sorted-asc::after,
-#pos-set-panel-menu .pos-menu-table th.pl-sortable.is-sorted-desc::after{
+#pos-set-panel-menu .pos-menu-table th.pl-sortable.is-sorted-desc::after,
+#pos-menu-page .pos-menu-table th.pl-sortable.is-sorted-asc::after,
+#pos-menu-page .pos-menu-table th.pl-sortable.is-sorted-desc::after{
   opacity:1;
   color:#2563EB;
 }
-#pos-set-panel-menu .pos-menu-table th.pl-sortable.is-sorted-asc::after{content:'▲'}
-#pos-set-panel-menu .pos-menu-table th.pl-sortable.is-sorted-desc::after{content:'▼'}
-#pos-set-panel-menu .pos-menu-table th.pl-sortable:focus-visible{
+#pos-set-panel-menu .pos-menu-table th.pl-sortable.is-sorted-asc::after,
+#pos-menu-page .pos-menu-table th.pl-sortable.is-sorted-asc::after{content:'▲'}
+#pos-set-panel-menu .pos-menu-table th.pl-sortable.is-sorted-desc::after,
+#pos-menu-page .pos-menu-table th.pl-sortable.is-sorted-desc::after{content:'▼'}
+#pos-set-panel-menu .pos-menu-table th.pl-sortable:focus-visible,
+#pos-menu-page .pos-menu-table th.pl-sortable:focus-visible{
   outline:2px solid rgba(37,99,235,.35);
   outline-offset:-2px;
 }
-#pos-set-panel-menu .pos-menu-table tbody td{background:#fff}
-#pos-set-panel-menu .pos-menu-table tbody tr:last-child td{border-bottom:0}
-#pos-set-panel-menu .pos-menu-table tbody tr:hover td{background:#FAFBFD}
+#pos-set-panel-menu .pos-menu-table tbody td,
+#pos-menu-page .pos-menu-table tbody td{background:#fff}
+#pos-set-panel-menu .pos-menu-table tbody tr:last-child td,
+#pos-menu-page .pos-menu-table tbody tr:last-child td{border-bottom:0}
+#pos-set-panel-menu .pos-menu-table tbody tr:hover td,
+#pos-menu-page .pos-menu-table tbody tr:hover td{background:#FAFBFD}
 
 /* Full-row click affordance → Menu Details (actions column excluded in JS) */
 #pos-menu-page .pos-menu-table tbody tr.pos-menu-data-row[data-item-id],
@@ -533,27 +594,67 @@ body.pos-menu-module .pos-menu-header-actions .btn-primary:hover{
   cursor:pointer;
 }
 #pos-set-panel-menu .pos-menu-table .pos-menu-num,
-#pos-set-panel-menu .pos-menu-table .pl-col-amount{
+#pos-set-panel-menu .pos-menu-table .pl-col-amount,
+#pos-menu-page .pos-menu-table .pos-menu-num,
+#pos-menu-page .pos-menu-table .pl-col-amount{
   text-align:right;
   font-variant-numeric:tabular-nums;
   white-space:nowrap;
 }
+/* Keep sort chevron with the label on the right edge (matches cell values) */
+#pos-set-panel-menu .pos-menu-table th.pl-sortable.pos-menu-num,
+#pos-set-panel-menu .pos-menu-table th.pl-sortable.pl-col-amount,
+#pos-menu-page .pos-menu-table th.pl-sortable.pos-menu-num,
+#pos-menu-page .pos-menu-table th.pl-sortable.pl-col-amount{
+  white-space:normal;
+}
+#pos-set-panel-menu .pos-menu-table th.pl-sortable.pos-menu-num::after,
+#pos-set-panel-menu .pos-menu-table th.pl-sortable.pl-col-amount::after,
+#pos-menu-page .pos-menu-table th.pl-sortable.pos-menu-num::after,
+#pos-menu-page .pos-menu-table th.pl-sortable.pl-col-amount::after{
+  float:right;
+  margin-left:6px;
+  margin-top:2px;
+}
+#pos-set-panel-menu .pos-menu-table .pos-menu-num .pos-menu-badge,
+#pos-menu-page .pos-menu-table .pos-menu-num .pos-menu-badge{
+  margin-left:auto;
+}
 #pos-set-panel-menu .pos-menu-table .pos-menu-item-name,
-#pos-set-panel-menu .pos-menu-table .pl-name{
+#pos-set-panel-menu .pos-menu-table .pl-name,
+#pos-menu-page .pos-menu-table .pos-menu-item-name,
+#pos-menu-page .pos-menu-table .pl-name{
   font-weight:700;
   color:var(--mmc-text);
   display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 #pos-set-panel-menu .pos-menu-table .pos-menu-item-meta,
-#pos-set-panel-menu .pos-menu-table .pl-meta{
+#pos-set-panel-menu .pos-menu-table .pl-meta,
+#pos-menu-page .pos-menu-table .pos-menu-item-meta,
+#pos-menu-page .pos-menu-table .pl-meta{
   display:block;
   margin-top:2px;
   font-size:12px;
   font-weight:500;
   color:var(--mmc-muted);
   line-height:1.4;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
-#pos-set-panel-menu .pos-menu-table-empty-row td{
+#pos-set-panel-menu .pos-menu-table td:nth-child(2),
+#pos-set-panel-menu .pos-menu-table td:nth-child(3),
+#pos-menu-page .pos-menu-table td:nth-child(2),
+#pos-menu-page .pos-menu-table td:nth-child(3){
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#pos-set-panel-menu .pos-menu-table-empty-row td,
+#pos-menu-page .pos-menu-table-empty-row td{
   text-align:center;
   color:var(--mmc-muted);
   padding:36px 18px;
@@ -601,10 +702,19 @@ body.pos-menu-module .pos-menu-header-actions .btn-primary:hover{
 
 /* Compact icon actions — mirrors Employee Payroll `.act-grp` / `.act-btn` */
 .pos-menu-actions-col,
-#pos-set-panel-menu .pos-menu-table .pl-col-actions{
+#pos-set-panel-menu .pos-menu-table .pl-col-actions,
+#pos-menu-page .pos-menu-table .pl-col-actions,
+#pos-set-panel-menu .pos-menu-table .pos-menu-actions-col,
+#pos-menu-page .pos-menu-table .pos-menu-actions-col{
   width:1%;
   min-width:96px;
   white-space:nowrap;
+  text-align:right;
+}
+#pos-menu-page .pos-menu-table th.pos-menu-actions-col,
+#pos-set-panel-menu .pos-menu-table th.pos-menu-actions-col,
+#pos-menu-page .pos-menu-table th.pl-col-actions,
+#pos-set-panel-menu .pos-menu-table th.pl-col-actions{
   text-align:right;
 }
 #pos-menu-page .pos-menu-table .act-grp,

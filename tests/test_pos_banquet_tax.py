@@ -28,6 +28,22 @@ class PosBanquetTaxTests(unittest.TestCase):
         try:
             admin = conn.execute("SELECT id FROM users WHERE username = 'admin'").fetchone()
             self.admin_id = admin["id"]
+            db_mod.save_pos_restaurant_settings(
+                conn,
+                {
+                    "panels": {
+                        "taxes": {
+                            "values": {
+                                "prices_include_tax": {
+                                    "kind": "checkbox",
+                                    "checked": False,
+                                }
+                            }
+                        }
+                    }
+                },
+            )
+            conn.commit()
         finally:
             conn.close()
 

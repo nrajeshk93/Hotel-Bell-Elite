@@ -191,6 +191,75 @@
     return text || '—';
   }
 
+  function stayAgencyBillFlags(stay) {
+    if (!stay || typeof stay !== 'object') return { room: false, fb: false };
+    var hasRoom =
+      Object.prototype.hasOwnProperty.call(stay, 'agencyRoomBilling') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agency_room_billing');
+    var hasFb =
+      Object.prototype.hasOwnProperty.call(stay, 'agencyFbBilling') ||
+      Object.prototype.hasOwnProperty.call(stay, 'agency_fb_billing');
+    if (hasRoom || hasFb) {
+      return {
+        room: !!(stay.agencyRoomBilling || stay.agency_room_billing),
+        fb: !!(stay.agencyFbBilling || stay.agency_fb_billing)
+      };
+    }
+    var legacy = !!(stay.agencyBilling || stay.agency_billing);
+    return { room: legacy, fb: legacy };
+  }
+
+  function formAgencyBillFlags(form) {
+    if (!form || !form.elements) return { room: false, fb: false };
+    var roomEl = form.elements.agencyRoomBilling;
+    var fbEl = form.elements.agencyFbBilling;
+    if (roomEl || fbEl) {
+      return {
+        room: !!(roomEl && roomEl.checked),
+        fb: !!(fbEl && fbEl.checked)
+      };
+    }
+    var on = !!(form.elements.agencyBilling && form.elements.agencyBilling.checked);
+    return { room: on, fb: on };
+  }
+
+  function setFormAgencyBillFlags(form, stay) {
+    if (!form || !form.elements) return;
+    var flags = stayAgencyBillFlags(stay);
+    if (form.elements.agencyRoomBilling) {
+      form.elements.agencyRoomBilling.checked = !!flags.room;
+    }
+    if (form.elements.agencyFbBilling) {
+      form.elements.agencyFbBilling.checked = !!flags.fb;
+    }
+    if (form.elements.agencyBilling) {
+      form.elements.agencyBilling.checked = !!(flags.room || flags.fb);
+    }
+  }
+
+  function clearFormAgencyBillFlags(form) {
+    if (!form || !form.elements) return;
+    ['agencyRoomBilling', 'agencyFbBilling', 'agencyBilling'].forEach(function (name) {
+      if (form.elements[name]) form.elements[name].checked = false;
+    });
+  }
+
+  function collectFormAgencyBilling(form) {
+    var flags = formAgencyBillFlags(form);
+    return {
+      agencyRoomBilling: flags.room,
+      agencyFbBilling: flags.fb,
+      agencyBilling: !!(flags.room || flags.fb)
+    };
+  }
+
+  function toggleAgencyBillingHint(hint, show) {
+    if (!hint) return;
+    hint.hidden = !show;
+    if (show) hint.removeAttribute('hidden');
+    else hint.setAttribute('hidden', '');
+  }
+
   function guestNameWithoutTitle(value) {
     return String(value || '')
       .trim()
@@ -877,9 +946,12 @@
       if (agencyGst) agencyGst.textContent = dash(stay.agencyGst);
       if (agencyAddress) agencyAddress.textContent = dash(stay.agencyAddress);
       if (agencyBilling) {
-        agencyBilling.textContent = stay.agencyBilling
-          ? 'Invoice to ' + dash(stay.invoiceTo || stay.billingName || stay.agencyName)
-          : 'Guest';
+        var flags = stayAgencyBillFlags(stay);
+        agencyBilling.textContent =
+          'Room: ' +
+          (flags.room ? 'agency' : 'guest') +
+          ' · F&B: ' +
+          (flags.fb ? 'agency' : 'guest');
       }
     } else {
       if (agencyName) agencyName.textContent = '—';
@@ -1097,6 +1169,258 @@
     return lines;
   }
 
+  function folioLineInvoicedNo(item) {
+    return String(
+      (item && (item.invoicedInvoiceNumber || item.invoiced_invoice_number)) || ''
+    ).trim();
+  }
+
+  function invoiceHistoryEntries(stay) {
+    var raw = (stay && (stay.invoiceHistory || stay.invoice_history)) || [];
+    if (!Array.isArray(raw)) raw = [];
+    var out = [];
+    var seen = {};
+    raw.forEach(function (item) {
+      if (!item) return;
+      var inv = String(item.invoiceNumber || item.invoice_number || '').trim();
+      if (!inv || seen[inv]) return;
+      seen[inv] = true;
+      out.push({
+        kind: String(item.kind || 'hotel').toLowerCase(),
+        invoiceNumber: inv,
+        generatedAt: item.generatedAt || item.generated_at || '',
+        estimatedTotal: Math.round(Number(item.estimatedTotal || 0) * 100) / 100
+      });
+    });
+    var primaryHbe = String((stay && stay.invoiceNumber) || '').trim();
+    if (primaryHbe && !seen[primaryHbe]) {
+      out.unshift({
+        kind: 'hotel',
+        invoiceNumber: primaryHbe,
+        generatedAt: (stay && stay.invoiceGeneratedAt) || '',
+        estimatedTotal: Math.round(
+          Number(
+            (stay && stay.hotelInvoicedEstimatedTotal) ||
+              (stay && stay.estimatedTotal) ||
+              0
+          ) * 100
+        ) / 100
+      });
+    }
+    var primaryFbe = String(
+      (stay && (stay.fbTransferInvoiceNumber || stay.fb_transfer_invoice_number)) || ''
+    ).trim();
+    if (primaryFbe && !seen[primaryFbe]) {
+      out.push({
+        kind: 'fb',
+        invoiceNumber: primaryFbe,
+        generatedAt: (stay && stay.fbTransferInvoiceGeneratedAt) || '',
+        estimatedTotal: Math.round(Number((stay && stay.fbTransferTotal) || 0) * 100) / 100
+      });
+    }
+    return out;
+  }
+
+  function pendingFbChargeLinesFromStay(stay) {
+    var all = fbChargeLinesFromStay(stay);
+    var hasFbe = invoiceHistoryEntries(stay).some(function (entry) {
+      return entry.kind === 'fb';
+    });
+    if (!hasFbe) return all;
+    var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
+    var lines = [];
+    var labelFn = global.hotelFolioChargeDisplayLabel;
+    folio.forEach(function (item) {
+      if (!item || !isFbTransferFolio(item) || folioLineInvoicedNo(item)) return;
+      var amount = Number(item.amount || 0);
+      if (!(amount > 0)) return;
+      lines.push({
+        label:
+          typeof labelFn === 'function'
+            ? labelFn(item)
+            : item.label || 'Room Transfer',
+        amount: Math.round(amount * 100) / 100,
+        orderNo: String(item.orderNo || item.order_no || '').trim()
+      });
+    });
+    return lines;
+  }
+
+  /** Tax-inclusive F&B line totals → exclusive display lines + CGST/UGST. */
+  function summarizeFbChargeLines(rawLines) {
+    var factor = 1 + CGST_RATE + UGST_RATE;
+    var rows = Array.isArray(rawLines) ? rawLines : [];
+    var fbInclusive = Math.round(
+      rows.reduce(function (sum, row) {
+        return sum + Number(row.amount || 0);
+      }, 0) * 100
+    ) / 100;
+    var fbTaxable =
+      factor > 0 ? Math.round((fbInclusive / factor) * 100) / 100 : fbInclusive;
+    var fbCgst = Math.round(fbTaxable * CGST_RATE * 100) / 100;
+    var fbUgst = Math.round((fbInclusive - fbTaxable - fbCgst) * 100) / 100;
+    if (fbUgst < 0) fbUgst = 0;
+    var lines = rows.map(function (row) {
+      var amt = Math.round(Number(row.amount || 0) * 100) / 100;
+      return Object.assign({}, row, {
+        amount:
+          factor > 0 && fbInclusive > 0
+            ? Math.round((amt / factor) * 100) / 100
+            : amt
+      });
+    });
+    return {
+      lines: lines,
+      fbTotal: fbInclusive,
+      fbCgst: fbCgst,
+      fbUgst: fbUgst,
+      fbBalance: fbInclusive
+    };
+  }
+
+  function pendingHotelChargeLinesFromStay(stay, room) {
+    var primary = String((stay && stay.invoiceNumber) || '').trim();
+    if (!primary) return chargeLinesFromStay(stay, room);
+    var lines = [];
+    var bookedNights = Math.max(1, Number((stay && stay.nights) || 1));
+    var overstayNights = overstayNightsFromStay(stay);
+    var billableNights = Math.max(
+      1,
+      Number((stay && stay.billableNights) || bookedNights + overstayNights)
+    );
+    var invoicedNights = Math.max(
+      0,
+      Math.floor(Number((stay && stay.hotelInvoicedBillableNights) || 0))
+    );
+    if (billableNights > invoicedNights) {
+      var roomRate = Math.max(0, Number((stay && stay.roomRate) || 0));
+      var primaryNightly = (stay && stay.nightlyRates) || [];
+      var fullRoom = sumNightlyRateSlice(primaryNightly, 0, billableNights, roomRate);
+      if (fullRoom == null) fullRoom = Math.round(roomRate * billableNights * 100) / 100;
+      var lockedRoom = sumNightlyRateSlice(primaryNightly, 0, invoicedNights, roomRate);
+      if (lockedRoom == null) lockedRoom = Math.round(roomRate * invoicedNights * 100) / 100;
+      var delta = Math.round((fullRoom - lockedRoom) * 100) / 100;
+      if (delta > 0.009) {
+        var extraNights = billableNights - invoicedNights;
+        lines.push({
+          label:
+            'Overstay (' +
+            extraNights +
+            ' night' +
+            (extraNights === 1 ? '' : 's') +
+            ')',
+          amount: delta
+        });
+      }
+    }
+    var snapFields = [
+      ['extraBedAmount', 'hotelInvoicedExtraBedAmount', 'Extra Bed'],
+      ['earlyCheckinAmount', 'hotelInvoicedEarlyCheckinAmount', 'Early Check-in'],
+      ['lateCheckoutAmount', 'hotelInvoicedLateCheckoutAmount', 'Late Check-out']
+    ];
+    snapFields.forEach(function (row) {
+      var current = Math.round(Number((stay && stay[row[0]]) || 0) * 100) / 100;
+      var snap = Math.round(Number((stay && stay[row[1]]) || 0) * 100) / 100;
+      var delta = Math.round((current - snap) * 100) / 100;
+      if (delta > 0.009) lines.push({ label: row[2], amount: delta });
+    });
+    var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
+    var labelFn = global.hotelFolioChargeDisplayLabel;
+    folio.forEach(function (item) {
+      if (!item || isFbTransferFolio(item) || folioLineInvoicedNo(item)) return;
+      var amount = Number(item.amount || 0);
+      if (!(amount > 0)) return;
+      lines.push({
+        label:
+          typeof labelFn === 'function'
+            ? labelFn(item)
+            : item.label || 'Other Charge',
+        amount: Math.round(amount * 100) / 100
+      });
+    });
+    return lines;
+  }
+
+  function stayHasPendingCharges(stay, room) {
+    if (!stay) return false;
+    var pendingHotel = pendingHotelChargeLinesFromStay(stay, room);
+    var pendingFb = pendingFbChargeLinesFromStay(stay);
+    var hotelAmt = pendingHotel.reduce(function (sum, row) {
+      return sum + Number(row.amount || 0);
+    }, 0);
+    var fbAmt = pendingFb.reduce(function (sum, row) {
+      return sum + Number(row.amount || 0);
+    }, 0);
+    return hotelAmt > 0.009 || fbAmt > 0.009;
+  }
+
+  function renderInvoiceHistoryLinks(container, entries, kind, stay) {
+    if (!container) return;
+    var filtered = (entries || []).filter(function (entry) {
+      return entry.kind === kind;
+    });
+    if (!filtered.length) {
+      container.innerHTML = '';
+      return;
+    }
+    container.innerHTML = filtered
+      .map(function (entry) {
+        var unpaid = unpaidAmountForInvoice(stay, entry.invoiceNumber, kind);
+        var amountLabel = moneyText(entry.estimatedTotal);
+        if (unpaid != null && Math.abs(unpaid - Number(entry.estimatedTotal || 0)) > 0.009) {
+          amountLabel =
+            moneyText(entry.estimatedTotal) +
+            ' · due ' +
+            moneyText(unpaid);
+        } else if (unpaid != null && unpaid <= 0.009) {
+          amountLabel = moneyText(entry.estimatedTotal) + ' · paid';
+        }
+        return (
+          '<p class="hrd-charges-invoice-no is-clickable" role="button" tabindex="0" data-invoice-kind="' +
+          escapeHtml(kind) +
+          '" data-invoice-number="' +
+          escapeHtml(entry.invoiceNumber) +
+          '" title="View invoice">Invoice ' +
+          escapeHtml(entry.invoiceNumber) +
+          ' · ' +
+          amountLabel +
+          '</p>'
+        );
+      })
+      .join('');
+  }
+
+  function unpaidAmountForInvoice(stay, invoiceNumber, kind) {
+    var inv = String(invoiceNumber || '').trim();
+    if (!stay || !inv) return null;
+    if (kind === 'fb') {
+      var folio = Array.isArray(stay.folioCharges) ? stay.folioCharges : [];
+      var total = 0;
+      folio.forEach(function (line) {
+        if (!line || !isFbTransferFolio(line)) return;
+        if (folioLineInvoicedNo(line) !== inv) return;
+        if (line.settled || line.paid) return;
+        total += Number(line.amount || 0);
+      });
+      return Math.round(total * 100) / 100;
+    }
+    return null;
+  }
+
+  function chargeLinesHtml(lines) {
+    return (lines || [])
+      .map(function (row) {
+        return (
+          '<li><span class="hrd-charge-label">' +
+          escapeHtml(row.label) +
+          '</span><span class="hrd-charge-amount">' +
+          moneyText(row.amount) +
+          '</span></li>'
+        );
+      })
+      .join('');
+  }
+
   function stayMoneySummary(stay, room) {
     var lines = chargeLinesFromStay(stay, room);
     var subtotal = Math.round(
@@ -1166,14 +1490,28 @@
     if (stay && stay.fbTransferTotal != null && !(fbTotal > 0)) {
       fbTotal = Math.round(Number(stay.fbTransferTotal || 0) * 100) / 100;
     }
+    var fbInclusive = fbTotal;
+    var fbTaxable =
+      factor > 0 ? Math.round((fbInclusive / factor) * 100) / 100 : fbInclusive;
+    var fbCgst = Math.round(fbTaxable * CGST_RATE * 100) / 100;
+    var fbUgst = Math.round((fbInclusive - fbTaxable - fbCgst) * 100) / 100;
+    if (fbUgst < 0) fbUgst = 0;
+    if (factor > 0 && fbInclusive > 0) {
+      fbLines = fbLines.map(function (row) {
+        var amt = Math.round(Number(row.amount || 0) * 100) / 100;
+        return Object.assign({}, row, {
+          amount: Math.round((amt / factor) * 100) / 100
+        });
+      });
+    }
     var fbBalance =
       stay && stay.fbTransferBalance != null
         ? Math.round(Number(stay.fbTransferBalance || 0) * 100) / 100
         : fbTotal;
-    var combinedBalance =
-      stay && stay.combinedBalanceDue != null
-        ? Math.round(Number(stay.combinedBalanceDue || 0) * 100) / 100
-        : Math.round((balance + fbBalance) * 100) / 100;
+    if (!isFinite(fbBalance)) fbBalance = fbTotal;
+    /* Always hotel due + F&B due so the combined row stays in sync. */
+    var combinedBalance = Math.round((Number(balance) + Number(fbBalance)) * 100) / 100;
+    if (!isFinite(combinedBalance)) combinedBalance = 0;
     return {
       lines: lines,
       subtotal: subtotal,
@@ -1188,6 +1526,8 @@
       balance: balance,
       fbLines: fbLines,
       fbTotal: fbTotal,
+      fbCgst: fbCgst,
+      fbUgst: fbUgst,
       fbBalance: fbBalance,
       combinedBalance: combinedBalance
     };
@@ -1200,6 +1540,131 @@
     return '(' + n + '%)';
   }
 
+  function setClickableInvoiceNo(el, invoiceNumber, options) {
+    options = options || {};
+    if (!el) return;
+    var no = String(invoiceNumber || '').trim();
+    if (!no) {
+      el.hidden = true;
+      el.textContent = '';
+      el.removeAttribute('role');
+      el.removeAttribute('tabindex');
+      el.removeAttribute('title');
+      el.removeAttribute('data-invoice-kind');
+      el.classList.remove('is-clickable');
+      return;
+    }
+    var prefix = options.prefix != null ? String(options.prefix) : 'Invoice ';
+    el.hidden = false;
+    el.textContent = options.text != null ? String(options.text) : prefix + no;
+    el.setAttribute('role', 'button');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('title', options.title || 'View invoice');
+    if (options.kind) {
+      el.setAttribute('data-invoice-kind', options.kind);
+    } else {
+      el.removeAttribute('data-invoice-kind');
+    }
+    el.classList.add('is-clickable');
+  }
+
+  function invoiceKindFromEl(el) {
+    if (!el) return 'hotel';
+    var kind = String(el.getAttribute('data-invoice-kind') || '').trim().toLowerCase();
+    if (kind === 'hotel' || kind === 'fb') return kind;
+    var id = el.id || '';
+    if (id === 'hrd-charges-fb-invoice-no' || id === 'hrd-invoice-fb-no') return 'fb';
+    return 'hotel';
+  }
+
+  function invoiceNumberFromEl(el) {
+    if (!el) return '';
+    var fromAttr = String(el.getAttribute('data-invoice-number') || '').trim();
+    if (fromAttr) return fromAttr;
+    return String(el.textContent || '')
+      .trim()
+      .replace(/^Invoice\s+/i, '')
+      .replace(/\s·.*$/, '')
+      .trim();
+  }
+
+  function invoiceLedgerApiUrl(invoiceNumber) {
+    return (
+      '/hotel/invoice-ledger/api/' +
+      String(invoiceNumber || '')
+        .split('/')
+        .map(function (part) {
+          return encodeURIComponent(part);
+        })
+        .join('/')
+    );
+  }
+
+  function openRoomInvoicePreview(kind, invoiceNumber) {
+    if (!lastRoom || !lastRoom.stay) {
+      showToast('Invoice preview unavailable.', true);
+      return false;
+    }
+    var inv = String(invoiceNumber || '').trim();
+    if (inv) {
+      fetch(invoiceLedgerApiUrl(inv), {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' }
+      })
+        .then(function (resp) {
+          return resp.json().then(function (data) {
+            return { ok: resp.ok, data: data || {} };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok || !result.data.ok || !result.data.room) {
+            showToast(
+              (result.data && result.data.error) || 'Could not load invoice.',
+              true
+            );
+            return;
+          }
+          var invoice = result.data.invoice || {};
+          var source = String(invoice.source || '').toLowerCase();
+          var useFb =
+            kind === 'fb' ||
+            source === 'fb_combined_transfer' ||
+            /^FBE\//i.test(inv);
+          var openFn = useFb
+            ? global.openFbCombinedTransferInvoice
+            : global.openHotelRoomInvoice;
+          if (typeof openFn !== 'function') {
+            showToast('Invoice preview is unavailable.', true);
+            return;
+          }
+          var opened = openFn(result.data.room, {
+            autoPrint: false,
+            invoiceNumber: inv,
+            invoiceStatus: invoice.status || '',
+            cancelReason: invoice.cancel_reason || ''
+          });
+          if (!opened) {
+            showToast('Could not open invoice preview.', true);
+          }
+        })
+        .catch(function () {
+          showToast('Could not load invoice.', true);
+        });
+      return true;
+    }
+    var ok = false;
+    var opts = { autoPrint: false };
+    if (kind === 'fb') {
+      if (typeof global.openFbCombinedTransferInvoice === 'function') {
+        ok = global.openFbCombinedTransferInvoice(lastRoom, opts);
+      }
+    } else if (typeof global.openHotelRoomInvoice === 'function') {
+      ok = global.openHotelRoomInvoice(lastRoom, opts);
+    }
+    if (!ok) showToast('Could not open invoice preview.', true);
+    return ok;
+  }
+
   function paintEstimatedCharges(root, room) {
     var emptyEl = $('#hrd-charges-empty', root);
     var bodyEl = $('#hrd-charges-body', root);
@@ -1209,24 +1674,29 @@
     var stay = (room && room.stay) || null;
     var occupied = mapStatus(room && room.status) === 'occupied' && !!stay;
     var invoiceNoEl = $('#hrd-charges-invoice-no', root);
+    var fbInvoiceNoElEarly = $('#hrd-charges-fb-invoice-no', root);
     var actionsEl = $('#hrd-charges-actions', root);
     var genBtn = $('#hrd-generate-invoice', root);
+    var genHotelBtn = $('#hrd-generate-hotel-invoice', root);
+    var genFbBtn = $('#hrd-generate-fb-invoice', root);
     var payBtn = $('#hrd-record-payment', root);
 
     if (!occupied) {
       listEl.innerHTML = '';
       setVisible(emptyEl, true);
       setVisible(bodyEl, false);
-      if (invoiceNoEl) {
-        invoiceNoEl.hidden = true;
-        invoiceNoEl.textContent = '';
-        invoiceNoEl.removeAttribute('role');
-        invoiceNoEl.removeAttribute('tabindex');
-        invoiceNoEl.removeAttribute('title');
-        invoiceNoEl.classList.remove('is-clickable');
-      }
+      setClickableInvoiceNo(invoiceNoEl, '');
+      setClickableInvoiceNo(fbInvoiceNoElEarly, '');
       if (actionsEl) actionsEl.hidden = true;
       if (genBtn) genBtn.hidden = true;
+      if (genHotelBtn) {
+        genHotelBtn.hidden = true;
+        genHotelBtn.disabled = true;
+      }
+      if (genFbBtn) {
+        genFbBtn.hidden = true;
+        genFbBtn.disabled = true;
+      }
       if (payBtn) payBtn.hidden = true;
       return;
     }
@@ -1240,24 +1710,34 @@
     var invoiceNumber = String(stay.invoiceNumber || '').trim();
 
     if (invoiceNoEl) {
-      if (invoiceGenerated && invoiceNumber) {
-        invoiceNoEl.hidden = false;
-        invoiceNoEl.textContent = 'Invoice ' + invoiceNumber;
-        invoiceNoEl.setAttribute('role', 'button');
-        invoiceNoEl.setAttribute('tabindex', '0');
-        invoiceNoEl.setAttribute('title', 'View invoice');
-        invoiceNoEl.classList.add('is-clickable');
-      } else {
-        invoiceNoEl.hidden = true;
-        invoiceNoEl.textContent = '';
-        invoiceNoEl.removeAttribute('role');
-        invoiceNoEl.removeAttribute('tabindex');
-        invoiceNoEl.removeAttribute('title');
-        invoiceNoEl.classList.remove('is-clickable');
-      }
+      setClickableInvoiceNo(invoiceNoEl, '');
     }
 
-    if (!lines.length && estimated <= 0) {
+    var history = invoiceHistoryEntries(stay);
+    var hasPending = stayHasPendingCharges(stay, room);
+    var pendingHotelLines = invoiceGenerated
+      ? pendingHotelChargeLinesFromStay(stay, room)
+      : lines;
+    /* Always use pending F&B lines (uninvoiced transfers). Using summary.fbLines
+       after an FBE already exists incorrectly keeps "Generate Additional F&B"
+       visible when nothing is left to invoice. */
+    var pendingFbLines = pendingFbChargeLinesFromStay(stay);
+    var invoicedSection = $('#hrd-charges-invoiced-section', root);
+    var pendingSection = $('#hrd-charges-pending-section', root);
+    var pendingListEl = $('#hrd-charges-pending-list', root);
+    var invoicedHistoryEl = $('#hrd-charges-invoiced-history', root);
+    var fbInvoicedSection = $('#hrd-charges-fb-invoiced-section', root);
+    var fbPendingSection = $('#hrd-charges-fb-pending-section', root);
+    var fbPendingListEl = $('#hrd-charges-fb-pending-list', root);
+    var fbInvoicedHistoryEl = $('#hrd-charges-fb-invoiced-history', root);
+    var hotelHistory = history.filter(function (entry) {
+      return entry.kind === 'hotel';
+    });
+    var fbHistory = history.filter(function (entry) {
+      return entry.kind === 'fb';
+    });
+
+    if (!lines.length && estimated <= 0 && !pendingHotelLines.length && !pendingFbLines.length) {
       listEl.innerHTML = '';
       var isMemberEarly = !!(
         room.isMergeMember ||
@@ -1275,25 +1755,35 @@
       setVisible(bodyEl, false);
       if (actionsEl) actionsEl.hidden = true;
       if (genBtn) genBtn.hidden = true;
+      if (genHotelBtn) {
+        genHotelBtn.hidden = true;
+        genHotelBtn.disabled = true;
+      }
+      if (genFbBtn) {
+        genFbBtn.hidden = true;
+        genFbBtn.disabled = true;
+      }
       if (payBtn) payBtn.hidden = true;
       return;
     }
 
-    listEl.innerHTML = lines
-      .map(function (row) {
-        return (
-          '<li><span class="hrd-charge-label">' +
-          escapeHtml(row.label) +
-          '</span><span class="hrd-charge-amount">' +
-          moneyText(row.amount) +
-          '</span></li>'
-        );
-      })
-      .join('');
+    if (invoiceGenerated && hotelHistory.length) {
+      if (invoicedSection) invoicedSection.hidden = false;
+      renderInvoiceHistoryLinks(invoicedHistoryEl, history, 'hotel', stay);
+      listEl.hidden = true;
+      if (pendingSection) pendingSection.hidden = !(pendingHotelLines.length > 0);
+      if (pendingListEl) pendingListEl.innerHTML = chargeLinesHtml(pendingHotelLines);
+    } else {
+      if (invoicedSection) invoicedSection.hidden = true;
+      if (pendingSection) pendingSection.hidden = true;
+      listEl.hidden = false;
+      listEl.innerHTML = chargeLinesHtml(lines);
+    }
 
     var discRow = root.querySelector('[data-charges-discount-row]');
     var discHint = root.querySelector('[data-charges-discount-hint]');
     var discEl = root.querySelector('[data-charges-discount]');
+    var subtotalEl = root.querySelector('[data-charges-subtotal]');
     var cgstEl = root.querySelector('[data-charges-cgst]');
     var ugstEl = root.querySelector('[data-charges-ugst]');
     var totalEl = root.querySelector('[data-charges-total]');
@@ -1307,6 +1797,7 @@
         : '';
     }
     if (discEl) discEl.textContent = showDisc ? '−' + moneyText(summary.discount) : '—';
+    if (subtotalEl) subtotalEl.textContent = moneyText(summary.subtotal);
     if (cgstEl) cgstEl.textContent = moneyText(summary.cgst);
     if (ugstEl) ugstEl.textContent = moneyText(summary.ugst);
     if (totalEl) totalEl.textContent = moneyText(estimated);
@@ -1316,52 +1807,101 @@
     var fbSection = $('#hrd-charges-fb-section', root);
     var fbListEl = $('#hrd-charges-fb-list', root);
     var fbInvoiceNoEl = $('#hrd-charges-fb-invoice-no', root);
+    var fbCgstEl = root.querySelector('[data-charges-fb-cgst]');
+    var fbUgstEl = root.querySelector('[data-charges-fb-ugst]');
     var fbTotalEl = root.querySelector('[data-charges-fb-total]');
     var fbBalanceEl = root.querySelector('[data-charges-fb-balance]');
+    var fbCgstRow = fbCgstEl && fbCgstEl.closest('div');
+    var fbUgstRow = fbUgstEl && fbUgstEl.closest('div');
+    var fbTotalRow = fbTotalEl && fbTotalEl.closest('div');
+    var fbBalanceRow = fbBalanceEl && fbBalanceEl.closest('div');
+    var fbBalanceDt = fbBalanceRow && fbBalanceRow.querySelector('dt');
     var combinedEl = $('#hrd-charges-combined', root);
     var combinedBalanceEl = root.querySelector('[data-charges-combined-balance]');
     var fbLines = summary.fbLines || [];
-    var fbTotal = summary.fbTotal || 0;
-    var fbBalance = summary.fbBalance || 0;
-    var combinedBalance = summary.combinedBalance || balance;
+    var fbTotal = Number(summary.fbTotal);
+    if (!isFinite(fbTotal)) fbTotal = 0;
+    var fbBalance = Number(summary.fbBalance);
+    if (!isFinite(fbBalance)) fbBalance = 0;
+    var combinedBalance = Number(summary.combinedBalance);
+    if (!isFinite(combinedBalance)) {
+      combinedBalance = Math.round((Number(balance) + fbBalance) * 100) / 100;
+    }
     var fbInvoiceNumber = String(
       (stay && (stay.fbTransferInvoiceNumber || stay.fb_transfer_invoice_number)) || ''
     ).trim();
+    var hasFbHistory = fbHistory.length > 0;
     if (fbSection && fbListEl) {
-      if (fbLines.length || fbTotal > 0) {
+      if (fbLines.length || fbTotal > 0 || hasFbHistory || pendingFbLines.length) {
         fbSection.hidden = false;
-        fbListEl.innerHTML = fbLines
-          .map(function (row) {
-            return (
-              '<li><span class="hrd-charge-label">' +
-              escapeHtml(row.label) +
-              '</span><span class="hrd-charge-amount">' +
-              moneyText(row.amount) +
-              '</span></li>'
-            );
-          })
-          .join('');
-        if (fbInvoiceNoEl) {
-          if (fbInvoiceNumber) {
-            fbInvoiceNoEl.hidden = false;
-            fbInvoiceNoEl.textContent = 'Invoice ' + fbInvoiceNumber;
-          } else {
-            fbInvoiceNoEl.hidden = true;
-            fbInvoiceNoEl.textContent = '';
+        if (hasFbHistory) {
+          if (fbInvoicedSection) fbInvoicedSection.hidden = false;
+          renderInvoiceHistoryLinks(fbInvoicedHistoryEl, history, 'fb', stay);
+          fbListEl.hidden = true;
+          if (fbInvoiceNoEl) setClickableInvoiceNo(fbInvoiceNoEl, '');
+          if (fbPendingSection) fbPendingSection.hidden = !(pendingFbLines.length > 0);
+          if (fbPendingListEl) fbPendingListEl.innerHTML = chargeLinesHtml(pendingFbLines);
+          /* Invoiced links + pending lines already break down F&B. Hide the old
+             Total/CGST footer; unpaid F&B is shown in Combined Checkout Due. */
+          if (fbCgstRow) fbCgstRow.hidden = true;
+          if (fbUgstRow) fbUgstRow.hidden = true;
+          if (fbTotalRow) fbTotalRow.hidden = true;
+          if (fbBalanceRow) {
+            var showFbDue = fbBalance > 0.009;
+            fbBalanceRow.hidden = !showFbDue;
+            if (fbBalanceDt) fbBalanceDt.textContent = 'Unpaid F&B Due';
+            if (fbBalanceEl) {
+              fbBalanceEl.textContent = showFbDue ? moneyText(fbBalance) : '—';
+            }
           }
+        } else {
+          if (fbInvoicedSection) fbInvoicedSection.hidden = true;
+          if (fbPendingSection) fbPendingSection.hidden = true;
+          fbListEl.hidden = false;
+          fbListEl.innerHTML = chargeLinesHtml(fbLines);
+          if (fbInvoiceNoEl) {
+            setClickableInvoiceNo(fbInvoiceNoEl, fbInvoiceNumber, { kind: 'fb' });
+          }
+          if (fbCgstRow) fbCgstRow.hidden = false;
+          if (fbUgstRow) fbUgstRow.hidden = false;
+          if (fbTotalRow) fbTotalRow.hidden = false;
+          if (fbBalanceRow) fbBalanceRow.hidden = false;
+          if (fbBalanceDt) fbBalanceDt.textContent = 'F&B Balance';
+          if (fbCgstEl) fbCgstEl.textContent = moneyText(summary.fbCgst);
+          if (fbUgstEl) fbUgstEl.textContent = moneyText(summary.fbUgst);
+          if (fbTotalEl) fbTotalEl.textContent = moneyText(fbTotal);
+          if (fbBalanceEl) fbBalanceEl.textContent = moneyText(fbBalance);
         }
-        if (fbTotalEl) fbTotalEl.textContent = moneyText(fbTotal);
-        if (fbBalanceEl) fbBalanceEl.textContent = moneyText(fbBalance);
       } else {
         fbSection.hidden = true;
         fbListEl.innerHTML = '';
+        if (fbInvoicedSection) fbInvoicedSection.hidden = true;
+        if (fbPendingSection) fbPendingSection.hidden = true;
+        if (fbInvoiceNoEl) setClickableInvoiceNo(fbInvoiceNoEl, '');
       }
     }
     if (combinedEl) {
-      var showCombined = fbTotal > 0 && (combinedBalance > 0 || invoiceGenerated);
+      var hotelDue = Math.round(Number(balance) * 100) / 100;
+      if (!isFinite(hotelDue)) hotelDue = 0;
+      var fbDue = Math.round(Number(fbBalance) * 100) / 100;
+      if (!isFinite(fbDue)) fbDue = 0;
+      combinedBalance = Math.round((hotelDue + fbDue) * 100) / 100;
+      var showCombined =
+        hasFbHistory ||
+        fbLines.length > 0 ||
+        fbTotal > 0 ||
+        fbDue > 0;
       combinedEl.hidden = !showCombined;
-      if (combinedBalanceEl && showCombined) {
-        combinedBalanceEl.textContent = moneyText(combinedBalance);
+      var combinedHotelEl = root.querySelector('[data-charges-combined-hotel]');
+      var combinedFbEl = root.querySelector('[data-charges-combined-fb]');
+      if (combinedHotelEl) {
+        combinedHotelEl.textContent = showCombined ? moneyText(hotelDue) : '—';
+      }
+      if (combinedFbEl) {
+        combinedFbEl.textContent = showCombined ? moneyText(fbDue) : '—';
+      }
+      if (combinedBalanceEl) {
+        combinedBalanceEl.textContent = showCombined ? moneyText(combinedBalance) : '—';
       }
     }
 
@@ -1375,6 +1915,14 @@
     );
     if (isMember) {
       if (genBtn) genBtn.hidden = true;
+      if (genHotelBtn) {
+        genHotelBtn.hidden = true;
+        genHotelBtn.disabled = true;
+      }
+      if (genFbBtn) {
+        genFbBtn.hidden = true;
+        genFbBtn.disabled = true;
+      }
       if (payBtn) payBtn.hidden = true;
       var billNo = room.billingRoomNumber || stay.billingRoomId || '';
       if (emptyEl && (!lines.length || estimated <= 0)) {
@@ -1384,9 +1932,48 @@
         setVisible(bodyEl, false);
       }
     } else {
-      if (genBtn) genBtn.hidden = invoiceGenerated && !(summary.fbTotal > 0 && !fbInvoiceNumber);
-      if (payBtn) payBtn.hidden = !(invoiceGenerated && summary.combinedBalance > 0);
+      var hasHotelToInvoice =
+        invoiceGenerated
+          ? pendingHotelLines.length > 0
+          : lines.length > 0 || estimated > 0;
+      var hasFbToInvoice = pendingFbLines.length > 0;
+      var hotelAlreadyInvoiced = !!(invoiceGenerated || hotelHistory.length);
+      var fbAlreadyInvoiced = fbHistory.length > 0;
+      if (genBtn) genBtn.hidden = true;
+      setGenerateInvoiceButton(
+        genHotelBtn,
+        hasHotelToInvoice,
+        hotelAlreadyInvoiced
+          ? 'Generate Additional Room Invoice'
+          : 'Generate Room Invoice'
+      );
+      setGenerateInvoiceButton(
+        genFbBtn,
+        hasFbToInvoice,
+        fbAlreadyInvoiced
+          ? 'Generate Additional F&B Invoice'
+          : 'Generate F&B Invoice'
+      );
+      if (payBtn) {
+        payBtn.hidden = !(
+          (invoiceGenerated || fbAlreadyInvoiced) &&
+          summary.combinedBalance > 0
+        );
+      }
     }
+  }
+
+  function setGenerateInvoiceButton(btn, visible, labelText) {
+    if (!btn) return;
+    btn.hidden = !visible;
+    btn.disabled = !visible;
+    if (!visible) {
+      btn.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    btn.removeAttribute('aria-hidden');
+    var svg = btn.querySelector('svg');
+    btn.innerHTML = (svg ? svg.outerHTML : '') + ' ' + labelText;
   }
 
   function escapeHtml(value) {
@@ -1729,7 +2316,8 @@
     ) {
       return false;
     }
-    return !(stay.invoiceGenerated || stay.invoiceNumber);
+    if (!(stay.invoiceGenerated || stay.invoiceNumber)) return true;
+    return stayHasPendingCharges(stay, room);
   }
 
   function putRoomAction(root, body) {
@@ -1762,7 +2350,9 @@
     if (go) {
       go.setAttribute(
         'href',
-        roomId ? '/hotel/rooms/' + encodeURIComponent(roomId) + '/invoice' : '#'
+        roomId
+          ? '/hotel/rooms/' + encodeURIComponent(roomId) + '/invoice?kind=hotel'
+          : '#'
       );
     }
     modal.hidden = false;
@@ -1820,7 +2410,7 @@
         if (!result.ok || !result.data || !result.data.ok) {
           var errMsg =
             (result.data && result.data.error) || 'Checkout failed.';
-          if (/generate invoice to check out/i.test(errMsg)) {
+          if (/generate invoice to check out|additional invoice/i.test(errMsg)) {
             openCheckoutInvoiceModal(root);
             return null;
           }
@@ -1860,7 +2450,7 @@
         if (!result.ok || !result.data || !result.data.ok) {
           var errMsg =
             (result.data && result.data.error) || 'Checkout failed.';
-          if (/generate invoice to check out/i.test(errMsg)) {
+          if (/generate invoice to check out|additional invoice/i.test(errMsg)) {
             openCheckoutInvoiceModal(root);
             return null;
           }
@@ -1960,12 +2550,71 @@
   function closeInvoiceSplitListbox(box) {
     if (!box) return;
     var trigger = box.querySelector('.se-filter-chip-trigger');
-    var list = box.querySelector('.se-filter-listbox');
+    var list =
+      (box.__hrdPortaledList && box.__hrdPortaledList.isConnected
+        ? box.__hrdPortaledList
+        : null) || box.querySelector('.se-filter-listbox');
     box.classList.remove('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'false');
     if (list) {
       list.hidden = true;
       list.scrollTop = 0;
+      restoreInvoiceSplitListboxPanel(box, list);
+    }
+  }
+
+  function restoreInvoiceSplitListboxPanel(box, list) {
+    if (!list) return;
+    var home = list.__hrdPortalHome;
+    if (home && home.isConnected) {
+      home.appendChild(list);
+    } else if (box && box.isConnected) {
+      box.appendChild(list);
+    }
+    list.classList.remove('ep-listbox-portaled');
+    list.removeAttribute('data-hrd-invoice-listbox-portaled');
+    list.__hrdPortalHome = null;
+    if (box) box.__hrdPortaledList = null;
+    list.style.position = '';
+    list.style.left = '';
+    list.style.right = '';
+    list.style.top = '';
+    list.style.bottom = '';
+    list.style.width = '';
+    list.style.minWidth = '';
+    list.style.maxHeight = '';
+    list.style.zIndex = '';
+  }
+
+  function positionInvoiceSplitListboxPanel(box, list) {
+    if (!box || !list) return;
+    var control = box.querySelector('.se-filter-chip-control') || box;
+    var rect = control.getBoundingClientRect();
+    var width = Math.max(rect.width, 160);
+    var left = Math.min(rect.left, Math.max(8, window.innerWidth - width - 8));
+    var spaceBelow = window.innerHeight - rect.bottom - 12;
+    var spaceAbove = rect.top - 12;
+    var openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
+    var maxHeight = Math.min(260, Math.max(160, openUp ? spaceAbove : spaceBelow));
+    var host = document.getElementById('de-fs-app') || document.body;
+    if (!list.__hrdPortalHome) list.__hrdPortalHome = list.parentNode;
+    if (host && list.parentNode !== host) host.appendChild(list);
+    list.classList.add('ep-listbox-portaled');
+    list.setAttribute('data-hrd-invoice-listbox-portaled', '1');
+    box.__hrdPortaledList = list;
+    list.style.position = 'fixed';
+    list.style.left = left + 'px';
+    list.style.right = 'auto';
+    list.style.width = width + 'px';
+    list.style.minWidth = width + 'px';
+    list.style.maxHeight = maxHeight + 'px';
+    list.style.zIndex = '12050';
+    if (openUp) {
+      list.style.top = 'auto';
+      list.style.bottom = window.innerHeight - rect.top + 6 + 'px';
+    } else {
+      list.style.bottom = 'auto';
+      list.style.top = rect.bottom + 6 + 'px';
     }
   }
 
@@ -1980,10 +2629,16 @@
     if (!box) return;
     closeAllInvoiceSplitListboxes(modal, box);
     var trigger = box.querySelector('.se-filter-chip-trigger');
-    var list = box.querySelector('.se-filter-listbox');
+    var list =
+      (box.__hrdPortaledList && box.__hrdPortaledList.isConnected
+        ? box.__hrdPortaledList
+        : null) || box.querySelector('.se-filter-listbox');
     box.classList.add('is-open');
     if (trigger) trigger.setAttribute('aria-expanded', 'true');
-    if (list) list.hidden = false;
+    if (list) {
+      list.hidden = false;
+      positionInvoiceSplitListboxPanel(box, list);
+    }
   }
 
   function syncInvoiceSplitRowState(row) {
@@ -2011,9 +2666,18 @@
     if (addBtn) addBtn.disabled = rows.length >= invoicePaymentMethods().length;
   }
 
+  function invoiceSplitListboxPanel(box) {
+    if (!box) return null;
+    if (box.__hrdPortaledList && box.__hrdPortaledList.isConnected) {
+      return box.__hrdPortaledList;
+    }
+    return box.querySelector('.se-filter-listbox');
+  }
+
   function refreshInvoiceSplitOptions(modal) {
     invoiceSplitRows(modal).forEach(function (row) {
-      var list = row.querySelector('.se-filter-listbox');
+      var box = row.querySelector('[data-se-listbox]');
+      var list = invoiceSplitListboxPanel(box);
       var selected = invoiceRowMethod(row);
       if (list) list.innerHTML = invoiceMethodOptionsHtml(modal, selected, row);
       syncInvoiceSplitRowState(row);
@@ -2106,6 +2770,7 @@
     var box = row && row.querySelector('[data-se-listbox]');
     if (!box || box.getAttribute('data-bound') === '1') return;
     box.setAttribute('data-bound', '1');
+    box.__epListboxBound = true;
     var trigger = box.querySelector('.se-filter-chip-trigger');
     var list = box.querySelector('.se-filter-listbox');
     var hidden = box.querySelector('.hrd-invoice-method-input');
@@ -2120,13 +2785,17 @@
     });
     list.addEventListener('click', function (e) {
       var option = e.target.closest('.se-filter-listbox-option');
-      if (!option || !list.contains(option)) return;
+      var activeList =
+        (box.__hrdPortaledList && box.__hrdPortaledList.isConnected
+          ? box.__hrdPortaledList
+          : null) || list;
+      if (!option || !activeList.contains(option)) return;
       e.preventDefault();
       var value = option.getAttribute('data-value') || '';
       var label = (option.textContent || '').trim();
       hidden.value = value;
       if (valueEl) valueEl.textContent = label || 'Select mode…';
-      list.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
+      activeList.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
         var on = opt === option;
         opt.classList.toggle('is-selected', on);
         opt.setAttribute('aria-selected', on ? 'true' : 'false');
@@ -2230,9 +2899,13 @@
     refreshInvoiceSplitBalance(modal);
   }
 
-  function openInvoiceModal(root, mode) {
+  function openInvoiceModal(root, mode, opts) {
+    opts = opts || {};
     var modal = $('#hrd-invoice-modal', root) || document.getElementById('hrd-invoice-modal');
-    if (!modal) return;
+    if (!modal) {
+      showToast('Invoice dialog is unavailable on this page.', true);
+      return;
+    }
     var stay = (lastRoom && lastRoom.stay) || null;
     if (!stay) {
       showToast('No guest stay on this room.', true);
@@ -2240,18 +2913,72 @@
     }
     var summary = stayMoneySummary(stay, lastRoom);
     var isPay = mode === 'payment';
-    if (isPay && !(stay.invoiceGenerated || stay.invoiceNumber)) {
+    var invoiceKind = String(opts.kind || 'all').toLowerCase();
+    if (invoiceKind !== 'hotel' && invoiceKind !== 'fb') invoiceKind = 'all';
+    var invoiceGenerated = !!(stay.invoiceGenerated || stay.invoiceNumber);
+    var fbHistory = invoiceHistoryEntries(stay).filter(function (entry) {
+      return entry.kind === 'fb';
+    });
+    var fbGenerated = fbHistory.length > 0;
+    var hasPending = stayHasPendingCharges(stay, lastRoom);
+    if (isPay && !invoiceGenerated && !fbGenerated) {
       showToast('Generate the invoice before recording payment.', true);
       return;
     }
-    if (!isPay && (stay.invoiceGenerated || stay.invoiceNumber)) {
+    if (!isPay && invoiceKind === 'hotel' && invoiceGenerated) {
+      var pendingHotelOnly = pendingHotelChargeLinesFromStay(stay, lastRoom);
+      if (!pendingHotelOnly.length) {
+        showToast('No pending room charges to invoice.');
+        return;
+      }
+    }
+    if (!isPay && invoiceKind === 'fb') {
+      var pendingFbOnly = pendingFbChargeLinesFromStay(stay);
+      if (!pendingFbOnly.length) {
+        showToast('No pending F&B transfers to invoice.');
+        return;
+      }
+    }
+    if (!isPay && invoiceKind === 'all' && invoiceGenerated && !hasPending) {
       showToast('Invoice already generated.');
       return;
     }
-    var hasHotelCharges = summary.lines.length > 0 || summary.estimated > 0;
-    var hasFbCharges = (summary.fbLines && summary.fbLines.length) || summary.fbTotal > 0;
+    var modalHotelLines =
+      isPay || (!invoiceGenerated && invoiceKind !== 'fb')
+        ? summary.lines
+        : pendingHotelChargeLinesFromStay(stay, lastRoom);
+    /* Generate F&B must use pending transfers only — never roll prior FBE totals. */
+    var fbModalMoney = null;
+    var modalFbLines;
+    if (!isPay && invoiceKind !== 'hotel') {
+      fbModalMoney = summarizeFbChargeLines(pendingFbChargeLinesFromStay(stay));
+      modalFbLines = fbModalMoney.lines;
+    } else if (isPay) {
+      modalFbLines = summary.fbLines || [];
+    } else {
+      modalFbLines = [];
+    }
+    if (!isPay && invoiceKind === 'hotel') {
+      modalFbLines = [];
+      fbModalMoney = null;
+    }
+    if (!isPay && invoiceKind === 'fb') {
+      modalHotelLines = [];
+    }
+    var hasHotelCharges =
+      modalHotelLines.length > 0 ||
+      (invoiceKind !== 'fb' && !invoiceGenerated && summary.estimated > 0);
+    var hasFbCharges =
+      modalFbLines.length > 0 ||
+      (invoiceKind !== 'hotel' &&
+        !fbGenerated &&
+        ((fbModalMoney && fbModalMoney.fbTotal > 0) || summary.fbTotal > 0));
+    if (!isPay && (invoiceGenerated || fbGenerated) && hasPending) {
+      hasHotelCharges = modalHotelLines.length > 0;
+      hasFbCharges = modalFbLines.length > 0;
+    }
     if (!hasHotelCharges && !hasFbCharges) {
-      showToast('No charges to invoice yet.', true);
+      showToast(isPay ? 'No balance due.' : 'No charges to invoice yet.', true);
       return;
     }
     if (isPay && !(summary.combinedBalance > 0)) {
@@ -2261,40 +2988,45 @@
 
     var modeEl = $('#hrd-invoice-mode', modal);
     if (modeEl) modeEl.value = isPay ? 'payment' : 'generate';
+    var kindEl = $('#hrd-invoice-kind', modal);
+    if (kindEl) kindEl.value = isPay ? 'all' : invoiceKind;
     var titleEl = $('#hrd-invoice-title', modal);
-    var subEl = $('#hrd-invoice-subtitle', modal);
     var saveBtn = $('#hrd-invoice-save', modal);
-    if (titleEl) titleEl.textContent = isPay ? 'Record Payment' : 'Generate Invoice';
-    if (subEl) {
-      subEl.textContent = isPay
-        ? 'Split payment toward the balance'
-        : 'Lock charges and optionally collect payment';
+    var generateLabel = 'Generate Invoice';
+    if (!isPay) {
+      if (invoiceKind === 'hotel') {
+        generateLabel = invoiceGenerated
+          ? 'Generate Additional Room Invoice'
+          : 'Generate Room Invoice';
+      } else if (invoiceKind === 'fb') {
+        generateLabel = fbGenerated
+          ? 'Generate Additional F&B Invoice'
+          : 'Generate F&B Invoice';
+      } else if ((invoiceGenerated || fbGenerated) && hasPending) {
+        generateLabel = 'Generate Additional Invoice';
+      }
     }
-    if (saveBtn) saveBtn.textContent = isPay ? 'Record Payment' : 'Generate Invoice';
+    if (titleEl) titleEl.textContent = isPay ? 'Record Payment' : generateLabel;
+    if (saveBtn) saveBtn.textContent = isPay ? 'Record Payment' : generateLabel;
 
+    var hotelBlock = $('#hrd-invoice-hotel-block', modal);
     var linesEl = $('#hrd-invoice-lines', modal);
     if (linesEl) {
-      linesEl.innerHTML = summary.lines
-        .map(function (row) {
-          return (
-            '<li><span class="hrd-charge-label">' +
-            escapeHtml(row.label) +
-            '</span><span class="hrd-charge-amount">' +
-            moneyText(row.amount) +
-            '</span></li>'
-          );
-        })
-        .join('');
+      linesEl.innerHTML = chargeLinesHtml(modalHotelLines);
+    }
+    if (hotelBlock) {
+      hotelBlock.hidden = !isPay && invoiceKind === 'fb';
     }
     var discRow = $('#hrd-invoice-discount-row', modal);
     var discHint = $('#hrd-invoice-discount-hint', modal);
     var discEl = $('#hrd-invoice-discount', modal);
+    var subtotalEl = $('#hrd-invoice-subtotal', modal);
     var cgstEl = $('#hrd-invoice-cgst', modal);
     var ugstEl = $('#hrd-invoice-ugst', modal);
     var totalEl = $('#hrd-invoice-total', modal);
     var advanceEl = $('#hrd-invoice-advance', modal);
     var balanceEl = $('#hrd-invoice-balance', modal);
-    var showDisc = Number(summary.discount) > 0;
+    var showDisc = Number(summary.discount) > 0 && invoiceKind !== 'fb';
     if (discRow) discRow.hidden = !showDisc;
     if (discHint) {
       discHint.textContent = showDisc
@@ -2302,6 +3034,7 @@
         : '';
     }
     if (discEl) discEl.textContent = showDisc ? '−' + moneyText(summary.discount) : '—';
+    if (subtotalEl) subtotalEl.textContent = moneyText(summary.subtotal);
     if (cgstEl) cgstEl.textContent = moneyText(summary.cgst);
     if (ugstEl) ugstEl.textContent = moneyText(summary.ugst);
     if (totalEl) totalEl.textContent = moneyText(summary.estimated);
@@ -2311,6 +3044,8 @@
     var fbBlock = $('#hrd-invoice-fb-block', modal);
     var fbLinesEl = $('#hrd-invoice-fb-lines', modal);
     var fbNoEl = $('#hrd-invoice-fb-no', modal);
+    var fbCgstEl = $('#hrd-invoice-fb-cgst', modal);
+    var fbUgstEl = $('#hrd-invoice-fb-ugst', modal);
     var fbTotalEl = $('#hrd-invoice-fb-total', modal);
     var fbBalEl = $('#hrd-invoice-fb-balance', modal);
     var combinedRow = $('#hrd-invoice-combined-row', modal);
@@ -2319,68 +3054,94 @@
     if (hotelNoEl) {
       var hbeNo = String(stay.invoiceNumber || '').trim();
       if (hbeNo && isPay) {
-        hotelNoEl.hidden = false;
-        hotelNoEl.textContent = hbeNo;
+        setClickableInvoiceNo(hotelNoEl, hbeNo, {
+          prefix: '',
+          text: hbeNo,
+          kind: 'hotel'
+        });
       } else {
-        hotelNoEl.hidden = true;
-        hotelNoEl.textContent = '';
+        setClickableInvoiceNo(hotelNoEl, '');
       }
     }
     if (fbBlock && fbLinesEl) {
-      var fbLines = summary.fbLines || [];
-      var showFb = fbLines.length > 0 || summary.fbTotal > 0;
+      var fbLines = modalFbLines;
+      var showFb =
+        !(!isPay && invoiceKind === 'hotel') &&
+        (fbLines.length > 0 ||
+          (!fbGenerated &&
+            ((fbModalMoney && fbModalMoney.fbTotal > 0) || summary.fbTotal > 0)) ||
+          (isPay && summary.fbTotal > 0));
       fbBlock.hidden = !showFb;
       if (showFb) {
-        fbLinesEl.innerHTML = fbLines
-          .map(function (row) {
-            return (
-              '<li><span class="hrd-charge-label">' +
-              escapeHtml(row.label) +
-              '</span><span class="hrd-charge-amount">' +
-              moneyText(row.amount) +
-              '</span></li>'
-            );
-          })
-          .join('');
+        fbLinesEl.innerHTML = chargeLinesHtml(fbLines);
         var fbNo = String(
           stay.fbTransferInvoiceNumber || stay.fb_transfer_invoice_number || ''
         ).trim();
         if (fbNoEl) {
-          fbNoEl.hidden = !fbNo;
-          fbNoEl.textContent = fbNo ? 'Invoice ' + fbNo : '';
+          setClickableInvoiceNo(fbNoEl, isPay && fbNo ? fbNo : '', { kind: 'fb' });
         }
-        if (fbTotalEl) fbTotalEl.textContent = moneyText(summary.fbTotal);
-        if (fbBalEl) fbBalEl.textContent = moneyText(summary.fbBalance);
+        var fbMoney = !isPay && fbModalMoney ? fbModalMoney : summary;
+        if (fbCgstEl) fbCgstEl.textContent = moneyText(fbMoney.fbCgst);
+        if (fbUgstEl) fbUgstEl.textContent = moneyText(fbMoney.fbUgst);
+        if (fbTotalEl) fbTotalEl.textContent = moneyText(fbMoney.fbTotal);
+        if (fbBalEl) {
+          fbBalEl.textContent = moneyText(
+            !isPay && fbModalMoney ? fbModalMoney.fbBalance : summary.fbBalance
+          );
+        }
       }
     }
     if (combinedRow) {
-      var showCombined = summary.fbTotal > 0;
+      var showCombined =
+        isPay ||
+        (invoiceKind === 'all' && hasHotelCharges && hasFbCharges);
       combinedRow.hidden = !showCombined;
-      if (combinedBalEl && showCombined) {
-        combinedBalEl.textContent = moneyText(summary.combinedBalance);
+      if (combinedBalEl) {
+        combinedBalEl.textContent = showCombined
+          ? moneyText(summary.combinedBalance)
+          : '—';
       }
     }
 
+    var payTarget =
+      invoiceKind === 'hotel'
+        ? summary.balance
+        : invoiceKind === 'fb'
+          ? summary.fbBalance
+          : summary.combinedBalance;
+    invoiceAllowCredit = stayHasAgency(stay);
+    var payField = modal.querySelector('.hrd-invoice-pay-field');
+    var skipPaymentOnGenerate = !isPay && invoiceKind === 'fb';
+    if (payField) payField.hidden = skipPaymentOnGenerate;
+    if (skipPaymentOnGenerate) {
+      resetInvoiceSplits(modal, 0);
+    } else {
+      resetInvoiceSplits(modal, isPay || payTarget > 0 ? payTarget : 0);
+    }
     var noteEl = $('#hrd-invoice-note', modal);
     if (noteEl) noteEl.value = '';
-    invoiceAllowCredit = stayHasAgency(stay);
-    var payTarget = isPay ? summary.combinedBalance : summary.combinedBalance;
-    resetInvoiceSplits(modal, payTarget);
     var hintEl = $('#hrd-invoice-hint', modal);
     if (hintEl) {
-      hintEl.textContent = invoiceAllowCredit
-        ? 'Agency stay: Credit is available. Split across modes or pay any amount up to the balance.'
-        : 'Split across modes or pay any amount up to the balance. Guest stays checked in.';
+      if (skipPaymentOnGenerate) {
+        hintEl.hidden = true;
+        hintEl.textContent = '';
+      } else {
+        hintEl.hidden = false;
+        hintEl.textContent = invoiceAllowCredit
+          ? 'Agency stay: Credit is available. Split across modes or pay any amount up to the balance.'
+          : 'Split across modes or pay any amount up to the balance. Guest stays checked in.';
+      }
     }
-
     modal.hidden = false;
     modal.setAttribute('aria-hidden', 'false');
-    var firstAmount = modal.querySelector('.hrd-invoice-split-amount');
-    if (firstAmount) {
-      try {
-        firstAmount.focus();
-        firstAmount.select();
-      } catch (err) {}
+    if (!skipPaymentOnGenerate) {
+      var firstAmount = modal.querySelector('.hrd-invoice-split-amount');
+      if (firstAmount) {
+        try {
+          firstAmount.focus();
+          firstAmount.select();
+        } catch (err) {}
+      }
     }
   }
 
@@ -2440,9 +3201,15 @@
     }
     var modeEl = $('#hrd-invoice-mode', modal);
     var mode = String((modeEl && modeEl.value) || 'generate');
+    var kindEl = $('#hrd-invoice-kind', modal);
+    var invoiceKind = String((kindEl && kindEl.value) || 'all').toLowerCase();
+    if (invoiceKind !== 'hotel' && invoiceKind !== 'fb') invoiceKind = 'all';
     var noteEl = $('#hrd-invoice-note', modal);
     var note = String((noteEl && noteEl.value) || '').trim();
-    var collected = collectInvoicePaymentSplits(modal);
+    var skipPaymentOnGenerate = mode !== 'payment' && invoiceKind === 'fb';
+    var collected = skipPaymentOnGenerate
+      ? { splits: [], total: 0 }
+      : collectInvoicePaymentSplits(modal);
     if (collected.error) {
       showToast(collected.error, true);
       return Promise.reject(new Error(collected.error));
@@ -2461,7 +3228,8 @@
           }
         : {
             action: 'generate_invoice',
-            payment_splits: collected.splits,
+            invoice_kind: invoiceKind,
+            payment_splits: skipPaymentOnGenerate ? [] : collected.splits,
             note: note
           };
     var saveBtn = $('#hrd-invoice-save', modal);
@@ -2498,25 +3266,50 @@
         if (mode === 'payment') {
           showToast('Payment recorded' + (inv ? ' on ' + inv : '') + '.');
         } else {
-          var msg = inv ? 'Hotel invoice ' + inv + ' generated.' : 'Invoice generated.';
-          if (fbInv) msg += ' F&B invoice ' + fbInv + ' generated.';
+          var hotelInv =
+            (result.data.hotelInvoice && result.data.hotelInvoice.invoiceNumber) ||
+            inv ||
+            '';
+          var msg = 'Invoice generated.';
+          if (result.data.minted && hotelInv) {
+            msg = 'Room invoice ' + hotelInv + ' generated.';
+          }
+          if (result.data.fbMinted && fbInv) {
+            msg =
+              (result.data.minted ? msg + ' ' : '') +
+              'F&B invoice ' +
+              fbInv +
+              ' generated.';
+          }
           if (collected.total > 0) msg += ' Payment recorded.';
           showToast(msg);
           if (
+            result.data.minted &&
             typeof global.openHotelRoomInvoice === 'function' &&
             result.data.room
           ) {
-            if (!global.openHotelRoomInvoice(result.data.room, { autoPrint: false })) {
-              showToast('Invoice saved. Allow pop-ups to view the print preview.');
-            }
             if (
-              fbInv &&
-              typeof global.openFbCombinedTransferInvoice === 'function'
+              !global.openHotelRoomInvoice(result.data.room, {
+                autoPrint: false,
+                invoiceNumber: hotelInv || undefined
+              })
             ) {
-              global.openFbCombinedTransferInvoice(result.data.room, {
+              showToast('Invoice saved. Could not open print preview.');
+            }
+          }
+          if (
+            result.data.fbMinted &&
+            fbInv &&
+            typeof global.openFbCombinedTransferInvoice === 'function' &&
+            result.data.room
+          ) {
+            if (
+              !global.openFbCombinedTransferInvoice(result.data.room, {
                 autoPrint: false,
                 invoiceNumber: fbInv
-              });
+              })
+            ) {
+              showToast('F&B invoice saved. Could not open print preview.');
             }
           }
         }
@@ -3737,44 +4530,51 @@
 
   function syncAgencyBillingHint(form) {
     if (!form) return;
-    var billing = form.elements.agencyBilling;
+    var flags = formAgencyBillFlags(form);
     var nameInput = form.elements.agencyName;
-    var hint = form.querySelector(
-      '#hrd-ci-agency-billing-hint, #hrd-reserve-agency-billing-hint, .hrd-agency-billing-hint'
-    );
-    var nameEl = form.querySelector(
-      '#hrd-ci-agency-billing-name, #hrd-reserve-agency-billing-name'
-    );
-    var checked = !!(billing && billing.checked);
     var agencyName = nameInput ? String(nameInput.value || '').trim() : '';
-    if (nameEl) nameEl.textContent = agencyName || 'Agency Name';
-    if (hint) {
-      if (checked) {
-        hint.hidden = false;
-        hint.removeAttribute('hidden');
-      } else {
-        hint.hidden = true;
-        hint.setAttribute('hidden', '');
-      }
-    }
+    var label = agencyName || 'Agency Name';
+    form
+      .querySelectorAll(
+        '#hrd-ci-agency-room-billing-name, #hrd-reserve-agency-room-billing-name, #hrd-ci-agency-fb-billing-name, #hrd-reserve-agency-fb-billing-name'
+      )
+      .forEach(function (el) {
+        el.textContent = label;
+      });
+    toggleAgencyBillingHint(
+      form.querySelector(
+        '#hrd-ci-agency-room-billing-hint, #hrd-reserve-agency-room-billing-hint'
+      ),
+      flags.room
+    );
+    toggleAgencyBillingHint(
+      form.querySelector('#hrd-ci-agency-fb-billing-hint, #hrd-reserve-agency-fb-billing-hint'),
+      flags.fb
+    );
     if (nameInput) {
-      nameInput.required = checked;
+      nameInput.required = !!(flags.room || flags.fb);
     }
   }
 
   function bindAgencyBilling(form) {
     if (!form || form.getAttribute('data-agency-billing-bound') === '1') return;
     form.setAttribute('data-agency-billing-bound', '1');
-    var billing = form.elements.agencyBilling;
     var nameInput = form.elements.agencyName;
-    if (billing) {
-      billing.addEventListener('change', function () {
-        syncAgencyBillingHint(form);
-        if (billing.checked && nameInput && !String(nameInput.value || '').trim()) {
-          nameInput.focus();
-        }
-      });
-    }
+    form.addEventListener('change', function (event) {
+      var name = event.target && event.target.name;
+      if (
+        name !== 'agencyRoomBilling' &&
+        name !== 'agencyFbBilling' &&
+        name !== 'agencyBilling'
+      ) {
+        return;
+      }
+      syncAgencyBillingHint(form);
+      var flags = formAgencyBillFlags(form);
+      if ((flags.room || flags.fb) && nameInput && !String(nameInput.value || '').trim()) {
+        nameInput.focus();
+      }
+    });
     if (nameInput) {
       nameInput.addEventListener('input', function () {
         syncAgencyBillingHint(form);
@@ -4026,9 +4826,7 @@
           stay.notes ||
           ''
       );
-      if (form.elements.agencyBilling) {
-        form.elements.agencyBilling.checked = !!stay.agencyBilling;
-      }
+      setFormAgencyBillFlags(form, stay);
 
       resetListboxValue(
         'hrd-ci-title',
@@ -4803,9 +5601,7 @@
     setFormText(form, 'agencyName', guest.agencyName || guest.agency_name || '');
     setFormText(form, 'agencyGst', guest.agencyGst || guest.agency_gst || '');
     setFormText(form, 'agencyAddress', guest.agencyAddress || guest.agency_address || '');
-    if (form.elements.agencyBilling) {
-      form.elements.agencyBilling.checked = !!(guest.agencyBilling || guest.agency_billing);
-    }
+    setFormAgencyBillFlags(form, guest);
     syncAgencyBillingHint(form);
     if (stayDocumentUrl(guest) || guest.idDocumentPath || guest.idDocumentName) {
       setIdDocumentUi(form, {
@@ -6310,7 +7106,7 @@
     if (form.elements.agencyName) form.elements.agencyName.value = '';
     if (form.elements.agencyGst) form.elements.agencyGst.value = '';
     if (form.elements.agencyAddress) form.elements.agencyAddress.value = '';
-    if (form.elements.agencyBilling) form.elements.agencyBilling.checked = false;
+    clearFormAgencyBillFlags(form);
     clearAllSpecialCharges(form);
     clearIdDocumentFields(form);
     clearExtraGuests(form);
@@ -7129,8 +7925,7 @@
               stay.notes)) ||
           ''
     );
-    var billing = form.elements.agencyBilling;
-    if (billing) billing.checked = !!(stay && stay.agencyBilling && !occupiedWindow);
+    setFormAgencyBillFlags(form, occupiedWindow ? null : stay);
 
     var title = $('#hrd-reserve-title', modal) || $('#hrd-reserve-title', root);
     if (title) {
@@ -7238,8 +8033,8 @@
     var agencyAddress = form.elements.agencyAddress
       ? String(form.elements.agencyAddress.value || '').trim()
       : '';
-    var agencyBilling = !!(form.elements.agencyBilling && form.elements.agencyBilling.checked);
-    if (agencyBilling && !agencyName) {
+    var agencyFlags = formAgencyBillFlags(form);
+    if ((agencyFlags.room || agencyFlags.fb) && !agencyName) {
       showToast('Agency name is required for agency billing.', true);
       return;
     }
@@ -7287,7 +8082,6 @@
       if (!okReplace) return;
     }
 
-    var agencyBilling = !!(form.elements.agencyBilling && form.elements.agencyBilling.checked);
     var additionalRequests = form.elements.additionalRequests
       ? String(form.elements.additionalRequests.value || '').trim()
       : '';
@@ -7304,10 +8098,12 @@
       agencyName: agencyName,
       agencyGst: agencyGst,
       agencyAddress: agencyAddress,
-      agencyBilling: agencyBilling,
+      agencyRoomBilling: agencyFlags.room,
+      agencyFbBilling: agencyFlags.fb,
+      agencyBilling: !!(agencyFlags.room || agencyFlags.fb),
       additionalRequests: additionalRequests
     };
-    if (agencyBilling && agencyName) {
+    if (agencyFlags.room && agencyName) {
       stay.invoiceTo = agencyName;
       stay.billingName = agencyName;
     }
@@ -8171,7 +8967,9 @@
       agencyName: val('agencyName'),
       agencyGst: val('agencyGst'),
       agencyAddress: val('agencyAddress'),
-      agencyBilling: !!(form.elements.agencyBilling && form.elements.agencyBilling.checked),
+      agencyRoomBilling: collectFormAgencyBilling(form).agencyRoomBilling,
+      agencyFbBilling: collectFormAgencyBilling(form).agencyFbBilling,
+      agencyBilling: collectFormAgencyBilling(form).agencyBilling,
       bookingNumber: '',
       reservationId: val('reservationId'),
       reservationBookingId: val('reservationBookingId'),
@@ -8320,7 +9118,7 @@
       showToast('Future date check-in is not allowed.', true);
       return Promise.reject(new Error('validation'));
     }
-    if (stay.agencyBilling && !stay.agencyName) {
+    if ((stay.agencyRoomBilling || stay.agencyFbBilling) && !stay.agencyName) {
       showToast('Agency Name is required for Agency Billing.', true);
       return Promise.reject(new Error('validation'));
     }
@@ -8339,7 +9137,7 @@
     stay.agencyGst = form.elements.agencyGst
       ? normalizeGstin(form.elements.agencyGst.value)
       : stay.agencyGst;
-    if (stay.agencyBilling) {
+    if (stay.agencyRoomBilling) {
       stay.invoiceTo = stay.agencyName;
       stay.billingName = stay.agencyName;
     } else {
@@ -8574,38 +9372,57 @@
         goHref && goHref !== '#'
           ? goHref
           : goRoomId
-            ? '/hotel/rooms/' + encodeURIComponent(goRoomId) + '/invoice'
+            ? '/hotel/rooms/' +
+              encodeURIComponent(goRoomId) +
+              '/invoice?kind=hotel'
             : ''
       );
       return;
     }
 
-    var genInvoice = event.target.closest('#hrd-generate-invoice');
+    var genInvoice = event.target.closest(
+      '#hrd-generate-hotel-invoice, #hrd-generate-fb-invoice, #hrd-generate-invoice'
+    );
     if (genInvoice && root.contains(genInvoice)) {
       event.preventDefault();
       event.stopPropagation();
-      var genHref = genInvoice.getAttribute('href') || '';
-      var roomId = root.getAttribute('data-room-id') || '';
+      var kind = String(
+        genInvoice.getAttribute('data-invoice-kind') || ''
+      ).toLowerCase();
+      if (kind !== 'hotel' && kind !== 'fb' && kind !== 'all') {
+        if (genInvoice.id === 'hrd-generate-fb-invoice') kind = 'fb';
+        else if (genInvoice.id === 'hrd-generate-hotel-invoice') kind = 'hotel';
+        else kind = 'all';
+      }
+      /* Room invoice uses the POS-style folio page (custom charges / edits).
+         F&B generate stays on the compact modal. */
+      if (kind === 'fb') {
+        openInvoiceModal(root, 'generate', { kind: 'fb' });
+        return;
+      }
+      var genRoomId = root.getAttribute('data-room-id') || '';
+      if (!genRoomId) {
+        showToast('Room is unavailable.', true);
+        return;
+      }
       navigateTo(
-        genHref ||
-          (roomId
-            ? '/hotel/rooms/' + encodeURIComponent(roomId) + '/invoice'
-            : '')
+        '/hotel/rooms/' +
+          encodeURIComponent(genRoomId) +
+          '/invoice?kind=hotel'
       );
       return;
     }
 
-    var viewInvoice = event.target.closest('#hrd-charges-invoice-no');
+    var viewInvoice = event.target.closest(
+      '#hrd-charges-invoice-no, #hrd-charges-fb-invoice-no, #hrd-invoice-hotel-no, #hrd-invoice-fb-no, .hrd-charges-invoiced-history .hrd-charges-invoice-no'
+    );
     if (viewInvoice && root.contains(viewInvoice) && !viewInvoice.hidden) {
       event.preventDefault();
       event.stopPropagation();
-      if (lastRoom && lastRoom.stay && typeof global.openHotelRoomInvoice === 'function') {
-        if (!global.openHotelRoomInvoice(lastRoom, { autoPrint: false })) {
-          showToast('Allow pop-ups to view the invoice.', true);
-        }
-      } else {
-        showToast('Invoice preview unavailable.', true);
-      }
+      openRoomInvoicePreview(
+        invoiceKindFromEl(viewInvoice),
+        invoiceNumberFromEl(viewInvoice)
+      );
       return;
     }
 
@@ -8618,7 +9435,9 @@
       navigateTo(
         payHref ||
           (payRoomId
-            ? '/hotel/rooms/' + encodeURIComponent(payRoomId) + '/invoice?settle=1'
+            ? '/hotel/rooms/' +
+              encodeURIComponent(payRoomId) +
+              '/invoice?kind=hotel&settle=1'
             : '')
       );
       return;
@@ -8638,7 +9457,10 @@
     }
 
     var openSplitList = event.target.closest('#hrd-invoice-splits [data-se-listbox].is-open');
-    if (!openSplitList) {
+    var portaledSplitList = event.target.closest(
+      '.se-filter-listbox[data-hrd-invoice-listbox-portaled="1"]'
+    );
+    if (!openSplitList && !portaledSplitList) {
       var invModalCloseLists =
         $('#hrd-invoice-modal', root) || document.getElementById('hrd-invoice-modal');
       if (invModalCloseLists && !invModalCloseLists.hidden) {
@@ -8934,13 +9756,35 @@
     if (
       (event.key === 'Enter' || event.key === ' ') &&
       event.target &&
-      event.target.id === 'hrd-charges-invoice-no' &&
+      event.target.classList &&
+      event.target.classList.contains('hrd-charges-invoice-no') &&
+      event.target.classList.contains('is-clickable') &&
       !event.target.hidden
     ) {
       event.preventDefault();
-      if (lastRoom && lastRoom.stay && typeof global.openHotelRoomInvoice === 'function') {
-        global.openHotelRoomInvoice(lastRoom, { autoPrint: false });
-      }
+      openRoomInvoicePreview(
+        invoiceKindFromEl(event.target),
+        invoiceNumberFromEl(event.target)
+      );
+      return;
+    }
+    var invoicePreviewIds = [
+      'hrd-charges-invoice-no',
+      'hrd-invoice-hotel-no',
+      'hrd-charges-fb-invoice-no',
+      'hrd-invoice-fb-no'
+    ];
+    if (
+      (event.key === 'Enter' || event.key === ' ') &&
+      event.target &&
+      invoicePreviewIds.indexOf(event.target.id) !== -1 &&
+      !event.target.hidden
+    ) {
+      event.preventDefault();
+      openRoomInvoicePreview(
+        invoiceKindFromEl(event.target),
+        invoiceNumberFromEl(event.target)
+      );
       return;
     }
     if (event.key === 'Escape') {

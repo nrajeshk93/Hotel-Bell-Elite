@@ -119,7 +119,7 @@ class LedgerHubAndExportTests(unittest.TestCase):
         page = self.client.get("/accounts/purchase-ledger")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
-        self.assertIn("Export Excel", html)
+        self.assertIn(">Export</a>", html)
         fy_start, today = db_mod.indian_fiscal_year_bounds()
         expected = report_export_filename(
             PURCHASE_EXPENSE_LEDGER_NAME,

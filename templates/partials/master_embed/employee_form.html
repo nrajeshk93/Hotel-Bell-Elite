@@ -9,15 +9,13 @@
   <header class="se-sales-header su-header md-master-embed-header">
     <div class="su-header-top">
       <div class="su-header-left">
+        <div class="su-header-nav">
+          <a class="su-page-back" href="{{ emp_list_url }}" aria-label="Back to Employee Master">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18 9 12l6-6"/></svg>
+          </a>
+        </div>
         <div class="su-title">
           <div class="su-title-row">
-            <div class="su-title-icon" aria-hidden="true">
-              {% if mode == 'add' %}
-              <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-              {% else %}
-              <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-              {% endif %}
-            </div>
             <h1>{{ form_title }}</h1>
           </div>
           {% if mode == 'edit' and form.get('name') %}

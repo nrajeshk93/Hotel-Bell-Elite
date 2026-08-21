@@ -108,6 +108,61 @@
     }
   }
 
+  function isMasterHubPath(pathname) {
+    var path = String(pathname || '').replace(/\/+$/, '') || '/';
+    return path === '/master';
+  }
+
+  function getMasterOpenIdFromUrl() {
+    try {
+      if (!isMasterHubPath(window.location.pathname)) return '';
+      return String(new URL(window.location.href).searchParams.get('open') || '').trim();
+    } catch (err) {
+      return '';
+    }
+  }
+
+  function syncMasterOpenUrl(masterId) {
+    try {
+      if (!isMasterHubPath(window.location.pathname)) return;
+      var parsed = new URL(window.location.href);
+      var nextId = String(masterId || '').trim();
+      if (nextId) parsed.searchParams.set('open', nextId);
+      else parsed.searchParams.delete('open');
+      var next = parsed.pathname + parsed.search + parsed.hash;
+      var current = window.location.pathname + window.location.search + window.location.hash;
+      if (next !== current) {
+        history.replaceState(history.state, '', next);
+      }
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
+  function findMasterCardById(masterId) {
+    var id = String(masterId || '').trim();
+    if (!id) return null;
+    var cards = document.querySelectorAll('.md-master-card[data-master-id]');
+    for (var i = 0; i < cards.length; i += 1) {
+      if (String(cards[i].getAttribute('data-master-id') || '').trim() === id) {
+        return cards[i];
+      }
+    }
+    return null;
+  }
+
+  function restoreMasterOpenFromUrl() {
+    var openId = getMasterOpenIdFromUrl();
+    if (!openId) return;
+    var card = findMasterCardById(openId);
+    if (!card || isMasterCardStub(card)) return;
+    openMasterModal(
+      card.getAttribute('data-master-name') || 'Master',
+      getMasterCardUrl(card),
+      openId
+    );
+  }
+
   function executeEmbedScripts(container) {
     if (!container) return;
     container.querySelectorAll('script').forEach(function (oldScript) {
@@ -169,9 +224,9 @@
   }
 
   function ensureEmbedClose() {
-    var tools =
-      document.querySelector('#md-master-modal #pos-menu-page .pos-menu-header-actions') ||
-      document.querySelector('#md-master-modal .md-master-embed--page-shell .md-master-embed-header-actions');
+    /* Only Menu Master lacks a back chevron; page-shell masters close via ←. */
+    stripPageShellEmbedCloseButtons();
+    var tools = document.querySelector('#md-master-modal #pos-menu-page .pos-menu-header-actions');
     if (!tools || tools.querySelector('[data-md-menu-close]')) return;
     var btn = document.createElement('button');
     btn.type = 'button';
@@ -187,8 +242,31 @@
     tools.appendChild(btn);
   }
 
+  function stripPageShellEmbedCloseButtons() {
+    document
+      .querySelectorAll(
+        '#md-master-modal .md-master-embed--page-shell .md-master-embed-header-actions [data-md-menu-close]'
+      )
+      .forEach(function (btn) {
+        if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
+      });
+  }
+
+  function remountEmbedFullscreen() {
+    try {
+      if (global.deFullscreen && typeof global.deFullscreen.reinit === 'function') {
+        global.deFullscreen.reinit();
+      }
+    } catch (err) {
+      if (typeof global.console !== 'undefined' && global.console.error) {
+        global.console.error('Master embed fullscreen remount failed', err);
+      }
+    }
+  }
+
   function bootPosMenuAfterEmbed() {
     ensureEmbedClose();
+    remountEmbedFullscreen();
     if (typeof global.initPosMenuPage === 'function') {
       try {
         global.initPosMenuPage();
@@ -243,29 +321,50 @@
 
     inject.innerHTML = fragment === doc.body ? fragment.innerHTML : fragment.outerHTML;
     prepareEmbedForms(inject);
-    executeEmbedScripts(inject);
-    try {
-      if (typeof global.initEpListboxes === 'function') {
-        global.initEpListboxes();
-      }
-    } catch (err) {
-      if (typeof global.console !== 'undefined' && global.console.error) {
-        global.console.error('Masters listbox init failed', err);
-      }
+
+    var titleEl = document.getElementById('md-master-modal-title');
+    var embedRoot = inject.querySelector('[data-md-modal-title]');
+    if (titleEl && embedRoot) {
+      var nextTitle = String(embedRoot.getAttribute('data-md-modal-title') || '').trim();
+      if (nextTitle) titleEl.textContent = nextTitle;
     }
-    var afterScripts = function () {
-      if (!inject.querySelector('#pos-menu-page')) return;
-      setTimeout(bootPosMenuAfterEmbed, 0);
-    };
-    if (inject.querySelector('#pos-menu-page')) {
-      loadMissingPageScripts(doc).then(afterScripts).catch(afterScripts);
-    } else if (inject.querySelector('.md-master-embed--page-shell')) {
-      ensureEmbedClose();
+
+    /* Show content immediately so Product Master feels as snappy as other masters. */
+    showPanel(loading, false);
+    showPanel(empty, false);
+    showPanel(inject, true);
+
+    executeEmbedScripts(inject);
+
+    var afterPaint = function () {
       try {
+        if (typeof global.initEpListboxes === 'function') {
+          global.initEpListboxes();
+        }
+      } catch (err) {
+        if (typeof global.console !== 'undefined' && global.console.error) {
+          global.console.error('Masters listbox init failed', err);
+        }
+      }
+      if (inject.querySelector('#pos-menu-page')) {
+        loadMissingPageScripts(doc).then(function () {
+          setTimeout(bootPosMenuAfterEmbed, 0);
+        }).catch(function () {
+          setTimeout(bootPosMenuAfterEmbed, 0);
+        });
+        return;
+      }
+      if (!inject.querySelector('.md-master-embed--page-shell')) return;
+      ensureEmbedClose();
+      remountEmbedFullscreen();
+      try {
+        if (typeof global.initHbeTableScroll === 'function') {
+          global.initHbeTableScroll();
+        }
         if (inject.querySelector('#st-product-modal') && typeof global.initStoresPage === 'function') {
           global.initStoresPage();
         }
-        if (inject.querySelector('#sm-supplier-modal') && typeof global.initSupplierMasterPage === 'function') {
+        if (inject.querySelector('#sm-supplier-list-panel, #sm-supplier-form') && typeof global.initSupplierMasterPage === 'function') {
           global.initSupplierMasterPage();
         }
         if (inject.querySelector('#cm-category-modal') && typeof global.initCategoryMasterPage === 'function') {
@@ -279,18 +378,15 @@
           global.console.error('Stores product embed init failed', err);
         }
       }
-    }
+    };
 
-    var titleEl = document.getElementById('md-master-modal-title');
-    var embedRoot = inject.querySelector('[data-md-modal-title]');
-    if (titleEl && embedRoot) {
-      var nextTitle = String(embedRoot.getAttribute('data-md-modal-title') || '').trim();
-      if (nextTitle) titleEl.textContent = nextTitle;
+    if (typeof global.requestAnimationFrame === 'function') {
+      global.requestAnimationFrame(function () {
+        global.requestAnimationFrame(afterPaint);
+      });
+    } else {
+      setTimeout(afterPaint, 0);
     }
-
-    showPanel(loading, false);
-    showPanel(empty, false);
-    showPanel(inject, true);
   }
 
   function submitMasterEmbedForm(form, submitter) {
@@ -410,7 +506,7 @@
     });
   }
 
-  function openMasterModal(name, url) {
+  function openMasterModal(name, url, masterId) {
     var modal = document.getElementById('md-master-modal');
     var titleEl = document.getElementById('md-master-modal-title');
     var loading = document.getElementById('md-master-modal-loading');
@@ -422,6 +518,25 @@
     clearInjectHost();
 
     if (titleEl) titleEl.textContent = name || 'Master';
+
+    var openId = String(masterId || '').trim();
+    if (!openId && url) {
+      try {
+        var hrefPath = new URL(url, window.location.origin).pathname.replace(/\/+$/, '');
+        Object.keys(MASTER_FALLBACK_URLS).some(function (key) {
+          var fallback = String(MASTER_FALLBACK_URLS[key] || '').replace(/\/+$/, '');
+          if (fallback && hrefPath === fallback) {
+            openId = key;
+            return true;
+          }
+          return false;
+        });
+      } catch (err) {
+        openId = '';
+      }
+    }
+    modal.setAttribute('data-md-open-id', openId);
+    syncMasterOpenUrl(openId);
 
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
@@ -446,7 +561,8 @@
     });
   }
 
-  function closeMasterModal() {
+  function closeMasterModal(opts) {
+    opts = opts || {};
     abortMasterLoad();
     clearInjectHost();
 
@@ -457,10 +573,15 @@
 
     modal.classList.remove('open');
     modal.setAttribute('aria-hidden', 'true');
+    modal.removeAttribute('data-md-open-id');
     setBodyScrollLocked(false);
 
     showPanel(loading, false);
     showPanel(empty, false);
+
+    if (opts.clearUrl !== false) {
+      syncMasterOpenUrl('');
+    }
   }
 
   function bindCreateModal(modal, openers, closerSelectors, signal) {
@@ -540,17 +661,6 @@
       }
       return;
     }
-    var supplierModal = document.getElementById('sm-supplier-modal');
-    if (supplierModal && supplierModal.classList.contains('active')) {
-      e.preventDefault();
-      if (typeof global.closeSupplierModal === 'function') {
-        global.closeSupplierModal({ navigate: true, reset: true });
-      } else {
-        supplierModal.classList.remove('active');
-        supplierModal.setAttribute('aria-hidden', 'true');
-      }
-      return;
-    }
     var productModal = document.getElementById('st-product-modal');
     if (productModal && productModal.classList.contains('active')) {
       e.preventDefault();
@@ -577,7 +687,7 @@
     mdInitAbort = new AbortController();
     var signal = mdInitAbort.signal;
 
-    closeMasterModal();
+    closeMasterModal({ clearUrl: false });
 
     var searchInput = document.getElementById('md-search-input');
     var filterBtn = document.getElementById('md-search-filter');
@@ -663,7 +773,8 @@
       e.stopImmediatePropagation();
       var name = card.getAttribute('data-master-name') || 'Master';
       var url = getMasterCardUrl(card);
-      openMasterModal(name, isMasterCardStub(card) ? null : url);
+      var masterId = String(card.getAttribute('data-master-id') || '').trim();
+      openMasterModal(name, isMasterCardStub(card) ? null : url, masterId);
     }, { signal: signal, capture: true });
 
     bindCreateModal(
@@ -689,6 +800,7 @@
     }
 
     applyFilters();
+    restoreMasterOpenFromUrl();
   }
 
   global.initMastersDashboard = initMastersDashboard;

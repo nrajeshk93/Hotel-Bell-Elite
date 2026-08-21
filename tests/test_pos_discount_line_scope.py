@@ -144,7 +144,7 @@ class PosDiscountLineScopeTests(unittest.TestCase):
                 "SELECT discount_amount FROM pos_invoices WHERE id = ?",
                 (inv_id,),
             ).fetchone()
-            self.assertEqual(float(row["discount_amount"]), 15.0)
+            self.assertAlmostEqual(float(row["discount_amount"]), 14.28, places=2)
             self.assertIsNotNone(money)
         finally:
             conn.close()

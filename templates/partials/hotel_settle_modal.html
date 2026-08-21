@@ -1,6 +1,6 @@
 {# Hotel Payment Details settle dialog — Create Invoice + Invoice Ledger. #}
 <div class="pos-inv-modal" id="pos-inv-settle-modal" hidden>
-  <div class="pos-inv-modal-backdrop" data-hri-settle-close data-hotel-settle-close tabindex="-1" aria-hidden="true"></div>
+  <div class="pos-inv-modal-backdrop" data-hri-settle-close data-hotel-settle-close data-settle-close tabindex="-1" aria-hidden="true"></div>
   <div class="staff-credit-box cp-modal-box pos-inv-settle-box" role="dialog" aria-modal="true" aria-labelledby="pos-inv-settle-title">
     <div class="staff-credit-head">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
@@ -47,7 +47,7 @@
       </div>
     </div>
     <div class="staff-credit-actions">
-      <button type="button" class="btn" data-hri-settle-close data-hotel-settle-close>Back</button>
+      <button type="button" class="btn" data-hri-settle-close data-hotel-settle-close data-settle-close onclick="if (window.closeHotelSettleModal) window.closeHotelSettleModal()">Back</button>
       <button type="button" class="btn btn-primary" id="pos-inv-settle-submit">Record Payment</button>
     </div>
   </div>

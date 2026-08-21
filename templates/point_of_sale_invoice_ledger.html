@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice_ledger.css') }}?v=14">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice_ledger.css') }}?v=16">
 <script>
 (function(){
   try{
@@ -27,7 +27,7 @@
 </head>
 <body class="de-open su-module pos-invoice-ledger-module">
 {% include 'partials/de_workspace_shell_open.html' %}
-<div class="main-wrapper" id="pos-invoice-ledger-page" data-pos-invoice-ledger data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-settle-selected-url="{{ pos_api_base|default('/point-of-sale') }}/api/invoices/settle-selected" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-can-cancel="{{ '1' if can_cancel_invoices else '0' }}">
+<div class="main-wrapper" id="pos-invoice-ledger-page" data-pos-invoice-ledger data-pos-api-base="{{ pos_api_base|default('/point-of-sale') }}" data-settle-selected-url="{{ pos_api_base|default('/point-of-sale') }}/api/invoices/settle-selected" data-pos-outlet="{{ pos_outlet|default('restaurant') }}" data-pos-can-cancel="{{ '1' if can_cancel_invoices else '0' }}" data-pos-can-edit="{{ '1' if can_edit_invoices else '0' }}">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -259,6 +259,9 @@
                 <th class="pl-sortable" data-sort="customer" scope="col" tabindex="0" aria-sort="none">Customer</th>
                 <th class="pl-sortable" data-sort="order_type" scope="col" tabindex="0" aria-sort="none">Order type</th>
                 <th class="pl-sortable" data-sort="payment_mode" scope="col" tabindex="0" aria-sort="none">Payment Mode</th>
+                {% for key, label in pos_payment_amount_columns %}
+                <th class="pl-sortable pl-col-amount pos-il-tender-col" data-sort="pay_{{ key }}" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">{{ label }}</th>
+                {% endfor %}
                 <th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Items</th>
                 <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none">Total</th>
                 <th class="pl-col-actions">Actions</th>
@@ -298,6 +301,11 @@
                 </td>
                 <td data-sort-value="{{ inv.order_type_label or '' }}">{{ inv.order_type_label or '—' }}</td>
                 <td class="pos-il-payment-mode" data-sort-value="{{ inv.payment_mode_label or 'Unsettled' }}">{{ inv.payment_mode_label or 'Unsettled' }}</td>
+                {% set amts = inv.payment_amounts or {} %}
+                {% for key, label in pos_payment_amount_columns %}
+                {% set amt = amts.get(key, 0) or 0 %}
+                <td class="pl-col-amount pos-il-tender-col{% if amt > 0 %} pl-amount{% endif %}" data-amount="{{ amt if amt > 0 else '' }}" data-sort-value="{{ amt }}">{% if amt > 0 %}{{ amt }}{% else %}—{% endif %}</td>
+                {% endfor %}
                 <td class="pl-col-amount" data-sort-value="{{ inv.item_count }}">{{ inv.item_count }}</td>
                 <td class="pl-col-amount pl-amount" data-amount="{{ inv.grand_total }}" data-sort-value="{{ inv.grand_total }}">{{ inv.grand_total }}</td>
                 <td class="pl-col-actions">
@@ -383,7 +391,7 @@
 <script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=14"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
 <script src="{{ url_for('static', filename='pos_settle.js') }}?v=6"></script>
-<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=23"></script>
+<script src="{{ url_for('static', filename='pos_invoice_ledger.js') }}?v=24"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>
 </html>

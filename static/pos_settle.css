@@ -4,6 +4,7 @@
 }
 #pos-inv-settle-modal .pos-inv-settle-box.staff-credit-box{
   position:relative;
+  z-index:1;
   width:min(720px,94vw);
   max-width:94vw;
   max-height:calc(100vh - 48px);

@@ -149,6 +149,27 @@
   cursor:pointer;
   opacity:1;
 }
+.hotel-room-invoice-page .hri-line-item-btn{
+  display:inline;
+  margin:0;
+  padding:0;
+  border:0;
+  background:none;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+}
+.hotel-room-invoice-page .hri-line-item-btn:hover,
+.hotel-room-invoice-page .hri-line-item-btn:focus{
+  color:#1D4ED8;
+  text-decoration:underline;
+  outline:none;
+}
+.hotel-room-invoice-page.is-charges-editable .hri-line-item-btn,
+.hotel-room-invoice-page.is-ledger-edit .hri-line-item-btn{
+  pointer-events:auto;
+}
 
 /* Keep toolbar tool icon + label optically centered. */
 .hotel-room-invoice-page .pos-inv-tool{

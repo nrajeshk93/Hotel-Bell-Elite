@@ -17,7 +17,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=18">
 <script>
 (function(){
   try{
@@ -38,12 +38,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=17">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=18">
 {% endif %}
 
 <div class="main-wrapper" id="sales-report-page"
      data-sales-report
-     data-report-kind="{{ report_kind }}">
+     data-report-kind="agency">
   <header class="se-sales-header su-header" id="se-sales-header">
     <div class="su-header-top">
       <div class="su-header-left">
@@ -65,7 +65,7 @@
     </div>
     <div class="se-sales-header-card">
       <div class="se-sales-header-filters">
-        <form id="sr-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Sales report filters"
+        <form id="sr-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters" aria-label="Agency billing filters"
               data-clear-url="{{ sales_report_clear_url }}">
           {% if preserve_from_hub %}
           <input type="hidden" name="from_hub" value="reports">
@@ -76,29 +76,39 @@
           <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="sr-search-chip">
             <label class="se-filter-chip-label" for="sr-search">Search</label>
             <div class="se-filter-chip-control">
-              <input type="search" id="sr-search" class="pl-search-input pl-header-search" value="" placeholder="{% if report_kind == 'hotel' %}Invoice, guest, room…{% else %}Order, customer…{% endif %}" autocomplete="off" aria-label="Search invoices">
+              <input type="search" id="sr-search" class="pl-search-input pl-header-search" value="" placeholder="Invoice, agency, guest, room…" autocomplete="off" aria-label="Search invoices">
             </div>
           </div>
 
-          {% if show_outlet_filter %}
-          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="srOutletChanged" id="sr-outlet-listbox">
-            <span class="se-filter-chip-label" id="sr-outlet-label">Outlet</span>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="srAgencyChanged" id="sr-agency-listbox">
+            <span class="se-filter-chip-label" id="sr-agency-label">Agency</span>
             <div class="se-filter-chip-control">
-              <input type="hidden" id="sr-outlet" name="outlet" value="{{ selected_outlet }}">
-              <button type="button" class="se-filter-chip-trigger" id="sr-outlet-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="sr-outlet-list" aria-labelledby="sr-outlet-label sr-outlet-value">
-                <span class="se-filter-chip-value" id="sr-outlet-value">{{ selected_outlet_label }}</span>
-              </button>
+              <input type="hidden" id="sr-agency" name="supplier" value="{{ selected_supplier }}">
+              <input type="search"
+                     class="se-filter-chip-trigger se-filter-chip-combobox{% if selected_supplier == 'all' %} is-placeholder{% endif %}"
+                     id="sr-agency-trigger"
+                     role="combobox"
+                     aria-autocomplete="list"
+                     aria-haspopup="listbox"
+                     aria-expanded="false"
+                     aria-controls="sr-agency-list"
+                     aria-labelledby="sr-agency-label"
+                     value="{% if selected_supplier != 'all' %}{{ selected_agency_label }}{% endif %}"
+                     title="{% if selected_supplier != 'all' %}{{ selected_agency_label }}{% else %}All agencies{% endif %}"
+                     placeholder="All agencies"
+                     autocomplete="off"
+                     spellcheck="false">
               <span class="se-filter-chip-chev" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
               </span>
             </div>
-            <div class="se-filter-listbox" id="sr-outlet-list" role="listbox" aria-labelledby="sr-outlet-label" hidden>
-              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All" aria-selected="{{ 'true' if selected_outlet == 'all' else 'false' }}">All</button>
-              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'restaurant' %} is-selected{% endif %}" role="option" data-value="restaurant" data-label="Restaurant" aria-selected="{{ 'true' if selected_outlet == 'restaurant' else 'false' }}">Restaurant</button>
-              <button type="button" class="se-filter-listbox-option{% if selected_outlet == 'bar' %} is-selected{% endif %}" role="option" data-value="bar" data-label="Bar" aria-selected="{{ 'true' if selected_outlet == 'bar' else 'false' }}">Bar</button>
+            <div class="se-filter-listbox" id="sr-agency-list" role="listbox" aria-labelledby="sr-agency-label" hidden>
+              <button type="button" class="se-filter-listbox-option{% if selected_supplier == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all agencies" data-label="All agencies" aria-selected="{{ 'true' if selected_supplier == 'all' else 'false' }}">All agencies</button>
+              {% for agency in agencies %}
+              <button type="button" class="se-filter-listbox-option{% if selected_supplier == agency.id|string %} is-selected{% endif %}" role="option" data-value="{{ agency.id }}" data-name="{{ agency.name|lower }}" data-label="{{ agency.name }}" aria-selected="{{ 'true' if selected_supplier == agency.id|string else 'false' }}">{{ agency.name }}</button>
+              {% endfor %}
             </div>
           </div>
-          {% endif %}
 
           <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pl-header-field-listbox pl-header-field" data-se-listbox data-se-listbox-change="srStatusChanged" id="sr-status-listbox">
             <span class="se-filter-chip-label" id="sr-status-label">Status</span>
@@ -113,7 +123,7 @@
             </div>
             <div class="se-filter-listbox" id="sr-status-list" role="listbox" aria-labelledby="sr-status-label" hidden>
               <button type="button" class="se-filter-listbox-option{% if selected_status == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-label="All statuses" aria-selected="{{ 'true' if selected_status == 'all' else 'false' }}">All statuses</button>
-              <button type="button" class="se-filter-listbox-option{% if selected_status == 'unsettled' %} is-selected{% endif %}" role="option" data-value="unsettled" data-label="Un Settled" aria-selected="{{ 'true' if selected_status == 'unsettled' else 'false' }}">Un Settled</button>
+              <button type="button" class="se-filter-listbox-option{% if selected_status == 'unsettled' %} is-selected{% endif %}" role="option" data-value="unsettled" data-label="Outstanding" aria-selected="{{ 'true' if selected_status == 'unsettled' else 'false' }}">Outstanding</button>
               <button type="button" class="se-filter-listbox-option{% if selected_status == 'settled' %} is-selected{% endif %}" role="option" data-value="settled" data-label="Settled" aria-selected="{{ 'true' if selected_status == 'settled' else 'false' }}">Settled</button>
             </div>
           </div>
@@ -180,74 +190,32 @@
   </header>
 
   <section class="content se-content">
-    <div class="pl-summary-row" aria-label="Sales summary">
-      {% if report_kind == 'restaurant' %}
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total sales">
+    <div class="pl-summary-row" aria-label="Agency billing summary">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Billed">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
             <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
           </div>
           <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Total sales</div>
-            <div class="pl-summary-value pl-amount" id="sr-kpi-total" data-amount="{{ kpis.amount_sum }}">{{ kpis.amount_sum }}</div>
+            <div class="pl-summary-label">Billed</div>
+            <div class="pl-summary-value pl-amount" id="sr-kpi-billed" data-amount="{{ kpis.billed }}">{{ kpis.billed }}</div>
             <div class="pl-summary-meta">{{ kpis.total }} invoice{{ '' if kpis.total == 1 else 's' }}</div>
           </div>
         </div>
       </article>
-      {% if selected_outlet != 'bar' %}
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Restaurant sales">
-        <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
-          </div>
-          <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Restaurant</div>
-            <div class="pl-summary-value pl-amount" id="sr-kpi-restaurant" data-amount="{{ kpis.restaurant_amount }}">{{ kpis.restaurant_amount }}</div>
-            <div class="pl-summary-meta">POS restaurant</div>
-          </div>
-        </div>
-      </article>
-      {% endif %}
-      {% if selected_outlet != 'restaurant' %}
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Bar sales">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Received">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M8 22h8"/><path d="M12 15v7"/><path d="M5 3h14l-1.5 7.5a5.5 5.5 0 0 1-11 0L5 3z"/><path d="M7.5 8h9"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
           </div>
           <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Bar</div>
-            <div class="pl-summary-value pl-amount" id="sr-kpi-bar" data-amount="{{ kpis.bar_amount }}">{{ kpis.bar_amount }}</div>
-            <div class="pl-summary-meta">POS bar</div>
+            <div class="pl-summary-label">Received</div>
+            <div class="pl-summary-value pl-amount" id="sr-kpi-received" data-amount="{{ kpis.received }}">{{ kpis.received }}</div>
+            <div class="pl-summary-meta">Against these invoices</div>
           </div>
         </div>
       </article>
-      {% endif %}
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Bills">
-        <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-          </div>
-          <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Bills</div>
-            <div class="pl-summary-value" id="sr-kpi-bills">{{ kpis.total }}</div>
-            <div class="pl-summary-meta">Invoices in range</div>
-          </div>
-        </div>
-      </article>
-      {% else %}
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total sales">
-        <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
-          </div>
-          <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Total sales</div>
-            <div class="pl-summary-value pl-amount" id="sr-kpi-total" data-amount="{{ kpis.amount_sum }}">{{ kpis.amount_sum }}</div>
-            <div class="pl-summary-meta">{{ kpis.total }} invoice{{ '' if kpis.total == 1 else 's' }}</div>
-          </div>
-        </div>
-      </article>
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Outstanding balance">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Outstanding">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
@@ -259,34 +227,21 @@
           </div>
         </div>
       </article>
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Settled invoices">
-        <div class="card-body pl-summary-body">
-          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          </div>
-          <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Settled</div>
-            <div class="pl-summary-value" id="sr-kpi-settled">{{ kpis.settled }}</div>
-            <div class="pl-summary-meta">{% if report_kind == 'hotel' %}Fully paid{% else %}Paid invoices{% endif %}</div>
-          </div>
-        </div>
-      </article>
-      <article class="card pl-summary-card hbe-kpi-card" aria-label="Un settled invoices">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Collected in period">
         <div class="card-body pl-summary-body">
           <div class="hbe-kpi-icon hbe-kpi-icon--purple" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+            <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
           </div>
           <div class="hbe-kpi-text">
-            <div class="pl-summary-label">Un Settled</div>
-            <div class="pl-summary-value" id="sr-kpi-open">{{ kpis.open }}</div>
-            <div class="pl-summary-meta">Balance due</div>
+            <div class="pl-summary-label">Collected in period</div>
+            <div class="pl-summary-value pl-amount" id="sr-kpi-collected" data-amount="{{ kpis.collected_in_period }}">{{ kpis.collected_in_period }}</div>
+            <div class="pl-summary-meta">Hotel Credit receipts</div>
           </div>
         </div>
       </article>
-      {% endif %}
     </div>
 
-    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="{{ page_title }} invoices">
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Agency billing invoices">
       <div class="card-hdr">
         <div class="card-title">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
@@ -296,103 +251,40 @@
       </div>
       <div class="card-body pl-card-body--flush">
         {% if invoices %}
-        <div class="pl-table-wrap" tabindex="0" aria-label="{{ page_title }}, scroll for more">
-          <table class="pl-table" id="sr-table" aria-label="{{ page_title }} entries">
+        <div class="pl-table-wrap" tabindex="0" aria-label="Agency billing, scroll for more">
+          <table class="pl-table" id="sr-table" aria-label="Agency billing entries">
             <thead>
-              {% if report_kind == 'hotel' %}
               <tr>
                 <th class="pl-sortable" data-sort="invoice_no" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Invoice No</th>
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Date</th>
-                <th class="pl-sortable" data-sort="room" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Room</th>
+                <th class="pl-sortable" data-sort="agency" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Agency</th>
                 <th class="pl-sortable" data-sort="guest" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Guest</th>
-                <th class="pl-sortable" data-sort="check_in" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Check-in</th>
-                <th class="pl-sortable" data-sort="check_out" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Check-out</th>
-                <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Amount</th>
+                <th class="pl-sortable" data-sort="room" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Room</th>
+                <th class="pl-sortable pl-col-amount" data-sort="billed" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Billed</th>
+                <th class="pl-sortable pl-col-amount" data-sort="received" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Received</th>
                 <th class="pl-sortable pl-col-amount" data-sort="balance" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Balance</th>
                 <th class="pl-sortable pl-col-status" data-sort="status" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Status</th>
               </tr>
-              {% else %}
-              <tr>
-                <th class="pl-sortable" data-sort="order_no" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Order No</th>
-                <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Date / Time</th>
-                <th class="pl-sortable" data-sort="customer" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Customer</th>
-                <th class="pl-sortable" data-sort="order_type" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Order type</th>
-                <th class="pl-sortable" data-sort="payment_mode" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Payment Mode</th>
-                <th class="pl-sortable pl-col-amount" data-sort="items" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Items</th>
-                <th class="pl-sortable pl-col-amount" data-sort="total" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Total</th>
-                <th class="pl-sortable pl-col-status" data-sort="settlement" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Settlement</th>
-              </tr>
-              {% endif %}
             </thead>
             <tbody>
-              {% if report_kind == 'hotel' %}
               {% for inv in invoices %}
-              {% set status_label = 'Settled' if inv.status == 'settled' else 'Un Settled' %}
+              {% set status_label = 'Settled' if inv.status == 'settled' else 'Outstanding' %}
               <tr class="sr-row pl-expense-row"
                   data-sort-row
-                  data-search="{{ [inv.invoice_number or '', inv.guest_name or '', inv.room_number or '', inv.booking_number or '', inv.room_type_label or '', status_label]|join(' ')|lower }}">
+                  data-search="{{ [inv.invoice_number or '', inv.agency_name or '', inv.guest_name or '', inv.room_number or '', status_label]|join(' ')|lower }}">
                 <td class="pl-col-code" data-sort-value="{{ inv.invoice_number or '' }}"><span class="pl-expense-code">{{ inv.invoice_number }}</span></td>
-                <td class="pl-col-date" data-sort-value="{{ inv.invoice_generated_at or '' }}">{{ inv.invoice_generated_at|report_dt }}</td>
-                <td data-sort-value="{{ inv.room_number or '' }}">
-                  <div class="pl-name">{{ inv.room_number or '—' }}</div>
-                  {% if inv.room_type_label %}<div class="pl-meta">{{ inv.room_type_label }}</div>{% endif %}
-                </td>
-                <td data-sort-value="{{ inv.guest_name or '' }}">
-                  <div class="pl-name">{{ inv.guest_name or '—' }}</div>
-                  {% if inv.booking_number %}<div class="pl-meta">{{ inv.booking_number }}</div>{% endif %}
-                </td>
-                <td data-sort-value="{{ inv.check_in_date or '' }}">{{ inv.check_in_date|report_date }}</td>
-                <td data-sort-value="{{ inv.check_out_date or '' }}">{{ inv.check_out_date|report_date }}</td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ inv.estimated_total }}" data-sort-value="{{ inv.estimated_total }}">{{ inv.estimated_total }}</td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ inv.balance_amount }}" data-sort-value="{{ inv.balance_amount }}">{{ inv.balance_amount }}</td>
+                <td class="pl-col-date" data-sort-value="{{ inv.credit_date or '' }}">{{ inv.credit_date|report_date }}</td>
+                <td data-sort-value="{{ inv.agency_name or '' }}">{{ inv.agency_name or '—' }}</td>
+                <td data-sort-value="{{ inv.guest_name or '' }}">{{ inv.guest_name or '—' }}</td>
+                <td data-sort-value="{{ inv.room_number or '' }}">{{ inv.room_number or '—' }}</td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ inv.billed }}" data-sort-value="{{ inv.billed }}">{{ inv.billed }}</td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ inv.received }}" data-sort-value="{{ inv.received }}">{{ inv.received }}</td>
+                <td class="pl-col-amount pl-amount" data-amount="{{ inv.balance }}" data-sort-value="{{ inv.balance }}">{{ inv.balance }}</td>
                 <td class="pl-col-status" data-sort-value="{{ status_label }}">
                   <span class="cp-status-pill cp-status-pill--{{ 'cleared' if inv.status == 'settled' else 'outstanding' }}">{{ status_label }}</span>
                 </td>
               </tr>
               {% endfor %}
-              {% else %}
-              {% macro sr_pos_invoice_row(inv, group_idx='') %}
-              {% set is_settled = (inv.payment_modes and inv.payment_modes|length) or ((inv.settled_at or '')|trim) %}
-              {% set settlement_label = 'Settled' if is_settled else 'Un Settled' %}
-              <tr class="sr-row pl-expense-row"
-                  data-sort-row
-                  {% if group_idx %}data-group="{{ group_idx }}"{% endif %}
-                  data-search="{{ [inv.order_no or '', inv.order_date or '', inv.saved_at or '', inv.customer_name or '', inv.customer_mobile or '', inv.order_type_label or '', inv.payment_mode_label or '', settlement_label, inv.table_label or '', inv.captain or '', inv.outlet or '', inv.grand_total|string]|join(' ')|lower }}">
-                <td class="pl-col-code" data-sort-value="{{ inv.order_no or '' }}"><span class="pl-expense-code">{{ inv.order_no or '—' }}</span></td>
-                <td class="pl-col-date" data-sort-value="{{ inv.saved_at or inv.order_date or '' }}">
-                  <div class="pl-name">{{ (inv.order_date or inv.saved_at)|report_date }}</div>
-                  {% set saved_time = inv.saved_at|report_time %}
-                  {% if saved_time %}<div class="pl-meta">{{ saved_time }}</div>{% endif %}
-                </td>
-                <td data-sort-value="{{ inv.customer_name or '' }}">
-                  <div class="pl-name">{{ inv.customer_name or '—' }}</div>
-                  {% if inv.customer_mobile %}<div class="pl-meta">{{ inv.customer_mobile }}</div>{% endif %}
-                </td>
-                <td data-sort-value="{{ inv.order_type_label or '' }}">{{ inv.order_type_label or '—' }}</td>
-                <td data-sort-value="{{ inv.payment_mode_label or 'Un Settled' }}">{{ inv.payment_mode_label or 'Un Settled' }}</td>
-                <td class="pl-col-amount" data-sort-value="{{ inv.item_count }}">{{ inv.item_count }}</td>
-                <td class="pl-col-amount pl-amount" data-amount="{{ inv.sales_amount }}" data-sort-value="{{ inv.sales_amount }}">{{ inv.sales_amount }}</td>
-                <td class="pl-col-status" data-sort-value="{{ settlement_label }}">
-                  <span class="cp-status-pill cp-status-pill--{{ 'cleared' if is_settled else 'outstanding' }}">{{ settlement_label }}</span>
-                </td>
-              </tr>
-              {% endmacro %}
-              {% if invoice_groups %}
-              {% for group in invoice_groups %}
-              {% set group_idx = loop.index %}
-              <tr class="sr-group-header" data-group="{{ group_idx }}">
-                <td colspan="8">{{ group.label }}</td>
-              </tr>
-              {% for inv in group.invoices %}
-              {{ sr_pos_invoice_row(inv, group_idx) }}
-              {% endfor %}
-              {% endfor %}
-              {% else %}
-              {% for inv in invoices %}
-              {{ sr_pos_invoice_row(inv) }}
-              {% endfor %}
-              {% endif %}
-              {% endif %}
             </tbody>
           </table>
         </div>
@@ -406,7 +298,7 @@
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
-<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=57"></script>
 <script src="{{ url_for('static', filename='sales_report.js') }}?v=8"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}

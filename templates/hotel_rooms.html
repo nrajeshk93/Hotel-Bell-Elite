@@ -15,7 +15,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=75">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=78">
 <script>
 (function(){
   try{
@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=75">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=78">
 {% endif %}
 
 <div class="de-main-inner hotel-rooms-page" id="hotel-rooms-page" data-hotel-rooms data-hotel-rooms-api="/hotel/api/rooms" data-customers-api="/hotel/api/customers" data-agencies-api="{{ url_for('list_agencies_api') }}" data-agencies="{{ agencies|default([])|tojson|e }}">
@@ -387,13 +387,26 @@
               <textarea name="agencyAddress" id="hr-board-reserve-agency-address" rows="2" placeholder="Agency address"></textarea>
             </label>
             <div class="hr-field hr-field--span2 hr-board-agency-billing-wrap">
-              <label class="hr-board-check">
-                <input type="checkbox" name="agencyBilling" id="hr-board-reserve-agency-billing" value="1">
-                Agency Billing
-              </label>
-              <p class="hr-board-agency-billing-hint" id="hr-board-reserve-agency-billing-hint" hidden>
-                Invoice will be billed to <strong id="hr-board-reserve-agency-billing-name">Agency Name</strong>
-              </p>
+              <div class="hrd-agency-billing-row">
+                <div class="hrd-agency-billing-item">
+                  <label class="hr-board-check">
+                    <input type="checkbox" name="agencyRoomBilling" id="hr-board-reserve-agency-room-billing" value="1">
+                    Room — Agency Billing
+                  </label>
+                  <p class="hr-board-agency-billing-hint" id="hr-board-reserve-agency-room-billing-hint" hidden>
+                    Room invoice will be billed to <strong id="hr-board-reserve-agency-room-billing-name">Agency Name</strong>
+                  </p>
+                </div>
+                <div class="hrd-agency-billing-item hrd-agency-billing-item--end">
+                  <label class="hr-board-check">
+                    <input type="checkbox" name="agencyFbBilling" id="hr-board-reserve-agency-fb-billing" value="1">
+                    F&amp;B — Agency Billing
+                  </label>
+                  <p class="hr-board-agency-billing-hint" id="hr-board-reserve-agency-fb-billing-hint" hidden>
+                    F&amp;B invoice will be billed to <strong id="hr-board-reserve-agency-fb-billing-name">Agency Name</strong>
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </section>
@@ -439,7 +452,7 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=99"></script>
+<script src="{{ url_for('static', filename='hotel_rooms.js') }}?v=100"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

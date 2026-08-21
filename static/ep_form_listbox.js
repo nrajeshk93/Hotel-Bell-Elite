@@ -360,7 +360,7 @@
     if (root.classList.contains('ep-combobox-listbox') && root.closest('.modal-backdrop, .modal-overlay, .staff-credit-box, .pos-inv-modal, [role="dialog"]')) {
       return true;
     }
-    if (root.classList.contains('ep-combobox-listbox') && root.closest('#credit-payment-filter-form, #purchase-ledger-filter-form')) {
+    if (root.classList.contains('ep-combobox-listbox') && root.closest('#credit-payment-filter-form, #purchase-ledger-filter-form, #sr-filter-form')) {
       return true;
     }
     // Floor props + category modals keep overflow:visible — absolute under the chip stays
@@ -744,6 +744,7 @@
     // Expense / tips modals own their searchable listboxes (custom GST / employee search).
     if (root.closest('#sales-expense-modal, #sales-tips-modal')) return;
     if (root.classList.contains('pos-inv-settle-method-listbox')) return;
+    if (root.classList.contains('hrd-invoice-method-listbox')) return;
     var trigger = root.querySelector('.se-filter-chip-trigger');
     var control = root.querySelector('.se-filter-chip-control');
     var list = listEl(root);

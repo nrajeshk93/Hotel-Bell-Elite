@@ -147,7 +147,7 @@ body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-tr
   min-height:44px;
   display:flex;
   align-items:center;
-  padding:0 8px 0 12px;
+  padding:0 12px;
   border:0;
   background:transparent;
   font:600 13px Inter,system-ui,sans-serif;
@@ -165,10 +165,12 @@ body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-va
 }
 
 body.su-module .st-stock-filter-form .pl-header-field-listbox .se-filter-chip-chev,
-body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-chev{
-  flex-shrink:0;
-  width:34px;
-  color:#94A3B8;
+body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-chev,
+body.su-module .se-sales-header-filters:has(.st-stock-filter-form) .se-filter-chip-chev,
+body.su-module .se-sales-header-filters:has(.st-audit-filter-form) .se-filter-chip-chev,
+body.su-module #stores-outlet-filter-form.st-stock-filter-form .se-filter-chip-chev,
+body.su-module #stores-outlet-filter-form.st-audit-filter-form .se-filter-chip-chev{
+  display:none !important;
 }
 
 body.su-module .st-stock-filter-form .pl-header-field-listbox.is-open .se-filter-chip-control,
@@ -179,12 +181,6 @@ body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-co
 body.su-module .st-audit-filter-form .pl-search-chip.pl-header-field-listbox.is-active .se-filter-chip-control{
   border-color:#93C5FD !important;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
-}
-
-body.su-module .st-stock-filter-form .pl-header-field-listbox.is-open .se-filter-chip-chev,
-body.su-module .st-audit-filter-form .pl-header-field-listbox.is-open .se-filter-chip-chev{
-  transform:rotate(180deg);
-  color:#1877F2;
 }
 
 body.su-module .st-stock-filter-form .pl-search-chip .pl-header-search,
@@ -420,7 +416,7 @@ body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-tr
   max-height:44px;
   display:flex;
   align-items:center;
-  padding:0 8px 0 12px;
+  padding:0 12px;
   border:0;
   background:transparent;
   font:inherit;
@@ -437,13 +433,7 @@ body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-va
   white-space:nowrap;
 }
 body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-chev{
-  flex-shrink:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  width:34px;
-  align-self:stretch;
-  color:#94A3B8;
+  display:none !important;
 }
 body.su-module .st-audit-filter-form .pl-header-field-listbox.is-open .se-filter-chip-control,
 body.su-module .st-audit-filter-form .pl-header-field-listbox .se-filter-chip-control:focus-within,

@@ -13,6 +13,7 @@
   <article class="st-intro-card st-intro-card--outlet-only st-intro-card--indent-filters st-po-toolbar" aria-label="Purchase Order filters">
     <div class="st-indent-filter-bar">
       <div class="st-indent-status-tabs st-po-tabs-wrap">
+        <span class="se-filter-chip-label" aria-hidden="true">View</span>
         <div class="cp-view-tabs st-indent-view-tabs st-po-tabs" role="tablist" aria-label="Purchase Order views">
           {% if send_target_id %}
           <a class="cp-view-tab{% if po_tab == 'generate' %} is-active{% endif %}"
@@ -60,59 +61,57 @@
           </div>
         </div>
         {% endif %}
-        <div class="st-intro-outlet">
-          <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-po-indent-listbox"
-               data-se-listbox
-               data-se-listbox-change="stPoIndentChanged"
-               data-st-po-outlet="{{ selected_outlet }}"
-               id="st-po-indent-listbox">
-            <span class="se-filter-chip-label" id="st-po-indent-label">Indent</span>
-            <div class="se-filter-chip-control">
-              <span class="se-filter-chip-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+        <div class="se-filter-chip se-filter-chip--company se-filter-chip--listbox ep-toolbar-listbox st-po-indent-chip st-po-indent-listbox"
+             data-se-listbox
+             data-se-listbox-change="stPoIndentChanged"
+             data-st-po-outlet="{{ selected_outlet }}"
+             id="st-po-indent-listbox">
+          <span class="se-filter-chip-label" id="st-po-indent-label">Indent</span>
+          <div class="se-filter-chip-control">
+            <span class="se-filter-chip-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+            </span>
+            <input type="hidden" id="st-po-indent" value="{{ selected_pending_id if selected_pending_id else '' }}">
+            <button type="button" class="se-filter-chip-trigger" id="st-po-indent-trigger"
+                    aria-haspopup="listbox" aria-expanded="false"
+                    aria-controls="st-po-indent-list"
+                    aria-labelledby="st-po-indent-label st-po-indent-value"
+                    {% if not pending_indents %}disabled{% endif %}>
+              <span class="se-filter-chip-value{% if not selected_pending_no %} is-placeholder{% endif %}" id="st-po-indent-value">
+                {% if selected_pending_no %}{{ selected_pending_no }}{% elif pending_indents %}Select indent{% else %}No pending indent{% endif %}
               </span>
-              <input type="hidden" id="st-po-indent" value="{{ selected_pending_id if selected_pending_id else '' }}">
-              <button type="button" class="se-filter-chip-trigger" id="st-po-indent-trigger"
-                      aria-haspopup="listbox" aria-expanded="false"
-                      aria-controls="st-po-indent-list"
-                      aria-labelledby="st-po-indent-label st-po-indent-value"
-                      {% if not pending_indents %}disabled{% endif %}>
-                <span class="se-filter-chip-value{% if not selected_pending_no %} is-placeholder{% endif %}" id="st-po-indent-value">
-                  {% if selected_pending_no %}{{ selected_pending_no }}{% elif pending_indents %}Select indent{% else %}No pending indent{% endif %}
-                </span>
+            </button>
+            <span class="se-filter-chip-chev" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </span>
+          </div>
+          <div class="se-filter-listbox" id="st-po-indent-list" role="listbox" aria-labelledby="st-po-indent-label" hidden>
+            {% set pending_has_selected = selected_pending_id and (pending_indents|selectattr('id', 'equalto', selected_pending_id)|list) %}
+            {% for indent in pending_indents %}
+              <button type="button"
+                      class="se-filter-listbox-option{% if selected_pending_id == indent.id %} is-selected{% endif %}"
+                      role="option"
+                      data-value="{{ indent.id }}"
+                      data-name="{{ indent.indent_no|lower }}"
+                      data-label="{{ indent.indent_no }}"
+                      aria-selected="{{ 'true' if selected_pending_id == indent.id else 'false' }}">
+                {{ indent.indent_no }}
               </button>
-              <span class="se-filter-chip-chev" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-              </span>
-            </div>
-            <div class="se-filter-listbox" id="st-po-indent-list" role="listbox" aria-labelledby="st-po-indent-label" hidden>
-              {% set pending_has_selected = selected_pending_id and (pending_indents|selectattr('id', 'equalto', selected_pending_id)|list) %}
-              {% for indent in pending_indents %}
-                <button type="button"
-                        class="se-filter-listbox-option{% if selected_pending_id == indent.id %} is-selected{% endif %}"
-                        role="option"
-                        data-value="{{ indent.id }}"
-                        data-name="{{ indent.indent_no|lower }}"
-                        data-label="{{ indent.indent_no }}"
-                        aria-selected="{{ 'true' if selected_pending_id == indent.id else 'false' }}">
-                  {{ indent.indent_no }}
-                </button>
-              {% endfor %}
-              {% if selected_pending_id and not pending_has_selected and selected_pending_no %}
-                <button type="button"
-                        class="se-filter-listbox-option is-selected"
-                        role="option"
-                        data-value="{{ selected_pending_id }}"
-                        data-name="{{ selected_pending_no|lower }}"
-                        data-label="{{ selected_pending_no }}"
-                        aria-selected="true">
-                  {{ selected_pending_no }}
-                </button>
-              {% endif %}
-              {% if not pending_indents and not selected_pending_id %}
-                <div class="se-filter-listbox-status" role="status">No indents left to generate purchase orders.</div>
-              {% endif %}
-            </div>
+            {% endfor %}
+            {% if selected_pending_id and not pending_has_selected and selected_pending_no %}
+              <button type="button"
+                      class="se-filter-listbox-option is-selected"
+                      role="option"
+                      data-value="{{ selected_pending_id }}"
+                      data-name="{{ selected_pending_no|lower }}"
+                      data-label="{{ selected_pending_no }}"
+                      aria-selected="true">
+                {{ selected_pending_no }}
+              </button>
+            {% endif %}
+            {% if not pending_indents and not selected_pending_id %}
+              <div class="se-filter-listbox-status" role="status">No indents left to generate purchase orders.</div>
+            {% endif %}
           </div>
         </div>
         <div class="st-intro-outlet">

@@ -1629,10 +1629,32 @@ html.de-soft-navigating .de-main-wrapper .hotel-room-tile--attention .hotel-room
   height:16px;
   accent-color:#2563EB;
 }
-.hr-board-agency-billing-wrap{gap:8px}
+.hr-board-agency-billing-wrap{gap:8px;display:flex;flex-direction:column}
+.hr-board-agency-billing-wrap .hrd-agency-billing-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  width:100%;
+}
+.hr-board-agency-billing-wrap .hrd-agency-billing-item{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:0;
+  flex:0 1 auto;
+}
+.hr-board-agency-billing-wrap .hrd-agency-billing-item--end{
+  align-items:flex-end;
+  flex:0 1 auto;
+}
+.hr-board-agency-billing-wrap .hr-board-check{margin-top:0;width:fit-content}
 .hr-board-agency-billing-hint{
   margin:0;
   padding:8px 12px;
+  width:max-content;
+  max-width:100%;
+  box-sizing:border-box;
   border-radius:10px;
   background:#EFF6FF;
   border:1px solid #DBEAFE;

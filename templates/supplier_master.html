@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
-<link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='supplier_master.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=101">
 <script>
@@ -39,20 +39,24 @@
         </div>
         <div class="su-title">
           <div class="su-title-row">
-            <h1>Supplier Master</h1>
+            <h1>{% if show_form %}{% if form.id %}Edit Supplier{% else %}Add Supplier{% endif %}{% else %}Supplier Master{% endif %}</h1>
           </div>
         </div>
       </div>
       <div class="su-header-tools">
+        {% if not show_form %}
         <a class="btn btn-primary" href="{{ supplier_report_url }}" download>Supplier Report</a>
-        <button type="button" class="btn btn-primary" id="sm-open-supplier-modal" data-sm-action="open-supplier-modal">Add supplier</button>
+        <a class="btn btn-primary" href="{{ url_for('supplier_master', focus='form') }}">Add supplier</a>
+        {% else %}
+        <a class="btn" href="{{ url_for('supplier_master') }}">Back to list</a>
+        {% endif %}
       </div>
     </div>
   </header>
 
   {% include 'partials/supplier_master_body.html' %}
 </div>
-<script src="{{ url_for('static', filename='supplier_master.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='supplier_master.js') }}?v=3"></script>
 <script>if (typeof window.initSupplierMasterPage === 'function') window.initSupplierMasterPage();</script>
 {% include 'partials/de_workspace_shell_close.html' %}
 </body>

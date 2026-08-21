@@ -305,11 +305,16 @@ class PosInvoiceLedgerTests(unittest.TestCase):
             ws["A1"].value, "Hotel Bell Elite — Invoice Ledger — Restaurant"
         )
         self.assertTrue(str(ws["A2"].value or "").startswith("From "))
-        headers = [ws.cell(3, col).value for col in range(1, 15)]
+        headers = [ws.cell(3, col).value for col in range(1, ws.max_column + 1)]
         self.assertEqual(headers[0], "Order No")
         self.assertEqual(headers[1], "Date")
         self.assertEqual(headers[2], "Customer")
         self.assertNotIn("Saved At", headers)
+        self.assertEqual(headers[5], "Payment Mode")
+        self.assertEqual(headers[6], "Cash")
+        self.assertEqual(headers[7], "UPI")
+        self.assertEqual(headers[8], "Card")
+        self.assertEqual(headers[9], "Room Transfer")
         self.assertEqual(headers[-1], "Total")
         self.assertEqual(ws["A1"].fill.fgColor.rgb, "FF315A78")
         self.assertEqual(ws.cell(3, 1).fill.fgColor.rgb, "FF315A78")
@@ -321,7 +326,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         self.assertEqual(ws.cell(4, 1).font.size, 11)
         self.assertEqual(ws.cell(4, 1).font.color.rgb, "FF000000")
         self.assertEqual(ws.cell(4, 1).alignment.horizontal, "left")
-        self.assertEqual(ws.cell(4, 14).alignment.horizontal, "right")
+        self.assertEqual(ws.cell(4, ws.max_column).alignment.horizontal, "right")
         self.assertIsNotNone(ws.cell(4, 1).border.left.style)
         self.assertEqual(ws.cell(4, 1).value, "ORD-2607-0001")
         self.assertEqual(ws.cell(4, 2).value, "2026-07-22")
@@ -427,6 +432,12 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertIn("Cash + UPI", html)
         self.assertIn("Payment Mode", html)
+        self.assertIn(">Cash<", html)
+        self.assertIn(">UPI<", html)
+        self.assertIn(">Room Transfer<", html)
+        self.assertIn('data-sort="pay_cash"', html)
+        self.assertNotIn('aria-label="Settlement by payment mode"', html)
+        self.assertNotIn("pos-il-settlement-summary", html)
 
         conn = db_mod.get_db()
         try:
@@ -436,6 +447,95 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         match = next(r for r in rows if r["id"] == invoice_id)
         self.assertEqual(match["payment_modes"], ["cash", "upi"])
         self.assertEqual(match["payment_mode_label"], "Cash + UPI")
+        self.assertEqual(match["payment_amounts"]["cash"], 200.0)
+        self.assertAlmostEqual(
+            match["payment_amounts"]["upi"], total - 200, places=2
+        )
+        self.assertEqual(match["payment_amounts"]["card"], 0.0)
+        self.assertEqual(match["payment_amounts"]["room_transfer"], 0.0)
+
+    def test_ledger_split_cash_and_room_transfer_amounts(self):
+        today = date.today()
+        checkin = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Asha",
+                    "lastName": "Nair",
+                    "mobile": "9000000001",
+                    "checkInDate": today.isoformat(),
+                    "checkOutDate": (today + timedelta(days=1)).isoformat(),
+                    "roomRate": 2000,
+                    "nights": 1,
+                    "advancePaid": 0,
+                },
+            },
+        )
+        self.assertEqual(checkin.status_code, 200, checkin.get_data(as_text=True))
+
+        saved = self.client.post(
+            "/point-of-sale/api/invoices",
+            json=self._payload(order_no="ORD-SPLIT-RT-1", total=500, table="T1"),
+        )
+        self.assertEqual(saved.status_code, 200, saved.get_data(as_text=True))
+        invoice = saved.get_json()["invoice"]
+        invoice_id = invoice["id"]
+        total = float(invoice["grand_total"])
+        cash_amt = 150.0
+        transfer_amt = round(total - cash_amt, 2)
+
+        settle = self.client.post(
+            f"/point-of-sale/api/invoices/{invoice_id}/settle",
+            json={
+                "payment_splits": [
+                    {"payment_method": "cash", "amount": cash_amt},
+                    {"payment_method": "room_transfer", "amount": transfer_amt},
+                ],
+                "hotel_room_id": "room-101",
+            },
+        )
+        self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        settled = settle.get_json()["invoice"]
+        self.assertIn("Cash", settled.get("payment_mode_label") or "")
+        self.assertIn("Room Transfer", settled.get("payment_mode_label") or "")
+
+        conn = db_mod.get_db()
+        try:
+            rows = db_mod.list_pos_invoices(conn)
+            kpis = db_mod.pos_invoice_kpis(conn, rows)
+        finally:
+            conn.close()
+        match = next(r for r in rows if r["id"] == invoice_id)
+        self.assertEqual(match["payment_amounts"]["cash"], cash_amt)
+        self.assertAlmostEqual(
+            match["payment_amounts"]["room_transfer"], transfer_amt, places=2
+        )
+        self.assertGreaterEqual(kpis["payment_totals"]["cash"], cash_amt)
+        self.assertGreaterEqual(
+            kpis["payment_totals"]["room_transfer"], transfer_amt - 0.01
+        )
+
+        export = self.client.get("/point-of-sale/invoice-ledger/report")
+        self.assertEqual(export.status_code, 200)
+        from io import BytesIO
+        from openpyxl import load_workbook
+
+        wb = load_workbook(BytesIO(export.data))
+        ws = wb.active
+        headers = [ws.cell(3, col).value for col in range(1, ws.max_column + 1)]
+        cash_col = headers.index("Cash") + 1
+        room_col = headers.index("Room Transfer") + 1
+        order_row = None
+        for row in range(4, ws.max_row + 1):
+            if ws.cell(row, 1).value == "ORD-SPLIT-RT-1":
+                order_row = row
+                break
+        self.assertIsNotNone(order_row)
+        self.assertEqual(ws.cell(order_row, cash_col).value, cash_amt)
+        self.assertAlmostEqual(
+            float(ws.cell(order_row, room_col).value), transfer_amt, places=2
+        )
 
     def test_ledger_room_transfer_payment_mode_shows_fbe_reference(self):
         today = date.today()

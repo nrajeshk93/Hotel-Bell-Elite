@@ -155,6 +155,8 @@ class RoomSalesMappingTests(unittest.TestCase):
         self.assertEqual(stay["balanceAmount"], 8000.0)
         self.assertEqual(stay["advancePaid"], 0.0)
         self.assertTrue(stay["agencyBilling"])
+        self.assertTrue(stay["agencyRoomBilling"])
+        self.assertTrue(stay["agencyFbBilling"])
         self.assertEqual(stay["agencyName"], "Lazy Yatra")
         self.assertEqual(stay["agencyGst"], "08BKSPJ2127C1ZA")
         self.assertEqual(stay["paymentMethod"], "credit")
@@ -183,6 +185,8 @@ class RoomSalesMappingTests(unittest.TestCase):
         self.assertEqual(stay["balanceAmount"], 0.0)
         self.assertEqual(len(stay["payments"]), 2)
         self.assertFalse(stay["agencyBilling"])
+        self.assertFalse(stay["agencyRoomBilling"])
+        self.assertFalse(stay["agencyFbBilling"])
 
 
 class RoomSalesImportDbTests(unittest.TestCase):

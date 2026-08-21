@@ -864,18 +864,67 @@ def _heal_product_prices_from_last_inward(conn) -> int:
     """Fill blank Product Master approx prices from the newest stock inward.
 
     Covers inwards that ran before auto-update, or where the rate only landed
-    on the stock movement.
+    on the stock movement. Only touches products that still need healing, and
+    resolves last inward rates in one query (not per product).
     """
-    rows = conn.execute(
+    need_rows = conn.execute(
         """
         SELECT p.id, p.name, p.approximate_price
         FROM store_products p
         WHERE p.is_active = 1
+          AND (
+            p.approximate_price IS NULL
+            OR EXISTS (
+              SELECT 1 FROM store_product_variants v
+              WHERE v.product_id = p.id
+                AND v.is_active = 1
+                AND v.approximate_price IS NULL
+            )
+          )
         """
     ).fetchall()
+    if not need_rows:
+        return 0
+
+    names = sorted({
+        str(row["name"] or "").strip()
+        for row in need_rows
+        if str(row["name"] or "").strip()
+    })
+    price_by_name: dict[str, float] = {}
+    if names:
+        placeholders = ",".join("?" for _ in names)
+        name_keys = [n.lower() for n in names]
+        latest_rows = conn.execute(
+            f"""
+            SELECT lower(item_name) AS name_key, unit_cost
+            FROM store_stock_movements
+            WHERE id IN (
+              SELECT MAX(id)
+              FROM store_stock_movements
+              WHERE ref_type IN ('stock_inward', 'stock_inward_direct')
+                AND unit_cost IS NOT NULL
+                AND lower(item_name) IN ({placeholders})
+              GROUP BY lower(item_name)
+            )
+            """,
+            name_keys,
+        ).fetchall()
+        for row in latest_rows:
+            try:
+                price = float(row["unit_cost"])
+            except (TypeError, ValueError):
+                continue
+            if price < 0 or price != price:
+                continue
+            key = str(row["name_key"] or "").strip()
+            if key:
+                price_by_name[key] = price
+
     healed = 0
-    for row in rows:
-        price = _last_inward_unit_price(conn, row["name"])
+    for row in need_rows:
+        name = str(row["name"] or "").strip()
+        price = price_by_name.get(name.lower())
         if price is None:
             continue
         needs_product = row["approximate_price"] is None
@@ -889,24 +938,14 @@ def _heal_product_prices_from_last_inward(conn) -> int:
                 (price, _now(), int(row["id"])),
             )
             healed += 1
-        blank_packs = conn.execute(
-            """
-            SELECT COUNT(*) AS c FROM store_product_variants
-            WHERE product_id = ? AND is_active = 1 AND approximate_price IS NULL
-            """,
-            (int(row["id"]),),
-        ).fetchone()["c"]
-        if needs_product or int(blank_packs or 0):
             unit_rate = price
-            if not needs_product:
-                try:
-                    unit_rate = float(row["approximate_price"])
-                except (TypeError, ValueError):
-                    unit_rate = price
-            before_blank = int(blank_packs or 0)
-            _fill_blank_pack_prices_from_unit_rate(conn, int(row["id"]), unit_rate)
-            if before_blank:
-                healed += 1
+        else:
+            try:
+                unit_rate = float(row["approximate_price"])
+            except (TypeError, ValueError):
+                unit_rate = price
+            healed += 1
+        _fill_blank_pack_prices_from_unit_rate(conn, int(row["id"]), unit_rate)
     return healed
 
 
@@ -3009,7 +3048,7 @@ def stores_product_master():
             if preselect_unit:
                 form["default_unit"] = preselect_unit
 
-        catalog = _load_product_catalog(conn, stores_outlet=outlet)
+        # List UI uses flat products only — skip the nested catalog load.
         if _heal_product_prices_from_last_inward(conn):
             conn.commit()
         products = _load_flat_products(conn, stores_outlet=outlet)
@@ -3063,7 +3102,6 @@ def stores_product_master():
     return _page_render(
         "product_master",
         outlet=outlet,
-        catalog=catalog,
         products=products,
         categories=[dict(row) for row in categories],
         default_units=product_units,

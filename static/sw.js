@@ -3,14 +3,14 @@
  * Invoice HTML is network-first so workspace chrome (sidebar modules) is not stuck.
  * Hotel / workspace JS+CSS are not intercepted — browser HTTP cache + ?v= must
  * pick up deploys. Only POS precache/pos_* stay in Cache Storage (network-first). */
-var CACHE_VERSION = 'hbe-pos-v40';
+var CACHE_VERSION = 'hbe-pos-v44';
 var PRECACHE = [
   '/point-of-sale/invoice',
   '/static/manifest.webmanifest',
   '/static/de_workspace_shell.css?v=52',
   '/static/ep_form_listbox.css?v=29',
   '/static/pos_invoice.css?v=51',
-  '/static/pos_invoice.js?v=128',
+  '/static/pos_invoice.js?v=144',
   '/static/pos_offline.js?v=4',
   '/static/ep_form_listbox.js?v=64',
   '/static/de_workspace_nav.js?v=46',

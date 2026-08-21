@@ -29,6 +29,7 @@ from workspace_access import (
     user_can_access_user_access_submodule,
     user_can_approve_transactions,
     user_can_edit_kot_sent_lines,
+    user_can_edit_unsettled_invoices,
     user_has_assigned_access_role,
     validate_access_role_form,
 )
@@ -78,7 +79,8 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Report",
                 "Settings",
                 "Approval",
-                "Cancellation Access",
+                "Cancellation",
+                "Edit",
             ],
         )
         stores = next(node for node in tree if node["label"] == "Purchase & Inventory")
@@ -131,13 +133,20 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(approval["children"], [])
         self.assertTrue(approval.get("superAdminOnly"))
         self.assertIn("Super Administrator", approval.get("description") or "")
-        cancellation = next(node for node in tree if node["label"] == "Cancellation Access")
+        cancellation = next(node for node in tree if node["label"] == "Cancellation")
         self.assertEqual(cancellation["id"], "cancellation_access")
         self.assertEqual(cancellation["icon"], "ban")
         self.assertEqual(cancellation["children"], [])
         self.assertTrue(cancellation.get("superAdminOnly"))
         self.assertIn("Kitchen Order", cancellation.get("description") or "")
         self.assertIn("Super Administrator", cancellation.get("description") or "")
+        edit = next(node for node in tree if node["label"] == "Edit")
+        self.assertEqual(edit["id"], "edit_access")
+        self.assertEqual(edit["icon"], "pencil")
+        self.assertEqual(edit["children"], [])
+        self.assertTrue(edit.get("superAdminOnly"))
+        self.assertIn("folio", (edit.get("description") or "").lower())
+        self.assertIn("Super Administrator", edit.get("description") or "")
         accounts = next(node for node in tree if node["label"] == "Accounts")
         accounts_children = [child["label"] for child in accounts["children"]]
         self.assertEqual(
@@ -178,6 +187,22 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertFalse(user_can_edit_kot_sent_lines(locked))
         self.assertTrue(user_can_edit_kot_sent_lines(unlocked))
         self.assertTrue(user_can_edit_kot_sent_lines(admin))
+
+    def test_edit_access_unlocks_unsettled_invoice_edits(self):
+        locked = {
+            "id": 13,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale"},
+        }
+        unlocked = {
+            "id": 14,
+            "is_admin": False,
+            "dashboard_access": {"point_of_sale", "edit_access"},
+        }
+        admin = {"id": 1, "is_admin": True, "dashboard_access": set()}
+        self.assertFalse(user_can_edit_unsettled_invoices(locked))
+        self.assertTrue(user_can_edit_unsettled_invoices(unlocked))
+        self.assertTrue(user_can_edit_unsettled_invoices(admin))
 
     def test_approval_access_unlocks_purchase_verification_actions(self):
         locked = {
@@ -350,6 +375,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("sales_report_hotel_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_manager_insight"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_manager_insight_export"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_meal_plan"), "reports")
+        self.assertEqual(get_endpoint_dashboard_module("sales_report_meal_plan_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_restaurant"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_restaurant_export"), "reports")
         self.assertEqual(get_endpoint_dashboard_module("sales_report_bar"), "reports")
@@ -578,25 +605,31 @@ class RoleBasedAccessTests(unittest.TestCase):
         admin = {"id": 1, "is_admin": True, "user_access": {"roles"}}
 
         stripped = reconcile_super_admin_only_dashboard_modules(
-            non_admin, ["reports", "approval", "cancellation_access"], []
+            non_admin, ["reports", "approval", "cancellation_access", "edit_access"], []
         )
         self.assertEqual(stripped, ["reports"])
 
         preserved = reconcile_super_admin_only_dashboard_modules(
             non_admin,
             ["reports"],
-            ["reports", "approval", "cancellation_access"],
+            ["reports", "approval", "cancellation_access", "edit_access"],
         )
-        self.assertEqual(preserved, ["reports", "approval", "cancellation_access"])
+        self.assertEqual(preserved[0], "reports")
+        self.assertEqual(
+            set(preserved),
+            {"reports", "approval", "cancellation_access", "edit_access"},
+        )
 
         granted = reconcile_super_admin_only_dashboard_modules(
-            admin, ["reports", "approval", "cancellation_access"], []
+            admin, ["reports", "approval", "cancellation_access", "edit_access"], []
         )
-        self.assertEqual(granted, ["reports", "approval", "cancellation_access"])
+        self.assertEqual(
+            granted, ["reports", "approval", "cancellation_access", "edit_access"]
+        )
         revoked = reconcile_super_admin_only_dashboard_modules(
             admin,
             ["reports"],
-            ["reports", "approval", "cancellation_access"],
+            ["reports", "approval", "cancellation_access", "edit_access"],
         )
         self.assertEqual(revoked, ["reports"])
 

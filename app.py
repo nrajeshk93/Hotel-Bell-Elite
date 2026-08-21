@@ -66,6 +66,7 @@ from db import (
     _hotel_invoice_guest_name,
     _hotel_invoice_source_value,
     HOTEL_INVOICE_SOURCE_POS_TRANSFER,
+    HOTEL_PAYMENT_AMOUNT_COLUMNS,
     get_hotel_settings,
     get_hotel_tax_rates,
     get_hotel_tariff_rates,
@@ -97,6 +98,8 @@ from db import (
     upsert_hotel_invoice_credit,
     ensure_hotel_invoice_credits_schema,
     _hotel_credit_party_id,
+    _hotel_stay_has_agency,
+    _HOTEL_INVOICE_STAY_SOURCE_SQL,
     set_hotel_room_discount,
     append_hotel_room_folio_charge,
     update_hotel_room_charge,
@@ -215,6 +218,7 @@ from workspace_access import (
     user_can_access_agency_master,
     user_can_access_user_access_submodule,
     user_can_edit_kot_sent_lines,
+    user_can_edit_unsettled_invoices,
     user_can_approve_transactions,
     user_has_assigned_access_role,
     validate_access_role_form,
@@ -253,6 +257,7 @@ from reports import (
     report_export_filename,
 )
 from manager_insight import build_manager_insight
+from meal_plan_report import build_meal_plan_report
 from stores import register_stores
 from communication_hub import register_communication_hub
 from seo_privacy import register_seo_privacy
@@ -858,6 +863,7 @@ def inject_auth_context():
         "has_agency_master_access": lambda: user_can_access_agency_master(user),
         "has_user_access_submodule": lambda key: user_can_access_user_access_submodule(user, key),
         "user_can_edit_kot_sent_lines": user_can_edit_kot_sent_lines,
+        "user_can_edit_unsettled_invoices": user_can_edit_unsettled_invoices,
         "user_can_approve_transactions": user_can_approve_transactions,
         "dashboard_module_labels": _DASHBOARD_MODULE_LABELS,
         "sales_analytics_submodule_labels": _SALES_ANALYTICS_SUBMODULE_LABELS,
@@ -6013,6 +6019,388 @@ def _sales_report_export(kind):
     return response
 
 
+def _agency_billing_status_labels():
+    return {
+        "all": "All statuses",
+        "unsettled": "Outstanding",
+        "settled": "Settled",
+    }
+
+
+def _agency_billing_stay_from_payload(payload_json):
+    try:
+        payload = json.loads(payload_json or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    stay = payload.get("stay")
+    return stay if isinstance(stay, dict) else {}
+
+
+def _agency_billing_is_agency_invoice(stay):
+    """Hotel invoices tagged with an agency name or Agency Billing."""
+    if _hotel_stay_has_agency(stay):
+        return True
+    if not isinstance(stay, dict):
+        return False
+    flag = stay.get("agencyBilling")
+    if flag is True:
+        return True
+    return str(flag or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _agency_billing_ledger_item(
+    *,
+    invoice_number,
+    bill_date,
+    agency_name,
+    guest_name,
+    room_number,
+    billed,
+    received,
+    credit_id,
+    name_to_agency,
+):
+    billed = round_half_up(billed, 2)
+    received = round_half_up(received, 2)
+    if received < 0:
+        received = 0.0
+    balance = round_half_up(billed - received, 2)
+    agency_name = str(agency_name or "").strip()
+    agency = name_to_agency.get(agency_name.lower())
+    party_id = int(agency["id"]) if agency else _hotel_credit_party_id(agency_name)
+    return {
+        "id": credit_id,
+        "invoice_number": invoice_number or "",
+        "credit_date": str(bill_date or "")[:10],
+        "agency_name": agency_name or "—",
+        "supplier_name": agency_name or "—",
+        "guest_name": str(guest_name or "").strip(),
+        "room_number": str(room_number or "").strip(),
+        "billed": billed,
+        "received": received,
+        "balance": balance,
+        "supplier_id": party_id,
+        "supplier_gst": (agency or {}).get("gst") or "",
+        "status": "settled" if balance <= 0.009 else "open",
+    }
+
+
+def _agency_billing_filters(args):
+    filters = _sales_report_filters(args)
+    selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
+        args.get("supplier")
+    )
+    filters["selected_supplier"] = selected_supplier
+    filters["supplier_id"] = supplier_id
+    return filters
+
+
+def _agency_billing_collected_in_period(conn, filters, agency_name=""):
+    ensure_hotel_invoice_credits_schema(conn)
+    sql = """SELECT COALESCE(SUM(total_amount), 0) AS total
+             FROM hotel_invoice_credit_payments
+             WHERE 1 = 1"""
+    params = []
+    date_from = filters.get("date_from") if filters.get("date_filter_active") else None
+    date_to = filters.get("date_to") if filters.get("date_filter_active") else None
+    if date_from:
+        sql += " AND payment_date >= ?"
+        params.append(date_from.isoformat() if hasattr(date_from, "isoformat") else date_from)
+    if date_to:
+        sql += " AND payment_date <= ?"
+        params.append(date_to.isoformat() if hasattr(date_to, "isoformat") else date_to)
+    agency_key = str(agency_name or "").strip().lower()
+    if agency_key:
+        sql += " AND lower(trim(agency_name)) = ?"
+        params.append(agency_key)
+    row = conn.execute(sql, params).fetchone()
+    return round_half_up((row["total"] if row else 0), 2)
+
+
+def _agency_billing_load(filters):
+    """Invoice-wise agency billing ledger plus KPIs for the report period."""
+    date_from = filters.get("date_from") if filters.get("date_filter_active") else None
+    date_to = filters.get("date_to") if filters.get("date_filter_active") else None
+    status_key = str(filters.get("selected_status") or "all").strip().lower()
+    supplier_id = filters.get("supplier_id")
+    conn = get_db()
+    try:
+        agencies = {int(a["id"]): a for a in list_agencies(conn)}
+        name_to_agency = {
+            str(a.get("name") or "").strip().lower(): a for a in agencies.values()
+        }
+        credits_by_invoice = {
+            str(row.get("invoice_number") or "").strip(): row
+            for row in _sync_and_list_hotel_credit_rows(conn)
+        }
+        hotel_rows = conn.execute(
+            f"""
+            SELECT invoice_number, room_number, guest_name, invoice_generated_at,
+                   estimated_total, balance_amount, status, payload_json
+            FROM hotel_room_invoices
+            WHERE {_HOTEL_INVOICE_STAY_SOURCE_SQL}
+              AND lower(COALESCE(status, '')) != 'cancelled'
+            ORDER BY invoice_generated_at DESC, invoice_number DESC
+            """
+        ).fetchall()
+        dated_rows = []
+        seen_invoices = set()
+        for row in hotel_rows:
+            stay = _agency_billing_stay_from_payload(row["payload_json"])
+            invoice_number = str(row["invoice_number"] or "").strip()
+            credit = credits_by_invoice.get(invoice_number)
+            if not credit and not _agency_billing_is_agency_invoice(stay):
+                continue
+            bill_date = str(row["invoice_generated_at"] or "")[:10]
+            if not bill_date and credit:
+                bill_date = str(credit.get("credit_date") or "")[:10]
+            if date_from and bill_date and bill_date < date_from.isoformat():
+                continue
+            if date_to and bill_date and bill_date > date_to.isoformat():
+                continue
+            agency_name = str(
+                stay.get("agencyName") or stay.get("agency_name") or ""
+            ).strip()
+            if credit:
+                agency_name = agency_name or str(credit.get("agency_name") or "").strip()
+                billed = credit.get("credit_amount")
+                received = hotel_invoice_credit_paid_total(conn, int(credit["id"]))
+                credit_id = int(credit["id"])
+            else:
+                billed = row["estimated_total"]
+                received = round_half_up(row["estimated_total"], 2) - round_half_up(
+                    row["balance_amount"], 2
+                )
+                credit_id = None
+            dated_rows.append(
+                _agency_billing_ledger_item(
+                    invoice_number=invoice_number,
+                    bill_date=bill_date,
+                    agency_name=agency_name,
+                    guest_name=row["guest_name"]
+                    or (credit or {}).get("guest_name"),
+                    room_number=row["room_number"]
+                    or (credit or {}).get("room_number"),
+                    billed=billed,
+                    received=received,
+                    credit_id=credit_id,
+                    name_to_agency=name_to_agency,
+                )
+            )
+            seen_invoices.add(invoice_number)
+        for credit in credits_by_invoice.values():
+            invoice_number = str(credit.get("invoice_number") or "").strip()
+            if not invoice_number or invoice_number in seen_invoices:
+                continue
+            bill_date = str(credit.get("credit_date") or "")[:10]
+            if date_from and bill_date and bill_date < date_from.isoformat():
+                continue
+            if date_to and bill_date and bill_date > date_to.isoformat():
+                continue
+            dated_rows.append(
+                _agency_billing_ledger_item(
+                    invoice_number=invoice_number,
+                    bill_date=bill_date,
+                    agency_name=credit.get("agency_name"),
+                    guest_name=credit.get("guest_name"),
+                    room_number=credit.get("room_number"),
+                    billed=credit.get("credit_amount"),
+                    received=hotel_invoice_credit_paid_total(conn, int(credit["id"])),
+                    credit_id=int(credit["id"]),
+                    name_to_agency=name_to_agency,
+                )
+            )
+        dated_rows.sort(
+            key=lambda item: (
+                str(item.get("credit_date") or ""),
+                str(item.get("invoice_number") or ""),
+            ),
+            reverse=True,
+        )
+        agencies_filter = _hotel_credit_agency_filters(conn, dated_rows)
+        lookup = {str(item["id"]): item for item in agencies_filter}
+        selected_supplier = filters.get("selected_supplier") or PURCHASE_LEDGER_FILTER_ALL
+        if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and selected_supplier not in lookup:
+            selected_supplier = PURCHASE_LEDGER_FILTER_ALL
+            supplier_id = None
+        selected_agency_name = ""
+        if selected_supplier != PURCHASE_LEDGER_FILTER_ALL and supplier_id is not None:
+            match = lookup.get(str(supplier_id))
+            selected_agency_name = str((match or {}).get("name") or "").strip()
+            dated_rows = [
+                item
+                for item in dated_rows
+                if int(item.get("supplier_id") or 0) == int(supplier_id)
+            ]
+        rows = []
+        for item in dated_rows:
+            if status_key == "unsettled" and item["status"] != "open":
+                continue
+            if status_key == "settled" and item["status"] != "settled":
+                continue
+            rows.append(item)
+        billed = round_half_up(sum(item["billed"] for item in rows), 2)
+        received = round_half_up(sum(item["received"] for item in rows), 2)
+        outstanding = round_half_up(sum(item["balance"] for item in rows), 2)
+        collected = _agency_billing_collected_in_period(
+            conn, filters, selected_agency_name
+        )
+        kpis = {
+            "total": len(rows),
+            "billed": billed,
+            "received": received,
+            "outstanding": outstanding,
+            "open": sum(1 for item in rows if item["status"] == "open"),
+            "settled": sum(1 for item in rows if item["status"] == "settled"),
+            "collected_in_period": collected,
+        }
+        selected_agency_label = "All agencies"
+        if selected_supplier != PURCHASE_LEDGER_FILTER_ALL:
+            match = lookup.get(selected_supplier)
+            if match:
+                selected_agency_label = match["name"]
+        return rows, kpis, agencies_filter, selected_supplier, selected_agency_label
+    finally:
+        conn.close()
+
+
+def _agency_billing_page():
+    filters = _agency_billing_filters(request.args)
+    rows, kpis, agencies, selected_supplier, selected_agency_label = _agency_billing_load(
+        filters
+    )
+    status_labels = _agency_billing_status_labels()
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    clear_kwargs = {}
+    if filters["selected_status"] != "all":
+        clear_kwargs["status"] = filters["selected_status"]
+    if selected_supplier != PURCHASE_LEDGER_FILTER_ALL:
+        clear_kwargs["supplier"] = selected_supplier
+    if from_hub == "reports":
+        clear_kwargs["from_hub"] = "reports"
+    export_kwargs = dict(clear_kwargs)
+    if filters["date_filter_active"]:
+        if filters["date_from"]:
+            export_kwargs["date_from"] = filters["date_from"].isoformat()
+        if filters["date_to"]:
+            export_kwargs["date_to"] = filters["date_to"].isoformat()
+    filter_kwargs = {}
+    if from_hub == "reports":
+        filter_kwargs["from_hub"] = "reports"
+    return render_template(
+        "agency_billing_report.html",
+        de_nav_section="report",
+        de_nav_report_view="sales",
+        page_title="Agency Ledger",
+        invoices=rows,
+        kpis=kpis,
+        agencies=agencies,
+        selected_supplier=selected_supplier,
+        selected_agency_label=selected_agency_label,
+        today_iso=filters["today"].isoformat(),
+        date_from=filters["date_from"].isoformat()
+        if filters["date_filter_active"] and filters["date_from"]
+        else "",
+        date_to=filters["date_to"].isoformat()
+        if filters["date_filter_active"] and filters["date_to"]
+        else "",
+        active_date_filter=filters["date_filter_active"],
+        selected_status=filters["selected_status"],
+        selected_status_label=status_labels.get(
+            filters["selected_status"], "All statuses"
+        ),
+        filter_form_action=url_for("sales_report_agency_billing", **filter_kwargs),
+        sales_report_clear_url=url_for("sales_report_agency_billing", **clear_kwargs),
+        sales_report_export_url=url_for(
+            "sales_report_agency_billing_export", **export_kwargs
+        ),
+        sales_report_export_filename=report_export_filename(
+            "Agency Ledger", filters=filters
+        ),
+        preserve_from_hub=from_hub == "reports",
+    )
+
+
+def _agency_billing_export():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+
+    filters = _agency_billing_filters(request.args)
+    rows, kpis, _agencies, _selected_supplier, _label = _agency_billing_load(filters)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Agency Ledger"
+    header_font = Font(bold=True)
+    title_date = _sales_report_excel_title_date(filters)
+    ws["A1"] = f"Hotel Bell Elite — Agency Ledger{title_date}"
+    ws["A1"].font = Font(bold=True, size=14)
+    ws["A2"] = "Invoices"
+    ws["B2"] = int(kpis.get("total") or 0)
+    ws["C2"] = "Billed"
+    ws["D2"] = round_half_up(kpis.get("billed"), 2)
+    ws["E2"] = "Received"
+    ws["F2"] = round_half_up(kpis.get("received"), 2)
+    ws["G2"] = "Outstanding"
+    ws["H2"] = round_half_up(kpis.get("outstanding"), 2)
+    ws["I2"] = "Collected in period"
+    ws["J2"] = round_half_up(kpis.get("collected_in_period"), 2)
+    headers = (
+        "Invoice No",
+        "Date",
+        "Agency",
+        "Guest",
+        "Room",
+        "Billed",
+        "Received",
+        "Balance",
+        "Status",
+    )
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=4, column=col, value=title)
+        cell.font = header_font
+    for idx, row in enumerate(rows, start=5):
+        ws.cell(row=idx, column=1, value=row.get("invoice_number") or "")
+        ws.cell(row=idx, column=2, value=row.get("credit_date") or "")
+        ws.cell(row=idx, column=3, value=row.get("agency_name") or "")
+        ws.cell(row=idx, column=4, value=row.get("guest_name") or "")
+        ws.cell(row=idx, column=5, value=row.get("room_number") or "")
+        ws.cell(row=idx, column=6, value=row.get("billed"))
+        ws.cell(row=idx, column=7, value=row.get("received"))
+        ws.cell(row=idx, column=8, value=row.get("balance"))
+        ws.cell(
+            row=idx,
+            column=9,
+            value="Settled" if row.get("status") == "settled" else "Outstanding",
+        )
+    max_col = ws.max_column or 1
+    last = ws.max_row or 1
+    for col in range(1, max_col + 1):
+        width = 14
+        for row_idx in range(1, last + 1):
+            value = ws.cell(row=row_idx, column=col).value
+            if value is None:
+                continue
+            width = max(width, min(len(str(value)) + 2, 40))
+        ws.column_dimensions[get_column_letter(col)].width = width
+    fname = report_export_filename("Agency Ledger", filters=filters)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 @app.route("/reports/sales/hotel", endpoint="sales_report_hotel")
 def sales_report_hotel():
     """Hotel Sales report — room invoices invoice-wise."""
@@ -6023,6 +6411,21 @@ def sales_report_hotel():
 def sales_report_hotel_export():
     """Excel export for Hotel Sales report."""
     return _sales_report_export("hotel")
+
+
+@app.route("/reports/sales/agency-billing", endpoint="sales_report_agency_billing")
+def sales_report_agency_billing():
+    """Agency Ledger report — hotel credit invoices invoice-wise."""
+    return _agency_billing_page()
+
+
+@app.route(
+    "/reports/sales/agency-billing/export",
+    endpoint="sales_report_agency_billing_export",
+)
+def sales_report_agency_billing_export():
+    """Excel export for Agency Ledger report."""
+    return _agency_billing_export()
 
 
 def _manager_insight_filters(args, *, today=None):
@@ -6236,6 +6639,171 @@ def sales_report_manager_insight_export():
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+def _meal_plan_filters(args, *, today=None):
+    ref = today or date.today()
+    raw = (args.get("date") or args.get("date_from") or "").strip()
+    report_date = None
+    if raw:
+        try:
+            report_date = date.fromisoformat(raw[:10])
+        except ValueError:
+            report_date = None
+    if report_date is None:
+        report_date = ref
+    return {
+        "today": ref,
+        "report_date": report_date,
+        "date_from": report_date,
+        "date_to": report_date,
+        "date_filter_active": True,
+    }
+
+
+def _meal_plan_page():
+    filters = _meal_plan_filters(request.args)
+    conn = get_db()
+    try:
+        payload = build_meal_plan_report(
+            conn,
+            report_date=filters["report_date"],
+            today=filters["today"],
+        )
+    finally:
+        conn.close()
+    from_hub = (request.args.get("from_hub") or "").strip().lower()
+    filter_kwargs = {}
+    if from_hub == "reports":
+        filter_kwargs["from_hub"] = "reports"
+    export_kwargs = dict(filter_kwargs)
+    export_kwargs["date"] = filters["report_date"].isoformat()
+    day_iso = filters["report_date"].isoformat()
+    return render_template(
+        "meal_plan_report.html",
+        de_nav_section="report",
+        de_nav_report_view="sales",
+        page_title="Meal Plan",
+        rows=payload["rows"],
+        kpis=payload["kpis"],
+        today_iso=filters["today"].isoformat(),
+        date_from=day_iso,
+        date_to=day_iso,
+        active_date_filter=True,
+        filter_form_action=url_for("sales_report_meal_plan", **filter_kwargs),
+        sales_report_clear_url=url_for(
+            "sales_report_meal_plan",
+            **{**filter_kwargs, "date": filters["today"].isoformat()},
+        ),
+        sales_report_export_url=url_for(
+            "sales_report_meal_plan_export", **export_kwargs
+        ),
+        sales_report_export_filename=report_export_filename(
+            "Meal Plan", filters=filters
+        ),
+        preserve_from_hub=from_hub == "reports",
+        back_href=url_for("reports") if from_hub == "reports" else None,
+        back_label="Back to Reports" if from_hub == "reports" else None,
+    )
+
+
+def _meal_plan_export():
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+
+    filters = _meal_plan_filters(request.args)
+    conn = get_db()
+    try:
+        payload = build_meal_plan_report(
+            conn,
+            report_date=filters["report_date"],
+            today=filters["today"],
+        )
+    finally:
+        conn.close()
+    rows = payload["rows"]
+    kpis = payload["kpis"]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Meal Plan"
+    header_font = Font(bold=True)
+    title_date = _sales_report_excel_title_date(filters)
+    ws["A1"] = f"Hotel Bell Elite — Meal Plan{title_date}"
+    ws["A1"].font = Font(bold=True, size=14)
+    ws["A2"] = "Occupied rooms"
+    ws["B2"] = int(kpis.get("occupied_rooms") or 0)
+    ws["C2"] = "Pax"
+    ws["D2"] = int(kpis.get("total_pax") or 0)
+    ws["E2"] = "Breakfast"
+    ws["F2"] = int(kpis.get("breakfast") or 0)
+    ws["G2"] = "Lunch"
+    ws["H2"] = int(kpis.get("lunch") or 0)
+    ws["I2"] = "Dinner"
+    ws["J2"] = int(kpis.get("dinner") or 0)
+    headers = (
+        "Room",
+        "Guest",
+        "Meal plan",
+        "Adults",
+        "Children",
+        "Pax",
+        "Breakfast",
+        "Lunch",
+        "Dinner",
+    )
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=4, column=col, value=title)
+        cell.font = header_font
+    for idx, row in enumerate(rows, start=5):
+        ws.cell(row=idx, column=1, value=row.get("room_number") or "")
+        ws.cell(row=idx, column=2, value=row.get("guest_name") or "")
+        ws.cell(row=idx, column=3, value=row.get("plan_label") or row.get("plan") or "")
+        ws.cell(row=idx, column=4, value=int(row.get("adults") or 0))
+        ws.cell(row=idx, column=5, value=int(row.get("children") or 0))
+        ws.cell(row=idx, column=6, value=int(row.get("pax") or 0))
+        ws.cell(row=idx, column=7, value=int(row.get("breakfast") or 0))
+        ws.cell(row=idx, column=8, value=int(row.get("lunch") or 0))
+        ws.cell(row=idx, column=9, value=int(row.get("dinner") or 0))
+    max_col = ws.max_column or 1
+    last = ws.max_row or 1
+    for col in range(1, max_col + 1):
+        width = 14
+        for row_idx in range(1, last + 1):
+            value = ws.cell(row=row_idx, column=col).value
+            if value is None:
+                continue
+            width = max(width, min(len(str(value)) + 2, 40))
+        ws.column_dimensions[get_column_letter(col)].width = width
+    fname = report_export_filename("Meal Plan", filters=filters)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    response = send_file(
+        buf,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+@app.route("/reports/sales/meal-plan", endpoint="sales_report_meal_plan")
+def sales_report_meal_plan():
+    """Meal Plan report — in-house rooms and dining covers by plan."""
+    return _meal_plan_page()
+
+
+@app.route(
+    "/reports/sales/meal-plan/export",
+    endpoint="sales_report_meal_plan_export",
+)
+def sales_report_meal_plan_export():
+    """Excel export for Meal Plan report."""
+    return _meal_plan_export()
 
 
 @app.route("/reports/sales/restaurant", endpoint="sales_report_restaurant")
@@ -7802,12 +8370,14 @@ def hotel_invoice_ledger():
         filter_form_action=url_for("hotel_invoice_ledger"),
         invoice_ledger_clear_url=url_for("hotel_invoice_ledger", **clear_kwargs),
         invoice_ledger_export_url=url_for("hotel_invoice_ledger_export", **export_kwargs),
-        room_transfer_overlay_url=url_for("hotel_room_transfer_invoices", popup=1),
+        room_transfer_page_url=url_for("hotel_room_transfer_invoices"),
         id_prefix="hil",
         page_dom_id="hotel-invoice-ledger-page",
         room_transfer_ledger=False,
         is_popup=False,
+        hotel_payment_amount_columns=HOTEL_PAYMENT_AMOUNT_COLUMNS,
         can_cancel_invoices=user_can_edit_kot_sent_lines(get_current_user()),
+        can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
     )
 
 
@@ -7856,11 +8426,13 @@ def hotel_invoice_ledger_export():
         "Advance",
         "Balance",
         "Payment Mode",
+        *[label for _key, label in HOTEL_PAYMENT_AMOUNT_COLUMNS],
     )
     for col, title in enumerate(headers, start=1):
         cell = ws.cell(row=3, column=col, value=title)
         cell.font = header_font
     for idx, row in enumerate(rows, start=4):
+        amounts = row.get("payment_amounts") or {}
         ws.cell(row=idx, column=1, value=row.get("invoice_number") or "")
         ws.cell(row=idx, column=2, value=row.get("invoice_generated_at") or "")
         ws.cell(row=idx, column=3, value=row.get("room_number") or "")
@@ -7877,6 +8449,12 @@ def hotel_invoice_ledger_export():
             value=row.get("payment_mode_label")
             or ("Settled" if (row.get("status") or "") == "settled" else "Un Settled"),
         )
+        for offset, (key, _label) in enumerate(HOTEL_PAYMENT_AMOUNT_COLUMNS):
+            ws.cell(
+                row=idx,
+                column=12 + offset,
+                value=round(float(amounts.get(key) or 0), 2),
+            )
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -7896,6 +8474,11 @@ def _hotel_room_transfer_ledger_filters(args):
     filters["selected_invoice"] = "room_transfer"
     filters["invoice_source"] = "pos_room_transfer"
     filters["is_popup"] = str(args.get("popup") or "").strip() == "1"
+    selected_outlet = (args.get("outlet") or "all").strip().lower()
+    if selected_outlet not in ("all", "bar", "restaurant"):
+        selected_outlet = "all"
+    filters["selected_outlet"] = selected_outlet
+    filters["outlet_filter"] = "" if selected_outlet == "all" else selected_outlet
     return filters
 
 
@@ -7903,6 +8486,8 @@ def _hotel_room_transfer_query_kwargs(filters):
     kwargs = {}
     if filters["selected_status"] != "all":
         kwargs["status"] = filters["selected_status"]
+    if filters.get("selected_outlet") and filters["selected_outlet"] != "all":
+        kwargs["outlet"] = filters["selected_outlet"]
     if filters["q"]:
         kwargs["q"] = filters["q"]
     if filters.get("is_popup"):
@@ -7922,6 +8507,7 @@ def hotel_room_transfer_invoices():
             q=filters["q"],
             status=filters["status_filter"],
             source="pos_room_transfer",
+            outlet=filters.get("outlet_filter") or "",
             date_from=filters["date_from"].isoformat()
             if filters["date_filter_active"] and filters["date_from"]
             else None,
@@ -7929,7 +8515,7 @@ def hotel_room_transfer_invoices():
             if filters["date_filter_active"] and filters["date_to"]
             else None,
         )
-        kpis = hotel_room_invoice_kpis(rows)
+        kpis = hotel_room_invoice_kpis(rows, count_cancelled_in_billed=True)
         conn.commit()
     finally:
         conn.close()
@@ -7938,7 +8524,7 @@ def hotel_room_transfer_invoices():
         "all": "All statuses",
         "open": "Un Settled",
         "settled": "Settled",
-        "cancelled": "Cancelled",
+        "cancelled": "Invoice Generated",
     }
     clear_kwargs = _hotel_room_transfer_query_kwargs(filters)
     export_kwargs = dict(clear_kwargs)
@@ -7970,6 +8556,7 @@ def hotel_room_transfer_invoices():
         ),
         selected_invoice="room_transfer",
         selected_invoice_label="Room Transfer",
+        selected_outlet=filters.get("selected_outlet") or "all",
         search_q=filters["q"],
         filter_form_action=url_for("hotel_room_transfer_invoices", **filter_kwargs),
         invoice_ledger_clear_url=url_for(
@@ -7978,11 +8565,14 @@ def hotel_room_transfer_invoices():
         invoice_ledger_export_url=url_for(
             "hotel_room_transfer_invoices_export", **export_kwargs
         ),
+        back_href=url_for("hotel_invoice_ledger"),
+        back_label="Back to Invoice Ledger",
         id_prefix="hrt",
         page_dom_id="hotel-room-transfer-ledger-page",
         room_transfer_ledger=True,
-        is_popup=filters["is_popup"],
+        is_popup=False,
         can_cancel_invoices=user_can_edit_kot_sent_lines(get_current_user()),
+        can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
     )
 
 
@@ -8005,6 +8595,7 @@ def hotel_room_transfer_invoices_export():
             q=filters["q"],
             status=filters["status_filter"],
             source="pos_room_transfer",
+            outlet=filters.get("outlet_filter") or "",
             date_from=filters["date_from"].isoformat()
             if filters["date_filter_active"] and filters["date_from"]
             else None,
@@ -8033,7 +8624,7 @@ def hotel_room_transfer_invoices_export():
         "Amount",
         "Advance",
         "Balance",
-        "Payment Mode",
+        "Status",
     )
     for col, title in enumerate(headers, start=1):
         cell = ws.cell(row=3, column=col, value=title)
@@ -8203,11 +8794,11 @@ def hotel_invoice_ledger_settle_api(invoice_number):
     endpoint="hotel_invoice_ledger_cancel_api",
 )
 def hotel_invoice_ledger_cancel_api(invoice_number):
-    """Cancel an unsettled hotel invoice (Cancellation Access)."""
+    """Cancel an unsettled hotel invoice (Cancellation)."""
     user = get_current_user()
     if not user_can_edit_kot_sent_lines(user):
         return jsonify(
-            {"ok": False, "error": "Cancellation Access is required to cancel invoices."}
+            {"ok": False, "error": "Cancellation is required to cancel invoices."}
         ), 403
     data = request.get_json(silent=True) or {}
     reason = ""
@@ -8241,11 +8832,11 @@ def hotel_invoice_ledger_cancel_api(invoice_number):
     endpoint="hotel_invoice_ledger_reopen_edit_api",
 )
 def hotel_invoice_ledger_reopen_edit_api(invoice_number):
-    """Unlock an unsettled hotel invoice for editing (Cancellation Access)."""
+    """Unlock an unsettled hotel invoice for editing (Edit Access)."""
     user = get_current_user()
-    if not user_can_edit_kot_sent_lines(user):
+    if not user_can_edit_unsettled_invoices(user):
         return jsonify(
-            {"ok": False, "error": "Cancellation Access is required to edit unsettled invoices."}
+            {"ok": False, "error": "Edit Access is required to edit unsettled invoices."}
         ), 403
     conn = get_db()
     try:
@@ -8277,6 +8868,8 @@ def hotel_invoice_ledger_reopen_edit_api(invoice_number):
 )
 def hotel_invoice_ledger_edit_page(invoice_number):
     """Invoice-scoped edit workspace from Hotel Invoice Ledger."""
+    if not user_can_edit_unsettled_invoices(get_current_user()):
+        abort(403)
     conn = get_db()
     try:
         ensure_hotel_rooms_schema(conn)
@@ -8304,6 +8897,7 @@ def hotel_invoice_ledger_edit_page(invoice_number):
         ledger_edit=True,
         open_settle=False,
         today_iso=date.today().isoformat(),
+        can_edit_invoices=True,
     )
 
 
@@ -8315,9 +8909,9 @@ def hotel_invoice_ledger_edit_page(invoice_number):
 def hotel_invoice_ledger_edit_api(invoice_number):
     """Apply charge/discount/regenerate actions during a ledger invoice edit."""
     user = get_current_user()
-    if not user_can_edit_kot_sent_lines(user):
+    if not user_can_edit_unsettled_invoices(user):
         return jsonify(
-            {"ok": False, "error": "Cancellation Access is required to edit unsettled invoices."}
+            {"ok": False, "error": "Edit Access is required to edit unsettled invoices."}
         ), 403
     data = request.get_json(silent=True) or {}
     action = (data.get("action") or "").strip().lower()
@@ -8605,7 +9199,19 @@ def hotel_room_invoice_page(room_id):
         room_status=status,
         guest_name=guest_name or "Guest",
         open_settle=str(request.args.get("settle") or "").strip() in ("1", "true", "yes"),
+        invoice_kind=(
+            "fb"
+            if str(request.args.get("kind") or "").strip().lower()
+            in ("fb", "fbe", "fnb", "food")
+            else (
+                "all"
+                if str(request.args.get("kind") or "").strip().lower()
+                in ("all", "both", "combined")
+                else "hotel"
+            )
+        ),
         today_iso=date.today().isoformat(),
+        can_edit_invoices=user_can_edit_unsettled_invoices(get_current_user()),
     )
 
 
@@ -8819,6 +9425,19 @@ def hotel_room_detail_api(room_id):
 
         data = request.get_json(silent=True) or {}
         action = (data.get("action") or "").strip().lower()
+        if action in (
+            "set_discount",
+            "add_custom_charge",
+            "update_charge",
+            "delete_charge",
+            "generate_invoice",
+        ) and not user_can_edit_unsettled_invoices(get_current_user()):
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "Edit Access is required to change invoice folio charges.",
+                }
+            ), 403
         try:
             if action == "reserve":
                 stay = data.get("stay") if isinstance(data.get("stay"), dict) else {}
@@ -9130,6 +9749,12 @@ def hotel_room_detail_api(room_id):
                 payment = data.get("payment") if isinstance(data.get("payment"), dict) else None
                 payment_splits = data.get("payment_splits") or data.get("paymentSplits")
                 note = data.get("note") or data.get("notes") or ""
+                invoice_kind = (
+                    data.get("invoice_kind")
+                    or data.get("invoiceKind")
+                    or data.get("kind")
+                    or "all"
+                )
                 # Allow amount/method at top level for simpler clients.
                 if payment is None and payment_splits is None and (
                     data.get("amount") is not None
@@ -9150,6 +9775,7 @@ def hotel_room_detail_api(room_id):
                     payment=payment,
                     payment_splits=payment_splits if isinstance(payment_splits, list) else None,
                     note=note,
+                    invoice_kind=invoice_kind,
                 )
                 conn.commit()
                 return jsonify(
@@ -9364,6 +9990,7 @@ def point_of_sale_invoice_ledger():
 
     user = get_current_user()
     can_cancel = user_can_edit_kot_sent_lines(user)
+    can_edit = user_can_edit_unsettled_invoices(user)
 
     conn = get_db()
     try:
@@ -9400,7 +10027,7 @@ def point_of_sale_invoice_ledger():
         inv["ledger_can_cancel"] = (
             can_cancel and (not is_settled) and (not is_cancelled) and is_generated
         )
-        inv["ledger_can_edit"] = can_cancel and (not is_settled) and (not is_cancelled)
+        inv["ledger_can_edit"] = can_edit and (not is_settled) and (not is_cancelled)
 
     selected_order_type = filters["selected_order_type"]
     selected_order_type_label = "All"
@@ -9444,7 +10071,9 @@ def point_of_sale_invoice_ledger():
         page_title=page_title,
         invoices=invoices,
         kpis=kpis,
+        pos_payment_amount_columns=POS_PAYMENT_METHODS,
         can_cancel_invoices=can_cancel,
+        can_edit_invoices=can_edit,
         order_types=POS_INVOICE_ORDER_TYPES,
         selected_order_type=selected_order_type,
         selected_order_type_label=selected_order_type_label,
@@ -9525,6 +10154,7 @@ def export_pos_invoice_ledger_report():
         "Mobile",
         "Order Type",
         "Payment Mode",
+        *[label for _key, label in POS_PAYMENT_METHODS],
         "Captain",
         "Items",
         "Subtotal",
@@ -9535,7 +10165,13 @@ def export_pos_invoice_ledger_report():
         "Total",
     )
     col_count = len(headers)
-    amount_cols = {8, 9, 10, 11, 12, 13, 14}
+    # Tender amount columns sit after Payment Mode (col 6).
+    tender_col_start = 7
+    tender_col_count = len(POS_PAYMENT_METHODS)
+    amount_cols = set(range(tender_col_start, tender_col_start + tender_col_count))
+    # Items + money columns after Captain
+    post_captain_start = tender_col_start + tender_col_count + 1  # Items
+    amount_cols.update(range(post_captain_start, col_count + 1))
 
     wb = Workbook()
     ws = wb.active
@@ -9546,6 +10182,11 @@ def export_pos_invoice_ledger_report():
         ws.cell(row=3, column=col, value=title)
 
     for idx, inv in enumerate(invoices, start=4):
+        amounts = inv.get("payment_amounts") or {}
+        tender_values = tuple(
+            _whole_or_float(round_half_up(amounts.get(key) or 0, 2))
+            for key, _label in POS_PAYMENT_METHODS
+        )
         values = (
             inv.get("order_no") or "",
             inv.get("order_date") or "",
@@ -9553,6 +10194,7 @@ def export_pos_invoice_ledger_report():
             inv.get("customer_mobile") or "",
             inv.get("order_type_label") or inv.get("order_type") or "",
             inv.get("payment_mode_label") or "Unsettled",
+            *tender_values,
             inv.get("captain") or "",
             int(inv.get("item_count") or 0),
             _whole_or_float(round_half_up(inv.get("subtotal"), 2)),
@@ -9605,7 +10247,23 @@ def export_pos_invoice_ledger_report():
     ws.row_dimensions[1].height = 24
     ws.row_dimensions[2].height = 20
     ws.row_dimensions[3].height = 20
-    col_widths = (16, 14, 22, 14, 14, 16, 14, 10, 12, 12, 12, 12, 10, 12)
+    col_widths = (
+        16,
+        14,
+        22,
+        14,
+        14,
+        22,
+        *([12] * tender_col_count),
+        14,
+        10,
+        12,
+        12,
+        12,
+        12,
+        10,
+        12,
+    )
     for col, width in enumerate(col_widths, start=1):
         max_len = width
         for row in range(3, last_row + 1):
@@ -9966,12 +10624,12 @@ def point_of_sale_api_kot_tokens():
     endpoint="bar_point_of_sale_api_kot_tokens_reduce",
 )
 def point_of_sale_api_kot_tokens_reduce():
-    """Persist kitchen-sent qty reductions from the Tables KOT hub (Cancellation Access)."""
+    """Persist kitchen-sent qty reductions from the Tables KOT hub (Cancellation)."""
     outlet = _pos_outlet_from_request()
     user = get_current_user()
     if not user_can_edit_kot_sent_lines(user):
         return jsonify(
-            {"ok": False, "error": "Cancellation Access is required to reduce kitchen-sent items."}
+            {"ok": False, "error": "Cancellation is required to reduce kitchen-sent items."}
         ), 403
     data = request.get_json(silent=True) or {}
     changes = data.get("changes") if isinstance(data, dict) else None
@@ -10037,12 +10695,12 @@ def point_of_sale_api_today_invoices():
 @app.route("/point-of-sale/api/invoices/<int:invoice_id>/reopen-edit", methods=["POST"], endpoint="point_of_sale_api_invoice_reopen_edit")
 @app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/reopen-edit", methods=["POST"], endpoint="bar_point_of_sale_api_invoice_reopen_edit")
 def point_of_sale_api_invoice_reopen_edit(invoice_id):
-    """Unlock an unsettled generated invoice for editing (Cancellation Access)."""
+    """Unlock an unsettled generated invoice for editing (Edit Access)."""
     outlet = _pos_outlet_from_request()
     user = get_current_user()
-    if not user_can_edit_kot_sent_lines(user):
+    if not user_can_edit_unsettled_invoices(user):
         return jsonify(
-            {"ok": False, "error": "Cancellation Access is required to edit unsettled invoices."}
+            {"ok": False, "error": "Edit Access is required to edit unsettled invoices."}
         ), 403
     conn = get_db()
     try:
@@ -10065,7 +10723,7 @@ def point_of_sale_api_invoice_reopen_edit(invoice_id):
 @app.route("/point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"], endpoint="point_of_sale_api_invoice_delete")
 @app.route("/bar-point-of-sale/api/invoices/<int:invoice_id>/delete", methods=["POST", "DELETE"], endpoint="bar_point_of_sale_api_invoice_delete")
 def point_of_sale_api_invoice_delete(invoice_id):
-    """Cancel an unsettled POS invoice (Cancellation Access).
+    """Cancel an unsettled POS invoice (Cancellation).
 
     Issued official numbers are kept as status=cancelled; provisional drafts
     are soft-deleted. Requires a cancellation reason.
@@ -10074,7 +10732,7 @@ def point_of_sale_api_invoice_delete(invoice_id):
     user = get_current_user()
     if not user_can_edit_kot_sent_lines(user):
         return jsonify(
-            {"ok": False, "error": "Cancellation Access is required to cancel invoices."}
+            {"ok": False, "error": "Cancellation is required to cancel invoices."}
         ), 403
     data = request.get_json(silent=True) or {}
     reason = ""
@@ -11954,15 +12612,10 @@ def cash_ledger():
 def cash_ledger_load():
     data = request.get_json(silent=True) or {}
     company = (data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
-    raw_date = (data.get("date") or data.get("load_date") or "").strip()
+    # Load date is always the day the entry is saved (not user-editable).
+    load_date = date.today()
     description = (data.get("description") or "").strip()
     amount = parse_money(data.get("amount"))
-    if not raw_date:
-        return jsonify({"ok": False, "error": "Date is required."}), 400
-    try:
-        load_date = date.fromisoformat(raw_date)
-    except ValueError:
-        return jsonify({"ok": False, "error": "Enter a valid date."}), 400
     if amount <= 0:
         return jsonify({"ok": False, "error": "Enter a positive amount."}), 400
     if not description:
@@ -11987,16 +12640,11 @@ def cash_ledger_load():
 def cash_ledger_transfer():
     data = request.get_json(silent=True) or {}
     company = (data.get("company") or DEFAULT_COMPANY).strip() or DEFAULT_COMPANY
-    raw_date = (data.get("date") or data.get("transfer_date") or "").strip()
+    # Transfer date is always the day the entry is saved (not user-editable).
+    transfer_date = date.today()
     description = (data.get("description") or "").strip()
     amount = parse_money(data.get("amount"))
     destination = _normalize_cash_ledger_transfer_destination(data.get("destination"))
-    if not raw_date:
-        return jsonify({"ok": False, "error": "Date is required."}), 400
-    try:
-        transfer_date = date.fromisoformat(raw_date)
-    except ValueError:
-        return jsonify({"ok": False, "error": "Enter a valid date."}), 400
     if amount <= 0:
         return jsonify({"ok": False, "error": "Enter a positive amount."}), 400
     if not destination:
@@ -15405,8 +16053,12 @@ def _agency_form_payload(source=None):
     source = source or {}
     return {
         "name": " ".join(str(source.get("name") or "").split()).strip(),
+        "phone": "".join(str(source.get("phone") or "").split()),
         "gst": " ".join(str(source.get("gst") or "").split()).strip().upper(),
         "address": " ".join(str(source.get("address") or "").split()).strip(),
+        "bank_account_number": "".join(str(source.get("bank_account_number") or "").split()),
+        "bank_name": " ".join(str(source.get("bank_name") or "").split()).strip(),
+        "ifsc_code": "".join(str(source.get("ifsc_code") or "").split()).upper(),
     }
 
 
@@ -15440,8 +16092,12 @@ def agency_master():
         form = {
             "id": selected_agency["id"],
             "name": selected_agency.get("name") or "",
+            "phone": selected_agency.get("phone") or "",
             "gst": selected_agency.get("gst") or "",
             "address": selected_agency.get("address") or "",
+            "bank_account_number": selected_agency.get("bank_account_number") or "",
+            "bank_name": selected_agency.get("bank_name") or "",
+            "ifsc_code": selected_agency.get("ifsc_code") or "",
         }
     else:
         form = {"id": "", **_agency_form_payload()}
@@ -15490,15 +16146,19 @@ def export_agency_report():
     ws = wb.active
     ws.title = "Agencies"
     header_font = Font(bold=True)
-    headers = ["Agency Name", "GST", "Address"]
+    headers = ["Agency Name", "Mobile", "GST", "Address", "Bank Account", "Bank Name", "IFSC Code"]
     for col, title in enumerate(headers, start=1):
         cell = ws.cell(row=1, column=col, value=title)
         cell.font = header_font
 
     for idx, agency in enumerate(agencies, start=2):
         ws.cell(row=idx, column=1, value=agency.get("name") or "")
-        ws.cell(row=idx, column=2, value=agency.get("gst") or "")
-        ws.cell(row=idx, column=3, value=agency.get("address") or "")
+        ws.cell(row=idx, column=2, value=agency.get("phone") or "")
+        ws.cell(row=idx, column=3, value=agency.get("gst") or "")
+        ws.cell(row=idx, column=4, value=agency.get("address") or "")
+        ws.cell(row=idx, column=5, value=agency.get("bank_account_number") or "")
+        ws.cell(row=idx, column=6, value=agency.get("bank_name") or "")
+        ws.cell(row=idx, column=7, value=agency.get("ifsc_code") or "")
 
     for column_cells in ws.columns:
         width = 12
@@ -15537,6 +16197,10 @@ def save_agency():
             payload.get("gst"),
             payload.get("address"),
             agency_id=agency_id,
+            phone=payload.get("phone"),
+            bank_account_number=payload.get("bank_account_number"),
+            bank_name=payload.get("bank_name"),
+            ifsc_code=payload.get("ifsc_code"),
         )
         if errors:
             agencies = list_agencies(conn)
@@ -15683,8 +16347,12 @@ def access_management():
         "email": selected_user.get("email", "") if selected_user else "",
         "role_id": selected_user.get("role_id") if selected_user else "",
         "is_admin": bool(selected_user["is_admin"]) if selected_user else False,
+        "is_active": bool(selected_user.get("is_active", True)) if selected_user else True,
+        "is_locked": bool(selected_user.get("is_locked")) if selected_user else False,
+        "account_status": selected_user.get("account_status", "active") if selected_user else "",
         "photo_path": selected_user.get("photo_path", "") if selected_user else "",
         "avatar_tone": selected_user.get("avatar_tone", 0) if selected_user else 0,
+        "must_change_password": False,
     }
     success_message = ""
     if saved_flag == "created":
@@ -15722,6 +16390,7 @@ def save_access_user():
     full_name = (request.form.get("full_name") or "").strip()
     email = (request.form.get("email") or "").strip()
     password = request.form.get("password", "")
+    must_change_password = bool(request.form.get("must_change_password"))
     role_id_raw = request.form.get("role_id", "").strip()
     remove_photo = bool(request.form.get("remove_photo"))
     photo_upload = request.files.get("photo")
@@ -15775,8 +16444,12 @@ def save_access_user():
                 "email": email,
                 "role_id": role_id or "",
                 "is_admin": bool(_role and _role.get("is_admin")),
+                "is_active": bool(selected_user.get("is_active", True)) if selected_user else True,
+                "is_locked": bool(selected_user.get("is_locked")) if selected_user else False,
+                "account_status": selected_user.get("account_status", "") if selected_user else "",
                 "photo_path": "" if clear_photo else (previous_photo if not new_photo_path else new_photo_path),
                 "avatar_tone": selected_user.get("avatar_tone", 0) if selected_user else 0,
+                "must_change_password": must_change_password,
             }
             if new_photo_path:
                 delete_stored_user_photo(new_photo_path)
@@ -15807,6 +16480,7 @@ def save_access_user():
             password=password,
             role_id=role_id,
             photo_path=photo_arg,
+            must_change_password=must_change_password,
             sql_now=SQL_NOW,
         )
         if (new_photo_path or clear_photo) and previous_photo and previous_photo != new_photo_path:
@@ -16074,18 +16748,32 @@ def unlock_access_user(user_id):
     if not user_can_access_user_access_submodule(actor, "users"):
         return _permission_denied_response("You do not have access to unlock users.")
 
+    return_to_form = (
+        (request.form.get("return_to") or request.args.get("next") or "")
+        .strip()
+        .lower()
+        == "form"
+    )
+
+    def _unlock_redirect(*, missing=False):
+        if return_to_form and not missing:
+            return redirect(
+                url_for("access_management", user_id=user_id, focus="form")
+            )
+        return redirect(url_for("access_management"))
+
     conn = get_db()
     try:
         row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         if not row:
             _queue_auth_notice("User not found.")
-            return redirect(url_for("access_management"))
+            return _unlock_redirect(missing=True)
         auth_security.admin_unlock_user(conn, user_id)
         conn.commit()
         _queue_auth_notice(f"Unlocked account for {row['username']}.")
     finally:
         conn.close()
-    return redirect(url_for("access_management"))
+    return _unlock_redirect()
 
 
 @app.route("/access-management/active/<int:user_id>", methods=["POST"], endpoint="toggle_access_user_active")

@@ -13,7 +13,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
-<link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=19">
+<link rel="stylesheet" href="{{ url_for('static', filename='cash_ledger.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <script>
 (function(){
@@ -25,7 +25,6 @@
 </script>
 </head>
 <body class="de-open su-module">
-{% from 'partials/hotel_date_macros.html' import hotel_date_field %}
 {% include 'partials/de_workspace_shell_open.html' %}
 <div class="main-wrapper" id="cash-ledger-page"
      data-load-url="{{ load_url }}"
@@ -302,10 +301,6 @@
     </div>
     <div id="cl-load-error" class="staff-credit-error"></div>
     <div class="staff-field">
-      <label for="cl-load-date">Date *</label>
-      <input id="cl-load-date" class="staff-input pl-date-input" type="date" value="{{ today_iso }}" max="{{ today_iso }}">
-    </div>
-    <div class="staff-field">
       <label for="cl-load-amount">Amount *</label>
       <input id="cl-load-amount" class="staff-input" type="number" min="0.01" step="0.01" placeholder="0.00">
     </div>
@@ -331,34 +326,16 @@
       <span id="cl-transfer-title">Transfer Out</span>
     </div>
     <div id="cl-transfer-error" class="staff-credit-error"></div>
-    <div class="staff-grid cl-transfer-dest-date-row">
-      <div class="staff-field cl-transfer-dest-field">
-        <span class="staff-supplier-field-label" id="cl-transfer-destination-label">Destination *</span>
-        <input type="hidden" id="cl-transfer-destination" value="bank">
-        <div class="cp-view-tabs cl-transfer-dest-tabs" role="tablist" aria-labelledby="cl-transfer-destination-label" id="cl-transfer-destination-toggle">
-          {% for dest_key, dest_label in cash_ledger_transfer_destinations %}
-          <button type="button"
-                  class="cp-view-tab cl-transfer-dest-tab{% if dest_key == 'bank' %} is-active{% endif %}"
-                  role="tab"
-                  data-value="{{ dest_key }}"
-                  aria-selected="{{ 'true' if dest_key == 'bank' else 'false' }}">{{ dest_label }}</button>
-          {% endfor %}
-        </div>
-      </div>
-      <div class="staff-field cl-modal-date-field">
-        {{ hotel_date_field(
-          'transfer_date',
-          'Date',
-          required=true,
-          value=today_iso,
-          field_id='cl-transfer-date',
-          extra_class='cl-modal-date-chip',
-          panel_title='Select date',
-          empty_label='Select date',
-          hint='',
-          show_cal_icon=false,
-          max_date='today'
-        ) }}
+    <div class="staff-field cl-transfer-dest-field">
+      <input type="hidden" id="cl-transfer-destination" value="bank">
+      <div class="cp-view-tabs cl-transfer-dest-tabs" role="tablist" aria-label="Destination" id="cl-transfer-destination-toggle">
+        {% for dest_key, dest_label in cash_ledger_transfer_destinations %}
+        <button type="button"
+                class="cp-view-tab cl-transfer-dest-tab{% if dest_key == 'bank' %} is-active{% endif %}"
+                role="tab"
+                data-value="{{ dest_key }}"
+                aria-selected="{{ 'true' if dest_key == 'bank' else 'false' }}">{{ dest_label }}</button>
+        {% endfor %}
       </div>
     </div>
     <div class="staff-field">

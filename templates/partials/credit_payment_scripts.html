@@ -1173,6 +1173,12 @@
         transaction_id: transactionId,
         notes: notesEl ? notesEl.value.trim() : ''
       });
+      if (typeof window.deInvalidateSoftNavCacheByPath === 'function') {
+        try {
+          window.deInvalidateSoftNavCacheByPath('/hotel/credit');
+          window.deInvalidateSoftNavCacheByPath('/reports/sales');
+        } catch (eInv) {}
+      }
       if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
       else window.location.reload();
     } catch (err) {
@@ -1301,6 +1307,12 @@
       if (!data.ok) {
         window.alert(data.error || labels.delete_error || 'Unable to delete payment.');
         return;
+      }
+      if (typeof window.deInvalidateSoftNavCacheByPath === 'function') {
+        try {
+          window.deInvalidateSoftNavCacheByPath('/hotel/credit');
+          window.deInvalidateSoftNavCacheByPath('/reports/sales');
+        } catch (eInv) {}
       }
       if (typeof window.deSoftRefresh === 'function') window.deSoftRefresh();
       else window.location.reload();

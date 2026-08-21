@@ -32,9 +32,9 @@
               {% for customer in customers %}
               <tr data-sort-row data-search="{{ [customer.first_name or '', customer.mobile or '', customer.email or '', customer.address or '']|join(' ')|lower }}">
                 <td class="pl-name">{{ customer.first_name }}</td>
-                <td>
+                <td class="sm-col-mobile">
                   {% if customer.mobile %}
-                  +91 {{ customer.mobile }}
+                  +91&nbsp;{{ customer.mobile }}
                   {% else %}
                   —
                   {% endif %}
@@ -68,12 +68,6 @@
 
     {% if show_form %}
     <article class="card" aria-label="Customer form">
-      <div class="card-hdr">
-        <div class="card-title">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-          <span>{% if form.id %}Edit customer{% else %}Add customer{% endif %}</span>
-        </div>
-      </div>
       <div class="card-body">
         <form method="post" action="{{ url_for('save_customer') }}"{% if embed_mode %} data-md-full-nav="1"{% endif %}>
           <input type="hidden" name="customer_id" value="{{ form.id or '' }}">
@@ -103,7 +97,7 @@
             </div>
           </div>
           <div class="sm-actions">
-            <button type="submit" class="btn btn-primary staff-primary">{% if form.id %}Update customer{% else %}Save customer{% endif %}</button>
+            <button type="submit" class="btn btn-primary staff-primary">Save</button>
             <a class="btn staff-secondary" href="{{ url_for('customer_master', embed=1) if embed_mode else url_for('customer_master') }}">Cancel</a>
           </div>
         </form>

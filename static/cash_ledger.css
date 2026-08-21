@@ -201,31 +201,15 @@ body.su-module #cl-transfer-modal #cl-transfer-required-notice{
   text-align:right;
 }
 
-/* Transfer Out: Destination + Date on one row (like Add entry Type + Date) */
-body.su-module #cl-transfer-modal .cl-transfer-dest-date-row{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  align-items:end;
-  gap:12px;
+/* Transfer Out: Bank / Owner destination tabs */
+body.su-module #cl-transfer-modal .cl-transfer-dest-field{
   margin-bottom:14px;
-}
-body.su-module #cl-transfer-modal .cl-transfer-dest-date-row > .staff-field{
-  margin-bottom:0;
   min-width:0;
-}
-body.su-module #cl-transfer-modal .cl-transfer-dest-field .staff-supplier-field-label{
-  display:block;
-  font-size:11px;
-  font-weight:700;
-  color:var(--txt2);
-  text-transform:uppercase;
-  letter-spacing:.4px;
-  margin-bottom:5px;
 }
 body.su-module #cl-transfer-modal .cl-transfer-dest-tabs.cp-view-tabs{
   display:flex;
   width:100%;
-  margin:8px 0 0;
+  margin:0;
   margin-right:0;
   box-sizing:border-box;
 }
@@ -248,46 +232,4 @@ body.su-module #cl-transfer-modal .cl-transfer-dest-tabs .cl-transfer-dest-tab.i
   background:#fff;
   color:#2563EB;
   box-shadow:0 1px 2px rgba(15,23,42,.08);
-}
-
-/* Transfer Out date — match Purchases & Expenses Add entry */
-body.su-module #cl-transfer-modal .cl-modal-date-field{
-  width:auto;
-  flex:0 0 auto;
-}
-body.su-module #cl-transfer-modal .cl-modal-date-chip{
-  width:auto;
-  display:inline-block;
-  max-width:100%;
-}
-body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-control{
-  width:auto;
-}
-body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-trigger{
-  width:auto;
-  min-width:128px;
-  height:40px;
-  min-height:40px;
-  padding:0 16px;
-  border-radius:10px;
-  font:600 13px Inter,system-ui,sans-serif;
-  gap:0;
-  justify-content:center;
-}
-body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-caret{
-  display:none;
-}
-body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-value{
-  flex:0 0 auto;
-  text-align:center;
-}
-@media (max-width:640px){
-  body.su-module #cl-transfer-modal .cl-transfer-dest-date-row{
-    grid-template-columns:1fr;
-  }
-  body.su-module #cl-transfer-modal .cl-modal-date-chip,
-  body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-control,
-  body.su-module #cl-transfer-modal .cl-modal-date-chip .hotel-date-trigger{
-    width:100%;
-  }
 }

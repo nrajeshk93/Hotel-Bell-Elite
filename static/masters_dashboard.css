@@ -683,6 +683,59 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
   width: 100%;
 }
 
+/* Category Master — Outlet segmented control (All / Bar / Restaurant) */
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--category .md-master-outlet-filter {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--category .md-master-outlet-filter > .se-filter-chip-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #6B7280;
+  text-transform: none;
+  letter-spacing: 0;
+  text-align: left;
+  line-height: 1;
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--category .md-master-outlet-filter .pl-kind-filter-tabs.cp-view-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 48px;
+  min-height: 48px;
+  margin: 0;
+  padding: 4px;
+  box-sizing: border-box;
+  background: #F1F5F9;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--category .md-master-outlet-filter .pl-kind-filter-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #64748B;
+  font: 700 12px Inter, system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--category .md-master-outlet-filter .pl-kind-filter-tab.is-active {
+  background: #fff;
+  color: #2563EB;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+:is(#md-master-modal, #st-product-master-modal) .md-master-embed--category .md-master-outlet-filter .pl-kind-filter-tab:hover:not(.is-active) {
+  color: #0F172A;
+}
+
 /* Page-shell search chips — match Menu Master (single control, no nested input border). */
 :is(#md-master-modal, #st-product-master-modal) .md-master-embed--page-shell .pl-search-chip {
   position: relative;
@@ -1130,6 +1183,11 @@ html.de-sidebar-wide-boot body.md-master-modal-open #md-master-modal.modal-backd
 
 .md-master-embed--customer .sm-pl-table {
   min-width: 780px;
+}
+
+.md-master-embed--customer .sm-pl-table .sm-col-mobile {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .md-master-embed--supplier .sm-pl-table {

@@ -92,8 +92,8 @@
   function reopenInvoiceForEdit(page, btn) {
     var invoiceId = btn && btn.getAttribute('data-invoice-id');
     if (!invoiceId) return;
-    if (page.getAttribute('data-pos-can-cancel') !== '1') {
-      toast('Cancellation Access is required to edit unsettled invoices.');
+    if (page.getAttribute('data-pos-can-edit') !== '1') {
+      toast('Edit Access is required to edit unsettled invoices.');
       return;
     }
     var generated = (btn.getAttribute('data-generated') || '') === '1';

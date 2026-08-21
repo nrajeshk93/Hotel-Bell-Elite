@@ -637,6 +637,19 @@
       }
       return;
     }
+    /* Master embeds: Export / Add … Expand … Close */
+    if(container.classList.contains('md-master-embed-header-actions') ||
+       container.classList.contains('pos-menu-header-actions')){
+      var embedClose = container.querySelector(
+        '.md-master-modal-close, .pos-menu-embed-close, [data-md-menu-close]'
+      );
+      if(embedClose){
+        container.insertBefore(btn, embedClose);
+      } else {
+        container.appendChild(btn);
+      }
+      return;
+    }
     var before = preferredInsertTarget(container);
     if(before){
       container.insertBefore(btn, before);

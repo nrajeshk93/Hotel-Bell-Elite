@@ -66,6 +66,7 @@
   var CGST_RATE = 0.025;
   var UGST_RATE = 0.025;
   var VAT_RATE = 0.1;
+  var PRICES_INCLUDE_TAX = true;
   var taxRatesLoaded = false;
   var taxRatesInflight = null;
 
@@ -79,6 +80,22 @@
     if (!isFinite(n) || n < 0) n = defaultPct;
     if (n > 100) n = 100;
     return n;
+  }
+
+  function parseTaxToggle(values, namedKey, legacyIndex, defaultVal) {
+    var src = values && typeof values === 'object' ? values : {};
+    var field = src[namedKey];
+    if (field == null) field = src['f' + legacyIndex];
+    if (field == null) return defaultVal;
+    if (typeof field === 'object') {
+      if (typeof field.checked === 'boolean') return !!field.checked;
+      field = field.value;
+    }
+    if (typeof field === 'boolean') return field;
+    var s = String(field == null ? '' : field).trim().toLowerCase();
+    if (s === 'true' || s === '1' || s === 'on' || s === 'yes') return true;
+    if (s === 'false' || s === '0' || s === 'off' || s === 'no' || s === '') return false;
+    return defaultVal;
   }
 
   function taxRatesFromApiPayload(data) {
@@ -103,13 +120,16 @@
             ? Number(tr.vat_pct) / 100
             : NaN;
       if (isFinite(cgst) || isFinite(ugst) || isFinite(vat)) {
+        var includeTax = true;
+        if (tr.prices_include_tax != null) includeTax = !!tr.prices_include_tax;
         return {
           cgst: isFinite(cgst) ? cgst : 0.025,
           ugst: isFinite(ugst) ? ugst : 0.025,
           vat: isFinite(vat) ? vat : 0.1,
           cgst_pct: (isFinite(cgst) ? cgst : 0.025) * 100,
           ugst_pct: (isFinite(ugst) ? ugst : 0.025) * 100,
-          vat_pct: (isFinite(vat) ? vat : 0.1) * 100
+          vat_pct: (isFinite(vat) ? vat : 0.1) * 100,
+          prices_include_tax: includeTax
         };
       }
     }
@@ -140,7 +160,8 @@
       vat_pct: vatPct,
       cgst: cgstPct / 100,
       ugst: ugstPct / 100,
-      vat: vatPct / 100
+      vat: vatPct / 100,
+      prices_include_tax: parseTaxToggle(values, 'prices_include_tax', 3, true)
     };
   }
 
@@ -149,6 +170,7 @@
     if (rates.cgst != null && isFinite(Number(rates.cgst))) CGST_RATE = Number(rates.cgst);
     if (rates.ugst != null && isFinite(Number(rates.ugst))) UGST_RATE = Number(rates.ugst);
     if (rates.vat != null && isFinite(Number(rates.vat))) VAT_RATE = Number(rates.vat);
+    if (rates.prices_include_tax != null) PRICES_INCLUDE_TAX = !!rates.prices_include_tax;
     GST_RATE = CGST_RATE + UGST_RATE;
     taxRatesLoaded = true;
     try {
@@ -158,7 +180,8 @@
         vat: VAT_RATE,
         cgst_pct: CGST_RATE * 100,
         ugst_pct: UGST_RATE * 100,
-        vat_pct: VAT_RATE * 100
+        vat_pct: VAT_RATE * 100,
+        prices_include_tax: PRICES_INCLUDE_TAX
       };
     } catch (err) {}
   }
@@ -214,11 +237,8 @@
   var NOTES_MAX = 200;
   var INV_MODALS = ['custom', 'line-note', 'discount', 'service', 'tip', 'coupon'];
   /* Debounced plain-save after line edits so soft-nav back to Tables does not
-     drop unsaved dine-in items. Guest is the default first name (editable);
-     silent autosave may send Guest in the payload when the field is blank,
-     but must not overwrite the input while staff are typing. */
+     drop unsaved dine-in items. Autosave waits until staff enter a customer name. */
   var AUTOSAVE_DELAY_MS = 450;
-  var DEFAULT_AUTOSAVE_CUSTOMER = 'Guest';
   var autosaveTimer = null;
   var saveInflight = null;
   /* Bumps on every local edit so an in-flight save cannot clear dirty and
@@ -1524,6 +1544,56 @@
     }
   }
 
+  function roundMoney(n) {
+    return Math.round((Number(n) || 0) * 100) / 100;
+  }
+
+  function splitInclusiveGst(inclusive, cgstRate, ugstRate) {
+    inclusive = roundMoney(inclusive);
+    var factor = 1 + Number(cgstRate || 0) + Number(ugstRate || 0);
+    if (inclusive <= 0 || factor <= 1) {
+      return { taxable: inclusive, cgst: 0, ugst: 0, gst: 0 };
+    }
+    var taxable = roundMoney(inclusive / factor);
+    var cgst = roundMoney(taxable * cgstRate);
+    var ugst = roundMoney(inclusive - taxable - cgst);
+    if (ugst < 0) {
+      ugst = 0;
+      cgst = roundMoney(inclusive - taxable);
+    }
+    return { taxable: taxable, cgst: cgst, ugst: ugst, gst: roundMoney(cgst + ugst) };
+  }
+
+  function splitInclusiveVat(inclusive, vatRate) {
+    inclusive = roundMoney(inclusive);
+    var factor = 1 + Number(vatRate || 0);
+    if (inclusive <= 0 || factor <= 1) {
+      return { taxable: inclusive, vat: 0 };
+    }
+    var taxable = roundMoney(inclusive / factor);
+    return { taxable: taxable, vat: roundMoney(inclusive - taxable) };
+  }
+
+  /** Line table Rate/Amount — exclusive when menu prices include tax. */
+  function lineInclusiveTotal(line) {
+    return roundMoney((Number(line && line.rate) || 0) * (Number(line && line.qty) || 0));
+  }
+
+  function lineDisplayAmount(line) {
+    var inclusive = lineInclusiveTotal(line);
+    if (!PRICES_INCLUDE_TAX || inclusive <= 0) return inclusive;
+    if (lineMenuOutlet(line) === 'bar' && isLiquorLine(line)) {
+      return splitInclusiveVat(inclusive, VAT_RATE).taxable;
+    }
+    return splitInclusiveGst(inclusive, effectiveCgstRate(), effectiveUgstRate()).taxable;
+  }
+
+  function lineDisplayRate(line) {
+    var qty = Number(line && line.qty) || 0;
+    if (qty <= 0) return 0;
+    return roundMoney(lineDisplayAmount(line) / qty);
+  }
+
   function calcTotals(override) {
     var o = override || {};
     var discountType = o.discountType != null ? o.discountType : state.discountType;
@@ -1554,19 +1624,44 @@
     var foodAfter = Math.max(0, afterDiscount - barAfter);
     var cgstRate = effectiveCgstRate();
     var ugstRate = effectiveUgstRate();
-    var cgst = foodAfter * cgstRate;
-    var ugst = foodAfter * ugstRate;
-    var gst = cgst + ugst;
-    var vat = barAfter * VAT_RATE;
+    var cgst;
+    var ugst;
+    var gst;
+    var vat;
+    var taxAdd;
+    var summarySubtotal = subtotal;
+    var summaryDiscount = discount;
+    if (PRICES_INCLUDE_TAX) {
+      var foodGross = Math.max(0, subtotal - barAlcoholSubtotal);
+      var foodGrossSplit = splitInclusiveGst(foodGross, cgstRate, ugstRate);
+      var foodNetSplit = splitInclusiveGst(foodAfter, cgstRate, ugstRate);
+      var barGrossSplit = splitInclusiveVat(barAlcoholSubtotal, VAT_RATE);
+      var barNetSplit = splitInclusiveVat(barAfter, VAT_RATE);
+      cgst = foodNetSplit.cgst;
+      ugst = foodNetSplit.ugst;
+      gst = foodNetSplit.gst;
+      vat = barNetSplit.vat;
+      taxAdd = 0;
+      summarySubtotal = roundMoney(foodGrossSplit.taxable + barGrossSplit.taxable);
+      summaryDiscount = roundMoney(
+        summarySubtotal - foodNetSplit.taxable - barNetSplit.taxable
+      );
+    } else {
+      cgst = roundMoney(foodAfter * cgstRate);
+      ugst = roundMoney(foodAfter * ugstRate);
+      gst = roundMoney(cgst + ugst);
+      vat = roundMoney(barAfter * VAT_RATE);
+      taxAdd = gst + vat;
+    }
     var service = calcAdjAmount(afterDiscount, serviceType, serviceValue);
     var tip = Number(tipAmount) || 0;
     if (tip < 0) tip = 0;
-    var beforeRound = afterDiscount + gst + vat + service + tip;
+    var beforeRound = afterDiscount + taxAdd + service + tip;
     var rounded = Math.round(beforeRound);
     var roundOff = Math.round((rounded - beforeRound) * 100) / 100;
     return {
-      subtotal: subtotal,
-      discount: discount,
+      subtotal: summarySubtotal,
+      discount: summaryDiscount,
       discountType: discountType,
       discountValue: Number(discountValue) || 0,
       discountLineUids: scopedUids,
@@ -1686,15 +1781,16 @@
     var canCancelKot = canCancelKotLines(page);
     var kotLockTip = canCancelKot
       ? 'Kitchen-sent — changes update the Kitchen Order Token'
-      : 'Sent to kitchen — needs Cancellation Access to change or remove';
+      : 'Sent to kitchen — needs Cancellation to change or remove';
 
     body.innerHTML = state.lines
       .map(function (line) {
-        var amt = (Number(line.rate) || 0) * (Number(line.qty) || 0);
+        var displayRate = lineDisplayRate(line);
+        var amt = lineDisplayAmount(line);
         var pendingQty = pendingKotQty(line);
         var sentQty = lineKitchenSentQty(line);
         var kotLocked = sentQty > 0 && !canCancelKot;
-        /* Pending units may always drop; kitchen-sent units need Cancellation Access. */
+        /* Pending units may always drop; kitchen-sent units need Cancellation. */
         var canDecrease = !locked && (
           canCancelKot ? Number(line.qty) > 1 : Number(line.qty) > sentQty
         );
@@ -1775,7 +1871,7 @@
           '>+</button>' +
           '</div></td>' +
           '<td class="pos-inv-col-rate"><span class="pos-inv-rate">' +
-          money(line.rate) +
+          money(displayRate) +
           '</span></td>' +
           '<td class="pos-inv-col-amt"><span class="pos-inv-amt">' +
           money(amt) +
@@ -3240,7 +3336,7 @@
     syncOrderNoMeta(page);
 
     var nameEl = $('#pos-inv-customer-name', page);
-    if (nameEl) nameEl.value = invoice.customer_name || DEFAULT_AUTOSAVE_CUSTOMER;
+    if (nameEl) nameEl.value = String(invoice.customer_name || '').trim();
     var mobileEl = $('#pos-inv-customer-mobile', page);
     if (mobileEl) mobileEl.value = invoice.customer_mobile || '';
     var notesEl = $('#pos-inv-notes', page);
@@ -3617,7 +3713,7 @@
     initMeta(page);
     var nameEl = $('#pos-inv-customer-name', page);
     if (nameEl) {
-      nameEl.value = DEFAULT_AUTOSAVE_CUSTOMER;
+      nameEl.value = '';
       nameEl.disabled = false;
     }
     var mobileEl = $('#pos-inv-customer-mobile', page);
@@ -4481,6 +4577,7 @@
   function shouldAutosave(page) {
     if (state.invoiceGenerated) return false;
     if (!page || !state.lines.length) return false;
+    if (!fieldValue('pos-inv-customer-name', page)) return false;
     var orderType =
       fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
     if (orderType === 'dine_in') {
@@ -4604,13 +4701,6 @@
     }, AUTOSAVE_DELAY_MS);
   }
 
-  function ensureDefaultCustomerName(page) {
-    var nameEl = $('#pos-inv-customer-name', page);
-    if (nameEl && !String(nameEl.value || '').trim()) {
-      nameEl.value = DEFAULT_AUTOSAVE_CUSTOMER;
-    }
-  }
-
   /** Immediate persist of dirty dine-in lines (soft-nav leave / pagehide). */
   function flushDirtyOrder(page, opts) {
     cancelAutosaveTimer();
@@ -4684,10 +4774,8 @@
         toast('Enter customer name before saving.');
         var nameEl = $('#pos-inv-customer-name', page);
         if (nameEl) nameEl.focus();
-        return Promise.resolve({ ok: false, skipped: true });
       }
-      /* Payload-only fallback — do not write into the input (would clobber typing). */
-      customerName = DEFAULT_AUTOSAVE_CUSTOMER;
+      return Promise.resolve({ ok: false, skipped: true });
     }
 
     if (!state.orderNo) initMeta(page);
@@ -5300,7 +5388,7 @@
       if (e.target.closest('[data-line-note]')) {
         if (guardInvoiceLocked()) return;
         if (lineHasKitchenSent(line) && !canCancelKotLines(page)) {
-          toast('Sent to kitchen — needs Cancellation Access to edit this item.');
+          toast('Sent to kitchen — needs Cancellation to edit this item.');
           return;
         }
         openLineNoteModal(page, line);
@@ -5309,7 +5397,7 @@
       if (e.target.closest('[data-del]')) {
         if (guardInvoiceLocked()) return;
         if (lineHasKitchenSent(line) && !canCancelKotLines(page)) {
-          toast('Sent to kitchen — needs Cancellation Access to remove this item.');
+          toast('Sent to kitchen — needs Cancellation to remove this item.');
           return;
         }
         state.lines = state.lines.filter(function (l) {
@@ -5331,7 +5419,7 @@
           nextQty < sentQty &&
           !canCancelKotLines(page)
         ) {
-          toast('Sent to kitchen — needs Cancellation Access to reduce below the sent quantity.');
+          toast('Sent to kitchen — needs Cancellation to reduce below the sent quantity.');
           return;
         }
         line.qty = nextQty;
@@ -5650,7 +5738,6 @@
 
     populateTables(page, loadFloorTablesSync(), { loading: !floorTablesLoaded });
     initMeta(page);
-    if (freshMount) ensureDefaultCustomerName(page);
     bindSearch(page);
     bindLines(page);
     bindHeader(page);

@@ -608,9 +608,12 @@
       path === '/point-of-sale/invoice-ledger' ||
       path === '/bar-point-of-sale/invoice-ledger' ||
       path === '/hotel/invoice-ledger' ||
+      path === '/hotel/room-transfer-invoices' ||
       path === '/hotel/credit' ||
       path === '/credits' ||
-      path.indexOf('/credits/') === 0
+      path.indexOf('/credits/') === 0 ||
+      /* Sales reports (agency billing, invoice sales, etc.) change as invoices settle. */
+      path.indexOf('/reports/sales/') === 0
     );
   }
 
@@ -1781,6 +1784,17 @@
     catch(e){ window.scrollTo(0, 0); }
   }
 
+  /** Prefer restoring Reports hub scroll (Sales / Restaurant / Bar) over jumping to top. */
+  function scrollMainAfterSoftNav(url){
+    try{
+      var path = new URL(url, window.location.href).pathname.replace(/\/$/, '') || '/';
+      if(path === '/reports' && typeof window.deRestoreReportsHubScroll === 'function'){
+        if(window.deRestoreReportsHubScroll()) return;
+      }
+    } catch(e){}
+    scrollMainToTop();
+  }
+
   var SIDEBAR_SCROLL_KEY = 'de-sidebar-nav-scroll';
   var lockedSidebarScroll = null;
   var sidebarScrollLockTimer = null;
@@ -2054,7 +2068,7 @@
           curMain.appendChild(frag);
         }
         dropStaleWhenReady(staleLinks, addedLinks);
-        scrollMainToTop();
+        scrollMainAfterSoftNav(url);
 
         var syncUrl = urlWithPosSettingsSection(url);
         try{

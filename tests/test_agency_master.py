@@ -37,7 +37,13 @@ class AgencyMasterDbTests(unittest.TestCase):
 
     def test_save_list_and_upsert(self):
         saved_id, errors = save_agency_record(
-            self.conn, "MakeMyTrip", "27AAAAA0000A1Z5", "Mumbai"
+            self.conn,
+            "MakeMyTrip",
+            "27AAAAA0000A1Z5",
+            "Mumbai",
+            bank_account_number="1234567890",
+            bank_name="HDFC Bank",
+            ifsc_code="HDFC0001234",
         )
         self.assertEqual(errors, [])
         self.assertIsNotNone(saved_id)
@@ -46,6 +52,22 @@ class AgencyMasterDbTests(unittest.TestCase):
         agencies = list_agencies(self.conn)
         self.assertEqual(len(agencies), 1)
         self.assertEqual(agencies[0]["name"], "MakeMyTrip")
+        self.assertEqual(agencies[0]["bank_account_number"], "1234567890")
+        self.assertEqual(agencies[0]["bank_name"], "HDFC Bank")
+        self.assertEqual(agencies[0]["ifsc_code"], "HDFC0001234")
+        self.assertEqual(agencies[0].get("phone") or "", "")
+
+        saved_phone_id, phone_errors = save_agency_record(
+            self.conn,
+            "Yatra",
+            "",
+            "",
+            phone="98765 43210",
+        )
+        self.assertEqual(phone_errors, [])
+        self.assertIsNotNone(saved_phone_id)
+        self.conn.commit()
+        self.assertEqual(get_agency(self.conn, saved_phone_id)["phone"], "9876543210")
 
         dup_id, dup_errors = save_agency_record(self.conn, "makemytrip", "X", "Y")
         self.assertIsNone(dup_id)
@@ -54,11 +76,22 @@ class AgencyMasterDbTests(unittest.TestCase):
         updated = upsert_agency_by_name(self.conn, "MakeMyTrip", "27BBBBB0000B1Z5", "")
         self.assertEqual(updated["gst"], "27BBBBB0000B1Z5")
         self.assertEqual(updated["address"], "Mumbai")
+        self.assertEqual(updated["bank_name"], "HDFC Bank")
         self.assertEqual(get_agency(self.conn, saved_id)["gst"], "27BBBBB0000B1Z5")
 
         filled = upsert_agency_by_name(self.conn, "MakeMyTrip", "not-a-gstin", "Andaman")
         self.assertEqual(filled["gst"], "27BBBBB0000B1Z5")
         self.assertEqual(filled["address"], "Andaman")
+
+        bad_ifsc_id, bad_ifsc_errors = save_agency_record(
+            self.conn,
+            "Goibibo",
+            "",
+            "",
+            ifsc_code="BAD",
+        )
+        self.assertIsNone(bad_ifsc_id)
+        self.assertTrue(any("ifsc" in e.lower() for e in bad_ifsc_errors))
 
 
 class AgencyMasterRouteTests(unittest.TestCase):
@@ -123,6 +156,31 @@ class AgencyMasterRouteTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertIn("Agency Master", html)
         self.assertIn("Booking.com", html)
+        self.assertIn("Mobile", html)
+        self.assertIn("Bank Account", html)
+        self.assertIn("Bank Name", html)
+        self.assertIn("IFSC Code", html)
+
+    def test_save_agency_bank_fields(self):
+        created = self.client.post(
+            "/agencies/save",
+            data={
+                "name": "Cleartrip",
+                "phone": "9988776655",
+                "gst": "29DDDDD0000D1Z5",
+                "address": "Pune",
+                "bank_account_number": "9988776655",
+                "bank_name": "SBI",
+                "ifsc_code": "SBIN0004321",
+            },
+            follow_redirects=True,
+        )
+        self.assertEqual(created.status_code, 200)
+        html = created.get_data(as_text=True)
+        self.assertIn("Cleartrip", html)
+        self.assertIn("9988776655", html)
+        self.assertIn("SBI", html)
+        self.assertIn("SBIN0004321", html)
 
     def test_master_hub_includes_agency_card(self):
         page = self.client.get("/master")

@@ -65,14 +65,9 @@ body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-chi
   text-overflow:ellipsis;
   white-space:nowrap;
 }
-body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-chip-chev{
-  flex-shrink:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  width:34px;
-  align-self:stretch;
-  color:#94A3B8;
+body.sales-report-module #sr-filter-form .se-filter-chip-chev,
+body.sales-report-module #msr-filter-form .se-filter-chip-chev{
+  display:none !important;
 }
 body.sales-report-module #sr-filter-form .pl-header-field-listbox.is-open{
   z-index:80;
@@ -83,10 +78,6 @@ body.sales-report-module #sr-filter-form .pl-search-chip.pl-header-field-listbox
   border-color:#93C5FD !important;
   box-shadow:0 0 0 3px rgba(37,99,235,.12);
   background:#fff !important;
-}
-body.sales-report-module #sr-filter-form .pl-header-field-listbox.is-open .se-filter-chip-chev{
-  color:#2563EB;
-  transform:rotate(180deg);
 }
 body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-listbox{
   padding:6px;
@@ -104,6 +95,42 @@ body.sales-report-module #sr-filter-form .pl-header-field-listbox .se-filter-lis
   background:rgba(37,99,235,.08);
   color:#2563EB;
   font-weight:600;
+}
+body.sales-report-module #sr-filter-form #sr-agency-listbox{
+  flex:0 1 220px;
+  width:clamp(160px,16vw,240px);
+  min-width:148px;
+  max-width:260px;
+}
+body.sales-report-module #sr-filter-form #sr-agency-listbox.ep-combobox-listbox .se-filter-chip-control{
+  overflow:hidden;
+}
+body.sales-report-module #sr-filter-form #sr-agency-listbox input.se-filter-chip-combobox{
+  display:block;
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:100%;
+  min-height:44px;
+  padding:0 12px;
+  font-size:13px;
+  font-weight:600;
+  cursor:text;
+}
+body.sales-report-module #sr-filter-form #sr-agency-listbox input.se-filter-chip-combobox::placeholder{
+  color:#94A3B8;
+  font-weight:500;
+}
+body.sales-report-module #sr-filter-form #sr-agency-listbox input.se-filter-chip-combobox::-webkit-search-cancel-button{
+  display:none;
+  -webkit-appearance:none;
+}
+body.sales-report-module #sr-filter-form #sr-agency-listbox.is-open{
+  z-index:100;
+}
+body.sales-report-module #sr-filter-form #sr-agency-list{
+  max-height:min(320px,55vh);
+  z-index:100;
 }
 
 body.sales-report-module #sr-filter-form .pl-search-chip{
@@ -174,6 +201,7 @@ body.sales-report-module #msr-filter-form .pl-date-range-host .se-filter-chip--d
 }
 body.sales-report-module #sr-filter-form .pl-date-range-host .an-range-trigger,
 body.sales-report-module #sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
+body.sales-report-module #meal-plan-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
 body.sales-report-module #msr-filter-form .pl-date-range-host .an-range-trigger,
 body.sales-report-module #menu-sales-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,
 body.sales-report-module #customer-insights-report-page .pl-date-range-host .an-range-wrap .an-range-trigger.se-filter-chip-trigger,

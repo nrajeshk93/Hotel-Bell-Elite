@@ -435,20 +435,19 @@ class CashLedgerRouteTests(unittest.TestCase):
         with app_module.app.test_request_context(
             "/accounts/cash-ledger/load",
             method="POST",
-            json={"date": "", "amount": 10, "description": "x"},
+            json={"amount": 0, "description": "x"},
         ):
             resp = app_module.cash_ledger_load()
             if isinstance(resp, tuple):
                 resp = resp[0]
             data = resp.get_json()
             self.assertFalse(data["ok"])
-            self.assertIn("Date", data["error"])
+            self.assertIn("positive amount", data["error"].lower())
 
         with app_module.app.test_request_context(
             "/accounts/cash-ledger/transfer",
             method="POST",
             json={
-                "date": "2026-07-01",
                 "amount": 10,
                 "description": "x",
                 "destination": "petty",

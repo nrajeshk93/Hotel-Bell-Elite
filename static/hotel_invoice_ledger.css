@@ -24,38 +24,56 @@ body.hotel-invoice-ledger-module .hil-kpi:focus-visible{
 body.hotel-invoice-ledger-module .se-sales-header-filters:has(.hil-ledger-form){
   justify-content:stretch;
 }
+body.hotel-invoice-ledger-module .hil-ledger-form{
+  --pl-filter-control-h:44px;
+}
 body.hotel-invoice-ledger-module .hil-ledger-form.sr-topbar-filters{
   display:flex;
-  flex-wrap:nowrap;
+  flex-wrap:wrap;
   align-items:flex-end;
   justify-content:flex-start;
   gap:12px;
   width:100%;
   max-width:100%;
   min-width:0;
+  margin-left:0;
   flex:1 1 auto;
+  overflow:visible;
 }
-body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field{
-  flex:0 1 auto;
-  width:clamp(120px,12vw,180px);
-  min-width:112px;
-  max-width:200px;
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-kind-filter-tabs.cp-view-tabs,
+body.hotel-invoice-ledger-module .hil-ledger-form .se-filter-chip-control{
+  box-sizing:border-box;
+  height:var(--pl-filter-control-h);
+  min-height:var(--pl-filter-control-h);
+  max-height:var(--pl-filter-control-h);
+  border-radius:8px;
+  overflow:hidden;
 }
-body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip{
-  position:relative;
-  flex:1 1 auto;
-  width:auto;
-  min-width:96px;
-  max-width:100%;
-  z-index:20;
+body.hotel-invoice-ledger-module .hil-ledger-form .se-filter-chip-trigger,
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-input,
+body.hotel-invoice-ledger-module .hil-ledger-form .an-range-wrap,
+body.hotel-invoice-ledger-module .hil-ledger-form .an-range-trigger{
+  box-sizing:border-box;
+  height:100%;
+  min-height:0;
+  max-height:100%;
+  line-height:1.2;
+  padding-top:0;
+  padding-bottom:0;
 }
-body.hotel-invoice-ledger-module .hil-ledger-form .pl-date-range-host{
-  flex:0 0 auto;
-  width:auto;
+body.hotel-invoice-ledger-module .hil-ledger-form .an-range-wrap{
+  display:flex;
+  align-items:stretch;
+  width:max-content;
   min-width:0;
-  max-width:none;
-  z-index:30;
 }
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-kind-filter-host{
+  position:relative;
+  flex:0 0 auto;
+  min-width:0;
+  margin-right:0;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-kind-filter-host > .se-filter-chip-label,
 body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field .se-filter-chip-label{
   display:block;
   margin-bottom:5px;
@@ -64,10 +82,53 @@ body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field .se-filter-ch
   color:var(--txt2,#4A5568);
   text-transform:uppercase;
   letter-spacing:.4px;
+  text-align:left;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-kind-filter-tabs.cp-view-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  height:44px;
+  min-height:44px;
+  margin:0;
+  padding:4px;
+  box-sizing:border-box;
+  background:#F1F5F9;
+  border:1px solid var(--border,#E2E8F0);
+  border-radius:8px;
+  overflow:hidden;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-kind-filter-tabs .pl-kind-filter-tab{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:34px;
+  padding:0 14px;
+  border:0 !important;
+  border-radius:9px;
+  background:transparent;
+  color:#64748B;
+  font:700 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  white-space:nowrap;
+  appearance:none;
+  -webkit-appearance:none;
+  box-shadow:none;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-kind-filter-tabs .pl-kind-filter-tab:hover{
+  color:#0F172A;
+  background:rgba(255,255,255,.65);
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-kind-filter-tabs .pl-kind-filter-tab.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
 }
 body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox .se-filter-chip-control{
   width:100%;
-  min-height:44px;
+  height:var(--pl-filter-control-h);
+  min-height:var(--pl-filter-control-h);
+  max-height:var(--pl-filter-control-h);
   background:#fff !important;
   border:1px solid var(--border,#E2E8F0) !important;
   border-radius:8px;
@@ -75,11 +136,63 @@ body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox .se-f
   align-items:center;
   overflow:hidden;
 }
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox .se-filter-chip-trigger{
+  flex:1 1 auto;
+  min-width:0;
+  width:100%;
+  height:100%;
+  min-height:0;
+  display:flex;
+  align-items:center;
+  padding:0 8px 0 12px;
+  border:0;
+  background:transparent;
+  font:inherit;
+  font-size:13px;
+  font-weight:600;
+  text-align:left;
+  cursor:pointer;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox .se-filter-chip-value{
+  display:block;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox .se-filter-chip-chev{
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:34px;
+  align-self:stretch;
+  color:#94A3B8;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox.is-open .se-filter-chip-control,
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox .se-filter-chip-control:focus-within,
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip.pl-header-field-listbox.is-active .se-filter-chip-control{
+  border-color:#93C5FD !important;
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+  background:#fff !important;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox.is-open .se-filter-chip-chev{
+  color:#2563EB;
+  transform:rotate(180deg);
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip{
+  position:relative;
+  flex:1 1 180px;
+  width:auto;
+  min-width:140px;
+  max-width:none;
+  z-index:20;
+}
 body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip .pl-search-input{
   flex:1 1 auto;
   min-width:0;
   width:100%;
-  min-height:44px;
+  height:100%;
+  min-height:0;
   border:0 !important;
   background:transparent !important;
   padding:0 12px;
@@ -88,14 +201,62 @@ body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip .pl-search-inp
   font-weight:500;
   outline:none;
 }
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+  flex:1 1 150px;
+  width:auto;
+  min-width:140px;
+  max-width:200px;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-date-range-host{
+  flex:0 0 auto;
+  min-width:0;
+  width:max-content;
+  max-width:100%;
+  z-index:30;
+  overflow:visible;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-date-range-host .se-filter-chip--date-range .se-filter-chip-control{
+  overflow:visible;
+  width:max-content;
+  max-width:100%;
+}
+body.hotel-invoice-ledger-module .hil-ledger-form .pl-date-range-host .an-range-trigger{
+  min-width:0;
+  width:max-content;
+  max-width:100%;
+  padding:0 12px 0 14px;
+  font-size:13px;
+  font-weight:600;
+  white-space:nowrap;
+}
 body.hotel-invoice-ledger-module .hil-ledger-form .se-filter-chip-chev,
 body.hotel-invoice-ledger-module .hil-ledger-form .an-range-chev{
   display:none !important;
 }
+@media (max-width:900px){
+  body.hotel-invoice-ledger-module .hil-ledger-form .pl-search-chip{
+    flex:1 1 160px;
+    min-width:140px;
+  }
+  body.hotel-invoice-ledger-module .hil-ledger-form .pl-header-field-listbox.se-filter-chip--listbox:not(.pl-search-chip){
+    flex:1 1 150px;
+    max-width:none;
+  }
+}
 
 /* Wide ledger: keep each row to two lines (name + meta); scroll horizontally. */
 body.hotel-invoice-ledger-module .hil-ledger-table{
-  min-width:1480px;
+  min-width:1880px;
+}
+body.hotel-invoice-ledger-module .hil-settlement-summary{
+  margin-top:12px;
+}
+body.hotel-invoice-ledger-module .hil-tender-kpi .pl-summary-value{
+  font-size:1.15rem;
+}
+body.hotel-invoice-ledger-module .hil-ledger-table .hil-tender-col{
+  min-width:88px;
+  white-space:nowrap;
 }
 body.hotel-invoice-ledger-module .hil-ledger-table th,
 body.hotel-invoice-ledger-module .hil-ledger-table td{
@@ -140,6 +301,20 @@ body.hotel-invoice-ledger-module .hil-ledger-table tr.hil-row.is-open .cp-col-ch
 body.hotel-invoice-ledger-module .hil-ledger-table .pl-col-status{
   min-width:132px;
   white-space:nowrap;
+}
+body.hotel-invoice-ledger-module #hotel-room-transfer-ledger-page .hil-ledger-table .pl-col-status{
+  min-width:168px;
+  max-width:240px;
+  white-space:normal;
+}
+body.hotel-invoice-ledger-module #hotel-room-transfer-ledger-page .cp-status-pill{
+  height:auto;
+  min-height:22px;
+  max-width:100%;
+  white-space:normal;
+  line-height:1.3;
+  padding:4px 8px;
+  text-align:center;
 }
 body.hotel-invoice-ledger-module .hil-ledger-table th.pl-col-actions,
 body.hotel-invoice-ledger-module .hil-ledger-table td.pl-col-actions{
@@ -355,82 +530,3 @@ body.hotel-invoice-ledger-module .hil-print-btn svg{
   cursor:not-allowed;
 }
 
-body.hotel-room-transfer-popup{
-  margin:0;
-  min-height:100vh;
-  background:#F8FAFC;
-}
-body.hotel-room-transfer-popup .main-wrapper{
-  min-height:100vh;
-  display:flex;
-  flex-direction:column;
-}
-body.hotel-room-transfer-popup .se-content{
-  flex:1 1 auto;
-  min-height:0;
-}
-
-body.hil-rt-overlay-open{
-  overflow:hidden;
-}
-.hil-rt-overlay[hidden]{
-  display:none !important;
-}
-.hil-rt-overlay{
-  position:fixed;
-  inset:0;
-  z-index:1400;
-  display:flex;
-  flex-direction:column;
-  background:#fff;
-}
-.hil-rt-overlay-bar{
-  flex:0 0 auto;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  padding:12px 16px;
-  border-bottom:1px solid #E2E8F0;
-  background:#fff;
-}
-.hil-rt-overlay-bar h2{
-  margin:0;
-  font-size:16px;
-  font-weight:750;
-  color:#0F172A;
-}
-.hil-rt-overlay-close{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  width:34px;
-  height:34px;
-  border:1px solid #E2E8F0;
-  border-radius:8px;
-  background:#fff;
-  color:#475569;
-  cursor:pointer;
-  flex-shrink:0;
-}
-.hil-rt-overlay-close:hover{
-  background:#F8FAFC;
-  border-color:#CBD5E1;
-  color:#111827;
-}
-.hil-rt-overlay-close svg{
-  width:18px;
-  height:18px;
-  stroke:currentColor;
-  fill:none;
-  stroke-width:2;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-}
-.hil-rt-overlay-frame{
-  flex:1 1 auto;
-  width:100%;
-  border:0;
-  min-height:0;
-  background:#F8FAFC;
-}

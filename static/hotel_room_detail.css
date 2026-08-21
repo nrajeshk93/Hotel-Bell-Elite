@@ -316,7 +316,12 @@ body.hotel-room-detail-module .de-content{
 .hrd-charges-body.is-hidden,
 #hrd-agency-card[hidden],
 #hrd-agency-card.is-hidden,
-#hrd-toast[hidden]{
+#hrd-toast[hidden],
+.hrd-charges-totals[hidden],
+.hrd-charges-combined[hidden],
+.hrd-charges-fb-section[hidden],
+#hrd-invoice-combined-row[hidden],
+#hrd-invoice-fb-block[hidden]{
   display:none !important;
 }
 .hrd-btn svg{
@@ -1062,17 +1067,64 @@ body.hotel-room-detail-module .de-content{
   letter-spacing:.02em;
   text-transform:uppercase;
 }
+.hrd-charges-subsection{
+  margin-bottom:12px;
+}
+.hrd-charges-subsection[hidden]{
+  display:none !important;
+}
+.hrd-charges-subtitle{
+  margin:0 0 8px;
+  font:600 11px/1.3 Inter,system-ui,sans-serif;
+  color:var(--hotel-muted);
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+.hrd-charges-invoiced-history{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  margin-bottom:10px;
+}
+.hrd-charges-invoiced-history .hrd-charges-invoice-no{
+  margin:0;
+}
 .hrd-charges-combined,
 .hrd-invoice-block + .hrd-invoice-block{
   margin-top:16px;
   padding-top:16px;
   border-top:1px dashed var(--hrd-border);
 }
+.hrd-charges-combined > div:not(.hrd-charges-balance){
+  opacity:.92;
+}
 .hrd-invoice-block .hrd-charges-section-title{
   margin-bottom:10px;
 }
 .hrd-invoice-dialog{
   max-width:520px;
+}
+.hrd-invoice-dialog .hrd-dialog-head{
+  align-items:center;
+  padding:18px 20px;
+}
+.hrd-invoice-dialog .hrd-dialog-head-main{
+  align-items:center;
+  gap:14px;
+  flex:1;
+  min-width:0;
+}
+.hrd-invoice-dialog .hrd-dialog-head-main > div{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  flex:1;
+}
+.hrd-invoice-dialog .hrd-dialog-head h2{
+  display:flex;
+  align-items:center;
+  min-height:42px;
+  line-height:1.25;
 }
 .hrd-invoice-summary{
   margin:0 0 16px;
@@ -1191,7 +1243,9 @@ body.hotel-room-detail-module .de-content{
   justify-content:center;
   color:#94A3B8;
 }
-.hrd-invoice-split-row .hrd-invoice-method-listbox .se-filter-listbox{
+/* Beat body.hotel-room-detail-module .ep-form-listbox .se-filter-listbox { top:... }
+   so drop-up does not set both top and bottom (that collapses the panel to ~14px). */
+body.hotel-room-detail-module #hrd-invoice-modal .hrd-invoice-method-listbox .se-filter-listbox{
   top:auto;
   bottom:calc(100% + 6px);
   z-index:11200;
@@ -1204,6 +1258,11 @@ body.hotel-room-detail-module .de-content{
   border:1px solid #E5E7EB;
   border-radius:14px;
   box-shadow:0 12px 32px rgba(15,23,42,.12), 0 2px 6px rgba(15,23,42,.06);
+}
+body.hotel-room-detail-module #hrd-invoice-modal .hrd-invoice-method-listbox.is-open .se-filter-listbox{
+  opacity:1;
+  transform:none;
+  pointer-events:auto;
 }
 .hrd-invoice-split-row .hrd-invoice-method-listbox.is-open{
   z-index:90;
@@ -2993,11 +3052,47 @@ body.hrd-checkin-open{overflow:hidden}
 }
 .hrd-check input{width:16px;height:16px;accent-color:var(--hotel-primary)}
 .hrd-agency-billing-wrap{
+  display:flex;
+  flex-direction:column;
   gap:8px;
+}
+.hrd-agency-billing-row{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  width:100%;
+}
+.hrd-agency-billing-item{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  min-width:0;
+  flex:0 1 auto;
+}
+.hrd-agency-billing-item--end{
+  align-items:flex-end;
+  text-align:right;
+  flex:0 1 auto;
+}
+.hrd-agency-billing-item--end .hrd-check{
+  justify-content:flex-end;
+  margin-left:auto;
+}
+.hrd-agency-billing-wrap .hrd-check{
+  margin-top:0;
+  width:fit-content;
+  max-width:100%;
+}
+.hrd-agency-billing-item--end .hrd-agency-billing-hint{
+  text-align:left;
 }
 .hrd-agency-billing-hint{
   margin:0;
   padding:8px 12px;
+  width:max-content;
+  max-width:100%;
+  box-sizing:border-box;
   border-radius:10px;
   background:#EFF6FF;
   border:1px solid #DBEAFE;

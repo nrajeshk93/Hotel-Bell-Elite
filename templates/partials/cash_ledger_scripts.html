@@ -8,7 +8,6 @@
   var deleteLoadUrl = page.getAttribute('data-delete-load-url') || '';
   var deleteTransferUrl = page.getAttribute('data-delete-transfer-url') || '';
   var company = page.getAttribute('data-company') || 'HBE';
-  var todayIso = page.getAttribute('data-today') || '';
 
   function formatInr(amount, dec){
     var places = dec === undefined ? 0 : dec;
@@ -142,7 +141,6 @@
   /* Load Cash */
   var loadModal = document.getElementById('cl-load-modal');
   var loadError = document.getElementById('cl-load-error');
-  var loadDate = document.getElementById('cl-load-date');
   var loadAmount = document.getElementById('cl-load-amount');
   var loadDescription = document.getElementById('cl-load-description');
   var openLoadBtn = document.getElementById('cl-open-load');
@@ -151,10 +149,8 @@
   var loadRequiredNotice = document.getElementById('cl-load-required-notice');
 
   function isLoadFormReady(){
-    var dateVal = loadDate ? String(loadDate.value || '').trim() : '';
     var amountRaw = loadAmount ? loadAmount.value : '';
     var description = loadDescription ? loadDescription.value.trim() : '';
-    if (!dateVal) return false;
     if (!description) return false;
     if (!amountRaw || !(Number(amountRaw) > 0)) return false;
     return true;
@@ -176,13 +172,12 @@
 
   function resetLoadModal(){
     showError(loadError, '');
-    if (loadDate) loadDate.value = todayIso;
     if (loadAmount) loadAmount.value = '';
     if (loadDescription) loadDescription.value = '';
     if (loadSubmit) loadSubmit.removeAttribute('data-cl-saving');
     syncLoadSaveEnabled();
   }
-  [loadDate, loadAmount, loadDescription].forEach(function(el){
+  [loadAmount, loadDescription].forEach(function(el){
     if (!el) return;
     el.addEventListener('input', syncLoadSaveEnabled);
     el.addEventListener('change', syncLoadSaveEnabled);
@@ -201,7 +196,6 @@
     syncLoadSaveEnabled();
     var payload = {
       company: company,
-      date: loadDate ? loadDate.value : '',
       amount: loadAmount ? loadAmount.value : '',
       description: loadDescription ? loadDescription.value : ''
     };
@@ -231,7 +225,6 @@
   /* Transfer Out */
   var transferModal = document.getElementById('cl-transfer-modal');
   var transferError = document.getElementById('cl-transfer-error');
-  var transferDate = document.getElementById('cl-transfer-date');
   var transferAmount = document.getElementById('cl-transfer-amount');
   var transferDescription = document.getElementById('cl-transfer-description');
   var transferDestination = document.getElementById('cl-transfer-destination');
@@ -242,11 +235,9 @@
   var transferRequiredNotice = document.getElementById('cl-transfer-required-notice');
 
   function isTransferFormReady(){
-    var dateVal = transferDate ? String(transferDate.value || '').trim() : '';
     var destination = transferDestination ? String(transferDestination.value || '').trim() : '';
     var amountRaw = transferAmount ? transferAmount.value : '';
     var description = transferDescription ? transferDescription.value.trim() : '';
-    if (!dateVal) return false;
     if (!destination) return false;
     if (!description) return false;
     if (!amountRaw || !(Number(amountRaw) > 0)) return false;
@@ -267,26 +258,8 @@
     transferSubmit.disabled = saving ? true : !ready;
   }
 
-  function setTransferDate(iso){
-    var next = iso || todayIso;
-    if (typeof window.setHotelDateValue === 'function') {
-      window.setHotelDateValue('cl-transfer-date', next);
-      syncTransferSaveEnabled();
-      return;
-    }
-    if (transferDate) transferDate.value = next;
-    syncTransferSaveEnabled();
-  }
-
-  function initTransferDatePicker(){
-    if (typeof window.initHotelDatePickers === 'function') {
-      window.initHotelDatePickers(transferModal || document);
-    }
-  }
-
   function resetTransferModal(){
     showError(transferError, '');
-    setTransferDate(todayIso);
     if (transferAmount) transferAmount.value = '';
     if (transferDescription) transferDescription.value = '';
     if (transferDestination) transferDestination.value = 'bank';
@@ -318,14 +291,9 @@
     el.addEventListener('input', syncTransferSaveEnabled);
     el.addEventListener('change', syncTransferSaveEnabled);
   });
-  if (transferDate) {
-    transferDate.addEventListener('input', syncTransferSaveEnabled);
-    transferDate.addEventListener('change', syncTransferSaveEnabled);
-  }
   if (openTransferBtn) openTransferBtn.addEventListener('click', function(){
     resetTransferModal();
     openModal(transferModal);
-    initTransferDatePicker();
     if (transferAmount) transferAmount.focus();
   });
   if (transferCancel) transferCancel.addEventListener('click', function(){ closeModal(transferModal); });
@@ -337,7 +305,6 @@
     syncTransferSaveEnabled();
     var payload = {
       company: company,
-      date: transferDate ? transferDate.value : '',
       amount: transferAmount ? transferAmount.value : '',
       description: transferDescription ? transferDescription.value : '',
       destination: transferDestination ? transferDestination.value : 'bank'

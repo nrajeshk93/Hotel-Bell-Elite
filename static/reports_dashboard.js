@@ -3,6 +3,7 @@
 
   var rdInitAbort = null;
   var CATEGORY_STORAGE_KEY = 'rd-active-category';
+  var HUB_SCROLL_KEY = 'rd-hub-scroll-v1';
 
   function readStoredCategory(validKeys) {
     try {
@@ -20,6 +21,96 @@
     } catch (err) {
       /* ignore */
     }
+  }
+
+  function mainScroller() {
+    return (
+      document.querySelector('.de-main-wrapper') ||
+      document.querySelector('.de-main-scroll') ||
+      document.scrollingElement ||
+      document.documentElement
+    );
+  }
+
+  function captureReportsHubScroll(card) {
+    var main = mainScroller();
+    var section = card && card.closest ? card.closest('.rd-category-section') : null;
+    var payload = {
+      top: main ? Number(main.scrollTop) || 0 : 0,
+      section: section ? String(section.getAttribute('data-rd-section') || '') : '',
+      reportId: card ? String(card.getAttribute('data-report-id') || '') : '',
+      ts: Date.now()
+    };
+    try {
+      global.sessionStorage.setItem(HUB_SCROLL_KEY, JSON.stringify(payload));
+    } catch (err) {
+      /* ignore */
+    }
+  }
+
+  function restoreReportsHubScroll() {
+    if (!document.getElementById('rd-report-sections')) return false;
+    var raw = '';
+    try {
+      raw = global.sessionStorage.getItem(HUB_SCROLL_KEY) || '';
+    } catch (err) {
+      return false;
+    }
+    if (!raw) return false;
+    var payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch (err) {
+      return false;
+    }
+    if (!payload || typeof payload !== 'object') return false;
+
+    function apply() {
+      var main = mainScroller();
+      if (!main) return;
+      var sectionKey = String(payload.section || '').trim();
+      var section = sectionKey
+        ? document.querySelector(
+            '.rd-category-section[data-rd-section="' + sectionKey + '"]'
+          )
+        : null;
+      if (
+        section &&
+        !section.hidden &&
+        !section.classList.contains('is-hidden')
+      ) {
+        var mainRect = main.getBoundingClientRect();
+        var secRect = section.getBoundingClientRect();
+        main.scrollTop = Math.max(
+          0,
+          (Number(main.scrollTop) || 0) + (secRect.top - mainRect.top) - 16
+        );
+        return;
+      }
+      if (typeof payload.top === 'number' && isFinite(payload.top)) {
+        main.scrollTop = Math.max(0, payload.top);
+      }
+    }
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(apply);
+    });
+    return true;
+  }
+
+  function bindReportCardScrollCapture(signal) {
+    document.addEventListener(
+      'click',
+      function (e) {
+        var card = e.target.closest('a.rd-report-card');
+        if (!card) return;
+        if (!document.getElementById('rd-report-sections')) return;
+        captureReportsHubScroll(card);
+        var category = String(card.getAttribute('data-report-category') || '').trim();
+        if (category) writeStoredCategory(category);
+      },
+      { capture: true, signal: signal }
+    );
   }
 
   function initReportsDashboard() {
@@ -127,11 +218,15 @@
       }, { signal: signal });
     }
 
+    bindReportCardScrollCapture(signal);
     setActivePill(activeCategory);
     applyFilters();
+    restoreReportsHubScroll();
   }
 
   global.initReportsDashboard = initReportsDashboard;
+  global.deRestoreReportsHubScroll = restoreReportsHubScroll;
+  global.deCaptureReportsHubScroll = captureReportsHubScroll;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initReportsDashboard);

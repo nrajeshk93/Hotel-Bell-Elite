@@ -265,9 +265,75 @@ class LoginSecurityTests(unittest.TestCase):
                 follow_redirects=False,
             )
         self.assertEqual(resp.status_code, 302)
+        self.assertTrue((resp.headers.get("Location") or "").endswith("/access-management"))
         row = self._user_row()
         self.assertFalse(row["locked_at"])
         self.assertEqual(row["failed_login_attempts"], 0)
+
+        conn = db_mod.get_db()
+        try:
+            conn.execute(
+                """
+                UPDATE users
+                   SET failed_login_attempts = 3,
+                       locked_at = ?,
+                       captcha_required = 0
+                 WHERE id = ?
+                """,
+                (auth_security.sql_now(), self.user_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with mock.patch.object(self.app_mod, "get_current_user") as get_user:
+            get_user.return_value = {
+                "id": admin_id,
+                "username": "admin",
+                "is_admin": True,
+                "is_active": True,
+                "user_access": {"users", "add"},
+                "dashboard_access": set(),
+            }
+            locked_form = self.client.get(
+                f"/access-management?user_id={self.user_id}&focus=form"
+            )
+            self.assertEqual(locked_form.status_code, 200)
+            locked_html = locked_form.get_data(as_text=True)
+            self.assertIn("Unlock", locked_html)
+            self.assertIn("am-unlock-form", locked_html)
+            self.assertIn("Locked", locked_html)
+            self.assertIn("cannot sign in", locked_html)
+
+            unlocked = self.client.post(
+                f"/access-management/unlock/{self.user_id}",
+                data={"return_to": "form"},
+                follow_redirects=False,
+            )
+        self.assertEqual(unlocked.status_code, 302)
+        location = unlocked.headers.get("Location") or ""
+        self.assertIn(f"user_id={self.user_id}", location)
+        self.assertIn("focus=form", location)
+        row = self._user_row()
+        self.assertFalse(row["locked_at"])
+
+        with mock.patch.object(self.app_mod, "get_current_user") as get_user:
+            get_user.return_value = {
+                "id": admin_id,
+                "username": "admin",
+                "is_admin": True,
+                "is_active": True,
+                "user_access": {"users", "add"},
+                "dashboard_access": set(),
+            }
+            after_form = self.client.get(
+                f"/access-management?user_id={self.user_id}&focus=form"
+            )
+        after_html = after_form.get_data(as_text=True)
+        self.assertEqual(after_form.status_code, 200)
+        self.assertNotIn("am-unlock-form", after_html)
+        self.assertIn("Unlocked", after_html)
+        self.assertIn("can sign in", after_html)
 
     def test_toggle_access_user_active_route(self):
         conn = db_mod.get_db()
@@ -445,7 +511,7 @@ class LoginSecurityTests(unittest.TestCase):
                 conn.execute(
                     "SELECT must_change_password FROM users WHERE id = ?", (user_id,)
                 ).fetchone()["must_change_password"],
-                1,
+                0,
             )
 
             workspace_access.save_access_user_record(
@@ -457,6 +523,7 @@ class LoginSecurityTests(unittest.TestCase):
                 role_id=role_id,
                 sql_now="datetime('now','localtime')",
                 email="argon@example.com",
+                must_change_password=True,
             )
             reset_row = conn.execute(
                 "SELECT password_hash, must_change_password FROM users WHERE id = ?",
@@ -487,6 +554,24 @@ class LoginSecurityTests(unittest.TestCase):
             ).fetchone()
             self.assertTrue(auth_security.verify_password(kept["password_hash"], "ResetPass2!"))
             self.assertEqual(kept["must_change_password"], 0)
+
+            workspace_access.save_access_user_record(
+                conn,
+                user_id=user_id,
+                username="argon_user",
+                full_name="Argon User",
+                password="KeepPass3!",
+                role_id=role_id,
+                sql_now="datetime('now','localtime')",
+                email="argon@example.com",
+                must_change_password=False,
+            )
+            permanent = conn.execute(
+                "SELECT password_hash, must_change_password FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            self.assertTrue(auth_security.verify_password(permanent["password_hash"], "KeepPass3!"))
+            self.assertEqual(permanent["must_change_password"], 0)
             conn.commit()
         finally:
             conn.close()
@@ -517,6 +602,7 @@ class LoginSecurityTests(unittest.TestCase):
                 role_id=role_id,
                 sql_now="datetime('now','localtime')",
                 email="temp@example.com",
+                must_change_password=True,
             )
             conn.commit()
         finally:
