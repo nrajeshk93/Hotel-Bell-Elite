@@ -13,6 +13,7 @@
     '/accounts',
     '/accounts/purchase-ledger',
     '/accounts/cash-ledger',
+    '/accounts/back-office-receipt',
     '/master',
     '/stores/indent',
     '/stores/orders',
@@ -21,6 +22,7 @@
     '/hotel/rooms',
     '/hotel/reservations',
     '/communication-hub',
+    '/communication-hub/promotion',
     '/access-management',
     '/employees',
     '/settings'
@@ -196,7 +198,7 @@
     if(!window.__dePosApiWarm){
       window.__dePosApiWarm = true;
       warmPosFloorSnapshot(null, 'restaurant');
-      ['/point-of-sale/api/menu/items', '/point-of-sale/api/menu/categories'].forEach(function(apiUrl){
+      ['/point-of-sale/api/menu/items?include_outlets=bar', '/point-of-sale/api/menu/categories?include_outlets=bar'].forEach(function(apiUrl){
         try{
           fetch(apiUrl, {
             credentials: 'same-origin',
@@ -220,7 +222,7 @@
     if(!window.__deBarPosApiWarm){
       window.__deBarPosApiWarm = true;
       warmPosFloorSnapshot(null, 'bar');
-      ['/bar-point-of-sale/api/menu/items', '/bar-point-of-sale/api/menu/categories'].forEach(function(apiUrl){
+      ['/bar-point-of-sale/api/menu/items?include_outlets=restaurant', '/bar-point-of-sale/api/menu/categories?include_outlets=restaurant'].forEach(function(apiUrl){
         try{
           fetch(apiUrl, {
             credentials: 'same-origin',
@@ -603,6 +605,7 @@
     path = String(path || '').replace(/\/$/, '') || '/';
     return (
       path === '/communication-hub' ||
+      path === '/communication-hub/promotion' ||
       path === '/access-management/roles' ||
       path === '/access-management/logs' ||
       path === '/point-of-sale/invoice-ledger' ||
@@ -717,6 +720,7 @@
       if(path.indexOf('/export') !== -1 || path.indexOf('/download_') !== -1) return;
       if(path === '/accounts/credit-payment/report' || path === '/accounts/purchase-verification/report') return;
       if(path === '/accounts/purchase-ledger/report' || path === '/accounts/cash-ledger/report') return;
+      if(path === '/accounts/back-office-receipt/report') return;
       /* Payroll HTML /report — not a file download. Do not treat /reports hub as export. */
       if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path)) return;
       if(mustFetchLiveSoftNavPath(path)) return;
@@ -941,6 +945,9 @@
       if(path === '/communication-hub'){
         return !!main.querySelector('#communication-hub-page, [data-communication-hub]');
       }
+      if(path === '/communication-hub/promotion'){
+        return !!main.querySelector('#ch-promotion-page, [data-communication-hub-promotion]');
+      }
 
       /* Home / masters / reports / access */
       if(path === '/home') return !!main.querySelector('#dashboard-home-panel, .db-home');
@@ -964,6 +971,7 @@
         return !!main.querySelector('#purchase-ledger-filter-form, #pl-open-add-purchase');
       }
       if(path === '/accounts/cash-ledger') return !!main.querySelector('#cash-ledger-page');
+      if(path === '/accounts/back-office-receipt') return !!main.querySelector('#back-office-receipt-page');
       if(path === '/accounts/credit-payment'){
         return !!main.querySelector('#credit-payment-page') && /credit payment/i.test(h1);
       }
@@ -2162,6 +2170,66 @@
     }));
   }
 
+  function isBrowserOffline(){
+    return typeof navigator !== 'undefined' && navigator.onLine === false;
+  }
+
+  function ensureShellOfflineChip(){
+    var chip = document.getElementById('de-shell-offline-chip');
+    if(chip) return chip;
+    var shell = document.querySelector('.de-app-shell') || document.getElementById('ep-workspace') || document.body;
+    if(!shell) return null;
+    chip = document.createElement('div');
+    chip.id = 'de-shell-offline-chip';
+    chip.className = 'de-shell-offline-chip';
+    chip.setAttribute('role', 'status');
+    chip.setAttribute('aria-live', 'polite');
+    chip.hidden = true;
+    chip.textContent = 'Offline';
+    shell.appendChild(chip);
+    return chip;
+  }
+
+  function updateShellOfflineChip(){
+    var chip = ensureShellOfflineChip();
+    if(!chip) return;
+    var offline = isBrowserOffline();
+    chip.hidden = !offline;
+    document.documentElement.classList.toggle('de-shell-is-offline', offline);
+  }
+
+  function notifyShellOffline(message){
+    updateShellOfflineChip();
+    var text = message || 'Offline — open this page once while online to use it offline.';
+    var existing = document.getElementById('de-shell-offline-toast');
+    if(existing && existing.parentNode) existing.parentNode.removeChild(existing);
+    var toast = document.createElement('div');
+    toast.id = 'de-shell-offline-toast';
+    toast.className = 'de-shell-offline-toast';
+    toast.setAttribute('role', 'status');
+    toast.textContent = text;
+    document.body.appendChild(toast);
+    requestAnimationFrame(function(){
+      toast.classList.add('is-in');
+    });
+    window.setTimeout(function(){
+      toast.classList.remove('is-in');
+      window.setTimeout(function(){
+        if(toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 220);
+    }, 4200);
+  }
+
+  function bindShellOfflineListeners(){
+    if(window.__deShellOfflineBound) return;
+    window.__deShellOfflineBound = true;
+    window.addEventListener('online', updateShellOfflineChip);
+    window.addEventListener('offline', function(){
+      updateShellOfflineChip();
+    });
+    updateShellOfflineChip();
+  }
+
   function softNavigate(url, done){
     var nav = beginSoftNavGeneration();
     setSoftNavFlag(true);
@@ -2201,6 +2269,7 @@
     })();
     var floorPromise = isPosTablesUrl(url) ? warmPosFloorSnapshot(nav.signal, floorOutlet) : Promise.resolve(null);
 
+    /* SW network-first serves cached partial HTML when offline after a prior visit. */
     var htmlPromise = prefetched || fetch(withPartialMain(url), fetchOpts).then(function(response){
       if(!response.ok) throw new Error('soft nav failed');
       var contentType = (response.headers.get('content-type') || '').toLowerCase();
@@ -2268,6 +2337,11 @@
          Restore the previous history entry so the user stays on the last good page. */
       if(authFail){
         try{ history.back(); } catch(eBack){}
+        return;
+      }
+      /* Offline with no cached partial: keep sidebar, do not hard-nav into a blank error. */
+      if(isBrowserOffline()){
+        notifyShellOffline('Offline — open this page once while online to use it offline.');
         return;
       }
       // Soft-nav already pushState'd the target URL. Failing silently leaves a stale
@@ -2431,6 +2505,7 @@
     /* Accounts Excel downloads (not HTML report pages). */
     if(path === '/accounts/credit-payment/report' || path === '/accounts/purchase-verification/report') return true;
     if(path === '/accounts/purchase-ledger/report' || path === '/accounts/cash-ledger/report') return true;
+    if(path === '/accounts/back-office-receipt/report') return true;
     if(/\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(path) || /\.(xlsx|xls|docx|doc|csv|pdf|zip)(\?|$)/.test(rawHref)){
       return true;
     }
@@ -2561,6 +2636,9 @@
     if(typeof window.initEmployeePayrollPage === 'function'){
       window.initEmployeePayrollPage();
     }
+    if(typeof window.initEmployeeBulkPage === 'function'){
+      window.initEmployeeBulkPage();
+    }
     if(typeof window.initPurchaseLedgerFilters === 'function'){
       window.initPurchaseLedgerFilters();
     }
@@ -2599,6 +2677,9 @@
     }
     if(typeof window.initCommunicationHubPage === 'function'){
       window.initCommunicationHubPage();
+    }
+    if(typeof window.initPromotionPage === 'function'){
+      window.initPromotionPage();
     }
     if(typeof window.initPosSettingsPage === 'function'){
       window.initPosSettingsPage();
@@ -2706,13 +2787,14 @@
         '/static/sales_entry_dashboard.css?v=33',
         '/static/sales_update_header.css?v=12',
         '/static/sales_update_premium.css?v=27',
-        '/static/de_workspace_shell.css?v=52',
+        '/static/de_workspace_shell.css?v=53',
         '/static/stores.css?v=130',
         '/static/ep_form_listbox.css?v=29',
         '/static/pos_tables.css?v=64',
         '/static/pos_invoice.css?v=65',
         '/static/purchase_ledger.css?v=53',
         '/static/communication_hub.css?v=12',
+        '/static/communication_hub_promotion.css?v=1',
         '/static/hotel_rooms.css?v=72',
         '/static/hotel_reservations.css?v=44',
         '/static/hotel_date_picker.css?v=9',
@@ -2786,6 +2868,7 @@
     initDeSidebarPageTransitions();
     initPageEnterTransition();
     bootRestoreSidebarScroll();
+    bindShellOfflineListeners();
     /* Soft-nav session paint rules from first interaction-capable paint. */
     document.documentElement.classList.add('de-soft-nav-session');
     pruneRemovedSidebarLinks();

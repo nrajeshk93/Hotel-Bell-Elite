@@ -11,11 +11,15 @@
     { value: 'upi', label: 'UPI' },
     { value: 'card', label: 'Card' },
     { value: 'bank_transfer', label: 'Bank Transfer' },
-    { value: 'credit', label: 'Credit' }
+    { value: 'credit', label: 'Credit' },
+    { value: 'bor', label: 'Back Office Receipt' }
   ];
   var PAY_METHODS = DEFAULT_METHODS.slice();
   var settleCtx = null;
   var bound = false;
+  var pendingBorReceipts = [];
+  var settleAllowCredit = false;
+  var borPaymentAllowed = false;
 
   function money(value) {
     var n = Number(value || 0);
@@ -42,7 +46,17 @@
       .replace(/"/g, '&quot;');
   }
 
-  function loadPayMethods(allowCredit) {
+  function pendingBorTotal() {
+    return round2(
+      pendingBorReceipts.reduce(function (sum, item) {
+        return sum + Number((item && item.pending_amount) || 0);
+      }, 0)
+    );
+  }
+
+  function loadPayMethods(allowCredit, allowBor) {
+    settleAllowCredit = !!allowCredit;
+    borPaymentAllowed = !!allowCredit && !!allowBor;
     PAY_METHODS = DEFAULT_METHODS.slice();
     try {
       var methodsEl = document.getElementById('hri-payment-methods-data');
@@ -57,9 +71,204 @@
     } catch (err) {}
     if (!allowCredit) {
       PAY_METHODS = PAY_METHODS.filter(function (m) {
-        return m.value !== 'credit';
+        return m.value !== 'credit' && m.value !== 'bor';
+      });
+    } else if (!borPaymentAllowed) {
+      /* Agency without pending BOR balance cannot use Back Office Receipt. */
+      PAY_METHODS = PAY_METHODS.filter(function (m) {
+        return m.value !== 'bor';
       });
     }
+  }
+
+  function setRowMethod(row, method) {
+    if (!row) return;
+    var key = String(method || '');
+    var hidden = row.querySelector('.pos-inv-settle-method-input');
+    var valueEl = row.querySelector('.se-filter-chip-value');
+    var list = row.querySelector('.se-filter-listbox');
+    if (hidden) hidden.value = key;
+    if (valueEl) {
+      valueEl.textContent = methodLabel(key) || 'Select mode…';
+      valueEl.classList.toggle('staff-supplier-placeholder', !key);
+    }
+    if (list) {
+      list.querySelectorAll('.se-filter-listbox-option').forEach(function (opt) {
+        var on = (opt.getAttribute('data-value') || '') === key;
+        opt.classList.toggle('is-selected', on);
+        opt.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+    }
+  }
+
+  function syncBorAmountGate(row) {
+    if (!row) return;
+    var amountInput = row.querySelector('.pos-inv-settle-amount');
+    if (!amountInput) return;
+    var isBor = rowMethodValue(row) === 'bor';
+    var blocked = isBor && !borPaymentAllowed;
+    amountInput.readOnly = blocked;
+    amountInput.disabled = blocked;
+    if (blocked) {
+      amountInput.value = '';
+      amountInput.removeAttribute('max');
+      amountInput.title =
+        'No Back Office Receipt balance for this agency.';
+    } else {
+      amountInput.title = '';
+      if (!isBor) amountInput.removeAttribute('max');
+    }
+  }
+
+  function applyBorPaymentAvailability() {
+    var allowBor = settleAllowCredit && pendingBorTotal() > 0.009;
+    loadPayMethods(settleAllowCredit, allowBor);
+    splitRows().forEach(function (row) {
+      if (rowMethodValue(row) === 'bor' && !borPaymentAllowed) {
+        setRowMethod(row, 'cash');
+      }
+      syncBorAmountGate(row);
+    });
+    refreshMethodOptionAvailability();
+    syncBorFieldVisibility();
+    if (!borPaymentAllowed) clearBorReceiptSelection();
+    syncSettleSubmitEnabled();
+  }
+
+  function hasBorMethod() {
+    return splitRows().some(function (row) {
+      return rowMethodValue(row) === 'bor';
+    });
+  }
+
+  function selectedBorReceiptId() {
+    var hidden = document.getElementById('hil-settle-bor');
+    return hidden ? String(hidden.value || '').trim() : '';
+  }
+
+  function clearBorReceiptSelection() {
+    var hidden = document.getElementById('hil-settle-bor');
+    var trigger = document.getElementById('hil-settle-bor-trigger');
+    var meta = document.getElementById('hil-settle-bor-meta');
+    if (typeof global.resetEpListbox === 'function') {
+      global.resetEpListbox('hil-settle-bor', '', '');
+    } else {
+      if (hidden) hidden.value = '';
+      if (trigger) {
+        trigger.value = '';
+        trigger.classList.add('is-placeholder');
+      }
+    }
+    if (meta) {
+      meta.hidden = true;
+      meta.textContent = '';
+    }
+  }
+
+  function paintBorReceiptOptions(receipts, emptyMessage) {
+    var options = document.getElementById('hil-settle-bor-options');
+    var empty = document.getElementById('hil-settle-bor-empty');
+    if (!options) return;
+    options.innerHTML = '';
+    pendingBorReceipts = Array.isArray(receipts) ? receipts : [];
+    if (!pendingBorReceipts.length) {
+      if (empty) {
+        empty.hidden = false;
+        empty.textContent =
+          emptyMessage ||
+          'No pending Back Office Receipt balance for this agency.';
+      }
+      applyBorPaymentAvailability();
+      return;
+    }
+    if (empty) empty.hidden = true;
+    pendingBorReceipts.forEach(function (item) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'se-filter-listbox-option pl-supplier-option';
+      btn.setAttribute('role', 'option');
+      btn.setAttribute('data-value', String(item.id));
+      btn.setAttribute(
+        'data-label',
+        String(item.receipt_no || '') +
+          ' · ' +
+          money(item.pending_amount || 0) +
+          ' pending'
+      );
+      btn.setAttribute(
+        'data-name',
+        String(item.receipt_no || '').toLowerCase() +
+          ' ' +
+          String(item.payer_name || '').toLowerCase()
+      );
+      btn.setAttribute('data-pending', String(item.pending_amount || 0));
+      btn.setAttribute('aria-selected', 'false');
+      btn.innerHTML =
+        '<span class="pl-supplier-option-name">' +
+        escapeHtml(item.receipt_no || 'Receipt') +
+        '</span>' +
+        '<span class="pl-supplier-option-gst">' +
+        escapeHtml(money(item.pending_amount || 0) + ' pending') +
+        '</span>';
+      options.appendChild(btn);
+    });
+    if (typeof global.rebindEpListbox === 'function') {
+      global.rebindEpListbox('hil-settle-bor');
+    } else if (typeof global.initEpListboxes === 'function') {
+      global.initEpListboxes();
+    }
+    applyBorPaymentAvailability();
+  }
+
+  function loadPendingBorReceipts() {
+    if (!settleAllowCredit) {
+      pendingBorReceipts = [];
+      applyBorPaymentAvailability();
+      return;
+    }
+    var url = (settleCtx && settleCtx.pendingReceiptsUrl) || '';
+    var agencyName = (settleCtx && settleCtx.agencyName) || '';
+    var agencyId = (settleCtx && settleCtx.agencyId) || '';
+    if (!url || (!agencyName && !agencyId)) {
+      paintBorReceiptOptions(
+        [],
+        'Agency is required for Back Office Receipt.'
+      );
+      return;
+    }
+    var qs = [];
+    if (agencyId) qs.push('agency_id=' + encodeURIComponent(agencyId));
+    if (agencyName) qs.push('agency_name=' + encodeURIComponent(agencyName));
+    fetch(url + (url.indexOf('?') >= 0 ? '&' : '?') + qs.join('&'), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.data || !result.data.ok) {
+          paintBorReceiptOptions(
+            [],
+            (result.data && result.data.error) || 'Unable to load receipts.'
+          );
+          return;
+        }
+        paintBorReceiptOptions(result.data.receipts || []);
+      })
+      .catch(function () {
+        paintBorReceiptOptions([], 'Unable to load receipts.');
+      });
+  }
+
+  function syncBorFieldVisibility() {
+    var field = document.getElementById('hil-settle-bor-field');
+    var show = hasBorMethod() && borPaymentAllowed;
+    if (field) field.hidden = !show;
+    if (!show) clearBorReceiptSelection();
+    syncSettleSubmitEnabled();
   }
 
   function settleModal() {
@@ -147,10 +356,13 @@
     var txn = row.querySelector('.pos-inv-settle-txn');
     var needsTxn = !!METHODS_REQUIRING_TXN[method];
     row.classList.toggle('is-bank', needsTxn);
+    row.classList.toggle('is-bor', method === 'bor');
     if (txn) {
       txn.hidden = !needsTxn;
       if (!needsTxn) txn.value = '';
     }
+    syncBorAmountGate(row);
+    syncBorFieldVisibility();
   }
 
   function updateRemoveButtons() {
@@ -239,6 +451,9 @@
         var method = rowMethodValue(row);
         var txnInput = row.querySelector('.pos-inv-settle-txn');
         if (METHODS_REQUIRING_TXN[method] && !(txnInput && txnInput.value.trim())) {
+          ok = false;
+        }
+        if (method === 'bor' && (!borPaymentAllowed || !selectedBorReceiptId())) {
           ok = false;
         }
       });
@@ -604,11 +819,42 @@
         invalid = 'Transaction ID is required for bank transfer.';
         return;
       }
-      splits.push({
+      if (method === 'bor' && !borPaymentAllowed) {
+        invalid =
+          'No Back Office Receipt balance for this agency. Choose another payment mode.';
+        return;
+      }
+      if (method === 'bor' && !selectedBorReceiptId()) {
+        invalid = 'Select a Back Office Receipt for the BOR payment.';
+        return;
+      }
+      var split = {
         method: method,
         amount: round2(amount),
         reference: reference
-      });
+      };
+      if (method === 'bor') {
+        split.receipt_id = Number(selectedBorReceiptId());
+        var pendingItem = null;
+        for (var i = 0; i < pendingBorReceipts.length; i++) {
+          if (String(pendingBorReceipts[i].id) === selectedBorReceiptId()) {
+            pendingItem = pendingBorReceipts[i];
+            break;
+          }
+        }
+        if (pendingItem) {
+          var pendingAmt = Number(pendingItem.pending_amount || 0);
+          if (amount - pendingAmt > 0.009) {
+            invalid =
+              (pendingItem.receipt_no || 'Receipt') +
+              ' apply exceeds pending ' +
+              money(pendingAmt) +
+              '.';
+            return;
+          }
+        }
+      }
+      splits.push(split);
     });
     if (invalid) return { splits: [], error: invalid };
     var sum = round2(
@@ -652,6 +898,10 @@
     }
     closeAllMethodListboxes();
     setSettleError('');
+    clearBorReceiptSelection();
+    pendingBorReceipts = [];
+    var borField = document.getElementById('hil-settle-bor-field');
+    if (borField) borField.hidden = true;
     settleCtx = null;
   }
 
@@ -687,8 +937,12 @@
       return false;
     }
     var agency =
-      stay &&
-      String(stay.agencyName || stay.agency_name || '').trim();
+      String(
+        opts.agencyName ||
+          (stay && (stay.agencyName || stay.agency_name)) ||
+          ''
+      ).trim();
+    var agencyId = String(opts.agencyId || '').trim();
     var allowCredit =
       opts.allowCredit != null
         ? !!opts.allowCredit
@@ -697,12 +951,19 @@
               return !!item.allowCredit;
             })
           : !!agency;
-    loadPayMethods(allowCredit);
+    loadPayMethods(allowCredit, false);
     var first = items[0] || null;
     var settleUrl = opts.settleUrl || (first && first.settleUrl) || '';
     if (items.length > 1) {
       settleUrl = opts.settleSelectedUrl || settleUrl;
     }
+    var pageEl =
+      document.querySelector('[data-hotel-invoice-ledger]') ||
+      document.getElementById('hotel-invoice-ledger-page');
+    var pendingReceiptsUrl =
+      opts.pendingReceiptsUrl ||
+      (pageEl && pageEl.getAttribute('data-pending-receipts-url')) ||
+      '';
     settleCtx = {
       room: room,
       balance: round2(balance),
@@ -710,15 +971,23 @@
         opts.invoiceNumber || (first && first.invoiceNumber) || '',
       settleUrl: settleUrl,
       items: items,
+      agencyName: agency || (first && first.agencyName) || '',
+      agencyId: agencyId || (first && first.agencyId) || '',
+      pendingReceiptsUrl: pendingReceiptsUrl,
       onSuccess: opts.onSuccess || null,
       onError: opts.onError || null
     };
     setSettleError('');
     var notes = document.getElementById('pos-inv-settle-notes');
     if (notes) notes.value = '';
+    clearBorReceiptSelection();
+    pendingBorReceipts = [];
     paintAllocBody();
     resetSplits();
     bindAddSplitButton();
+    /* Load agency BOR balance before allowing the mode / amount. */
+    if (allowCredit) loadPendingBorReceipts();
+    else applyBorPaymentAvailability();
     modal.hidden = false;
     modal.removeAttribute('hidden');
     return true;
@@ -867,7 +1136,50 @@
     document.documentElement.setAttribute('data-hotel-settle-doc-bound', '1');
     bound = true;
     bindAddSplitButton();
+    var borListbox = document.getElementById('hil-settle-bor-listbox');
+    if (borListbox && borListbox.getAttribute('data-hil-bor-change-bound') !== '1') {
+      borListbox.setAttribute('data-hil-bor-change-bound', '1');
+      borListbox.setAttribute('data-se-listbox-change', 'hilSettleBorPicked');
+    }
   }
+
+  global.hilSettleBorPicked = function (root, value, label) {
+    var meta = document.getElementById('hil-settle-bor-meta');
+    var pending = 0;
+    for (var i = 0; i < pendingBorReceipts.length; i++) {
+      if (String(pendingBorReceipts[i].id) === String(value || '')) {
+        pending = Number(pendingBorReceipts[i].pending_amount || 0);
+        break;
+      }
+    }
+    if (meta) {
+      if (value && pending > 0) {
+        meta.hidden = false;
+        meta.textContent = 'Pending on receipt: ' + money(pending);
+      } else {
+        meta.hidden = true;
+        meta.textContent = '';
+      }
+    }
+    splitRows().forEach(function (row) {
+      if (rowMethodValue(row) !== 'bor') return;
+      var amountInput = row.querySelector('.pos-inv-settle-amount');
+      if (!amountInput) return;
+      if (pending > 0.009) {
+        amountInput.max = String(round2(pending));
+        var current = Number(amountInput.value || 0);
+        if (isFinite(current) && current - pending > 0.009) {
+          amountInput.value = String(round2(pending));
+          syncRemainingSplitAmount(row);
+          refreshSplitBalance();
+        }
+      } else {
+        amountInput.removeAttribute('max');
+      }
+      syncBorAmountGate(row);
+    });
+    syncSettleSubmitEnabled();
+  };
 
   global.bindHotelSettleModal = bindHotelSettleModal;
   global.openHotelSettleModal = openHotelSettleModal;

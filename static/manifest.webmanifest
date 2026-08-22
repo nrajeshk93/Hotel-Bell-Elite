@@ -1,8 +1,8 @@
 {
-  "name": "Hotel Bell Elite POS",
-  "short_name": "HBE POS",
-  "description": "Hotel Bell Elite point-of-sale — create invoices offline and sync when online",
-  "start_url": "/point-of-sale/invoice",
+  "name": "Hotel Bell Elite",
+  "short_name": "HBE",
+  "description": "Hotel Bell Elite — installable workspace. Browse once online to use cached pages offline; POS can create orders offline and sync when connected.",
+  "start_url": "/home",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",

@@ -550,7 +550,8 @@
     var offline = !isBrowserOnline();
     banner.hidden = !offline;
     if (offline) {
-      banner.textContent = 'Offline — changes sync when you are back online.';
+      banner.textContent =
+        'Offline — orders save on this device and sync when you are back online. Use HTTPS and install the app; open POS once online so menus stay available during brief disconnects.';
     }
   }
 
@@ -659,6 +660,12 @@
             ? 'Synced 1 offline invoice.'
             : 'Synced ' + summary.flushed + ' offline invoices.'
         );
+      } else if (
+        summary &&
+        summary.pruned &&
+        (summary.pruned.outbox > 0 || summary.pruned.drafts > 0)
+      ) {
+        toast('Dropped offline orders older than 7 days.');
       } else if (summary && summary.error && summary.flushed === 0) {
         /* Leave draft; user can retry when online. */
       }
@@ -5722,6 +5729,14 @@
     bindOfflineSyncListeners();
     bindTableOrderSyncListeners();
     updateOfflineBanner();
+    var offlineApiRef = offlineApi();
+    if (offlineApiRef && typeof offlineApiRef.pruneExpiredOfflineData === 'function') {
+      offlineApiRef.pruneExpiredOfflineData().then(function (pruned) {
+        if (pruned && (pruned.outbox > 0 || pruned.drafts > 0)) {
+          toast('Dropped offline orders older than 7 days.');
+        }
+      }).catch(function () {});
+    }
     flushOfflineOutbox();
     registerInvoiceLeaveHooks();
 

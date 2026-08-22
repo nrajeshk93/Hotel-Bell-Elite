@@ -1,13 +1,14 @@
-"""POS offline PWA smoke checks — service worker + invoice page assets."""
+"""App shell + POS offline PWA smoke checks."""
 
 import os
+import re
 import tempfile
 import unittest
 
 import db as db_mod
 
 
-class PosOfflinePwaTests(unittest.TestCase):
+class AppShellPwaTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
         self.tmp.close()
@@ -29,32 +30,80 @@ class PosOfflinePwaTests(unittest.TestCase):
         except OSError:
             pass
 
-    def test_service_worker_is_public(self):
+    def test_service_worker_is_public_app_shell(self):
         resp = self.client.get("/sw.js")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.headers.get("Service-Worker-Allowed"), "/")
         body = resp.get_data(as_text=True)
         resp.close()
-        self.assertIn("hbe-pos-v40", body)
+        self.assertRegex(body, r"CACHE_VERSION\s*=\s*'hbe-app-v\d+'")
+        self.assertIn("GET_CACHE_VERSION", body)
+        self.assertIn("isWorkspaceHtml", body)
+        self.assertIn("partial", body)
         self.assertIn("networkFirstStatic", body)
-        self.assertIn("isPosCachedStatic", body)
         self.assertIn("networkOnlyFloor", body)
         self.assertIn("networkFirstHtml", body)
         self.assertIn("FLOOR_API_PATHS", body)
+        self.assertIn("/home", body)
+        self.assertIn("de_workspace_transitions.js", body)
+        self.assertIn("de_workspace_shell.css", body)
+        self.assertIn("/bar-point-of-sale/invoice", body)
         self.assertNotIn("client.navigate", body)
         self.assertNotIn(
             "'/point-of-sale/api/floor',\n  '/point-of-sale/api/menu/items'",
             body,
         )
         self.assertIn("/point-of-sale/api/menu/items", body)
+        self.assertIn("/point-of-sale/api/floor", body)
 
-    def test_manifest_starts_at_invoice(self):
+    def test_de_pwa_prunes_app_and_legacy_pos_caches(self):
+        resp = self.client.get("/static/de_pwa.js")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_data(as_text=True)
+        resp.close()
+        self.assertNotIn("key !== 'hbe-pos-v40'", body)
+        self.assertNotRegex(body, r"key !== 'hbe-pos-v\d+'")
+        self.assertIn("GET_CACHE_VERSION", body)
+        self.assertIn("hbe-app-", body)
+        self.assertIn("pruneStaleAppCaches", body)
+        self.assertIn("key === keepName", body)
+
+    def test_pos_offline_has_seven_day_prune(self):
+        resp = self.client.get("/static/pos_offline.js")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_data(as_text=True)
+        resp.close()
+        self.assertIn("MAX_OFFLINE_AGE_MS", body)
+        self.assertIn("pruneExpiredOfflineData", body)
+        self.assertIn("7 * 24 * 60 * 60 * 1000", body)
+
+    def test_soft_nav_has_offline_fallback(self):
+        resp = self.client.get("/static/de_workspace_transitions.js")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_data(as_text=True)
+        resp.close()
+        self.assertIn("notifyShellOffline", body)
+        self.assertIn("de-shell-offline-chip", body)
+        self.assertIn("isBrowserOffline", body)
+
+    def test_manifest_starts_at_home(self):
         resp = self.client.get("/static/manifest.webmanifest")
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         resp.close()
-        self.assertEqual(data.get("start_url"), "/point-of-sale/invoice")
+        self.assertEqual(data.get("start_url"), "/home")
         self.assertEqual(data.get("display"), "standalone")
+        self.assertIn("Hotel Bell Elite", data.get("name") or "")
+
+    def _assert_invoice_offline_assets(self, html):
+        self.assertIn("pos_offline.js", html)
+        self.assertIn("pos-inv-offline-banner", html)
+        self.assertIn("manifest.webmanifest", html)
+        self.assertIn("de_pwa.js", html)
+        self.assertRegex(
+            html,
+            re.compile(r"Install the app|HTTPS|open POS once online", re.I),
+        )
 
     def test_invoice_page_includes_offline_assets_when_logged_in(self):
         login = self.client.post(
@@ -66,10 +115,33 @@ class PosOfflinePwaTests(unittest.TestCase):
         page = self.client.get("/point-of-sale/invoice")
         self.assertEqual(page.status_code, 200)
         html = page.get_data(as_text=True)
-        self.assertIn("pos_offline.js", html)
-        self.assertIn("pos-inv-offline-banner", html)
-        self.assertIn("manifest.webmanifest", html)
-        self.assertIn("de_pwa.js", html)
+        self._assert_invoice_offline_assets(html)
+
+    def test_bar_invoice_page_includes_offline_assets_when_logged_in(self):
+        login = self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        self.assertIn(login.status_code, (302, 303))
+        page = self.client.get("/bar-point-of-sale/invoice")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self._assert_invoice_offline_assets(html)
+        self.assertIn('data-pos-outlet="bar"', html)
+
+    def test_settings_includes_pwa_operator_hint(self):
+        login = self.client.post(
+            "/login",
+            data={"username": "admin", "password": "admin"},
+            follow_redirects=False,
+        )
+        self.assertIn(login.status_code, (302, 303))
+        page = self.client.get("/settings")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("sd-pwa-hint", html)
+        self.assertRegex(html, re.compile(r"HTTPS|Install this app", re.I))
 
 
 if __name__ == "__main__":

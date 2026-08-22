@@ -109,6 +109,17 @@
       }
     }
 
+    function closeOutletListbox(){
+      if (typeof window.closeSuFilterListboxes === 'function') {
+        window.closeSuFilterListboxes('cash-ledger-filter-form');
+      }
+      if (typeof window.closeAllEpListboxes === 'function') {
+        window.closeAllEpListboxes();
+      }
+    }
+
+    searchInput.addEventListener('pointerdown', closeOutletListbox);
+    searchInput.addEventListener('focus', closeOutletListbox);
     searchInput.addEventListener('input', applyCashLedgerSearch);
     searchInput.addEventListener('keydown', function(e){
       if (e.key === 'Escape') {

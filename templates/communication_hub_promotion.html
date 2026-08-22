@@ -1,0 +1,141 @@
+{% set de_soft_body_class = 'de-open su-module communication-hub-module ch-promotion-module' %}
+{% set de_soft_page_title = 'Promotion | Communication Hub | Hotel Bell Elite' %}
+{% if not is_partial_main %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Promotion | Communication Hub | Hotel Bell Elite</title>
+{% include 'partials/de_android_head.html' %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub_promotion.css') }}?v=1">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module communication-hub-module ch-promotion-module">
+{% endif %}
+{% include 'partials/de_workspace_shell_open.html' %}
+{% if is_partial_main %}
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='communication_hub_promotion.css') }}?v=1">
+{% endif %}
+
+<div class="main-wrapper" id="ch-promotion-page"
+     data-communication-hub-promotion
+     data-templates-url="{{ url_for('communication_hub_api_promotion_templates') }}"
+     data-preview-url="{{ url_for('communication_hub_api_promotion_preview') }}"
+     data-send-url="{{ url_for('communication_hub_api_promotion_send') }}"
+     data-sample-url="{{ url_for('communication_hub_api_promotion_sample') }}"
+     data-row-cap="{{ promo_row_cap }}"
+     data-whatsapp-configured="{{ '1' if whatsapp_configured else '0' }}"
+     data-templates-configured="{{ '1' if whatsapp_templates_configured else '0' }}">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>Promotion</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools ch-header-tools">
+        {% if whatsapp_dry_run %}
+        <span class="ch-wa-badge ch-wa-badge--warn" title="WHATSAPP_DRY_RUN blocks live Meta sends">Dry run</span>
+        {% elif not whatsapp_configured %}
+        <span class="ch-wa-badge ch-wa-badge--warn" title="Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID">WhatsApp not configured</span>
+        {% else %}
+        <span class="ch-wa-badge">WhatsApp connected</span>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content ch-promo-content">
+    <div class="ch-promo-card" aria-label="Promotion blast">
+      <p class="ch-promo-lead">Send an approved Meta WhatsApp template to customers from an Excel list (column A = name, column B = mobile).</p>
+
+      <div class="ch-promo-grid">
+        <div class="staff-field ch-promo-field">
+          <label for="ch-promo-template">Template *</label>
+          <select id="ch-promo-template" class="staff-input" aria-describedby="ch-promo-template-hint">
+            <option value="">Loading templates…</option>
+          </select>
+          <p class="ch-promo-hint" id="ch-promo-template-hint">Only APPROVED templates from your WABA are listed.</p>
+          <p class="ch-promo-template-meta" id="ch-promo-template-meta" hidden></p>
+        </div>
+
+        <div class="staff-field ch-promo-field">
+          <label for="ch-promo-file">Recipients Excel *</label>
+          <div class="ch-promo-file-row">
+            <input type="file" id="ch-promo-file" class="staff-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+            <a class="btn staff-secondary" id="ch-promo-sample" href="{{ url_for('communication_hub_api_promotion_sample') }}">Sample</a>
+          </div>
+          <p class="ch-promo-hint">Max {{ promo_row_cap }} valid rows per send. Extra columns are ignored.</p>
+        </div>
+      </div>
+
+      <div class="ch-promo-preview" id="ch-promo-preview" hidden>
+        <div class="ch-promo-preview-stats" id="ch-promo-preview-stats"></div>
+        <div class="ch-promo-preview-table-wrap" id="ch-promo-preview-table-wrap" hidden>
+          <table class="ch-promo-table" aria-label="Preview recipients">
+            <thead>
+              <tr><th>Row</th><th>Name</th><th>Mobile</th></tr>
+            </thead>
+            <tbody id="ch-promo-preview-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <p class="ch-promo-error" id="ch-promo-error" hidden></p>
+
+      <div class="ch-promo-actions">
+        <button type="button" class="btn staff-secondary" id="ch-promo-refresh-templates">Refresh templates</button>
+        <button type="button" class="btn staff-primary" id="ch-promo-send" disabled>
+          <span>Send</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="ch-promo-results" id="ch-promo-results" hidden>
+      <h2 class="ch-promo-results-title">Results</h2>
+      <div class="ch-promo-preview-stats" id="ch-promo-results-stats"></div>
+      <div class="ch-promo-preview-table-wrap">
+        <table class="ch-promo-table" aria-label="Send results">
+          <thead>
+            <tr><th>Row</th><th>Name</th><th>Mobile</th><th>Status</th><th>Detail</th></tr>
+          </thead>
+          <tbody id="ch-promo-results-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="{{ url_for('static', filename='communication_hub_promotion.js') }}?v=1"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+{% if not is_partial_main %}
+</body>
+</html>
+{% endif %}

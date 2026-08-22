@@ -819,3 +819,117 @@ body.ep-module .su-header-tools .btn{
   }
 }
 
+/* Add Employee — Single / Bulk (menu pattern) */
+.ep-emp-mode-host{
+  margin:0 0 16px;
+}
+.ep-emp-mode-switch{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:6px;
+  max-width:280px;
+}
+.ep-emp-mode-switch .se-filter-chip-label{
+  font:700 11px/1.2 Inter,system-ui,sans-serif;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:#64748b;
+}
+.ep-emp-mode-tabs.cp-view-tabs{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:4px;
+  height:48px;
+  box-sizing:border-box;
+  width:100%;
+  background:#F1F5F9;
+  border-radius:12px;
+}
+.ep-emp-mode-tabs .cp-view-tab{
+  flex:1 1 0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  height:40px;
+  padding:0 14px;
+  border-radius:9px;
+  border:0;
+  background:transparent;
+  color:#64748B;
+  font:700 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+  transition:background .15s,color .15s,box-shadow .15s;
+}
+.ep-emp-mode-tabs .cp-view-tab:hover{
+  color:#0F172A;
+  background:rgba(255,255,255,.65);
+}
+.ep-emp-mode-tabs .cp-view-tab.is-active{
+  background:#fff;
+  color:#2563EB;
+  box-shadow:0 1px 2px rgba(15,23,42,.08);
+}
+.ep-emp-bulk{
+  margin:0 0 8px;
+  padding:16px;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  background:#f8fafc;
+}
+.ep-emp-bulk[hidden]{ display:none !important; }
+.ep-emp-bulk-lead{
+  margin:0 0 14px;
+  font:500 13px/1.45 Inter,system-ui,sans-serif;
+  color:#475569;
+}
+.ep-emp-bulk-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+}
+.ep-emp-bulk-actions .btn{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  height:40px;
+}
+.ep-emp-bulk-actions .btn svg{ flex-shrink:0; }
+.ep-emp-bulk-upload-label{ cursor:pointer; margin:0; }
+.ep-emp-bulk-file{
+  position:absolute;
+  width:1px;
+  height:1px;
+  opacity:0;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+}
+.ep-emp-bulk-status{
+  margin:12px 0 0;
+  font:600 13px/1.45 Inter,system-ui,sans-serif;
+  color:#0f172a;
+}
+.ep-emp-bulk-status:empty{ display:none; }
+.ep-emp-bulk-status.is-error{ color:#b91c1c; }
+.ep-emp-bulk-status ul{
+  margin:8px 0 0;
+  padding-left:18px;
+  font-weight:500;
+  color:#64748b;
+}
+.ep-emp-bulk-error{ margin-top:12px; }
+html.is-emp-bulk .ep-emp-form-actions,
+body.is-emp-bulk .ep-emp-form-actions,
+.md-master-embed--employee-form.is-emp-bulk .ep-emp-form-actions,
+.ep-emp-form-panel.is-emp-bulk .ep-emp-form-actions{
+  display:none !important;
+}
+html.is-emp-bulk #employee-form,
+body.is-emp-bulk #employee-form,
+.md-master-embed--employee-form.is-emp-bulk #employee-form,
+.ep-emp-form-panel.is-emp-bulk #employee-form{
+  display:none !important;
+}
+

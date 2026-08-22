@@ -1,0 +1,132 @@
+{% from 'partials/hotel_date_macros.html' import hotel_date_field %}
+<div class="modal-backdrop" id="bor-add-modal" aria-hidden="true">
+  <div class="staff-credit-box bor-add-box" role="dialog" aria-modal="true" aria-labelledby="bor-add-title">
+    <div class="staff-credit-head">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
+      <span id="bor-add-title">Add receipt</span>
+    </div>
+    <div id="bor-add-error" class="staff-credit-error"></div>
+    <input type="hidden" id="bor-edit-id" value="">
+
+    <div class="staff-grid bor-add-payer-date-row">
+      <div class="staff-field bor-add-payer-field">
+        <div class="staff-supplier-field-head">
+          <span class="staff-supplier-field-label">Received from *</span>
+        </div>
+        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox"
+             data-se-listbox
+             data-se-listbox-searchable
+             data-se-listbox-combobox
+             data-se-listbox-change="borAddFieldChanged"
+             id="bor-agency-listbox">
+          <span class="visually-hidden" id="bor-agency-label">Received from</span>
+          <div class="se-filter-chip-control">
+            <input type="hidden" id="bor-agency" value="">
+            <input type="text"
+                   class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                   id="bor-agency-trigger"
+                   role="combobox"
+                   aria-autocomplete="list"
+                   aria-haspopup="listbox"
+                   aria-expanded="false"
+                   aria-controls="bor-agency-list"
+                   aria-labelledby="bor-agency-label"
+                   value=""
+                   placeholder="Select agency or type a name"
+                   autocomplete="off"
+                   spellcheck="false"
+                   maxlength="200">
+          </div>
+          <div class="se-filter-listbox" id="bor-agency-list" role="listbox" aria-labelledby="bor-agency-label" hidden>
+            <div class="ep-listbox-options" id="bor-agency-options">
+              {% for agency in agencies %}
+              <button type="button" class="se-filter-listbox-option" role="option" data-value="{{ agency.id }}" data-name="{{ agency.name|lower }}" data-label="{{ agency.name }}" aria-selected="false">{{ agency.name }}</button>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="staff-field bor-add-date-field">
+        {{ hotel_date_field(
+          'receipt_date',
+          'Date',
+          required=true,
+          value=today_iso,
+          field_id='bor-receipt-date',
+          extra_class='bor-add-date-chip',
+          panel_title='Select date',
+          empty_label='Select date',
+          hint='',
+          show_cal_icon=false,
+          max_date='today'
+        ) }}
+      </div>
+    </div>
+
+    <div class="staff-grid">
+      <div class="staff-field staff-field--inline">
+        <label for="bor-amount">Amount (₹) *</label>
+        <input id="bor-amount" class="staff-input" type="number" min="0.01" step="0.01" placeholder="e.g. 5550" inputmode="decimal">
+      </div>
+      <div class="staff-field staff-field--inline">
+        <label for="bor-towards">Towards</label>
+        <input id="bor-towards" class="staff-input" type="text" maxlength="300" placeholder="e.g. Room advance">
+      </div>
+    </div>
+
+    <div class="staff-field">
+      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox pos-menu-field-listbox staff-expense-payment-listbox"
+           data-se-listbox
+           data-se-listbox-change="borPaymentChanged"
+           id="bor-payment-listbox">
+        <span class="se-filter-chip-label" id="bor-payment-label">Payment mode *</span>
+        <div class="se-filter-chip-control">
+          <input type="hidden" id="bor-payment" value="cash">
+          <button type="button" class="se-filter-chip-trigger" id="bor-payment-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="bor-payment-list" aria-labelledby="bor-payment-label bor-payment-value">
+            <span class="se-filter-chip-value" id="bor-payment-value">Cash</span>
+          </button>
+          <span class="se-filter-chip-chev" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </span>
+        </div>
+        <div class="se-filter-listbox" id="bor-payment-list" role="listbox" aria-labelledby="bor-payment-label" hidden>
+          {% for mode_key, mode_label in payment_modes %}
+          <button type="button" class="se-filter-listbox-option{% if mode_key == 'cash' %} is-selected{% endif %}" role="option" data-value="{{ mode_key }}" aria-selected="{{ 'true' if mode_key == 'cash' else 'false' }}">{{ mode_label }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="bor-instrument-fields" id="bor-instrument-fields" hidden>
+      <div class="staff-grid">
+        <div class="staff-field staff-field--inline">
+          <label for="bor-instrument-no" id="bor-instrument-no-label">Cheque / Draft / UTR *</label>
+          <input id="bor-instrument-no" class="staff-input" type="text" maxlength="80" placeholder="e.g. UTR / cheque number">
+        </div>
+        <div class="staff-field staff-field--inline bor-instrument-date-field">
+          {{ hotel_date_field(
+            'instrument_date',
+            'Instrument date',
+            required=false,
+            value='',
+            field_id='bor-instrument-date',
+            extra_class='bor-add-date-chip',
+            panel_title='Instrument date',
+            empty_label='Select date',
+            hint='',
+            show_cal_icon=false,
+            max_date='today'
+          ) }}
+        </div>
+      </div>
+    </div>
+
+    <div class="staff-credit-actions">
+      <button type="button" class="btn staff-secondary" id="bor-add-cancel">Cancel</button>
+      <p class="bor-required-notice" id="bor-required-notice">Fill all the mandatory fields to save a receipt</p>
+      <button type="button" class="btn staff-primary" id="bor-add-submit" hidden disabled>
+        <span id="bor-add-submit-label">Save</span>
+      </button>
+    </div>
+  </div>
+</div>

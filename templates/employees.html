@@ -22,10 +22,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 {% if mode is defined and mode == 'credits' %}
@@ -76,7 +76,7 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=25">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
@@ -555,7 +555,7 @@
     </div>
     <div class="su-header-tools">
       <a class="btn btn-secondary" href="{{ emp_list_url }}">Cancel</a>
-      <button type="submit" class="btn btn-primary" form="employee-form">{% if mode == 'edit' %}Update Employee{% else %}Add Employee{% endif %}</button>
+      <button type="submit" class="btn btn-primary" form="employee-form" id="ep-emp-header-submit">{% if mode == 'edit' %}Update Employee{% else %}Add Employee{% endif %}</button>
     </div>
   </div>
 
@@ -1729,6 +1729,7 @@
 ══════════════════════════════════════════════════════ #}
 {% elif mode is defined and mode in ('add', 'edit') %}
   <article class="ep-emp-form-panel" aria-label="{{ 'Edit employee' if mode == 'edit' else 'Add employee' }}">
+    {% include 'partials/employee_add_bulk.html' %}
     {% include 'partials/employee_form_fields.html' %}
   </article>
 
@@ -2776,6 +2777,7 @@
 </div>
 <script type="application/json" id="ep-page-config">{"year":{{ sel_year|default('')|tojson }},"month":{{ sel_month|default('')|tojson }},"lockUrl":{{ url_for('lock_payroll_month')|tojson }}}</script>
 <script src="{{ url_for('static', filename='employee_payroll.js') }}?v=7"></script>
+<script src="{{ url_for('static', filename='employee_bulk.js') }}?v=1"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

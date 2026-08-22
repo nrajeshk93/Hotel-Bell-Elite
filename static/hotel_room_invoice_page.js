@@ -108,7 +108,7 @@
     return root.classList.contains('is-ledger-edit');
   }
 
-  /** Edit module (Access Roles) — folio charge / generate mutations. */
+  /** Edit module (Access Roles) — folio charge mutations (not invoice generate). */
   function canEditAccess(root) {
     root = root || lastRoot;
     if (!root) return false;
@@ -746,13 +746,14 @@
     var discBtn = $('#hri-tool-discount', root);
     if (genBtn) {
       var genLabel = generateInvoiceLabel(root);
-      genBtn.title = hasEditAccess
-        ? generateInvoiceTitle(root)
-        : 'Edit Access is required to generate or modify invoices';
+      var ledgerEditNeedsEdit = isLedgerEdit(root) && !hasEditAccess;
+      genBtn.title = ledgerEditNeedsEdit
+        ? 'Edit Access is required to modify invoices'
+        : generateInvoiceTitle(root);
       if (!stay) {
         genBtn.disabled = true;
         genBtn.textContent = genLabel;
-      } else if (!hasEditAccess) {
+      } else if (ledgerEditNeedsEdit) {
         genBtn.disabled = true;
         genBtn.innerHTML =
           '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5Z"/></svg> ' +
@@ -1698,7 +1699,10 @@
   }
 
   function generateInvoice(root) {
-    if (!requireEditAccess(root)) return Promise.reject(new Error('edit access required'));
+    // Regenerating from ledger edit still requires Edit Access; minting does not.
+    if (isLedgerEdit(root) && !requireEditAccess(root)) {
+      return Promise.reject(new Error('edit access required'));
+    }
     var genBtn = $('#hri-generate', root);
     if (genBtn) genBtn.disabled = true;
     var note = (($('#hri-notes', root) || {}).value || '').trim();

@@ -32,6 +32,7 @@ _ACCOUNTS_SUBMODULES = (
     {"key": "cash_ledger", "label": "Cash Ledger"},
     {"key": "purchase_verification", "label": "Approvals"},
     {"key": "credit_payment", "label": "Credit Payment"},
+    {"key": "back_office_receipt", "label": "Back Office Receipt"},
     {"key": "supplier_master", "label": "Supplier Master"},
 )
 
@@ -395,9 +396,11 @@ _HOTEL_ROOMS_ENDPOINTS = {
     "hotel_invoice_ledger_edit_page",
     "hotel_invoice_ledger_edit_api",
     "hotel_credit",
+    "export_hotel_credit_report",
     "create_hotel_credit_payment",
     "delete_hotel_credit_payment",
     "hotel_credit_payment_detail",
+    "hotel_credit_pending_receipts",
     "hotel_sales_update",
     "hotel_settings",
     "hotel_settings_api",
@@ -409,11 +412,16 @@ _MAIN_DASHBOARD_ENDPOINTS = {
 
 _COMMUNICATION_HUB_ENDPOINTS = {
     "communication_hub",
+    "communication_hub_promotion",
     "communication_hub_api_conversations",
     "communication_hub_api_conversation_create",
     "communication_hub_api_conversation_delete",
     "communication_hub_api_messages",
     "communication_hub_api_message_send",
+    "communication_hub_api_promotion_templates",
+    "communication_hub_api_promotion_sample",
+    "communication_hub_api_promotion_preview",
+    "communication_hub_api_promotion_send",
 }
 
 _STORES_ENDPOINT_GROUPS = {
@@ -678,6 +686,13 @@ _ACCOUNTS_ENDPOINT_GROUPS = {
         "create_credit_payment",
         "delete_credit_payment",
         "credit_payment_detail",
+    },
+    "back_office_receipt": {
+        "back_office_receipt",
+        "back_office_receipt_add",
+        "back_office_receipt_edit",
+        "back_office_receipt_delete",
+        "export_back_office_receipt_report",
     },
     "purchase_verification": {
         "purchase_verification",

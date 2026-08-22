@@ -48,6 +48,7 @@ from db import (
     delete_customer_record,
     delete_agency_record,
     ensure_cash_ledger_schema,
+    ensure_back_office_receipt_schema,
     ensure_customers_schema,
     ensure_agencies_schema,
     ensure_communication_hub_schema,
@@ -260,6 +261,7 @@ from manager_insight import build_manager_insight
 from meal_plan_report import build_meal_plan_report
 from stores import register_stores
 from communication_hub import register_communication_hub
+from back_office_receipt import register_back_office_receipt
 from seo_privacy import register_seo_privacy
 from main_dashboard_data import (
     build_dow_avg,
@@ -343,6 +345,7 @@ SALES_ENTRY_TOTAL_KEYS = (
     "card",
     "upi",
     "room_credit",
+    "bor",
     "online_order",
 )
 
@@ -371,12 +374,14 @@ CASH_LEDGER_FILTER_LOCATIONS = (CASH_LEDGER_FILTER_ALL, *CASH_LEDGER_OUTLETS)
 CASH_LEDGER_ENTRY_SALES = "sales_cash"
 CASH_LEDGER_ENTRY_LOAD = "load_cash"
 CASH_LEDGER_ENTRY_CREDIT = "credit_cash"
+CASH_LEDGER_ENTRY_BOR = "bor_cash"
 CASH_LEDGER_ENTRY_EXPENSE = "expense"
 CASH_LEDGER_ENTRY_TRANSFER = "transfer_out"
 CASH_LEDGER_ENTRY_LABELS = {
     CASH_LEDGER_ENTRY_SALES: "Actual Cash",
     CASH_LEDGER_ENTRY_LOAD: "Load Cash",
     CASH_LEDGER_ENTRY_CREDIT: "Credit Cash",
+    CASH_LEDGER_ENTRY_BOR: "Back Office Receipt",
     CASH_LEDGER_ENTRY_EXPENSE: "Expense",
     CASH_LEDGER_ENTRY_TRANSFER: "Transfer Out",
 }
@@ -384,8 +389,9 @@ CASH_LEDGER_ENTRY_RANK = {
     CASH_LEDGER_ENTRY_SALES: 0,
     CASH_LEDGER_ENTRY_LOAD: 1,
     CASH_LEDGER_ENTRY_CREDIT: 2,
-    CASH_LEDGER_ENTRY_EXPENSE: 3,
-    CASH_LEDGER_ENTRY_TRANSFER: 4,
+    CASH_LEDGER_ENTRY_BOR: 3,
+    CASH_LEDGER_ENTRY_EXPENSE: 4,
+    CASH_LEDGER_ENTRY_TRANSFER: 5,
 }
 CASH_LEDGER_TRANSFER_DESTINATIONS = (
     ("bank", "Bank"),
@@ -407,6 +413,7 @@ HOTEL_SALES_ENTRY_FIELDS = (
     ("upi", "UPI"),
     ("staff_account", "Employee Credit"),
     ("room_credit", "Guest Credit"),
+    ("bor", "Back Office Receipt"),
     ("actual_cash", "Actual Cash"),
     ("tips", "Tips"),
     ("expense", "Expense"),
@@ -504,7 +511,7 @@ def _expense_category_choices(conn=None):
 def _expense_category_labels(conn=None):
     return dict(_expense_category_choices(conn))
 
-HOTEL_IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit")
+HOTEL_IMPORT_FIELD_KEYS = ("total_sales", "cash", "card", "upi", "room_credit", "bor")
 ROOM_TRANSFER_PAYMENT_STATUSES = _sorted_label_choices((
     ("unpaid", "Un Paid"),
     ("paid", "Paid"),
@@ -595,6 +602,11 @@ register_stores(
     get_user=get_current_user,
 )
 register_communication_hub(
+    app,
+    pop_auth_notice=_pop_auth_notice,
+    get_user=get_current_user,
+)
+register_back_office_receipt(
     app,
     pop_auth_notice=_pop_auth_notice,
     get_user=get_current_user,
@@ -2157,7 +2169,7 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "show_payment_mode": True,
         "show_verification_account": False,
         "show_history_expense_ids": False,
-        "clearance_submit": "Record Payment",
+        "clearance_submit": "Save",
         "clearance_total_label": "Payment total",
         "detail_modal_title": "Payment Detail",
         "detail_date_label": "Payment date",
@@ -2207,11 +2219,13 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "clearance_modal_title": "Verification Details",
         "clearance_date_label": "Verification date *",
         "clearance_mode_label": "Verification mode *",
+        # Approval date is stamped server-side at submit; no picker in the modal.
+        "auto_clearance_date": True,
         "show_payment_mode": False,
         "show_verification_account": True,
         "show_history_expense_ids": True,
         "clearance_account_label": "Account",
-        "clearance_submit": "Record Verification",
+        "clearance_submit": "Save",
         "clearance_total_label": "Verification total",
         "detail_modal_title": "Verification Detail",
         "detail_date_label": "Verification date",
@@ -2275,9 +2289,11 @@ CREDIT_SETTLEMENT_PAGE_MODES = {
         "require_payment_method_choice": True,
         "select_error_method": "Select a payment mode.",
         "show_payment_mode": True,
+        "enable_bor_payment": True,
+        "enable_payment_split": True,
         "show_verification_account": False,
         "show_history_expense_ids": True,
-        "clearance_submit": "Record Payment",
+        "clearance_submit": "Save",
         "clearance_total_label": "Payment total",
         "detail_modal_title": "Payment Detail",
         "detail_date_label": "Payment date",
@@ -2461,11 +2477,23 @@ def _render_credit_settlement_page(mode):
         purchase_report_kwargs["payment_date_from"] = filter_payment_date_from
         purchase_report_kwargs["payment_date_to"] = filter_payment_date_to
 
+    hotel_credit_report_kwargs = {
+        "view": selected_view,
+        "supplier": selected_supplier,
+    }
+    if date_filter_active:
+        hotel_credit_report_kwargs["date_from"] = filter_date_from
+        hotel_credit_report_kwargs["date_to"] = filter_date_to
+    if payment_date_filter_active:
+        hotel_credit_report_kwargs["payment_date_from"] = filter_payment_date_from
+        hotel_credit_report_kwargs["payment_date_to"] = filter_payment_date_to
+
     actor = get_current_user()
     if page_mode == CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT:
         can_mutate_settlement = bool(actor)
         payment_methods = HOTEL_CREDIT_PAYMENT_METHODS
         payment_method_labels = HOTEL_CREDIT_PAYMENT_METHOD_LABELS
+        payment_amount_columns = HOTEL_CREDIT_PAYMENT_METHODS
         nav_section = "hotel"
         nav_hotel_view = "credit"
         nav_accounts_view = ""
@@ -2474,6 +2502,7 @@ def _render_credit_settlement_page(mode):
         can_mutate_settlement = user_can_approve_transactions(actor)
         payment_methods = CREDIT_PAYMENT_METHODS
         payment_method_labels = CREDIT_PAYMENT_METHOD_LABELS
+        payment_amount_columns = ()
         nav_section = "accounts"
         nav_hotel_view = ""
         nav_accounts_view = labels["nav_accounts_view"]
@@ -2508,6 +2537,7 @@ def _render_credit_settlement_page(mode):
         payment_total=payment_total,
         credit_payment_methods=payment_methods,
         credit_payment_method_labels=payment_method_labels,
+        credit_payment_amount_columns=payment_amount_columns,
         expense_category_labels=EXPENSE_CATEGORY_LABELS,
         ledger_entry_kinds=LEDGER_ENTRY_KINDS,
         ledger_entry_kind_labels=LEDGER_ENTRY_KIND_LABELS,
@@ -2526,7 +2556,17 @@ def _render_credit_settlement_page(mode):
             if page_mode == CREDIT_SETTLEMENT_MODE_PURCHASE_VERIFICATION
             else None
         ),
+        hotel_credit_report_url=(
+            url_for("export_hotel_credit_report", **hotel_credit_report_kwargs)
+            if page_mode == CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT
+            else None
+        ),
         today_iso=today.isoformat(),
+        pending_receipts_url=(
+            url_for("hotel_credit_pending_receipts")
+            if page_mode == CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT
+            else ""
+        ),
         de_nav_section=nav_section,
         de_nav_hotel_view=nav_hotel_view,
         de_nav_accounts_view=nav_accounts_view,
@@ -2895,7 +2935,8 @@ def _validate_purchase_verification_payload(conn, data, user=None):
     if not supplier_id:
         errors.append("Supplier is required.")
 
-    verification_date = _parse_sales_date(data.get("payment_date") or date.today().isoformat())
+    # Always stamp approval on the day it is recorded (no client-chosen date).
+    verification_date = date.today()
     verification_method = CREDIT_PAYMENT_METHOD_CASH
     transaction_id = ""
     verification_account = _verification_user_account(user)
@@ -3066,18 +3107,152 @@ HOTEL_CREDIT_PAYMENT_METHODS = (
     ("upi", "UPI"),
     ("card", "Card"),
     ("bank_transfer", "Bank Transfer"),
+    ("bor", "Back Office Receipt"),
 )
 HOTEL_CREDIT_PAYMENT_METHOD_LABELS = dict(HOTEL_CREDIT_PAYMENT_METHODS)
+HOTEL_CREDIT_PAYMENT_METHOD_LABELS["split"] = "Split"
 HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN = frozenset({"bank_transfer"})
+HOTEL_CREDIT_PAYMENT_METHOD_BOR = "bor"
 
 
 def _normalize_hotel_credit_payment_method(value, *, default="cash"):
     key = str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
     if key in ("bank", "banktransfer", "neft", "rtgs", "imps"):
         key = "bank_transfer"
+    if key in ("bill_of_receipt", "back_office_receipt", "bor_cash", "receipt"):
+        key = HOTEL_CREDIT_PAYMENT_METHOD_BOR
+    if key == "split":
+        return "split"
     if key not in HOTEL_CREDIT_PAYMENT_METHOD_LABELS:
         return default
     return key
+
+
+def _parse_hotel_credit_payment_splits(data, *, payment_method: str, total_amount: float):
+    """Normalize payment_splits / bor_allocations into mode rows that sum to total."""
+    errors = []
+    raw_splits = data.get("payment_splits")
+    if raw_splits is None and payment_method == HOTEL_CREDIT_PAYMENT_METHOD_BOR:
+        raw_bor = data.get("bor_allocations") or []
+        shaped = []
+        for raw in raw_bor if isinstance(raw_bor, list) else []:
+            if not isinstance(raw, dict):
+                continue
+            shaped.append(
+                {
+                    "method": HOTEL_CREDIT_PAYMENT_METHOD_BOR,
+                    "amount": raw.get("amount"),
+                    "receipt_id": raw.get("receipt_id"),
+                }
+            )
+        raw_splits = shaped
+    if raw_splits is None:
+        # Single-mode payment (legacy / non-split UI)
+        txn = str(data.get("transaction_id") or "").strip()
+        if payment_method == HOTEL_CREDIT_PAYMENT_METHOD_BOR:
+            errors.append("Select at least one Back Office Receipt to apply.")
+            return [], errors
+        if payment_method in HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN and not txn:
+            errors.append("Transaction ID is required for bank transfer.")
+            return [], errors
+        return [
+            {
+                "method": payment_method,
+                "amount": total_amount,
+                "transaction_id": txn if payment_method in HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN else "",
+                "receipt_id": None,
+            }
+        ], errors
+    if not isinstance(raw_splits, list) or not raw_splits:
+        errors.append("Add at least one payment mode.")
+        return [], errors
+    parsed = []
+    for raw in raw_splits:
+        if not isinstance(raw, dict):
+            errors.append("Invalid payment split.")
+            continue
+        method = _normalize_hotel_credit_payment_method(
+            raw.get("method") or raw.get("payment_method"), default=""
+        )
+        if not method or method == "split":
+            errors.append("Select a payment mode for each split row.")
+            continue
+        if method not in dict(HOTEL_CREDIT_PAYMENT_METHODS):
+            errors.append("Unsupported payment mode in split.")
+            continue
+        amount = parse_money(raw.get("amount"))
+        if amount <= 0:
+            errors.append("Each payment mode amount must be greater than zero.")
+            continue
+        txn = str(raw.get("transaction_id") or "").strip()
+        if method in HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN and not txn:
+            errors.append("Transaction ID is required for bank transfer.")
+            continue
+        if method not in HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN:
+            txn = ""
+        receipt_id = None
+        if method == HOTEL_CREDIT_PAYMENT_METHOD_BOR:
+            try:
+                receipt_id = int(raw.get("receipt_id"))
+            except (TypeError, ValueError):
+                receipt_id = None
+            if not receipt_id:
+                errors.append("Select a Back Office Receipt for each receipt payment row.")
+                continue
+        parsed.append(
+            {
+                "method": method,
+                "amount": amount,
+                "transaction_id": txn,
+                "receipt_id": receipt_id,
+            }
+        )
+    if errors:
+        return [], errors
+    if not parsed:
+        return [], ["Add at least one payment mode."]
+    split_total = round_half_up(sum(item["amount"] for item in parsed), 2)
+    if abs(split_total - total_amount) > 0.009:
+        errors.append(
+            f"Payment modes total ₹{split_total:.2f} must equal invoice pay-now ₹{total_amount:.2f}."
+        )
+        return [], errors
+    return parsed, errors
+
+
+def _validate_hotel_credit_bor_splits(conn, mode_splits, agency_name: str):
+    """Ensure BOR rows reference pending receipts for the same agency."""
+    from back_office_receipt import list_pending_back_office_receipts_for_agency
+
+    errors = []
+    bor_rows = [s for s in mode_splits if s.get("method") == HOTEL_CREDIT_PAYMENT_METHOD_BOR]
+    if not bor_rows:
+        return [], errors
+    pending = {
+        int(item["id"]): item
+        for item in list_pending_back_office_receipts_for_agency(
+            conn, agency_name=agency_name
+        )
+    }
+    applied_this = {}
+    bor_allocations = []
+    for split in bor_rows:
+        receipt_id = int(split["receipt_id"])
+        amount = round_half_up(split["amount"], 2)
+        item = pending.get(receipt_id)
+        if not item:
+            errors.append("One or more Back Office Receipts are not available for this agency.")
+            continue
+        used = applied_this.get(receipt_id, 0.0)
+        remaining = round_half_up(float(item["pending_amount"]) - used, 2)
+        if amount - remaining > 0.009:
+            errors.append(
+                f"{item['receipt_no']} apply ₹{amount:.2f} exceeds pending ₹{remaining:.2f}."
+            )
+            continue
+        applied_this[receipt_id] = round_half_up(used + amount, 2)
+        bor_allocations.append({"receipt_id": receipt_id, "amount": amount})
+    return bor_allocations, errors
 
 
 def _hotel_credit_description(guest_name, room_number):
@@ -3162,6 +3337,138 @@ def _hotel_credit_agency_filters(conn, outstanding_entries):
     return sorted(seen.values(), key=lambda item: str(item["name"]).lower())
 
 
+def _hotel_credit_payment_method_display(mode_splits, payment_method):
+    """Build Payment Mode label and per-tender amounts for history / detail."""
+    amounts = {key: 0.0 for key, _label in HOTEL_CREDIT_PAYMENT_METHODS}
+    labels = []
+    seen = set()
+    normalized_splits = []
+    for split in mode_splits or []:
+        method = _normalize_hotel_credit_payment_method(
+            split.get("method") or split.get("payment_method"),
+            default="cash",
+        )
+        amount = round_half_up(split.get("amount"), 2)
+        label = HOTEL_CREDIT_PAYMENT_METHOD_LABELS.get(method, method)
+        normalized_splits.append(
+            {
+                "method": method,
+                "method_label": label,
+                "amount": amount,
+                "transaction_id": str(split.get("transaction_id") or "").strip(),
+                "receipt_id": split.get("receipt_id"),
+            }
+        )
+        if method in amounts:
+            amounts[method] = round_half_up(amounts[method] + amount, 2)
+        if label and method not in seen:
+            seen.add(method)
+            labels.append(label)
+    method_key = _normalize_hotel_credit_payment_method(payment_method, default="cash")
+    if normalized_splits:
+        method_label = (
+            " + ".join(labels)
+            if labels
+            else HOTEL_CREDIT_PAYMENT_METHOD_LABELS.get(method_key, method_key)
+        )
+    else:
+        method_label = HOTEL_CREDIT_PAYMENT_METHOD_LABELS.get(method_key, method_key)
+    return method_label, amounts, normalized_splits
+
+
+def _attach_hotel_credit_payment_mode_display(conn, entries):
+    """Attach mode_splits / payment_method_label / payment_amounts for history rows."""
+    if not entries:
+        return entries
+    ids = []
+    for entry in entries:
+        try:
+            ids.append(int(entry.get("id")))
+        except (TypeError, ValueError):
+            continue
+    by_payment = {}
+    if ids:
+        placeholders = ",".join("?" * len(ids))
+        split_rows = conn.execute(
+            f"""SELECT payment_id, payment_method, amount, transaction_id, receipt_id, sort_order
+                FROM hotel_invoice_credit_payment_mode_splits
+                WHERE payment_id IN ({placeholders})
+                ORDER BY payment_id, sort_order, id""",
+            ids,
+        ).fetchall()
+        for row in split_rows:
+            by_payment.setdefault(int(row["payment_id"]), []).append(dict(row))
+    for entry in entries:
+        try:
+            payment_id = int(entry.get("id"))
+        except (TypeError, ValueError):
+            payment_id = 0
+        raw_splits = by_payment.get(payment_id) or []
+        method_label, amounts, mode_splits = _hotel_credit_payment_method_display(
+            raw_splits, entry.get("payment_method")
+        )
+        if not mode_splits:
+            method_key = _normalize_hotel_credit_payment_method(
+                entry.get("payment_method"), default="cash"
+            )
+            total = round_half_up(entry.get("total_amount"), 2)
+            if method_key in amounts and total > 0:
+                amounts[method_key] = total
+            method_label = HOTEL_CREDIT_PAYMENT_METHOD_LABELS.get(method_key, method_key)
+        entry["mode_splits"] = mode_splits
+        entry["payment_method_label"] = method_label
+        entry["payment_amounts"] = amounts
+    return entries
+
+
+def _hotel_invoice_billing_name_map(conn, invoice_numbers):
+    """Map invoice number → Agency Billing name (billingName), else agencyName."""
+    out = {}
+    numbers = []
+    seen = set()
+    for raw in invoice_numbers or []:
+        key = str(raw or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        numbers.append(key)
+    if not numbers:
+        return out
+    placeholders = ",".join("?" * len(numbers))
+    rows = conn.execute(
+        f"""SELECT invoice_number, payload_json
+            FROM hotel_room_invoices
+            WHERE invoice_number IN ({placeholders})""",
+        numbers,
+    ).fetchall()
+    for row in rows:
+        inv = str(row["invoice_number"] or "").strip()
+        if not inv:
+            continue
+        try:
+            payload = json.loads(row["payload_json"] or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            payload = {}
+        if not isinstance(payload, dict):
+            payload = {}
+        stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
+        room = payload.get("room") if isinstance(payload.get("room"), dict) else {}
+        if not stay and isinstance(room.get("stay"), dict):
+            stay = room.get("stay") or {}
+        billing = str(
+            stay.get("billingName")
+            or stay.get("billing_name")
+            or ""
+        ).strip()
+        agency = str(
+            stay.get("agencyName")
+            or stay.get("agency_name")
+            or ""
+        ).strip()
+        out[inv] = billing or agency
+    return out
+
+
 def _hotel_credit_payment_entries(conn, payment_date_from=None, payment_date_to=None, party_id=None):
     ensure_hotel_invoice_credits_schema(conn)
     sql = """SELECT p.id, p.company, p.agency_name, p.payment_date, p.payment_method,
@@ -3191,6 +3498,7 @@ def _hotel_credit_payment_entries(conn, payment_date_from=None, payment_date_to=
     sql += " ORDER BY p.payment_date DESC, p.created_at DESC, p.id DESC"
     rows = conn.execute(sql, params).fetchall()
     entries = []
+    invoice_numbers = []
     for row in rows:
         item = dict(row)
         agency_name = str(item.get("agency_name") or "").strip()
@@ -3205,13 +3513,28 @@ def _hotel_credit_payment_entries(conn, payment_date_from=None, payment_date_to=
             if int(sid) != int(party_id):
                 continue
         item["supplier_name"] = agency_name
+        item["agency_name"] = agency_name
         item["supplier_gst"] = ""
         item["total_amount"] = round_half_up(item.get("total_amount"), 2)
         item["payment_method"] = _normalize_hotel_credit_payment_method(item.get("payment_method"))
         item["allocation_count"] = int(item.get("allocation_count") or 0)
         item["expense_codes"] = item.get("expense_codes") or ""
+        for code in str(item["expense_codes"]).split(", "):
+            if code.strip():
+                invoice_numbers.append(code.strip())
         entries.append(item)
-    return entries
+    billing_by_invoice = _hotel_invoice_billing_name_map(conn, invoice_numbers)
+    for item in entries:
+        billing_name = ""
+        for code in str(item.get("expense_codes") or "").split(", "):
+            key = code.strip()
+            if key and billing_by_invoice.get(key):
+                billing_name = billing_by_invoice[key]
+                break
+        display_name = billing_name or item.get("agency_name") or ""
+        item["supplier_name"] = display_name
+        item["billing_name"] = display_name
+    return _attach_hotel_credit_payment_mode_display(conn, entries)
 
 
 def _hotel_credit_payment_detail(conn, payment_id):
@@ -3243,6 +3566,7 @@ def _hotel_credit_payment_detail(conn, payment_id):
         (payment_id,),
     ).fetchall()
     allocations = []
+    invoice_numbers = []
     for alloc in alloc_rows:
         item = dict(alloc)
         item["amount"] = round_half_up(item.get("amount"), 2)
@@ -3251,8 +3575,50 @@ def _hotel_credit_payment_detail(conn, payment_id):
             item.get("guest_name"), item.get("room_number")
         )
         item["category"] = ""
+        code = str(item.get("expense_code") or "").strip()
+        if code:
+            invoice_numbers.append(code)
         allocations.append(item)
     payment["allocations"] = allocations
+    billing_by_invoice = _hotel_invoice_billing_name_map(conn, invoice_numbers)
+    billing_name = ""
+    for code in invoice_numbers:
+        if billing_by_invoice.get(code):
+            billing_name = billing_by_invoice[code]
+            break
+    display_name = billing_name or payment.get("agency_name") or ""
+    payment["supplier_name"] = display_name
+    payment["billing_name"] = display_name
+    split_rows = conn.execute(
+        """SELECT payment_method, amount, transaction_id, receipt_id, sort_order
+           FROM hotel_invoice_credit_payment_mode_splits
+           WHERE payment_id = ?
+           ORDER BY sort_order, id""",
+        (payment_id,),
+    ).fetchall()
+    mode_splits = []
+    for split in split_rows:
+        item = dict(split)
+        item["amount"] = round_half_up(item.get("amount"), 2)
+        item["method"] = _normalize_hotel_credit_payment_method(
+            item.get("payment_method"), default="cash"
+        )
+        item["method_label"] = HOTEL_CREDIT_PAYMENT_METHOD_LABELS.get(
+            item["method"], item["method"]
+        )
+        mode_splits.append(item)
+    method_label, amounts, normalized = _hotel_credit_payment_method_display(
+        mode_splits, payment.get("payment_method")
+    )
+    if not normalized:
+        method_key = payment["payment_method"]
+        total = payment["total_amount"]
+        if method_key in amounts and total > 0:
+            amounts[method_key] = total
+        method_label = HOTEL_CREDIT_PAYMENT_METHOD_LABELS.get(method_key, method_key)
+    payment["mode_splits"] = normalized or mode_splits
+    payment["payment_method_label"] = method_label
+    payment["payment_amounts"] = amounts
     return payment
 
 
@@ -3262,14 +3628,9 @@ def _validate_hotel_credit_payment_payload(conn, data):
     payment_method = _normalize_hotel_credit_payment_method(
         data.get("payment_method"), default=""
     )
-    transaction_id = str(data.get("transaction_id") or "").strip()
     notes = str(data.get("notes") or "").strip()
     if not payment_method:
         errors.append("Select a payment mode.")
-    if payment_method in HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN and not transaction_id:
-        errors.append("Transaction ID is required for bank transfer.")
-    if payment_method not in HOTEL_CREDIT_PAYMENT_METHODS_REQUIRING_TXN:
-        transaction_id = ""
     raw_allocations = data.get("allocations") or []
     if not isinstance(raw_allocations, list) or not raw_allocations:
         errors.append("Select at least one credit invoice.")
@@ -3324,14 +3685,37 @@ def _validate_hotel_credit_payment_payload(conn, data):
     if not parsed:
         return None, ["Select at least one credit invoice."]
     total = round_half_up(sum(item["amount"] for item in parsed), 2)
+    mode_splits, split_errors = _parse_hotel_credit_payment_splits(
+        data, payment_method=payment_method, total_amount=total
+    )
+    if split_errors:
+        return None, split_errors
+    bor_allocations, bor_errors = _validate_hotel_credit_bor_splits(
+        conn, mode_splits, agency_name
+    )
+    if bor_errors:
+        return None, bor_errors
+    methods = [s["method"] for s in mode_splits]
+    unique_methods = []
+    for method in methods:
+        if method not in unique_methods:
+            unique_methods.append(method)
+    stored_method = unique_methods[0] if len(unique_methods) == 1 else "split"
+    transaction_id = ""
+    for split in mode_splits:
+        if split.get("transaction_id"):
+            transaction_id = split["transaction_id"]
+            break
     return {
         "payment_date": payment_date.isoformat() if hasattr(payment_date, "isoformat") else payment_date,
-        "payment_method": payment_method,
+        "payment_method": stored_method,
         "transaction_id": transaction_id,
         "notes": notes,
         "agency_name": agency_name,
         "total_amount": total,
         "allocations": parsed,
+        "mode_splits": mode_splits,
+        "bor_allocations": bor_allocations,
     }, []
 
 
@@ -8262,6 +8646,41 @@ def hotel_settings_api():
         conn.close()
 
 
+def _hotel_invoice_ledger_agency_options(rows, selected_agency="all"):
+    """Distinct agency names present on ledger rows (for the Agency filter)."""
+    names = []
+    seen = set()
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("agency_name") or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    selected = str(selected_agency or "").strip()
+    if selected and selected.casefold() != "all" and selected.casefold() not in seen:
+        names.append(selected)
+    names.sort(key=lambda value: value.casefold())
+    return [{"id": name, "name": name} for name in names]
+
+
+def _filter_hotel_invoice_rows_by_agency(rows, selected_agency):
+    key = str(selected_agency or "").strip()
+    if not key or key.casefold() == "all":
+        return list(rows or [])
+    want = key.casefold()
+    return [
+        row
+        for row in (rows or [])
+        if isinstance(row, dict)
+        and str(row.get("agency_name") or "").strip().casefold() == want
+    ]
+
+
 def _hotel_invoice_ledger_filters(args):
     """Parse hotel invoice ledger GET filters (shared by page + export)."""
     today = date.today()
@@ -8279,6 +8698,9 @@ def _hotel_invoice_ledger_filters(args):
         invoice_source = "hotel_ledger"
     else:
         invoice_source = selected_invoice
+    selected_agency = (args.get("agency") or "all").strip()
+    if not selected_agency:
+        selected_agency = "all"
     q = (args.get("q") or "").strip()
     return {
         "today": today,
@@ -8289,6 +8711,7 @@ def _hotel_invoice_ledger_filters(args):
         "status_filter": status_filter,
         "selected_invoice": selected_invoice,
         "invoice_source": invoice_source,
+        "selected_agency": selected_agency,
         "q": q,
     }
 
@@ -8312,6 +8735,12 @@ def hotel_invoice_ledger():
             if filters["date_filter_active"] and filters["date_to"]
             else None,
         )
+        filter_agencies = _hotel_invoice_ledger_agency_options(
+            rows, filters["selected_agency"]
+        )
+        rows = _filter_hotel_invoice_rows_by_agency(
+            rows, filters["selected_agency"]
+        )
         kpis = hotel_room_invoice_kpis(rows)
         conn.commit()
     finally:
@@ -8328,11 +8757,19 @@ def hotel_invoice_ledger():
         "hotel": "Hotel",
         "fb_transfer": "F&B Transfers",
     }
+    selected_agency = filters["selected_agency"]
+    selected_agency_label = (
+        "All agencies"
+        if selected_agency.casefold() == "all"
+        else selected_agency
+    )
     clear_kwargs = {}
     if filters["selected_status"] != "all":
         clear_kwargs["status"] = filters["selected_status"]
     if filters["selected_invoice"] != "all":
         clear_kwargs["invoice"] = filters["selected_invoice"]
+    if selected_agency.casefold() != "all":
+        clear_kwargs["agency"] = selected_agency
     if filters["q"]:
         clear_kwargs["q"] = filters["q"]
 
@@ -8366,6 +8803,9 @@ def hotel_invoice_ledger():
         selected_invoice_label=invoice_labels.get(
             filters["selected_invoice"], "All"
         ),
+        selected_agency=selected_agency,
+        selected_agency_label=selected_agency_label,
+        filter_agencies=filter_agencies,
         search_q=filters["q"],
         filter_form_action=url_for("hotel_invoice_ledger"),
         invoice_ledger_clear_url=url_for("hotel_invoice_ledger", **clear_kwargs),
@@ -8404,6 +8844,9 @@ def hotel_invoice_ledger_export():
             if filters["date_filter_active"] and filters["date_to"]
             else None,
         )
+        rows = _filter_hotel_invoice_rows_by_agency(
+            rows, filters["selected_agency"]
+        )
         conn.commit()
     finally:
         conn.close()
@@ -8419,6 +8862,7 @@ def hotel_invoice_ledger_export():
         "Invoice Date",
         "Room",
         "Guest",
+        "Agency",
         "Booking No",
         "Check In",
         "Check Out",
@@ -8437,22 +8881,23 @@ def hotel_invoice_ledger_export():
         ws.cell(row=idx, column=2, value=row.get("invoice_generated_at") or "")
         ws.cell(row=idx, column=3, value=row.get("room_number") or "")
         ws.cell(row=idx, column=4, value=row.get("guest_name") or "")
-        ws.cell(row=idx, column=5, value=row.get("booking_number") or "")
-        ws.cell(row=idx, column=6, value=row.get("check_in_date") or "")
-        ws.cell(row=idx, column=7, value=row.get("check_out_date") or "")
-        ws.cell(row=idx, column=8, value=row.get("estimated_total"))
-        ws.cell(row=idx, column=9, value=row.get("advance_paid"))
-        ws.cell(row=idx, column=10, value=row.get("balance_amount"))
+        ws.cell(row=idx, column=5, value=row.get("agency_name") or "")
+        ws.cell(row=idx, column=6, value=row.get("booking_number") or "")
+        ws.cell(row=idx, column=7, value=row.get("check_in_date") or "")
+        ws.cell(row=idx, column=8, value=row.get("check_out_date") or "")
+        ws.cell(row=idx, column=9, value=row.get("estimated_total"))
+        ws.cell(row=idx, column=10, value=row.get("advance_paid"))
+        ws.cell(row=idx, column=11, value=row.get("balance_amount"))
         ws.cell(
             row=idx,
-            column=11,
+            column=12,
             value=row.get("payment_mode_label")
             or ("Settled" if (row.get("status") or "") == "settled" else "Un Settled"),
         )
         for offset, (key, _label) in enumerate(HOTEL_PAYMENT_AMOUNT_COLUMNS):
             ws.cell(
                 row=idx,
-                column=12 + offset,
+                column=13 + offset,
                 value=round(float(amounts.get(key) or 0), 2),
             )
     buf = BytesIO()
@@ -8488,6 +8933,9 @@ def _hotel_room_transfer_query_kwargs(filters):
         kwargs["status"] = filters["selected_status"]
     if filters.get("selected_outlet") and filters["selected_outlet"] != "all":
         kwargs["outlet"] = filters["selected_outlet"]
+    selected_agency = str(filters.get("selected_agency") or "all").strip()
+    if selected_agency and selected_agency.casefold() != "all":
+        kwargs["agency"] = selected_agency
     if filters["q"]:
         kwargs["q"] = filters["q"]
     if filters.get("is_popup"):
@@ -8515,6 +8963,12 @@ def hotel_room_transfer_invoices():
             if filters["date_filter_active"] and filters["date_to"]
             else None,
         )
+        filter_agencies = _hotel_invoice_ledger_agency_options(
+            rows, filters["selected_agency"]
+        )
+        rows = _filter_hotel_invoice_rows_by_agency(
+            rows, filters["selected_agency"]
+        )
         kpis = hotel_room_invoice_kpis(rows, count_cancelled_in_billed=True)
         conn.commit()
     finally:
@@ -8526,6 +8980,12 @@ def hotel_room_transfer_invoices():
         "settled": "Settled",
         "cancelled": "Invoice Generated",
     }
+    selected_agency = filters["selected_agency"]
+    selected_agency_label = (
+        "All agencies"
+        if selected_agency.casefold() == "all"
+        else selected_agency
+    )
     clear_kwargs = _hotel_room_transfer_query_kwargs(filters)
     export_kwargs = dict(clear_kwargs)
     if filters["date_filter_active"]:
@@ -8557,6 +9017,9 @@ def hotel_room_transfer_invoices():
         selected_invoice="room_transfer",
         selected_invoice_label="Room Transfer",
         selected_outlet=filters.get("selected_outlet") or "all",
+        selected_agency=selected_agency,
+        selected_agency_label=selected_agency_label,
+        filter_agencies=filter_agencies,
         search_q=filters["q"],
         filter_form_action=url_for("hotel_room_transfer_invoices", **filter_kwargs),
         invoice_ledger_clear_url=url_for(
@@ -8602,6 +9065,9 @@ def hotel_room_transfer_invoices_export():
             date_to=filters["date_to"].isoformat()
             if filters["date_filter_active"] and filters["date_to"]
             else None,
+        )
+        rows = _filter_hotel_invoice_rows_by_agency(
+            rows, filters["selected_agency"]
         )
         conn.commit()
     finally:
@@ -8937,6 +9403,166 @@ def hotel_credit():
     return _render_credit_settlement_page(CREDIT_SETTLEMENT_MODE_HOTEL_CREDIT)
 
 
+@app.route("/hotel/credit/export", endpoint="export_hotel_credit_report")
+def export_hotel_credit_report():
+    """Excel download of Hotel Credit outstanding or payment history for current filters."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+    from io import BytesIO
+
+    selected_view = _normalize_credit_payment_view(request.args.get("view"))
+    date_from, date_to, date_filter_active = _resolve_optional_filter_date_range(
+        request.args, "date_from", "date_to", default_fy=True
+    )
+    payment_date_from, payment_date_to, payment_date_filter_active = (
+        _resolve_optional_filter_date_range(
+            request.args, "payment_date_from", "payment_date_to"
+        )
+    )
+    selected_supplier, supplier_id = _parse_purchase_ledger_supplier(
+        request.args.get("supplier")
+    )
+
+    conn = get_db()
+    try:
+        if selected_view == CREDIT_PAYMENT_VIEW_HISTORY:
+            rows = _hotel_credit_payment_entries(
+                conn,
+                payment_date_from=payment_date_from if payment_date_filter_active else None,
+                payment_date_to=payment_date_to if payment_date_filter_active else None,
+                party_id=supplier_id,
+            )
+            sheet_title = "Payment History"
+            report_title = "Hotel Credit — Payment History"
+            headers = [
+                "Invoice",
+                "Agency",
+                "Payment Date",
+                "Method",
+                *[label for _key, label in HOTEL_CREDIT_PAYMENT_METHODS],
+                "Transaction ID",
+                "Total",
+                "Invoices",
+                "Notes",
+            ]
+            data_rows = []
+            for entry in rows:
+                amounts = entry.get("payment_amounts") or {}
+                data_rows.append(
+                    [
+                        entry.get("expense_codes") or "",
+                        entry.get("supplier_name") or "",
+                        entry.get("payment_date") or "",
+                        entry.get("payment_method_label")
+                        or HOTEL_CREDIT_PAYMENT_METHOD_LABELS.get(
+                            entry.get("payment_method"), entry.get("payment_method")
+                        )
+                        or "",
+                        *[
+                            round(float(amounts.get(key) or 0), 2)
+                            for key, _label in HOTEL_CREDIT_PAYMENT_METHODS
+                        ],
+                        entry.get("transaction_id") or "",
+                        entry.get("total_amount"),
+                        entry.get("allocation_count") or 0,
+                        entry.get("notes") or "",
+                    ]
+                )
+            fname_filters = {
+                "date_from": payment_date_from if payment_date_filter_active else None,
+                "date_to": payment_date_to if payment_date_filter_active else None,
+            }
+        else:
+            all_outstanding = _outstanding_hotel_credits(
+                conn,
+                date_from if date_filter_active else None,
+                date_to if date_filter_active else None,
+                party_id=None,
+            )
+            suppliers = _hotel_credit_agency_filters(conn, all_outstanding)
+            supplier_lookup = {str(s["id"]): s for s in suppliers}
+            if (
+                selected_supplier != PURCHASE_LEDGER_FILTER_ALL
+                and selected_supplier not in supplier_lookup
+            ):
+                supplier_id = None
+            rows = (
+                all_outstanding
+                if not supplier_id
+                else [
+                    entry
+                    for entry in all_outstanding
+                    if int(entry.get("supplier_id") or 0) == int(supplier_id)
+                ]
+            )
+            sheet_title = "Outstanding Credit"
+            report_title = "Hotel Credit — Outstanding"
+            headers = [
+                "Invoice Date",
+                "Invoice",
+                "Agency",
+                "Guest / Room",
+                "Credit Amount",
+                "Paid",
+                "Balance",
+            ]
+            data_rows = [
+                [
+                    entry.get("sales_date") or "",
+                    entry.get("invoice_number") or entry.get("expense_code") or "",
+                    entry.get("supplier_name") or "",
+                    entry.get("description") or "",
+                    entry.get("amount"),
+                    entry.get("paid_amount"),
+                    entry.get("balance"),
+                ]
+                for entry in rows
+            ]
+            fname_filters = {
+                "date_from": date_from if date_filter_active else None,
+                "date_to": date_to if date_filter_active else None,
+            }
+    finally:
+        conn.close()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = sheet_title[:31]
+    header_font = Font(bold=True)
+    ws["A1"] = f"Hotel Bell Elite — {report_title}"
+    ws["A1"].font = Font(bold=True, size=14)
+    if selected_supplier and selected_supplier != PURCHASE_LEDGER_FILTER_ALL:
+        agency_name = ""
+        for row in data_rows:
+            if selected_view == CREDIT_PAYMENT_VIEW_HISTORY:
+                agency_name = row[1] if row else ""
+            else:
+                agency_name = row[2] if row else ""
+            if agency_name:
+                break
+        ws["A2"] = f"Agency filter: {agency_name or selected_supplier}"
+    for col, title in enumerate(headers, start=1):
+        cell = ws.cell(row=3, column=col, value=title)
+        cell.font = header_font
+    for idx, values in enumerate(data_rows, start=4):
+        for col, value in enumerate(values, start=1):
+            ws.cell(row=idx, column=col, value=value)
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(
+        buf,
+        as_attachment=True,
+        download_name=report_export_filename(
+            report_title.replace("—", "-"),
+            date_from=fname_filters.get("date_from"),
+            date_to=fname_filters.get("date_to"),
+        ),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
 @app.route("/hotel/credit/create", methods=["POST"], endpoint="create_hotel_credit_payment")
 def create_hotel_credit_payment():
     user = get_current_user()
@@ -8946,6 +9572,7 @@ def create_hotel_credit_payment():
     conn = get_db()
     try:
         ensure_hotel_invoice_credits_schema(conn)
+        ensure_back_office_receipt_schema(conn)
         payload, errors = _validate_hotel_credit_payment_payload(conn, data)
         if errors:
             return jsonify({"ok": False, "error": errors[0], "errors": errors}), 400
@@ -8976,6 +9603,25 @@ def create_hotel_credit_payment():
                     allocation["amount"],
                 ),
             )
+        for idx, split in enumerate(payload.get("mode_splits") or []):
+            conn.execute(
+                """INSERT INTO hotel_invoice_credit_payment_mode_splits
+                   (payment_id, payment_method, amount, transaction_id, receipt_id, sort_order)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    payment_id,
+                    split["method"],
+                    split["amount"],
+                    split.get("transaction_id") or "",
+                    split.get("receipt_id"),
+                    idx,
+                ),
+            )
+        from back_office_receipt import insert_back_office_receipt_allocations
+
+        insert_back_office_receipt_allocations(
+            conn, payment_id, payload.get("bor_allocations") or []
+        )
         conn.commit()
         payment = _hotel_credit_payment_detail(conn, payment_id)
     finally:
@@ -8997,12 +9643,20 @@ def delete_hotel_credit_payment():
     conn = get_db()
     try:
         ensure_hotel_invoice_credits_schema(conn)
+        ensure_back_office_receipt_schema(conn)
         payment = conn.execute(
             "SELECT id FROM hotel_invoice_credit_payments WHERE id = ?",
             (payment_id,),
         ).fetchone()
         if not payment:
             return jsonify({"ok": False, "error": "Payment was not found."}), 404
+        from back_office_receipt import delete_back_office_receipt_allocations_for_payment
+
+        delete_back_office_receipt_allocations_for_payment(conn, payment_id)
+        conn.execute(
+            "DELETE FROM hotel_invoice_credit_payment_mode_splits WHERE payment_id = ?",
+            (payment_id,),
+        )
         conn.execute(
             "DELETE FROM hotel_invoice_credit_payment_allocations WHERE payment_id = ?",
             (payment_id,),
@@ -9015,6 +9669,23 @@ def delete_hotel_credit_payment():
     finally:
         conn.close()
     return jsonify({"ok": True})
+
+
+@app.route("/hotel/credit/pending-receipts", methods=["GET"], endpoint="hotel_credit_pending_receipts")
+def hotel_credit_pending_receipts():
+    """Pending Back Office Receipts for an agency (Hotel Credit clearance)."""
+    agency_id = request.args.get("agency_id")
+    agency_name = str(request.args.get("agency_name") or "").strip()
+    conn = get_db()
+    try:
+        from back_office_receipt import list_pending_back_office_receipts_for_agency
+
+        rows = list_pending_back_office_receipts_for_agency(
+            conn, agency_id=agency_id, agency_name=agency_name
+        )
+    finally:
+        conn.close()
+    return jsonify({"ok": True, "receipts": rows})
 
 
 @app.route("/hotel/credit/<int:payment_id>", endpoint="hotel_credit_payment_detail")
@@ -9430,7 +10101,6 @@ def hotel_room_detail_api(room_id):
             "add_custom_charge",
             "update_charge",
             "delete_charge",
-            "generate_invoice",
         ) and not user_can_edit_unsettled_invoices(get_current_user()):
             return jsonify(
                 {
@@ -9438,6 +10108,8 @@ def hotel_room_detail_api(room_id):
                     "error": "Edit Access is required to change invoice folio charges.",
                 }
             ), 403
+        # generate_invoice is allowed without Edit Access (mint/settle flow).
+        # Folio edit / discount / delete still require the Edit module.
         try:
             if action == "reserve":
                 stay = data.get("stay") if isinstance(data.get("stay"), dict) else {}
@@ -11470,6 +12142,48 @@ def _cash_ledger_load_rows(conn, company, date_from, date_to):
     return entries
 
 
+def _cash_ledger_bor_rows(conn, date_from, date_to, location=None):
+    """Cash Back Office Receipts (hotel advances) as cash ledger inflows."""
+    location = _normalize_cash_ledger_location(location)
+    # BOR is hotel-level cash; hide when filtering to a non-hotel outlet.
+    if location not in (CASH_LEDGER_FILTER_ALL, "Hotel"):
+        return []
+    ensure_back_office_receipt_schema(conn)
+    rows = conn.execute(
+        """SELECT id, receipt_no, receipt_date, payer_name, amount, towards
+           FROM back_office_receipts
+           WHERE payment_mode = 'cash'
+             AND receipt_date >= ? AND receipt_date <= ?
+           ORDER BY receipt_date, id""",
+        (date_from.isoformat(), date_to.isoformat()),
+    ).fetchall()
+    entries = []
+    for row in rows:
+        item = dict(row)
+        amount = round_half_up(item.get("amount"), 2)
+        if amount <= 0:
+            continue
+        payer = (item.get("payer_name") or "").strip() or "Received"
+        towards = (item.get("towards") or "").strip()
+        description = f"{payer} — {towards}" if towards else payer
+        entries.append(
+            {
+                "id": f"bor-{item['id']}",
+                "source_id": item["id"],
+                "entry_type": CASH_LEDGER_ENTRY_BOR,
+                "entry_date": item["receipt_date"],
+                "location": "Hotel",
+                "detail": "Hotel",
+                "expense_code": (item.get("receipt_no") or "").strip(),
+                "description": description,
+                "amount": amount,
+                "signed_amount": amount,
+                "can_delete": False,
+            }
+        )
+    return entries
+
+
 def _cash_ledger_split_concat(value):
     """Split sqlite GROUP_CONCAT output into unique non-empty parts."""
     parts = []
@@ -11660,6 +12374,7 @@ def _cash_ledger_transfer_rows(conn, company, date_from, date_to):
 
 def _build_cash_ledger_entries(conn, company, date_from, date_to, location=None):
     ensure_cash_ledger_schema(conn)
+    ensure_back_office_receipt_schema(conn)
     location = _normalize_cash_ledger_location(location)
     entries = []
     entries.extend(_cash_ledger_sales_rows(conn, company, date_from, date_to, location=location))
@@ -11667,6 +12382,7 @@ def _build_cash_ledger_entries(conn, company, date_from, date_to, location=None)
     if location == CASH_LEDGER_FILTER_ALL:
         entries.extend(_cash_ledger_load_rows(conn, company, date_from, date_to))
     entries.extend(_cash_ledger_credit_rows(conn, company, date_from, date_to, location=location))
+    entries.extend(_cash_ledger_bor_rows(conn, date_from, date_to, location=location))
     entries.extend(_cash_ledger_expense_rows(conn, company, date_from, date_to, location=location))
     if location == CASH_LEDGER_FILTER_ALL:
         entries.extend(_cash_ledger_transfer_rows(conn, company, date_from, date_to))
@@ -11689,9 +12405,10 @@ def _cash_ledger_totals(entries):
     sales_total = 0.0
     load_total = 0.0
     credit_total = 0.0
+    bor_total = 0.0
     expense_total = 0.0
     transfer_total = 0.0
-    sales_count = load_count = credit_count = expense_count = transfer_count = 0
+    sales_count = load_count = credit_count = bor_count = expense_count = transfer_count = 0
     for entry in entries:
         kind = entry.get("entry_type")
         amount = round_half_up(entry.get("amount"), 2)
@@ -11704,6 +12421,9 @@ def _cash_ledger_totals(entries):
         elif kind == CASH_LEDGER_ENTRY_CREDIT:
             credit_total += amount
             credit_count += 1
+        elif kind == CASH_LEDGER_ENTRY_BOR:
+            bor_total += amount
+            bor_count += 1
         elif kind == CASH_LEDGER_ENTRY_EXPENSE:
             expense_total += amount
             expense_count += 1
@@ -11711,7 +12431,8 @@ def _cash_ledger_totals(entries):
             transfer_total += amount
             transfer_count += 1
     available = round_half_up(
-        sales_total + load_total + credit_total - expense_total - transfer_total, 2
+        sales_total + load_total + credit_total + bor_total - expense_total - transfer_total,
+        2,
     )
     return {
         "sales_total": round_half_up(sales_total, 2),
@@ -11720,6 +12441,8 @@ def _cash_ledger_totals(entries):
         "load_count": load_count,
         "credit_total": round_half_up(credit_total, 2),
         "credit_count": credit_count,
+        "bor_total": round_half_up(bor_total, 2),
+        "bor_count": bor_count,
         "expense_total": round_half_up(expense_total, 2),
         "expense_count": expense_count,
         "transfer_total": round_half_up(transfer_total, 2),
@@ -12699,6 +13422,7 @@ def export_cash_ledger_report():
         ("Actual Cash", totals["sales_total"], totals["sales_count"]),
         ("Load Cash", totals["load_total"], totals["load_count"]),
         ("Credit Cash", totals["credit_total"], totals["credit_count"]),
+        ("Back Office Receipt", totals.get("bor_total", 0), totals.get("bor_count", 0)),
         ("Expense", totals["expense_total"], totals["expense_count"]),
         ("Transfer Out", totals["transfer_total"], totals["transfer_count"]),
         ("Available Cash", totals["available_total"], len(entries)),
@@ -13587,9 +14311,10 @@ def _load_outlet_entry_bundle(
             invoice_entries = hotel_sales_entry_from_invoices(conn, sales_date)
         else:
             invoice_entries = rollup_hotel_ledger_entries(ledger_entries)
-            # Guest Credit follows live hotel Credit settlements, not the FO upload.
+            # Guest Credit / Back Office Receipt follow live hotel settlements, not the FO upload.
             live_entries = hotel_sales_entry_from_invoices(conn, sales_date)
             invoice_entries["room_credit"] = parse_money(live_entries.get("room_credit"))
+            invoice_entries["bor"] = parse_money(live_entries.get("bor"))
         for key in HOTEL_IMPORT_FIELD_KEYS:
             sales_entries[key] = parse_money(invoice_entries.get(key))
         expense_total = _sales_expense_total(conn, company, location, sales_date)

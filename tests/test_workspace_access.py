@@ -156,6 +156,7 @@ class WorkspaceAccessTests(unittest.TestCase):
                 "Cash Ledger",
                 "Approvals",
                 "Credit Payment",
+                "Back Office Receipt",
                 "Supplier Master",
             ],
         )
@@ -337,6 +338,9 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("export_credit_payment_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("export_purchase_verification_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("credit_payment"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("back_office_receipt"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("back_office_receipt_add"), "accounts")
+        self.assertEqual(get_endpoint_dashboard_module("export_back_office_receipt_report"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("purchase_verification"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("create_credit_payment"), "accounts")
         self.assertEqual(get_endpoint_dashboard_module("delete_credit_payment"), "accounts")
@@ -351,6 +355,8 @@ class WorkspaceAccessTests(unittest.TestCase):
         self.assertEqual(get_endpoint_dashboard_module("hotel_credit"), "hotel_rooms")
         self.assertEqual(get_endpoint_dashboard_module("communication_hub"), "communication_hub")
         self.assertEqual(get_endpoint_dashboard_module("communication_hub_api_conversations"), "communication_hub")
+        self.assertEqual(get_endpoint_dashboard_module("communication_hub_promotion"), "communication_hub")
+        self.assertEqual(get_endpoint_dashboard_module("communication_hub_api_promotion_send"), "communication_hub")
         self.assertEqual(get_endpoint_dashboard_module("stores"), "stores")
         self.assertEqual(get_endpoint_dashboard_module("stores_indent"), "stores")
         self.assertEqual(get_endpoint_dashboard_module("point_of_sale"), "point_of_sale")

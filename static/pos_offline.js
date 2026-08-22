@@ -11,6 +11,8 @@
   var STORE_DRAFTS = 'drafts';
   var STORE_OUTBOX = 'outbox';
   var CATALOG_KEY = 'snapshot';
+  /* Offline drafts/outbox are not kept forever (plan: finite window). */
+  var MAX_OFFLINE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
   var dbPromise = null;
   var flushInflight = null;
@@ -97,6 +99,61 @@
 
   function isOnline() {
     return !(typeof navigator !== 'undefined' && navigator.onLine === false);
+  }
+
+  function offlineEntryAgeMs(iso) {
+    var t = Date.parse(String(iso || ''));
+    if (!isFinite(t)) return 0;
+    return Date.now() - t;
+  }
+
+  function isOfflineEntryExpired(iso) {
+    return offlineEntryAgeMs(iso) > MAX_OFFLINE_AGE_MS;
+  }
+
+  /**
+   * Drop outbox + draft rows older than MAX_OFFLINE_AGE_MS.
+   * Returns { outbox, drafts } counts removed.
+   */
+  function pruneExpiredOfflineData() {
+    return Promise.all([
+      withStore(STORE_OUTBOX, 'readwrite', function (store) {
+        return idbReq(store.getAll()).then(function (rows) {
+          var removed = 0;
+          var ops = [];
+          (rows || []).forEach(function (row) {
+            if (!row || !isOfflineEntryExpired(row.createdAt)) return;
+            removed += 1;
+            ops.push(idbReq(store.delete(row.id)));
+          });
+          return Promise.all(ops).then(function () {
+            return removed;
+          });
+        });
+      }).catch(function () {
+        return 0;
+      }),
+      withStore(STORE_DRAFTS, 'readwrite', function (store) {
+        return idbReq(store.getAll()).then(function (rows) {
+          var removed = 0;
+          var ops = [];
+          (rows || []).forEach(function (row) {
+            if (!row) return;
+            var stamp = row.updatedAt || row.createdAt;
+            if (!isOfflineEntryExpired(stamp)) return;
+            removed += 1;
+            ops.push(idbReq(store.delete(row.localId)));
+          });
+          return Promise.all(ops).then(function () {
+            return removed;
+          });
+        });
+      }).catch(function () {
+        return 0;
+      })
+    ]).then(function (counts) {
+      return { outbox: counts[0] || 0, drafts: counts[1] || 0 };
+    });
   }
 
   function uuid() {
@@ -315,18 +372,29 @@
     }
     if (flushInflight) return flushInflight;
 
-    flushInflight = listOutbox()
-      .then(function (rows) {
-        rows = (rows || []).slice().sort(function (a, b) {
+    flushInflight = pruneExpiredOfflineData()
+      .then(function (pruned) {
+        return listOutbox().then(function (rows) {
+          return { pruned: pruned, rows: rows };
+        });
+      })
+      .then(function (ctx) {
+        var rows = (ctx.rows || []).slice().sort(function (a, b) {
           return (a.id || 0) - (b.id || 0);
         });
         var flushed = 0;
         var authExpired = false;
+        var pruned = ctx.pruned || { outbox: 0, drafts: 0 };
 
         function next(i) {
           if (i >= rows.length) {
             return listOutbox().then(function (left) {
-              return { flushed: flushed, remaining: left.length, authExpired: authExpired };
+              return {
+                flushed: flushed,
+                remaining: left.length,
+                authExpired: authExpired,
+                pruned: pruned
+              };
             });
           }
           var row = rows[i];
@@ -348,7 +416,8 @@
                       return {
                         flushed: flushed,
                         remaining: left.length,
-                        authExpired: true
+                        authExpired: true,
+                        pruned: pruned
                       };
                     });
                   }
@@ -364,7 +433,8 @@
                       flushed: flushed,
                       remaining: left.length,
                       authExpired: authExpired,
-                      error: err
+                      error: err,
+                      pruned: pruned
                     };
                   });
                 });
@@ -410,6 +480,8 @@
     enqueueOutbox: enqueueOutbox,
     listOutbox: listOutbox,
     flushOutbox: flushOutbox,
+    pruneExpiredOfflineData: pruneExpiredOfflineData,
+    MAX_OFFLINE_AGE_MS: MAX_OFFLINE_AGE_MS,
     postInvoice: postInvoice,
     tryPostWithConflictRetry: tryPostWithConflictRetry
   };

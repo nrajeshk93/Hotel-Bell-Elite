@@ -119,9 +119,11 @@
     if (root.id === 'room-transfer-status-listbox' || root.id === 'room-transfer-location-listbox') return;
     root.__suFilterListboxBound = true;
     var trigger = root.querySelector('.se-filter-chip-trigger');
-    var control = root.querySelector('.se-filter-chip-control');
     var list = root.querySelector('.se-filter-listbox');
     if (!trigger || !list) return;
+    /* Bind the control that wraps this trigger — not the first .se-filter-chip-control
+       under root (Cash Ledger Search is a sibling chip and must not open Outlet). */
+    var control = trigger.closest('.se-filter-chip-control') || root.querySelector('.se-filter-chip-control');
 
     function onTriggerClick(e){
       e.preventDefault();
@@ -132,6 +134,8 @@
     // Icon / chevron sit outside the button — still open the menu.
     if (control) {
       control.addEventListener('click', function(e){
+        if (!root.contains(e.target)) return;
+        if (e.target.closest('input, textarea, select, a')) return;
         if (e.target.closest('.se-filter-chip-trigger')) return;
         if (e.target.closest('.se-filter-listbox')) return;
         onTriggerClick(e);

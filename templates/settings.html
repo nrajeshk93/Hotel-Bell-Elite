@@ -12,7 +12,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=26">
 <link rel="stylesheet" href="{{ url_for('static', filename='settings_dashboard.css') }}?v=3">
 <script>
@@ -83,6 +83,9 @@
       <p>Grant Restaurant or Bar module access in User &amp; Access to open outlet settings from here.</p>
     </div>
     {% endif %}
+    <p class="sd-pwa-hint" style="margin:24px 4px 8px;max-width:42rem;color:#64748b;font:500 13px/1.45 system-ui,-apple-system,sans-serif;">
+      Install this app over HTTPS (Add to Home Screen). Open key modules once while online so they stay available during brief disconnects. Restaurant and Bar POS can still create orders offline and sync when connected.
+    </p>
   </section>
 </div>
 {% include 'partials/de_workspace_shell_close.html' %}

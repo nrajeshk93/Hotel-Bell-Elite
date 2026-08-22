@@ -17,14 +17,14 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
 {% if not is_popup %}
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 {% endif %}
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_invoice_ledger.css') }}?v=18">
 {% if is_popup %}
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
@@ -55,7 +55,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=7">
-<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=6">
+<link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=7">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_invoice_ledger.css') }}?v=18">
 {% endif %}
 
@@ -66,6 +66,7 @@
      data-invoice-api-base="{{ url_for('hotel_invoice_ledger_api', invoice_number='__ID__') }}"
      data-settle-api-base="{{ url_for('hotel_invoice_ledger_settle_api', invoice_number='__ID__') }}"
      data-settle-selected-url="{{ url_for('hotel_invoice_ledger_settle_selected_api') }}"
+     data-pending-receipts-url="{{ url_for('hotel_credit_pending_receipts') }}"
      data-cancel-api-base="{{ url_for('hotel_invoice_ledger_cancel_api', invoice_number='__ID__') }}"
      data-reopen-api-base="{{ url_for('hotel_invoice_ledger_reopen_edit_api', invoice_number='__ID__') }}"
      data-can-cancel="{{ '1' if can_cancel_invoices else '0' }}"
@@ -131,7 +132,42 @@
           <div class="se-filter-chip se-filter-chip--search pl-search-chip pl-header-field-listbox pl-header-field" id="{{ id_prefix }}-search-chip">
             <label class="se-filter-chip-label" for="{{ id_prefix }}-search">Search</label>
             <div class="se-filter-chip-control">
-              <input type="search" id="{{ id_prefix }}-search" class="pl-search-input pl-header-search" value="{{ search_q }}" placeholder="Invoice, guest, room…" autocomplete="off" aria-label="Search invoices">
+              <input type="search" id="{{ id_prefix }}-search" class="pl-search-input pl-header-search" value="{{ search_q }}" placeholder="Invoice, guest, agency, room…" autocomplete="off" aria-label="Search invoices">
+            </div>
+          </div>
+
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pl-header-field-listbox pl-header-field pl-supplier-filter-listbox{% if selected_agency != 'all' %} is-filtered{% endif %}" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-change="hilAgencyChanged" data-se-listbox-submit="{{ id_prefix }}-filter-form" data-se-listbox-close-date-wrap="{{ id_prefix }}-date-range-wrap" id="{{ id_prefix }}-agency-listbox">
+            <span class="se-filter-chip-label" id="{{ id_prefix }}-agency-label">Agency</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="{{ id_prefix }}-agency" name="agency" value="{{ selected_agency|default('all') }}">
+              <input type="text"
+                     class="se-filter-chip-trigger se-filter-chip-combobox{% if (selected_agency|default('all')) == 'all' %} is-placeholder{% endif %}"
+                     id="{{ id_prefix }}-agency-trigger"
+                     role="combobox"
+                     aria-autocomplete="list"
+                     aria-haspopup="listbox"
+                     aria-expanded="false"
+                     aria-controls="{{ id_prefix }}-agency-list"
+                     aria-labelledby="{{ id_prefix }}-agency-label"
+                     value="{% if (selected_agency|default('all')) != 'all' %}{{ selected_agency_label }}{% endif %}"
+                     title="{% if (selected_agency|default('all')) != 'all' %}{{ selected_agency_label }}{% else %}All agencies{% endif %}"
+                     placeholder="All agencies"
+                     autocomplete="off"
+                     spellcheck="false">
+              <span class="se-filter-chip-chev" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+              </span>
+            </div>
+            <div class="se-filter-listbox" id="{{ id_prefix }}-agency-list" role="listbox" aria-labelledby="{{ id_prefix }}-agency-label" hidden>
+              <div class="pl-supplier-options ep-listbox-options" id="{{ id_prefix }}-agency-options">
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if (selected_agency|default('all')) == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all agencies" data-label="All agencies" aria-selected="{{ 'true' if (selected_agency|default('all')) == 'all' else 'false' }}">All agencies</button>
+                {% for agency in filter_agencies|default([]) %}
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_agency == agency.name %} is-selected{% endif %}" role="option" data-value="{{ agency.name }}" data-name="{{ agency.name|lower }}" data-label="{{ agency.name }}" aria-selected="{{ 'true' if selected_agency == agency.name else 'false' }}">
+                  <span class="pl-supplier-option-name">{{ agency.name }}</span>
+                </button>
+                {% endfor %}
+              </div>
+              <div class="pl-supplier-empty" id="{{ id_prefix }}-agency-empty" hidden>No agencies match your search.</div>
             </div>
           </div>
 
@@ -322,6 +358,7 @@
                 <th class="pl-sortable" data-sort="date" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Date</th>
                 <th class="pl-sortable" data-sort="room" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Room</th>
                 <th class="pl-sortable" data-sort="guest" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Guest</th>
+                <th class="pl-sortable" data-sort="agency" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Agency</th>
                 <th class="pl-sortable" data-sort="check_in" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Check-in</th>
                 <th class="pl-sortable" data-sort="check_out" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Check-out</th>
                 <th class="pl-sortable pl-col-amount" data-sort="amount" data-sort-type="number" scope="col" tabindex="0" aria-sort="none" title="Click to sort">Amount</th>
@@ -356,9 +393,10 @@
                   data-guest-name="{{ inv.guest_name or '' }}"
                   data-balance="{{ inv.balance_amount }}"
                   data-allow-credit="{{ '1' if inv.allow_credit else '0' }}"
+                  data-agency-name="{{ inv.agency_name or '' }}"
                   data-invoice-status="{{ inv.status }}"
                   data-invoice-source="{{ inv.source or 'hotel' }}"
-                  data-search="{{ [inv.invoice_number or '', inv.guest_name or '', inv.room_number or '', inv.booking_number or '', inv.room_type_label or '', payment_mode_label]|join(' ')|lower }}">
+                  data-search="{{ [inv.invoice_number or '', inv.guest_name or '', inv.agency_name or '', inv.room_number or '', inv.booking_number or '', inv.room_type_label or '', payment_mode_label]|join(' ')|lower }}">
                 {% if not room_transfer_ledger %}
                 <td class="cp-col-check">
                   {% if is_open %}
@@ -378,6 +416,13 @@
                   <div class="pl-name" title="{{ inv.guest_name or '' }}">{{ inv.guest_name or '—' }}</div>
                   {% if inv.booking_number and inv.booking_number != inv.invoice_number %}
                   <div class="pl-meta" title="{{ inv.booking_number }}">{{ inv.booking_number }}</div>
+                  {% endif %}
+                </td>
+                <td class="hil-col-agency" data-sort-value="{{ inv.agency_name or '' }}">
+                  {% if inv.agency_name %}
+                  <div class="pl-name" title="{{ inv.agency_name }}">{{ inv.agency_name }}</div>
+                  {% else %}
+                  <span class="pl-meta">—</span>
                   {% endif %}
                 </td>
                 <td class="hil-col-date" data-sort-value="{{ inv.check_in_date or '' }}">{{ inv.check_in_date or '—' }}</td>
@@ -468,8 +513,8 @@
 <script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=56"></script>
 <script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=20"></script>
-<script src="{{ url_for('static', filename='hotel_settle_modal.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_invoice_ledger.js') }}?v=19"></script>
+<script src="{{ url_for('static', filename='hotel_settle_modal.js') }}?v=10" data-de-rerun="1"></script>
+<script src="{{ url_for('static', filename='hotel_invoice_ledger.js') }}?v=20"></script>
 {% if not is_popup %}
 {% include 'partials/de_workspace_shell_close.html' %}
 {% endif %}

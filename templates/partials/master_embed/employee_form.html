@@ -25,13 +25,14 @@
       </div>
       <div class="su-header-tools md-master-embed-header-actions">
         <a class="btn btn-secondary" href="{{ emp_list_url }}">Cancel</a>
-        <button type="submit" class="btn btn-primary" form="employee-form">{{ 'Update Employee' if mode == 'edit' else 'Add Employee' }}</button>
+        <button type="submit" class="btn btn-primary" form="employee-form" id="ep-emp-header-submit">{{ 'Update Employee' if mode == 'edit' else 'Add Employee' }}</button>
       </div>
     </div>
   </header>
 
   <div class="md-master-embed-body">
     <article class="ep-emp-form-panel" aria-label="{{ 'Edit employee' if mode == 'edit' else 'Add employee' }}">
+      {% include 'partials/employee_add_bulk.html' %}
       {% include 'partials/employee_form_fields.html' %}
     </article>
   </div>

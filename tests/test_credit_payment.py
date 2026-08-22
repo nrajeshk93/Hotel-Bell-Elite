@@ -621,6 +621,8 @@ class PurchaseVerificationIsolationTests(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(payload["total_amount"], 150)
         self.assertEqual(payload["verification_account"], "administrator")
+        # Client-supplied payment_date is ignored; approval uses today.
+        self.assertEqual(payload["verification_date"], date.today().isoformat())
 
     def test_verification_requires_logged_in_user(self):
         payload, errors = app_module._validate_purchase_verification_payload(
@@ -676,12 +678,15 @@ class PurchaseVerificationIsolationTests(unittest.TestCase):
         self.assertIn(self.expense_cash, ids)
 
         history = app_module._purchase_verification_entries(
-            self.conn, verification_date_from=date(2026, 7, 1), verification_date_to=date(2026, 7, 31)
+            self.conn,
+            verification_date_from=date.today(),
+            verification_date_to=date.today(),
         )
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["total_amount"], 100)
         self.assertEqual(history[0]["verification_account"], "administrator")
         self.assertEqual(history[0]["expense_codes"], "HBE-EX-1")
+        self.assertEqual(history[0]["payment_date"], date.today().isoformat())
 
 
 class CreditPaymentAccessTests(unittest.TestCase):

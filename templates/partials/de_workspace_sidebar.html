@@ -9,6 +9,7 @@
 {% set master_view = de_nav_master_view|default('') %}
 {% set report_view = de_nav_report_view|default('') %}
 {% set settings_view = de_nav_settings_view|default('') %}
+{% set communication_hub_view = de_nav_communication_hub_view|default('') %}
 {% set analytics_open = nav_section == 'analytics' %}
 {% set accounts_open = nav_section == 'accounts' %}
 {% set payroll_open = nav_section == 'payroll' %}
@@ -70,6 +71,9 @@
         {% endif %}
         {% if has_accounts_access('credit_payment') %}
         <a class="de-nav-subitem{% if accounts_view == 'credit_payment' %} is-active{% endif %}" id="de-nav-credit-payment" href="{{ url_for('credit_payment') }}"{% if accounts_view == 'credit_payment' %} aria-current="page"{% endif %}>Credit Payment</a>
+        {% endif %}
+        {% if has_accounts_access('back_office_receipt') %}
+        <a class="de-nav-subitem{% if accounts_view == 'back_office_receipt' %} is-active{% endif %}" id="de-nav-back-office-receipt" href="{{ url_for('back_office_receipt') }}"{% if accounts_view == 'back_office_receipt' %} aria-current="page"{% endif %}>Back Office Receipt</a>
         {% endif %}
       </div>
     </div>
@@ -185,7 +189,8 @@
         <svg class="de-nav-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
       </button>
       <div class="de-nav-sub" id="de-nav-communication-hub-sub">
-        <a class="de-nav-subitem{% if communication_hub_open %} is-active{% endif %}" id="de-nav-communication-hub-inbox" href="{{ url_for('communication_hub') }}"{% if communication_hub_open %} aria-current="page"{% endif %}>Inbox</a>
+        <a class="de-nav-subitem{% if communication_hub_open and (communication_hub_view == 'inbox' or not communication_hub_view) %} is-active{% endif %}" id="de-nav-communication-hub-inbox" href="{{ url_for('communication_hub') }}"{% if communication_hub_open and (communication_hub_view == 'inbox' or not communication_hub_view) %} aria-current="page"{% endif %}>Inbox</a>
+        <a class="de-nav-subitem{% if communication_hub_open and communication_hub_view == 'promotion' %} is-active{% endif %}" id="de-nav-communication-hub-promotion" href="{{ url_for('communication_hub_promotion') }}"{% if communication_hub_open and communication_hub_view == 'promotion' %} aria-current="page"{% endif %}>Promotion</a>
       </div>
     </div>
     {% endif %}

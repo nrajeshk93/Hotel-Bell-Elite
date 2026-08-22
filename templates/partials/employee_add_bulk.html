@@ -1,0 +1,30 @@
+{# Single / Bulk mode for Add Employee (not shown on Edit). #}
+{% if mode == 'add' %}
+<div class="ep-emp-mode-host" id="ep-emp-mode-host"
+     data-template-url="{{ url_for('download_employee_template') }}"
+     data-upload-url="{{ url_for('upload_employees') }}">
+  <div class="ep-emp-mode-switch" id="ep-emp-mode-switch">
+    <span class="se-filter-chip-label" id="ep-emp-mode-label">Mode</span>
+    <div class="cp-view-tabs ep-emp-mode-tabs" role="tablist" aria-labelledby="ep-emp-mode-label">
+      <button type="button" class="cp-view-tab is-active" role="tab" id="ep-emp-mode-single" data-ep-emp-mode="single" aria-selected="true">Single</button>
+      <button type="button" class="cp-view-tab" role="tab" id="ep-emp-mode-bulk" data-ep-emp-mode="bulk" aria-selected="false">Bulk</button>
+    </div>
+  </div>
+</div>
+
+<div class="ep-emp-bulk" id="ep-emp-bulk" hidden>
+  <p class="ep-emp-bulk-lead">Download the current Excel template (departments and columns match this form), fill rows, then upload. Employee ID is assigned automatically.</p>
+  <div class="ep-emp-bulk-actions">
+    <button type="button" class="btn btn-secondary" id="ep-emp-bulk-template">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Download template
+    </button>
+    <label class="btn btn-primary ep-emp-bulk-upload-label" for="ep-emp-bulk-file">
+      <input type="file" id="ep-emp-bulk-file" class="ep-emp-bulk-file" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      Upload Excel
+    </label>
+  </div>
+  <p class="ep-emp-bulk-status" id="ep-emp-bulk-status" aria-live="polite"></p>
+  <div class="ep-emp-bulk-error staff-credit-error" id="ep-emp-bulk-error" hidden></div>
+</div>
+{% endif %}

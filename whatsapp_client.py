@@ -19,12 +19,20 @@ def whatsapp_phone_number_id() -> str:
     return (os.environ.get("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
 
 
+def whatsapp_waba_id() -> str:
+    return (os.environ.get("WHATSAPP_WABA_ID") or "").strip()
+
+
 def whatsapp_graph_api_version() -> str:
     return (os.environ.get("WHATSAPP_GRAPH_API_VERSION") or "v21.0").strip()
 
 
 def whatsapp_configured() -> bool:
     return bool(whatsapp_access_token() and whatsapp_phone_number_id())
+
+
+def whatsapp_templates_configured() -> bool:
+    return bool(whatsapp_access_token() and whatsapp_waba_id())
 
 
 def whatsapp_live_sends_allowed() -> bool:
@@ -391,3 +399,156 @@ def send_interactive_buttons(
         "interactive": interactive,
     }
     return send_payload(payload)
+
+
+_BODY_VAR_RE = re.compile(r"\{\{\s*\d+\s*\}\}")
+
+
+def _template_body_param_count(components) -> int:
+    """Count body placeholders ({{n}} or example body_text slots)."""
+    for comp in components or []:
+        if not isinstance(comp, dict):
+            continue
+        if str(comp.get("type") or "").strip().upper() != "BODY":
+            continue
+        text = str(comp.get("text") or "")
+        found = {m.group(0) for m in _BODY_VAR_RE.finditer(text)}
+        if found:
+            return len(found)
+        example = comp.get("example") or {}
+        if isinstance(example, dict):
+            body_text = example.get("body_text") or []
+            if body_text and isinstance(body_text, list) and body_text[0]:
+                row = body_text[0]
+                if isinstance(row, (list, tuple)):
+                    return len(row)
+        return 0
+    return 0
+
+
+def _template_needs_header_media(components) -> bool:
+    for comp in components or []:
+        if not isinstance(comp, dict):
+            continue
+        if str(comp.get("type") or "").strip().upper() != "HEADER":
+            continue
+        fmt = str(comp.get("format") or "").strip().upper()
+        if fmt in {"IMAGE", "VIDEO", "DOCUMENT"}:
+            return True
+    return False
+
+
+def _template_has_dynamic_buttons(components) -> bool:
+    for comp in components or []:
+        if not isinstance(comp, dict):
+            continue
+        if str(comp.get("type") or "").strip().upper() != "BUTTONS":
+            continue
+        for btn in comp.get("buttons") or []:
+            if not isinstance(btn, dict):
+                continue
+            btn_type = str(btn.get("type") or "").strip().upper()
+            if btn_type == "URL" and _BODY_VAR_RE.search(str(btn.get("url") or "")):
+                return True
+            if btn_type == "COPY_CODE":
+                return True
+    return False
+
+
+def analyze_message_template(raw: dict) -> dict:
+    """Normalize a Graph message_templates row for Promotion UI."""
+    components = raw.get("components") or []
+    if not isinstance(components, list):
+        components = []
+    body_params = _template_body_param_count(components)
+    needs_header = _template_needs_header_media(components)
+    has_dyn_buttons = _template_has_dynamic_buttons(components)
+    sendable = (not needs_header) and (not has_dyn_buttons) and body_params <= 1
+    block_reason = ""
+    if needs_header:
+        block_reason = "This template needs header media (image/video/document)."
+    elif has_dyn_buttons:
+        block_reason = "This template has dynamic button variables."
+    elif body_params > 1:
+        block_reason = "This template needs more than one body variable (v1 supports 0 or 1)."
+    return {
+        "name": str(raw.get("name") or "").strip(),
+        "language": str(raw.get("language") or "").strip(),
+        "status": str(raw.get("status") or "").strip().upper(),
+        "category": str(raw.get("category") or "").strip(),
+        "body_param_count": int(body_params),
+        "needs_header_media": bool(needs_header),
+        "has_dynamic_buttons": bool(has_dyn_buttons),
+        "sendable": bool(sendable),
+        "block_reason": block_reason,
+    }
+
+
+def list_approved_message_templates(*, force_refresh: bool = False) -> tuple[bool, str, list[dict]]:
+    """Fetch APPROVED WhatsApp message templates for the configured WABA."""
+    token = whatsapp_access_token()
+    waba_id = whatsapp_waba_id()
+    if not token:
+        return False, "WhatsApp access token is not configured.", []
+    if not waba_id:
+        return False, "WhatsApp WABA ID is not configured.", []
+
+    cache = getattr(list_approved_message_templates, "_cache", None)
+    now_ts = __import__("time").time()
+    if (
+        not force_refresh
+        and isinstance(cache, dict)
+        and cache.get("waba_id") == waba_id
+        and (now_ts - float(cache.get("ts") or 0)) < 300
+        and isinstance(cache.get("items"), list)
+    ):
+        return True, "", list(cache["items"])
+
+    headers = {"Authorization": f"Bearer {token}"}
+    url = (
+        f"https://graph.facebook.com/{whatsapp_graph_api_version()}/"
+        f"{waba_id}/message_templates"
+    )
+    params = {
+        "fields": "name,status,language,category,components",
+        "limit": 100,
+    }
+    items: list[dict] = []
+    next_url = url
+    next_params = params
+    try:
+        while next_url:
+            response = requests.get(
+                next_url,
+                headers=headers,
+                params=next_params,
+                timeout=30,
+            )
+            if not (200 <= response.status_code < 300):
+                return False, (response.text or "")[:500], []
+            try:
+                body = response.json()
+            except ValueError:
+                return False, "Invalid template list response from Meta.", []
+            for row in body.get("data") or []:
+                if not isinstance(row, dict):
+                    continue
+                analyzed = analyze_message_template(row)
+                if analyzed["status"] != "APPROVED":
+                    continue
+                if not analyzed["name"] or not analyzed["language"]:
+                    continue
+                items.append(analyzed)
+            paging = body.get("paging") or {}
+            next_url = str((paging.get("next") or "")).strip() or ""
+            next_params = None
+    except requests.RequestException as exc:
+        return False, str(exc), []
+
+    items.sort(key=lambda t: (t.get("name") or "", t.get("language") or ""))
+    list_approved_message_templates._cache = {
+        "waba_id": waba_id,
+        "ts": now_ts,
+        "items": list(items),
+    }
+    return True, "", items

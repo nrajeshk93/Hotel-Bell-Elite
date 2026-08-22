@@ -68,6 +68,9 @@ class CommunicationHubTests(unittest.TestCase):
             "communication_hub_api_conversation_delete",
             "communication_hub_api_messages",
             "communication_hub_api_message_send",
+            "communication_hub_promotion",
+            "communication_hub_api_promotion_templates",
+            "communication_hub_api_promotion_send",
         ):
             self.assertEqual(get_endpoint_dashboard_module(endpoint), "communication_hub")
 

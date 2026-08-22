@@ -12,11 +12,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
 <script>
@@ -38,7 +38,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=3">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_report.css') }}?v=21">
 <link rel="stylesheet" href="{{ url_for('static', filename='reports_page_scroll.css') }}?v=5">
 {% endif %}
@@ -62,7 +62,7 @@
         </div>
       </div>
       <div class="su-header-tools">
-        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download="{{ sales_report_export_filename }}">Export Excel</a>
+        <a class="btn btn-primary" href="{{ sales_report_export_url }}" download="{{ sales_report_export_filename }}">Export</a>
       </div>
     </div>
     <div class="se-sales-header-card">
@@ -96,32 +96,21 @@
                   <div class="an-range-panel" id="sr-date-range-panel" role="dialog" aria-labelledby="sr-date-range-panel-title" hidden>
                     <div class="an-range-panel-inner">
                       <div class="an-range-panel-h" id="sr-date-range-panel-title">Date</div>
-                      <div class="an-cal-dual">
+                      <div class="an-cal-dual an-cal-dual--single">
                         <div class="an-cal-pane">
                           <div class="an-cal-pane-hdr">
-                            <button type="button" class="an-cal-nav-btn" id="sr-cal-prev" aria-label="Previous months">
+                            <button type="button" class="an-cal-nav-btn" id="sr-cal-prev" aria-label="Previous month">
                               <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
                             </button>
                             <h4 class="an-cal-month-title" id="sr-cal-title0">—</h4>
-                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
-                          </div>
-                          <div class="an-cal-dow" aria-hidden="true">
-                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-                          </div>
-                          <div class="an-cal-grid" id="sr-cal-grid0"></div>
-                        </div>
-                        <div class="an-cal-pane">
-                          <div class="an-cal-pane-hdr">
-                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
-                            <h4 class="an-cal-month-title" id="sr-cal-title1">—</h4>
-                            <button type="button" class="an-cal-nav-btn" id="sr-cal-next" aria-label="Next months">
+                            <button type="button" class="an-cal-nav-btn" id="sr-cal-next" aria-label="Next month">
                               <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
                             </button>
                           </div>
                           <div class="an-cal-dow" aria-hidden="true">
                             <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
                           </div>
-                          <div class="an-cal-grid" id="sr-cal-grid1"></div>
+                          <div class="an-cal-grid" id="sr-cal-grid0"></div>
                         </div>
                       </div>
                     </div>
@@ -248,7 +237,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='format_inr.js') }}"></script>
-<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=16"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=17"></script>
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=57"></script>
 <script src="{{ url_for('static', filename='sales_report.js') }}?v=8"></script>
 {% include 'partials/de_workspace_shell_close.html' %}

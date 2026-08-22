@@ -63,7 +63,7 @@
       </div>
       <div class="su-header-tools md-master-embed-header-actions">
         {% if employee_master_report_url is defined and employee_master_report_url %}
-        <a class="btn btn-primary" href="{{ employee_master_report_url }}" download>Employee Master Report</a>
+        <a class="btn btn-primary" href="{{ employee_master_report_url }}" download>Export</a>
         {% endif %}
         {% if has_payroll_access('employee') %}
         {% if emp_list_endpoint == 'employee_master' and back_href is defined and back_href %}

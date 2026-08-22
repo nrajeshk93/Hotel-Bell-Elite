@@ -231,6 +231,7 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         self.assertEqual(entry["upi"], 500.0)
         self.assertEqual(entry["room_credit"], 1000.0)
         self.assertEqual(entry["cash"], 0.0)
+        self.assertEqual(entry.get("bor", 0.0), 0.0)
 
     def test_hotel_sales_entry_from_invoices_maps_credit_settlement(self):
         self._insert_hotel(
@@ -244,6 +245,7 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
         self.assertEqual(entry["total_sales"], 158.0)
         self.assertEqual(entry["room_credit"], 158.0)
+        self.assertEqual(entry.get("bor", 0.0), 0.0)
         self.assertEqual(entry["cash"], 0.0)
         kpis = db_mod.aggregate_invoice_sales_kpis(
             self.conn, "2026-04-12", "2026-04-12", location="Hotel"
@@ -251,6 +253,31 @@ class InvoiceSalesKpisTests(unittest.TestCase):
         self.assertEqual(kpis["room_credit"], 158.0)
         self.assertEqual(kpis["cash"], 0.0)
         self.assertEqual(kpis["difference"], 0.0)
+
+    def test_hotel_sales_entry_from_invoices_maps_bor_settlement(self):
+        self._insert_hotel(
+            invoice_number="HBE/RM/ENTRY/BOR",
+            generated_at="2026-04-12 13:00:00",
+            total=420.0,
+            status="settled",
+            payments=[{"method": "bor", "amount": 420.0, "receipt_id": 7}],
+        )
+        self._insert_hotel(
+            invoice_number="HBE/RM/ENTRY/SPLIT",
+            generated_at="2026-04-12 14:00:00",
+            total=200.0,
+            status="settled",
+            payments=[
+                {"method": "cash", "amount": 50.0},
+                {"method": "bor", "amount": 150.0, "receipt_id": 8},
+            ],
+        )
+        self.conn.commit()
+        entry = db_mod.hotel_sales_entry_from_invoices(self.conn, "2026-04-12")
+        self.assertEqual(entry["total_sales"], 620.0)
+        self.assertEqual(entry["bor"], 570.0)
+        self.assertEqual(entry["cash"], 50.0)
+        self.assertEqual(entry["room_credit"], 0.0)
 
     def test_pos_sales_entry_from_invoices_by_outlet(self):
         self._insert_pos(

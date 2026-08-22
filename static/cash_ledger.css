@@ -30,6 +30,10 @@ body.su-module .cl-type-pill--credit_cash{
   color:#0F766E;
   background:rgba(20,184,166,.12);
 }
+body.su-module .cl-type-pill--bor_cash{
+  color:#1D4ED8;
+  background:rgba(37,99,235,.12);
+}
 body.su-module .cl-type-pill--expense{
   color:#B45309;
   background:rgba(245,158,11,.14);
@@ -104,11 +108,16 @@ body.su-module #cash-ledger-filter-form .cl-search-chip.is-active .se-filter-chi
 }
 body.su-module #cash-ledger-filter-form .cl-search-chip.is-active .se-filter-chip-icon{color:#2563EB}
 body.su-module .cl-location-chip{
-  flex:0 0 auto;
+  flex:0 0 160px;
   width:160px;
-  min-width:148px;
-  max-width:180px;
+  min-width:160px;
+  max-width:160px;
   margin-left:0;
+  flex-shrink:0;
+}
+/* Keep Outlet menu closed unless the chip is open (never inherit search focus). */
+body.su-module #cash-ledger-filter-form .cl-location-chip .se-filter-listbox[hidden]{
+  display:none !important;
 }
 body.su-module .cl-date-range-host{
   flex:0 0 auto;

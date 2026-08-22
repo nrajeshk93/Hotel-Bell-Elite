@@ -116,6 +116,19 @@
   background: #fff;
 }
 
+.an-range-wrap--single-month .an-range-panel {
+  width: min(320px, calc(100vw - 24px));
+}
+
+.an-cal-dual--single,
+.an-range-wrap--single-month .an-cal-dual {
+  flex-direction: column;
+}
+
+.an-range-wrap--single-month .an-cal-pane + .an-cal-pane {
+  display: none;
+}
+
 .an-cal-pane {
   flex: 1;
   min-width: 0;

@@ -1,0 +1,120 @@
+/* Promotion — Communication Hub WhatsApp blasts */
+body.ch-promotion-module .ch-promo-content{
+  padding:16px 20px 32px;
+  max-width:960px;
+}
+.ch-promo-card{
+  background:#fff;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  padding:18px 20px 16px;
+  box-shadow:0 1px 2px rgba(15,23,42,.04);
+}
+.ch-promo-lead{
+  margin:0 0 16px;
+  font:500 14px/1.45 Inter,system-ui,sans-serif;
+  color:#475569;
+}
+.ch-promo-grid{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:14px 18px;
+  margin-bottom:12px;
+}
+@media (max-width:760px){
+  .ch-promo-grid{ grid-template-columns:1fr; }
+}
+.ch-promo-field label{
+  display:block;
+  font:700 11px/1.2 Inter,system-ui,sans-serif;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:#64748b;
+  margin-bottom:6px;
+}
+.ch-promo-field .staff-input{
+  width:100%;
+  min-height:40px;
+  box-sizing:border-box;
+}
+.ch-promo-hint{
+  margin:6px 0 0;
+  font:500 12px/1.35 Inter,system-ui,sans-serif;
+  color:#94a3b8;
+}
+.ch-promo-template-meta{
+  margin:8px 0 0;
+  font:600 12px/1.4 Inter,system-ui,sans-serif;
+  color:#0f172a;
+}
+.ch-promo-template-meta.is-warn{ color:#b45309; }
+.ch-promo-file-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.ch-promo-file-row .staff-input{ flex:1 1 auto; min-width:0; }
+.ch-promo-file-row .btn{ flex:0 0 auto; height:40px; }
+.ch-promo-preview,
+.ch-promo-results{
+  margin-top:16px;
+  border-top:1px solid #eef2f7;
+  padding-top:14px;
+}
+.ch-promo-preview-stats{
+  font:600 13px/1.4 Inter,system-ui,sans-serif;
+  color:#0f172a;
+  margin-bottom:10px;
+}
+.ch-promo-preview-table-wrap{
+  max-height:240px;
+  overflow:auto;
+  border:1px solid #e2e8f0;
+  border-radius:8px;
+}
+.ch-promo-table{
+  width:100%;
+  border-collapse:collapse;
+  font:500 13px/1.35 Inter,system-ui,sans-serif;
+}
+.ch-promo-table th,
+.ch-promo-table td{
+  padding:8px 10px;
+  border-bottom:1px solid #eef2f7;
+  text-align:left;
+  vertical-align:top;
+}
+.ch-promo-table th{
+  position:sticky;
+  top:0;
+  background:#f8fafc;
+  font:700 11px/1.2 Inter,system-ui,sans-serif;
+  text-transform:uppercase;
+  letter-spacing:.35px;
+  color:#64748b;
+}
+.ch-promo-table tr:last-child td{ border-bottom:0; }
+.ch-promo-status-sent{ color:#15803d; font-weight:700; }
+.ch-promo-status-failed{ color:#b91c1c; font-weight:700; }
+.ch-promo-status-skipped{ color:#a16207; font-weight:700; }
+.ch-promo-error{
+  margin:10px 0 0;
+  padding:10px 12px;
+  border-radius:8px;
+  background:#fef2f2;
+  color:#991b1b;
+  font:600 13px/1.4 Inter,system-ui,sans-serif;
+}
+.ch-promo-actions{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  gap:10px;
+  margin-top:16px;
+  flex-wrap:wrap;
+}
+.ch-promo-results-title{
+  margin:0 0 10px;
+  font:800 15px/1.2 Inter,system-ui,sans-serif;
+  color:#0f172a;
+}

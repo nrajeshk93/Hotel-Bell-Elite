@@ -576,15 +576,16 @@ class PosInvoiceLedgerTests(unittest.TestCase):
             },
         )
         self.assertEqual(settle.status_code, 200, settle.get_data(as_text=True))
+        pending_label = "Room Transfer · 101 (Invoice yet to generate)"
         self.assertEqual(
             settle.get_json()["invoice"].get("payment_mode_label"),
-            "Room Transfer (Invoice yet to generate)",
+            pending_label,
         )
 
         pending_page = self.client.get("/point-of-sale/invoice-ledger")
         self.assertEqual(pending_page.status_code, 200)
         pending_html = pending_page.get_data(as_text=True)
-        self.assertIn("Room Transfer (Invoice yet to generate)", pending_html)
+        self.assertIn(pending_label, pending_html)
 
         conn = db_mod.get_db()
         try:
@@ -593,9 +594,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
             conn.close()
         match = next(r for r in rows if r["id"] == invoice_id)
         self.assertEqual(match["payment_modes"], ["room_transfer"])
-        self.assertEqual(
-            match["payment_mode_label"], "Room Transfer (Invoice yet to generate)"
-        )
+        self.assertEqual(match["payment_mode_label"], pending_label)
 
         gen = self.client.put(
             "/hotel/api/rooms/room-101",
@@ -608,7 +607,7 @@ class PosInvoiceLedgerTests(unittest.TestCase):
         generated_page = self.client.get("/point-of-sale/invoice-ledger")
         self.assertEqual(generated_page.status_code, 200)
         generated_html = generated_page.get_data(as_text=True)
-        expected = f"Room Transfer ({fb_no})"
+        expected = f"Room Transfer · 101 ({fb_no})"
         self.assertIn(expected, generated_html)
 
         conn = db_mod.get_db()

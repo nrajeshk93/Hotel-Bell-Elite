@@ -20,6 +20,31 @@
         <strong id="pos-inv-settle-split-target" data-amount="0">₹0.00</strong>
       </div>
     </div>
+    <div class="staff-field" id="hil-settle-bor-field" hidden>
+      <label for="hil-settle-bor-trigger">Back Office Receipt *</label>
+      <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox hil-settle-bor-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="hil-settle-bor-listbox">
+        <div class="se-filter-chip-control">
+          <input type="hidden" id="hil-settle-bor" value="">
+          <input type="text"
+                 class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
+                 id="hil-settle-bor-trigger"
+                 role="combobox"
+                 aria-autocomplete="list"
+                 aria-haspopup="listbox"
+                 aria-expanded="false"
+                 aria-controls="hil-settle-bor-list"
+                 placeholder="Select receipt…"
+                 autocomplete="off"
+                 spellcheck="false">
+          <span class="se-filter-chip-chevron" aria-hidden="true"></span>
+        </div>
+        <div class="se-filter-listbox" id="hil-settle-bor-list" role="listbox" aria-label="Back Office Receipt" hidden>
+          <div class="ep-listbox-options" id="hil-settle-bor-options"></div>
+          <div class="pl-supplier-empty" id="hil-settle-bor-empty" hidden>No pending receipts for this agency.</div>
+        </div>
+      </div>
+      <div class="hil-settle-bor-meta" id="hil-settle-bor-meta" hidden></div>
+    </div>
     <div class="staff-field">
       <label for="pos-inv-settle-notes">Notes</label>
       <input id="pos-inv-settle-notes" class="staff-input" type="text" placeholder="Optional remark" autocomplete="off">
@@ -52,4 +77,4 @@
     </div>
   </div>
 </div>
-<script type="application/json" id="hri-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["bank_transfer","Bank Transfer"],["credit","Credit"]]</script>
+<script type="application/json" id="hri-payment-methods-data">[["cash","Cash"],["upi","UPI"],["card","Card"],["bank_transfer","Bank Transfer"],["credit","Credit"],["bor","Back Office Receipt"]]</script>

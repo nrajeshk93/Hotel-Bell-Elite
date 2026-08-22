@@ -1,6 +1,7 @@
 /**
  * Edge auto-scroll for dense ledger/list tables.
  * Cursor toward the right/bottom (or left/top) pans clipped columns and rows.
+ * Wheel / trackpad over the table scrolls the table first (not the outer page).
  * Arrow keys also pan when the wrap is focused or last hovered (invoice-ledger style).
  */
 (function (global) {
@@ -14,15 +15,23 @@
     '.sm-list-panel--scroll .sm-table-wrap',
   ].join(',');
 
-  var EDGE_MIN = 96;
+  var PANEL_SELECTOR = [
+    '.hbe-scroll-panel',
+    '.pl-list-panel--scroll',
+    '.emp-list-panel--scroll',
+    '.sm-list-panel--scroll',
+  ].join(',');
+
+  var EDGE_MIN = 72;
   var EDGE_MAX = 220;
-  var EDGE_RATIO = 0.3;
-  var MAX_SPEED = 22;
+  var EDGE_RATIO = 0.28;
+  var MAX_SPEED = 28;
   var KEY_STEP_X = 80;
   var KEY_STEP_Y = 48;
   var CUE_CLASSES = 'is-edge-scroll-left is-edge-scroll-right is-edge-scroll-top is-edge-scroll-bottom';
   var activeKeyWrap = null;
   var keyNavBound = false;
+  var wheelNavBound = false;
 
   function isEditableTarget(target) {
     if (!target || !target.closest) return false;
@@ -36,6 +45,18 @@
     return (
       wrap.scrollWidth - wrap.clientWidth > 1 ||
       wrap.scrollHeight - wrap.clientHeight > 1
+    );
+  }
+
+  function wrapFromTarget(target) {
+    if (!target || !target.closest) return null;
+    var wrap = target.closest(SELECTOR);
+    if (wrap) return wrap;
+    var panel = target.closest(PANEL_SELECTOR);
+    if (!panel) return null;
+    return (
+      panel.querySelector('.pl-table-wrap, .emp-table-wrap, .sm-table-wrap, .hres-table-wrap') ||
+      null
     );
   }
 
@@ -112,15 +133,53 @@
           wrap = null;
           activeKeyWrap = null;
         }
-        if (!wrap && e.target && e.target.closest) {
-          wrap = e.target.closest(SELECTOR);
-        }
+        if (!wrap) wrap = wrapFromTarget(e.target);
         if (!wrap) return;
         if (scrollWrapByKey(wrap, e.key, e.shiftKey)) {
           e.preventDefault();
         }
       },
       true
+    );
+  }
+
+  function bindGlobalWheelNav() {
+    if (wheelNavBound) return;
+    wheelNavBound = true;
+    document.addEventListener(
+      'wheel',
+      function (e) {
+        if (e.ctrlKey) return;
+        if (isEditableTarget(e.target)) return;
+        var wrap = wrapFromTarget(e.target) || activeKeyWrap;
+        if (!wrap || !wrap.isConnected || !document.contains(wrap)) return;
+        if (!canScroll(wrap)) return;
+
+        var maxX = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+        var maxY = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+        var dx = e.deltaX || 0;
+        var dy = e.deltaY || 0;
+        if (e.shiftKey && !dx && dy) {
+          dx = dy;
+          dy = 0;
+        }
+        if (!dx && !dy) return;
+
+        var atLeft = wrap.scrollLeft <= 0;
+        var atRight = wrap.scrollLeft >= maxX - 1;
+        var atTop = wrap.scrollTop <= 0;
+        var atBottom = wrap.scrollTop >= maxY - 1;
+        var useX = maxX > 1 && dx && ((dx < 0 && !atLeft) || (dx > 0 && !atRight));
+        var useY = maxY > 1 && dy && ((dy < 0 && !atTop) || (dy > 0 && !atBottom));
+        if (!useX && !useY) return;
+
+        if (useX) wrap.scrollLeft = Math.max(0, Math.min(maxX, wrap.scrollLeft + dx));
+        if (useY) wrap.scrollTop = Math.max(0, Math.min(maxY, wrap.scrollTop + dy));
+        activeKeyWrap = wrap;
+        e.preventDefault();
+        e.stopPropagation();
+      },
+      { capture: true, passive: false }
     );
   }
 
@@ -134,6 +193,7 @@
     var speedX = 0;
     var speedY = 0;
     var raf = 0;
+    var panel = wrap.closest(PANEL_SELECTOR);
 
     function maxScrollLeft() {
       return Math.max(0, wrap.scrollWidth - wrap.clientWidth);
@@ -206,6 +266,7 @@
         stop();
         return;
       }
+      activeKeyWrap = wrap;
       var x = e.clientX - rect.left;
       var y = e.clientY - rect.top;
       var width = rect.width || 1;
@@ -251,10 +312,26 @@
     wrap.addEventListener('mousemove', onMove, true);
     wrap.addEventListener('mouseleave', stop);
     wrap.addEventListener('blur', stop);
+    if (panel && !panel.__hbeEdgeScrollProxyBound) {
+      panel.__hbeEdgeScrollProxyBound = true;
+      panel.addEventListener(
+        'mousemove',
+        function (e) {
+          if (!wrap.isConnected) return;
+          onMove(e);
+        },
+        true
+      );
+      panel.addEventListener('mouseleave', stop);
+      panel.addEventListener('mouseenter', function () {
+        activeKeyWrap = wrap;
+      });
+    }
   }
 
   function initHbeTableScroll() {
     bindGlobalKeyNav();
+    bindGlobalWheelNav();
     document.querySelectorAll(SELECTOR).forEach(bindEdgeScroll);
   }
 

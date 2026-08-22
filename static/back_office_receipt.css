@@ -1,0 +1,455 @@
+/* Back Office Receipt ledger — purchase/expense-aligned chrome */
+
+/* Header actions — Export / Add receipt / fullscreen share one control size */
+#back-office-receipt-page .bor-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+#back-office-receipt-page .bor-header-actions .btn {
+  box-sizing: border-box;
+  height: 40px;
+  min-height: 40px;
+  min-width: 7.5rem;
+  padding: 0 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+#back-office-receipt-page .bor-header-actions .de-fullscreen-btn,
+#back-office-receipt-page .bor-header-actions .de-fullscreen-slot .de-fullscreen-btn {
+  align-self: center;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+}
+
+.bor-filter-form {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  align-items: flex-end;
+  width: 100%;
+  min-width: 0;
+}
+
+body.su-module #bor-filter-form .bor-search-chip {
+  position: relative;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 140px;
+  max-width: none;
+  z-index: 20;
+}
+
+body.su-module #bor-filter-form .bor-search-chip .se-filter-chip-control {
+  width: 100%;
+}
+
+body.su-module #bor-filter-form .bor-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  padding: 0 12px 0 4px;
+}
+
+body.su-module #bor-filter-form .bor-search-input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+body.su-module #bor-filter-form .bor-search-input::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+body.su-module #bor-filter-form .bor-search-chip.is-active .se-filter-chip-control {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
+}
+
+body.su-module #bor-filter-form .bor-search-chip.is-active .se-filter-chip-icon {
+  color: #2563eb;
+}
+
+/* Agency filter — before date, purchase/expense-style combobox */
+body.su-module #bor-filter-form #bor-agency-filter-listbox.pl-header-field-listbox {
+  flex: 0 1 176px;
+  min-width: 140px;
+  max-width: 220px;
+  z-index: 25;
+}
+body.su-module #bor-filter-form #bor-agency-filter-listbox .se-filter-chip-control {
+  background: #fff !important;
+}
+body.su-module #bor-filter-form #bor-agency-filter-listbox.is-open .se-filter-chip-control,
+body.su-module #bor-filter-form #bor-agency-filter-listbox .se-filter-chip-control:focus-within,
+body.su-module #bor-filter-form #bor-agency-filter-listbox.is-filtered .se-filter-chip-control {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
+}
+body.su-module #bor-filter-form #bor-agency-filter-listbox input.se-filter-chip-combobox {
+  height: 100%;
+  min-height: 0;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0 12px;
+}
+body.su-module #bor-filter-form #bor-agency-filter-listbox input.se-filter-chip-combobox::placeholder {
+  color: #94a3b8;
+  font-weight: 500;
+}
+body.su-module #bor-filter-form #bor-agency-filter-listbox.is-open {
+  z-index: 100;
+}
+body.su-module #bor-filter-form #bor-agency-filter-listbox .se-filter-listbox {
+  z-index: 100;
+}
+
+/* Compact date — match Purchase / Expense (override shared date-range flex grow) */
+body.su-module #bor-filter-form .bor-date-range-host,
+body.su-module #bor-filter-form .bor-date-range-host:has(.se-filter-chip--date-range) {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  z-index: 30;
+  margin-left: 0;
+  overflow: visible;
+}
+
+body.su-module #bor-filter-form .bor-date-range-host .se-filter-chip--date-range {
+  flex: none;
+  display: block;
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+}
+
+body.su-module #bor-filter-form .bor-date-range-host .se-filter-chip--date-range .se-filter-chip-control {
+  overflow: visible;
+  width: max-content;
+  max-width: 100%;
+}
+
+body.su-module #bor-filter-form .bor-date-range-host .an-range-wrap {
+  min-width: 0;
+  width: max-content;
+}
+
+body.su-module #bor-filter-form .bor-date-range-host .an-range-trigger,
+body.su-module #bor-filter-form .bor-date-range-host .an-range-trigger.se-filter-chip-trigger {
+  min-width: 0;
+  width: max-content;
+  max-width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 0 14px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  justify-content: flex-start;
+}
+
+body.su-module #bor-filter-form .se-filter-chip-chev,
+body.su-module #bor-filter-form .an-range-chev {
+  display: none !important;
+}
+
+body.su-module #bor-filter-form .bor-date-range-host .se-filter-chip.is-filtered .se-filter-chip-control {
+  border-color: #93c5fd !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #fff !important;
+}
+
+@media (max-width: 900px) {
+  body.su-module #bor-filter-form.bor-filter-form {
+    flex-wrap: wrap;
+  }
+
+  body.su-module #bor-filter-form .bor-search-chip {
+    flex: 1 1 100%;
+    min-width: 140px;
+  }
+
+  body.su-module #bor-filter-form #bor-agency-filter-listbox.pl-header-field-listbox {
+    flex: 1 1 160px;
+    max-width: none;
+  }
+
+  body.su-module #bor-filter-form .bor-date-range-host {
+    flex: 0 0 auto;
+  }
+}
+
+.bor-summary-row {
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+}
+
+body.su-module .bor-type-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+body.su-module .bor-type-pill--receipt {
+  color: #047857;
+  background: rgba(16, 185, 129, 0.12);
+}
+body.su-module .bor-type-pill--applied {
+  color: #be185d;
+  background: rgba(244, 63, 94, 0.1);
+}
+body.su-module #bor-ledger-table .bor-amount-in {
+  color: #047857;
+  font-weight: 700;
+}
+body.su-module #bor-ledger-table .bor-amount-out {
+  color: #be185d;
+  font-weight: 700;
+}
+body.su-module #bor-ledger-table .bor-balance {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+/* Keep payer / mode / instrument on one line; table wrap scrolls horizontally. */
+#bor-ledger-table {
+  min-width: 1100px;
+  table-layout: auto;
+}
+
+#bor-ledger-table td .pl-name,
+#bor-ledger-table td.pl-col-code,
+#bor-ledger-table td.pl-col-date {
+  white-space: nowrap;
+}
+
+#bor-ledger-table tbody td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+#bor-ledger-table .pl-col-amount {
+  width: 7.5rem;
+  min-width: 7.5rem;
+  max-width: 8.5rem;
+  text-align: right;
+  white-space: nowrap;
+  padding-right: 16px;
+}
+
+#bor-ledger-table .pl-col-actions {
+  width: 1%;
+  min-width: 5.75rem;
+  white-space: nowrap;
+  text-align: right;
+  padding-left: 8px;
+  padding-right: 12px;
+}
+
+#bor-ledger-table .pl-col-actions .act-grp.pl-action-btns {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  vertical-align: middle;
+}
+
+#bor-ledger-table .pl-col-actions .act-btn {
+  flex: 0 0 auto;
+}
+
+/* Add receipt modal — match Purchase / Expense Add Entry */
+body.su-module .bor-add-box,
+body.su-module #bor-add-modal .bor-add-box {
+  width: min(720px, 96vw);
+  overflow: visible;
+}
+
+body.su-module #bor-add-modal .staff-credit-head {
+  margin-bottom: 18px;
+}
+
+body.su-module #bor-add-modal .bor-add-payer-date-row {
+  margin-top: 4px;
+}
+
+body.su-module #bor-add-modal .staff-credit-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+body.su-module #bor-add-modal #bor-add-submit {
+  margin-left: 0;
+  order: 2;
+}
+
+body.su-module #bor-add-modal #bor-add-submit[hidden],
+body.su-module #bor-add-modal #bor-required-notice[hidden] {
+  display: none !important;
+}
+
+body.su-module #bor-add-modal #bor-required-notice {
+  order: 2;
+  margin: 0;
+  max-width: min(360px, 100%);
+  font: 600 12px/1.4 Inter, system-ui, sans-serif;
+  color: #64748b;
+  text-align: right;
+}
+
+body.su-module #bor-add-modal #bor-add-cancel {
+  order: 1;
+}
+
+body.su-module #bor-add-modal .bor-add-payer-date-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+body.su-module #bor-add-modal .bor-add-payer-date-row > .staff-field {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+body.su-module #bor-add-modal .bor-add-date-field {
+  width: auto;
+  flex: 0 0 auto;
+  justify-self: end;
+}
+
+body.su-module #bor-add-modal .bor-add-date-field .hotel-date,
+body.su-module #bor-add-modal .bor-add-date-chip {
+  width: auto;
+  display: inline-block;
+  max-width: 100%;
+}
+
+body.su-module #bor-add-modal .bor-add-date-chip .hotel-date-control {
+  width: auto;
+}
+
+body.su-module #bor-add-modal .bor-add-date-chip .hotel-date-trigger {
+  width: auto;
+  min-width: 128px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font: 600 13px Inter, system-ui, sans-serif;
+  gap: 0;
+  justify-content: center;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+body.su-module #bor-add-modal .bor-add-date-chip .hotel-date-caret {
+  display: none;
+}
+
+body.su-module #bor-add-modal .bor-add-date-chip .hotel-date-value {
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+body.su-module #bor-add-modal .se-filter-chip {
+  width: 100%;
+}
+
+body.su-module #bor-add-modal .se-filter-chip-control {
+  width: 100%;
+  position: relative;
+}
+
+body.su-module #bor-add-modal .se-filter-chip-chev {
+  display: none !important;
+}
+
+body.su-module #bor-add-modal input.se-filter-chip-combobox::-webkit-search-decoration,
+body.su-module #bor-add-modal input.se-filter-chip-combobox::-webkit-search-results-button,
+body.su-module #bor-add-modal input.se-filter-chip-combobox::-webkit-search-results-decoration,
+body.su-module #bor-add-modal input.se-filter-chip-combobox::-webkit-search-cancel-button {
+  display: none;
+  -webkit-appearance: none;
+}
+
+body.su-module #bor-add-modal .se-filter-listbox {
+  left: 0;
+  right: 0;
+  top: calc(100% + 8px);
+  bottom: auto;
+  min-width: 100%;
+  z-index: 80;
+}
+
+body.su-module #bor-add-modal #bor-payment-listbox.is-open,
+body.su-module #bor-add-modal #bor-agency-listbox.is-open {
+  z-index: 90;
+}
+
+body.su-module #bor-add-modal .bor-field-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+body.su-module #bor-add-modal .bor-instrument-fields[hidden] {
+  display: none !important;
+}
+
+body.su-module #bor-add-modal .bor-instrument-fields {
+  margin-bottom: 4px;
+}
+
+body.su-module #bor-add-modal .bor-instrument-date-field .hotel-date {
+  width: 100%;
+}
+
+body.su-module #bor-add-modal .bor-instrument-date-field .hotel-date-control,
+body.su-module #bor-add-modal .bor-instrument-date-field .hotel-date-trigger {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  body.su-module #bor-add-modal .bor-add-payer-date-row {
+    grid-template-columns: 1fr;
+  }
+  body.su-module #bor-add-modal .bor-add-date-field {
+    justify-self: stretch;
+  }
+  body.su-module #bor-add-modal .bor-add-date-field .hotel-date,
+  body.su-module #bor-add-modal .bor-add-date-chip,
+  body.su-module #bor-add-modal .bor-add-date-chip .hotel-date-control,
+  body.su-module #bor-add-modal .bor-add-date-chip .hotel-date-trigger {
+    width: 100%;
+  }
+}

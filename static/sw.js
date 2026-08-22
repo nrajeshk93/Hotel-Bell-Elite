@@ -1,21 +1,29 @@
-/* Hotel Bell Elite — POS offline service worker (v4).
- * Floor APIs are never cached — occupancy must update immediately after save.
- * Invoice HTML is network-first so workspace chrome (sidebar modules) is not stuck.
- * Hotel / workspace JS+CSS are not intercepted — browser HTTP cache + ?v= must
- * pick up deploys. Only POS precache/pos_* stay in Cache Storage (network-first). */
-var CACHE_VERSION = 'hbe-pos-v44';
+/* Hotel Bell Elite — whole-app shell service worker.
+ * Network-first everywhere we intercept so online stays fast/fresh.
+ * Cache Storage is a fallback for offline + brief disconnects.
+ * Floor APIs are never cached — occupancy must not go stale.
+ * POS menu GETs stay network-first; mutation APIs are not intercepted. */
+var CACHE_VERSION = 'hbe-app-v1';
 var PRECACHE = [
+  '/home',
   '/point-of-sale/invoice',
+  '/bar-point-of-sale/invoice',
   '/static/manifest.webmanifest',
-  '/static/de_workspace_shell.css?v=52',
+  '/static/de_workspace_shell.css?v=53',
   '/static/ep_form_listbox.css?v=29',
+  '/static/hbe_table_scroll.css?v=2',
+  '/static/hbe_kpi.css?v=13',
+  '/static/hbe_app_toast.css?v=1',
+  '/static/reports_page_scroll.css?v=5',
   '/static/pos_invoice.css?v=51',
-  '/static/pos_invoice.js?v=144',
-  '/static/pos_offline.js?v=4',
-  '/static/ep_form_listbox.js?v=64',
+  '/static/pos_invoice.js?v=145',
+  '/static/pos_offline.js?v=5',
+  '/static/ep_form_listbox.js?v=66',
   '/static/de_workspace_nav.js?v=46',
-  '/static/de_workspace_transitions.js?v=183',
-  '/static/de_pwa.js?v=10',
+  '/static/de_workspace_transitions.js?v=184',
+  '/static/hbe_table_scroll.js?v=7',
+  '/static/hbe_app_toast.js?v=3',
+  '/static/de_pwa.js?v=12',
   '/static/pwa-icon-192.png',
   '/static/pwa-icon-512.png',
   '/static/favicon-32.png'
@@ -66,8 +74,16 @@ self.addEventListener('activate', function (event) {
 });
 
 self.addEventListener('message', function (event) {
-  if (event && event.data && event.data.type === 'SKIP_WAITING') {
+  if (!event || !event.data) return;
+  if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
+    return;
+  }
+  if (event.data.type === 'GET_CACHE_VERSION') {
+    var port = event.ports && event.ports[0];
+    if (port) {
+      port.postMessage({ cacheVersion: CACHE_VERSION });
+    }
   }
 });
 
@@ -85,20 +101,41 @@ function isFloorApi(url) {
   });
 }
 
-function isPosInvoiceHtml(url) {
-  if (url.origin !== self.location.origin) return false;
-  return (
-    url.pathname === '/point-of-sale/invoice' ||
-    url.pathname === '/bar-point-of-sale/invoice'
-  );
+function isAuthOrSystemPath(url) {
+  var p = url.pathname;
+  if (p === '/login' || p.indexOf('/login/') === 0) return true;
+  if (p === '/logout' || p.indexOf('/logout/') === 0) return true;
+  if (p === '/sw.js') return true;
+  return false;
 }
 
-function isPosCachedStatic(url) {
+function isWorkspaceHtml(url, req) {
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.indexOf('/static/') === 0) return false;
+  if (url.pathname.indexOf('/api/') !== -1) return false;
+  if (isAuthOrSystemPath(url)) return false;
+  if (url.searchParams.get('partial') === 'main') return true;
+  var accept = '';
+  try {
+    accept = String(req.headers.get('Accept') || req.headers.get('accept') || '');
+  } catch (e) {}
+  if (req.mode === 'navigate') return true;
+  if (accept.indexOf('text/html') !== -1) return true;
+  return false;
+}
+
+function isAppCachedStatic(url) {
   if (url.origin !== self.location.origin) return false;
   if (url.pathname.indexOf('/static/') !== 0) return false;
   if (url.pathname.indexOf('/static/pos_') === 0) return true;
   var key = url.pathname + (url.search || '');
-  return PRECACHE.indexOf(key) !== -1 || PRECACHE.indexOf(url.pathname) !== -1;
+  if (PRECACHE.indexOf(key) !== -1 || PRECACHE.indexOf(url.pathname) !== -1) return true;
+  /* Runtime network-first for page CSS/JS — keeps offline soft-nav usable. */
+  if (/\.(css|js)$/i.test(url.pathname)) return true;
+  if (/\.(png|ico|webp|svg)$/i.test(url.pathname) && url.pathname.indexOf('/static/') === 0) {
+    return true;
+  }
+  return false;
 }
 
 self.addEventListener('fetch', function (event) {
@@ -123,14 +160,13 @@ self.addEventListener('fetch', function (event) {
     return;
   }
 
-  /* Invoice shell/sidebar must not stick on an old HTML snapshot. */
-  if (isPosInvoiceHtml(url)) {
+  if (isWorkspaceHtml(url, req)) {
     event.respondWith(networkFirstHtml(req));
     return;
   }
 
   if (url.pathname.indexOf('/static/') === 0) {
-    if (isPosCachedStatic(url)) {
+    if (isAppCachedStatic(url)) {
       event.respondWith(networkFirstStatic(req));
     }
   }
@@ -167,30 +203,68 @@ function networkFirst(req) {
     });
 }
 
+function putHtmlCache(cache, req, res) {
+  cache.put(req, res.clone());
+  try {
+    var u = new URL(req.url);
+    var pathKey = u.pathname + (u.search || '');
+    cache.put(pathKey, res.clone());
+    /* Bare path fallback for navigate without query (POS + home). */
+    if (
+      u.pathname === '/home' ||
+      u.pathname === '/point-of-sale/invoice' ||
+      u.pathname === '/bar-point-of-sale/invoice'
+    ) {
+      cache.put(u.pathname, res.clone());
+    }
+    if (u.searchParams.get('partial') === 'main') {
+      cache.put(u.pathname + '?partial=main', res.clone());
+    }
+  } catch (e) {}
+}
+
+function matchHtmlCache(req) {
+  return caches.match(req).then(function (cached) {
+    if (cached) return cached;
+    try {
+      var u = new URL(req.url);
+      var pathKey = u.pathname + (u.search || '');
+      return caches.match(pathKey).then(function (byPath) {
+        if (byPath) return byPath;
+        if (u.searchParams.get('partial') === 'main') {
+          return caches.match(u.pathname).then(function (bare) {
+            if (bare) return bare;
+            return caches.match(u.pathname + '?partial=main');
+          });
+        }
+        return caches.match(u.pathname + '?partial=main').then(function (partial) {
+          return partial || caches.match(u.pathname);
+        });
+      });
+    } catch (e) {
+      return null;
+    }
+  });
+}
+
 function networkFirstHtml(req) {
   return fetch(req, { cache: 'no-store' })
     .then(function (res) {
       if (res && res.ok) {
-        var copyReq = res.clone();
-        var copyPath = res.clone();
+        var copy = res.clone();
         caches.open(CACHE_VERSION).then(function (cache) {
-          cache.put(req, copyReq);
-          /* Keep a bare offline fallback for navigate without query. */
-          try {
-            var u = new URL(req.url);
-            if (u.pathname === '/point-of-sale/invoice' || u.pathname === '/bar-point-of-sale/invoice') {
-              cache.put(u.pathname, copyPath);
-            }
-          } catch (e) {}
+          putHtmlCache(cache, req, copy);
         });
       }
       return res;
     })
     .catch(function () {
-      return caches.match(req).then(function (cached) {
+      return matchHtmlCache(req).then(function (cached) {
         if (cached) return cached;
-        return caches.match('/point-of-sale/invoice').then(function (fallback) {
-          return fallback || Response.error();
+        return caches.match('/home').then(function (home) {
+          return home || caches.match('/point-of-sale/invoice').then(function (pos) {
+            return pos || Response.error();
+          });
         });
       });
     });

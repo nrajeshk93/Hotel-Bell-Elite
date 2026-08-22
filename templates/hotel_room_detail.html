@@ -36,7 +36,7 @@
 <title>Room {{ room.number }} | Hotel | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
@@ -415,8 +415,9 @@
             <p class="hrd-charges-invoice-no" id="hrd-charges-fb-invoice-no" hidden></p>
             <ul class="hrd-charges-list" id="hrd-charges-fb-list"></ul>
             <dl class="hrd-charges-totals hrd-charges-fb-totals">
-              <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-fb-cgst>—</dd></div>
-              <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd data-charges-fb-ugst>—</dd></div>
+              <div data-charges-fb-cgst-row><dt>CGST <span class="hrd-charges-muted" data-charges-fb-cgst-hint>(2.5% incl.)</span></dt><dd data-charges-fb-cgst>—</dd></div>
+              <div data-charges-fb-ugst-row><dt>UGST <span class="hrd-charges-muted" data-charges-fb-ugst-hint>(2.5% incl.)</span></dt><dd data-charges-fb-ugst>—</dd></div>
+              <div data-charges-fb-vat-row hidden><dt>VAT <span class="hrd-charges-muted" data-charges-fb-vat-hint></span></dt><dd data-charges-fb-vat>—</dd></div>
               <div><dt>F&amp;B Total</dt><dd data-charges-fb-total>—</dd></div>
               <div class="hrd-charges-balance"><dt>F&amp;B Balance</dt><dd data-charges-fb-balance>—</dd></div>
             </dl>
@@ -1073,8 +1074,9 @@
           <p class="hrd-charges-invoice-no" id="hrd-invoice-fb-no" hidden></p>
           <ul class="hrd-charges-list" id="hrd-invoice-fb-lines"></ul>
           <dl class="hrd-charges-totals">
-            <div><dt>CGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-fb-cgst">—</dd></div>
-            <div><dt>UGST <span class="hrd-charges-muted">(2.5% incl.)</span></dt><dd id="hrd-invoice-fb-ugst">—</dd></div>
+            <div id="hrd-invoice-fb-cgst-row"><dt>CGST <span class="hrd-charges-muted" id="hrd-invoice-fb-cgst-hint">(2.5% incl.)</span></dt><dd id="hrd-invoice-fb-cgst">—</dd></div>
+            <div id="hrd-invoice-fb-ugst-row"><dt>UGST <span class="hrd-charges-muted" id="hrd-invoice-fb-ugst-hint">(2.5% incl.)</span></dt><dd id="hrd-invoice-fb-ugst">—</dd></div>
+            <div id="hrd-invoice-fb-vat-row" hidden><dt>VAT <span class="hrd-charges-muted" id="hrd-invoice-fb-vat-hint"></span></dt><dd id="hrd-invoice-fb-vat">—</dd></div>
             <div><dt>F&amp;B Total</dt><dd id="hrd-invoice-fb-total">—</dd></div>
             <div class="hrd-charges-balance"><dt>F&amp;B Balance</dt><dd id="hrd-invoice-fb-balance">—</dd></div>
           </dl>

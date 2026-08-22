@@ -9,7 +9,7 @@
 <title>Invoice | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_invoice.css') }}?v=68">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
@@ -88,7 +88,7 @@
   </header>
 
   <div id="pos-inv-offline-banner" class="pos-inv-offline-banner" hidden role="status" aria-live="polite">
-    Offline — changes sync when you are back online.
+    Offline — orders save on this device and sync when back online. Install the app over HTTPS; open POS once online so menus stay available during brief disconnects.
   </div>
 
   <div class="pos-inv-layout">
@@ -439,12 +439,12 @@
 <script type="application/json" id="pos-receipt-config-data">{{ pos_receipt_config|tojson }}</script>
 {% endif %}
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=66"></script>
-<script src="{{ url_for('static', filename='pos_offline.js') }}?v=4"></script>
+<script src="{{ url_for('static', filename='pos_offline.js') }}?v=5"></script>
 <script src="{{ url_for('static', filename='pos_customer_bill.js') }}?v=14"></script>
 <script src="{{ url_for('static', filename='print_agent.js') }}?v=7"></script>
 <script src="{{ url_for('static', filename='pos_printers.js') }}?v=20"></script>
 <script src="{{ url_for('static', filename='pos_settle.js') }}?v=6"></script>
-<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=144"></script>
+<script src="{{ url_for('static', filename='pos_invoice.js') }}?v=145"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

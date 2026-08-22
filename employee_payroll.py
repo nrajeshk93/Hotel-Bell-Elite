@@ -3027,398 +3027,80 @@ def delete_credit(credit_id):
 
 @payroll_bp.route('/download_employee_template')
 def download_employee_template():
-    """Download a pre-built Excel template for employee import."""
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-    from openpyxl.utils import get_column_letter
-    from openpyxl.worksheet.datavalidation import DataValidation
+    """Download a live Excel template matching Add Employee → Bulk."""
+    import employee_bulk
 
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Employee Import Template'
-
-    # ── Column definitions ──────────────────────────────────────────────────
-    # (header, description, sample_value, is_required, has_dropdown)
-    columns = [
-        ('EMP ID',           'Employee Code / ID\n(optional, must be unique)',           'NL-001',                          False, False),
-        ('NAME',             'Full Employee Name\n(REQUIRED)',                            'Ravi Kumar',                      True,  False),
-        ('COMPANY',          'Company / Brand Name\nSelect from dropdown',               'NL',                              False, True),
-        ('LOCATION',         'Work Location / Branch\nSelect from dropdown',             'Gandhi Market',                   False, True),
-        ('MOBILE',           '10-digit Mobile Number\n(digits only, no spaces)',         '9876543210',                      False, False),
-        ('GUARDIAN MOBILE',  'Guardian / Emergency Contact\n10-digit number (optional)', '9123456789',                      False, False),
-        ('SEX',              'Employee Gender\nSelect from dropdown',                    'Male',                            False, True),
-        ('ADDRESS',          'Home / Residential Address\n(optional)',                   '12 Main St, Chennai',             False, False),
-        ('AADHAR',           '12-digit Aadhar Number\n(digits only)',                    '123456789012',                    False, False),
-        ('PAN',              'PAN Card Number\n(format: ABCDE1234F)',                    'ABCDE1234F',                      False, False),
-        ('EPF NUMBER',       'EPF Registration Number\n(optional)',                      'TN/CHN/12345',                    False, False),
-        ('ESIC NUMBER',      'ESIC Registration Number\n(optional)',                     'ESI/123456',                      False, False),
-        ('SALARY',           'Gross Monthly Salary\n(numbers only, no Rs symbol)',       '30000',                           False, False),
-        ('BASIC PAY',        'Basic Pay Component\n(numbers only)',                      '15000',                           False, False),
-        ('EPF',              'EPF Deduction Amount\n(numbers only)',                     '1800',                            False, False),
-        ('ESIC',             'ESIC Deduction Amount\n(numbers only)',                    '525',                             False, False),
-        ('CREDIT REPAYMENT', 'Monthly Credit Repayment\n(numbers only, 0 if none)',      '0',                               False, False),
-        ('STATUS',           'Employment Status\nSelect from dropdown (default: active)','active',                          False, True),
-        ('WEEKDAY SHIFT',    'Weekday working shift\nSelect from dropdown (optional)',   'Shift 1 - 8:30 AM to 7:30 PM',   False, True),
-        ('SUNDAY SHIFT',     'Sunday shift with fixed pay\nSelect from dropdown (opt.)','Shift 1 - 9:00 AM to 7:00 PM',   False, True),
-        ('BANK NAME',        'Name of the employee\'s bank\n(optional)',                 'State Bank of India',             False, False),
-        ('ACCOUNT HOLDER NAME', 'Account holder name as per bank\n(optional)',          'Ravi Kumar',                      False, False),
-        ('ACCOUNT NUMBER',   'Bank account number\n(digits only, optional)',             '1234567890',                      False, False),
-        ('IFSC CODE',        'Branch IFSC Code\n(format: ABCD0123456)',                 'SBIN0001234',                     False, False),
-    ]
-
-    # ── Hidden "Lists" sheet for dropdown values ─────────────────────────────
-    ls = wb.create_sheet('Lists')
-    ls.sheet_state = 'hidden'
-
-    company_list   = ['NL', 'TLNT']
-    location_list  = list(_PAYROLL_DEPARTMENTS)
-    sex_list       = ['Male', 'Female']
-    status_list    = ['active', 'inactive']
-    wd_shift_list  = [
-        'Shift 1 - 8:30 AM to 7:30 PM',
-        'Shift 2 - 8:30 AM to 7:50 PM',
-        'Shift 3 - 8:45 AM to 7:50 PM',
-        'Shift 4 - 9:00 AM to 8:30 PM',
-    ]
-    sun_shift_list = [
-        'Shift 1 - 9:00 AM to 7:00 PM (Rs.550)',
-        'Shift 2 - 9:00 AM to 8:00 PM (Rs.600)',
-        'Shift 3 - 9:00 AM to 8:30 PM (Rs.650)',
-    ]
-    list_cols = [company_list, location_list, sex_list, status_list, wd_shift_list, sun_shift_list]
-    list_names = ['Company', 'Location', 'Sex', 'Status', 'WeekdayShift', 'SundayShift']
-    for c_idx, (name, vals) in enumerate(zip(list_names, list_cols), 1):
-        ls.cell(row=1, column=c_idx, value=name).font = Font(bold=True)
-        for r_idx, v in enumerate(vals, 2):
-            ls.cell(row=r_idx, column=c_idx, value=v)
-
-    # Column letters in Lists sheet
-    def _lists_range(col_idx, count):
-        col = get_column_letter(col_idx)
-        return f"Lists!${col}$2:${col}${count + 1}"
-
-    company_range  = _lists_range(1, len(company_list))
-    location_range = _lists_range(2, len(location_list))
-    sex_range      = _lists_range(3, len(sex_list))
-    status_range   = _lists_range(4, len(status_list))
-    wd_range       = _lists_range(5, len(wd_shift_list))
-    sun_range      = _lists_range(6, len(sun_shift_list))
-
-    # Styles
-    hdr_fill    = PatternFill('solid', fgColor='1F4E79')
-    hdr_font    = Font(name='Segoe UI', bold=True, color='FFFFFF', size=10)
-    req_fill    = PatternFill('solid', fgColor='DC2626')
-    req_font    = Font(name='Segoe UI', bold=True, color='FFFFFF', size=10)
-    drop_fill   = PatternFill('solid', fgColor='1F4E79')  # uniform brand header colour
-    drop_font   = Font(name='Segoe UI', bold=True, color='FFFFFF', size=10)
-    desc_fill   = PatternFill('solid', fgColor='EEF5FF')
-    desc_font   = Font(name='Segoe UI', color='1560D4', size=9, italic=True)
-    ddesc_fill  = PatternFill('solid', fgColor='E8F0FE')
-    ddesc_font  = Font(name='Segoe UI', color='0D47A1', size=9, italic=True)
-    data_font   = Font(name='Segoe UI', size=10)
-    data2_font  = Font(name='Segoe UI', size=10, color='94A3B8', italic=True)
-    thin        = Side(style='thin', color='CBD5E0')
-    border      = Border(left=thin, right=thin, top=thin, bottom=thin)
-    center      = Alignment(horizontal='center', vertical='center', wrap_text=True)
-    left_wrap   = Alignment(horizontal='left',   vertical='center', wrap_text=True)
-
-    # ── Row 1: Title banner ──────────────────────────────────────────────────
-    ws.merge_cells(f'A1:{get_column_letter(len(columns))}1')
-    title_cell = ws['A1']
-    title_cell.value = '  NEERAJ TEXTILE — EMPLOYEE IMPORT TEMPLATE    |    Fill data from Row 7 onwards  ·  Use dropdowns where shown  ·  Required: NAME column'
-    title_cell.font  = Font(name='Segoe UI', bold=True, color='FFFFFF', size=11)
-    title_cell.fill  = PatternFill('solid', fgColor='0F172A')
-    title_cell.alignment = Alignment(horizontal='left', vertical='center')
-    ws.row_dimensions[1].height = 24
-
-    # ── Row 2: Column headers ────────────────────────────────────────────────
-    for col_idx, (header, desc, sample, required, has_dd) in enumerate(columns, 1):
-        cell = ws.cell(row=2, column=col_idx, value=header)
-        if required:
-            cell.font, cell.fill = req_font, req_fill
-        elif has_dd:
-            cell.font, cell.fill = drop_font, drop_fill
-        else:
-            cell.font, cell.fill = hdr_font, hdr_fill
-        cell.alignment = center
-        cell.border    = border
-    ws.row_dimensions[2].height = 26
-
-    # ── Row 3: Descriptions ──────────────────────────────────────────────────
-    for col_idx, (header, desc, sample, required, has_dd) in enumerate(columns, 1):
-        cell = ws.cell(row=3, column=col_idx, value=desc)
-        if has_dd:
-            cell.font, cell.fill = ddesc_font, ddesc_fill
-        else:
-            cell.font, cell.fill = desc_font, desc_fill
-        cell.alignment = left_wrap
-        cell.border    = border
-    ws.row_dimensions[3].height = 40
-
-    # ── Row 4: Dropdown legend ───────────────────────────────────────────────
-    ws.merge_cells(f'A4:{get_column_letter(len(columns))}4')
-    leg = ws['A4']
-    leg.value = (
-        'DROPDOWN COLUMNS (dark blue headers) — Click a cell and use the dropdown arrow to pick a value:  '
-        'COMPANY: NL / TLNT  |  LOCATION: Gandhi Market / Bathubasthi / New Main  |  STATUS: active / inactive  |  '
-        'WEEKDAY SHIFT: 4 shifts  |  SUNDAY SHIFT: 3 shifts (fixed Sunday pay)'
+    buf = employee_bulk.build_employee_bulk_template(
+        departments=list(_PAYROLL_DEPARTMENTS),
+        default_company=_DEFAULT_COMPANY,
     )
-    leg.font      = Font(name='Segoe UI', size=9, color='0D47A1', italic=True)
-    leg.fill      = PatternFill('solid', fgColor='E8F0FE')
-    leg.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
-    ws.row_dimensions[4].height = 30
-
-    # ── Row 5-6: Sample data rows ────────────────────────────────────────────
-    sample_rows = [
-        ['NL-001', 'Ravi Kumar',     'NL',   'Gandhi Market', '9876543210', '9123456789', 'Male',
-         '12 Main St, Chennai', '123456789012', 'ABCDE1234F', 'TN/CHN/12345', 'ESI/123456',
-         30000, 15000, 1800, 525, 0, 'active',
-         'Shift 1 - 8:30 AM to 7:30 PM', 'Shift 1 - 9:00 AM to 7:00 PM (Rs.550)',
-         'State Bank of India', 'Ravi Kumar', '1234567890', 'SBIN0001234'],
-        ['NL-002', 'Priya Sundaram', 'TLNT', 'Bathubasthi',   '8765432109', '', 'Female',
-         '',                    '',              '',          '',            '',
-         25000, 12000, 1440, 438, 500, 'active',
-         'Shift 2 - 8:30 AM to 7:50 PM', '',
-         '', '', '', ''],
-    ]
-    note_fill = PatternFill('solid', fgColor='F8FAFC')
-    for r_idx, row_data in enumerate(sample_rows, 5):
-        for col_idx, val in enumerate(row_data, 1):
-            cell = ws.cell(row=r_idx, column=col_idx, value=val)
-            cell.font      = data2_font if r_idx == 6 else data_font
-            cell.fill      = note_fill
-            cell.alignment = left_wrap
-            cell.border    = border
-        ws.row_dimensions[r_idx].height = 18
-
-    # ── Row 7: "Add your data below" marker ─────────────────────────────────
-    ws.merge_cells(f'A7:{get_column_letter(len(columns))}7')
-    marker = ws['A7']
-    marker.value     = '▼  Add your employee data from this row onwards  ▼'
-    marker.font      = Font(name='Segoe UI', bold=True, color='16A34A', size=10)
-    marker.fill      = PatternFill('solid', fgColor='F0FDF4')
-    marker.alignment = Alignment(horizontal='center', vertical='center')
-    ws.row_dimensions[7].height = 20
-
-    # ── Data validation dropdowns (rows 8 to 1007) ──────────────────────────
-    DATA_START = 8
-    DATA_END   = 1007
-
-    # Map header → Lists range
-    col_map = {}
-    for col_idx, (header, _, _, _, _) in enumerate(columns, 1):
-        col_map[header] = get_column_letter(col_idx)
-
-    def _dv(formula, col_letter, field_name):
-        dv = DataValidation(
-            type='list',
-            formula1=formula,
-            allow_blank=True,
-            showDropDown=False,
-            showErrorMessage=True,
-            errorStyle='stop',
-            errorTitle='Invalid Value',
-            error=f'"{field_name}" only accepts values from the dropdown list. '
-                  f'Please click the cell and select an option from the dropdown arrow.',
-            showInputMessage=True,
-            promptTitle=field_name,
-            prompt=f'Click the dropdown arrow to select a valid {field_name} option.',
-        )
-        dv.sqref = f'{col_letter}{DATA_START}:{col_letter}{DATA_END}'
-        ws.add_data_validation(dv)
-
-    _dv(f'={company_range}',  col_map['COMPANY'],       'Company')
-    _dv(f'={location_range}', col_map['LOCATION'],      'Work Location')
-    _dv(f'={sex_range}',      col_map['SEX'],           'Sex')
-    _dv(f'={status_range}',   col_map['STATUS'],        'Status')
-    _dv(f'={wd_range}',       col_map['WEEKDAY SHIFT'], 'Weekday Shift')
-    _dv(f'={sun_range}',      col_map['SUNDAY SHIFT'],  'Sunday Shift')
-
-    # ── Column widths ────────────────────────────────────────────────────────
-    col_widths = [12, 24, 12, 18, 14, 18, 10, 28, 16, 14, 18, 16, 12, 12, 10, 10, 18, 10, 32, 36]
-    for i, w in enumerate(col_widths, 1):
-        ws.column_dimensions[get_column_letter(i)].width = w
-
-    # Freeze panes so headers stay visible while scrolling
-    ws.freeze_panes = 'A8'
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return send_file(
+    response = send_file(
         buf,
         as_attachment=True,
         download_name='Employee_Import_Template.xlsx',
-        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response
 
 
 @payroll_bp.route('/upload_employees', methods=['POST'])
 def upload_employees():
-    """Import employees from an uploaded Excel file.
+    """Import employees from the Download template workbook."""
+    import employee_bulk
 
-    Expected columns (case-insensitive, spaces trimmed):
-        EMP ID, NAME, COMPANY, LOCATION, MOBILE, ADDRESS, AADHAR, PAN,
-        EPF NUMBER, ESIC NUMBER, SALARY, BASIC PAY, EPF, ESIC,
-        CREDIT REPAYMENT, STATUS
+    def _wants_json():
+        accept = (request.headers.get('Accept') or '').lower()
+        xhr = (request.headers.get('X-Requested-With') or '').lower()
+        return 'application/json' in accept or xhr == 'xmlhttprequest'
 
-    Rows with a blank NAME are skipped. All other validation errors
-    are counted but do not abort the import.
-    """
-    f = request.files.get('file')
-    if not f or not f.filename:
+    f = request.files.get('file') or request.files.get('excel')
+    if not f or not (f.filename or '').strip():
+        if _wants_json():
+            return jsonify({'ok': False, 'error': 'Choose an Excel file to upload.'}), 400
         return redirect(url_for('employees'))
 
-    import pandas as pd
-
-    def _norm_header(value):
-        return str(value or '').strip().upper()
-
-    def _load_employee_import_df(fileobj):
-        # First pass: inspect raw rows so we can detect the actual header row in
-        # the styled template workbook instead of assuming row 1 contains headers.
-        raw = pd.read_excel(fileobj, dtype=str, header=None, sheet_name=0)
-        header_idx = None
-        marker_idx = None
-        for idx, row in raw.iterrows():
-            cells = [_norm_header(v) for v in row.tolist()]
-            cell_set = {c for c in cells if c and c != 'NAN'}
-            if header_idx is None and 'NAME' in cell_set:
-                if len(cell_set & {'NAME', 'COMPANY', 'LOCATION', 'SALARY'}) >= 2:
-                    header_idx = idx
-            if marker_idx is None:
-                joined = ' '.join(cells)
-                if 'ADD YOUR EMPLOYEE DATA FROM THIS ROW ONWARDS' in joined:
-                    marker_idx = idx
-        if header_idx is None:
-            header_idx = 0
-
-        fileobj.seek(0)
-        df = pd.read_excel(fileobj, dtype=str, header=header_idx, sheet_name=0)
-        df.columns = [_norm_header(c) for c in df.columns]
-
-        if marker_idx is not None and marker_idx >= header_idx:
-            first_data_pos = marker_idx - header_idx
-            df = df.iloc[first_data_pos:].copy()
-
-        # Drop template helper rows and fully empty rows.
-        if 'NAME' in df.columns:
-            name_series = df['NAME'].astype(str).str.strip()
-            helper_mask = (
-                name_series.str.upper().isin({
-                    '',
-                    'NAN',
-                    'FULL EMPLOYEE NAME\n(REQUIRED)'.upper(),
-                })
-                | name_series.str.contains('FULL EMPLOYEE NAME', case=False, na=False)
-                | name_series.str.contains('ADD YOUR EMPLOYEE DATA FROM THIS ROW ONWARDS', case=False, na=False)
-            )
-            df = df.loc[~helper_mask].copy()
-
-        return df
-
-    try:
-        df = _load_employee_import_df(f)
-    except Exception:
+    filename = (f.filename or '').lower()
+    if not filename.endswith(('.xlsx', '.xlsm')):
+        if _wants_json():
+            return jsonify({'ok': False, 'error': 'Upload an .xlsx Excel file.'}), 400
         return redirect(url_for('employees', import_ok=0, import_err=1))
 
-    def _flt(row, key, default=0.0):
-        try:
-            v = str(row.get(key, '') or '').strip()
-            return float(v) if v and v.lower() != 'nan' else default
-        except (ValueError, TypeError):
-            return default
-
-    def _str(row, key):
-        v = str(row.get(key, '') or '').strip()
-        return '' if v.lower() == 'nan' else v
-
-    def _parse_shift(val, valid_keys):
-        """Map a dropdown label like 'Shift 2 - ...' to 'shift2', or '' if blank."""
-        v = str(val or '').strip().lower()
-        if not v or v == 'nan':
-            return ''
-        for i, _ in enumerate(valid_keys, 1):
-            if f'shift {i}' in v or v == f'shift{i}':
-                return f'shift{i}'
-        return ''
-
-    # Validate required columns are present
-    required = {'NAME'}
-    missing = required - set(df.columns)
-    if missing:
-        return redirect(url_for('employees', import_ok=0, import_err=len(df)))
-
     conn = get_db()
-    inserted = 0
-    skipped = 0
-    for _, row in df.iterrows():
-        name = _str(row, 'NAME')
-        if not name:
-            skipped += 1
-            continue
-        try:
-            emp_code         = _str(row, 'EMP ID')
-            company          = _str(row, 'COMPANY')
-            location         = _str(row, 'LOCATION')
-            mobile           = _str(row, 'MOBILE')
-            guardian_mobile  = _str(row, 'GUARDIAN MOBILE')
-            raw_sex          = _str(row, 'SEX').strip().capitalize()
-            sex              = raw_sex if raw_sex in ('Male', 'Female') else ''
-            address          = _str(row, 'ADDRESS')
-            aadhar           = _str(row, 'AADHAR')
-            pan              = _str(row, 'PAN').upper()
-            epf_number       = _str(row, 'EPF NUMBER')
-            esic_number      = _str(row, 'ESIC NUMBER')
-            gross_salary     = _flt(row, 'SALARY')
-            basic_salary     = _flt(row, 'BASIC PAY')
-            epf_amount       = _flt(row, 'EPF')
-            if epf_amount > _EPF_MAX:
-                epf_amount = _EPF_MAX
-            esic_amount      = _flt(row, 'ESIC')
-            credit_repayment = _flt(row, 'CREDIT REPAYMENT')
-            raw_status       = _str(row, 'STATUS').lower()
-            status           = raw_status if raw_status in ('active', 'inactive') else 'active'
-            weekday_shift    = _parse_shift(_str(row, 'WEEKDAY SHIFT'), ['shift1','shift2','shift3','shift4'])
-            sunday_shift     = _parse_shift(_str(row, 'SUNDAY SHIFT'),  ['shift1','shift2','shift3'])
-            bank_name            = _str(row, 'BANK NAME')
-            account_holder_name  = _str(row, 'ACCOUNT HOLDER NAME')
-            account_number       = _str(row, 'ACCOUNT NUMBER')
-            ifsc_code            = _str(row, 'IFSC CODE').upper()
+    try:
+        result = employee_bulk.import_employee_bulk(
+            conn,
+            f,
+            departments=list(_PAYROLL_DEPARTMENTS),
+            next_emp_code_fn=_next_emp_code,
+            emp_code_taken_fn=_emp_code_taken,
+            default_company=_DEFAULT_COMPANY,
+            epf_max=_EPF_MAX,
+        )
+        conn.commit()
+    except ValueError as exc:
+        conn.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'error': str(exc)}), 400
+        return redirect(url_for('employees', import_ok=0, import_err=1))
+    except Exception:
+        conn.rollback()
+        if _wants_json():
+            return jsonify({'ok': False, 'error': 'Could not import employees.'}), 500
+        return redirect(url_for('employees', import_ok=0, import_err=1))
+    finally:
+        conn.close()
 
-            # Skip if a duplicate employee code already exists (non-empty codes only)
-            if emp_code:
-                dup = conn.execute(
-                    "SELECT id FROM employees WHERE emp_code=?", (emp_code,)
-                ).fetchone()
-                if dup:
-                    skipped += 1
-                    continue
-            else:
-                emp_code = _next_emp_code(conn)
-
-            conn.execute(
-                """INSERT INTO employees
-                   (emp_code, name, company, location, mobile, guardian_mobile, sex, address,
-                    aadhar, pan, epf_number, esic_number,
-                    gross_salary, basic_salary, epf_amount, esic_amount,
-                    credit_repayment, weekday_shift, sunday_shift,
-                    bank_name, account_holder_name, account_number, ifsc_code, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (emp_code, name, company, location, mobile, guardian_mobile, sex, address,
-                 aadhar, pan, epf_number, esic_number,
-                 gross_salary, basic_salary, epf_amount, esic_amount,
-                 credit_repayment, weekday_shift, sunday_shift,
-                 bank_name, account_holder_name, account_number, ifsc_code, status)
-            )
-            inserted += 1
-        except Exception:
-            skipped += 1
-
-    conn.commit()
-    conn.close()
-    return redirect(url_for('employees',
-                            import_ok=inserted, import_err=skipped))
+    if _wants_json():
+        return jsonify({'ok': True, **result})
+    return redirect(
+        url_for(
+            'employees',
+            import_ok=result.get('created_count', 0),
+            import_err=result.get('skipped_count', 0),
+        )
+    )
 
 
 @payroll_bp.route('/export_employees')

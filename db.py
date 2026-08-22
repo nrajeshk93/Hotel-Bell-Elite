@@ -1901,8 +1901,12 @@ def list_pos_menu_recipe_lines(conn, menu_item_ids=None):
     return [_pos_menu_recipe_line_dict(r) for r in rows]
 
 
-def _attach_pos_menu_recipes(conn, items):
-    """Attach recipe[] and margin fields onto each menu item dict."""
+def _attach_pos_menu_recipes(conn, items, include_recipe_lines=True):
+    """Attach margin fields onto each menu item; optionally keep full recipe[].
+
+    List views need food_cost / margin columns but not every ingredient line in JSON.
+    Detail / edit still pass include_recipe_lines=True.
+    """
     if not items:
         return items
     by_id = {int(it["id"]): it for it in items}
@@ -1927,6 +1931,8 @@ def _attach_pos_menu_recipes(conn, items):
                 food_cost = round(sum(costs), 2)
             margins = compute_pos_menu_item_margins(it.get("rate"), food_cost)
         it.update(margins)
+        if not include_recipe_lines:
+            it["recipe"] = []
     return items
 
 
@@ -2109,9 +2115,18 @@ _POS_MENU_ITEM_SELECT = """
 
 
 def list_pos_menu_items(
-    conn, category_id=None, include_inactive=False, outlet=POS_OUTLET_RESTAURANT, outlets=None
+    conn,
+    category_id=None,
+    include_inactive=False,
+    outlet=POS_OUTLET_RESTAURANT,
+    outlets=None,
+    include_recipe_lines=False,
 ):
-    """Return menu items, optionally filtered by category and one or more outlets."""
+    """Return menu items, optionally filtered by category and one or more outlets.
+
+    By default omits recipe ingredient arrays from the payload (margins still computed)
+    so catalog list responses stay small for soft-nav / large menus.
+    """
     ensure_pos_schema(conn)
     ensure_stores_schema(conn)
     outlet_list = resolve_pos_outlets(outlet=outlet, outlets=outlets)
@@ -2137,7 +2152,7 @@ def list_pos_menu_items(
         params,
     ).fetchall()
     items = [_pos_menu_item_dict(r) for r in rows]
-    return _attach_pos_menu_recipes(conn, items)
+    return _attach_pos_menu_recipes(conn, items, include_recipe_lines=include_recipe_lines)
 
 
 def get_pos_menu_item(conn, item_id):
@@ -3659,23 +3674,166 @@ def _pos_fb_invoice_numbers_by_order_no(conn, order_nos):
     return mapping
 
 
-def _annotate_pos_room_transfer_labels(labels, fb_invoice_number=""):
-    """Attach FBE number or pending note to Room Transfer payment labels."""
+def _pos_room_number_for_hotel_room_id(conn, hotel_room_id):
+    """Return display room number for an occupied (or known) hotel room id."""
+    hotel_room_id = str(hotel_room_id or "").strip()
+    if not hotel_room_id:
+        return ""
+    layout = get_hotel_rooms_layout(conn)
+    for room in layout.get("rooms") or []:
+        if not isinstance(room, dict):
+            continue
+        if str(room.get("id") or "") != hotel_room_id and str(
+            room.get("number") or ""
+        ) != hotel_room_id:
+            continue
+        stay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
+        return str(
+            stay.get("mergeRoomLabel")
+            or stay.get("merge_room_label")
+            or room.get("number")
+            or ""
+        ).strip()
+    return ""
+
+
+def _pos_payment_notes_with_room_number(notes, room_number):
+    """Embed destination room on the payment row so ledger labels stay durable."""
+    base = str(notes or "").strip()
+    room_number = str(room_number or "").strip()
+    if not room_number:
+        return base
+    tag = f"hotel_room_number={room_number}"
+    if tag in base:
+        return base
+    return f"{base}\n{tag}".strip() if base else tag
+
+
+def _pos_room_number_from_payment_notes(notes):
+    for line in str(notes or "").splitlines():
+        line = line.strip()
+        if line.lower().startswith("hotel_room_number="):
+            return line.split("=", 1)[1].strip()
+    return ""
+
+
+def _pos_room_transfer_room_numbers_by_order_no(conn, order_nos, invoice_ids=None):
+    """Map POS order numbers to the hotel room they were transferred onto."""
+    needles = []
+    seen = set()
+    for raw in order_nos or []:
+        order_no = str(raw or "").strip()
+        if not order_no or order_no in seen:
+            continue
+        seen.add(order_no)
+        needles.append(order_no)
+    if not needles:
+        return {}
+    mapping = {}
+    ensure_hotel_room_invoices_schema(conn)
+    placeholders = ",".join("?" for _ in needles)
+    rows = conn.execute(
+        f"""
+        SELECT invoice_number, room_number, payload_json
+        FROM hotel_room_invoices
+        WHERE invoice_number IN ({placeholders})
+          AND source = ?
+        """,
+        [*needles, HOTEL_INVOICE_SOURCE_POS_TRANSFER],
+    ).fetchall()
+    for row in rows:
+        order_no = str(row["invoice_number"] or "").strip()
+        room_no = str(row["room_number"] or "").strip()
+        if not room_no:
+            try:
+                payload = json.loads(row["payload_json"] or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                payload = {}
+            if isinstance(payload, dict):
+                room_no = str(payload.get("number") or "").strip()
+                stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
+                if not room_no:
+                    room_no = str(
+                        stay.get("mergeRoomLabel")
+                        or stay.get("merge_room_label")
+                        or ""
+                    ).strip()
+        if order_no and room_no and order_no not in mapping:
+            mapping[order_no] = room_no
+
+    missing = [n for n in needles if n not in mapping]
+    invoice_id_set = set()
+    for raw in invoice_ids or []:
+        try:
+            invoice_id_set.add(str(int(raw)))
+        except (TypeError, ValueError):
+            continue
+    if missing or invoice_id_set:
+        wanted = set(missing)
+        layout = get_hotel_rooms_layout(conn)
+        for room in layout.get("rooms") or []:
+            if not isinstance(room, dict):
+                continue
+            stay = room.get("stay") if isinstance(room.get("stay"), dict) else {}
+            room_no = str(
+                stay.get("mergeRoomLabel")
+                or stay.get("merge_room_label")
+                or room.get("number")
+                or ""
+            ).strip()
+            if not room_no:
+                continue
+            folio = stay.get("folioCharges") or stay.get("folio_charges") or []
+            if not isinstance(folio, list):
+                continue
+            for line in folio:
+                if not isinstance(line, dict):
+                    continue
+                kind = str(line.get("kind") or "").strip().lower()
+                if kind not in ("restaurant_room_transfer", "bar_room_transfer", "other"):
+                    continue
+                order_no = str(line.get("orderNo") or line.get("order_no") or "").strip()
+                inv_id = str(
+                    line.get("invoiceId") or line.get("invoice_id") or ""
+                ).strip()
+                if order_no in wanted and order_no not in mapping:
+                    mapping[order_no] = room_no
+                elif inv_id and inv_id in invoice_id_set and order_no and order_no not in mapping:
+                    mapping[order_no] = room_no
+    return mapping
+
+
+def _annotate_pos_room_transfer_labels(labels, fb_invoice_number="", room_number=""):
+    """Attach room + FBE number or pending note to Room Transfer payment labels."""
     fb_no = str(fb_invoice_number or "").strip()
+    room_no = str(room_number or "").strip()
     annotated = []
     for lab in labels or []:
         if lab == "Room Transfer":
-            annotated.append(
-                f"Room Transfer ({fb_no})" if fb_no else "Room Transfer (Invoice yet to generate)"
-            )
+            if room_no and fb_no:
+                annotated.append(f"Room Transfer · {room_no} ({fb_no})")
+            elif room_no:
+                annotated.append(
+                    f"Room Transfer · {room_no} (Invoice yet to generate)"
+                )
+            elif fb_no:
+                annotated.append(f"Room Transfer ({fb_no})")
+            else:
+                annotated.append("Room Transfer (Invoice yet to generate)")
         else:
             annotated.append(lab)
     return annotated
 
 
-def _pos_invoice_payment_mode_label(invoice, labels=None, fb_invoice_number=""):
+def _pos_invoice_payment_mode_label(
+    invoice, labels=None, fb_invoice_number="", room_number=""
+):
     """Ledger Payment Mode column: payments, else Cancelled / Unsettled from status."""
-    labels = _annotate_pos_room_transfer_labels(list(labels or []), fb_invoice_number)
+    labels = _annotate_pos_room_transfer_labels(
+        list(labels or []),
+        fb_invoice_number=fb_invoice_number,
+        room_number=room_number,
+    )
     if labels:
         return " + ".join(labels)
     status = str((invoice or {}).get("status") or "open").strip().lower() or "open"
@@ -3702,13 +3860,42 @@ def _apply_pos_invoice_payment_modes(conn, invoice):
         seen.add(key)
         unique_modes.append(key)
     fb_no = ""
+    room_no = ""
     if "room_transfer" in unique_modes:
         order_no = str(invoice.get("order_no") or "").strip()
         fb_map = _pos_fb_invoice_numbers_by_order_no(conn, [order_no] if order_no else [])
         fb_no = fb_map.get(order_no, "")
+        room_map = _pos_room_transfer_room_numbers_by_order_no(
+            conn,
+            [order_no] if order_no else [],
+            invoice_ids=[invoice.get("id")],
+        )
+        room_no = room_map.get(order_no, "")
+        if not room_no:
+            for pay in payments:
+                key = _normalize_pos_payment_method(pay.get("payment_method"))
+                if key != "room_transfer":
+                    continue
+                room_no = _pos_room_number_from_payment_notes(pay.get("notes"))
+                if room_no:
+                    break
+        if not room_no:
+            hotel_room = invoice.get("hotel_room")
+            if isinstance(hotel_room, dict):
+                stay = (
+                    hotel_room.get("stay")
+                    if isinstance(hotel_room.get("stay"), dict)
+                    else {}
+                )
+                room_no = str(
+                    stay.get("mergeRoomLabel")
+                    or stay.get("merge_room_label")
+                    or hotel_room.get("number")
+                    or ""
+                ).strip()
     invoice["payment_modes"] = unique_modes
     invoice["payment_mode_label"] = _pos_invoice_payment_mode_label(
-        invoice, labels, fb_invoice_number=fb_no
+        invoice, labels, fb_invoice_number=fb_no, room_number=room_no
     )
     invoice["payment_amounts"] = _pos_payment_amounts_from_rows(payments)
     return invoice
@@ -3726,7 +3913,7 @@ def _enrich_pos_invoices_payment_modes(conn, invoices):
     placeholders = ",".join("?" for _ in ids)
     pay_rows = conn.execute(
         f"""
-        SELECT invoice_id, payment_method, amount
+        SELECT invoice_id, payment_method, amount, notes
         FROM pos_invoice_payments
         WHERE invoice_id IN ({placeholders})
         ORDER BY id ASC
@@ -3735,10 +3922,12 @@ def _enrich_pos_invoices_payment_modes(conn, invoices):
     ).fetchall()
     methods_by_id = {}
     amounts_by_id = {}
+    notes_by_id = {}
     for pay in pay_rows:
         inv_id = int(pay["invoice_id"])
         methods_by_id.setdefault(inv_id, []).append(pay["payment_method"])
         amounts_by_id.setdefault(inv_id, []).append(pay)
+        notes_by_id.setdefault(inv_id, []).append(pay["notes"] or "")
     transfer_order_nos = []
     prepared = []
     for inv in rows:
@@ -3760,12 +3949,21 @@ def _enrich_pos_invoices_payment_modes(conn, invoices):
         order_no = str(inv.get("order_no") or "").strip()
         if "room_transfer" in unique_modes and order_no:
             transfer_order_nos.append(order_no)
-        prepared.append((inv, labels, unique_modes, order_no))
+        prepared.append((inv, labels, unique_modes, order_no, inv_id))
     fb_map = _pos_fb_invoice_numbers_by_order_no(conn, transfer_order_nos)
-    for inv, labels, unique_modes, order_no in prepared:
+    room_map = _pos_room_transfer_room_numbers_by_order_no(
+        conn, transfer_order_nos, invoice_ids=ids
+    )
+    for inv, labels, unique_modes, order_no, inv_id in prepared:
         fb_no = fb_map.get(order_no, "") if "room_transfer" in unique_modes else ""
+        room_no = room_map.get(order_no, "") if "room_transfer" in unique_modes else ""
+        if "room_transfer" in unique_modes and not room_no:
+            for note in notes_by_id.get(inv_id, []):
+                room_no = _pos_room_number_from_payment_notes(note)
+                if room_no:
+                    break
         inv["payment_mode_label"] = _pos_invoice_payment_mode_label(
-            inv, labels, fb_invoice_number=fb_no
+            inv, labels, fb_invoice_number=fb_no, room_number=room_no
         )
     return rows
 
@@ -4919,10 +5117,20 @@ def settle_pos_invoice(
     if not pay_date:
         pay_date = conn.execute("SELECT date('now','localtime')").fetchone()[0]
     notes_clean = str(notes or "").strip()
+    transfer_room_number = (
+        _pos_room_number_for_hotel_room_id(conn, hotel_room_id)
+        if room_transfer_total > 0
+        else ""
+    )
 
     # Replace any prior draft payments (should be empty for open bills).
     conn.execute("DELETE FROM pos_invoice_payments WHERE invoice_id = ?", (invoice_id,))
     for split in splits:
+        pay_notes = notes_clean
+        if split.get("payment_method") == "room_transfer" and transfer_room_number:
+            pay_notes = _pos_payment_notes_with_room_number(
+                notes_clean, transfer_room_number
+            )
         conn.execute(
             """
             INSERT INTO pos_invoice_payments
@@ -4935,7 +5143,7 @@ def settle_pos_invoice(
                 split["payment_method"],
                 split["amount"],
                 split["transaction_id"],
-                notes_clean,
+                pay_notes,
             ),
         )
 
@@ -4981,7 +5189,12 @@ def settle_pos_invoice(
         room = folio_result.get("room")
         charge = folio_result.get("charge")
         if room and charge:
-            pass  # FBE ledger row is created at Generate Invoice, not on POS settle.
+            # Persist per-POS transfer row so Invoice Ledger can show the room
+            # number even after the stay folio is cleared. Combined FBE is still
+            # minted later at Generate Invoice.
+            upsert_pos_room_transfer_invoice(conn, room, charge)
+        # Rebuild Payment Mode after folio post so Room Transfer includes room #.
+        _apply_pos_invoice_payment_modes(conn, invoice)
     return invoice
 
 
@@ -6950,6 +7163,179 @@ def ensure_cash_ledger_schema(conn):
     conn.commit()
 
 
+def ensure_back_office_receipt_schema(conn):
+    """Incoming hotel advance / payment receipts (Back Office Receipt ledger)."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS back_office_receipt_seq (
+            fiscal_year TEXT PRIMARY KEY,
+            last_seq    INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS back_office_receipts (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            receipt_no       TEXT    NOT NULL UNIQUE,
+            fiscal_year      TEXT    NOT NULL,
+            seq              INTEGER NOT NULL,
+            receipt_date     TEXT    NOT NULL,
+            payer_name       TEXT    NOT NULL DEFAULT '',
+            agency_id        INTEGER,
+            amount           REAL    NOT NULL DEFAULT 0,
+            amount_words     TEXT    NOT NULL DEFAULT '',
+            payment_mode     TEXT    NOT NULL DEFAULT 'cash',
+            instrument_no    TEXT    NOT NULL DEFAULT '',
+            instrument_date  TEXT,
+            towards          TEXT    NOT NULL DEFAULT '',
+            created_at       TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            created_by       INTEGER,
+            FOREIGN KEY (agency_id) REFERENCES agencies(id)
+        )
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_back_office_receipts_date
+        ON back_office_receipts(receipt_date DESC, id DESC)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_back_office_receipts_agency
+        ON back_office_receipts(agency_id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS back_office_receipt_allocations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receipt_id INTEGER NOT NULL,
+            hotel_credit_payment_id INTEGER,
+            hotel_invoice_number TEXT NOT NULL DEFAULT '',
+            amount REAL NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (receipt_id) REFERENCES back_office_receipts(id)
+        )
+        """
+    )
+    alloc_cols = {
+        row["name"]
+        for row in cursor.execute("PRAGMA table_info(back_office_receipt_allocations)").fetchall()
+    }
+    if "hotel_invoice_number" not in alloc_cols:
+        cursor.execute(
+            """
+            ALTER TABLE back_office_receipt_allocations
+            ADD COLUMN hotel_invoice_number TEXT NOT NULL DEFAULT ''
+            """
+        )
+    # Legacy rows required hotel_credit_payment_id NOT NULL. Rebuild if still constrained.
+    notnull_credit = False
+    for row in cursor.execute("PRAGMA table_info(back_office_receipt_allocations)").fetchall():
+        if row["name"] == "hotel_credit_payment_id" and int(row["notnull"] or 0) == 1:
+            notnull_credit = True
+            break
+    if notnull_credit:
+        cursor.execute(
+            """
+            CREATE TABLE back_office_receipt_allocations_v2 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                receipt_id INTEGER NOT NULL,
+                hotel_credit_payment_id INTEGER,
+                hotel_invoice_number TEXT NOT NULL DEFAULT '',
+                amount REAL NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (receipt_id) REFERENCES back_office_receipts(id)
+            )
+            """
+        )
+        cursor.execute(
+            """
+            INSERT INTO back_office_receipt_allocations_v2
+                (id, receipt_id, hotel_credit_payment_id, hotel_invoice_number, amount, created_at)
+            SELECT id, receipt_id, hotel_credit_payment_id,
+                   COALESCE(hotel_invoice_number, ''), amount, created_at
+            FROM back_office_receipt_allocations
+            """
+        )
+        cursor.execute("DROP TABLE back_office_receipt_allocations")
+        cursor.execute(
+            "ALTER TABLE back_office_receipt_allocations_v2 RENAME TO back_office_receipt_allocations"
+        )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_bor_alloc_receipt
+        ON back_office_receipt_allocations(receipt_id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_bor_alloc_payment
+        ON back_office_receipt_allocations(hotel_credit_payment_id)
+        """
+    )
+    cursor.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_bor_alloc_invoice
+        ON back_office_receipt_allocations(hotel_invoice_number)
+        """
+    )
+    # Migrate legacy display format ``26-27 / 1`` → ``HBE/BOR/26-27/1``.
+    legacy_rows = cursor.execute(
+        """
+        SELECT id, receipt_no, fiscal_year, seq
+        FROM back_office_receipts
+        WHERE receipt_no LIKE '% / %'
+           AND receipt_no NOT LIKE 'HBE/BOR/%'
+        """
+    ).fetchall()
+    for row in legacy_rows:
+        short_fy = str(row["fiscal_year"] or "").strip() or indian_fiscal_year_short_label()
+        seq = int(row["seq"] or 0)
+        if seq <= 0:
+            continue
+        new_no = f"HBE/BOR/{short_fy}/{seq}"
+        cursor.execute(
+            "UPDATE back_office_receipts SET receipt_no = ? WHERE id = ?",
+            (new_no, int(row["id"])),
+        )
+    conn.commit()
+
+
+def next_back_office_receipt_seq(conn, fiscal_year=None):
+    """Next Back Office Receipt sequence for the Indian fiscal year (short label)."""
+    ensure_back_office_receipt_schema(conn)
+    fy = str(fiscal_year or "").strip()
+    if not fy:
+        fy = indian_fiscal_year_label()
+    short_fy = indian_fiscal_year_short_label(fy)
+    row = conn.execute(
+        "SELECT last_seq FROM back_office_receipt_seq WHERE fiscal_year = ?",
+        (short_fy,),
+    ).fetchone()
+    stored = int(row["last_seq"] or 0) if row else 0
+    nxt = stored + 1
+    conn.execute(
+        """
+        INSERT INTO back_office_receipt_seq (fiscal_year, last_seq)
+        VALUES (?, ?)
+        ON CONFLICT(fiscal_year) DO UPDATE SET last_seq = excluded.last_seq
+        """,
+        (short_fy, nxt),
+    )
+    return short_fy, nxt
+
+
+def allocate_back_office_receipt_no(conn, when=None):
+    """Allocate display number like ``HBE/BOR/26-27/1``."""
+    fy = indian_fiscal_year_label(when)
+    short_fy, seq = next_back_office_receipt_seq(conn, fy)
+    return short_fy, seq, f"HBE/BOR/{short_fy}/{seq}"
+
+
 def ensure_stores_schema(conn):
     """Create Stores inventory workflow tables if missing."""
     cursor = conn.cursor()
@@ -8253,6 +8639,45 @@ def ensure_communication_hub_schema(conn):
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wa_promo_campaigns (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            template_name     TEXT    NOT NULL,
+            template_language TEXT    NOT NULL DEFAULT '',
+            created_by        INTEGER,
+            created_at        TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
+            finished_at       TEXT,
+            status            TEXT    NOT NULL DEFAULT 'running',
+            total_rows        INTEGER NOT NULL DEFAULT 0,
+            sent_count        INTEGER NOT NULL DEFAULT 0,
+            failed_count      INTEGER NOT NULL DEFAULT 0,
+            skipped_count     INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS wa_promo_recipients (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id  INTEGER NOT NULL,
+            row_number   INTEGER NOT NULL DEFAULT 0,
+            customer_name TEXT   NOT NULL DEFAULT '',
+            phone_e164   TEXT    NOT NULL DEFAULT '',
+            status       TEXT    NOT NULL DEFAULT 'pending',
+            error        TEXT    NOT NULL DEFAULT '',
+            wa_message_id TEXT   NOT NULL DEFAULT '',
+            sent_at      TEXT,
+            FOREIGN KEY (campaign_id) REFERENCES wa_promo_campaigns(id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_wa_promo_recipients_campaign
+        ON wa_promo_recipients(campaign_id, id)
+        """
+    )
 
 
 def ensure_hotel_rooms_schema(conn):
@@ -8624,6 +9049,26 @@ def ensure_hotel_invoice_credits_schema(conn):
         ON hotel_invoice_credit_payment_allocations(payment_id)
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS hotel_invoice_credit_payment_mode_splits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            payment_id INTEGER NOT NULL,
+            payment_method TEXT NOT NULL DEFAULT 'cash',
+            amount REAL NOT NULL DEFAULT 0,
+            transaction_id TEXT NOT NULL DEFAULT '',
+            receipt_id INTEGER,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_hotel_credit_mode_splits_payment
+        ON hotel_invoice_credit_payment_mode_splits(payment_id)
+        """
+    )
 
 
 def _hotel_invoice_credit_amount_from_stay(stay):
@@ -8688,7 +9133,34 @@ def upsert_hotel_invoice_credit(conn, item):
     credit_amount = _hotel_invoice_credit_amount_from_stay(stay)
     agency_name = _hotel_str(stay.get("agencyName") or stay.get("agency_name"), 160)
     if credit_amount <= 0.009:
+        # Invoice archive payloads sometimes omit stay.payments; use live stay / amounts.
+        room_id = _hotel_str(item.get("room_id") or room.get("id"), 40)
+        live = get_hotel_room(conn, room_id) if room_id else None
+        live_stay = live.get("stay") if isinstance(live, dict) else None
+        if isinstance(live_stay, dict):
+            live_inv = _hotel_str(
+                live_stay.get("invoiceNumber") or live_stay.get("invoice_number"), 60
+            )
+            if not live_inv or live_inv == invoice_number:
+                credit_amount = _hotel_invoice_credit_amount_from_stay(live_stay)
+                if credit_amount > 0.009:
+                    stay = live_stay
+                    if not agency_name:
+                        agency_name = _hotel_str(
+                            live_stay.get("agencyName") or live_stay.get("agency_name"),
+                            160,
+                        )
+        if credit_amount <= 0.009:
+            amounts = item.get("payment_amounts")
+            if isinstance(amounts, dict):
+                try:
+                    credit_amount = round(float(amounts.get("credit") or 0), 2)
+                except (TypeError, ValueError):
+                    credit_amount = 0.0
+    if credit_amount <= 0.009:
         return None
+    if not agency_name:
+        agency_name = _hotel_str(stay.get("agencyName") or stay.get("agency_name"), 160)
     guest_name = _hotel_str(item.get("guest_name") or stay.get("guestName"), 160)
     room_number = _hotel_str(item.get("room_number") or room.get("number"), 80)
     credit_date = _hotel_invoice_credit_date_from_item(item, stay)
@@ -8773,13 +9245,14 @@ _HOTEL_RM_INVOICE_RE = re.compile(r"^HBE/RM/(\d+)/(\d{4}-\d{2})$", re.IGNORECASE
 _HOTEL_HBE_FY_INVOICE_RE = re.compile(r"^HBE/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
 _HOTEL_FBE_FY_INVOICE_RE = re.compile(r"^FBE/(\d{2}-\d{2})/(\d+)$", re.IGNORECASE)
 HOTEL_INVOICE_SEQ_WIDTH = 5
-HOTEL_ROOM_PAYMENT_METHODS = ("cash", "upi", "card", "bank_transfer", "credit")
+HOTEL_ROOM_PAYMENT_METHODS = ("cash", "upi", "card", "bank_transfer", "credit", "bor")
 HOTEL_ROOM_PAYMENT_METHOD_LABELS = {
     "cash": "Cash",
     "upi": "UPI",
     "card": "Card",
     "bank_transfer": "Bank Transfer",
     "credit": "Credit",
+    "bor": "Back Office Receipt",
 }
 HOTEL_LEDGER_PAYMENT_AMOUNT_KEYS = tuple(HOTEL_ROOM_PAYMENT_METHODS)
 HOTEL_PAYMENT_AMOUNT_COLUMNS = tuple(
@@ -10381,6 +10854,12 @@ def upsert_hotel_room_invoice_from_room(
         snap = _hotel_build_hotel_invoice_snapshot_stay(snap, invoice_number, estimated)
         snap["balanceAmount"] = balance
         snap["advancePaid"] = advance
+        # Snapshot may be captured before generate_invoice payment_splits; merge
+        # live tenders so Sales Entry (Guest Credit / BOR) sees the settlement.
+        snap = (
+            _hotel_merge_live_payments_into_payload({"stay": snap}, stay).get("stay")
+            or snap
+        )
         room_number_display = _hotel_str(
             stay.get("mergeRoomLabel") or room.get("number"), 80
         ) or _hotel_str(room.get("number"), 20)
@@ -11481,9 +11960,9 @@ def _hotel_invoice_row_to_dict(row):
             item.get("status"), methods
         )
     stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
-    item["allow_credit"] = bool(
-        _hotel_str(stay.get("agencyName") or stay.get("agency_name"), 160)
-    )
+    agency_name = _hotel_str(stay.get("agencyName") or stay.get("agency_name"), 160)
+    item["agency_name"] = agency_name
+    item["allow_credit"] = bool(agency_name)
     return item
 
 
@@ -11558,11 +12037,12 @@ def list_hotel_room_invoices(
               OR lower(room_number) LIKE ?
               OR lower(booking_number) LIKE ?
               OR lower(room_type_label) LIKE ?
+              OR lower(COALESCE(payload_json, '')) LIKE ?
             )
             """
         )
         like = f"%{needle}%"
-        params.extend([like, like, like, like, like])
+        params.extend([like, like, like, like, like, like])
 
     where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
     rows = conn.execute(
@@ -11835,18 +12315,18 @@ def _hotel_payload_tender_splits(payload_json):
 
 
 def _hotel_payload_sales_entry_tenders(payload_json):
-    """Split hotel payload payments into cash / card / upi / room_credit / other."""
-    cash = card = upi = room_credit = other = 0.0
+    """Split hotel payload payments into cash / card / upi / room_credit / bor / other."""
+    cash = card = upi = room_credit = bor = other = 0.0
     try:
         payload = json.loads(payload_json or "{}")
     except (TypeError, ValueError, json.JSONDecodeError):
-        return cash, card, upi, room_credit, other
+        return cash, card, upi, room_credit, bor, other
     if not isinstance(payload, dict):
-        return cash, card, upi, room_credit, other
+        return cash, card, upi, room_credit, bor, other
     stay = payload.get("stay") if isinstance(payload.get("stay"), dict) else {}
 
     def _apply(method, amount):
-        nonlocal cash, card, upi, room_credit, other
+        nonlocal cash, card, upi, room_credit, bor, other
         amount = float(amount or 0)
         if abs(amount) < 0.005:
             return
@@ -11863,6 +12343,9 @@ def _hotel_payload_sales_entry_tenders(payload_json):
         if hotel_key == "credit":
             room_credit += amount
             return
+        if hotel_key == "bor":
+            bor += amount
+            return
         if hotel_key == "bank_transfer":
             # Hotel sales entry has no bank row — fold into card.
             card += amount
@@ -11874,6 +12357,14 @@ def _hotel_payload_sales_entry_tenders(payload_json):
                 key = "room_transfer"
             elif raw in ("bank", "bank_transfer", "neft", "rtgs", "imps"):
                 key = "bank_transfer"
+            elif raw in (
+                "bor",
+                "back_office_receipt",
+                "backofficereceipt",
+                "bor_receipt",
+                "bill_of_receipt",
+            ):
+                key = "bor"
             else:
                 key = raw
         if key == "cash":
@@ -11884,6 +12375,8 @@ def _hotel_payload_sales_entry_tenders(payload_json):
             upi += amount
         elif key in ("room_transfer", "room_credit", "credit"):
             room_credit += amount
+        elif key == "bor":
+            bor += amount
         elif key in ("bank_transfer", "swiggy", "zomato"):
             # Hotel sales entry has no bank/online row — fold into card.
             card += amount
@@ -11899,20 +12392,20 @@ def _hotel_payload_sales_entry_tenders(payload_json):
                 pay.get("method") or pay.get("payment_method") or pay.get("paymentMethod"),
                 pay.get("amount"),
             )
-        return cash, card, upi, room_credit, other
+        return cash, card, upi, room_credit, bor, other
 
     method = stay.get("paymentMethod") or stay.get("payment_method") or ""
     advance = float(stay.get("advancePaid") or stay.get("checkInAdvancePaid") or 0)
     if advance > 0.005:
         _apply(method or "cash", advance)
-    return cash, card, upi, room_credit, other
+    return cash, card, upi, room_credit, bor, other
 
 
 def hotel_sales_entry_from_invoices(conn, sales_date):
     """Build Hotel Sales Entry totals from room invoices for one day.
 
-    Unpaid / unsettled balance is mapped to ``room_credit`` (Credit), matching FO
-    ledger behavior when payment mode is missing.
+    Unpaid / unsettled balance is mapped to ``room_credit`` (Guest Credit), matching FO
+    ledger behavior when payment mode is missing. Back Office Receipt tenders map to ``bor``.
     """
     ensure_hotel_room_invoices_schema(conn)
     day = str(sales_date)[:10]
@@ -11927,21 +12420,22 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
         (day,),
     ).fetchall()
 
-    total_sales = cash = card = upi = room_credit = 0.0
+    total_sales = cash = card = upi = room_credit = bor = 0.0
     for row in rows:
         amount = float(row["estimated_total"] or 0)
         total_sales += amount
-        h_cash, h_card, h_upi, h_room, h_other = _hotel_payload_sales_entry_tenders(
+        h_cash, h_card, h_upi, h_room, h_bor, h_other = _hotel_payload_sales_entry_tenders(
             row["payload_json"]
         )
         cash += h_cash
         card += h_card
         upi += h_upi
         room_credit += h_room
-        # Unmapped tenders and unpaid remainder land in Credit.
+        bor += h_bor
+        # Unmapped tenders land in Guest Credit (not BOR).
         room_credit += h_other
 
-    allocated = cash + card + upi + room_credit
+    allocated = cash + card + upi + room_credit + bor
     remainder = round(total_sales - allocated, 2)
     if remainder > 0.005:
         room_credit += remainder
@@ -11952,6 +12446,7 @@ def hotel_sales_entry_from_invoices(conn, sales_date):
         "card": round(card, 2),
         "upi": round(upi, 2),
         "room_credit": round(room_credit, 2),
+        "bor": round(bor, 2),
     }
 
 
@@ -12655,10 +13150,77 @@ def _normalize_hotel_payment_method(value):
         key = "bank_transfer"
     if key in ("agent_credit", "agency_credit", "on_credit"):
         key = "credit"
+    if key in (
+        "back_office_receipt",
+        "backofficereceipt",
+        "bor_receipt",
+        "bill_of_receipt",
+    ):
+        key = "bor"
     if key not in HOTEL_ROOM_PAYMENT_METHODS:
         return ""
     return key
 
+
+def _hotel_bor_agency_name(stay_or_item):
+    if not isinstance(stay_or_item, dict):
+        return ""
+    stay = stay_or_item.get("stay") if isinstance(stay_or_item.get("stay"), dict) else stay_or_item
+    if not isinstance(stay, dict):
+        stay = stay_or_item
+    return _hotel_str(
+        stay.get("agencyName")
+        or stay.get("agency_name")
+        or stay_or_item.get("agency_name")
+        or stay_or_item.get("agencyName"),
+        160,
+    )
+
+
+def _validate_and_consume_hotel_bor_splits(conn, splits, *, agency_name: str, invoice_number: str):
+    """Validate BOR receipt_id rows and write allocations for this invoice settle."""
+    from back_office_receipt import (
+        insert_back_office_receipt_invoice_allocations,
+        list_pending_back_office_receipts_for_agency,
+    )
+
+    bor_rows = [s for s in (splits or []) if (s.get("method") or "") == "bor"]
+    if not bor_rows:
+        return
+    if not agency_name:
+        raise ValueError(
+            "Back Office Receipt is only allowed when an agency is on this stay."
+        )
+    pending = {
+        int(item["id"]): item
+        for item in list_pending_back_office_receipts_for_agency(
+            conn, agency_name=agency_name
+        )
+    }
+    applied_this = {}
+    allocations = []
+    for split in bor_rows:
+        try:
+            receipt_id = int(split.get("receipt_id") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Select a Back Office Receipt for the BOR payment.") from exc
+        if receipt_id <= 0:
+            raise ValueError("Select a Back Office Receipt for the BOR payment.")
+        amount = round(float(split.get("amount") or 0), 2)
+        item = pending.get(receipt_id)
+        if not item:
+            raise ValueError(
+                "One or more Back Office Receipts are not available for this agency."
+            )
+        used = applied_this.get(receipt_id, 0.0)
+        remaining = round(float(item["pending_amount"]) - used, 2)
+        if amount - remaining > 0.009:
+            raise ValueError(
+                f"{item['receipt_no']} apply ₹{amount:.2f} exceeds pending ₹{remaining:.2f}."
+            )
+        applied_this[receipt_id] = round(used + amount, 2)
+        allocations.append({"receipt_id": receipt_id, "amount": amount})
+    insert_back_office_receipt_invoice_allocations(conn, invoice_number, allocations)
 
 def _hotel_flag_value(value):
     if isinstance(value, bool):
@@ -14246,34 +14808,60 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
             )
             if not order_no and "·" in label:
                 order_no = label.split("·", 1)[1].strip()[:40]
-            cleaned_folio.append(
-                {
-                    "id": _hotel_str(item.get("id"), 40),
-                    "kind": kind,
-                    "label": label,
-                    "amount": amount,
-                    "source": _hotel_str(item.get("source"), 40),
-                    "invoiceId": _hotel_str(
-                        item.get("invoiceId") or item.get("invoice_id"), 40
-                    ),
-                    "orderNo": order_no,
-                    "outlet": _hotel_str(item.get("outlet"), 40),
-                    "at": _hotel_str(item.get("at"), 40),
-                    "note": _hotel_str(item.get("note"), 200),
-                    "sourceRoomId": _hotel_str(
-                        item.get("sourceRoomId") or item.get("source_room_id"), 40
-                    ),
-                    "sourceRoomNumber": _hotel_str(
-                        item.get("sourceRoomNumber") or item.get("source_room_number"), 20
-                    ),
-                    "settled": bool(item.get("settled") or item.get("paid")),
-                    "invoicedInvoiceNumber": _hotel_str(
-                        item.get("invoicedInvoiceNumber")
-                        or item.get("invoiced_invoice_number"),
-                        60,
-                    ),
-                }
-            )
+            line = {
+                "id": _hotel_str(item.get("id"), 40),
+                "kind": kind,
+                "label": label,
+                "amount": amount,
+                "source": _hotel_str(item.get("source"), 40),
+                "invoiceId": _hotel_str(
+                    item.get("invoiceId") or item.get("invoice_id"), 40
+                ),
+                "orderNo": order_no,
+                "outlet": _hotel_str(item.get("outlet"), 40),
+                "at": _hotel_str(item.get("at"), 40),
+                "note": _hotel_str(item.get("note"), 200),
+                "sourceRoomId": _hotel_str(
+                    item.get("sourceRoomId") or item.get("source_room_id"), 40
+                ),
+                "sourceRoomNumber": _hotel_str(
+                    item.get("sourceRoomNumber") or item.get("source_room_number"), 20
+                ),
+                "settled": bool(item.get("settled") or item.get("paid")),
+                "invoicedInvoiceNumber": _hotel_str(
+                    item.get("invoicedInvoiceNumber")
+                    or item.get("invoiced_invoice_number"),
+                    60,
+                ),
+            }
+            # Preserve POS invoice tax snapshot for F&B room transfers.
+            if kind in ("restaurant_room_transfer", "bar_room_transfer"):
+                for money_key in (
+                    "subtotal",
+                    "discount",
+                    "gst",
+                    "vat",
+                    "service",
+                    "tip",
+                    "grandTotal",
+                ):
+                    raw = item.get(money_key)
+                    if raw is None and money_key == "gst":
+                        raw = item.get("gstAmount")
+                    if raw is None and money_key == "vat":
+                        raw = item.get("vatAmount")
+                    if raw is None:
+                        continue
+                    line[money_key] = round(_num(raw, 0), 2)
+                for pct_key in ("taxCgstPct", "taxUgstPct", "vatPct"):
+                    raw = item.get(pct_key)
+                    if raw is None:
+                        continue
+                    try:
+                        line[pct_key] = float(raw)
+                    except (TypeError, ValueError):
+                        pass
+            cleaned_folio.append(line)
     out["folioCharges"] = cleaned_folio
     # Unmerged rooms bill from roomRate × nights. Leftover absorb lines from a
     # former merge would list every other room and inflate estimatedTotal.
@@ -14713,6 +15301,103 @@ def delete_hotel_room_charge(conn, room_id, *, charge_key):
     return {"room": refreshed or target}
 
 
+def _pos_invoice_tax_snapshot_for_folio(conn, invoice_id, transfer_amount=None):
+    """Tax/totals from a POS bill to store on a hotel folio room-transfer line.
+
+    When ``transfer_amount`` is a partial room-transfer, tax fields are scaled
+    proportionally to that share of ``grand_total``.
+    """
+    try:
+        iid = int(invoice_id)
+    except (TypeError, ValueError):
+        return {}
+    if iid <= 0:
+        return {}
+    ensure_pos_schema(conn)
+    row = conn.execute(
+        """
+        SELECT subtotal, discount_amount, gst_amount, vat_amount, service_amount,
+               tip, grand_total, tax_cgst_pct, tax_ugst_pct
+        FROM pos_invoices
+        WHERE id = ? AND is_active = 1
+        """,
+        (iid,),
+    ).fetchone()
+    if not row:
+        return {}
+    grand = _pos_money(row["grand_total"])
+    if grand <= 0.009:
+        return {}
+    transfer = _pos_money(transfer_amount if transfer_amount is not None else grand)
+    if transfer <= 0.009:
+        return {}
+    ratio = 1.0 if abs(transfer - grand) <= 0.02 else min(1.0, transfer / grand)
+    subtotal = _pos_money(_pos_money(row["subtotal"]) * ratio)
+    discount = _pos_money(_pos_money(row["discount_amount"]) * ratio)
+    gst = _pos_money(_pos_money(row["gst_amount"]) * ratio)
+    vat = _pos_money(
+        (_pos_money(row["vat_amount"]) if "vat_amount" in row.keys() else 0.0) * ratio
+    )
+    service = _pos_money(_pos_money(row["service_amount"]) * ratio)
+    tip = _pos_money(_pos_money(row["tip"]) * ratio)
+    cgst_pct = _row_tax_override_pct(row, "tax_cgst_pct")
+    ugst_pct = _row_tax_override_pct(row, "tax_ugst_pct")
+    vat_pct = None
+    if vat > 0.009 and subtotal > 0.009:
+        vat_pct = round((vat / subtotal) * 100.0, 4)
+    return {
+        "subtotal": subtotal,
+        "discount": discount,
+        "gst": gst,
+        "vat": vat,
+        "service": service,
+        "tip": tip,
+        "grandTotal": _pos_money(transfer),
+        "taxCgstPct": cgst_pct,
+        "taxUgstPct": ugst_pct,
+        "vatPct": vat_pct,
+    }
+
+
+def _hotel_enrich_folio_transfer_tax(conn, stay):
+    """Backfill POS tax snapshots onto F&B folio lines that lack them."""
+    if not isinstance(stay, dict):
+        return stay
+    folio = stay.get("folioCharges")
+    if not isinstance(folio, list) or not folio:
+        return stay
+    changed = False
+    for item in folio:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "").strip().lower()
+        if kind not in ("restaurant_room_transfer", "bar_room_transfer"):
+            continue
+        has_tax = (
+            float(item.get("gst") or item.get("gstAmount") or 0) > 0.009
+            or float(item.get("vat") or item.get("vatAmount") or 0) > 0.009
+            or float(item.get("subtotal") or 0) > 0.009
+        )
+        if has_tax:
+            continue
+        snap = _pos_invoice_tax_snapshot_for_folio(
+            conn,
+            item.get("invoiceId") or item.get("invoice_id"),
+            transfer_amount=item.get("amount"),
+        )
+        if not snap:
+            continue
+        for key, value in snap.items():
+            if value is None:
+                continue
+            item[key] = value
+        changed = True
+    if changed:
+        stay = dict(stay)
+        stay["folioCharges"] = folio
+    return stay
+
+
 def append_hotel_room_folio_charge(
     conn,
     room_id,
@@ -14798,6 +15483,14 @@ def append_hotel_room_folio_charge(
         "note": str(note or "").strip()[:200],
         "settled": False,
     }
+    if folio_kind in ("restaurant_room_transfer", "bar_room_transfer") and invoice_id:
+        tax_snap = _pos_invoice_tax_snapshot_for_folio(
+            conn, invoice_id, transfer_amount=amount
+        )
+        for key, value in tax_snap.items():
+            if value is None:
+                continue
+            line[key] = value
     folio = list(stay.get("folioCharges") or stay.get("folio_charges") or [])
     folio.append(line)
     stay = dict(stay)
@@ -15228,12 +15921,12 @@ def _hotel_room_payment_payload(payment, *, allow_credit=False):
     method = _normalize_hotel_payment_method(
         raw.get("method") or raw.get("paymentMethod") or raw.get("payment_method")
     )
-    if method == "credit" and not allow_credit:
-        raise ValueError("Credit is only allowed when an agency is on this stay.")
+    if method in ("credit", "bor") and not allow_credit:
+        raise ValueError(
+            "Credit / Back Office Receipt is only allowed when an agency is on this stay."
+        )
     if amount > 0 and not method:
         raise ValueError("Payment method is required.")
-    if amount > 0 and method == "credit" and not allow_credit:
-        raise ValueError("Credit is only allowed when an agency is on this stay.")
     reference = _hotel_str(
         raw.get("reference")
         or raw.get("transaction_id")
@@ -15244,13 +15937,24 @@ def _hotel_room_payment_payload(payment, *, allow_credit=False):
     )
     if method == "bank_transfer" and amount > 0 and not reference:
         raise ValueError("Transaction / reference id is required for bank transfer.")
+    receipt_id = None
+    if method == "bor" and amount > 0:
+        try:
+            receipt_id = int(raw.get("receipt_id") or raw.get("receiptId") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Select a Back Office Receipt for the BOR payment.") from exc
+        if receipt_id <= 0:
+            raise ValueError("Select a Back Office Receipt for the BOR payment.")
     note = _hotel_str(raw.get("note") or raw.get("notes"), 200)
-    return {
+    payload = {
         "amount": amount,
         "method": method or "cash",
         "reference": reference,
         "note": note,
     }
+    if receipt_id:
+        payload["receipt_id"] = receipt_id
+    return payload
 
 
 def _parse_hotel_room_payment_splits(
@@ -15272,6 +15976,7 @@ def _parse_hotel_room_payment_splits(
     allowed = set(HOTEL_ROOM_PAYMENT_METHODS)
     if not allow_credit:
         allowed.discard("credit")
+        allowed.discard("bor")
 
     parsed = []
     seen = set()
@@ -15283,8 +15988,10 @@ def _parse_hotel_room_payment_splits(
             or raw.get("paymentMethod")
             or raw.get("method")
         )
-        if method == "credit" and not allow_credit:
-            raise ValueError("Credit is only allowed when an agency is on this stay.")
+        if method in ("credit", "bor") and not allow_credit:
+            raise ValueError(
+                "Credit / Back Office Receipt is only allowed when an agency is on this stay."
+            )
         if not method or method not in allowed:
             raise ValueError("Select a valid payment mode for each row.")
         if method in seen:
@@ -15309,14 +16016,25 @@ def _parse_hotel_room_payment_splits(
             raise ValueError("Transaction ID is required for bank transfer.")
         if method != "bank_transfer":
             reference = ""
-        parsed.append(
-            {
-                "amount": amount,
-                "method": method,
-                "reference": reference,
-                "note": _hotel_str(raw.get("note") or raw.get("notes"), 200),
-            }
-        )
+        receipt_id = None
+        if method == "bor":
+            try:
+                receipt_id = int(raw.get("receipt_id") or raw.get("receiptId") or 0)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "Select a Back Office Receipt for the BOR payment."
+                ) from exc
+            if receipt_id <= 0:
+                raise ValueError("Select a Back Office Receipt for the BOR payment.")
+        row = {
+            "amount": amount,
+            "method": method,
+            "reference": reference,
+            "note": _hotel_str(raw.get("note") or raw.get("notes"), 200),
+        }
+        if receipt_id:
+            row["receipt_id"] = receipt_id
+        parsed.append(row)
 
     split_total = round(sum(item["amount"] for item in parsed), 2)
     if split_total - ceiling > 0.009:
@@ -15349,6 +16067,8 @@ def _append_hotel_room_payment(stay, payment, at=None, *, allow_credit=False):
         "note": payload["note"],
         "at": stamp,
     }
+    if payload.get("receipt_id"):
+        record["receipt_id"] = int(payload["receipt_id"])
     payments.append(record)
     stay["payments"] = payments
     if not stay.get("paymentMethod"):
@@ -15386,6 +16106,11 @@ def _apply_hotel_room_payment_splits(stay, splits, note="", at=None):
             "note": _hotel_str(split.get("note"), 200) or shared_note,
             "at": stamp,
         }
+        if split.get("receipt_id"):
+            try:
+                record["receipt_id"] = int(split["receipt_id"])
+            except (TypeError, ValueError):
+                pass
         payments.append(record)
         records.append(record)
         if not stay.get("paymentMethod"):
@@ -15828,6 +16553,8 @@ def record_hotel_room_payment(conn, room_id, payment=None, payment_splits=None, 
         raise ValueError("Balance due is already settled.")
 
     allow_credit = _hotel_stay_has_agency(stay)
+    agency_name = _hotel_bor_agency_name(stay)
+    inv_no = _hotel_str(stay.get("invoiceNumber") or stay.get("invoice_number"), 60)
     payment_records = []
     if payment_splits is not None:
         if _hotel_fb_transfer_unsettled_total(stay) > 0.009:
@@ -15836,6 +16563,9 @@ def record_hotel_room_payment(conn, room_id, payment=None, payment_splits=None, 
                 combined_balance,
                 require_positive=True,
                 allow_credit=allow_credit,
+            )
+            _validate_and_consume_hotel_bor_splits(
+                conn, splits, agency_name=agency_name, invoice_number=inv_no
             )
             payment_records = _apply_combined_stay_payment_splits(
                 stay, splits, note=note, allow_credit=allow_credit
@@ -15847,12 +16577,18 @@ def record_hotel_room_payment(conn, room_id, payment=None, payment_splits=None, 
                 require_positive=True,
                 allow_credit=allow_credit,
             )
+            _validate_and_consume_hotel_bor_splits(
+                conn, splits, agency_name=agency_name, invoice_number=inv_no
+            )
             payment_records = _apply_hotel_room_payment_splits(stay, splits, note=note)
     else:
         if _hotel_fb_transfer_unsettled_total(stay) > 0.009:
             payload = _hotel_room_payment_payload(payment or {}, allow_credit=allow_credit)
             if not payload or float(payload.get("amount") or 0) <= 0.009:
                 raise ValueError("Payment amount must be greater than zero.")
+            _validate_and_consume_hotel_bor_splits(
+                conn, [payload], agency_name=agency_name, invoice_number=inv_no
+            )
             payment_records = _apply_combined_stay_payment_splits(
                 stay, [payload], note=note, allow_credit=allow_credit
             )
@@ -15863,6 +16599,9 @@ def record_hotel_room_payment(conn, room_id, payment=None, payment_splits=None, 
             if not record:
                 raise ValueError("Payment amount must be greater than zero.")
             payment_records = [record]
+            _validate_and_consume_hotel_bor_splits(
+                conn, [record], agency_name=agency_name, invoice_number=inv_no
+            )
 
     stay = _normalize_hotel_room_stay(stay)
     room["stay"] = stay
@@ -16216,6 +16955,7 @@ def record_hotel_room_invoice_payment(
 
     balance = round(float(stay.get("balanceAmount") or 0), 2)
     allow_credit = _hotel_stay_has_agency(stay)
+    agency_name = _hotel_bor_agency_name(stay)
     payment_records = []
     if payment_splits is not None:
         splits = _parse_hotel_room_payment_splits(
@@ -16223,6 +16963,9 @@ def record_hotel_room_invoice_payment(
             balance,
             require_positive=True,
             allow_credit=allow_credit,
+        )
+        _validate_and_consume_hotel_bor_splits(
+            conn, splits, agency_name=agency_name, invoice_number=inv_no
         )
         payment_records = _apply_hotel_room_payment_splits(stay, splits, note=note)
     else:
@@ -16232,6 +16975,12 @@ def record_hotel_room_invoice_payment(
         if not record:
             raise ValueError("Payment amount must be greater than zero.")
         payment_records = [record]
+        _validate_and_consume_hotel_bor_splits(
+            conn,
+            [record],
+            agency_name=agency_name,
+            invoice_number=inv_no,
+        )
 
     stay = _normalize_hotel_room_stay(stay)
     room["stay"] = stay
@@ -18444,6 +19193,12 @@ def get_hotel_room(conn, room_id):
                 result.get("status"), result.get("status")
             )
             enrich_hotel_room_merge_fields(result, layout.get("rooms"))
+            stay = result.get("stay")
+            if isinstance(stay, dict) and stay:
+                enriched = _hotel_enrich_folio_transfer_tax(conn, stay)
+                if enriched is not stay:
+                    result = dict(result)
+                    result["stay"] = enriched
             return result
     return None
 
@@ -18796,6 +19551,7 @@ def init_db():
         ON purchase_verification_allocations(expense_id)
     """)
     ensure_cash_ledger_schema(conn)
+    ensure_back_office_receipt_schema(conn)
     ensure_stores_schema(conn)
     ensure_pos_schema(conn)
 

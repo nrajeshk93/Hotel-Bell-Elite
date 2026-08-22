@@ -277,6 +277,9 @@ body.hotel-invoice-ledger-module .hil-ledger-table .hil-col-room{
 body.hotel-invoice-ledger-module .hil-ledger-table .hil-col-guest{
   min-width:240px;
 }
+body.hotel-invoice-ledger-module .hil-ledger-table .hil-col-agency{
+  min-width:180px;
+}
 body.hotel-invoice-ledger-module .hil-ledger-table .pl-name,
 body.hotel-invoice-ledger-module .hil-ledger-table .pl-meta,
 body.hotel-invoice-ledger-module .hil-ledger-table .pl-expense-code{

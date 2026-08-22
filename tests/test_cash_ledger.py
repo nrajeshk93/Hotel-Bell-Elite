@@ -62,6 +62,21 @@ def _memory_conn():
             description TEXT NOT NULL DEFAULT '',
             amount REAL NOT NULL DEFAULT 0
         );
+        CREATE TABLE back_office_receipts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            receipt_no TEXT NOT NULL UNIQUE,
+            fiscal_year TEXT NOT NULL,
+            seq INTEGER NOT NULL,
+            receipt_date TEXT NOT NULL,
+            payer_name TEXT NOT NULL DEFAULT '',
+            agency_id INTEGER,
+            amount REAL NOT NULL DEFAULT 0,
+            amount_words TEXT NOT NULL DEFAULT '',
+            payment_mode TEXT NOT NULL DEFAULT 'cash',
+            instrument_no TEXT NOT NULL DEFAULT '',
+            instrument_date TEXT,
+            towards TEXT NOT NULL DEFAULT ''
+        );
         CREATE TABLE room_transfer_payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             company TEXT NOT NULL,
@@ -220,6 +235,79 @@ class CashLedgerHelperTests(unittest.TestCase):
         self.assertEqual(all_totals["sales_total"], 1500.0)
         self.assertEqual(all_totals["load_total"], 200.0)
         self.assertEqual(all_totals["transfer_total"], 300.0)
+        conn.close()
+
+    def test_cash_bor_receipt_appears_in_movements(self):
+        conn = _memory_conn()
+        conn.execute(
+            "INSERT INTO sales_updates (company, location, sales_date, sales_entry_values) VALUES (?,?,?,?)",
+            ("HBE", "Hotel", "2026-08-21", json.dumps({"actual_cash": 1000})),
+        )
+        conn.execute(
+            """INSERT INTO back_office_receipts
+               (receipt_no, fiscal_year, seq, receipt_date, payer_name, amount,
+                amount_words, payment_mode, towards)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
+            (
+                "HBE/BOR/26-27/1",
+                "26-27",
+                1,
+                "2026-08-21",
+                "ATPI India Pvt. Ltd",
+                35000,
+                "Rupees Thirty Five Thousand Only",
+                "cash",
+                "Room Advance",
+            ),
+        )
+        conn.execute(
+            """INSERT INTO back_office_receipts
+               (receipt_no, fiscal_year, seq, receipt_date, payer_name, amount,
+                amount_words, payment_mode, instrument_no, towards)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
+            (
+                "HBE/BOR/26-27/2",
+                "26-27",
+                2,
+                "2026-08-21",
+                "Bank Payer",
+                5000,
+                "Rupees Five Thousand Only",
+                "cheque",
+                "CHQ-1",
+                "Advance",
+            ),
+        )
+        conn.commit()
+
+        entries = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2026, 8, 1), date(2026, 8, 31)
+        )
+        bor_rows = [e for e in entries if e["entry_type"] == "bor_cash"]
+        self.assertEqual(len(bor_rows), 1)
+        self.assertEqual(bor_rows[0]["expense_code"], "HBE/BOR/26-27/1")
+        self.assertEqual(bor_rows[0]["signed_amount"], 35000.0)
+        self.assertIn("ATPI India Pvt. Ltd", bor_rows[0]["description"])
+
+        totals = app_module._cash_ledger_totals(entries)
+        self.assertEqual(totals["bor_total"], 35000.0)
+        self.assertEqual(totals["bor_count"], 1)
+        self.assertEqual(totals["available_total"], 36000.0)
+
+        hotel_only = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2026, 8, 1), date(2026, 8, 31), location="Hotel"
+        )
+        self.assertEqual(
+            len([e for e in hotel_only if e["entry_type"] == "bor_cash"]),
+            1,
+        )
+        bar_only = app_module._build_cash_ledger_entries(
+            conn, "HBE", date(2026, 8, 1), date(2026, 8, 31), location="Bar"
+        )
+        self.assertEqual(
+            len([e for e in bar_only if e["entry_type"] == "bor_cash"]),
+            0,
+        )
         conn.close()
 
     def test_transfer_destination_normalizer(self):

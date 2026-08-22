@@ -75,6 +75,11 @@
     return label === 'all' || label.indexOf('all ') === 0;
   }
 
+  function isAllOrEmptyListboxValue(value){
+    var v = String(value || '').trim().toLowerCase();
+    return !v || v === 'all' || v === 'both';
+  }
+
   function filterSearchableOptions(root, query){
     var optionsWrap = optionsWrapFor(root);
     if (!optionsWrap) return;
@@ -258,6 +263,13 @@
     if (!input) return;
     var hidden = root.querySelector('input[type="hidden"]');
     var hiddenVal = hidden ? String(hidden.value || '').trim() : '';
+    if (isAllOrEmptyListboxValue(hiddenVal)) {
+      input.value = '';
+      input.classList.add('is-placeholder');
+      if (root) root.classList.remove('has-value');
+      input.setAttribute('title', input.getAttribute('placeholder') || '');
+      return;
+    }
     var selected = selectedOption(root) || optionMatchingValue(root, hiddenVal);
     var label = optionDisplayLabel(selected);
     if (!label) {
@@ -266,7 +278,7 @@
       label = current && current !== hiddenVal ? current : '';
     }
     input.value = label;
-    input.classList.toggle('is-placeholder', !hiddenVal);
+    input.classList.toggle('is-placeholder', !label);
     if (root) root.classList.toggle('has-value', !!hiddenVal);
     if (label) input.setAttribute('title', label);
     else input.setAttribute('title', input.getAttribute('placeholder') || '');
@@ -360,7 +372,7 @@
     if (root.classList.contains('ep-combobox-listbox') && root.closest('.modal-backdrop, .modal-overlay, .staff-credit-box, .pos-inv-modal, [role="dialog"]')) {
       return true;
     }
-    if (root.classList.contains('ep-combobox-listbox') && root.closest('#credit-payment-filter-form, #purchase-ledger-filter-form, #sr-filter-form')) {
+    if (root.classList.contains('ep-combobox-listbox') && root.closest('#credit-payment-filter-form, #purchase-ledger-filter-form, #sr-filter-form, #bor-filter-form')) {
       return true;
     }
     // Floor props + category modals keep overflow:visible — absolute under the chip stays
@@ -455,7 +467,7 @@
     list.style.width = width + 'px';
     list.style.minWidth = width + 'px';
     list.style.maxHeight = maxHeight + 'px';
-    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #sales-expense-modal, #hrd-checkin-modal, #hrd-transfer-modal, #hr-transfer-modal, #hres-edit-modal') ? '11250' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '12050');
+    list.style.zIndex = root.closest('#st-stores-ledger-modal, #st-ledger-pending-modal, #st-indent-edit-modal, #st-indent-view-modal, #st-product-modal, #st-category-modal, #st-unit-modal, #pos-menu-item-modal, #pl-add-purchase-modal, #bor-add-modal, #sales-expense-modal, #hrd-checkin-modal, #hrd-transfer-modal, #hr-transfer-modal, #hres-edit-modal') ? '11250' : (root.classList.contains('pos-inv-header-listbox') ? '200' : '12050');
     if (openUp) {
       list.style.top = 'auto';
       list.style.bottom = (window.innerHeight - rect.top + 6) + 'px';
@@ -632,10 +644,12 @@
         if (isCombobox(root)) {
           if (combo && opts.selectAll) {
             var hidden = root.querySelector('input[type="hidden"]');
-            var hasValue = !!(hidden && String(hidden.value || '').trim());
-            if (!hasValue) {
-              // Empty field: clear so the first click is ready to type-to-search
-              // (do not leave placeholder copy in the value for the user to delete).
+            var hasConcreteValue = !!(
+              hidden && !isAllOrEmptyListboxValue(hidden.value)
+            );
+            if (!hasConcreteValue) {
+              // "All …" / empty: clear so the first click is ready to type-to-search
+              // (do not leave "All agencies" in the value for the user to delete).
               combo.value = '';
               combo.classList.add('is-placeholder');
             } else {
@@ -669,23 +683,24 @@
     var input = root.querySelector('input[type="hidden"]');
     var combo = comboboxInput(root);
     if (input) input.value = value;
+    var showLabel = !isAllOrEmptyListboxValue(value);
     if (combo) {
-      // Keep real labels in the value; never copy placeholder text into the input.
-      combo.value = value ? (label || '') : '';
-      combo.classList.toggle('is-placeholder', !value);
-      var tip = value ? (label || '') : (combo.getAttribute('placeholder') || '');
+      // Keep real labels in the value; never copy "All …" placeholder text into the input.
+      combo.value = showLabel ? (label || '') : '';
+      combo.classList.toggle('is-placeholder', !showLabel);
+      var tip = showLabel ? (label || '') : (combo.getAttribute('placeholder') || '');
       if (tip) combo.setAttribute('title', tip);
       else combo.removeAttribute('title');
     }
     if (valueEl) {
       valueEl.textContent = label;
-      if (value) {
+      if (showLabel) {
         valueEl.classList.remove('is-placeholder', 'staff-supplier-placeholder');
       } else {
         valueEl.classList.add('is-placeholder', 'staff-supplier-placeholder');
       }
     }
-    if (root) root.classList.toggle('has-value', !!value);
+    if (root) root.classList.toggle('has-value', showLabel);
   }
 
   function isOptionDisabled(option){
@@ -740,17 +755,22 @@
     // Skip chips already owned by sales / purchase / credit-payment filter listbox scripts.
     if (!root || root.__epListboxBound || root.__suFilterListboxBound || root.__plFilterListboxBound) return;
     if (root.closest('#purchase-ledger-filter-form')) return;
+    /* Cash Ledger outlet is owned by sales_update_filter_listbox_scripts — binding
+       here can attach the open handler to the wrong .se-filter-chip-control (search). */
+    if (root.closest('#cash-ledger-filter-form')) return;
     if (root.id === 'credit-payment-supplier-listbox') return;
     // Expense / tips modals own their searchable listboxes (custom GST / employee search).
     if (root.closest('#sales-expense-modal, #sales-tips-modal')) return;
     if (root.classList.contains('pos-inv-settle-method-listbox')) return;
     if (root.classList.contains('hrd-invoice-method-listbox')) return;
     var trigger = root.querySelector('.se-filter-chip-trigger');
-    var control = root.querySelector('.se-filter-chip-control');
     var list = listEl(root);
     var search = searchEl(root);
     var combo = isCombobox(root) ? comboboxInput(root) : null;
     if (!trigger || !list) return;
+    /* Prefer the control that wraps this trigger — never the first chip control in
+       a broad root (that can be a sibling Search field). */
+    var control = trigger.closest('.se-filter-chip-control') || root.querySelector('.se-filter-chip-control');
 
     /* AbortController lets rebindEpListbox drop prior handlers instead of stacking
        toggles (open → immediate close) when modals re-init on each open. */
@@ -836,6 +856,8 @@
       // Chevron / icon sit outside the button — still toggle the menu.
       if (control) {
         control.addEventListener('click', function(e){
+          if (!root.contains(e.target)) return;
+          if (e.target.closest('input, textarea, select, a')) return;
           if (e.target.closest('.se-filter-chip-trigger')) return;
           if (e.target.closest('.se-filter-listbox')) return;
           onTriggerClick(e);
@@ -853,6 +875,8 @@
 
     if (control && combo) {
       control.addEventListener('click', function(e){
+        if (!root.contains(e.target)) return;
+        if (e.target.closest('input, textarea, select, a') && e.target !== combo) return;
         if (e.target.closest('.se-filter-chip-trigger')) return;
         if (e.target.closest('.se-filter-listbox')) return;
         e.preventDefault();
@@ -1009,9 +1033,10 @@
     var input = document.getElementById(fieldId);
     if (input) input.value = value;
     var combo = comboboxInput(root);
+    var showLabel = !isAllOrEmptyListboxValue(value);
     if (combo) {
       var display = '';
-      if (value) {
+      if (showLabel) {
         display = String(label || '').trim();
         if (!display || display === String(value)) {
           display = optionDisplayLabel(optionMatchingValue(root, value)) || (
@@ -1020,16 +1045,16 @@
         }
       }
       combo.value = display;
-      combo.classList.toggle('is-placeholder', !value);
+      combo.classList.toggle('is-placeholder', !display);
       var tip = display || combo.getAttribute('placeholder') || '';
       if (tip) combo.setAttribute('title', tip);
       else combo.removeAttribute('title');
     }
-    root.classList.toggle('has-value', !!value);
+    root.classList.toggle('has-value', showLabel);
     var valueEl = root.querySelector('.se-filter-chip-value');
     if (valueEl) {
       valueEl.textContent = label;
-      if (value) {
+      if (showLabel) {
         valueEl.classList.remove('is-placeholder', 'staff-supplier-placeholder');
       } else {
         valueEl.classList.add('is-placeholder', 'staff-supplier-placeholder');

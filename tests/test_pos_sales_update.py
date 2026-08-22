@@ -455,6 +455,8 @@ class PosSalesUpdateTests(unittest.TestCase):
         self.assertIn("from hotel room invoices", html.lower())
         self.assertNotIn("Upload FO Invoice Tax Report", html)
         self.assertNotIn('id="se-upload-hotel"', html)
+        self.assertIn("Back Office Receipt", html)
+        self.assertIn('data-sales-entry="bor"', html)
         self.assertNotRegex(
             html,
             r'class="de-nav-group is-open[^"]*" id="de-nav-sales-analytics-group"',

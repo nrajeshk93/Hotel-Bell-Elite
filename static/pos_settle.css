@@ -482,6 +482,15 @@
   font-weight:650;
   color:#64748B;
 }
+#pos-inv-settle-modal #hil-settle-bor-field .hil-settle-bor-listbox{
+  width:100%;
+}
+#pos-inv-settle-modal #hil-settle-bor-meta{
+  margin-top:6px;
+  font-size:12px;
+  font-weight:600;
+  color:#64748B;
+}
 #pos-inv-settle-modal .cp-alloc-total strong{
   font-size:16px;
   font-weight:800;

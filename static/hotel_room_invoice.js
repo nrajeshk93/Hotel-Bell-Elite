@@ -385,6 +385,87 @@
     return Math.max(1, booked + overstayNightsFromStay(stay, room));
   }
 
+  function roundInvoiceMoney(n) {
+    return Math.round(Number(n || 0) * 100) / 100;
+  }
+
+  /** Merge consecutive tariff nights that share description + unit rate. */
+  function groupConsecutiveTariffNights(nightRows, roomsCount) {
+    var rooms = Math.max(1, Math.floor(Number(roomsCount) || 1));
+    var out = [];
+    var cur = null;
+    (nightRows || []).forEach(function (row) {
+      if (!row) return;
+      var rate = roundInvoiceMoney(row.rate);
+      var desc = String(row.description || '');
+      var day = row.date || '';
+      if (cur && cur.description === desc && cur.rate === rate) {
+        cur.qty += 1;
+        cur.nights = cur.qty;
+        cur.dateEnd = day;
+        cur.amount = roundInvoiceMoney(cur.rate * cur.qty);
+        return;
+      }
+      if (cur) out.push(cur);
+      cur = {
+        description: desc,
+        date: day,
+        dateEnd: day,
+        qty: 1,
+        nights: 1,
+        rooms: rooms,
+        rate: rate,
+        amount: rate,
+        lineKind: 'tariff'
+      };
+    });
+    if (cur) out.push(cur);
+    return out;
+  }
+
+  function lineDateLabel(row) {
+    var startIso = toDateISO(row && row.date);
+    var endIso = toDateISO(row && row.dateEnd);
+    var start = prettyDate(row && row.date);
+    if (endIso && startIso && endIso !== startIso) {
+      return start + ' – ' + prettyDate(row.dateEnd);
+    }
+    return start;
+  }
+
+  function stayInvoiceRoomCount(room) {
+    var stay = (room && room.stay) || {};
+    var numbers = stay.mergeRoomNumbers || stay.merge_room_numbers || (room && room.mergeRoomNumbers);
+    if (Array.isArray(numbers) && numbers.length) {
+      var cleaned = [];
+      numbers.forEach(function (n) {
+        var s = String(n || '').trim();
+        if (s && cleaned.indexOf(s) === -1) cleaned.push(s);
+      });
+      if (cleaned.length) return cleaned.length;
+    }
+    if (
+      room &&
+      room.isMergePrimary &&
+      Array.isArray(room.mergePartnerNumbers) &&
+      room.mergePartnerNumbers.length
+    ) {
+      return 1 + room.mergePartnerNumbers.filter(function (n) {
+        return String(n || '').trim();
+      }).length;
+    }
+    var label = String(
+      stay.mergeRoomLabel || stay.merge_room_label || (room && room.mergeRoomLabel) || ''
+    ).trim();
+    if (label && label.indexOf('+') >= 0) {
+      var parts = label.split('+').map(function (p) {
+        return String(p || '').trim();
+      }).filter(Boolean);
+      if (parts.length > 1) return parts.length;
+    }
+    return 1;
+  }
+
   function buildInvoiceLines(room) {
     var stay = (room && room.stay) || {};
     var lines = [];
@@ -393,6 +474,7 @@
     var overstayNights = overstayNightsFromStay(stay, room);
     var billableNights = billableNightsFromStay(stay, room);
     var roomRate = Math.max(0, Number(stay.roomRate || 0));
+    var roomsCount = stayInvoiceRoomCount(room);
     var nightlyRates = Array.isArray(stay.nightlyRates) ? stay.nightlyRates : [];
     var nightlyByDate = {};
     nightlyRates.forEach(function (row) {
@@ -444,6 +526,7 @@
     }
 
     if ((roomRate > 0 || nightlyRates.length) && checkIn) {
+      var nightRows = [];
       for (var i = 0; i < billableNights; i++) {
         var nightDate = addDaysISO(checkIn, i);
         var isOverstay = i >= nights;
@@ -452,21 +535,23 @@
         var plan = nightPlanFor(i, nightDate);
         var desc = isOverstay ? roomLabel + ' (Overstay)' : roomLabel;
         if (plan) desc += ' · ' + plan;
-        lines.push({
+        nightRows.push({
           description: desc,
           date: nightDate,
-          qty: 1,
-          rate: nightRate,
-          amount: nightRate
+          rate: nightRate
         });
       }
+      lines = lines.concat(groupConsecutiveTariffNights(nightRows, roomsCount));
     } else if (roomRate > 0) {
       lines.push({
         description: roomLabel,
         date: checkIn,
         qty: billableNights,
+        nights: billableNights,
+        rooms: roomsCount,
         rate: roomRate,
-        amount: Math.round(roomRate * billableNights * 100) / 100
+        amount: roundInvoiceMoney(roomRate * billableNights),
+        lineKind: 'tariff'
       });
     }
 
@@ -493,8 +578,11 @@
         description: chargeLabels[row.key] || row.label,
         date: checkIn,
         qty: 1,
+        nights: null,
+        rooms: null,
         rate: row.amount,
-        amount: row.amount
+        amount: row.amount,
+        lineKind: 'other'
       });
     });
 
@@ -510,8 +598,11 @@
         description: folioChargeDisplayLabel(item),
         date: at,
         qty: 1,
+        nights: null,
+        rooms: null,
         rate: amount,
-        amount: amount
+        amount: amount,
+        lineKind: 'other'
       });
     });
 
@@ -762,10 +853,25 @@
         : '');
     var billTo = billToBlock(stay);
     var roomNumber = hotelInvoiceRoomLabel(room);
-    var roomNumberSingle = (room && room.number) || '';
     var cancelled = cancelledInvoiceParts(room, opts);
 
     var minRows = 4;
+    function lineNightsDisplay(row) {
+      if (row && row.nights != null && isFinite(Number(row.nights))) {
+        return String(Math.max(0, Math.floor(Number(row.nights))));
+      }
+      if (row && row.lineKind === 'tariff' && row.qty != null) {
+        return String(Math.max(0, Math.floor(Number(row.qty) || 0)));
+      }
+      return '—';
+    }
+    function lineRoomsDisplay(row) {
+      if (row && row.rooms != null && isFinite(Number(row.rooms))) {
+        return String(Math.max(0, Math.floor(Number(row.rooms))));
+      }
+      if (row && row.lineKind === 'tariff') return '1';
+      return '—';
+    }
     var rowsHtml = lines
       .map(function (row, idx) {
         return (
@@ -775,17 +881,12 @@
           '</td>' +
           '<td>' +
           escapeHtml(row.description) +
-          (roomNumberSingle && /tariff/i.test(row.description)
-            ? ' <span class="muted">(Room ' +
-              escapeHtml(roomNumberSingle) +
-              ')</span>'
-            : '') +
-          '</td>' +
-          '<td>' +
-          escapeHtml(prettyDate(row.date)) +
           '</td>' +
           '<td class="center">' +
-          escapeHtml(String(row.qty || 1)) +
+          escapeHtml(lineNightsDisplay(row)) +
+          '</td>' +
+          '<td class="center">' +
+          escapeHtml(lineRoomsDisplay(row)) +
           '</td>' +
           '<td class="num">' +
           money(row.rate) +
@@ -958,8 +1059,8 @@
       '<tr class="hri-colhead">' +
       '<th class="center" style="width:58px">Sl. No.</th>' +
       '<th>Description</th>' +
-      '<th style="width:110px">Date</th>' +
-      '<th class="center" style="width:56px">Qty</th>' +
+      '<th class="center" style="width:72px">Nights</th>' +
+      '<th class="center" style="width:72px">Rooms</th>' +
       '<th class="num" style="width:100px">Rate (₹)</th>' +
       '<th class="num" style="width:110px">Amount (₹)</th>' +
       '</tr>' +
@@ -1107,12 +1208,28 @@
       var amount = Number(item.amount || 0);
       if (!(amount > 0)) return;
       amount = Math.round(amount * 100) / 100;
+      var gst = Math.round(Number(item.gst || item.gstAmount || 0) * 100) / 100;
+      var vat = Math.round(Number(item.vat || item.vatAmount || 0) * 100) / 100;
+      var sub = Math.round(Number(item.subtotal || 0) * 100) / 100;
+      var exclusive = amount;
+      if (gst > 0.009 || vat > 0.009 || sub > 0.009) {
+        exclusive =
+          sub > 0.009
+            ? sub
+            : Math.max(0, Math.round((amount - gst - vat) * 100) / 100);
+      }
       lines.push({
         description: folioChargeDisplayLabel(item),
         date: toDateISO(item.at || item.createdAt || item.created_at) || checkIn,
         qty: 1,
-        rate: amount,
-        amount: amount
+        rate: exclusive,
+        amount: exclusive,
+        gst: gst,
+        vat: vat,
+        inclusive: amount,
+        taxCgstPct: item.taxCgstPct != null ? Number(item.taxCgstPct) : null,
+        taxUgstPct: item.taxUgstPct != null ? Number(item.taxUgstPct) : null,
+        vatPct: item.vatPct != null ? Number(item.vatPct) : null
       });
     });
     return lines;
@@ -1135,33 +1252,42 @@
         return sum + Number(row.amount || 0);
       }, 0) * 100
     ) / 100;
-    if (!(subtotal > 0) && stay.fbTransferTotal != null) {
-      subtotal = Math.round(Number(stay.fbTransferTotal || 0) * 100) / 100;
+    var gstTotal = Math.round(
+      lines.reduce(function (sum, row) {
+        return sum + Number(row.gst || 0);
+      }, 0) * 100
+    ) / 100;
+    var vatTotal = Math.round(
+      lines.reduce(function (sum, row) {
+        return sum + Number(row.vat || 0);
+      }, 0) * 100
+    ) / 100;
+    var inclusive = Math.round(
+      lines.reduce(function (sum, row) {
+        return sum + Number(row.inclusive != null ? row.inclusive : row.amount || 0);
+      }, 0) * 100
+    ) / 100;
+    if (!(inclusive > 0) && stay.fbTransferTotal != null) {
+      inclusive = Math.round(Number(stay.fbTransferTotal || 0) * 100) / 100;
     }
-    /* POS transfer amounts are tax-inclusive — extract CGST/UGST like the room invoice. */
-    var inclusive = subtotal;
-    var factor = 1 + CGST_RATE + UGST_RATE;
-    var taxable =
-      factor > 0 ? Math.round((inclusive / factor) * 100) / 100 : inclusive;
-    var cgst = Math.round(taxable * CGST_RATE * 100) / 100;
-    var ugst = Math.round((inclusive - taxable - cgst) * 100) / 100;
-    if (ugst < 0) ugst = 0;
-    var total = inclusive;
-    if (factor > 0) {
-      lines = lines.map(function (row) {
-        var amt = Math.round(Number(row.amount || 0) * 100) / 100;
-        var rate = Math.round(Number(row.rate || 0) * 100) / 100;
-        return Object.assign({}, row, {
-          amount: Math.round((amt / factor) * 100) / 100,
-          rate: rate > 0 ? Math.round((rate / factor) * 100) / 100 : rate
-        });
+    if (!(subtotal > 0) && inclusive > 0 && !(gstTotal > 0) && !(vatTotal > 0)) {
+      subtotal = inclusive;
+    }
+    var cgst = 0;
+    var ugst = 0;
+    if (gstTotal > 0.009) {
+      var cPct = null;
+      var uPct = null;
+      lines.forEach(function (row) {
+        if (cPct == null && row.taxCgstPct != null) cPct = Number(row.taxCgstPct);
+        if (uPct == null && row.taxUgstPct != null) uPct = Number(row.taxUgstPct);
       });
-      subtotal = Math.round(
-        lines.reduce(function (sum, row) {
-          return sum + Number(row.amount || 0);
-        }, 0) * 100
-      ) / 100;
+      var cFrac = cPct != null && uPct != null && cPct + uPct > 0 ? cPct / (cPct + uPct) : 0.5;
+      cgst = Math.round(gstTotal * cFrac * 100) / 100;
+      ugst = Math.round((gstTotal - cgst) * 100) / 100;
+      if (ugst < 0) ugst = 0;
     }
+    var total = inclusive > 0 ? inclusive : Math.round((subtotal + gstTotal + vatTotal) * 100) / 100;
 
     var invoiceNo =
       String(
@@ -1320,21 +1446,47 @@
         : '') +
       '</div></aside></div>';
 
+    var vatPctLabel = '';
+    lines.forEach(function (row) {
+      if (!vatPctLabel && row.vatPct != null && isFinite(Number(row.vatPct))) {
+        vatPctLabel = String(Math.round(Number(row.vatPct) * 100) / 100);
+      }
+    });
+    var taxRowsHtml = '';
+    if (cgst > 0.009 || ugst > 0.009) {
+      taxRowsHtml +=
+        '<div class="hri-totals-row"><span class="k">CGST</span><span class="v">' +
+        money(cgst) +
+        '</span></div>' +
+        '<div class="hri-totals-row"><span class="k">UGST</span><span class="v">' +
+        money(ugst) +
+        '</span></div>';
+    }
+    if (vatTotal > 0.009) {
+      taxRowsHtml +=
+        '<div class="hri-totals-row"><span class="k">VAT' +
+        (vatPctLabel ? ' (' + vatPctLabel + '%)' : '') +
+        '</span><span class="v">' +
+        money(vatTotal) +
+        '</span></div>';
+    }
+    var notesBody =
+      vatTotal > 0.009 && !(cgst > 0.009 || ugst > 0.009)
+        ? 'Restaurant and bar bills transferred to this room stay. Tax follows each POS invoice (VAT shown when applicable).'
+        : 'Restaurant and bar bills transferred to this room stay. Tax follows each POS invoice.';
+
     var footerHtml =
       '<div class="hri-bottom">' +
       '<section class="hri-notes"><div class="hri-notes-head">' +
       iconDoc() +
-      ' Notes</div><div class="hri-notes-body">Restaurant and bar bills transferred to this room stay. Amounts are GST-inclusive; CGST and UGST are shown for this tax invoice.</div></section>' +
+      ' Notes</div><div class="hri-notes-body">' +
+      notesBody +
+      '</div></section>' +
       '<section class="hri-totals">' +
       '<div class="hri-totals-row"><span class="k">Subtotal</span><span class="v">' +
       money(subtotal) +
       '</span></div>' +
-      '<div class="hri-totals-row"><span class="k">CGST (2.5%)</span><span class="v">' +
-      money(cgst) +
-      '</span></div>' +
-      '<div class="hri-totals-row"><span class="k">UGST (2.5%)</span><span class="v">' +
-      money(ugst) +
-      '</span></div>' +
+      taxRowsHtml +
       '<div class="hri-totals-row is-total"><span class="k">Total Amount (₹)</span><span class="v">' +
       money(total) +
       '</span></div>' +
@@ -1416,6 +1568,8 @@
 
   global.buildHotelRoomInvoiceHtml = buildHotelRoomInvoiceHtml;
   global.buildFbCombinedTransferInvoiceHtml = buildFbCombinedTransferInvoiceHtml;
+  global.buildHotelRoomInvoiceLines = buildInvoiceLines;
+  global.groupConsecutiveHotelInvoiceTariffNights = groupConsecutiveTariffNights;
   global.openHotelRoomInvoice = openHotelRoomInvoice;
   global.openFbCombinedTransferInvoice = openFbCombinedTransferInvoice;
   global.openHtmlInPreviewWindow = openHtmlInPreviewWindow;

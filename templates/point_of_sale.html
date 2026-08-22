@@ -9,7 +9,7 @@
 <title>Tables | {{ pos_label|default('Restaurant') }} | Hotel Bell Elite</title>
 {% include 'partials/de_android_head.html' %}
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=52">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_tables.css') }}?v=69">
 <link rel="stylesheet" href="{{ url_for('static', filename='pos_settle.css') }}?v=5">
@@ -396,14 +396,6 @@
         <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="4" cy="18" r="1.2"/></svg></span>
         <span class="pos-quick-copy"><strong>Invoice</strong></span>
       </button>
-      <button type="button" class="pos-quick-card is-disabled" disabled title="Reservations are not available yet">
-        <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg></span>
-        <span class="pos-quick-copy"><strong>Reservations</strong><small>Not available yet</small></span>
-      </button>
-      <button type="button" class="pos-quick-card" id="pos-quick-table-merge" aria-haspopup="dialog" aria-controls="pos-merge-tables-modal" title="Merge open bills from two tables into one">
-        <span class="pos-quick-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="8" height="8" rx="1.5"/><rect x="13" y="8" width="8" height="8" rx="1.5"/><path d="M11 12h2"/></svg></span>
-        <span class="pos-quick-copy"><strong>Table Merge</strong><small>Combine open bills</small></span>
-      </button>
     </div>
   </section>
 
@@ -541,73 +533,6 @@
       <div class="pos-inv-modal-actions">
         <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-transfer-modal-close>Cancel</button>
         <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-transfer-table-confirm">Transfer</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="pos-inv-modal" id="pos-merge-tables-modal" hidden>
-    <div class="pos-inv-modal-backdrop" data-merge-modal-close tabindex="-1" aria-hidden="true"></div>
-    <div class="pos-inv-modal-box" role="dialog" aria-modal="true" aria-labelledby="pos-merge-tables-title">
-      <h3 id="pos-merge-tables-title">Merge Tables</h3>
-      <p class="pos-inv-modal-lead" id="pos-merge-tables-lead">Join tables on the floor — open bills are optional.</p>
-      <div class="pos-inv-field" id="pos-merge-source-field" hidden>
-        <span>Merge with</span>
-        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pos-merge-source-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pos-merge-source-listbox">
-          <div class="se-filter-chip-control">
-            <input type="hidden" id="pos-merge-source" name="from_table" value="">
-            <input type="search"
-                   class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
-                   id="pos-merge-source-trigger"
-                   role="combobox"
-                   aria-autocomplete="list"
-                   aria-haspopup="listbox"
-                   aria-expanded="false"
-                   aria-controls="pos-merge-source-list"
-                   aria-label="Source table"
-                   value=""
-                   placeholder="Select table…"
-                   autocomplete="off"
-                   spellcheck="false">
-            <span class="se-filter-chip-chev" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-            </span>
-          </div>
-          <div class="se-filter-listbox" id="pos-merge-source-list" role="listbox" hidden>
-            <div class="ep-listbox-options" id="pos-merge-source-options"></div>
-          </div>
-        </div>
-      </div>
-      <div class="pos-inv-field">
-        <span>Merge into</span>
-        <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pos-merge-dest-listbox" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox id="pos-merge-dest-listbox">
-          <div class="se-filter-chip-control">
-            <input type="hidden" id="pos-merge-dest" name="to_table" value="">
-            <input type="search"
-                   class="se-filter-chip-trigger se-filter-chip-combobox is-placeholder"
-                   id="pos-merge-dest-trigger"
-                   role="combobox"
-                   aria-autocomplete="list"
-                   aria-haspopup="listbox"
-                   aria-expanded="false"
-                   aria-controls="pos-merge-dest-list"
-                   aria-label="Destination table"
-                   value=""
-                   placeholder="Select table…"
-                   autocomplete="off"
-                   spellcheck="false">
-            <span class="se-filter-chip-chev" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
-            </span>
-          </div>
-          <div class="se-filter-listbox" id="pos-merge-dest-list" role="listbox" hidden>
-            <div class="ep-listbox-options" id="pos-merge-dest-options"></div>
-          </div>
-        </div>
-      </div>
-      <p class="pos-inv-modal-preview" id="pos-merge-tables-error" hidden></p>
-      <div class="pos-inv-modal-actions">
-        <button type="button" class="pos-inv-btn pos-inv-btn--ghost" data-merge-modal-close>Cancel</button>
-        <button type="button" class="pos-inv-btn pos-inv-btn--primary" id="pos-merge-tables-confirm">Merge</button>
       </div>
     </div>
   </div>

@@ -157,6 +157,8 @@ class HotelCreditTests(unittest.TestCase):
         html = page.get_data(as_text=True)
         self.assertIn('data-sales-entry="room_credit"', html)
         self.assertIn(f'value="{bundle["sales_entry_values"]["room_credit"]}"', html)
+        self.assertIn("Back Office Receipt", html)
+        self.assertIn('data-sales-entry="bor"', html)
 
     def test_ledger_settle_credit_appears_on_credit_page(self):
         room = self._checkin_agency("room-101", "Coastal Tours")
@@ -181,6 +183,18 @@ class HotelCreditTests(unittest.TestCase):
         html = self.client.get("/hotel/credit").get_data(as_text=True)
         self.assertIn(inv_no, html)
         self.assertIn("Coastal Tours", html)
+        self.assertIn("/hotel/credit/export", html)
+        self.assertIn(">Export</a>", html)
+
+        export = self.client.get("/hotel/credit/export?view=outstanding")
+        self.assertEqual(export.status_code, 200)
+        self.assertIn(
+            "spreadsheetml.sheet",
+            export.headers.get("Content-Type", ""),
+        )
+        self.assertTrue(
+            (export.headers.get("Content-Disposition") or "").startswith("attachment")
+        )
 
     def test_partial_and_multi_invoice_payment_same_agency(self):
         inv_a, amount_a = self._credit_invoice(
@@ -355,10 +369,129 @@ class HotelCreditTests(unittest.TestCase):
         self.assertAlmostEqual(float(hotel_rows[0]["amount"]), amount, places=2)
         self.assertIn(inv_no, hotel_rows[0]["description"])
 
+    def test_bill_of_receipt_payment_and_split(self):
+        from back_office_receipt import (
+            create_back_office_receipt,
+            list_pending_back_office_receipts_for_agency,
+        )
+
+        inv_no, amount = self._credit_invoice(
+            self._checkin_agency("room-101", "ATPI India Pvt. Ltd")["id"]
+        )
+        row = self._credit_row(inv_no)
+        conn = db_mod.get_db()
+        try:
+            db_mod.ensure_agencies_schema(conn)
+            existing = conn.execute(
+                "SELECT id FROM agencies WHERE lower(trim(name)) = lower(?)",
+                ("ATPI India Pvt. Ltd",),
+            ).fetchone()
+            if existing:
+                agency_id = int(existing["id"])
+            else:
+                agency_id = conn.execute(
+                    "INSERT INTO agencies (name) VALUES (?)",
+                    ("ATPI India Pvt. Ltd",),
+                ).lastrowid
+            receipt = create_back_office_receipt(
+                conn,
+                receipt_date=date.today(),
+                payer_name="ATPI India Pvt. Ltd",
+                agency_id=agency_id,
+                amount=1200,
+                payment_mode="cash",
+                towards="Advance",
+                user_id=self.admin_id,
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        page = self.client.get("/hotel/credit")
+        self.assertEqual(page.status_code, 200)
+        html = page.get_data(as_text=True)
+        self.assertIn("Back Office Receipt", html)
+        self.assertIn("Split Payment", html)
+        self.assertIn('id="cp-bor-receipts"', html)
+
+        pending = self.client.get(
+            f"/hotel/credit/pending-receipts?agency_name=ATPI%20India%20Pvt.%20Ltd"
+        )
+        self.assertEqual(pending.status_code, 200)
+        receipts = pending.get_json()["receipts"]
+        self.assertEqual(len(receipts), 1)
+        self.assertAlmostEqual(float(receipts[0]["pending_amount"]), 1200, places=2)
+
+        created = self.client.post(
+            "/hotel/credit/create",
+            json={
+                "payment_date": date.today().isoformat(),
+                "payment_method": "split",
+                "allocations": [{"expense_id": row["id"], "amount": amount}],
+                "payment_splits": [
+                    {
+                        "method": "bor",
+                        "amount": 1200,
+                        "receipt_id": receipt["id"],
+                    },
+                    {"method": "cash", "amount": round(amount - 1200, 2)},
+                ],
+            },
+        )
+        self.assertEqual(created.status_code, 200, created.get_data(as_text=True))
+        payment = created.get_json()["payment"]
+        self.assertEqual(payment["payment_method"], "split")
+        self.assertIn("Back Office Receipt", payment["payment_method_label"])
+        self.assertIn("Cash", payment["payment_method_label"])
+        self.assertNotEqual(payment["payment_method_label"], "Split")
+        self.assertAlmostEqual(
+            float((payment.get("payment_amounts") or {}).get("bor") or 0), 1200, places=2
+        )
+        cash_amt = round(amount - 1200, 2)
+        self.assertAlmostEqual(
+            float((payment.get("payment_amounts") or {}).get("cash") or 0),
+            cash_amt,
+            places=2,
+        )
+
+        history = self.client.get("/hotel/credit?view=history")
+        self.assertEqual(history.status_code, 200)
+        history_html = history.get_data(as_text=True)
+        self.assertIn('data-sort="pay_cash"', history_html)
+        self.assertIn('data-sort="pay_bor"', history_html)
+        self.assertIn(payment["payment_method_label"], history_html)
+
+        conn = db_mod.get_db()
+        try:
+            left = list_pending_back_office_receipts_for_agency(
+                conn, agency_id=agency_id
+            )
+            self.assertEqual(left, [])
+        finally:
+            conn.close()
+
+        reverted = self.client.post(
+            "/hotel/credit/delete",
+            json={"payment_id": payment["id"]},
+        )
+        self.assertEqual(reverted.status_code, 200, reverted.get_data(as_text=True))
+        conn = db_mod.get_db()
+        try:
+            restored = list_pending_back_office_receipts_for_agency(
+                conn, agency_id=agency_id
+            )
+            self.assertEqual(len(restored), 1)
+            self.assertAlmostEqual(float(restored[0]["pending_amount"]), 1200, places=2)
+        finally:
+            conn.close()
+
     def test_hotel_credit_access_gate(self):
         from workspace_access import get_endpoint_dashboard_module
 
         self.assertEqual(get_endpoint_dashboard_module("hotel_credit"), "hotel_rooms")
+        self.assertEqual(
+            get_endpoint_dashboard_module("export_hotel_credit_report"), "hotel_rooms"
+        )
         self.assertEqual(
             get_endpoint_dashboard_module("create_hotel_credit_payment"), "hotel_rooms"
         )
@@ -367,6 +500,9 @@ class HotelCreditTests(unittest.TestCase):
         )
         self.assertEqual(
             get_endpoint_dashboard_module("hotel_credit_payment_detail"), "hotel_rooms"
+        )
+        self.assertEqual(
+            get_endpoint_dashboard_module("hotel_credit_pending_receipts"), "hotel_rooms"
         )
 
         viewer = {

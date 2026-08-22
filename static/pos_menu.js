@@ -117,6 +117,46 @@
   var sortKey = '';
   var sortAscending = true;
 
+  /** Soft-nav revisit: paint last catalog quickly, then refresh. */
+  var MENU_CACHE_TTL_MS = 90000;
+  var TABLE_CHUNK_SIZE = 80;
+  var tableRenderToken = 0;
+
+  function menuCacheKey() {
+    return resolvePosApiBase() + '|peer=' + peerOutlet();
+  }
+
+  function readMenuCache() {
+    try {
+      var store = global.__posMenuCatalogCache;
+      if (!store || typeof store !== 'object') return null;
+      var entry = store[menuCacheKey()];
+      if (!entry || !entry.at) return null;
+      if (Date.now() - entry.at > MENU_CACHE_TTL_MS) return null;
+      return entry;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  function writeMenuCache(nextCategories, nextItems) {
+    try {
+      if (!global.__posMenuCatalogCache) global.__posMenuCatalogCache = {};
+      global.__posMenuCatalogCache[menuCacheKey()] = {
+        at: Date.now(),
+        categories: Array.isArray(nextCategories) ? nextCategories : [],
+        items: Array.isArray(nextItems) ? nextItems : []
+      };
+    } catch (err) {}
+  }
+
+  function invalidateMenuCache() {
+    try {
+      if (!global.__posMenuCatalogCache) return;
+      delete global.__posMenuCatalogCache[menuCacheKey()];
+    } catch (err) {}
+  }
+
   function $(sel, root) {
     return (root || document).querySelector(sel);
   }
@@ -902,6 +942,7 @@
     renderKpis(rows);
     updateSortHeaderUi();
 
+    var token = ++tableRenderToken;
     if (!rows.length) {
       body.innerHTML =
         '<tr class="pos-menu-table-empty-row"><td colspan="8">' +
@@ -917,78 +958,104 @@
     var delSvg =
       '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
 
-    body.innerHTML = rows
-      .map(function (it) {
-        var outletLabel = itemOutletLabel(it);
-        var catName = itemCategoryName(it) || '—';
-        var meta = [];
-        if (it.code) meta.push(it.code);
-        if (it.variant) meta.push(it.variant);
-        var itemId = escapeHtml(it.id);
-        return (
-          '<tr class="pos-menu-data-row" data-sort-row data-item-id="' +
-          itemId +
-          '" tabindex="0" role="button" aria-label="Open details for ' +
-          escapeHtml(it.name || 'menu item') +
-          '">' +
-          '<td data-sort-value="' +
-          escapeHtml(it.name || '') +
-          '"><span class="pl-name pos-menu-item-name">' +
-          escapeHtml(it.name || '—') +
-          '</span>' +
-          (meta.length
-            ? '<span class="pl-meta pos-menu-item-meta">' + escapeHtml(meta.join(' · ')) + '</span>'
-            : '') +
-          '</td>' +
-          '<td data-sort-value="' +
-          escapeHtml(outletLabel) +
-          '">' +
-          escapeHtml(outletLabel) +
-          '</td>' +
-          '<td data-sort-value="' +
-          escapeHtml(catName === '—' ? '' : catName) +
-          '">' +
-          escapeHtml(catName) +
-          '</td>' +
-          '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
-          escapeHtml(it.rate != null ? String(it.rate) : '') +
-          '">' +
-          escapeHtml(formatMoney(it.rate)) +
-          '</td>' +
-          '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
-          escapeHtml(it.food_cost != null ? String(it.food_cost) : '') +
-          '">' +
-          escapeHtml(formatMoney(it.food_cost)) +
-          '</td>' +
-          '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
-          escapeHtml(it.gross_margin != null ? String(it.gross_margin) : '') +
-          '">' +
-          escapeHtml(formatMoney(it.gross_margin)) +
-          '</td>' +
-          '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
-          escapeHtml(it.margin_pct != null ? String(it.margin_pct) : '') +
-          '">' +
-          badgeHtml(it) +
-          '</td>' +
-          '<td class="pl-col-actions pos-menu-actions-col">' +
-          '<div class="act-grp">' +
-          '<button type="button" class="act-btn edit" data-tip="Edit" aria-label="Edit item" ' +
-          'data-pos-menu-action="edit-item" data-item-id="' +
-          itemId +
-          '">' +
-          editSvg +
-          '</button>' +
-          '<div class="act-sep" aria-hidden="true"></div>' +
-          '<button type="button" class="act-btn del" data-tip="Delete" aria-label="Delete item" ' +
-          'data-pos-menu-action="delete-item" data-item-id="' +
-          itemId +
-          '">' +
-          delSvg +
-          '</button>' +
-          '</div></td></tr>'
-        );
-      })
-      .join('');
+    function rowHtml(it) {
+      var outletLabel = itemOutletLabel(it);
+      var catName = itemCategoryName(it) || '—';
+      var meta = [];
+      if (it.code) meta.push(it.code);
+      if (it.variant) meta.push(it.variant);
+      var itemId = escapeHtml(it.id);
+      return (
+        '<tr class="pos-menu-data-row" data-sort-row data-item-id="' +
+        itemId +
+        '" tabindex="0" role="button" aria-label="Open details for ' +
+        escapeHtml(it.name || 'menu item') +
+        '">' +
+        '<td data-sort-value="' +
+        escapeHtml(it.name || '') +
+        '"><span class="pl-name pos-menu-item-name">' +
+        escapeHtml(it.name || '—') +
+        '</span>' +
+        (meta.length
+          ? '<span class="pl-meta pos-menu-item-meta">' + escapeHtml(meta.join(' · ')) + '</span>'
+          : '') +
+        '</td>' +
+        '<td data-sort-value="' +
+        escapeHtml(outletLabel) +
+        '">' +
+        escapeHtml(outletLabel) +
+        '</td>' +
+        '<td data-sort-value="' +
+        escapeHtml(catName === '—' ? '' : catName) +
+        '">' +
+        escapeHtml(catName) +
+        '</td>' +
+        '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
+        escapeHtml(it.rate != null ? String(it.rate) : '') +
+        '">' +
+        escapeHtml(formatMoney(it.rate)) +
+        '</td>' +
+        '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
+        escapeHtml(it.food_cost != null ? String(it.food_cost) : '') +
+        '">' +
+        escapeHtml(formatMoney(it.food_cost)) +
+        '</td>' +
+        '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
+        escapeHtml(it.gross_margin != null ? String(it.gross_margin) : '') +
+        '">' +
+        escapeHtml(formatMoney(it.gross_margin)) +
+        '</td>' +
+        '<td class="pos-menu-num pl-col-amount" data-sort-value="' +
+        escapeHtml(it.margin_pct != null ? String(it.margin_pct) : '') +
+        '">' +
+        badgeHtml(it) +
+        '</td>' +
+        '<td class="pl-col-actions pos-menu-actions-col">' +
+        '<div class="act-grp">' +
+        '<button type="button" class="act-btn edit" data-tip="Edit" aria-label="Edit item" ' +
+        'data-pos-menu-action="edit-item" data-item-id="' +
+        itemId +
+        '">' +
+        editSvg +
+        '</button>' +
+        '<div class="act-sep" aria-hidden="true"></div>' +
+        '<button type="button" class="act-btn del" data-tip="Delete" aria-label="Delete item" ' +
+        'data-pos-menu-action="delete-item" data-item-id="' +
+        itemId +
+        '">' +
+        delSvg +
+        '</button>' +
+        '</div></td></tr>'
+      );
+    }
+
+    /* First paint stays interactive; remaining rows append in idle chunks. */
+    var first = rows.slice(0, TABLE_CHUNK_SIZE);
+    body.innerHTML = first.map(rowHtml).join('');
+    if (rows.length <= TABLE_CHUNK_SIZE) return;
+
+    var offset = TABLE_CHUNK_SIZE;
+    function appendChunk() {
+      if (token !== tableRenderToken) return;
+      var live = $('#pos-menu-table-body');
+      if (!live || live !== body) return;
+      var slice = rows.slice(offset, offset + TABLE_CHUNK_SIZE);
+      if (!slice.length) return;
+      live.insertAdjacentHTML('beforeend', slice.map(rowHtml).join(''));
+      offset += TABLE_CHUNK_SIZE;
+      if (offset < rows.length) {
+        if (typeof global.requestAnimationFrame === 'function') {
+          global.requestAnimationFrame(appendChunk);
+        } else {
+          setTimeout(appendChunk, 0);
+        }
+      }
+    }
+    if (typeof global.requestAnimationFrame === 'function') {
+      global.requestAnimationFrame(appendChunk);
+    } else {
+      setTimeout(appendChunk, 0);
+    }
   }
 
   /** Open Menu Details popup for a table row (not action buttons). */
@@ -1602,47 +1669,92 @@
     fillCategorySelects();
   }
 
+  function refreshMenuCatalog(cb) {
+    invalidateMenuCache();
+    return loadMenuCatalog({ force: true }).then(function () {
+      if (typeof cb === 'function') cb();
+    });
+  }
+
   function fetchCategoriesThen(cb) {
-    fetch(menuListUrl(CATEGORIES_API), { credentials: 'same-origin', headers: { Accept: 'application/json' } })
-      .then(parseJsonResponse)
-      .then(function (res) {
-        if (!res.ok || !res.data || !res.data.ok) {
-          throw new Error((res.data && res.data.error) || 'Could not load categories.');
-        }
-        try {
-          applyCategories(res.data.categories);
-        } catch (err) {
-          if (typeof console !== 'undefined' && console.error) {
-            console.error('POS menu categories apply failed', err);
-          }
-        }
-        if (typeof cb === 'function') cb();
-      })
-      .catch(function (err) {
-        showToast(err.message || 'Could not load categories.');
-        if (typeof cb === 'function') cb(err);
-      });
+    refreshMenuCatalog(cb);
   }
 
   function fetchAllItemsThen(cb) {
-    fetch(menuListUrl(ITEMS_API), {
+    if (typeof cb === 'function') cb();
+  }
+
+  /** Load categories + items together; paint cache immediately when soft-navigating back. */
+  function loadMenuCatalog(opts) {
+    opts = opts || {};
+    var force = !!opts.force;
+    var cached = !force ? readMenuCache() : null;
+    if (cached) {
+      try {
+        applyCategories(cached.categories);
+      } catch (err) {}
+      items = Array.isArray(cached.items) ? cached.items.slice() : [];
+      renderTable();
+    }
+
+    var catsReq = fetch(menuListUrl(CATEGORIES_API), {
       credentials: 'same-origin',
       headers: { Accept: 'application/json' }
-    })
-      .then(parseJsonResponse)
-      .then(function (res) {
-        if (!res.ok || !res.data || !res.data.ok) {
-          throw new Error((res.data && res.data.error) || 'Could not load items.');
+    }).then(parseJsonResponse);
+    var itemsReq = fetch(menuListUrl(ITEMS_API), {
+      credentials: 'same-origin',
+      headers: { Accept: 'application/json' }
+    }).then(parseJsonResponse);
+
+    return Promise.all([catsReq, itemsReq])
+      .then(function (pair) {
+        var catsRes = pair[0];
+        var itemsRes = pair[1];
+        var catErr =
+          !catsRes.ok || !catsRes.data || !catsRes.data.ok
+            ? (catsRes.data && catsRes.data.error) || 'Could not load categories.'
+            : null;
+        var itemErr =
+          !itemsRes.ok || !itemsRes.data || !itemsRes.data.ok
+            ? (itemsRes.data && itemsRes.data.error) || 'Could not load items.'
+            : null;
+        if (catErr && itemErr) {
+          if (!cached) {
+            items = [];
+            renderTable();
+          }
+          showToast(itemErr);
+          return;
         }
-        items = Array.isArray(res.data.items) ? res.data.items : [];
-        renderTable();
-        if (typeof cb === 'function') cb();
+        if (!catErr) {
+          try {
+            applyCategories(catsRes.data.categories);
+          } catch (err) {
+            if (typeof console !== 'undefined' && console.error) {
+              console.error('POS menu categories apply failed', err);
+            }
+          }
+        } else {
+          showToast(catErr);
+        }
+        if (!itemErr) {
+          items = Array.isArray(itemsRes.data.items) ? itemsRes.data.items : [];
+          writeMenuCache(categories, items);
+          renderTable();
+        } else {
+          if (!cached) {
+            items = [];
+            renderTable();
+          }
+          showToast(itemErr);
+        }
       })
       .catch(function (err) {
-        items = [];
-        renderTable();
-        showToast(err.message || 'Could not load items.');
-        if (typeof cb === 'function') cb(err);
+        if (!cached) {
+          items = [];
+          renderTable();
+        }
+        showToast((err && err.message) || 'Could not load menu.');
       });
   }
 
@@ -2064,6 +2176,50 @@
 
   function openItemModal(item) {
     var isEdit = !!(item && item.id);
+    /* List API omits recipe lines — load detail before editing ingredients. */
+    if (
+      isEdit &&
+      (!Array.isArray(item.recipe) || item.recipe.length === 0) &&
+      !item.__recipeLoaded
+    ) {
+      if (busy) return;
+      busy = true;
+      var itemsApi = apiBaseForOutlet(itemOutlet(item)) + '/api/menu/items';
+      fetch(itemsApi + '/' + encodeURIComponent(item.id), {
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' }
+      })
+        .then(function (r) {
+          return r.json().then(function (data) {
+            return { ok: r.ok, data: data };
+          });
+        })
+        .then(function (res) {
+          busy = false;
+          if (!res.ok || !res.data || !res.data.ok || !res.data.item) {
+            showToast((res.data && res.data.error) || 'Could not load menu item.');
+            return;
+          }
+          var full = res.data.item;
+          full.__recipeLoaded = true;
+          var idx = -1;
+          for (var i = 0; i < items.length; i++) {
+            if (Number(items[i].id) === Number(full.id)) {
+              idx = i;
+              break;
+            }
+          }
+          if (idx >= 0) {
+            items[idx] = Object.assign({}, items[idx], full, { __recipeLoaded: true });
+          }
+          openItemModal(full);
+        })
+        .catch(function () {
+          busy = false;
+          showToast('Could not load menu item.');
+        });
+      return;
+    }
     resetItemAutosaveState();
     setItemModalMode('single');
     var modeHost = $('#pos-menu-item-mode-host');
@@ -2836,9 +2992,7 @@
     }
     productsLoaded = false;
     productsLoadedForOutlet = null;
-    fetchCategoriesThen(function () {
-      fetchAllItemsThen();
-    });
+    loadMenuCatalog();
   }
 
   /** Soft-nav / Masters modal entry for the dedicated /point-of-sale/menu page. */

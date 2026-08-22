@@ -106,7 +106,14 @@
         if (!card) return;
         if (!document.getElementById('rd-report-sections')) return;
         captureReportsHubScroll(card);
-        var category = String(card.getAttribute('data-report-category') || '').trim();
+        // Keep the hub category filter the user was on (do not switch to the
+        // report's own category — that made Back land on Restaurant, etc.).
+        var activePill = document.querySelector(
+          '#rd-category-pills .md-category-pill.is-active'
+        );
+        var category = activePill
+          ? String(activePill.getAttribute('data-rd-category') || '').trim()
+          : '';
         if (category) writeStoredCategory(category);
       },
       { capture: true, signal: signal }

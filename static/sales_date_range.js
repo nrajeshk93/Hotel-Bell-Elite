@@ -1,7 +1,7 @@
 /**
  * Dual-month date range picker (Analytics / Report topbar).
  * Usage: SalesDateRangePicker.init({ wrapId, formId, ... });
- * Pass singleDay: true for one-day selection (from == to).
+ * Pass singleDay: true for one-day selection (from == to) and a single-month panel.
  */
 (function (global) {
   function positionPanel(trigger, panel, opts) {
@@ -107,6 +107,8 @@
     const grid0 = pick(cfg.grid0Id);
     const grid1 = pick(cfg.grid1Id);
     const hasApplyHook = typeof cfg.onApply === 'function';
+    const singleDay = !!(cfg.singleDay || cfg.mode === 'single');
+    const singleMonth = !!(cfg.singleMonth || singleDay);
     if (
       !wrap ||
       !trigger ||
@@ -117,9 +119,8 @@
       !btnPrev ||
       !btnNext ||
       !title0 ||
-      !title1 ||
       !grid0 ||
-      !grid1 ||
+      (!singleMonth && (!title1 || !grid1)) ||
       (!form && !hasApplyHook)
     ) {
       return;
@@ -128,6 +129,7 @@
     // same nodes. A second click handler toggles open→close in one click.
     if (wrap.getAttribute('data-sdr-bound') === '1') return;
     wrap.setAttribute('data-sdr-bound', '1');
+    if (singleMonth) wrap.classList.add('an-range-wrap--single-month');
 
     const maxDateStr = (wrap.getAttribute('data-max-date') || '').trim();
     const monthLong = [
@@ -161,7 +163,6 @@
 
     let selFrom = ff.value || '';
     let selTo = ft.value || '';
-    const singleDay = !!(cfg.singleDay || cfg.mode === 'single');
     if (singleDay && selFrom) {
       selTo = selFrom;
       if (ft) ft.value = selFrom;
@@ -296,16 +297,20 @@
         btnNext.disabled = false;
         return;
       }
+      // Dual: advancing moves the left pane to the current right pane (+1).
+      // Single month: advancing shows the next calendar month (+1).
       const nextLeft = new Date(viewY, viewM + 1, 1);
       btnNext.disabled = nextLeft > maxDateObj;
     }
 
     function renderCalendars() {
-      const r = addMonth(viewY, viewM, 1);
       title0.textContent = monthLabel(viewY, viewM);
-      title1.textContent = monthLabel(r.y, r.m);
       fillGrid(grid0, viewY, viewM);
-      fillGrid(grid1, r.y, r.m);
+      if (!singleMonth && title1 && grid1) {
+        const r = addMonth(viewY, viewM, 1);
+        title1.textContent = monthLabel(r.y, r.m);
+        fillGrid(grid1, r.y, r.m);
+      }
       updateNextDisabled();
     }
 
@@ -570,6 +575,18 @@
         if (clFromIso && clToIso && clFromIso !== clToIso) clLabel = fmt(clFromIso) + ' – ' + fmt(clToIso);
         else if (clFromIso) clLabel = fmt(clFromIso);
         setText(clDisplay, clLabel || 'Date');
+      }
+
+      var borDisplay = document.getElementById('bor-date-range-display');
+      var borFrom = document.getElementById('bor-date-from');
+      var borTo = document.getElementById('bor-date-to');
+      if (borDisplay) {
+        var borFromIso = ((borFrom && borFrom.value) || '').trim();
+        var borToIso = ((borTo && borTo.value) || '').trim();
+        var borLabel = '';
+        if (borFromIso && borToIso && borFromIso !== borToIso) borLabel = fmt(borFromIso) + ' – ' + fmt(borToIso);
+        else if (borFromIso) borLabel = fmt(borFromIso);
+        setText(borDisplay, borLabel || 'Date');
       }
 
       var cpDisplay = document.getElementById('cp-date-range-display');

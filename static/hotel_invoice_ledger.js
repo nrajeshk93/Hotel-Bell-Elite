@@ -707,7 +707,8 @@
         roomLabel: row.getAttribute('data-room-number') || '—',
         guestName: row.getAttribute('data-guest-name') || '',
         balance: balance,
-        allowCredit: row.getAttribute('data-allow-credit') === '1'
+        allowCredit: row.getAttribute('data-allow-credit') === '1',
+        agencyName: row.getAttribute('data-agency-name') || ''
       });
     }
     if (!items.length) {
@@ -731,6 +732,8 @@
       allowCredit: items.every(function (item) {
         return !!item.allowCredit;
       }),
+      agencyName: items[0].agencyName || '',
+      pendingReceiptsUrl: page.getAttribute('data-pending-receipts-url') || '',
       onSuccess: function (data) {
         var paid = (data && data.paid_count) || items.length;
         toast(
@@ -790,6 +793,13 @@
           invoiceNumber: invoice.invoice_number || invoiceNumber,
           settleUrl: settleApiUrl(page, invoice.invoice_number || invoiceNumber),
           allowCredit: !!result.data.allow_credit,
+          agencyName:
+            invoice.agency_name ||
+            row.getAttribute('data-agency-name') ||
+            (result.data.room.stay &&
+              (result.data.room.stay.agencyName || result.data.room.stay.agency_name)) ||
+            '',
+          pendingReceiptsUrl: page.getAttribute('data-pending-receipts-url') || '',
           onSuccess: function () {
             toast('Payment recorded.');
             refreshLedgerAfterSettle();
@@ -1050,6 +1060,11 @@
     if (form) prepareAndSubmit(form);
   }
 
+  function hilAgencyChanged() {
+    var form = ledgerForm(ledgerPageFrom());
+    if (form) prepareAndSubmit(form);
+  }
+
   function hilInvoiceChanged() {
     var form = ledgerForm(ledgerPageFrom());
     if (form) prepareAndSubmit(form);
@@ -1077,6 +1092,7 @@
   }
 
   global.hilStatusChanged = hilStatusChanged;
+  global.hilAgencyChanged = hilAgencyChanged;
   global.hilInvoiceChanged = hilInvoiceChanged;
   global.hilInvoiceTabClick = applyInvoiceTab;
   global.hilOutletTabClick = applyOutletTab;

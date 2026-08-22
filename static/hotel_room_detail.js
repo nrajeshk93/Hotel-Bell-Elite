@@ -1030,7 +1030,13 @@
             ? labelFn(item)
             : item.label || 'Room Transfer',
         amount: Math.round(amount * 100) / 100,
-        orderNo: String(item.orderNo || item.order_no || '').trim()
+        orderNo: String(item.orderNo || item.order_no || '').trim(),
+        subtotal: Number(item.subtotal || 0),
+        gst: Number(item.gst || item.gstAmount || 0),
+        vat: Number(item.vat || item.vatAmount || 0),
+        taxCgstPct: item.taxCgstPct != null ? Number(item.taxCgstPct) : null,
+        taxUgstPct: item.taxUgstPct != null ? Number(item.taxUgstPct) : null,
+        vatPct: item.vatPct != null ? Number(item.vatPct) : null
       });
     });
     return lines;
@@ -1240,40 +1246,98 @@
             ? labelFn(item)
             : item.label || 'Room Transfer',
         amount: Math.round(amount * 100) / 100,
-        orderNo: String(item.orderNo || item.order_no || '').trim()
+        orderNo: String(item.orderNo || item.order_no || '').trim(),
+        subtotal: Number(item.subtotal || 0),
+        gst: Number(item.gst || item.gstAmount || 0),
+        vat: Number(item.vat || item.vatAmount || 0),
+        taxCgstPct: item.taxCgstPct != null ? Number(item.taxCgstPct) : null,
+        taxUgstPct: item.taxUgstPct != null ? Number(item.taxUgstPct) : null,
+        vatPct: item.vatPct != null ? Number(item.vatPct) : null
       });
     });
     return lines;
   }
 
-  /** Tax-inclusive F&B line totals → exclusive display lines + CGST/UGST. */
+  /** Prefer POS invoice tax on each transfer line; never invent hotel CGST/UGST. */
   function summarizeFbChargeLines(rawLines) {
-    var factor = 1 + CGST_RATE + UGST_RATE;
     var rows = Array.isArray(rawLines) ? rawLines : [];
-    var fbInclusive = Math.round(
-      rows.reduce(function (sum, row) {
-        return sum + Number(row.amount || 0);
-      }, 0) * 100
-    ) / 100;
-    var fbTaxable =
-      factor > 0 ? Math.round((fbInclusive / factor) * 100) / 100 : fbInclusive;
-    var fbCgst = Math.round(fbTaxable * CGST_RATE * 100) / 100;
-    var fbUgst = Math.round((fbInclusive - fbTaxable - fbCgst) * 100) / 100;
-    if (fbUgst < 0) fbUgst = 0;
+    var fbInclusive = 0;
+    var fbGst = 0;
+    var fbVat = 0;
+    var fbExclusive = 0;
+    var hasPosTax = false;
+    var vatPctSum = 0;
+    var vatPctN = 0;
+    var cgstPct = null;
+    var ugstPct = null;
+    rows.forEach(function (row) {
+      var inclusive = Math.round(Number(row.amount || 0) * 100) / 100;
+      var gst = Math.round(Number(row.gst || 0) * 100) / 100;
+      var vat = Math.round(Number(row.vat || 0) * 100) / 100;
+      var sub = Math.round(Number(row.subtotal || 0) * 100) / 100;
+      fbInclusive = Math.round((fbInclusive + inclusive) * 100) / 100;
+      if (gst > 0.009 || vat > 0.009 || sub > 0.009) {
+        hasPosTax = true;
+        fbGst = Math.round((fbGst + gst) * 100) / 100;
+        fbVat = Math.round((fbVat + vat) * 100) / 100;
+        if (!(sub > 0.009)) {
+          sub = Math.round((inclusive - gst - vat) * 100) / 100;
+          if (sub < 0) sub = 0;
+        }
+        fbExclusive = Math.round((fbExclusive + sub) * 100) / 100;
+        if (vat > 0.009 && row.vatPct != null && isFinite(Number(row.vatPct))) {
+          vatPctSum += Number(row.vatPct);
+          vatPctN += 1;
+        } else if (vat > 0.009 && sub > 0.009) {
+          vatPctSum += (vat / sub) * 100;
+          vatPctN += 1;
+        }
+        if (cgstPct == null && row.taxCgstPct != null && isFinite(Number(row.taxCgstPct))) {
+          cgstPct = Number(row.taxCgstPct);
+        }
+        if (ugstPct == null && row.taxUgstPct != null && isFinite(Number(row.taxUgstPct))) {
+          ugstPct = Number(row.taxUgstPct);
+        }
+      } else {
+        fbExclusive = Math.round((fbExclusive + inclusive) * 100) / 100;
+      }
+    });
+    var fbCgst = 0;
+    var fbUgst = 0;
+    if (hasPosTax) {
+      if (fbGst > 0.009) {
+        var cFrac =
+          cgstPct != null && ugstPct != null && cgstPct + ugstPct > 0
+            ? cgstPct / (cgstPct + ugstPct)
+            : 0.5;
+        fbCgst = Math.round(fbGst * cFrac * 100) / 100;
+        fbUgst = Math.round((fbGst - fbCgst) * 100) / 100;
+        if (fbUgst < 0) fbUgst = 0;
+      }
+    } else {
+      /* Legacy lines without POS tax — keep prior inclusive total, no fake GST. */
+      fbExclusive = fbInclusive;
+    }
     var lines = rows.map(function (row) {
-      var amt = Math.round(Number(row.amount || 0) * 100) / 100;
-      return Object.assign({}, row, {
-        amount:
-          factor > 0 && fbInclusive > 0
-            ? Math.round((amt / factor) * 100) / 100
-            : amt
-      });
+      var inclusive = Math.round(Number(row.amount || 0) * 100) / 100;
+      var gst = Math.round(Number(row.gst || 0) * 100) / 100;
+      var vat = Math.round(Number(row.vat || 0) * 100) / 100;
+      var sub = Math.round(Number(row.subtotal || 0) * 100) / 100;
+      var display = inclusive;
+      if (gst > 0.009 || vat > 0.009 || sub > 0.009) {
+        display = sub > 0.009 ? sub : Math.max(0, Math.round((inclusive - gst - vat) * 100) / 100);
+      }
+      return Object.assign({}, row, { amount: display });
     });
     return {
       lines: lines,
       fbTotal: fbInclusive,
       fbCgst: fbCgst,
       fbUgst: fbUgst,
+      fbVat: fbVat,
+      fbVatPct: vatPctN ? Math.round((vatPctSum / vatPctN) * 100) / 100 : null,
+      fbCgstPct: cgstPct,
+      fbUgstPct: ugstPct,
       fbBalance: fbInclusive
     };
   }
@@ -1481,29 +1545,16 @@
     ) {
       balance = Math.round(Number(stay.balanceAmount || 0) * 100) / 100;
     }
-    var fbLines = fbChargeLinesFromStay(stay);
-    var fbTotal = Math.round(
-      fbLines.reduce(function (sum, row) {
-        return sum + Number(row.amount || 0);
-      }, 0) * 100
-    ) / 100;
+    var fbLinesRaw = fbChargeLinesFromStay(stay);
+    var fbMoney = summarizeFbChargeLines(fbLinesRaw);
+    var fbLines = fbMoney.lines;
+    var fbTotal = fbMoney.fbTotal;
     if (stay && stay.fbTransferTotal != null && !(fbTotal > 0)) {
       fbTotal = Math.round(Number(stay.fbTransferTotal || 0) * 100) / 100;
     }
-    var fbInclusive = fbTotal;
-    var fbTaxable =
-      factor > 0 ? Math.round((fbInclusive / factor) * 100) / 100 : fbInclusive;
-    var fbCgst = Math.round(fbTaxable * CGST_RATE * 100) / 100;
-    var fbUgst = Math.round((fbInclusive - fbTaxable - fbCgst) * 100) / 100;
-    if (fbUgst < 0) fbUgst = 0;
-    if (factor > 0 && fbInclusive > 0) {
-      fbLines = fbLines.map(function (row) {
-        var amt = Math.round(Number(row.amount || 0) * 100) / 100;
-        return Object.assign({}, row, {
-          amount: Math.round((amt / factor) * 100) / 100
-        });
-      });
-    }
+    var fbCgst = fbMoney.fbCgst;
+    var fbUgst = fbMoney.fbUgst;
+    var fbVat = fbMoney.fbVat;
     var fbBalance =
       stay && stay.fbTransferBalance != null
         ? Math.round(Number(stay.fbTransferBalance || 0) * 100) / 100
@@ -1528,9 +1579,50 @@
       fbTotal: fbTotal,
       fbCgst: fbCgst,
       fbUgst: fbUgst,
+      fbVat: fbVat,
+      fbVatPct: fbMoney.fbVatPct,
+      fbCgstPct: fbMoney.fbCgstPct,
+      fbUgstPct: fbMoney.fbUgstPct,
       fbBalance: fbBalance,
       combinedBalance: combinedBalance
     };
+  }
+
+  function formatTaxInclHint(pct) {
+    if (pct == null || !isFinite(Number(pct))) return '';
+    var n = Math.round(Number(pct) * 100) / 100;
+    if (!(n > 0)) return '';
+    return '(' + n + '% incl.)';
+  }
+
+  function paintFbTaxRows(opts) {
+    opts = opts || {};
+    var cgst = Number(opts.fbCgst || 0);
+    var ugst = Number(opts.fbUgst || 0);
+    var vat = Number(opts.fbVat || 0);
+    var showGst = cgst > 0.009 || ugst > 0.009;
+    var showVat = vat > 0.009;
+    if (opts.cgstRow) opts.cgstRow.hidden = !showGst;
+    if (opts.ugstRow) opts.ugstRow.hidden = !showGst;
+    if (opts.vatRow) opts.vatRow.hidden = !showVat;
+    if (opts.cgstEl) opts.cgstEl.textContent = showGst ? moneyText(cgst) : '—';
+    if (opts.ugstEl) opts.ugstEl.textContent = showGst ? moneyText(ugst) : '—';
+    if (opts.vatEl) opts.vatEl.textContent = showVat ? moneyText(vat) : '—';
+    if (opts.cgstHint) {
+      opts.cgstHint.textContent = showGst
+        ? formatTaxInclHint(opts.fbCgstPct != null ? opts.fbCgstPct : CGST_RATE * 100) ||
+          '(incl.)'
+        : '';
+    }
+    if (opts.ugstHint) {
+      opts.ugstHint.textContent = showGst
+        ? formatTaxInclHint(opts.fbUgstPct != null ? opts.fbUgstPct : UGST_RATE * 100) ||
+          '(incl.)'
+        : '';
+    }
+    if (opts.vatHint) {
+      opts.vatHint.textContent = showVat ? formatTaxInclHint(opts.fbVatPct) || '(incl.)' : '';
+    }
   }
 
   function formatDiscountHint(type, value) {
@@ -1809,13 +1901,24 @@
     var fbInvoiceNoEl = $('#hrd-charges-fb-invoice-no', root);
     var fbCgstEl = root.querySelector('[data-charges-fb-cgst]');
     var fbUgstEl = root.querySelector('[data-charges-fb-ugst]');
+    var fbVatEl = root.querySelector('[data-charges-fb-vat]');
     var fbTotalEl = root.querySelector('[data-charges-fb-total]');
     var fbBalanceEl = root.querySelector('[data-charges-fb-balance]');
-    var fbCgstRow = fbCgstEl && fbCgstEl.closest('div');
-    var fbUgstRow = fbUgstEl && fbUgstEl.closest('div');
+    var fbCgstRow =
+      root.querySelector('[data-charges-fb-cgst-row]') ||
+      (fbCgstEl && fbCgstEl.closest('div'));
+    var fbUgstRow =
+      root.querySelector('[data-charges-fb-ugst-row]') ||
+      (fbUgstEl && fbUgstEl.closest('div'));
+    var fbVatRow =
+      root.querySelector('[data-charges-fb-vat-row]') ||
+      (fbVatEl && fbVatEl.closest('div'));
     var fbTotalRow = fbTotalEl && fbTotalEl.closest('div');
     var fbBalanceRow = fbBalanceEl && fbBalanceEl.closest('div');
     var fbBalanceDt = fbBalanceRow && fbBalanceRow.querySelector('dt');
+    var fbCgstHint = root.querySelector('[data-charges-fb-cgst-hint]');
+    var fbUgstHint = root.querySelector('[data-charges-fb-ugst-hint]');
+    var fbVatHint = root.querySelector('[data-charges-fb-vat-hint]');
     var combinedEl = $('#hrd-charges-combined', root);
     var combinedBalanceEl = root.querySelector('[data-charges-combined-balance]');
     var fbLines = summary.fbLines || [];
@@ -1845,6 +1948,7 @@
              Total/CGST footer; unpaid F&B is shown in Combined Checkout Due. */
           if (fbCgstRow) fbCgstRow.hidden = true;
           if (fbUgstRow) fbUgstRow.hidden = true;
+          if (fbVatRow) fbVatRow.hidden = true;
           if (fbTotalRow) fbTotalRow.hidden = true;
           if (fbBalanceRow) {
             var showFbDue = fbBalance > 0.009;
@@ -1862,13 +1966,26 @@
           if (fbInvoiceNoEl) {
             setClickableInvoiceNo(fbInvoiceNoEl, fbInvoiceNumber, { kind: 'fb' });
           }
-          if (fbCgstRow) fbCgstRow.hidden = false;
-          if (fbUgstRow) fbUgstRow.hidden = false;
           if (fbTotalRow) fbTotalRow.hidden = false;
           if (fbBalanceRow) fbBalanceRow.hidden = false;
           if (fbBalanceDt) fbBalanceDt.textContent = 'F&B Balance';
-          if (fbCgstEl) fbCgstEl.textContent = moneyText(summary.fbCgst);
-          if (fbUgstEl) fbUgstEl.textContent = moneyText(summary.fbUgst);
+          paintFbTaxRows({
+            cgstRow: fbCgstRow,
+            ugstRow: fbUgstRow,
+            vatRow: fbVatRow,
+            cgstEl: fbCgstEl,
+            ugstEl: fbUgstEl,
+            vatEl: fbVatEl,
+            cgstHint: fbCgstHint,
+            ugstHint: fbUgstHint,
+            vatHint: fbVatHint,
+            fbCgst: summary.fbCgst,
+            fbUgst: summary.fbUgst,
+            fbVat: summary.fbVat,
+            fbCgstPct: summary.fbCgstPct,
+            fbUgstPct: summary.fbUgstPct,
+            fbVatPct: summary.fbVatPct
+          });
           if (fbTotalEl) fbTotalEl.textContent = moneyText(fbTotal);
           if (fbBalanceEl) fbBalanceEl.textContent = moneyText(fbBalance);
         }
@@ -3046,8 +3163,15 @@
     var fbNoEl = $('#hrd-invoice-fb-no', modal);
     var fbCgstEl = $('#hrd-invoice-fb-cgst', modal);
     var fbUgstEl = $('#hrd-invoice-fb-ugst', modal);
+    var fbVatEl = $('#hrd-invoice-fb-vat', modal);
     var fbTotalEl = $('#hrd-invoice-fb-total', modal);
     var fbBalEl = $('#hrd-invoice-fb-balance', modal);
+    var fbCgstRow = $('#hrd-invoice-fb-cgst-row', modal);
+    var fbUgstRow = $('#hrd-invoice-fb-ugst-row', modal);
+    var fbVatRow = $('#hrd-invoice-fb-vat-row', modal);
+    var fbCgstHint = $('#hrd-invoice-fb-cgst-hint', modal);
+    var fbUgstHint = $('#hrd-invoice-fb-ugst-hint', modal);
+    var fbVatHint = $('#hrd-invoice-fb-vat-hint', modal);
     var combinedRow = $('#hrd-invoice-combined-row', modal);
     var combinedBalEl = $('#hrd-invoice-combined-balance', modal);
     var hotelNoEl = $('#hrd-invoice-hotel-no', modal);
@@ -3081,8 +3205,23 @@
           setClickableInvoiceNo(fbNoEl, isPay && fbNo ? fbNo : '', { kind: 'fb' });
         }
         var fbMoney = !isPay && fbModalMoney ? fbModalMoney : summary;
-        if (fbCgstEl) fbCgstEl.textContent = moneyText(fbMoney.fbCgst);
-        if (fbUgstEl) fbUgstEl.textContent = moneyText(fbMoney.fbUgst);
+        paintFbTaxRows({
+          cgstRow: fbCgstRow,
+          ugstRow: fbUgstRow,
+          vatRow: fbVatRow,
+          cgstEl: fbCgstEl,
+          ugstEl: fbUgstEl,
+          vatEl: fbVatEl,
+          cgstHint: fbCgstHint,
+          ugstHint: fbUgstHint,
+          vatHint: fbVatHint,
+          fbCgst: fbMoney.fbCgst,
+          fbUgst: fbMoney.fbUgst,
+          fbVat: fbMoney.fbVat,
+          fbCgstPct: fbMoney.fbCgstPct,
+          fbUgstPct: fbMoney.fbUgstPct,
+          fbVatPct: fbMoney.fbVatPct
+        });
         if (fbTotalEl) fbTotalEl.textContent = moneyText(fbMoney.fbTotal);
         if (fbBalEl) {
           fbBalEl.textContent = moneyText(

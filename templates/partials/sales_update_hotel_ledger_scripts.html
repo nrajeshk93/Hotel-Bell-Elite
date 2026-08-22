@@ -86,7 +86,7 @@
     const digital = amount('card') + amount('upi') + amount('online_order');
     const cash = amount('cash');
     const expense = amount('expense');
-    const difference = actual - (cash + amount('card') + amount('upi') + amount('room_credit') + amount('online_order'));
+    const difference = actual - (cash + amount('card') + amount('upi') + amount('room_credit') + amount('bor') + amount('online_order'));
     function setKpi(id, value){
       const el = document.getElementById(id);
       if (el) el.textContent = formatInrKpi(value);

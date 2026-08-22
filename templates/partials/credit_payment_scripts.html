@@ -13,6 +13,8 @@
   var labels = {{ settlement_labels|tojson }};
   var showPaymentMode = labels.show_payment_mode !== false;
   var showVerificationAccount = labels.show_verification_account === true;
+  var autoClearanceDate = labels.auto_clearance_date === true
+    || page.getAttribute('data-auto-clearance-date') === '1';
   var txnMethods = Array.isArray(labels.requires_txn_methods) && labels.requires_txn_methods.length
     ? labels.requires_txn_methods
     : ['card'];
@@ -63,7 +65,10 @@
 
   function formatMoneyNodes(root){
     (root || document).querySelectorAll('[data-amount]').forEach(function(el){
-      el.textContent = formatInr(el.getAttribute('data-amount'), isKpiAmountNode(el) ? 0 : 0);
+      var raw = el.getAttribute('data-amount');
+      // Empty data-amount keeps placeholder text (e.g. tender "—"), not ₹0.
+      if (raw === null || String(raw).trim() === '') return;
+      el.textContent = formatInr(raw, isKpiAmountNode(el) ? 0 : 0);
     });
   }
 
@@ -74,6 +79,9 @@
     if (!el) return;
     el.classList.add('open');
     el.setAttribute('aria-hidden', 'false');
+    if (el.id === 'cp-clearance-modal' && typeof window.initHotelDatePickers === 'function') {
+      window.initHotelDatePickers(el);
+    }
   }
 
   function closeModal(el){
@@ -971,10 +979,36 @@
   var allocSupplierEl = document.getElementById('cp-alloc-supplier');
   var paymentDateEl = document.getElementById('cp-payment-date');
   var paymentMethodEl = document.getElementById('cp-payment-method');
+  var paymentMethodUiEl = paymentMethodEl;
   var transactionWrap = document.getElementById('cp-transaction-wrap');
   var transactionEl = document.getElementById('cp-transaction-id');
   var notesEl = document.getElementById('cp-notes');
   var methodListbox = document.getElementById('cp-payment-method-listbox');
+  var singleMethodWrap = document.getElementById('cp-single-method-wrap');
+  var splitsRoot = document.getElementById('cp-payment-splits');
+  var splitBalance = document.getElementById('cp-split-balance');
+  var splitTotalEl = document.getElementById('cp-split-total');
+  var splitTargetEl = document.getElementById('cp-split-target');
+  var addSplitBtn = document.getElementById('cp-add-split');
+  var borWrap = document.getElementById('cp-bor-receipts');
+  var borList = document.getElementById('cp-bor-list');
+  var borEmpty = document.getElementById('cp-bor-empty');
+  var pendingReceiptsUrl = page.getAttribute('data-pending-receipts-url') || '';
+  var enableBor = page.getAttribute('data-enable-bor') === '1';
+  var enableSplit = page.getAttribute('data-enable-split') === '1';
+  var splitMode = false;
+  var pendingReceipts = [];
+  var methodOptions = Object.keys(methodLabels || {}).filter(function(key){
+    return key && key !== 'split';
+  }).map(function(key){
+    return [key, methodLabels[key] || key];
+  });
+
+  function currentMethodValue(){
+    if (paymentMethodUiEl && paymentMethodUiEl.value) return paymentMethodUiEl.value;
+    if (paymentMethodEl) return paymentMethodEl.value;
+    return requirePaymentMethod ? '' : 'cash';
+  }
 
   function syncTransactionVisibility(){
     if (!showPaymentMode) {
@@ -982,13 +1016,18 @@
       if (transactionEl) transactionEl.value = '';
       return;
     }
-    var method = paymentMethodEl ? paymentMethodEl.value : (requirePaymentMethod ? '' : 'cash');
+    if (splitMode) {
+      if (transactionWrap) transactionWrap.hidden = true;
+      return;
+    }
+    var method = currentMethodValue();
     if (transactionWrap) transactionWrap.hidden = !methodRequiresTxn(method);
     if (!methodRequiresTxn(method) && transactionEl) transactionEl.value = '';
   }
 
   function setPaymentMethodListbox(value, label){
     if (paymentMethodEl) paymentMethodEl.value = value || '';
+    if (paymentMethodUiEl) paymentMethodUiEl.value = value || '';
     if (!methodListbox) return;
     var display = methodListbox.querySelector('.se-filter-chip-value');
     var placeholder = 'Select payment mode';
@@ -1003,9 +1042,518 @@
     });
   }
 
-  window.cpPaymentMethodChanged = function(){
-    syncTransactionVisibility();
+  function selectedAgencyContext(){
+    var name = '';
+    var agencyId = '';
+    (pendingSelections || []).forEach(function(item){
+      if (!name && item.supplier_name) name = item.supplier_name;
+      if (!agencyId && item.supplier_id) agencyId = String(item.supplier_id);
+    });
+    return { agency_name: name, agency_id: agencyId };
+  }
+
+  function paymentTotalNow(){
+    var total = 0;
+    if (allocBody) {
+      allocBody.querySelectorAll('.cp-alloc-input').forEach(function(input){
+        total += Number(input.value || 0);
+      });
+    }
+    return Math.round(total * 100) / 100;
+  }
+
+  function renderBorReceiptRows(receipts){
+    if (!borList) return;
+    borList.innerHTML = '';
+    pendingReceipts = receipts || [];
+    var borTotalRow = document.getElementById('cp-bor-total-row');
+    if (!pendingReceipts.length) {
+      if (borEmpty) borEmpty.hidden = false;
+      if (borTotalRow) borTotalRow.hidden = true;
+      refreshSplitBalance();
+      return;
+    }
+    if (borEmpty) borEmpty.hidden = true;
+    if (borTotalRow) borTotalRow.hidden = false;
+    var remainingPay = paymentTotalNow();
+    pendingReceipts.forEach(function(receipt, index){
+      var pendingAmt = Math.round((Number(receipt.pending_amount) || 0) * 100) / 100;
+      var defaultApply = 0;
+      if (remainingPay > 0.009 && pendingAmt > 0.009) {
+        defaultApply = Math.min(pendingAmt, remainingPay);
+        remainingPay = Math.round((remainingPay - defaultApply) * 100) / 100;
+      }
+      var checked = defaultApply > 0.009 || (index === 0 && pendingAmt > 0.009);
+      if (checked && defaultApply <= 0.009) {
+        defaultApply = Math.min(pendingAmt, paymentTotalNow() || pendingAmt);
+      }
+      var row = document.createElement('div');
+      row.className = 'cp-bor-row';
+      row.setAttribute('data-receipt-id', receipt.id);
+      row.setAttribute('data-pending', String(pendingAmt));
+      row.setAttribute('role', 'listitem');
+      row.innerHTML =
+        '<label class="cp-bor-check">' +
+          '<input type="checkbox" class="cp-bor-select"' + (checked ? ' checked' : '') + '>' +
+          '<span class="cp-bor-meta">' +
+            '<strong>' + escapeHtml(receipt.receipt_no || '') + '</strong>' +
+            '<span>' + escapeHtml(reportDt(receipt.receipt_date || '')) +
+            (receipt.towards ? ' · ' + escapeHtml(receipt.towards) : '') +
+            '</span>' +
+          '</span>' +
+        '</label>' +
+        '<div class="cp-bor-pending" title="Pending">' + formatInr(pendingAmt) + '</div>' +
+        '<input class="staff-input cp-bor-amount" type="number" min="0.01" step="0.01" max="' +
+          pendingAmt + '" value="' + defaultApply +
+          '" aria-label="Apply amount for ' + escapeHtml(receipt.receipt_no || 'receipt') + '"' +
+          (checked ? '' : ' disabled') + '>';
+      borList.appendChild(row);
+      var check = row.querySelector('.cp-bor-select');
+      var amountInput = row.querySelector('.cp-bor-amount');
+      function syncEnabled(){
+        if (!amountInput) return;
+        amountInput.disabled = !(check && check.checked);
+        if (check && check.checked && !(Number(amountInput.value) > 0)) {
+          amountInput.value = String(Math.min(pendingAmt, paymentTotalNow() || pendingAmt));
+        }
+        refreshSplitBalance();
+      }
+      if (check) check.addEventListener('change', syncEnabled);
+      if (amountInput) amountInput.addEventListener('input', refreshSplitBalance);
+    });
+    refreshSplitBalance();
+  }
+
+  async function loadPendingReceipts(){
+    if (!enableBor || !borWrap || !pendingReceiptsUrl) {
+      if (borWrap) borWrap.hidden = true;
+      return;
+    }
+    var method = currentMethodValue();
+    var show = !splitMode && method === 'bor';
+    borWrap.hidden = !show;
+    if (!show) return;
+    var ctx = selectedAgencyContext();
+    var qs = [];
+    if (ctx.agency_id) qs.push('agency_id=' + encodeURIComponent(ctx.agency_id));
+    if (ctx.agency_name) qs.push('agency_name=' + encodeURIComponent(ctx.agency_name));
+    try {
+      var res = await fetch(pendingReceiptsUrl + (qs.length ? ('?' + qs.join('&')) : ''));
+      var data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Unable to load receipts.');
+      renderBorReceiptRows(data.receipts || []);
+    } catch (err) {
+      renderBorReceiptRows([]);
+      if (borEmpty) {
+        borEmpty.hidden = false;
+        borEmpty.textContent = (err && err.message) || 'Unable to load receipts.';
+      }
+    }
+  }
+
+  function collectBorAllocationsFromPanel(){
+    var rows = [];
+    if (!borList) return rows;
+    borList.querySelectorAll('.cp-bor-row').forEach(function(row){
+      var check = row.querySelector('.cp-bor-select');
+      if (!check || !check.checked) return;
+      var amount = Number((row.querySelector('.cp-bor-amount') || {}).value || 0);
+      var receiptId = Number(row.getAttribute('data-receipt-id'));
+      var pending = Number(row.getAttribute('data-pending') || 0);
+      if (!receiptId || !amount || amount <= 0 || amount > pending + 0.001) return;
+      rows.push({ receipt_id: receiptId, amount: amount, method: 'bor' });
+    });
+    return rows;
+  }
+
+  function methodLabel(value){
+    return methodLabels[value] || value || 'Select payment mode';
+  }
+
+  function methodOptionsListHtml(selected){
+    return methodOptions.map(function(pair){
+      var on = pair[0] === selected;
+      return '<button type="button" class="se-filter-listbox-option' + (on ? ' is-selected' : '') +
+        '" role="option" data-value="' + escapeHtml(pair[0]) + '" data-label="' + escapeHtml(pair[1]) +
+        '" aria-selected="' + (on ? 'true' : 'false') + '">' + escapeHtml(pair[1]) + '</button>';
+    }).join('');
+  }
+
+  function receiptOptionsListHtml(selectedId){
+    var opts = '<button type="button" class="se-filter-listbox-option' + (!selectedId ? ' is-selected' : '') +
+      '" role="option" data-value="" data-label="Select Back Office Receipt…" aria-selected="' + (!selectedId ? 'true' : 'false') +
+      '">Select Back Office Receipt…</button>';
+    pendingReceipts.forEach(function(receipt){
+      var on = String(receipt.id) === String(selectedId);
+      var label = (receipt.receipt_no || '') + ' · ' + formatInr(receipt.pending_amount);
+      opts +=
+        '<button type="button" class="se-filter-listbox-option' + (on ? ' is-selected' : '') +
+        '" role="option" data-value="' + receipt.id + '" data-label="' + escapeHtml(label) +
+        '" data-pending="' + Number(receipt.pending_amount || 0) + '" aria-selected="' +
+        (on ? 'true' : 'false') + '">' + escapeHtml(label) + '</button>';
+    });
+    return opts;
+  }
+
+  function splitRowMethodValue(row){
+    var input = row && row.querySelector('.cp-split-method-input');
+    return input ? String(input.value || '') : '';
+  }
+
+  function splitRowReceiptValue(row){
+    var input = row && row.querySelector('.cp-split-receipt-input');
+    return input ? String(input.value || '') : '';
+  }
+
+  function bindNewSplitListboxes(scope){
+    if (!scope) return;
+    if (typeof window.initEpListboxes === 'function') {
+      window.initEpListboxes();
+      return;
+    }
+    scope.querySelectorAll('[data-se-listbox]').forEach(function(root){
+      if (typeof window.rebindEpListbox === 'function') window.rebindEpListbox(root);
+    });
+  }
+
+  function syncSplitRow(row){
+    if (!row) return;
+    var method = splitRowMethodValue(row);
+    var txn = row.querySelector('.cp-split-txn');
+    var receiptWrap = row.querySelector('.cp-split-receipt-wrap');
+    var needsTxn = methodRequiresTxn(method);
+    var needsBor = method === 'bor';
+    row.classList.toggle('is-bank', needsTxn);
+    row.classList.toggle('is-bor', needsBor);
+    if (txn) {
+      txn.hidden = !needsTxn;
+      if (!needsTxn) txn.value = '';
+    }
+    if (receiptWrap) {
+      receiptWrap.hidden = !needsBor;
+      if (!needsBor) {
+        var receiptInput = receiptWrap.querySelector('.cp-split-receipt-input');
+        var receiptValue = receiptWrap.querySelector('.se-filter-chip-value');
+        if (receiptInput) receiptInput.value = '';
+        if (receiptValue) {
+          receiptValue.textContent = 'Select Back Office Receipt…';
+          receiptValue.classList.add('is-placeholder', 'staff-supplier-placeholder');
+        }
+        receiptWrap.querySelectorAll('.se-filter-listbox-option').forEach(function(opt){
+          var on = !(opt.getAttribute('data-value') || '');
+          opt.classList.toggle('is-selected', on);
+          opt.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+      }
+    }
+  }
+
+  window.cpSplitMethodChanged = function(root){
+    var row = root && root.closest('.cp-split-row');
+    syncSplitRow(row);
+    refreshSplitBalance();
   };
+
+  window.cpSplitReceiptChanged = function(root){
+    refreshSplitBalance();
+  };
+
+  function splitRows(){
+    if (!splitsRoot) return [];
+    return Array.prototype.slice.call(splitsRoot.querySelectorAll('.cp-split-row'));
+  }
+
+  function roundSplitMoney(value){
+    return Math.round(Number(value || 0) * 100) / 100;
+  }
+
+  /** Keep split amounts totaling the pay-now target (same behavior as POS settle). */
+  function syncRemainingSplitAmount(changedRow){
+    var rows = splitRows();
+    if (rows.length < 2) return;
+    var target = paymentTotalNow();
+    if (!(target > 0)) return;
+
+    function amountRaw(row){
+      var input = row.querySelector('.cp-split-amount');
+      return input ? String(input.value || '').trim() : '';
+    }
+    function setAmount(row, value){
+      var input = row.querySelector('.cp-split-amount');
+      if (!input) return;
+      input.value = value > 0 ? String(value) : '';
+    }
+
+    if (rows.length === 2) {
+      var first = rows[0];
+      var second = rows[1];
+      if (!changedRow) {
+        var firstRaw = amountRaw(first);
+        var secondRaw = amountRaw(second);
+        var firstAmt = Number(firstRaw);
+        var secondAmt = Number(secondRaw);
+        if (firstRaw && isFinite(firstAmt) && firstAmt > 0 && !secondRaw) {
+          setAmount(second, roundSplitMoney(target - firstAmt));
+        } else if (secondRaw && isFinite(secondAmt) && secondAmt > 0 && !firstRaw) {
+          setAmount(first, roundSplitMoney(target - secondAmt));
+        }
+        return;
+      }
+      var otherRow = changedRow === first ? second : first;
+      var raw = amountRaw(changedRow);
+      var amount = Number(raw);
+      if (!raw || !isFinite(amount) || amount <= 0) {
+        setAmount(otherRow, 0);
+        return;
+      }
+      setAmount(otherRow, roundSplitMoney(target - amount));
+      return;
+    }
+
+    var lastRow = rows[rows.length - 1];
+    if (changedRow && changedRow === lastRow) return;
+    var others = 0;
+    var hasEarlierAmount = false;
+    for (var i = 0; i < rows.length - 1; i++) {
+      var rawEarlier = amountRaw(rows[i]);
+      var amountEarlier = Number(rawEarlier);
+      if (rawEarlier && isFinite(amountEarlier) && amountEarlier > 0) {
+        hasEarlierAmount = true;
+        others += amountEarlier;
+      }
+    }
+    if (!hasEarlierAmount) {
+      setAmount(lastRow, 0);
+      return;
+    }
+    setAmount(lastRow, roundSplitMoney(target - others));
+  }
+
+  function syncSingleSplitAmount(){
+    var rows = splitRows();
+    if (rows.length !== 1) {
+      syncRemainingSplitAmount(null);
+      refreshSplitBalance();
+      return;
+    }
+    var amountInput = rows[0].querySelector('.cp-split-amount');
+    if (amountInput) amountInput.value = String(paymentTotalNow() || '');
+    refreshSplitBalance();
+  }
+
+  function updateSplitRemoveButtons(){
+    if (!splitsRoot) return;
+    var rows = splitRows();
+    var multi = rows.length > 1;
+    rows.forEach(function(row){
+      var removeBtn = row.querySelector('.cp-split-remove');
+      var amountInput = row.querySelector('.cp-split-amount');
+      if (removeBtn) removeBtn.hidden = !multi;
+      if (amountInput) {
+        amountInput.hidden = !multi;
+        amountInput.required = multi;
+      }
+      row.classList.toggle('is-multi', multi);
+    });
+    if (splitBalance) splitBalance.hidden = !multi;
+    refreshSplitBalance();
+  }
+
+  function refreshSplitBalance(){
+    var target = paymentTotalNow();
+    if (splitTargetEl) {
+      splitTargetEl.setAttribute('data-amount', String(target));
+      splitTargetEl.textContent = formatInr(target);
+    }
+    var total = 0;
+    var allFilled = true;
+    var modesSelected = true;
+    var multi = false;
+    if (splitMode && splitsRoot) {
+      var rows = splitRows();
+      multi = rows.length > 1;
+      rows.forEach(function(row){
+        if (!splitRowMethodValue(row)) modesSelected = false;
+        var input = row.querySelector('.cp-split-amount');
+        if (!input || input.hidden) return;
+        var raw = String(input.value || '').trim();
+        var amount = Number(raw);
+        if (multi && (!raw || !isFinite(amount) || amount <= 0)) allFilled = false;
+        total += isFinite(amount) ? amount : 0;
+      });
+      if (rows.length === 1) total = target;
+    } else if (currentMethodValue() === 'bor') {
+      collectBorAllocationsFromPanel().forEach(function(row){ total += Number(row.amount || 0); });
+    } else {
+      total = target;
+    }
+    total = roundSplitMoney(total);
+    if (splitTotalEl) {
+      splitTotalEl.setAttribute('data-amount', String(total));
+      splitTotalEl.textContent = formatInr(total);
+    }
+    if (splitBalance) {
+      var mismatch = multi && (!allFilled || !modesSelected || Math.abs(total - target) > 0.001);
+      splitBalance.classList.toggle('is-mismatch', mismatch);
+    }
+    var borApplyEl = document.getElementById('cp-bor-apply-total');
+    if (borApplyEl) {
+      var borTotal = 0;
+      collectBorAllocationsFromPanel().forEach(function(row){ borTotal += Number(row.amount || 0); });
+      borTotal = roundSplitMoney(borTotal);
+      borApplyEl.setAttribute('data-amount', String(borTotal));
+      borApplyEl.textContent = formatInr(borTotal);
+    }
+  }
+
+  function addSplitRow(preferredMethod, amount){
+    if (!splitsRoot) return;
+    var method = preferredMethod || (methodOptions[0] && methodOptions[0][0]) || 'cash';
+    var label = methodLabel(method);
+    var uid = 'cp-split-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    var row = document.createElement('div');
+    row.className = 'rt-split-row cp-split-row';
+    row.innerHTML =
+      '<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox rt-split-method-listbox cp-split-method-listbox" data-se-listbox data-se-listbox-change="cpSplitMethodChanged">' +
+        '<div class="se-filter-chip-control">' +
+          '<input type="hidden" class="cp-split-method-input" value="' + escapeHtml(method) + '">' +
+          '<button type="button" class="se-filter-chip-trigger" id="' + uid + '-method-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="' + uid + '-method-list" aria-label="Payment mode">' +
+            '<span class="se-filter-chip-value' + (method ? '' : ' is-placeholder staff-supplier-placeholder') + '">' + escapeHtml(label) + '</span>' +
+          '</button>' +
+        '</div>' +
+        '<div class="se-filter-listbox" id="' + uid + '-method-list" role="listbox" aria-label="Payment mode" hidden>' +
+          methodOptionsListHtml(method) +
+        '</div>' +
+      '</div>' +
+      '<div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox rt-split-method-listbox cp-split-receipt-listbox cp-split-receipt-wrap" data-se-listbox data-se-listbox-change="cpSplitReceiptChanged" hidden>' +
+        '<div class="se-filter-chip-control">' +
+          '<input type="hidden" class="cp-split-receipt-input" value="">' +
+          '<button type="button" class="se-filter-chip-trigger" id="' + uid + '-receipt-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="' + uid + '-receipt-list" aria-label="Back Office Receipt">' +
+            '<span class="se-filter-chip-value is-placeholder staff-supplier-placeholder">Select Back Office Receipt…</span>' +
+          '</button>' +
+        '</div>' +
+        '<div class="se-filter-listbox" id="' + uid + '-receipt-list" role="listbox" aria-label="Back Office Receipt" hidden>' +
+          receiptOptionsListHtml('') +
+        '</div>' +
+      '</div>' +
+      '<input class="staff-input cp-split-amount" type="number" min="0.01" step="0.01" placeholder="Amount" value="' +
+        (amount != null && amount !== '' ? escapeHtml(String(amount)) : '') + '" aria-label="Mode amount">' +
+      '<input class="staff-input cp-split-txn" type="text" placeholder="Txn / UTR ID" aria-label="Transaction ID" hidden autocomplete="off">' +
+      '<button type="button" class="rt-split-remove cp-split-remove" aria-label="Remove payment mode">&times;</button>';
+    splitsRoot.appendChild(row);
+    var removeBtn = row.querySelector('.cp-split-remove');
+    var amountInput = row.querySelector('.cp-split-amount');
+    if (amountInput) {
+      amountInput.addEventListener('input', function(){
+        syncRemainingSplitAmount(row);
+        refreshSplitBalance();
+      });
+    }
+    if (removeBtn) removeBtn.addEventListener('click', function(){
+      if (splitRows().length <= 1) return;
+      if (typeof window.closeAllEpListboxes === 'function') window.closeAllEpListboxes();
+      row.remove();
+      updateSplitRemoveButtons();
+      syncSingleSplitAmount();
+    });
+    bindNewSplitListboxes(row);
+    syncSplitRow(row);
+    updateSplitRemoveButtons();
+  }
+
+  async function ensureReceiptsLoadedForSplit(){
+    if (!enableBor || !pendingReceiptsUrl) return;
+    if (pendingReceipts.length) return;
+    var ctx = selectedAgencyContext();
+    var qs = [];
+    if (ctx.agency_id) qs.push('agency_id=' + encodeURIComponent(ctx.agency_id));
+    if (ctx.agency_name) qs.push('agency_name=' + encodeURIComponent(ctx.agency_name));
+    try {
+      var res = await fetch(pendingReceiptsUrl + (qs.length ? ('?' + qs.join('&')) : ''));
+      var data = await res.json();
+      if (data.ok) pendingReceipts = data.receipts || [];
+    } catch (e) {
+      pendingReceipts = [];
+    }
+  }
+
+  async function enterSplitMode(){
+    if (!enableSplit || !splitsRoot) return;
+    splitMode = true;
+    if (clearanceModal) clearanceModal.classList.add('is-split-payment');
+    if (singleMethodWrap) singleMethodWrap.hidden = true;
+    if (borWrap) borWrap.hidden = true;
+    splitsRoot.hidden = false;
+    splitsRoot.innerHTML = '';
+    await ensureReceiptsLoadedForSplit();
+    var method = currentMethodValue() || 'cash';
+    addSplitRow(method, paymentTotalNow() || '');
+    if (addSplitBtn) addSplitBtn.textContent = 'Add mode';
+    refreshSplitBalance();
+  }
+
+  function exitSplitMode(){
+    splitMode = false;
+    if (clearanceModal) clearanceModal.classList.remove('is-split-payment');
+    if (splitsRoot) {
+      if (typeof window.closeAllEpListboxes === 'function') window.closeAllEpListboxes();
+      splitsRoot.innerHTML = '';
+      splitsRoot.hidden = true;
+    }
+    if (splitBalance) splitBalance.hidden = true;
+    if (singleMethodWrap) singleMethodWrap.hidden = false;
+    if (addSplitBtn) addSplitBtn.textContent = 'Split Payment';
+    loadPendingReceipts();
+    syncTransactionVisibility();
+  }
+
+  function collectPaymentSplits(){
+    if (!splitMode || !splitsRoot) return null;
+    var rows = [];
+    var multi = splitsRoot.querySelectorAll('.cp-split-row').length > 1;
+    var target = paymentTotalNow();
+    splitsRoot.querySelectorAll('.cp-split-row').forEach(function(row){
+      var method = splitRowMethodValue(row);
+      var amountInput = row.querySelector('.cp-split-amount');
+      var amount = multi ? Number(amountInput && amountInput.value) : target;
+      var txn = ((row.querySelector('.cp-split-txn') || {}).value || '').trim();
+      var receiptId = Number(splitRowReceiptValue(row) || 0) || null;
+      rows.push({
+        method: method,
+        amount: amount,
+        transaction_id: txn,
+        receipt_id: receiptId
+      });
+    });
+    return rows;
+  }
+
+  window.cpPaymentMethodChanged = function(){
+    if (paymentMethodUiEl && paymentMethodEl) {
+      paymentMethodEl.value = paymentMethodUiEl.value || '';
+    }
+    syncTransactionVisibility();
+    loadPendingReceipts();
+    refreshSplitBalance();
+  };
+
+  if (addSplitBtn) {
+    addSplitBtn.addEventListener('click', function(){
+      if (!splitMode) {
+        enterSplitMode();
+        return;
+      }
+      var rows = splitRows();
+      // First "Add mode" from a single full-amount row: clear so the user can split fresh.
+      if (rows.length === 1) {
+        var firstAmount = rows[0].querySelector('.cp-split-amount');
+        if (firstAmount) firstAmount.value = '';
+      }
+      addSplitRow('cash', '');
+      syncRemainingSplitAmount(null);
+      refreshSplitBalance();
+    });
+  }
 
   function refreshAllocTotal(){
     if (!allocBody || !allocTotalEl) return;
@@ -1015,6 +1563,8 @@
     });
     allocTotalEl.setAttribute('data-amount', String(total));
     allocTotalEl.textContent = formatInr(total);
+    if (splitMode) syncSingleSplitAmount();
+    else refreshSplitBalance();
   }
 
   function populatePaymentModal(selections){
@@ -1053,6 +1603,8 @@
       tr.querySelector('.cp-alloc-input').addEventListener('input', refreshAllocTotal);
     });
     refreshAllocTotal();
+    exitSplitMode();
+    loadPendingReceipts();
   }
 
   function collectSelectionsFromSelectModal(){
@@ -1078,7 +1630,13 @@
     pendingSelections = selections;
     setError(selectError, '');
     setError(clearanceError, '');
-    if (paymentDateEl) paymentDateEl.value = todayIso;
+    if (paymentDateEl) {
+      paymentDateEl.value = todayIso;
+    }
+    if (!autoClearanceDate && typeof window.setHotelDateValue === 'function') {
+      window.setHotelDateValue('cp-payment-date', todayIso);
+    }
+    exitSplitMode();
     if (requirePaymentMethod) {
       setPaymentMethodListbox('', '');
     } else {
@@ -1127,13 +1685,13 @@
       setError(clearanceError, 'Select at least one expense.');
       return;
     }
-    var method = showPaymentMode && paymentMethodEl ? paymentMethodEl.value : 'cash';
+    var method = showPaymentMode ? currentMethodValue() : 'cash';
     var transactionId = showPaymentMode && transactionEl ? transactionEl.value.trim() : '';
-    if (showPaymentMode && requirePaymentMethod && !method) {
+    if (showPaymentMode && requirePaymentMethod && !method && !splitMode) {
       setError(clearanceError, labels.select_error_method || 'Select a payment mode.');
       return;
     }
-    if (showPaymentMode && methodRequiresTxn(method) && !transactionId) {
+    if (showPaymentMode && !splitMode && methodRequiresTxn(method) && !transactionId) {
       setError(clearanceError, 'Transaction ID is required for bank transfer.');
       return;
     }
@@ -1158,21 +1716,54 @@
       return;
     }
 
-    var pendingByExpense = {};
-    pendingSelections.forEach(function(item){
-      pendingByExpense[String(item.expense_id)] = item;
-    });
+    var extras = {
+      payment_date: autoClearanceDate
+        ? todayIso
+        : (paymentDateEl && paymentDateEl.value ? paymentDateEl.value : todayIso),
+      payment_method: method || 'cash',
+      transaction_id: transactionId,
+      notes: notesEl ? notesEl.value.trim() : ''
+    };
+    if (splitMode) {
+      var splits = collectPaymentSplits() || [];
+      if (!splits.length) {
+        setError(clearanceError, 'Add at least one payment mode.');
+        return;
+      }
+      extras.payment_splits = splits;
+      extras.payment_method = splits.length === 1 ? splits[0].method : 'split';
+    } else if (method === 'bor') {
+      var borRows = collectBorAllocationsFromPanel();
+      if (!borRows.length) {
+        setError(clearanceError, 'Select at least one Back Office Receipt to apply.');
+        return;
+      }
+      var borTotal = 0;
+      borRows.forEach(function(row){ borTotal += Number(row.amount || 0); });
+      borTotal = Math.round(borTotal * 100) / 100;
+      var payTotal = paymentTotalNow();
+      if (Math.abs(borTotal - payTotal) > 0.009) {
+        setError(
+          clearanceError,
+          'Back Office Receipt total ' + formatInr(borTotal) + ' must equal payment total ' + formatInr(payTotal) + '.'
+        );
+        return;
+      }
+      extras.payment_splits = borRows.map(function(row){
+        return {
+          method: 'bor',
+          amount: row.amount,
+          receipt_id: row.receipt_id,
+          transaction_id: ''
+        };
+      });
+    }
 
     var submitBtn = document.getElementById('cp-clearance-submit');
     if (submitBtn) submitBtn.disabled = true;
     setError(clearanceError, '');
     try {
-      await postSettlementGroups(pendingSelections, allocations, {
-        payment_date: paymentDateEl ? paymentDateEl.value : todayIso,
-        payment_method: method,
-        transaction_id: transactionId,
-        notes: notesEl ? notesEl.value.trim() : ''
-      });
+      await postSettlementGroups(pendingSelections, allocations, extras);
       if (typeof window.deInvalidateSoftNavCacheByPath === 'function') {
         try {
           window.deInvalidateSoftNavCacheByPath('/hotel/credit');
@@ -1215,7 +1806,9 @@
           payment_method: extras.payment_method || 'cash',
           transaction_id: extras.transaction_id || '',
           notes: extras.notes || '',
-          allocations: groups[groupIds[i]]
+          allocations: groups[groupIds[i]],
+          payment_splits: extras.payment_splits || undefined,
+          bor_allocations: extras.bor_allocations || undefined
         })
       });
       var data = await res.json();
@@ -1242,8 +1835,22 @@
 
   function renderPaymentDetail(payment){
     if (!detailBody) return;
-    var methodLabel = methodLabels[payment.payment_method] || payment.payment_method;
+    var methodLabel = payment.payment_method_label || methodLabels[payment.payment_method] || payment.payment_method;
     var accountLabel = payment.verification_account || '—';
+    var modeSplits = payment.mode_splits || [];
+    var modeHtml = '';
+    if (showPaymentMode && modeSplits.length > 1) {
+      modeHtml =
+        '<div class="cp-detail-splits">' +
+          '<div class="cp-detail-label">Payment modes</div>' +
+          '<ul class="cp-detail-split-list">' +
+          modeSplits.map(function(split){
+            var label = split.method_label || methodLabels[split.method] || split.method || '—';
+            return '<li><span>' + escapeHtml(label) + '</span><strong>' + formatInr(split.amount) + '</strong></li>';
+          }).join('') +
+          '</ul>' +
+        '</div>';
+    }
     var rows = (payment.allocations || []).map(function(item){
       var cat = categoryLabels[item.category] || item.category || '—';
       return '<tr>' +
@@ -1266,6 +1873,7 @@
         '<div><span class="cp-detail-label">Total</span><span class="cp-detail-value">' + formatInr(payment.total_amount) + '</span></div>' +
         '<div><span class="cp-detail-label">Notes</span><span class="cp-detail-value">' + escapeHtml(payment.notes || '—') + '</span></div>' +
       '</div>' +
+      modeHtml +
       '<div class="cp-alloc-wrap">' +
         '<div class="cp-alloc-head"><span>' + escapeHtml(labels.detail_alloc_head || 'Allocated expenses') + '</span><span>' + ((payment.allocations || []).length) + '</span></div>' +
         '<div class="cp-alloc-table-wrap"><table class="cp-alloc-table"><thead><tr><th>' + escapeHtml(labels.alloc_item_column || 'Expense') + '</th><th class="pl-col-amount">Paid</th></tr></thead><tbody>' +
@@ -1400,5 +2008,9 @@
 
   initSortableTable(document.getElementById('cp-outstanding-table'));
   initSortableTable(document.querySelector('table.cp-table'));
+
+  if (typeof window.initHotelDatePickers === 'function') {
+    window.initHotelDatePickers(document.getElementById('cp-clearance-modal') || document);
+  }
 })();
 </script>

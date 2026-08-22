@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Back Office Receipt | Hotel Bell Elite</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=33">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=54">
+<link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
+<link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
+<link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
+<link rel="stylesheet" href="{{ url_for('static', filename='back_office_receipt.css') }}?v=14">
+<script>
+(function(){
+  try{
+    var pinned = localStorage.getItem('de-sidebar-pinned') === '1';
+    if(pinned){ document.documentElement.classList.add('de-sidebar-wide-boot'); }
+  }catch(e){}
+})();
+</script>
+</head>
+<body class="de-open su-module">
+{% include 'partials/de_workspace_shell_open.html' %}
+<div class="main-wrapper" id="back-office-receipt-page"
+     data-add-url="{{ add_url }}"
+     data-edit-url="{{ edit_url }}"
+     data-delete-url="{{ delete_url }}"
+     data-today="{{ today_iso }}">
+  <header class="se-sales-header su-header" id="se-sales-header">
+    <div class="su-header-top">
+      <div class="su-header-left">
+        <div class="su-header-nav">
+          {% include 'partials/su_page_back.html' with context %}
+          <button class="sb-pin-btn de-sb-pin-btn" type="button" onclick="toggleDeSidebarPin()" title="Collapse sidebar" aria-label="Collapse sidebar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+        </div>
+        <div class="su-title">
+          <div class="su-title-row">
+            <h1>{{ page_title }}</h1>
+          </div>
+        </div>
+      </div>
+      <div class="su-header-tools bor-header-actions">
+        <a class="btn btn-primary" href="{{ report_url }}" download>Export</a>
+        <button type="button" class="btn btn-primary" id="bor-open-add">Add receipt</button>
+      </div>
+    </div>
+    <div class="se-sales-header-card">
+      <div class="se-sales-header-filters">
+        <form id="bor-filter-form" method="get" action="{{ filter_form_action }}" class="sr-topbar-filters bor-filter-form" aria-label="Back office receipt filters"
+              data-date-filter-active="{{ '1' if date_filter_active else '0' }}"
+              data-clear-url="{{ clear_url }}">
+          <div class="se-filter-chip se-filter-chip--search bor-search-chip" id="bor-search-chip">
+            <label class="se-filter-chip-label" for="bor-search">Search</label>
+            <div class="se-filter-chip-control">
+              <span class="se-filter-chip-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              </span>
+              <input type="search" id="bor-search" name="q" class="bor-search-input" value="{{ search_q }}" placeholder="Receipt no., payer, mode…" autocomplete="off" aria-label="Search receipts">
+            </div>
+          </div>
+          <div class="se-filter-chip se-filter-chip--payment se-filter-chip--listbox ep-form-listbox ep-combobox-listbox pl-header-field-listbox pl-header-field pl-supplier-filter-listbox{% if selected_agency != 'all' %} is-filtered{% endif %}" data-se-listbox data-se-listbox-searchable data-se-listbox-combobox data-se-listbox-submit="bor-filter-form" data-se-listbox-close-date-wrap="bor-date-range-wrap" id="bor-agency-filter-listbox">
+            <span class="se-filter-chip-label" id="bor-agency-filter-label">Agency</span>
+            <div class="se-filter-chip-control">
+              <input type="hidden" id="bor-agency-filter" name="agency" value="{{ selected_agency }}">
+              <input type="text"
+                     class="se-filter-chip-trigger se-filter-chip-combobox{% if selected_agency == 'all' %} is-placeholder{% endif %}"
+                     id="bor-agency-filter-trigger"
+                     role="combobox"
+                     aria-autocomplete="list"
+                     aria-haspopup="listbox"
+                     aria-expanded="false"
+                     aria-controls="bor-agency-filter-list"
+                     aria-labelledby="bor-agency-filter-label"
+                     value="{% if selected_agency != 'all' %}{{ selected_agency_label }}{% endif %}"
+                     title="{% if selected_agency != 'all' %}{{ selected_agency_label }}{% else %}All agencies{% endif %}"
+                     placeholder="All agencies"
+                     autocomplete="off"
+                     spellcheck="false">
+              <span class="se-filter-chip-chevron" aria-hidden="true"></span>
+            </div>
+            <div class="se-filter-listbox" id="bor-agency-filter-list" role="listbox" aria-labelledby="bor-agency-filter-label" hidden>
+              <div class="pl-supplier-options ep-listbox-options" id="bor-agency-filter-options">
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_agency == 'all' %} is-selected{% endif %}" role="option" data-value="all" data-name="all agencies" data-label="All agencies" aria-selected="{{ 'true' if selected_agency == 'all' else 'false' }}">All agencies</button>
+                {% for agency in filter_agencies %}
+                <button type="button" class="se-filter-listbox-option pl-supplier-option{% if selected_agency == (agency.id|string) %} is-selected{% endif %}" role="option" data-value="{{ agency.id }}" data-name="{{ agency.name|lower }} {{ (agency.gst or '')|lower }}" data-gst="{{ (agency.gst or '')|lower }}" data-label="{{ agency.name }}" aria-selected="{{ 'true' if selected_agency == (agency.id|string) else 'false' }}">
+                  <span class="pl-supplier-option-name">{{ agency.name }}</span>
+                  {% if agency.gst %}<span class="pl-supplier-option-gst">{{ agency.gst }}</span>{% endif %}
+                </button>
+                {% endfor %}
+              </div>
+              <div class="pl-supplier-empty" id="bor-agency-filter-empty" hidden>No agencies match your search.</div>
+            </div>
+          </div>
+          <input type="hidden" id="bor-date-from" name="date_from" value="{{ date_from }}">
+          <input type="hidden" id="bor-date-to" name="date_to" value="{{ date_to }}">
+          <div class="se-filter-chip-date-host bor-date-range-host" id="bor-date-range-host">
+            <div class="se-filter-chip se-filter-chip--date se-filter-chip--date-range{% if date_filter_active %} is-filtered{% endif %}">
+              <span class="se-filter-chip-label" id="bor-date-label">Date</span>
+              <div class="se-filter-chip-control">
+                <span class="se-filter-chip-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                </span>
+                <div class="an-range-wrap an-range-wrap--sales" id="bor-date-range-wrap" data-max-date="{{ today_iso }}">
+                  <button type="button" class="an-range-trigger se-filter-chip-trigger" id="bor-date-range-trigger" aria-expanded="false" aria-haspopup="dialog" aria-controls="bor-date-range-panel">
+                    <span class="an-range-trigger-label">
+                      <span id="bor-date-range-display">{% if date_filter_active %}{{ date_from|report_date }} – {{ date_to|report_date }}{% else %}Date{% endif %}</span>
+                    </span>
+                  </button>
+                  <div class="an-range-backdrop" id="bor-date-range-backdrop" aria-hidden="true"></div>
+                  <div class="an-range-panel" id="bor-date-range-panel" role="dialog" aria-labelledby="bor-date-range-panel-title" hidden>
+                    <div class="an-range-panel-inner">
+                      <div class="an-range-panel-h" id="bor-date-range-panel-title">Date range</div>
+                      <div class="an-cal-dual">
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <button type="button" class="an-cal-nav-btn" id="bor-cal-prev" aria-label="Previous months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </button>
+                            <h4 class="an-cal-month-title" id="bor-cal-title0">—</h4>
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="bor-cal-grid0"></div>
+                        </div>
+                        <div class="an-cal-pane">
+                          <div class="an-cal-pane-hdr">
+                            <span class="an-cal-nav-sp" aria-hidden="true"></span>
+                            <h4 class="an-cal-month-title" id="bor-cal-title1">—</h4>
+                            <button type="button" class="an-cal-nav-btn" id="bor-cal-next" aria-label="Next months">
+                              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </button>
+                          </div>
+                          <div class="an-cal-dow" aria-hidden="true">
+                            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+                          </div>
+                          <div class="an-cal-grid" id="bor-cal-grid1"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="an-range-actions">
+                      <button type="button" class="btn" id="bor-date-range-clear">Clear</button>
+                      <button type="button" class="btn btn-primary" id="bor-date-range-apply">Apply</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <section class="content se-content">
+    <div class="pl-summary-row bor-summary-row">
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total received">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--green" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Total received</div>
+            <div class="pl-summary-value pl-amount" data-amount="{{ total_amount }}">{{ total_amount }}</div>
+            <div class="pl-summary-meta">{{ receipt_count }} receipt{{ '' if receipt_count == 1 else 's' }}</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Balance available">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--blue" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Balance available</div>
+            <div class="pl-summary-value pl-amount" data-amount="{{ balance_total }}">{{ balance_total }}</div>
+            <div class="pl-summary-meta">unapplied back office receipt</div>
+          </div>
+        </div>
+      </article>
+      <article class="card pl-summary-card hbe-kpi-card" aria-label="Total applied">
+        <div class="card-body pl-summary-body">
+          <div class="hbe-kpi-icon hbe-kpi-icon--orange" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg>
+          </div>
+          <div class="hbe-kpi-text">
+            <div class="pl-summary-label">Total applied</div>
+            <div class="pl-summary-value pl-amount" data-amount="{{ applied_total }}">{{ applied_total }}</div>
+            <div class="pl-summary-meta">{{ applied_count }} hotel credit clearance{{ '' if applied_count == 1 else 's' }}</div>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <article class="card pl-list-panel pl-list-panel--scroll hbe-scroll-panel" aria-label="Back office receipts">
+      <div class="card-hdr">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 12h18"/></svg>
+          <span>Receipt ledger</span>
+        </div>
+        <span class="pl-count" id="bor-entry-count">{{ entry_count }} entr{{ 'y' if entry_count == 1 else 'ies' }}</span>
+      </div>
+      <div class="card-body pl-card-body--flush">
+        {% if ledger_entries %}
+        <div class="pl-table-wrap" tabindex="0" aria-label="Back office receipt ledger, scroll for more">
+          <table class="pl-table" id="bor-ledger-table" aria-label="Back office receipt ledger">
+            <thead>
+              <tr>
+                <th scope="col">Date</th>
+                <th scope="col">Type</th>
+                <th scope="col">Receipt No.</th>
+                <th scope="col">Party</th>
+                <th scope="col">Mode</th>
+                <th scope="col">Instrument</th>
+                <th scope="col">Detail</th>
+                <th class="pl-col-amount" scope="col">Amount</th>
+                <th class="pl-col-amount" scope="col">Balance</th>
+                <th class="pl-col-actions">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in ledger_entries %}
+              {% set type_label = bor_entry_labels.get(row.entry_type, row.entry_type) %}
+              <tr class="bor-ledger-row"
+                  data-entry-type="{{ row.entry_type }}"
+                  data-search="{{ [row.entry_date, type_label, row.receipt_no, row.party_name, row.payment_mode, row.payment_mode_label, row.instrument, row.instrument_no, row.detail, row.towards, row.amount_words, row.signed_amount|string, row.running_balance|string]|join(' ')|lower }}">
+                <td class="pl-col-date">{{ row.entry_date|report_dt }}</td>
+                <td>
+                  <span class="bor-type-pill bor-type-pill--{{ row.entry_type }}">{{ type_label }}</span>
+                </td>
+                <td class="pl-col-code">
+                  {% if row.receipt_no %}
+                  <span class="pl-expense-code">{{ row.receipt_no }}</span>
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                <td><div class="pl-name">{{ row.party_name or '—' }}</div></td>
+                <td>{% if row.entry_type == 'receipt' %}{{ row.payment_mode_label }}{% else %}—{% endif %}</td>
+                <td>
+                  {% if row.entry_type == 'receipt' and row.instrument %}
+                  {{ row.instrument }}
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+                <td>{{ row.detail or '—' }}</td>
+                <td class="pl-col-amount pl-amount {% if row.signed_amount >= 0 %}bor-amount-in{% else %}bor-amount-out{% endif %}" data-amount="{{ row.signed_amount }}"{% if row.amount_words %} title="{{ row.amount_words }}"{% endif %}>{{ row.signed_amount }}</td>
+                <td class="pl-col-amount pl-amount bor-balance" data-amount="{{ row.running_balance }}">{{ row.running_balance }}</td>
+                <td class="pl-col-actions">
+                  {% if row.can_edit or row.can_delete %}
+                  <div class="act-grp pl-action-btns">
+                    {% if row.can_edit %}
+                    <button
+                      type="button"
+                      class="act-btn edit pl-edit-btn bor-edit-btn"
+                      data-tip="Edit"
+                      aria-label="Edit receipt {{ row.receipt_no }}"
+                      data-id="{{ row.receipt_id }}"
+                      data-receipt-no="{{ row.receipt_no }}"
+                      data-date="{{ row.entry_date }}"
+                      data-payer-name="{{ row.party_name }}"
+                      data-agency-id="{{ row.agency_id or '' }}"
+                      data-amount="{{ row.amount }}"
+                      data-payment-mode="{{ row.payment_mode }}"
+                      data-payment-mode-label="{{ row.payment_mode_label }}"
+                      data-instrument-no="{{ row.instrument_no }}"
+                      data-instrument-date="{{ row.instrument_date or '' }}"
+                      data-towards="{{ row.towards or '' }}"
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    {% endif %}
+                    {% if row.can_delete %}
+                    <button type="button" class="act-btn del pl-delete-btn bor-delete-btn" data-tip="Delete" aria-label="Delete receipt {{ row.receipt_no }}" data-id="{{ row.receipt_id }}" data-receipt-no="{{ row.receipt_no }}">
+                      <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                    </button>
+                    {% endif %}
+                  </div>
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="pl-empty">No ledger entries found for the selected dates.</div>
+        {% endif %}
+      </div>
+    </article>
+  </section>
+</div>
+
+{% include 'partials/back_office_receipt_add_modal.html' %}
+
+<script type="application/json" id="bor-agencies-json">{{ agencies|tojson }}</script>
+<script src="{{ url_for('static', filename='format_inr.js') }}"></script>
+<script src="{{ url_for('static', filename='sales_date_range.js') }}?v=15"></script>
+<script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=65"></script>
+<script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='back_office_receipt.js') }}?v=9" data-de-rerun="1"></script>
+{% include 'partials/de_workspace_shell_close.html' %}
+</body>
+</html>

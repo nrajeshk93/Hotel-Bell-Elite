@@ -116,7 +116,15 @@ class PosMenuTests(unittest.TestCase):
         self.assertTrue(items_payload["ok"])
         self.assertEqual(len(items_payload["items"]), 1)
         self.assertEqual(items_payload["items"][0]["id"], item["id"])
-        self.assertEqual(len(items_payload["items"][0]["recipe"]), 1)
+        # List payload keeps margin fields but omits recipe ingredient lines for speed.
+        self.assertEqual(items_payload["items"][0].get("recipe") or [], [])
+        self.assertIn("food_cost", items_payload["items"][0])
+        self.assertIn("margin_pct", items_payload["items"][0])
+
+        detail_res = self.client.get(f"/point-of-sale/api/menu/items/{item['id']}")
+        self.assertEqual(detail_res.status_code, 200)
+        detail = detail_res.get_json()["item"]
+        self.assertEqual(len(detail["recipe"]), 1)
 
         cats_again = self.client.get("/point-of-sale/api/menu/categories").get_json()
         kids = next(c for c in cats_again["categories"] if c["id"] == category_id)

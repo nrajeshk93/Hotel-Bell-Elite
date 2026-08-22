@@ -5,10 +5,22 @@
   grid-template-columns:repeat(4,minmax(0,1fr));
   max-width:none;
 }
+/* History view has a single KPI — don't squeeze it into 1/4 of the row */
+#credit-payment-page .content.se-content > .pl-summary-row:has(> .pl-summary-card:only-child){
+  grid-template-columns:minmax(260px,max-content);
+}
+#credit-payment-page .pl-summary-label{
+  white-space:nowrap;
+  overflow-wrap:normal;
+  word-break:normal;
+}
 @media (max-width:900px){
   #credit-payment-page .content.se-content > .pl-summary-row,
   #credit-payment-page .cp-outstanding-kpi-row{
     grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+  #credit-payment-page .content.se-content > .pl-summary-row:has(> .pl-summary-card:only-child){
+    grid-template-columns:minmax(260px,max-content);
   }
 }
 @media (max-width:640px){
@@ -509,70 +521,35 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
   display:none;
 }
 
-/* History: keep header/value columns aligned under a fixed layout. */
+/* History: fixed even columns so headers and amounts share one grid. */
 #credit-payment-page #cp-history-table{
   table-layout:fixed;
-  width:100%;
+  width:max(100%, 1180px);
   border-collapse:separate;
   border-spacing:0;
 }
 #credit-payment-page #cp-history-table th,
 #credit-payment-page #cp-history-table td{
   vertical-align:middle;
-  padding:12px;
+  padding:10px 12px;
+  box-sizing:border-box;
 }
 #credit-payment-page #cp-history-table th.pl-sortable{
   position:relative;
-  padding-right:22px;
+  padding-right:20px;
 }
 #credit-payment-page #cp-history-table th.pl-sortable::after{
   position:absolute;
-  right:8px;
+  right:6px;
   top:50%;
   margin-left:0;
   transform:translateY(-50%);
 }
-#credit-payment-page #cp-history-table .pl-col-date{
-  width:128px;
-  white-space:nowrap;
-}
-#credit-payment-page #cp-history-table .cp-col-party{
-  width:auto;
-  min-width:140px;
-}
-#credit-payment-page #cp-history-table .cp-col-party .pl-name{
-  overflow:hidden;
-  text-overflow:ellipsis;
-}
-#credit-payment-page #cp-history-table .cp-col-method{
-  width:124px;
-  white-space:nowrap;
-}
-#credit-payment-page #cp-history-table .cp-col-txn{
-  width:148px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-#credit-payment-page #cp-history-table .pl-col-amount,
-#credit-payment-page #cp-history-table .pl-col-count{
-  width:104px;
-  white-space:nowrap;
-  text-align:right;
-  font-variant-numeric:tabular-nums;
-}
-#credit-payment-page #cp-history-table th.pl-col-amount,
-#credit-payment-page #cp-history-table th.pl-col-count{
-  padding-right:22px;
-}
-#credit-payment-page #cp-history-table td.pl-col-amount,
-#credit-payment-page #cp-history-table td.pl-col-count{
-  padding-right:22px;
-}
 #credit-payment-page #cp-history-table .cp-expense-codes{
-  width:160px;
-  white-space:normal;
-  max-width:none;
+  width:132px;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
   vertical-align:middle;
 }
 #credit-payment-page #cp-history-table th.cp-expense-codes{
@@ -586,23 +563,74 @@ body.su-module #cp-outstanding-table.is-multi-selecting .cp-col-actions{
 }
 #credit-payment-page #cp-history-table .cp-expense-code-list .pl-expense-code{
   margin:0;
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+#credit-payment-page #cp-history-table .cp-col-party{
+  width:148px;
+  overflow:hidden;
+}
+#credit-payment-page #cp-history-table th.cp-col-party{
+  white-space:nowrap;
+}
+#credit-payment-page #cp-history-table .cp-col-party .pl-name{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#credit-payment-page #cp-history-table .pl-col-date{
+  width:110px;
+  white-space:nowrap;
+}
+#credit-payment-page #cp-history-table .cp-col-method{
+  width:128px;
+  white-space:normal;
+  line-height:1.3;
+  overflow-wrap:anywhere;
+}
+#credit-payment-page #cp-history-table .cp-tender-col{
+  width:88px;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+#credit-payment-page #cp-history-table th.cp-tender-col{
+  white-space:nowrap;
+  line-height:1.2;
+  vertical-align:bottom;
+}
+#credit-payment-page #cp-history-table td.cp-tender-col{
+  color:#94A3B8;
+}
+#credit-payment-page #cp-history-table td.cp-tender-col.pl-amount{
+  color:inherit;
+}
+#credit-payment-page #cp-history-table .cp-col-txn{
+  width:108px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+#credit-payment-page #cp-history-table .pl-col-amount:not(.cp-tender-col),
+#credit-payment-page #cp-history-table .pl-col-count{
+  width:88px;
+  white-space:nowrap;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
 }
 #credit-payment-page #cp-history-table th.cp-col-actions,
 #credit-payment-page #cp-history-table td.cp-col-actions{
-  position:sticky;
-  right:0;
-  z-index:3;
-  width:96px;
-  background:#fff;
-  box-shadow:-8px 0 12px -12px rgba(15,23,42,.35);
+  width:84px;
   text-align:right;
+  background:#fff;
 }
 #credit-payment-page #cp-history-table thead th.cp-col-actions{
   background:#F8FAFD;
-  z-index:4;
 }
 #credit-payment-page #cp-history-table td.cp-col-actions .act-grp{
   margin-left:auto;
+  justify-content:flex-end;
 }
 /* Keep View/Revert tips above the icons so .pl-table-wrap overflow:auto
    does not clip them when the cursor moves (mirrors POS menu / stores). */
@@ -632,8 +660,55 @@ body.su-module .cp-link-btn:hover{background:#EFF6FF}
 body.su-module .cp-link-btn--danger{color:#DC2626}
 body.su-module .cp-link-btn--danger:hover{background:#FEF2F2}
 
-body.su-module .cp-modal-box{width:min(720px,94vw)}
+body.su-module .cp-modal-box{width:min(720px,94vw);overflow:visible}
+body.su-module #cp-clearance-modal .cp-modal-box{
+  overflow:auto;
+  max-height:min(860px, calc(100vh - 48px));
+  display:flex;
+  flex-direction:column;
+}
+body.su-module #cp-clearance-modal .cp-clearance-mode-field{
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+}
+/* Date pinned top-right; payment modes / splits stack full-width below (POS settle layout) */
+body.su-module #cp-clearance-modal .cp-clearance-top{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:start;
+  gap:12px;
+  margin-bottom:8px;
+}
+body.su-module #cp-clearance-modal .cp-clearance-mode-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+  min-height:40px;
+  margin:0;
+  padding-top:2px;
+}
+body.su-module #cp-clearance-modal .cp-clearance-mode-head .staff-supplier-field-label{
+  margin:0;
+}
+body.su-module #cp-clearance-modal .cp-clearance-modes-body{
+  width:100%;
+  margin:0 0 14px;
+  min-width:0;
+}
+body.su-module #cp-clearance-modal .cp-clearance-modes-body .rt-payment-splits{
+  width:100%;
+}
+body.su-module #cp-clearance-modal.is-split-payment .cp-clearance-modes-body{
+  margin-bottom:14px;
+}
 body.su-module .cp-clearance-mode-date-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:start;
+  gap:12px;
   margin-bottom:14px;
 }
 body.su-module .cp-clearance-mode-date-row > .staff-field{
@@ -643,11 +718,271 @@ body.su-module .cp-clearance-mode-date-row > .staff-field{
 body.su-module .cp-clearance-mode-date-row:not(:has(.cp-method-listbox)){
   grid-template-columns:1fr;
 }
+body.su-module .cp-clearance-mode-date-row:not(:has(.cp-method-listbox)) .cp-clearance-date-field{
+  justify-self:end;
+}
+body.su-module .cp-clearance-date-field{
+  width:auto;
+  flex:0 0 auto;
+  justify-self:end;
+  align-self:start;
+  position:relative;
+  z-index:5;
+  margin-bottom:0;
+}
+body.su-module #cp-clearance-modal .cp-clearance-date-chip{
+  width:auto;
+  display:inline-block;
+  max-width:100%;
+  position:relative;
+  z-index:5;
+}
+body.su-module #cp-clearance-modal .cp-clearance-date-chip .hotel-date-control{
+  width:auto;
+  position:relative;
+  z-index:5;
+}
+body.su-module #cp-clearance-modal .cp-clearance-date-chip .hotel-date-trigger{
+  width:auto;
+  min-width:128px;
+  height:40px;
+  min-height:40px;
+  padding:0 16px;
+  border-radius:10px;
+  font:600 13px Inter,system-ui,sans-serif;
+  gap:0;
+  justify-content:center;
+  cursor:pointer;
+  pointer-events:auto;
+  position:relative;
+  z-index:6;
+}
+body.su-module #cp-clearance-modal .cp-clearance-date-chip .hotel-date-caret,
+body.su-module #cp-clearance-modal .cp-clearance-date-chip .hotel-date-cal-icon{
+  display:none;
+}
+body.su-module #cp-clearance-modal .cp-clearance-date-chip .hotel-date-value{
+  flex:0 0 auto;
+  text-align:center;
+}
 body.su-module #cp-clearance-modal .cp-method-listbox{
   width:100%;
 }
 body.su-module #cp-clearance-modal .cp-method-listbox .se-filter-chip-control{
-  min-height:44px;
+  width:100%;
+  min-height:40px;
+  position:relative;
+}
+body.su-module #cp-clearance-modal .cp-method-listbox .se-filter-chip-chev,
+body.su-module #cp-clearance-modal .se-filter-chip-chev,
+body.su-module #cp-clearance-modal .an-range-chev{
+  display:none !important;
+}
+body.su-module #cp-clearance-modal .cp-method-listbox .se-filter-chip-label:empty,
+body.su-module #cp-clearance-modal #cp-payment-method-label:empty{
+  display:none !important;
+}
+body.su-module #cp-clearance-modal .cp-single-method-wrap{
+  width:100%;
+}
+/* Full-width BOR panel below mode/date — keeps the top row stable */
+body.su-module #cp-clearance-modal .cp-bor-receipts{
+  margin:0 0 14px;
+  border:1px solid #E5E7EB;
+  border-radius:12px;
+  background:#fff;
+  overflow:hidden;
+}
+body.su-module #cp-clearance-modal .cp-bor-receipts-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 14px;
+  border-bottom:1px solid #EEF2F7;
+  background:#F8FAFC;
+  font:700 11px Inter,system-ui,sans-serif;
+  letter-spacing:.4px;
+  text-transform:uppercase;
+  color:#64748B;
+}
+body.su-module #cp-clearance-modal .cp-bor-receipts-hint{
+  font:500 11px Inter,system-ui,sans-serif;
+  letter-spacing:0;
+  text-transform:none;
+  color:#94A3B8;
+}
+body.su-module #cp-clearance-modal .cp-bor-receipts-empty{
+  padding:16px 14px;
+  font:500 13px Inter,system-ui,sans-serif;
+  color:#94A3B8;
+}
+body.su-module #cp-clearance-modal .cp-bor-receipts-list{
+  display:flex;
+  flex-direction:column;
+  max-height:min(220px, 28vh);
+  overflow:auto;
+}
+body.su-module #cp-clearance-modal .cp-bor-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 7.5rem 8.5rem;
+  gap:12px;
+  align-items:center;
+  padding:12px 14px;
+  border-bottom:1px solid #EEF2F7;
+  background:#fff;
+}
+body.su-module #cp-clearance-modal .cp-bor-row:last-child{
+  border-bottom:0;
+}
+body.su-module #cp-clearance-modal .cp-bor-check{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  margin:0;
+  min-width:0;
+  cursor:pointer;
+}
+body.su-module #cp-clearance-modal .cp-bor-check input{
+  margin-top:3px;
+  flex:0 0 auto;
+}
+body.su-module #cp-clearance-modal .cp-bor-meta{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  min-width:0;
+  font:500 12px Inter,system-ui,sans-serif;
+  color:#64748B;
+}
+body.su-module #cp-clearance-modal .cp-bor-meta strong{
+  font:700 13px Inter,system-ui,sans-serif;
+  color:#0F172A;
+}
+body.su-module #cp-clearance-modal .cp-bor-pending{
+  font:700 13px Inter,system-ui,sans-serif;
+  color:#2563EB;
+  white-space:nowrap;
+  text-align:right;
+}
+body.su-module #cp-clearance-modal .cp-bor-amount{
+  height:40px;
+  margin:0;
+  width:100%;
+}
+body.su-module #cp-clearance-modal .cp-bor-receipts-total{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 14px;
+  border-top:1px solid #EEF2F7;
+  background:#F8FAFC;
+  font:600 13px Inter,system-ui,sans-serif;
+  color:#334155;
+}
+body.su-module #cp-clearance-modal .cp-bor-receipts-total strong{
+  font-weight:800;
+  color:#0F172A;
+}
+body.su-module #cp-clearance-modal .cp-alloc-wrap{
+  flex:1 1 auto;
+  min-height:0;
+}
+body.su-module #cp-clearance-modal .cp-split-row.is-bor{
+  grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,.85fr) auto;
+}
+body.su-module #cp-clearance-modal .cp-split-row.is-bor.is-multi{
+  grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) minmax(0,.75fr) auto;
+}
+body.su-module #cp-clearance-modal .cp-split-row.is-bor.is-bank{
+  grid-template-columns:minmax(0,1fr) minmax(0,1.05fr) minmax(0,.7fr) minmax(0,1fr) auto;
+}
+body.su-module #cp-clearance-modal .cp-split-method-listbox,
+body.su-module #cp-clearance-modal .cp-split-receipt-listbox{
+  width:100%;
+  min-width:0;
+  margin:0;
+}
+body.su-module #cp-clearance-modal .cp-split-method-listbox .se-filter-chip-control,
+body.su-module #cp-clearance-modal .cp-split-receipt-listbox .se-filter-chip-control{
+  width:100%;
+  min-height:48px;
+  height:48px;
+}
+body.su-module #cp-clearance-modal .cp-split-method-listbox .se-filter-chip-trigger,
+body.su-module #cp-clearance-modal .cp-split-receipt-listbox .se-filter-chip-trigger{
+  height:48px;
+  min-height:48px;
+  padding:0 14px;
+  font:600 13px Inter,system-ui,sans-serif;
+}
+body.su-module #cp-clearance-modal .cp-split-receipt-wrap[hidden]{
+  display:none !important;
+}
+body.su-module #cp-clearance-modal .cp-split-method-listbox .se-filter-listbox,
+body.su-module #cp-clearance-modal .cp-split-receipt-listbox .se-filter-listbox{
+  left:0;
+  right:0;
+  top:calc(100% + 8px);
+  bottom:auto;
+  min-width:100%;
+  z-index:90;
+}
+body.su-module #cp-clearance-modal .cp-split-method-listbox.is-open,
+body.su-module #cp-clearance-modal .cp-split-receipt-listbox.is-open{
+  z-index:95;
+}
+body.su-module #cp-clearance-modal .cp-split-row .cp-split-amount,
+body.su-module #cp-clearance-modal .cp-split-row .cp-split-txn{
+  height:48px;
+  margin:0;
+}
+body.su-module #cp-clearance-modal .rt-split-balance{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:6px;
+  margin:8px 0 0;
+  font:600 12px Inter,system-ui,sans-serif;
+  color:#64748B;
+}
+body.su-module #cp-clearance-modal .rt-split-balance.is-mismatch strong{
+  color:#B91C1C;
+}
+body.su-module #cp-clearance-modal .cp-method-listbox .se-filter-listbox{
+  left:0;
+  right:0;
+  top:calc(100% + 8px);
+  bottom:auto;
+  min-width:100%;
+  z-index:80;
+}
+body.su-module #cp-clearance-modal .cp-method-listbox.is-open{
+  z-index:90;
+}
+@media (max-width:640px){
+  body.su-module .cp-clearance-mode-date-row{
+    grid-template-columns:1fr;
+  }
+  body.su-module .cp-clearance-date-field{
+    justify-self:stretch;
+  }
+  body.su-module .cp-clearance-date-field .hotel-date,
+  body.su-module #cp-clearance-modal .cp-clearance-date-chip,
+  body.su-module #cp-clearance-modal .cp-clearance-date-chip .hotel-date-control,
+  body.su-module #cp-clearance-modal .cp-clearance-date-chip .hotel-date-trigger{
+    width:100%;
+  }
+  body.su-module #cp-clearance-modal .cp-bor-row{
+    grid-template-columns:minmax(0,1fr) auto;
+    grid-template-areas:
+      "check pending"
+      "amount amount";
+  }
+  body.su-module #cp-clearance-modal .cp-bor-check{grid-area:check}
+  body.su-module #cp-clearance-modal .cp-bor-pending{grid-area:pending}
+  body.su-module #cp-clearance-modal .cp-bor-amount{grid-area:amount}
 }
 body.su-module .cp-select-modal-box{width:min(860px,96vw)}
 body.su-module .cp-modal-box .staff-credit-actions{
@@ -805,6 +1140,32 @@ body.su-module .cp-detail-label{
   margin-bottom:2px;
 }
 body.su-module .cp-detail-value{font-weight:700;color:#0F172A}
+body.su-module .cp-detail-splits{
+  margin:0 0 16px;
+  padding:12px 14px;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+  background:#F8FAFC;
+}
+body.su-module .cp-detail-split-list{
+  list-style:none;
+  margin:8px 0 0;
+  padding:0;
+  display:grid;
+  gap:6px;
+}
+body.su-module .cp-detail-split-list li{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  font:600 13px Inter,system-ui,sans-serif;
+  color:#334155;
+}
+body.su-module .cp-detail-split-list strong{
+  font-variant-numeric:tabular-nums;
+  color:#0F172A;
+}
 body.su-module .cp-status-pill{
   display:inline-flex;
   align-items:center;
