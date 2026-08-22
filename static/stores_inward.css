@@ -103,11 +103,11 @@ body.su-module.st-inward-shell .su-header-tools{
   justify-content:flex-end;
   min-width:0;
 }
-/* Match Expense Ledger / Stock header actions */
+/* Match Accounts Approvals header actions (32px) */
 body.su-module.st-inward-shell .su-header-tools .btn{
-  min-height:34px;
-  height:34px;
-  padding:7px 14px;
+  min-height:32px;
+  height:32px;
+  padding:0 14px;
   border-radius:6px;
   font:600 12px/1.2 Inter,system-ui,sans-serif;
   box-sizing:border-box;

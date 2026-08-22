@@ -21,7 +21,7 @@ var PRECACHE = [
   '/static/ep_form_listbox.js?v=66',
   '/static/de_workspace_nav.js?v=46',
   '/static/de_workspace_transitions.js?v=184',
-  '/static/hbe_table_scroll.js?v=7',
+  '/static/hbe_table_scroll.js?v=10',
   '/static/hbe_app_toast.js?v=3',
   '/static/de_pwa.js?v=12',
   '/static/pwa-icon-192.png',

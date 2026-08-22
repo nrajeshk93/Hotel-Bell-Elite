@@ -2714,7 +2714,7 @@
       if (tableTrigger) tableTrigger.focus();
       return;
     }
-    if (orderType === 'dine_in' && !state.invoiceId && tableBlocksNewBill(selectedTableStatus(page))) {
+    if (orderType === 'dine_in' && !sessionOwnsSelectedTable(page) && tableBlocksNewBill(selectedTableStatus(page))) {
       toast('This table is occupied by another order. Choose another table or resume its order from the picker.');
       return;
     }
@@ -2868,7 +2868,7 @@
     /* Same client-side belt as Save/Send to Kitchen — see sendKot() for why
        state.invoiceId exempts a session that already owns this table's order. */
     var orderType = fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
-    if (orderType === 'dine_in' && !state.invoiceId && tableBlocksNewBill(selectedTableStatus(page))) {
+    if (orderType === 'dine_in' && !sessionOwnsSelectedTable(page) && tableBlocksNewBill(selectedTableStatus(page))) {
       toast('This table is occupied by another order. Choose another table or resume its order from the picker.');
       return;
     }
@@ -4578,6 +4578,32 @@
     return '';
   }
 
+  function selectedTableName(page) {
+    return String(
+      fieldValue('pos-inv-table', page) ||
+        state.tableForOrder ||
+        state.resumeTableValue ||
+        ''
+    ).trim();
+  }
+
+  function tableNamesMatch(a, b) {
+    return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  }
+
+  /** True when this session's in-progress order belongs on the selected table.
+   *  Offline saves mark the table occupied locally before invoiceId exists. */
+  function sessionOwnsSelectedTable(page) {
+    if (state.invoiceId) return true;
+    var selected = selectedTableName(page);
+    if (!selected) return false;
+    var bound =
+      String(state.tableForOrder || '').trim() ||
+      String(state.resumeTableValue || '').trim();
+    if (!tableNamesMatch(selected, bound)) return false;
+    return !!(state.lines.length || state.localId || state.orderNo || state.dirty);
+  }
+
   /** Autosave open carts so line edits/deletes survive refresh.
    *  Dine-in needs a table; takeaway/delivery only after a server invoice exists.
    *  Empty carts use softDeleteSavedInvoice instead of POSTing zero lines. */
@@ -4589,7 +4615,7 @@
       fieldValue('pos-inv-order-type-header', page) || fieldValue('pos-inv-order-type', page) || 'dine_in';
     if (orderType === 'dine_in') {
       if (!fieldValue('pos-inv-table', page)) return false;
-      if (!state.invoiceId && tableBlocksNewBill(selectedTableStatus(page))) return false;
+      if (!sessionOwnsSelectedTable(page) && tableBlocksNewBill(selectedTableStatus(page))) return false;
       return true;
     }
     return !!state.invoiceId;
@@ -4768,7 +4794,7 @@
       }
       return Promise.resolve({ ok: false, skipped: true });
     }
-    if (orderType === 'dine_in' && !state.invoiceId && tableBlocksNewBill(selectedTableStatus(page))) {
+    if (orderType === 'dine_in' && !sessionOwnsSelectedTable(page) && tableBlocksNewBill(selectedTableStatus(page))) {
       if (!silent) {
         toast('This table is occupied. Choose another table or resume its order from the picker.');
       }

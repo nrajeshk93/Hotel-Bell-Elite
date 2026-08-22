@@ -57,7 +57,7 @@
     link.rel = 'stylesheet';
     link.setAttribute('data-de-fullscreen-css', '1');
     var script = document.currentScript;
-    link.href = (script && script.getAttribute('data-css')) || '/static/de_fullscreen.css?v=8';
+    link.href = (script && script.getAttribute('data-css')) || '/static/de_fullscreen.css?v=9';
     document.head.appendChild(link);
   }
 

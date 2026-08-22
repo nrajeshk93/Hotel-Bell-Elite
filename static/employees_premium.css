@@ -336,11 +336,12 @@ body.ep-module .content.se-content{
   min-width:0;
 }
 body.ep-module.cd-ledger-page .su-header-tools .btn{
-  height:40px;
-  padding:0 16px;
+  height:32px;
+  min-height:32px;
+  padding:0 14px;
   border-radius:10px;
   font-weight:700;
-  font-size:13px;
+  font-size:12px;
 }
 body.ep-module.cd-ledger-page .su-title p a.su-title-crumb{
   color:#6B7280;
@@ -418,6 +419,15 @@ body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field-li
   overflow:hidden;
   text-overflow:ellipsis;
   white-space:nowrap;
+}
+/* Department combobox — match Month/Year chip text (#111827), not blue placeholder. */
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form #cd-location-listbox.ep-combobox-listbox input.se-filter-chip-combobox{
+  color:#111827;
+  font-weight:600;
+}
+body.ep-module.cd-ledger-page #credits-dashboard-filter-form #cd-location-listbox.ep-combobox-listbox input.se-filter-chip-combobox::placeholder{
+  color:#111827;
+  font-weight:600;
 }
 body.ep-module.cd-ledger-page #credits-dashboard-filter-form .pl-header-field-listbox .se-filter-chip-chev{
   flex-shrink:0;
@@ -541,7 +551,7 @@ body.ep-module .sb-overlay{background:rgba(15,23,42,.32)}
 }
 body.ep-module .su-header-tools .btn{
   display:inline-flex;align-items:center;gap:8px;
-  height:40px;padding:0 16px;border-radius:10px;font-weight:700;font-size:13px;
+  height:32px;min-height:32px;padding:0 14px;border-radius:10px;font-weight:700;font-size:12px;
 }
 
 /* Employee add/edit — Purchase & Expense form language */

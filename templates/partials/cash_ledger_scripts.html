@@ -448,5 +448,21 @@
     var dateTh = table.querySelector('th.pl-sortable[data-sort="date"]');
     if (dateTh) sortBy(dateTh, false);
   })();
+
+  function bindCashLedgerScroll(attempt) {
+    if (typeof window.initHbeTableScroll === 'function') {
+      window.initHbeTableScroll();
+      return;
+    }
+    if ((attempt || 0) < 50) {
+      setTimeout(function () {
+        bindCashLedgerScroll((attempt || 0) + 1);
+      }, 40);
+    }
+  }
+  bindCashLedgerScroll(0);
+  requestAnimationFrame(function () {
+    bindCashLedgerScroll(0);
+  });
 })();
 </script>

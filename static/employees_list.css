@@ -177,6 +177,9 @@
   white-space:nowrap;
   text-align:right;
 }
+:is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table td.pl-col-amount:has(.inline-sal){
+  text-align:center;
+}
 :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table .pl-amount{
   font-weight:700;
   color:var(--txt,#1A202C);
@@ -210,6 +213,7 @@
   font-weight:700;
   color:var(--txt,#1A202C);
   font-variant-numeric:tabular-nums;
+  text-align:center;
 }
 :is(body.ep-module, #md-master-modal .md-master-embed--employee) table.emp-pl-table .inline-sal:focus{
   border-color:#93C5FD;
@@ -269,6 +273,7 @@
   font-weight:800;
   color:var(--txt,#1A202C);
   font-variant-numeric:tabular-nums;
+  text-align:center;
 }
 :is(body.ep-module, #md-master-modal .md-master-embed--employee) .ec-repay-input.inline-sal:focus{
   border-color:#93C5FD;

@@ -125,11 +125,11 @@ body.am-module .am-header > .de-fullscreen-slot--corner,
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  width:40px;
-  height:40px;
+  width:32px;
+  height:32px;
   padding:0;
   border:1px solid #E5E7EB;
-  border-radius:12px;
+  border-radius:10px;
   background:#fff;
   color:#6B7280;
   cursor:pointer;
@@ -150,8 +150,8 @@ body.am-module .am-header > .de-fullscreen-slot--corner,
   cursor:not-allowed;
 }
 .de-fullscreen-btn svg{
-  width:16px;
-  height:16px;
+  width:14px;
+  height:14px;
   stroke:currentColor;
   fill:none;
   stroke-width:2;

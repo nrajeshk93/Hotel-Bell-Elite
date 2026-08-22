@@ -1,6 +1,25 @@
 /* Cash Ledger filters / KPI chrome.
  * Page scroll (header/KPI scroll away) lives in reports_page_scroll.css. */
 
+body.su-module #cash-ledger-page .pl-list-panel.hbe-scroll-panel{
+  display:block;
+  margin-bottom:0;
+}
+body.su-module #cash-ledger-page .hbe-scroll-panel .pl-table-wrap,
+body.su-module #cash-ledger-page .pl-list-panel--scroll .pl-table-wrap{
+  max-height:min(70vh, calc(44px + 14 * 52px));
+  min-height:0;
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+  position:relative;
+}
+@media (max-width:760px){
+  body.su-module #cash-ledger-page .hbe-scroll-panel .pl-table-wrap,
+  body.su-module #cash-ledger-page .pl-list-panel--scroll .pl-table-wrap{
+    max-height:min(65vh, calc(44px + 12 * 52px));
+  }
+}
+
 /* Cash Ledger — same Purchase & Expense KPI card size (do not squeeze 5-up). */
 body.su-module .cl-header-actions{
   display:flex;

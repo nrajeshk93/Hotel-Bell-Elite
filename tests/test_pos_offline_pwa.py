@@ -130,7 +130,15 @@ class AppShellPwaTests(unittest.TestCase):
         self._assert_invoice_offline_assets(html)
         self.assertIn('data-pos-outlet="bar"', html)
 
-    def test_settings_includes_pwa_operator_hint(self):
+    def test_pos_invoice_offline_occupancy_guard_allows_own_session(self):
+        resp = self.client.get("/static/pos_invoice.js")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_data(as_text=True)
+        resp.close()
+        self.assertIn("sessionOwnsSelectedTable", body)
+        self.assertIn("Offline saves mark the table occupied locally", body)
+        self.assertNotIn("!state.invoiceId && tableBlocksNewBill", body)
+
         login = self.client.post(
             "/login",
             data={"username": "admin", "password": "admin"},

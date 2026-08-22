@@ -434,11 +434,7 @@
       banner.removeAttribute('hidden');
       banner.classList.remove('is-error');
       banner.classList.add('is-ok', 'is-visible');
-      var coverage = String(sync.coverage || '').trim();
-      text.textContent =
-        'Last synced from Asia Tech at ' +
-        syncedAt +
-        (coverage ? '. ' + coverage : '');
+      text.textContent = 'Synced from Asia Tech · ' + syncedAt;
       scheduleSyncBannerHide();
       return;
     }
@@ -447,8 +443,7 @@
       banner.removeAttribute('hidden');
       banner.classList.remove('is-error');
       banner.classList.add('is-ok', 'is-visible');
-      text.textContent =
-        String(sync.coverage || '').trim() || 'Last synced from Asia Tech';
+      text.textContent = 'Synced from Asia Tech';
       scheduleSyncBannerHide();
       return;
     }

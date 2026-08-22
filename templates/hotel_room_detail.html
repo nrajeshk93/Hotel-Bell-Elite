@@ -41,7 +41,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=142">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=152">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=8">
 <script>
 (function(){
@@ -60,7 +60,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=29">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_date_picker.css') }}?v=9">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_rooms.css') }}?v=72">
-<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=142">
+<link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_detail.css') }}?v=152">
 <link rel="stylesheet" href="{{ url_for('static', filename='hotel_room_invoice.css') }}?v=8">
 {% endif %}
 
@@ -847,8 +847,16 @@
                 <p class="hrd-charge-summary hrd-extra-bed-summary" id="hrd-ci-extra-bed-summary" hidden></p>
               </div>
               <label class="hrd-check"><input type="checkbox" name="specialRequests" value="Airport Pickup"> Airport Pickup</label>
-              <label class="hrd-check"><input type="checkbox" name="specialRequests" value="Other"> Other</label>
+              <div class="hrd-check-charge hrd-check-other-custom" data-hrd-charge-wrap="otherCustom">
+                <label class="hrd-check">
+                  <input type="checkbox" name="specialRequests" value="Other" id="hrd-ci-other" data-hrd-other-toggle>
+                  Other
+                </label>
+                <button type="button" class="hrd-charge-edit" id="hrd-ci-other-add" hidden data-hrd-other-add>Add charge</button>
+                <div class="hrd-ci-nightly-list hrd-other-charge-list" id="hrd-ci-other-list" role="list" hidden aria-label="Other special request charges"></div>
+              </div>
             </div>
+            <input type="hidden" name="otherCustomChargesJson" id="hrd-ci-other-charges-json" value="[]">
             <input type="hidden" name="earlyCheckinQty" id="hrd-ci-early-checkin-qty" value="">
             <input type="hidden" name="earlyCheckinRate" id="hrd-ci-early-checkin-rate" value="">
             <input type="hidden" name="earlyCheckinNights" id="hrd-ci-early-checkin-nights" value="">
@@ -924,6 +932,55 @@
     <footer class="hrd-dialog-foot">
       <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-special-charge-close>Cancel</button>
       <button type="submit" form="hrd-special-charge-form" class="hrd-btn hrd-btn--primary" id="hrd-special-charge-save">Save Charge</button>
+    </footer>
+  </div>
+</div>
+
+{# Other special-request charges (topic + date + qty + rate) #}
+<div class="hrd-dialog-overlay hrd-dialog-overlay--nested" id="hrd-other-charge-modal" hidden aria-hidden="true">
+  <div class="hrd-dialog hrd-dialog--other-charge" role="dialog" aria-modal="true" aria-labelledby="hrd-other-charge-title">
+    <header class="hrd-dialog-head">
+      <div class="hrd-dialog-head-main">
+        <span class="hrd-dialog-icon hrd-dialog-icon--rupee" aria-hidden="true">₹</span>
+        <div>
+          <h2 id="hrd-other-charge-title">Other Special Request</h2>
+        </div>
+      </div>
+      <button type="button" class="hrd-modal-close" aria-label="Close" data-hrd-other-charge-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </header>
+    <form class="hrd-dialog-body" id="hrd-other-charge-form" novalidate>
+      <input type="hidden" name="editIndex" id="hrd-other-charge-edit-index" value="">
+      <div class="hrd-form-grid hrd-form-grid--2 hrd-other-charge-grid">
+        <div class="hrd-other-charge-top-row">
+          <label class="hrd-field">
+            <span>Topic <em>*</em></span>
+            <input type="text" name="topic" id="hrd-other-charge-topic" maxlength="120" placeholder="e.g. Laundry, Spa, Damage" required autocomplete="off">
+          </label>
+          <div class="hrd-field hrd-other-service-date-wrap">
+            {{ hotel_date_field('otherServiceDate', 'Date', required=true, field_id='hrd-other-service-date', extra_class='hrd-date-chip', panel_title='Date', show_cal_icon=false, show_caret=false, hint='') }}
+          </div>
+        </div>
+        <div class="hrd-other-charge-metrics-row">
+          <label class="hrd-field">
+            <span>Quantity <em>*</em></span>
+            <input type="number" name="qty" id="hrd-other-charge-qty" min="1" step="1" value="1" required>
+          </label>
+          <label class="hrd-field">
+            <span>Price (₹) <em>*</em></span>
+            <span class="hrd-input-affix"><span>₹</span><input type="number" name="rate" id="hrd-other-charge-rate" min="0" step="0.01" value="0" required></span>
+          </label>
+          <label class="hrd-field">
+            <span>Total</span>
+            <span class="hrd-input-affix"><span>₹</span><input type="number" name="amount" id="hrd-other-charge-amount" min="0" step="0.01" value="0" readonly></span>
+          </label>
+        </div>
+      </div>
+    </form>
+    <footer class="hrd-dialog-foot">
+      <button type="button" class="hrd-btn hrd-btn--outline" data-hrd-other-charge-close>Cancel</button>
+      <button type="submit" form="hrd-other-charge-form" class="hrd-btn hrd-btn--primary" id="hrd-other-charge-save">Save</button>
     </footer>
   </div>
 </div>
@@ -1259,8 +1316,8 @@
 
 <script src="{{ url_for('static', filename='ep_form_listbox.js') }}?v=67"></script>
 <script src="{{ url_for('static', filename='hotel_date_picker.js') }}?v=9"></script>
-<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=24"></script>
-<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=194"></script>
+<script src="{{ url_for('static', filename='hotel_room_invoice.js') }}?v=25"></script>
+<script src="{{ url_for('static', filename='hotel_room_detail.js') }}?v=199"></script>
 {% include 'partials/de_workspace_shell_close.html' %}
 {% if not is_partial_main %}
 </body>

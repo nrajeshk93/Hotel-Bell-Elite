@@ -121,7 +121,27 @@
           ? 'Restaurant Room Transfer'
           : '';
     var stored = String((item && item.label) || '').trim();
-    if (!base) return stored || 'Other Charge';
+    if (!base) {
+      var dateIso = String(
+        (item && (item.serviceDate || item.service_date)) || ''
+      ).trim();
+      var dateLabel = '';
+      if (dateIso && dateIso.length >= 10) {
+        try {
+          var parts = dateIso.slice(0, 10).split('-');
+          var d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+          dateLabel = d.toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: '2-digit'
+          });
+        } catch (err) {
+          dateLabel = dateIso.slice(0, 10);
+        }
+      }
+      var label = stored || 'Other Charge';
+      return dateLabel ? label + ' · ' + dateLabel : label;
+    }
     var invoiceNo = String(
       (item &&
         (item.orderNo ||

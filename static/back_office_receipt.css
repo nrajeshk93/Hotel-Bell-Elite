@@ -1,34 +1,11 @@
 /* Back Office Receipt ledger — purchase/expense-aligned chrome */
 
-/* Header actions — Export / Add receipt / fullscreen share one control size */
+/* Header actions layout (button sizing: sales_update_premium.css) */
 #back-office-receipt-page .bor-header-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-}
-
-#back-office-receipt-page .bor-header-actions .btn {
-  box-sizing: border-box;
-  height: 40px;
-  min-height: 40px;
-  min-width: 7.5rem;
-  padding: 0 14px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  white-space: nowrap;
-}
-
-#back-office-receipt-page .bor-header-actions .de-fullscreen-btn,
-#back-office-receipt-page .bor-header-actions .de-fullscreen-slot .de-fullscreen-btn {
-  align-self: center;
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
-  min-height: 40px;
-  padding: 0;
 }
 
 .bor-filter-form {

@@ -22,8 +22,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=26">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
@@ -76,8 +76,8 @@
 {% include 'partials/de_workspace_shell_open.html' %}
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=26">
-<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=16">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_premium.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='employees_list.css') }}?v=17">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_table_scroll.css') }}?v=2">
 <link rel="stylesheet" href="{{ url_for('static', filename='hbe_kpi.css') }}?v=13">
@@ -110,10 +110,7 @@
       </div>
     </div>
     <div class="su-header-tools">
-      <a href="{{ url_for('export_attendance_register', year=sel_year, month=sel_month, location=sel_location|default('')) }}" class="btn btn-primary">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Register
-      </a>
+      <a href="{{ url_for('export_attendance_register', year=sel_year, month=sel_month, location=sel_location|default('')) }}" class="btn btn-primary">Export</a>
     </div>
   </div>
   <div class="se-sales-header-card">
@@ -667,10 +664,7 @@
     </div>
     <div class="su-header-tools">
       {% if has_payroll_access('employee') %}
-      <a href="{{ url_for('add_employee') }}" class="btn btn-primary">
-        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Add Employee
-      </a>
+      <a href="{{ url_for('add_employee') }}" class="btn btn-primary">Add Employee</a>
       {% endif %}
     </div>
   </div>

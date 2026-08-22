@@ -1556,11 +1556,12 @@
 
   function syncKpiSelection(root) {
     var current = statusFilterValue(root) || 'all';
-    var occupiedCard = root.querySelector('.pos-kpi[data-kpi="occupied"]');
-    if (!occupiedCard) return;
-    var active = current === 'occupied';
-    occupiedCard.classList.toggle('is-active', active);
-    occupiedCard.setAttribute('aria-pressed', active ? 'true' : 'false');
+    $all('.pos-kpi[data-kpi="total"], .pos-kpi[data-kpi="occupied"]', root).forEach(function (card) {
+      var key = card.getAttribute('data-kpi') || '';
+      var active = key === 'total' ? current === 'all' : key === current;
+      card.classList.toggle('is-active', active);
+      card.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
   }
 
   function setStatusFilter(root, key) {
@@ -2244,26 +2245,30 @@
   }
 
   function bindKpiFilters(root) {
-    var occupiedKpi = root.querySelector('.pos-kpi[data-kpi="occupied"]');
-    if (!occupiedKpi || occupiedKpi.getAttribute('data-filter-bound') === '1') return;
-    occupiedKpi.setAttribute('data-filter-bound', '1');
-    occupiedKpi.setAttribute('role', 'button');
-    occupiedKpi.setAttribute('tabindex', '0');
-    occupiedKpi.setAttribute('aria-pressed', 'false');
-    occupiedKpi.setAttribute('title', 'Filter occupied tables');
-    function toggleOccupiedFilter() {
+    function bindFilterKpi(card, onActivate) {
+      if (!card || card.getAttribute('data-filter-bound') === '1') return;
+      card.setAttribute('data-filter-bound', '1');
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.addEventListener('click', function (event) {
+        event.preventDefault();
+        onActivate();
+      });
+      card.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        onActivate();
+      });
+    }
+
+    bindFilterKpi(root.querySelector('.pos-kpi[data-kpi="total"]'), function () {
+      setStatusFilter(root, 'all');
+    });
+    bindFilterKpi(root.querySelector('.pos-kpi[data-kpi="occupied"]'), function () {
       var current = statusFilterValue(root);
       setStatusFilter(root, current === 'occupied' ? 'all' : 'occupied');
-    }
-    occupiedKpi.addEventListener('click', function (event) {
-      event.preventDefault();
-      toggleOccupiedFilter();
     });
-    occupiedKpi.addEventListener('keydown', function (event) {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      toggleOccupiedFilter();
-    });
+    syncKpiSelection(root);
   }
 
   function paintTablesPage(root, data) {

@@ -95,11 +95,11 @@ body.su-module.st-indent-shell .su-header-tools{
   max-width:100%;
 }
 
-/* Match Supplier Master .btn / .btn-primary header actions (~34px) */
+/* Match Accounts Approvals header actions (32px) */
 body.su-module.st-indent-shell .su-header-tools .btn{
-  min-height:34px;
-  height:34px;
-  padding:7px 14px;
+  min-height:32px;
+  height:32px;
+  padding:0 14px;
   border-radius:6px;
   font:600 12px/1.2 Inter,system-ui,sans-serif;
   box-sizing:border-box;
@@ -158,7 +158,7 @@ body.su-module.st-indent-shell .su-header-tools .de-fullscreen-btn{
   }
 }
 
-/* Fullscreen control uses shared de-fullscreen-btn size (40px), same as Purchase Ledger */
+/* Fullscreen control uses shared de-fullscreen-btn size (32px) via de_fullscreen.css */
 
 /* Page stack */
 body.su-module .st-indent-page{

@@ -13,7 +13,22 @@
     if (!el) return;
     var text = String(msg || '').trim();
     el.hidden = !text;
+    el.style.display = text ? 'block' : 'none';
     el.textContent = text;
+  }
+
+  function syncFileName(page) {
+    var fileInput = $('#ch-promo-file', page);
+    var nameEl = $('#ch-promo-file-name', page);
+    if (!nameEl) return;
+    var file = fileInput && fileInput.files && fileInput.files[0];
+    if (file) {
+      nameEl.textContent = file.name;
+      nameEl.classList.add('has-file');
+    } else {
+      nameEl.textContent = 'No file chosen';
+      nameEl.classList.remove('has-file');
+    }
   }
 
   function selectedTemplate() {
@@ -27,6 +42,105 @@
       if (t.name === name && t.language === language) return t;
     }
     return null;
+  }
+
+  function templateListboxRoot(page) {
+    return (
+      (page && page.querySelector('#ch-promo-template-listbox')) ||
+      document.getElementById('ch-promo-template-listbox')
+    );
+  }
+
+  function templateOptionsWrap(page) {
+    var root = templateListboxRoot(page);
+    if (!root) return null;
+    var list =
+      (root.__epPortaledList && root.__epPortaledList.isConnected
+        ? root.__epPortaledList
+        : null) || root.querySelector('.se-filter-listbox');
+    if (!list) return null;
+    return list.querySelector('.ep-listbox-options') || list;
+  }
+
+  function setTemplateListboxValue(page, value, label) {
+    if (typeof global.resetEpListbox === 'function') {
+      global.resetEpListbox('ch-promo-template', value || '', label || 'Select a template…');
+      return;
+    }
+    var hidden = $('#ch-promo-template', page);
+    if (hidden) hidden.value = value || '';
+    var root = templateListboxRoot(page);
+    if (!root) return;
+    var trigger = root.querySelector('.se-filter-chip-trigger');
+    if (trigger) {
+      if (trigger.tagName === 'INPUT') {
+        trigger.value = value ? label : '';
+        trigger.classList.toggle('is-placeholder', !value);
+        trigger.placeholder = label || 'Select a template…';
+      } else {
+        var display = trigger.querySelector('.se-filter-chip-value');
+        if (display) {
+          display.textContent = label || 'Select a template…';
+          display.classList.toggle('is-placeholder', !value);
+        }
+      }
+    }
+  }
+
+  function fillTemplateSelect(page, templates, errorMsg) {
+    var optionsWrap = templateOptionsWrap(page);
+    if (!optionsWrap) return;
+    loadedTemplates = templates || [];
+    optionsWrap.textContent = '';
+
+    var placeholderLabel = errorMsg
+      ? errorMsg
+      : loadedTemplates.length
+        ? 'Select a template…'
+        : 'No approved templates found';
+
+    if (!errorMsg) {
+      loadedTemplates.forEach(function (t) {
+        var value = t.name + '::' + t.language;
+        var label = t.name + ' (' + t.language + ')';
+        if (!t.sendable) label += ' — not supported';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'se-filter-listbox-option';
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('data-value', value);
+        btn.setAttribute('data-name', label.toLowerCase());
+        btn.setAttribute('data-label', label);
+        btn.setAttribute('aria-selected', 'false');
+        btn.textContent = label;
+        optionsWrap.appendChild(btn);
+      });
+    }
+
+    setTemplateListboxValue(page, '', placeholderLabel);
+    updateTemplateMeta(page);
+  }
+
+  async function loadTemplates(page, force) {
+    var url = page.getAttribute('data-templates-url') || '';
+    if (!url) return;
+    if (force) url += (url.indexOf('?') >= 0 ? '&' : '?') + 'refresh=1';
+    setTemplateListboxValue(page, '', 'Loading templates…');
+    try {
+      var res = await fetch(url, { credentials: 'same-origin' });
+      var data = await res.json();
+      if (!res.ok || !data.ok) {
+        fillTemplateSelect(
+          page,
+          [],
+          (data && data.error) || 'Could not load templates'
+        );
+        return;
+      }
+      fillTemplateSelect(page, data.templates || [], '');
+    } catch (err) {
+      fillTemplateSelect(page, [], 'Network error loading templates');
+    }
   }
 
   function updateTemplateMeta(page) {
@@ -70,65 +184,6 @@
       previewRows.length > 0 &&
       sendBtn.getAttribute('data-sending') !== '1';
     sendBtn.disabled = !ready;
-  }
-
-  function fillTemplateSelect(page, templates, errorMsg) {
-    var sel = $('#ch-promo-template', page);
-    if (!sel) return;
-    loadedTemplates = templates || [];
-    sel.textContent = '';
-    if (errorMsg) {
-      var errOpt = document.createElement('option');
-      errOpt.value = '';
-      errOpt.textContent = errorMsg;
-      sel.appendChild(errOpt);
-      updateTemplateMeta(page);
-      return;
-    }
-    var placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = loadedTemplates.length
-      ? 'Select a template…'
-      : 'No approved templates found';
-    sel.appendChild(placeholder);
-    loadedTemplates.forEach(function (t) {
-      var opt = document.createElement('option');
-      opt.value = t.name + '::' + t.language;
-      var label = t.name + ' (' + t.language + ')';
-      if (!t.sendable) label += ' — not supported';
-      opt.textContent = label;
-      sel.appendChild(opt);
-    });
-    updateTemplateMeta(page);
-  }
-
-  async function loadTemplates(page, force) {
-    var url = page.getAttribute('data-templates-url') || '';
-    if (!url) return;
-    if (force) url += (url.indexOf('?') >= 0 ? '&' : '?') + 'refresh=1';
-    var sel = $('#ch-promo-template', page);
-    if (sel) {
-      sel.textContent = '';
-      var loading = document.createElement('option');
-      loading.value = '';
-      loading.textContent = 'Loading templates…';
-      sel.appendChild(loading);
-    }
-    try {
-      var res = await fetch(url, { credentials: 'same-origin' });
-      var data = await res.json();
-      if (!res.ok || !data.ok) {
-        fillTemplateSelect(
-          page,
-          [],
-          (data && data.error) || 'Could not load templates'
-        );
-        return;
-      }
-      fillTemplateSelect(page, data.templates || [], '');
-    } catch (err) {
-      fillTemplateSelect(page, [], 'Network error loading templates');
-    }
   }
 
   function renderPreview(page, payload) {
@@ -178,6 +233,7 @@
     var fileInput = $('#ch-promo-file', page);
     var url = page.getAttribute('data-preview-url') || '';
     showError(errEl, '');
+    syncFileName(page);
     previewRows = [];
     syncSendEnabled(page);
     if (!fileInput || !fileInput.files || !fileInput.files[0]) {
@@ -297,14 +353,13 @@
     if (!page) return;
 
     previewRows = [];
+    if (typeof global.initEpListboxes === 'function') {
+      try {
+        global.initEpListboxes();
+      } catch (err) {}
+    }
     loadTemplates(page, false);
 
-    var sel = $('#ch-promo-template', page);
-    if (sel) {
-      sel.addEventListener('change', function () {
-        updateTemplateMeta(page);
-      }, { signal: signal });
-    }
     var fileInput = $('#ch-promo-file', page);
     if (fileInput) {
       fileInput.addEventListener('change', function () {
@@ -324,6 +379,11 @@
       }, { signal: signal });
     }
   }
+
+  global.chPromoTemplateChanged = function () {
+    var page = document.getElementById('ch-promotion-page');
+    if (page) updateTemplateMeta(page);
+  };
 
   global.initPromotionPage = initPromotionPage;
   global.initCommunicationHubPromotionPage = initPromotionPage;

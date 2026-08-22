@@ -1971,6 +1971,62 @@ class HotelRoomsTests(unittest.TestCase):
         labels = [f.get("label") for f in removed.get_json()["room"]["stay"]["folioCharges"]]
         self.assertNotIn("Laundry service", labels)
 
+    def test_checkin_other_special_folio_charges(self):
+        check_in, check_out = self._stay_window(nights=2)
+        night2 = (datetime.fromisoformat(check_in).date() + timedelta(days=1)).isoformat()
+        res = self.client.put(
+            "/hotel/api/rooms/room-101",
+            json={
+                "action": "checkin",
+                "stay": {
+                    "firstName": "Custom",
+                    "lastName": "Charges",
+                    "mobile": "9000000123",
+                    "checkInDate": check_in,
+                    "checkOutDate": check_out,
+                    "nights": 2,
+                    "roomRate": 2500,
+                    "specialRequests": ["Other"],
+                    "folioCharges": [
+                        {
+                            "id": "fc111",
+                            "kind": "other",
+                            "source": "checkin_special",
+                            "label": "Laundry",
+                            "serviceDate": check_in,
+                            "qty": 2,
+                            "rate": 200,
+                            "amount": 400,
+                        },
+                        {
+                            "id": "fc222",
+                            "kind": "other",
+                            "source": "checkin_special",
+                            "label": "Spa",
+                            "serviceDate": night2,
+                            "qty": 1,
+                            "rate": 1500,
+                            "amount": 1500,
+                        },
+                    ],
+                },
+            },
+        )
+        self.assertEqual(res.status_code, 200, res.get_data(as_text=True))
+        stay = res.get_json()["room"]["stay"]
+        folio = stay["folioCharges"]
+        self.assertEqual(len(folio), 2)
+        laundry = next(f for f in folio if f.get("label") == "Laundry")
+        spa = next(f for f in folio if f.get("label") == "Spa")
+        self.assertEqual(laundry["serviceDate"], check_in)
+        self.assertEqual(laundry["qty"], 2)
+        self.assertEqual(laundry["rate"], 200)
+        self.assertEqual(laundry["amount"], 400)
+        self.assertEqual(spa["serviceDate"], night2)
+        self.assertEqual(spa["amount"], 1500)
+        self.assertIn("Other", stay.get("specialRequests") or [])
+        self.assertEqual(stay["estimatedTotal"], 6900.0)
+
     def test_update_room_rate_propagates_to_nightly_rates(self):
         """Editing Rate ₹/night must rewrite booked nightlyRates, not only roomRate."""
         check_in, check_out = self._stay_window(nights=2)

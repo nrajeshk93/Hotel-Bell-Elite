@@ -718,6 +718,10 @@ body.hotel-room-detail-module .de-content{
   flex:1 1 auto;
   min-width:0;
   margin:0;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;
+  word-break:break-word;
 }
 .hrd-id-extra-row .hrd-link-btn{
   flex:0 0 auto;
@@ -871,14 +875,16 @@ body.hotel-room-detail-module .de-content{
 #hrd-id-card .hrd-dl--id-row > div{
   min-width:0;
 }
+#hrd-id-card .hrd-dl--id-row dt,
 #hrd-id-card .hrd-dl--id-row dd{
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;
+  word-break:break-word;
 }
 #hrd-id-card .hrd-id-doc-link{
-  display:block;
-  max-width:100%;
+  display:inline;
+  max-width:none;
   margin:0;
   padding:0;
   border:0;
@@ -888,9 +894,10 @@ body.hotel-room-detail-module .de-content{
   text-align:left;
   text-decoration:underline;
   text-underline-offset:2px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  overflow:visible;
+  text-overflow:clip;
+  white-space:normal;
+  word-break:break-word;
   cursor:pointer;
 }
 #hrd-id-card .hrd-id-doc-link:hover{
@@ -3033,6 +3040,153 @@ body.hrd-checkin-open{overflow:hidden}
   margin:0;
   font:600 12px/1.35 Inter,system-ui,sans-serif;
   color:#475569;
+}
+.hrd-check-other-custom{
+  grid-column:1 / -1;
+}
+.hrd-other-charge-list{
+  width:100%;
+  margin-top:8px;
+}
+.hrd-other-charge-row{
+  background:#F8FAFC;
+  border-color:#E2E8F0;
+}
+.hrd-other-charge-row .hrd-other-charge-topic-label{
+  text-transform:none;
+  letter-spacing:.01em;
+  font:700 14px Inter,system-ui,sans-serif;
+  color:#0F172A;
+}
+.hrd-other-charge-row.is-collapsed{
+  gap:0;
+  padding:10px 14px;
+}
+.hrd-other-charge-row:not(.is-collapsed) .hrd-ci-nightly-summary{
+  display:none;
+}
+.hrd-other-charge-row:not(.is-collapsed) .hrd-ci-nightly-chev{
+  transform:rotate(180deg);
+  color:#64748B;
+}
+.hrd-other-charge-fields{
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+}
+.hrd-other-charge-detail-topic{
+  grid-column:1 / -1;
+}
+.hrd-other-charge-readonly{
+  display:block;
+  min-height:44px;
+  padding:9px 12px;
+  border:1px solid #E2E8F0;
+  border-radius:12px;
+  background:#fff;
+  font:600 14px Inter,system-ui,sans-serif;
+  color:#0F172A;
+  box-sizing:border-box;
+}
+.hrd-other-charge-actions{
+  grid-column:1 / -1;
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  padding-top:2px;
+}
+.hrd-other-charge-action{
+  margin:0;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:#2563EB;
+  font:600 12px Inter,system-ui,sans-serif;
+  cursor:pointer;
+}
+.hrd-other-charge-action:hover{color:#1D4ED8;text-decoration:underline}
+.hrd-other-charge-action--danger{color:#DC2626}
+.hrd-other-charge-action--danger:hover{color:#B91C1C}
+@media (max-width:640px){
+  .hrd-other-charge-fields{
+    grid-template-columns:1fr;
+  }
+}
+.hrd-other-service-date-wrap .hotel-date{
+  width:auto;
+}
+.hrd-dialog--other-charge{
+  width:min(640px, calc(100vw - 32px));
+}
+.hrd-dialog--other-charge .hrd-dialog-head{
+  align-items:center;
+  padding:18px 20px;
+}
+.hrd-dialog--other-charge .hrd-dialog-head-main{
+  align-items:center;
+  gap:14px;
+  flex:1;
+  min-width:0;
+}
+.hrd-dialog--other-charge .hrd-dialog-head-main > div{
+  display:flex;
+  align-items:center;
+  min-width:0;
+  flex:1;
+}
+.hrd-dialog--other-charge .hrd-dialog-head h2{
+  display:flex;
+  align-items:center;
+  min-height:42px;
+  line-height:1.25;
+}
+#hrd-other-charge-modal .hrd-other-charge-grid{
+  align-items:end;
+}
+#hrd-other-charge-modal .hrd-other-charge-top-row{
+  grid-column:1 / -1;
+  display:flex;
+  align-items:flex-end;
+  gap:12px;
+  min-width:0;
+}
+#hrd-other-charge-modal .hrd-other-charge-top-row > .hrd-field:first-child{
+  flex:1 1 auto;
+  min-width:0;
+}
+#hrd-other-charge-modal .hrd-other-service-date-wrap{
+  flex:0 0 auto;
+  margin-left:auto;
+  min-width:0;
+  width:max-content;
+  max-width:100%;
+}
+#hrd-other-charge-modal .hrd-other-service-date-wrap .hotel-date,
+#hrd-other-charge-modal .hrd-other-service-date-wrap .hotel-date-control{
+  width:auto;
+}
+#hrd-other-charge-modal .hrd-other-service-date-wrap .hotel-date-trigger{
+  width:auto;
+  justify-content:flex-start;
+  padding:0 14px;
+}
+#hrd-other-charge-modal .hrd-other-service-date-wrap .hotel-date-value{
+  flex:0 0 auto;
+  text-align:left;
+}
+#hrd-other-charge-modal .hrd-other-service-date-wrap .hotel-date-label{
+  display:block;
+  margin-bottom:6px;
+}
+#hrd-other-charge-modal .hrd-other-charge-metrics-row{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:minmax(72px, 0.85fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap:12px;
+  align-items:end;
+}
+@media (max-width:560px){
+  #hrd-other-charge-modal .hrd-other-charge-metrics-row{
+    grid-template-columns:1fr;
+  }
 }
 .hrd-dialog-overlay--nested{
   z-index:11200;

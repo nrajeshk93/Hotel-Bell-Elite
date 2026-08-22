@@ -312,7 +312,7 @@
       btn.setAttribute('data-hrd-id-view', '1');
       btn.setAttribute('data-id-path', path);
       btn.setAttribute('aria-label', 'View ' + text);
-      btn.title = 'View Guest ID';
+      btn.title = text;
       btn.textContent = text;
       dd.appendChild(btn);
       return;
@@ -3624,7 +3624,7 @@
     var hiddenPlan = form.elements.ratePlan || $('#hrd-ci-rate-plan', form);
     if (hiddenPlan) hiddenPlan.value = primaryMergeRatePlan(form) || '';
     var advance = Math.max(0, Number(form.advancePaid.value || 0));
-    var extras = specialChargeExtrasTotal(form);
+    var extras = specialChargeExtrasTotal(form) + otherCustomChargesTotal(form);
     var total = Math.round((rateSum + extras) * 100) / 100;
     var balance = Math.max(0, Math.round((total - advance) * 100) / 100);
     form.totalRate.value = String(total);
@@ -4601,6 +4601,329 @@
     saveSpecialCharge(root);
   }
 
+  var OTHER_CHARGE_SOURCE = 'checkin_special';
+
+  function readOtherCustomCharges(form) {
+    var el = form && ($('#hrd-ci-other-charges-json', form) || form.elements.otherCustomChargesJson);
+    if (!el) return [];
+    try {
+      var raw = JSON.parse(el.value || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function writeOtherCustomCharges(form, list) {
+    var el = form && ($('#hrd-ci-other-charges-json', form) || form.elements.otherCustomChargesJson);
+    if (!el) return;
+    el.value = JSON.stringify(Array.isArray(list) ? list : []);
+  }
+
+  function otherCustomChargesTotal(form) {
+    return readOtherCustomCharges(form).reduce(function (sum, row) {
+      return sum + Math.max(0, Number(row.amount || 0));
+    }, 0);
+  }
+
+  function otherChargeRowSummaryText(charge) {
+    if (!charge) return '';
+    var qty = Math.max(1, Number(charge.qty || 1));
+    var rate = Math.max(0, Number(charge.rate || 0));
+    var amount = Math.max(0, Number(charge.amount || qty * rate));
+    return moneyText(amount);
+  }
+
+  function otherChargeRowHtml(row, idx) {
+    var topic = String(row.topic || row.label || '').trim();
+    var dateLabel = formatNightDateLabel(row.serviceDate);
+    var qty = Math.max(1, Number(row.qty || 1));
+    var rate = Math.max(0, Number(row.rate || 0));
+    var amount = Math.max(0, Number(row.amount || qty * rate));
+    return (
+      '<div class="hrd-ci-nightly-row hrd-other-charge-row is-collapsed" role="listitem" data-other-charge-index="' +
+      idx +
+      '">' +
+      '<button type="button" class="hrd-ci-nightly-date" data-other-charge-toggle aria-expanded="false">' +
+      '<div class="hrd-ci-nightly-date-main">' +
+      '<span class="hrd-ci-nightly-date-label hrd-other-charge-topic-label">' +
+      escapeHtml(topic || 'Other') +
+      '</span>' +
+      '<strong>' +
+      escapeHtml(dateLabel || '—') +
+      '</strong>' +
+      '</div>' +
+      '<span class="hrd-ci-nightly-summary">' +
+      escapeHtml(otherChargeRowSummaryText(row)) +
+      '</span>' +
+      '<span class="hrd-ci-nightly-lock">' +
+      escapeHtml(qty + ' × ' + moneyText(rate)) +
+      '</span>' +
+      nightlyToggleChevHtml() +
+      '</button>' +
+      '<div class="hrd-ci-nightly-fields hrd-other-charge-fields">' +
+      '<label class="hrd-field hrd-other-charge-detail-topic">' +
+      '<span>Topic</span>' +
+      '<span class="hrd-other-charge-readonly">' +
+      escapeHtml(topic || '—') +
+      '</span></label>' +
+      '<label class="hrd-field"><span>Quantity</span><span class="hrd-other-charge-readonly">' +
+      escapeHtml(String(qty)) +
+      '</span></label>' +
+      '<label class="hrd-field"><span>Price</span><span class="hrd-other-charge-readonly">' +
+      escapeHtml(moneyText(rate)) +
+      '</span></label>' +
+      '<label class="hrd-field"><span>Total</span><span class="hrd-other-charge-readonly">' +
+      escapeHtml(moneyText(amount)) +
+      '</span></label>' +
+      '<div class="hrd-other-charge-actions">' +
+      '<button type="button" class="hrd-other-charge-action" data-hrd-other-edit="' +
+      idx +
+      '">Edit</button>' +
+      '<button type="button" class="hrd-other-charge-action hrd-other-charge-action--danger" data-hrd-other-remove="' +
+      idx +
+      '">Remove</button>' +
+      '</div></div></div>'
+    );
+  }
+
+  function newOtherChargeId() {
+    return 'fc' + String(Math.abs((Date.now() + Math.random() * 1e6) | 0)).slice(0, 8);
+  }
+
+  function folioLinesFromOtherCharges(list) {
+    return (list || []).map(function (row) {
+      var qty = Math.max(1, Number(row.qty || 1));
+      var rate = Math.max(0, Number(row.rate || 0));
+      var amount = Math.round(qty * rate * 100) / 100;
+      return {
+        id: row.id || newOtherChargeId(),
+        kind: 'other',
+        source: OTHER_CHARGE_SOURCE,
+        label: String(row.topic || row.label || 'Other Charge').trim().slice(0, 120) || 'Other Charge',
+        serviceDate: String(row.serviceDate || '').slice(0, 10),
+        qty: qty,
+        rate: rate,
+        amount: amount,
+        note: '',
+        settled: false
+      };
+    }).filter(function (line) {
+      return line.amount > 0 && line.label;
+    });
+  }
+
+  function attachFolioChargesToStay(stay, form) {
+    if (!stay || !form) return stay;
+    var prev = (lastRoom && lastRoom.stay && lastRoom.stay.folioCharges) || [];
+    var editing = form.getAttribute('data-edit-mode') === '1';
+    var kept = editing
+      ? prev.filter(function (line) {
+          return String((line && line.source) || '') !== OTHER_CHARGE_SOURCE;
+        })
+      : [];
+    stay.folioCharges = kept.concat(folioLinesFromOtherCharges(readOtherCustomCharges(form)));
+    return stay;
+  }
+
+  function syncOtherChargeUi(form) {
+    if (!form) return;
+    var list = readOtherCustomCharges(form);
+    var otherBox = $('#hrd-ci-other', form);
+    var addBtn = $('#hrd-ci-other-add', form);
+    var listEl = $('#hrd-ci-other-list', form);
+    if (otherBox && list.length > 0) otherBox.checked = true;
+    if (addBtn) addBtn.hidden = !(otherBox && otherBox.checked);
+    if (listEl) listEl.hidden = !list.length;
+  }
+
+  function renderOtherChargeList(form) {
+    if (!form) return;
+    var listEl = $('#hrd-ci-other-list', form);
+    if (!listEl) return;
+    var list = readOtherCustomCharges(form);
+    listEl.innerHTML = list.map(otherChargeRowHtml).join('');
+    syncOtherChargeUi(form);
+  }
+
+  function clearOtherCustomCharges(form) {
+    if (!form) return;
+    writeOtherCustomCharges(form, []);
+    var otherBox = $('#hrd-ci-other', form);
+    if (otherBox) otherBox.checked = false;
+    renderOtherChargeList(form);
+    syncTotals(form);
+  }
+
+  function restoreOtherChargesFromFolio(form, stay) {
+    if (!form) return;
+    var folio = Array.isArray(stay && stay.folioCharges) ? stay.folioCharges : [];
+    var others = folio
+      .filter(function (line) {
+        return String((line && line.source) || '') === OTHER_CHARGE_SOURCE;
+      })
+      .map(function (line) {
+        var qty = Math.max(1, Number(line.qty || 1));
+        var rate = Math.max(0, Number(line.rate || 0));
+        var amount = Math.max(0, Number(line.amount || qty * rate));
+        return {
+          id: line.id || newOtherChargeId(),
+          topic: String(line.label || '').trim(),
+          serviceDate: String(line.serviceDate || '').slice(0, 10),
+          qty: qty,
+          rate: rate || (qty ? amount / qty : amount),
+          amount: amount
+        };
+      });
+    writeOtherCustomCharges(form, others);
+    var otherBox = $('#hrd-ci-other', form);
+    if (otherBox) otherBox.checked = others.length > 0;
+    renderOtherChargeList(form);
+  }
+
+  function otherChargeStayWindow(form) {
+    var checkIn =
+      (form.checkInDate && form.checkInDate.value) ||
+      (form.elements.checkInDate && form.elements.checkInDate.value) ||
+      todayISO();
+    var checkOut =
+      (form.checkOutDate && form.checkOutDate.value) ||
+      (form.elements.checkOutDate && form.elements.checkOutDate.value) ||
+      addDaysISO(checkIn, 1);
+    var min = checkIn || todayISO();
+    var max = addDaysISO(checkOut, -1);
+    if (max < min) max = min;
+    return { min: min, max: max };
+  }
+
+  function syncOtherChargeDialogAmount(dialogForm) {
+    if (!dialogForm) return;
+    var qty = Math.max(1, Number(dialogForm.elements.qty.value || 1));
+    var rate = Math.max(0, Number(dialogForm.elements.rate.value || 0));
+    dialogForm.elements.amount.value = String(Math.round(qty * rate * 100) / 100);
+  }
+
+  function applyOtherChargeDateBounds(root, form) {
+    var win = otherChargeStayWindow(form);
+    var chip = root && $('#hrd-other-service-date-chip', root);
+    if (!chip) return;
+    chip.setAttribute('data-min-date', win.min);
+    chip.setAttribute('data-max-date', win.max);
+  }
+
+  function openOtherChargeModal(root, opts) {
+    opts = opts || {};
+    root = root || pageRoot();
+    var modal = root && $('#hrd-other-charge-modal', root);
+    var checkinForm = root && $('#hrd-checkin-form', root);
+    var dialogForm = root && $('#hrd-other-charge-form', root);
+    if (!modal || !dialogForm || !checkinForm) return;
+    var editIndex =
+      opts.editIndex != null && opts.editIndex !== '' ? Number(opts.editIndex) : -1;
+    var list = readOtherCustomCharges(checkinForm);
+    var existing = editIndex >= 0 && list[editIndex] ? list[editIndex] : null;
+    var win = otherChargeStayWindow(checkinForm);
+    applyOtherChargeDateBounds(root, checkinForm);
+    dialogForm.elements.editIndex.value = editIndex >= 0 ? String(editIndex) : '';
+    dialogForm.elements.topic.value = existing ? existing.topic || existing.label || '' : '';
+    dialogForm.elements.qty.value = String(existing ? existing.qty || 1 : 1);
+    dialogForm.elements.rate.value = String(existing ? existing.rate || 0 : 0);
+    var seedDate =
+      (existing && existing.serviceDate) || win.min || todayISO();
+    if (seedDate < win.min) seedDate = win.min;
+    if (seedDate > win.max) seedDate = win.max;
+    setFormDate(dialogForm, 'otherServiceDate', seedDate);
+    syncOtherChargeDialogAmount(dialogForm);
+    var titleEl = $('#hrd-other-charge-title', modal);
+    if (titleEl) titleEl.textContent = existing ? 'Edit Other Charge' : 'Other Special Request';
+    modal._hrdOpenedFromCheck = !!opts.fromCheck;
+    modal.hidden = false;
+    modal.removeAttribute('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    if (typeof global.initHotelDatePickers === 'function') {
+      global.initHotelDatePickers(modal);
+    }
+    setTimeout(function () {
+      var topicInput = dialogForm.elements.topic;
+      if (topicInput) {
+        topicInput.focus();
+        if (typeof topicInput.select === 'function') topicInput.select();
+      }
+    }, 40);
+  }
+
+  function closeOtherChargeModal(root, opts) {
+    opts = opts || {};
+    root = root || pageRoot();
+    var modal = root && $('#hrd-other-charge-modal', root);
+    if (!modal || modal.hidden) return;
+    var checkinForm = root && $('#hrd-checkin-form', root);
+    var openedFromCheck = !!modal._hrdOpenedFromCheck;
+    modal.hidden = true;
+    modal.setAttribute('hidden', '');
+    modal.setAttribute('aria-hidden', 'true');
+    modal._hrdOpenedFromCheck = false;
+    if (opts.cancel && openedFromCheck && checkinForm) {
+      var list = readOtherCustomCharges(checkinForm);
+      var otherBox = $('#hrd-ci-other', checkinForm);
+      if (!list.length && otherBox) otherBox.checked = false;
+      syncOtherChargeUi(checkinForm);
+    }
+  }
+
+  function saveOtherChargeModal(root) {
+    root = root || pageRoot();
+    var checkinForm = root && $('#hrd-checkin-form', root);
+    var dialogForm = root && $('#hrd-other-charge-form', root);
+    if (!checkinForm || !dialogForm) return;
+    var topic = String(dialogForm.elements.topic.value || '').trim();
+    var serviceDate = String(
+      (dialogForm.elements.otherServiceDate && dialogForm.elements.otherServiceDate.value) ||
+        ''
+    ).trim();
+    var qty = Math.max(1, Number(dialogForm.elements.qty.value || 1));
+    var rate = Math.max(0, Number(dialogForm.elements.rate.value || 0));
+    var win = otherChargeStayWindow(checkinForm);
+    if (!topic) {
+      showToast('Enter a topic for this charge.', true);
+      return;
+    }
+    if (!serviceDate) {
+      showToast('Select a service date.', true);
+      return;
+    }
+    if (serviceDate < win.min || serviceDate > win.max) {
+      showToast('Service date must be within the stay.', true);
+      return;
+    }
+    if (!(rate > 0)) {
+      showToast('Enter a price greater than zero.', true);
+      return;
+    }
+    var amount = Math.round(qty * rate * 100) / 100;
+    var editIndexRaw = String(dialogForm.elements.editIndex.value || '').trim();
+    var editIndex = editIndexRaw === '' ? -1 : Number(editIndexRaw);
+    var list = readOtherCustomCharges(checkinForm).slice();
+    var row = {
+      id: editIndex >= 0 && list[editIndex] && list[editIndex].id ? list[editIndex].id : newOtherChargeId(),
+      topic: topic,
+      serviceDate: serviceDate,
+      qty: qty,
+      rate: rate,
+      amount: amount
+    };
+    if (editIndex >= 0 && editIndex < list.length) list[editIndex] = row;
+    else list.push(row);
+    writeOtherCustomCharges(checkinForm, list);
+    var otherBox = $('#hrd-ci-other', checkinForm);
+    if (otherBox) otherBox.checked = true;
+    renderOtherChargeList(checkinForm);
+    closeOtherChargeModal(root);
+    syncTotals(checkinForm);
+    showToast(editIndex >= 0 ? 'Other charge updated.' : 'Other charge added.');
+    scheduleCheckinDraftSave(root, checkinForm);
+  }
+
   function resetListbox(fieldId, value, label) {
     if (typeof global.resetEpListbox === 'function') {
       global.resetEpListbox(fieldId, value, label);
@@ -4892,20 +5215,39 @@
     }
   }
 
-  function writeCheckinDraft(root, stay, meta) {
+  function checkinDraftMetaFromForm(form) {
+    if (!form) return { edit: false, idOnly: false };
+    return {
+      edit: form.getAttribute('data-edit-mode') === '1',
+      idOnly: form.getAttribute('data-id-only') === '1'
+    };
+  }
+
+  function mergeCheckinDraftMeta(meta, form) {
+    meta = meta || {};
+    var fromForm = checkinDraftMetaFromForm(form);
+    return {
+      open:
+        meta.open != null
+          ? !!meta.open
+          : document.body.classList.contains('hrd-checkin-open'),
+      edit: meta.edit != null ? !!meta.edit : fromForm.edit,
+      idOnly: meta.idOnly != null ? !!meta.idOnly : fromForm.idOnly
+    };
+  }
+
+  function writeCheckinDraft(root, stay, meta, form) {
     var key = checkinDraftKey(root);
     if (!key || !stay) return;
-    meta = meta || {};
-    var open =
-      meta.open != null
-        ? !!meta.open
-        : document.body.classList.contains('hrd-checkin-open');
+    var merged = mergeCheckinDraftMeta(meta, form);
     try {
       sessionStorage.setItem(
         key,
         JSON.stringify({
           savedAt: Date.now(),
-          open: open,
+          open: merged.open,
+          edit: merged.edit,
+          idOnly: merged.idOnly,
           stay: stay
         })
       );
@@ -4931,7 +5273,12 @@
       checkinDraftTimer = null;
       if (checkinDraftApplying) return;
       try {
-        writeCheckinDraft(root, collectStay(form), { open: true });
+        writeCheckinDraft(
+          root,
+          attachFolioChargesToStay(collectStay(form), form),
+          { open: true },
+          form
+        );
       } catch (err) {}
     }, 280);
   }
@@ -5077,6 +5424,8 @@
           note: stay.extraBedNote || ''
         });
       }
+
+      restoreOtherChargesFromFolio(form, stay);
 
       syncAgencyBillingHint(form);
       syncTotals(form);
@@ -7139,7 +7488,7 @@
         scheduleFormFieldAutosize(form);
         syncTotals(form);
         try {
-          writeCheckinDraft(root, collectStay(form), { open: true });
+          writeCheckinDraft(root, collectStay(form), { open: true }, form);
         } catch (err) {}
       })
       .catch(function () {});
@@ -7247,6 +7596,7 @@
     if (form.elements.agencyAddress) form.elements.agencyAddress.value = '';
     clearFormAgencyBillFlags(form);
     clearAllSpecialCharges(form);
+    clearOtherCustomCharges(form);
     clearIdDocumentFields(form);
     clearExtraGuests(form);
     bindAgencyBilling(form);
@@ -7308,19 +7658,23 @@
     bindDateChipPickers(modal);
 
     if (staySource) {
-      applyStayDraft(form, !editing ? stripStayMealPlans(staySource) : staySource);
+      var resumeDraft = readCheckinDraft(root);
+      if (editing && resumeDraft && resumeDraft.open && resumeDraft.stay) {
+        applyStayDraft(form, resumeDraft.stay);
+      } else {
+        applyStayDraft(form, !editing ? stripStayMealPlans(staySource) : staySource);
+        var editDraft = readCheckinDraft(root);
+        if (editDraft && editDraft.open && editDraft.stay) {
+          if (editDraft.stay.checkOutTime) {
+            setFormTime(form, 'checkOutTime', editDraft.stay.checkOutTime);
+          }
+          if (editDraft.stay.checkInTime) {
+            setFormTime(form, 'checkInTime', editDraft.stay.checkInTime);
+          }
+        }
+      }
       if (staySource.bookingNumber && form.bookingNumber) {
         form.bookingNumber.value = staySource.bookingNumber;
-      }
-      /* Keep in-progress time edits from an open draft (edit mode skips full draft). */
-      var editDraft = readCheckinDraft(root);
-      if (editDraft && editDraft.open && editDraft.stay) {
-        if (editDraft.stay.checkOutTime) {
-          setFormTime(form, 'checkOutTime', editDraft.stay.checkOutTime);
-        }
-        if (editDraft.stay.checkInTime) {
-          setFormTime(form, 'checkInTime', editDraft.stay.checkInTime);
-        }
       }
     } else {
       var draft = readCheckinDraft(root);
@@ -7416,7 +7770,7 @@
     document.body.classList.add('hrd-checkin-open');
     scheduleFormFieldAutosize(form);
     try {
-      writeCheckinDraft(root, collectStay(form), { open: true });
+      writeCheckinDraft(root, collectStay(form), { open: true, edit: editing, idOnly: !!opts.idOnly }, form);
     } catch (err) {}
     if (global.deFullscreen && typeof global.deFullscreen.reinit === 'function') {
       global.deFullscreen.reinit();
@@ -7464,7 +7818,7 @@
     }
     if (checkinDraftApplying || !root || !form) return;
     try {
-      writeCheckinDraft(root, collectStay(form), meta || { open: true });
+      writeCheckinDraft(root, collectStay(form), meta || { open: true }, form);
     } catch (err) {}
   }
 
@@ -9197,7 +9551,6 @@
       stay.reservationId = prev.reservationId || stay.reservationId || '';
       stay.reservationBookingId =
         prev.reservationBookingId || stay.reservationBookingId || '';
-      stay.folioCharges = Array.isArray(prev.folioCharges) ? prev.folioCharges : [];
       stay.checkedInAt = prev.checkedInAt || '';
       stay.transferCount = prev.transferCount || 0;
       stay.transferHistory = Array.isArray(prev.transferHistory)
@@ -9209,6 +9562,7 @@
         stay.idDocumentMime = stay.idDocumentMime || prev.idDocumentMime || '';
       }
     }
+    attachFolioChargesToStay(stay, form);
     if (!stay.firstName || !stay.lastName) {
       showToast('First name and last name are required.', true);
       return Promise.reject(new Error('validation'));
@@ -9395,6 +9749,58 @@
       return;
     }
 
+    var otherChargeClose = event.target.closest('[data-hrd-other-charge-close]');
+    if (otherChargeClose && root.contains(otherChargeClose)) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeOtherChargeModal(root, { cancel: true });
+      return;
+    }
+
+    var otherAddBtn = event.target.closest('[data-hrd-other-add]');
+    if (otherAddBtn && root.contains(otherAddBtn)) {
+      event.preventDefault();
+      event.stopPropagation();
+      openOtherChargeModal(root, { fromCheck: false });
+      return;
+    }
+
+    var otherEditBtn = event.target.closest('[data-hrd-other-edit]');
+    if (otherEditBtn && root.contains(otherEditBtn)) {
+      event.preventDefault();
+      event.stopPropagation();
+      var editIdx = otherEditBtn.getAttribute('data-hrd-other-edit');
+      openOtherChargeModal(root, { editIndex: editIdx, fromCheck: false });
+      return;
+    }
+
+    var otherRemoveBtn = event.target.closest('[data-hrd-other-remove]');
+    if (otherRemoveBtn && root.contains(otherRemoveBtn)) {
+      event.preventDefault();
+      event.stopPropagation();
+      var removeIdx = Number(otherRemoveBtn.getAttribute('data-hrd-other-remove'));
+      var checkinFormOther = $('#hrd-checkin-form', root);
+      if (checkinFormOther && !isNaN(removeIdx)) {
+        var otherList = readOtherCustomCharges(checkinFormOther).slice();
+        if (removeIdx >= 0 && removeIdx < otherList.length) {
+          otherList.splice(removeIdx, 1);
+          writeOtherCustomCharges(checkinFormOther, otherList);
+          renderOtherChargeList(checkinFormOther);
+          syncTotals(checkinFormOther);
+          scheduleCheckinDraftSave(root, checkinFormOther);
+        }
+      }
+      return;
+    }
+
+    var otherChargeModal = $('#hrd-other-charge-modal', root);
+    if (otherChargeModal && !otherChargeModal.hidden && event.target === otherChargeModal) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeOtherChargeModal(root, { cancel: true });
+      return;
+    }
+
     var specialChargeEdit = event.target.closest('[data-hrd-special-charge-edit]');
     if (specialChargeEdit && root.contains(specialChargeEdit)) {
       event.preventDefault();
@@ -9431,6 +9837,18 @@
         if (nowCollapsed) nightRow.removeAttribute('data-user-expanded');
         else nightRow.setAttribute('data-user-expanded', '1');
         refreshNightlyRowSummary(nightRow);
+      }
+      return;
+    }
+
+    var otherChargeToggle = event.target.closest('[data-other-charge-toggle]');
+    if (otherChargeToggle && root.contains(otherChargeToggle)) {
+      event.preventDefault();
+      event.stopPropagation();
+      var chargeRow = otherChargeToggle.closest('.hrd-other-charge-row');
+      if (chargeRow) {
+        var chargeCollapsed = chargeRow.classList.toggle('is-collapsed');
+        otherChargeToggle.setAttribute('aria-expanded', chargeCollapsed ? 'false' : 'true');
       }
       return;
     }
@@ -9958,6 +10376,12 @@
         closeSpecialChargeModal(root, { cancel: true });
         return;
       }
+      var otherChargeModal = $('#hrd-other-charge-modal', root);
+      if (otherChargeModal && !otherChargeModal.hidden) {
+        event.preventDefault();
+        closeOtherChargeModal(root, { cancel: true });
+        return;
+      }
       var transferModal = $('#hrd-transfer-modal', root);
       if (transferModal && !transferModal.hidden) {
         event.preventDefault();
@@ -10026,6 +10450,14 @@
       var scName = event.target.name;
       if (scName === 'qty' || scName === 'rate' || scName === 'nights') {
         syncSpecialChargeDialogAmount(specialChargeForm);
+      }
+      return;
+    }
+    var otherChargeForm = $('#hrd-other-charge-form', root);
+    if (otherChargeForm && otherChargeForm.contains(event.target)) {
+      var ocName = event.target.name;
+      if (ocName === 'qty' || ocName === 'rate') {
+        syncOtherChargeDialogAmount(otherChargeForm);
       }
       return;
     }
@@ -10105,6 +10537,25 @@
         clearSpecialCharge(form, kind);
       }
     }
+    if (event.target.matches('[data-hrd-other-toggle]')) {
+      if (event.target.checked) {
+        openOtherChargeModal(root, { fromCheck: true });
+      } else {
+        var otherList = readOtherCustomCharges(form);
+        if (otherList.length) {
+          var ok = true;
+          try {
+            ok = window.confirm('Remove all other special request charges?');
+          } catch (err) {}
+          if (!ok) {
+            event.target.checked = true;
+            return;
+          }
+          clearOtherCustomCharges(form);
+        }
+        scheduleCheckinDraftSave(root, form);
+      }
+    }
     if (
       event.target.getAttribute('data-merge-rate-plan') != null ||
       event.target.getAttribute('data-merge-room-rate') != null
@@ -10129,6 +10580,13 @@
       event.preventDefault();
       event.stopPropagation();
       saveSpecialCharge(root);
+      return;
+    }
+    var otherChargeForm = $('#hrd-other-charge-form', root);
+    if (otherChargeForm && event.target === otherChargeForm) {
+      event.preventDefault();
+      event.stopPropagation();
+      saveOtherChargeModal(root);
       return;
     }
     var transferForm = $('#hrd-transfer-form', root);
@@ -10219,6 +10677,31 @@
       });
     }
     document.__hotelRoomDetailDocBound = true;
+  }
+
+  function maybeRestoreCheckinDraft(root) {
+    var pendingDraft = readCheckinDraft(root);
+    if (!pendingDraft || !pendingDraft.open) return;
+
+    var status = mapStatus(root.getAttribute('data-room-status'));
+    var editing = !!pendingDraft.edit;
+    var idOnly = !!pendingDraft.idOnly;
+
+    if (editing || idOnly) {
+      if (status !== 'occupied' && status !== 'dirty') return;
+      if (!(lastRoom && lastRoom.stay)) return;
+      openCheckinModal(root, { edit: true, idOnly: idOnly });
+      return;
+    }
+
+    if (status === 'occupied' || status === 'dirty') {
+      if (lastRoom && lastRoom.stay) {
+        openCheckinModal(root, { edit: true });
+      }
+      return;
+    }
+
+    openCheckinModal(root);
   }
 
   function consumeExtendStayQuery() {
@@ -10340,16 +10823,7 @@
       });
     }
     loadRoomIfNeeded(root, function () {
-      /* Refresh / soft-nav: restore open check-in sheet after room stay is loaded. */
-      var pendingDraft = readCheckinDraft(root);
-      if (
-        pendingDraft &&
-        pendingDraft.open &&
-        mapStatus(root.getAttribute('data-room-status')) !== 'occupied' &&
-        mapStatus(root.getAttribute('data-room-status')) !== 'dirty'
-      ) {
-        openCheckinModal(root);
-      }
+      maybeRestoreCheckinDraft(root);
     });
   }
 

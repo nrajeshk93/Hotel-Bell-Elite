@@ -110,11 +110,55 @@ body.su-module .su-header-tools{
   flex:0 0 auto;flex-wrap:nowrap;margin-left:auto;
   max-width:100%;min-width:0;justify-content:flex-end;
 }
-body.su-module .su-header-tools .btn{
+body.su-module .su-header-tools .btn,
+body.su-module .cl-header-actions .btn,
+body.su-module .bor-header-actions .btn,
+body.su-module .hotel-rooms-header-actions .btn,
+body.su-module .hotel-reservations-header-actions .btn,
+body.su-module .pos-menu-header-actions .btn,
+body.su-module .pos-tables-header-actions .btn,
+body.su-module .pos-inv-header-actions .btn,
+body.su-module .pos-set-header-actions .btn,
+body.su-module .ch-header-tools .btn{
+  box-sizing:border-box;
+  height:32px;
+  min-height:32px;
+  padding:0 14px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
   white-space:nowrap;
   flex-shrink:0;
 }
-body.su-module .su-header-tools .de-fullscreen-btn{
+body.su-module .su-header-tools .btn svg,
+body.su-module .cl-header-actions .btn svg,
+body.su-module .bor-header-actions .btn svg,
+body.su-module .hotel-rooms-header-actions .btn svg,
+body.su-module .hotel-reservations-header-actions .btn svg,
+body.su-module .pos-menu-header-actions .btn svg,
+body.su-module .pos-tables-header-actions .btn svg,
+body.su-module .pos-inv-header-actions .btn svg,
+body.su-module .pos-set-header-actions .btn svg,
+body.su-module .ch-header-tools .btn svg{
+  width:14px;
+  height:14px;
+  flex-shrink:0;
+  stroke:currentColor;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+body.su-module .su-header-tools .de-fullscreen-btn,
+body.su-module .cl-header-actions .de-fullscreen-btn,
+body.su-module .bor-header-actions .de-fullscreen-btn,
+body.su-module .hotel-rooms-header-actions .de-fullscreen-btn,
+body.su-module .hotel-reservations-header-actions .de-fullscreen-btn,
+body.su-module .pos-menu-header-actions .de-fullscreen-btn,
+body.su-module .pos-tables-header-actions .de-fullscreen-btn,
+body.su-module .pos-inv-header-actions .de-fullscreen-btn,
+body.su-module .pos-set-header-actions .de-fullscreen-btn,
+body.su-module .ch-header-tools .de-fullscreen-btn{
   flex-shrink:0;
   align-self:flex-end;
 }

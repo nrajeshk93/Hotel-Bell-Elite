@@ -92,7 +92,7 @@ class HotelReservationsTests(unittest.TestCase):
         self.assertIn("hres-date-from", html)
         self.assertIn("hres-date-to", html)
         self.assertIn("sales_date_range.js", html)
-        self.assertIn("hotel_reservations.js?v=47", html)
+        self.assertIn("hotel_reservations.js?v=48", html)
         self.assertIn('id="hres-edit-guest-title"', html)
         self.assertIn("hres-edit-dialog", html)
         self.assertNotIn("hres-edit-source-listbox", html)

@@ -32,6 +32,8 @@
   var activeKeyWrap = null;
   var keyNavBound = false;
   var wheelNavBound = false;
+  var edgeBindings = [];
+  var globalEdgePointerBound = false;
 
   function isEditableTarget(target) {
     if (!target || !target.closest) return false;
@@ -183,155 +185,208 @@
     );
   }
 
-  function bindEdgeScroll(wrap) {
-    if (!wrap || wrap.__hbeEdgeScrollBound) return;
-    wrap.__hbeEdgeScrollBound = true;
-    bindKeyboardScroll(wrap);
-
-    var dirX = 0;
-    var dirY = 0;
-    var speedX = 0;
-    var speedY = 0;
-    var raf = 0;
-    var panel = wrap.closest(PANEL_SELECTOR);
-
-    function maxScrollLeft() {
-      return Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+  function stopEdgeBinding(binding) {
+    if (!binding) return;
+    binding.dirX = 0;
+    binding.dirY = 0;
+    binding.speedX = 0;
+    binding.speedY = 0;
+    if (binding.wrap) {
+      binding.wrap.classList.remove.apply(binding.wrap.classList, CUE_CLASSES.split(' '));
     }
-
-    function maxScrollTop() {
-      return Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+    if (binding.raf) {
+      cancelAnimationFrame(binding.raf);
+      binding.raf = 0;
     }
+  }
 
-    function edgeSize(size) {
-      return Math.max(EDGE_MIN, Math.min(EDGE_MAX, Math.round(size * EDGE_RATIO)));
-    }
+  function pruneEdgeBindings() {
+    edgeBindings = edgeBindings.filter(function (binding) {
+      if (!binding.wrap || !binding.wrap.isConnected) {
+        stopEdgeBinding(binding);
+        return false;
+      }
+      return true;
+    });
+  }
 
-    function syncCues() {
-      wrap.classList.toggle('is-edge-scroll-left', dirX < 0);
-      wrap.classList.toggle('is-edge-scroll-right', dirX > 0);
-      wrap.classList.toggle('is-edge-scroll-top', dirY < 0);
-      wrap.classList.toggle('is-edge-scroll-bottom', dirY > 0);
-    }
+  function syncEdgeCues(binding) {
+    var wrap = binding.wrap;
+    wrap.classList.toggle('is-edge-scroll-left', binding.dirX < 0);
+    wrap.classList.toggle('is-edge-scroll-right', binding.dirX > 0);
+    wrap.classList.toggle('is-edge-scroll-top', binding.dirY < 0);
+    wrap.classList.toggle('is-edge-scroll-bottom', binding.dirY > 0);
+  }
 
-    function tick() {
-      raf = 0;
-      if ((!dirX || !speedX) && (!dirY || !speedY)) return;
-      var maxX = maxScrollLeft();
-      var maxY = maxScrollTop();
-      if (dirX && speedX) {
-        wrap.scrollLeft = Math.max(0, Math.min(maxX, wrap.scrollLeft + dirX * speedX));
-        if ((dirX < 0 && wrap.scrollLeft <= 0) || (dirX > 0 && wrap.scrollLeft >= maxX)) {
-          dirX = 0;
-          speedX = 0;
-        }
-      }
-      if (dirY && speedY) {
-        wrap.scrollTop = Math.max(0, Math.min(maxY, wrap.scrollTop + dirY * speedY));
-        if ((dirY < 0 && wrap.scrollTop <= 0) || (dirY > 0 && wrap.scrollTop >= maxY)) {
-          dirY = 0;
-          speedY = 0;
-        }
-      }
-      syncCues();
-      if ((dirX && speedX) || (dirY && speedY)) raf = requestAnimationFrame(tick);
-    }
-
-    function stop() {
-      dirX = 0;
-      dirY = 0;
-      speedX = 0;
-      speedY = 0;
-      wrap.classList.remove.apply(wrap.classList, CUE_CLASSES.split(' '));
-      if (raf) {
-        cancelAnimationFrame(raf);
-        raf = 0;
-      }
-    }
-
-    function onMove(e) {
-      var maxX = maxScrollLeft();
-      var maxY = maxScrollTop();
-      if (maxX <= 1 && maxY <= 1) {
-        stop();
-        return;
-      }
-      var rect = wrap.getBoundingClientRect();
-      if (
-        e.clientX < rect.left ||
-        e.clientX > rect.right ||
-        e.clientY < rect.top ||
-        e.clientY > rect.bottom
-      ) {
-        stop();
-        return;
-      }
-      activeKeyWrap = wrap;
-      var x = e.clientX - rect.left;
-      var y = e.clientY - rect.top;
-      var width = rect.width || 1;
-      var height = rect.height || 1;
-      var edgeX = edgeSize(width);
-      var edgeY = edgeSize(height);
-      var nextDirX = 0;
-      var nextSpeedX = 0;
-      var nextDirY = 0;
-      var nextSpeedY = 0;
-
-      if (maxX > 1) {
-        if (x >= width - edgeX) {
-          nextDirX = 1;
-          nextSpeedX = Math.max(2, Math.ceil(MAX_SPEED * ((x - (width - edgeX)) / edgeX)));
-        } else if (x <= edgeX) {
-          nextDirX = -1;
-          nextSpeedX = Math.max(2, Math.ceil(MAX_SPEED * ((edgeX - x) / edgeX)));
-        }
-      }
-      if (maxY > 1) {
-        if (y >= height - edgeY) {
-          nextDirY = 1;
-          nextSpeedY = Math.max(2, Math.ceil(MAX_SPEED * ((y - (height - edgeY)) / edgeY)));
-        } else if (y <= edgeY) {
-          nextDirY = -1;
-          nextSpeedY = Math.max(2, Math.ceil(MAX_SPEED * ((edgeY - y) / edgeY)));
-        }
-      }
-
-      dirX = nextDirX;
-      speedX = nextSpeedX;
-      dirY = nextDirY;
-      speedY = nextSpeedY;
-      syncCues();
-      if ((dirX || dirY) && !raf) raf = requestAnimationFrame(tick);
-      if (!dirX && !dirY && raf) {
-        cancelAnimationFrame(raf);
-        raf = 0;
-      }
-    }
-
-    wrap.addEventListener('mousemove', onMove, true);
-    wrap.addEventListener('mouseleave', stop);
-    wrap.addEventListener('blur', stop);
-    if (panel && !panel.__hbeEdgeScrollProxyBound) {
-      panel.__hbeEdgeScrollProxyBound = true;
-      panel.addEventListener(
-        'mousemove',
-        function (e) {
-          if (!wrap.isConnected) return;
-          onMove(e);
-        },
-        true
+  function edgeTick(binding) {
+    binding.raf = 0;
+    var wrap = binding.wrap;
+    if ((!binding.dirX || !binding.speedX) && (!binding.dirY || !binding.speedY)) return;
+    var maxX = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+    var maxY = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+    if (binding.dirX && binding.speedX) {
+      wrap.scrollLeft = Math.max(
+        0,
+        Math.min(maxX, wrap.scrollLeft + binding.dirX * binding.speedX)
       );
-      panel.addEventListener('mouseleave', stop);
-      panel.addEventListener('mouseenter', function () {
-        activeKeyWrap = wrap;
+      if (
+        (binding.dirX < 0 && wrap.scrollLeft <= 0) ||
+        (binding.dirX > 0 && wrap.scrollLeft >= maxX)
+      ) {
+        binding.dirX = 0;
+        binding.speedX = 0;
+      }
+    }
+    if (binding.dirY && binding.speedY) {
+      wrap.scrollTop = Math.max(
+        0,
+        Math.min(maxY, wrap.scrollTop + binding.dirY * binding.speedY)
+      );
+      if (
+        (binding.dirY < 0 && wrap.scrollTop <= 0) ||
+        (binding.dirY > 0 && wrap.scrollTop >= maxY)
+      ) {
+        binding.dirY = 0;
+        binding.speedY = 0;
+      }
+    }
+    syncEdgeCues(binding);
+    if ((binding.dirX && binding.speedX) || (binding.dirY && binding.speedY)) {
+      binding.raf = requestAnimationFrame(function () {
+        edgeTick(binding);
       });
     }
+  }
+
+  function handleEdgePointerMove(binding, e) {
+    var wrap = binding.wrap;
+    var panel = binding.panel || wrap;
+    var maxX = Math.max(0, wrap.scrollWidth - wrap.clientWidth);
+    var maxY = Math.max(0, wrap.scrollHeight - wrap.clientHeight);
+    if (maxX <= 1 && maxY <= 1) {
+      stopEdgeBinding(binding);
+      return;
+    }
+    var wrapRect = wrap.getBoundingClientRect();
+    var panelRect = panel.getBoundingClientRect();
+    if (
+      e.clientX < panelRect.left ||
+      e.clientX > panelRect.right ||
+      e.clientY < panelRect.top ||
+      e.clientY > panelRect.bottom
+    ) {
+      stopEdgeBinding(binding);
+      return;
+    }
+    activeKeyWrap = wrap;
+    var x = e.clientX - wrapRect.left;
+    var y = e.clientY - panelRect.top;
+    var width = wrapRect.width || 1;
+    var height = panelRect.height || 1;
+    var edgeX = Math.max(EDGE_MIN, Math.min(EDGE_MAX, Math.round(width * EDGE_RATIO)));
+    var edgeY = Math.max(EDGE_MIN, Math.min(EDGE_MAX, Math.round(height * EDGE_RATIO)));
+    var nextDirX = 0;
+    var nextSpeedX = 0;
+    var nextDirY = 0;
+    var nextSpeedY = 0;
+
+    if (maxX > 1) {
+      if (x >= width - edgeX) {
+        nextDirX = 1;
+        nextSpeedX = Math.max(2, Math.ceil(MAX_SPEED * ((x - (width - edgeX)) / edgeX)));
+      } else if (x <= edgeX) {
+        nextDirX = -1;
+        nextSpeedX = Math.max(2, Math.ceil(MAX_SPEED * ((edgeX - x) / edgeX)));
+      }
+    }
+    if (maxY > 1) {
+      if (y >= height - edgeY) {
+        nextDirY = 1;
+        nextSpeedY = Math.max(2, Math.ceil(MAX_SPEED * ((y - (height - edgeY)) / edgeY)));
+      } else if (y <= edgeY) {
+        nextDirY = -1;
+        nextSpeedY = Math.max(2, Math.ceil(MAX_SPEED * ((edgeY - y) / edgeY)));
+      }
+    }
+
+    binding.dirX = nextDirX;
+    binding.speedX = nextSpeedX;
+    binding.dirY = nextDirY;
+    binding.speedY = nextSpeedY;
+    syncEdgeCues(binding);
+    if ((binding.dirX || binding.dirY) && !binding.raf) {
+      binding.raf = requestAnimationFrame(function () {
+        edgeTick(binding);
+      });
+    }
+    if (!binding.dirX && !binding.dirY && binding.raf) {
+      cancelAnimationFrame(binding.raf);
+      binding.raf = 0;
+    }
+  }
+
+  function bindGlobalEdgePointer() {
+    if (globalEdgePointerBound) return;
+    globalEdgePointerBound = true;
+    document.addEventListener(
+      'pointermove',
+      function (e) {
+        if (e.pointerType === 'touch') return;
+        pruneEdgeBindings();
+        var hit = null;
+        for (var i = edgeBindings.length - 1; i >= 0; i--) {
+          var binding = edgeBindings[i];
+          var panel = binding.panel || binding.wrap;
+          var rect = panel.getBoundingClientRect();
+          if (
+            e.clientX >= rect.left &&
+            e.clientX <= rect.right &&
+            e.clientY >= rect.top &&
+            e.clientY <= rect.bottom
+          ) {
+            hit = binding;
+            break;
+          }
+        }
+        edgeBindings.forEach(function (binding) {
+          if (binding !== hit) stopEdgeBinding(binding);
+        });
+        if (hit) handleEdgePointerMove(hit, e);
+      },
+      true
+    );
+  }
+
+  function bindEdgeScroll(wrap) {
+    if (!wrap) return;
+    pruneEdgeBindings();
+    for (var i = 0; i < edgeBindings.length; i++) {
+      if (edgeBindings[i].wrap === wrap) return;
+    }
+    bindKeyboardScroll(wrap);
+    var binding = {
+      wrap: wrap,
+      panel: wrap.closest(PANEL_SELECTOR),
+      dirX: 0,
+      dirY: 0,
+      speedX: 0,
+      speedY: 0,
+      raf: 0,
+    };
+    edgeBindings.push(binding);
+    bindGlobalEdgePointer();
+    wrap.addEventListener('mouseenter', function () {
+      activeKeyWrap = wrap;
+    });
+    wrap.addEventListener('blur', function () {
+      stopEdgeBinding(binding);
+    });
   }
 
   function initHbeTableScroll() {
     bindGlobalKeyNav();
     bindGlobalWheelNav();
+    pruneEdgeBindings();
     document.querySelectorAll(SELECTOR).forEach(bindEdgeScroll);
   }
 

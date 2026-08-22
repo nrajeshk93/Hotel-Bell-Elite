@@ -102,18 +102,20 @@ body.pos-module .de-main-inner.pos-tables-page{
   display:inline-flex;
   align-items:center;
   gap:8px;
-  min-height:42px;
-  padding:0 18px;
-  border-radius:12px;
+  box-sizing:border-box;
+  height:32px;
+  min-height:32px;
+  padding:0 14px;
+  border-radius:10px;
   background:var(--pos-primary);
   color:#fff;
-  font:700 13px Inter,system-ui,sans-serif;
+  font:700 12px Inter,system-ui,sans-serif;
   text-decoration:none;
   box-shadow:0 8px 18px rgba(37,99,235,.22);
   transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
 }
 .pos-tables-btn-primary svg{
-  width:16px;height:16px;
+  width:14px;height:14px;
   stroke:currentColor;fill:none;stroke-width:2.4;
   stroke-linecap:round;stroke-linejoin:round;
 }
@@ -168,16 +170,20 @@ body.pos-module .pl-summary-row.pos-tables-kpis,
   transform:translateY(-2px);
   box-shadow:0 12px 28px rgba(15,23,42,.07);
 }
+.pos-kpi[data-kpi="total"],
 .pos-kpi[data-kpi="occupied"]{
   cursor:pointer;
 }
+.pos-kpi[data-kpi="total"]:focus,
 .pos-kpi[data-kpi="occupied"]:focus{
   outline:none;
 }
+.pos-kpi[data-kpi="total"]:focus-visible,
 .pos-kpi[data-kpi="occupied"]:focus-visible{
   outline:2px solid var(--pos-primary);
   outline-offset:2px;
 }
+.pos-kpi[data-kpi="total"].is-active,
 .pos-kpi[data-kpi="occupied"].is-active{
   border-color:rgba(37,99,235,.42);
   background:#F8FBFF;

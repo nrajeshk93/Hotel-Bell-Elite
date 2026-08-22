@@ -14834,6 +14834,21 @@ def _normalize_hotel_room_stay(stay, tax_rates=None):
                     60,
                 ),
             }
+            service_date = _hotel_str(
+                item.get("serviceDate") or item.get("service_date"), 10
+            )
+            if service_date and len(service_date) >= 10:
+                line["serviceDate"] = service_date[:10]
+            qty_raw = item.get("qty")
+            if qty_raw is not None and str(qty_raw).strip() != "":
+                qty_val = round(_num(qty_raw, 0), 2)
+                if qty_val > 0:
+                    line["qty"] = qty_val
+            rate_raw = item.get("rate")
+            if rate_raw is not None and str(rate_raw).strip() != "":
+                rate_val = round(_num(rate_raw, 0), 2)
+                if rate_val >= 0:
+                    line["rate"] = rate_val
             # Preserve POS invoice tax snapshot for F&B room transfers.
             if kind in ("restaurant_room_transfer", "bar_room_transfer"):
                 for money_key in (

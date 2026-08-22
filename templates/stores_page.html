@@ -11,24 +11,24 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=28">
 <link rel="stylesheet" href="{{ url_for('static', filename='de_workspace_shell.css') }}?v=53">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=132">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=131">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
 {% if page_key in ('indent', 'purchase_orders') %}
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=51">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=80">
 {% if page_key == 'purchase_orders' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=45">
 {% endif %}
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=57">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=80">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=58">
 {% endif %}
 <script>
 (function(){
@@ -45,23 +45,23 @@
 {% if is_partial_main %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_entry_dashboard.css') }}?v=34">
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_update_header.css') }}?v=12">
-<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=48">
+<link rel="stylesheet" href="{{ url_for('static', filename='sales_update_premium.css') }}?v=28">
+<link rel="stylesheet" href="{{ url_for('static', filename='purchase_ledger.css') }}?v=55">
 <link rel="stylesheet" href="{{ url_for('static', filename='credit_payment.css') }}?v=1">
 <link rel="stylesheet" href="{{ url_for('static', filename='ep_form_listbox.css') }}?v=27">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=132">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores.css') }}?v=131">
 {% if page_key == 'stock_audit_report' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='sales_date_range.css') }}?v=2">
 {% endif %}
 {% if page_key in ('indent', 'purchase_orders') %}
-<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=51">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
+<link rel="stylesheet" href="{{ url_for('static', filename='masters_dashboard.css') }}?v=53">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=80">
 {% if page_key == 'purchase_orders' %}
 <link rel="stylesheet" href="{{ url_for('static', filename='stores_po.css') }}?v=45">
 {% endif %}
 {% elif page_key == 'purchase_requests' %}
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=79">
-<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=57">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_indent.css') }}?v=80">
+<link rel="stylesheet" href="{{ url_for('static', filename='stores_inward.css') }}?v=58">
 {% endif %}
 {% endif %}
 <div class="main-wrapper">

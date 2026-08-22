@@ -67,8 +67,9 @@ body.hotel-reservations-module .de-main-inner.hotel-reservations-page{
   align-items:center;
   justify-content:center;
   gap:6px;
-  padding:8px 14px;
-  min-height:36px;
+  padding:0 14px;
+  min-height:32px;
+  height:32px;
   border-radius:10px;
   font:600 12px Inter,'Segoe UI',system-ui,sans-serif;
   cursor:pointer;
